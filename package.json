@@ -15,16 +15,92 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:shortcuts.helloWorld"
+    "onView:shortcutsPanel",
+    "onCommand:shortcuts.addFolder"
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "shortcutsPanel",
+          "name": "Shortcuts",
+          "when": "workspaceFolderCount > 0"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "shortcutsPanel",
+        "contents": "No shortcuts configured yet.\n[Add Folder Shortcut](command:shortcuts.addFolder)\nShortcuts allow you to quickly access frequently used folders in your workspace. Click the button above to add your first shortcut.\n\nYou can also:\n• Right-click in this panel to add shortcuts\n• [Open Configuration File](command:shortcuts.openConfiguration) to edit manually\n• Share shortcuts with your team by committing the configuration file",
+        "when": "workspaceFolderCount > 0"
+      }
+    ],
     "commands": [
       {
-        "command": "shortcuts.helloWorld",
-        "title": "Hello World"
+        "command": "shortcuts.addFolder",
+        "title": "Add Folder Shortcut",
+        "icon": "$(add)"
+      },
+      {
+        "command": "shortcuts.removeShortcut",
+        "title": "Remove Shortcut",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "shortcuts.renameShortcut",
+        "title": "Rename Shortcut",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "shortcuts.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "shortcuts.openConfiguration",
+        "title": "Open Configuration File",
+        "icon": "$(gear)"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "shortcuts.addFolder",
+          "when": "view == shortcutsPanel",
+          "group": "navigation"
+        },
+        {
+          "command": "shortcuts.refresh",
+          "when": "view == shortcutsPanel",
+          "group": "navigation"
+        },
+        {
+          "command": "shortcuts.openConfiguration",
+          "when": "view == shortcutsPanel",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "shortcuts.removeShortcut",
+          "when": "view == shortcutsPanel && viewItem == folder",
+          "group": "shortcuts@1"
+        },
+        {
+          "command": "shortcuts.renameShortcut",
+          "when": "view == shortcutsPanel && viewItem == folder",
+          "group": "shortcuts@2"
+        }
+      ],
+      "view/context": [
+        {
+          "command": "shortcuts.addFolder",
+          "when": "view == shortcutsPanel",
+          "group": "shortcuts@1"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -38,20 +114,24 @@
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.74.0",
-    "@types/node": "16.x",
-    "@types/mocha": "^10.0.1",
     "@types/glob": "^8.0.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/mocha": "^10.0.1",
+    "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
     "@vscode/test-electron": "^2.2.0",
-    "eslint": "^8.28.0",
-    "typescript": "^4.9.4",
     "@vscode/vsce": "^2.15.0",
-    "ts-loader": "^9.4.1",
-    "webpack": "^5.75.0",
-    "webpack-cli": "^5.0.0",
+    "eslint": "^8.28.0",
+    "glob": "^8.0.3",
     "mocha": "^10.1.0",
-    "glob": "^8.0.3"
+    "ts-loader": "^9.4.1",
+    "typescript": "^4.9.4",
+    "webpack": "^5.75.0",
+    "webpack-cli": "^5.0.0"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
   }
 }

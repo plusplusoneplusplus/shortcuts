@@ -1,34 +1,73 @@
 import * as vscode from 'vscode';
+import { ShortcutsCommands } from './shortcuts/commands';
+import { ShortcutsTreeDataProvider } from './shortcuts/tree-data-provider';
 
 /**
  * This method is called when your extension is activated
  * Your extension is activated the very first time the command is executed
  */
 export function activate(context: vscode.ExtensionContext) {
-    console.log('VSCode extension is now active!');
+    console.log('Shortcuts extension is now active!');
 
-    // Register commands and add them to the context subscriptions for proper disposal
-    const disposables: vscode.Disposable[] = [];
+    // Check if we have a workspace folder
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+        console.log('No workspace folder found, shortcuts panel will not be activated');
+        return;
+    }
 
-    // Register the hello world command
-    const helloWorldCommand = vscode.commands.registerCommand('shortcuts.helloWorld', () => {
-        // Display a message box to the user
-        vscode.window.showInformationMessage('Hello World from Shortcuts Extension!');
-    });
+    const workspaceRoot = workspaceFolder.uri.fsPath;
+    console.log(`Initializing shortcuts panel for workspace: ${workspaceRoot}`);
 
-    // Add command to disposables for proper cleanup
-    disposables.push(helloWorldCommand);
+    try {
+        // Initialize tree data provider
+        const treeDataProvider = new ShortcutsTreeDataProvider(workspaceRoot);
 
-    // Add all disposables to context subscriptions
-    context.subscriptions.push(...disposables);
+        // Register tree view with VS Code
+        const treeView = vscode.window.createTreeView('shortcutsPanel', {
+            treeDataProvider: treeDataProvider,
+            showCollapseAll: true
+        });
 
-    console.log('Extension commands registered successfully');
+        // Initialize command handlers
+        const commandsHandler = new ShortcutsCommands(treeDataProvider);
+        const commandDisposables = commandsHandler.registerCommands(context);
+
+        // Collect all disposables for proper cleanup
+        const disposables: vscode.Disposable[] = [
+            treeView,
+            treeDataProvider,
+            ...commandDisposables
+        ];
+
+        // Add all disposables to context subscriptions
+        context.subscriptions.push(...disposables);
+
+        console.log('Shortcuts extension activated successfully');
+
+        // Show welcome message on first activation
+        const hasShownWelcome = context.globalState.get('shortcuts.hasShownWelcome', false);
+        if (!hasShownWelcome) {
+            vscode.window.showInformationMessage(
+                'Shortcuts panel is now available! Right-click in the panel to add folder shortcuts.',
+                'Got it!'
+            ).then(() => {
+                context.globalState.update('shortcuts.hasShownWelcome', true);
+            });
+        }
+
+    } catch (error) {
+        console.error('Error activating shortcuts extension:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        vscode.window.showErrorMessage(`Failed to activate shortcuts extension: ${message}`);
+    }
 }
 
 /**
  * This method is called when your extension is deactivated
  */
 export function deactivate() {
-    console.log('VSCode extension is being deactivated');
+    console.log('Shortcuts extension is being deactivated');
     // Cleanup is handled automatically by VSCode through context.subscriptions
+    // All registered disposables will be disposed automatically
 }
