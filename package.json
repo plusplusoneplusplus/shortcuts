@@ -61,6 +61,43 @@
         "command": "shortcuts.openConfiguration",
         "title": "Open Configuration File",
         "icon": "$(gear)"
+      },
+      {
+        "command": "shortcuts.handleEnterKey",
+        "title": "Open/Expand Item"
+      },
+      {
+        "command": "shortcuts.handleSpaceKey",
+        "title": "Toggle Expansion"
+      },
+      {
+        "command": "shortcuts.handleHomeKey",
+        "title": "Navigate to First Item"
+      },
+      {
+        "command": "shortcuts.handleEndKey",
+        "title": "Navigate to Last Item"
+      },
+      {
+        "command": "shortcuts.handleRightArrow",
+        "title": "Expand Folder"
+      },
+      {
+        "command": "shortcuts.handleLeftArrow",
+        "title": "Collapse Folder"
+      },
+      {
+        "command": "shortcuts.handleF2Key",
+        "title": "Rename Shortcut"
+      },
+      {
+        "command": "shortcuts.handleDeleteKey",
+        "title": "Delete Shortcut"
+      },
+      {
+        "command": "shortcuts.showKeyboardHelp",
+        "title": "Show Keyboard Navigation Help",
+        "icon": "$(question)"
       }
     ],
     "menus": {
@@ -77,6 +114,11 @@
         },
         {
           "command": "shortcuts.openConfiguration",
+          "when": "view == shortcutsPanel",
+          "group": "navigation"
+        },
+        {
+          "command": "shortcuts.showKeyboardHelp",
           "when": "view == shortcutsPanel",
           "group": "navigation"
         }
@@ -100,7 +142,49 @@
           "group": "shortcuts@1"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "shortcuts.handleEnterKey",
+        "key": "enter",
+        "when": "focusedView == shortcutsPanel"
+      },
+      {
+        "command": "shortcuts.handleSpaceKey",
+        "key": "space",
+        "when": "focusedView == shortcutsPanel"
+      },
+      {
+        "command": "shortcuts.handleHomeKey",
+        "key": "home",
+        "when": "focusedView == shortcutsPanel"
+      },
+      {
+        "command": "shortcuts.handleEndKey",
+        "key": "end",
+        "when": "focusedView == shortcutsPanel"
+      },
+      {
+        "command": "shortcuts.handleRightArrow",
+        "key": "right",
+        "when": "focusedView == shortcutsPanel"
+      },
+      {
+        "command": "shortcuts.handleLeftArrow",
+        "key": "left",
+        "when": "focusedView == shortcutsPanel"
+      },
+      {
+        "command": "shortcuts.handleF2Key",
+        "key": "f2",
+        "when": "focusedView == shortcutsPanel"
+      },
+      {
+        "command": "shortcuts.handleDeleteKey",
+        "key": "delete",
+        "when": "focusedView == shortcutsPanel"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

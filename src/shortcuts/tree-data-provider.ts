@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
 import { FileShortcutItem, FolderShortcutItem, ShortcutItem } from './tree-items';
+import { ThemeManager } from './theme-manager';
 
 /**
  * Tree data provider for the shortcuts panel
@@ -14,13 +15,20 @@ export class ShortcutsTreeDataProvider implements vscode.TreeDataProvider<Shortc
 
     private configurationManager: ConfigurationManager;
     private workspaceRoot: string;
+    private themeManager: ThemeManager;
 
     constructor(workspaceRoot: string) {
         this.workspaceRoot = workspaceRoot;
         this.configurationManager = new ConfigurationManager(workspaceRoot);
+        this.themeManager = new ThemeManager();
 
         // Set up file watcher for configuration changes
         this.configurationManager.watchConfigFile(() => {
+            this.refresh();
+        });
+
+        // Initialize theme management with refresh callback
+        this.themeManager.initialize(() => {
             this.refresh();
         });
     }
@@ -74,11 +82,19 @@ export class ShortcutsTreeDataProvider implements vscode.TreeDataProvider<Shortc
     }
 
     /**
+     * Get the theme manager instance
+     */
+    getThemeManager(): ThemeManager {
+        return this.themeManager;
+    }
+
+    /**
      * Dispose of resources
      */
     dispose(): void {
         this.configurationManager.dispose();
         this._onDidChangeTreeData.dispose();
+        this.themeManager.dispose();
     }
 
     /**

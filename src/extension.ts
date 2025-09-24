@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ShortcutsTreeDataProvider } from './shortcuts/tree-data-provider';
+import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 
 /**
  * This method is called when your extension is activated
@@ -23,20 +24,36 @@ export function activate(context: vscode.ExtensionContext) {
         // Initialize tree data provider
         const treeDataProvider = new ShortcutsTreeDataProvider(workspaceRoot);
 
-        // Register tree view with VS Code
+        // Register tree view with VS Code with theming support
         const treeView = vscode.window.createTreeView('shortcutsPanel', {
             treeDataProvider: treeDataProvider,
-            showCollapseAll: true
+            showCollapseAll: true,
+            canSelectMany: false,
+            dragAndDropController: undefined // Disable drag and drop for now
         });
+
+        // Initialize keyboard navigation handler
+        const keyboardNavigationHandler = new KeyboardNavigationHandler(treeView, treeDataProvider);
 
         // Initialize command handlers
         const commandsHandler = new ShortcutsCommands(treeDataProvider);
         const commandDisposables = commandsHandler.registerCommands(context);
 
+        // Register keyboard help command
+        const keyboardHelpCommand = vscode.commands.registerCommand('shortcuts.showKeyboardHelp', () => {
+            const helpText = KeyboardNavigationHandler.getKeyboardShortcutsHelp();
+            vscode.window.showInformationMessage(
+                'Keyboard shortcuts for Shortcuts panel:',
+                { modal: true, detail: helpText }
+            );
+        });
+
         // Collect all disposables for proper cleanup
         const disposables: vscode.Disposable[] = [
             treeView,
             treeDataProvider,
+            keyboardNavigationHandler,
+            keyboardHelpCommand,
             ...commandDisposables
         ];
 

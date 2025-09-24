@@ -82,31 +82,31 @@
   - _Requirements: 1.3_
 
 - [-] 8. Create comprehensive tests
-- [-] 8.1 Write unit tests for ConfigurationManager
+- [ ] 8.1 Write unit tests for ConfigurationManager
   - Test YAML loading and saving functionality
   - Test error handling for invalid files and permissions
   - Test path resolution and validation
   - _Requirements: 5.1, 5.2, 5.3, 5.5_
 
-- [ ] 8.2 Write unit tests for tree data provider
+- [x] 8.2 Write unit tests for tree data provider
   - Test tree structure generation from configuration
   - Test refresh functionality and event emission
   - Test getChildren and getTreeItem methods
   - _Requirements: 1.1, 1.2, 3.1, 3.2, 3.3_
 
-- [ ] 8.3 Write integration tests for command handlers
+- [x] 8.3 Write integration tests for command handlers
   - Test add folder workflow end-to-end
   - Test remove shortcut functionality
   - Test file opening from tree items
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 3.3_
 
-- [ ] 9. Add keyboard navigation support
+- [x] 9. Add keyboard navigation support
   - Implement keyboard event handlers for tree navigation
   - Add support for arrow keys, enter, and space
   - Ensure accessibility compliance with screen readers
   - _Requirements: 6.4_
 
-- [ ] 10. Integrate with VS Code theming
+- [x] 10. Integrate with VS Code theming
   - Ensure tree view uses current theme colors
   - Test appearance with different VS Code themes
   - Verify icon rendering in light and dark themes
