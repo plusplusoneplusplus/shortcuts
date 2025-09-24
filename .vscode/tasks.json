@@ -1,0 +1,46 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "watch",
+			"problemMatcher": "$tsc-watch",
+			"isBackground": true,
+			"presentation": {
+				"reveal": "never"
+			},
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"type": "npm",
+			"script": "compile",
+			"problemMatcher": "$tsc",
+			"group": "build"
+		},
+		{
+			"type": "npm",
+			"script": "pretest",
+			"dependsOrder": "sequence",
+			"group": "test"
+		},
+		{
+			"type": "npm",
+			"script": "test",
+			"dependsOn": "npm: pretest",
+			"problemMatcher": "$tsc",
+			"group": {
+				"kind": "test",
+				"isDefault": true
+			}
+		},
+		{
+			"type": "npm",
+			"script": "package",
+			"dependsOn": "npm: compile",
+			"group": "build"
+		}
+	]
+}
