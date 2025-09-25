@@ -1,0 +1,201 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import { ConfigurationManager } from './configuration-manager';
+import { LogicalGroupItem, LogicalGroupChildItem, ShortcutItem } from './tree-items';
+import { LogicalGroup, LogicalGroupItem as LogicalGroupItemConfig } from './types';
+import { ThemeManager } from './theme-manager';
+
+/**
+ * Tree data provider for the logical groups panel
+ * Handles custom logical groupings of shortcuts
+ */
+export class LogicalTreeDataProvider implements vscode.TreeDataProvider<ShortcutItem> {
+    private _onDidChangeTreeData: vscode.EventEmitter<ShortcutItem | undefined | null | void> = new vscode.EventEmitter<ShortcutItem | undefined | null | void>();
+    readonly onDidChangeTreeData: vscode.Event<ShortcutItem | undefined | null | void> = this._onDidChangeTreeData.event;
+
+    private configurationManager: ConfigurationManager;
+    private workspaceRoot: string;
+    private themeManager: ThemeManager;
+
+    constructor(workspaceRoot: string, configurationManager: ConfigurationManager, themeManager: ThemeManager) {
+        this.workspaceRoot = workspaceRoot;
+        this.configurationManager = configurationManager;
+        this.themeManager = themeManager;
+    }
+
+    /**
+     * Get the tree item representation of an element
+     */
+    getTreeItem(element: ShortcutItem): vscode.TreeItem {
+        return element;
+    }
+
+    /**
+     * Get the children of an element or root elements if no element is provided
+     */
+    async getChildren(element?: ShortcutItem): Promise<ShortcutItem[]> {
+        try {
+            if (!element) {
+                // Return root level logical groups
+                return await this.getRootLogicalGroups();
+            } else if (element instanceof LogicalGroupItem) {
+                // Return contents of the logical group
+                return await this.getLogicalGroupContents(element);
+            } else {
+                // Individual items have no children
+                return [];
+            }
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error getting logical tree children:', err);
+            vscode.window.showErrorMessage(`Error loading logical groups: ${err.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Refresh the tree view
+     */
+    refresh(): void {
+        this._onDidChangeTreeData.fire();
+    }
+
+    /**
+     * Get the configuration manager instance
+     */
+    getConfigurationManager(): ConfigurationManager {
+        return this.configurationManager;
+    }
+
+    /**
+     * Dispose of resources
+     */
+    dispose(): void {
+        this._onDidChangeTreeData.dispose();
+    }
+
+    /**
+     * Get root level logical groups from configuration
+     */
+    private async getRootLogicalGroups(): Promise<ShortcutItem[]> {
+        const config = await this.configurationManager.loadConfiguration();
+        const groups: ShortcutItem[] = [];
+
+        // If no logical groups are configured, return empty array
+        if (!config.logicalGroups || config.logicalGroups.length === 0) {
+            return [];
+        }
+
+        for (const groupConfig of config.logicalGroups) {
+            try {
+                const groupItem = new LogicalGroupItem(
+                    groupConfig.name,
+                    groupConfig.description,
+                    groupConfig.icon,
+                    vscode.TreeItemCollapsibleState.Collapsed
+                );
+
+                groups.push(groupItem);
+            } catch (error) {
+                const err = error instanceof Error ? error : new Error('Unknown error');
+                console.warn(`Error processing logical group ${groupConfig.name}:`, err);
+            }
+        }
+
+        return groups;
+    }
+
+    /**
+     * Get contents of a logical group
+     */
+    private async getLogicalGroupContents(groupItem: LogicalGroupItem): Promise<ShortcutItem[]> {
+        const config = await this.configurationManager.loadConfiguration();
+        const items: ShortcutItem[] = [];
+
+        // Find the logical group configuration
+        const groupConfig = config.logicalGroups?.find(g => g.name === groupItem.label);
+        if (!groupConfig) {
+            return [];
+        }
+
+        try {
+            // Sort items: folders first, then files, both alphabetically
+            const sortedItems = [...groupConfig.items].sort((a, b) => {
+                if (a.type === 'folder' && b.type === 'file') {
+                    return -1;
+                }
+                if (a.type === 'file' && b.type === 'folder') {
+                    return 1;
+                }
+                return a.name.localeCompare(b.name);
+            });
+
+            for (const itemConfig of sortedItems) {
+                try {
+                    const resolvedPath = this.resolvePath(itemConfig.path);
+                    const uri = vscode.Uri.file(resolvedPath);
+
+                    // Check if path exists
+                    if (!fs.existsSync(resolvedPath)) {
+                        console.warn(`Logical group item path does not exist: ${resolvedPath}`);
+                        continue;
+                    }
+
+                    // Verify the item type matches what exists on disk
+                    const stat = fs.statSync(resolvedPath);
+                    const actualType = stat.isDirectory() ? 'folder' : 'file';
+
+                    if (actualType !== itemConfig.type) {
+                        console.warn(`Logical group item type mismatch for ${resolvedPath}: expected ${itemConfig.type}, found ${actualType}`);
+                        // Use actual type instead of configured type
+                    }
+
+                    const childItem = new LogicalGroupChildItem(
+                        itemConfig.name,
+                        uri,
+                        actualType,
+                        groupItem.label
+                    );
+
+                    items.push(childItem);
+                } catch (error) {
+                    const err = error instanceof Error ? error : new Error('Unknown error');
+                    console.warn(`Error processing logical group item ${itemConfig.path}:`, err);
+                }
+            }
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error(`Error reading logical group contents for ${groupItem.label}:`, err);
+            vscode.window.showErrorMessage(`Error reading group: ${err.message}`);
+        }
+
+        return items;
+    }
+
+    /**
+     * Resolve a path relative to the workspace root
+     */
+    private resolvePath(inputPath: string): string {
+        if (path.isAbsolute(inputPath)) {
+            return inputPath;
+        }
+        return path.resolve(this.workspaceRoot, inputPath);
+    }
+
+    /**
+     * Get all logical groups for management operations
+     */
+    async getLogicalGroups(): Promise<LogicalGroup[]> {
+        const config = await this.configurationManager.loadConfiguration();
+        return config.logicalGroups || [];
+    }
+
+    /**
+     * Find a logical group by name
+     */
+    async findLogicalGroup(groupName: string): Promise<LogicalGroup | undefined> {
+        const groups = await this.getLogicalGroups();
+        return groups.find(g => g.name === groupName);
+    }
+}

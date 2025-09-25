@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, ShortcutConfig, ShortcutsConfig } from './types';
+import { CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, ShortcutConfig, ShortcutsConfig, LogicalGroup, LogicalGroupItem } from './types';
 
 /**
  * Manages loading, saving, and validation of shortcuts configuration
@@ -361,8 +361,85 @@ export class ConfigurationManager {
             });
         }
 
+        // Validate logical groups
+        let validLogicalGroups: LogicalGroup[] = [];
+        if (config.logicalGroups && Array.isArray(config.logicalGroups)) {
+            for (const group of config.logicalGroups) {
+                if (!group || typeof group !== 'object') {
+                    console.warn('Skipping invalid logical group:', group);
+                    continue;
+                }
+
+                if (typeof group.name !== 'string' || !group.name.trim()) {
+                    console.warn('Skipping logical group with invalid name:', group);
+                    continue;
+                }
+
+                if (!Array.isArray(group.items)) {
+                    console.warn('Skipping logical group with invalid items array:', group);
+                    continue;
+                }
+
+                const validItems: LogicalGroupItem[] = [];
+                for (const item of group.items) {
+                    if (!item || typeof item !== 'object') {
+                        console.warn('Skipping invalid logical group item:', item);
+                        continue;
+                    }
+
+                    if (typeof item.path !== 'string' || !item.path.trim()) {
+                        console.warn('Skipping logical group item with invalid path:', item);
+                        continue;
+                    }
+
+                    if (typeof item.name !== 'string' || !item.name.trim()) {
+                        console.warn('Skipping logical group item with invalid name:', item);
+                        continue;
+                    }
+
+                    if (item.type !== 'folder' && item.type !== 'file') {
+                        console.warn('Skipping logical group item with invalid type:', item);
+                        continue;
+                    }
+
+                    // Validate that the path exists
+                    try {
+                        const resolvedPath = this.resolvePath(item.path);
+                        if (!fs.existsSync(resolvedPath)) {
+                            console.warn(`Skipping logical group item with non-existent path: ${item.path}`);
+                            continue;
+                        }
+
+                        const stat = fs.statSync(resolvedPath);
+                        const actualType = stat.isDirectory() ? 'folder' : 'file';
+                        if (actualType !== item.type) {
+                            console.warn(`Logical group item type mismatch for ${item.path}: expected ${item.type}, found ${actualType}. Using actual type.`);
+                        }
+
+                        validItems.push({
+                            path: item.path,
+                            name: item.name,
+                            type: actualType as 'folder' | 'file'
+                        });
+                    } catch (error) {
+                        const err = error instanceof Error ? error : new Error('Unknown error');
+                        console.warn(`Skipping logical group item with invalid path: ${item.path}`, err);
+                        continue;
+                    }
+                }
+
+                validLogicalGroups.push({
+                    name: group.name,
+                    description: typeof group.description === 'string' ? group.description : undefined,
+                    items: validItems,
+                    icon: typeof group.icon === 'string' ? group.icon : undefined
+                });
+            }
+        }
+
         return {
-            shortcuts: validShortcuts
+            shortcuts: validShortcuts,
+            logicalGroups: validLogicalGroups
         };
     }
 
@@ -392,5 +469,208 @@ export class ConfigurationManager {
             return inputPath;
         }
         return path.resolve(this.workspaceRoot, inputPath);
+    }
+
+    /**
+     * Create a new logical group
+     * @param groupName Name of the group
+     * @param description Optional description
+     */
+    async createLogicalGroup(groupName: string, description?: string): Promise<void> {
+        try {
+            const config = await this.loadConfiguration();
+
+            // Check if group already exists
+            if (config.logicalGroups && config.logicalGroups.some(g => g.name === groupName)) {
+                vscode.window.showWarningMessage('A logical group with this name already exists.');
+                return;
+            }
+
+            // Initialize logicalGroups if it doesn't exist
+            if (!config.logicalGroups) {
+                config.logicalGroups = [];
+            }
+
+            // Add new group
+            const newGroup: LogicalGroup = {
+                name: groupName,
+                description: description,
+                items: []
+            };
+
+            config.logicalGroups.push(newGroup);
+            await this.saveConfiguration(config);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating logical group:', err);
+            vscode.window.showErrorMessage(`Failed to create logical group: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Add an item to a logical group
+     * @param groupName Name of the group
+     * @param itemPath Path to the item
+     * @param itemName Display name for the item
+     * @param itemType Type of the item (folder or file)
+     */
+    async addToLogicalGroup(groupName: string, itemPath: string, itemName: string, itemType: 'folder' | 'file'): Promise<void> {
+        try {
+            const config = await this.loadConfiguration();
+
+            // Find the group
+            if (!config.logicalGroups) {
+                config.logicalGroups = [];
+            }
+
+            const group = config.logicalGroups.find(g => g.name === groupName);
+            if (!group) {
+                vscode.window.showErrorMessage('Logical group not found.');
+                return;
+            }
+
+            // Resolve and validate the path
+            const resolvedPath = this.resolvePath(itemPath);
+
+            // Check if item already exists in group
+            const existingItem = group.items.find(item =>
+                path.resolve(this.workspaceRoot, item.path) === resolvedPath
+            );
+
+            if (existingItem) {
+                vscode.window.showWarningMessage('This item is already in the logical group.');
+                return;
+            }
+
+            // Create relative path from workspace root
+            const relativePath = path.relative(this.workspaceRoot, resolvedPath);
+
+            // Add new item
+            const newItem: LogicalGroupItem = {
+                path: relativePath.startsWith('..') ? resolvedPath : relativePath,
+                name: itemName,
+                type: itemType
+            };
+
+            group.items.push(newItem);
+            await this.saveConfiguration(config);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error adding to logical group:', err);
+            vscode.window.showErrorMessage(`Failed to add to logical group: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Remove an item from a logical group
+     * @param groupName Name of the group
+     * @param itemPath Path to the item to remove
+     */
+    async removeFromLogicalGroup(groupName: string, itemPath: string): Promise<void> {
+        try {
+            const config = await this.loadConfiguration();
+
+            if (!config.logicalGroups) {
+                return;
+            }
+
+            const group = config.logicalGroups.find(g => g.name === groupName);
+            if (!group) {
+                vscode.window.showErrorMessage('Logical group not found.');
+                return;
+            }
+
+            const resolvedPath = this.resolvePath(itemPath);
+
+            // Find and remove the item
+            const initialLength = group.items.length;
+            group.items = group.items.filter(item =>
+                path.resolve(this.workspaceRoot, item.path) !== resolvedPath
+            );
+
+            if (group.items.length === initialLength) {
+                vscode.window.showWarningMessage('Item not found in logical group.');
+                return;
+            }
+
+            await this.saveConfiguration(config);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error removing from logical group:', err);
+            vscode.window.showErrorMessage(`Failed to remove from logical group: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Rename a logical group
+     * @param oldName Current name of the group
+     * @param newName New name for the group
+     */
+    async renameLogicalGroup(oldName: string, newName: string): Promise<void> {
+        try {
+            const config = await this.loadConfiguration();
+
+            if (!config.logicalGroups) {
+                return;
+            }
+
+            // Check if new name already exists
+            if (config.logicalGroups.some(g => g.name === newName)) {
+                vscode.window.showWarningMessage('A logical group with this name already exists.');
+                return;
+            }
+
+            const group = config.logicalGroups.find(g => g.name === oldName);
+            if (!group) {
+                vscode.window.showErrorMessage('Logical group not found.');
+                return;
+            }
+
+            group.name = newName;
+            await this.saveConfiguration(config);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error renaming logical group:', err);
+            vscode.window.showErrorMessage(`Failed to rename logical group: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a logical group
+     * @param groupName Name of the group to delete
+     */
+    async deleteLogicalGroup(groupName: string): Promise<void> {
+        try {
+            const config = await this.loadConfiguration();
+
+            if (!config.logicalGroups) {
+                return;
+            }
+
+            // Find and remove the group
+            const initialLength = config.logicalGroups.length;
+            config.logicalGroups = config.logicalGroups.filter(g => g.name !== groupName);
+
+            if (config.logicalGroups.length === initialLength) {
+                vscode.window.showWarningMessage('Logical group not found.');
+                return;
+            }
+
+            await this.saveConfiguration(config);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error deleting logical group:', err);
+            vscode.window.showErrorMessage(`Failed to delete logical group: ${err.message}`);
+            throw error;
+        }
     }
 }

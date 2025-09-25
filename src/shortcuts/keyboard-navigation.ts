@@ -1,6 +1,13 @@
 import * as vscode from 'vscode';
 import { ShortcutItem, FolderShortcutItem, FileShortcutItem } from './tree-items';
-import { ShortcutsTreeDataProvider } from './tree-data-provider';
+
+/**
+ * Interface for tree data providers that support keyboard navigation
+ */
+interface NavigableTreeDataProvider {
+    refresh(): void;
+    getChildren(element?: ShortcutItem): Promise<ShortcutItem[]>;
+}
 
 /**
  * Handles keyboard navigation for the shortcuts tree view
@@ -8,15 +15,18 @@ import { ShortcutsTreeDataProvider } from './tree-data-provider';
  */
 export class KeyboardNavigationHandler {
     private treeView: vscode.TreeView<ShortcutItem>;
-    private treeDataProvider: ShortcutsTreeDataProvider;
+    private treeDataProvider: NavigableTreeDataProvider;
     private keyListeners: vscode.Disposable[] = [];
+    private viewId: string;
 
     constructor(
         treeView: vscode.TreeView<ShortcutItem>,
-        treeDataProvider: ShortcutsTreeDataProvider
+        treeDataProvider: NavigableTreeDataProvider,
+        viewId: string
     ) {
         this.treeView = treeView;
         this.treeDataProvider = treeDataProvider;
+        this.viewId = viewId;
         this.setupKeyboardNavigation();
     }
 
@@ -26,7 +36,7 @@ export class KeyboardNavigationHandler {
     private setupKeyboardNavigation(): void {
         // Register command for Enter key - open file or expand/collapse folder
         const enterCommand = vscode.commands.registerCommand(
-            'shortcuts.handleEnterKey',
+            `shortcuts.${this.viewId}.handleEnterKey`,
             async () => {
                 await this.handleEnterKey();
             }
@@ -34,7 +44,7 @@ export class KeyboardNavigationHandler {
 
         // Register command for Space key - expand/collapse folders
         const spaceCommand = vscode.commands.registerCommand(
-            'shortcuts.handleSpaceKey',
+            `shortcuts.${this.viewId}.handleSpaceKey`,
             async () => {
                 await this.handleSpaceKey();
             }
@@ -42,7 +52,7 @@ export class KeyboardNavigationHandler {
 
         // Register command for Home key - navigate to first item
         const homeCommand = vscode.commands.registerCommand(
-            'shortcuts.handleHomeKey',
+            `shortcuts.${this.viewId}.handleHomeKey`,
             async () => {
                 await this.handleHomeKey();
             }
@@ -50,7 +60,7 @@ export class KeyboardNavigationHandler {
 
         // Register command for End key - navigate to last visible item
         const endCommand = vscode.commands.registerCommand(
-            'shortcuts.handleEndKey',
+            `shortcuts.${this.viewId}.handleEndKey`,
             async () => {
                 await this.handleEndKey();
             }
@@ -58,7 +68,7 @@ export class KeyboardNavigationHandler {
 
         // Register command for Right arrow - expand folder
         const rightArrowCommand = vscode.commands.registerCommand(
-            'shortcuts.handleRightArrow',
+            `shortcuts.${this.viewId}.handleRightArrow`,
             async () => {
                 await this.handleRightArrow();
             }
@@ -66,7 +76,7 @@ export class KeyboardNavigationHandler {
 
         // Register command for Left arrow - collapse folder or navigate to parent
         const leftArrowCommand = vscode.commands.registerCommand(
-            'shortcuts.handleLeftArrow',
+            `shortcuts.${this.viewId}.handleLeftArrow`,
             async () => {
                 await this.handleLeftArrow();
             }
@@ -74,7 +84,7 @@ export class KeyboardNavigationHandler {
 
         // Register command for F2 key - rename shortcut
         const f2Command = vscode.commands.registerCommand(
-            'shortcuts.handleF2Key',
+            `shortcuts.${this.viewId}.handleF2Key`,
             async () => {
                 await this.handleF2Key();
             }
@@ -82,7 +92,7 @@ export class KeyboardNavigationHandler {
 
         // Register command for Delete key - remove shortcut
         const deleteCommand = vscode.commands.registerCommand(
-            'shortcuts.handleDeleteKey',
+            `shortcuts.${this.viewId}.handleDeleteKey`,
             async () => {
                 await this.handleDeleteKey();
             }
@@ -264,7 +274,7 @@ export class KeyboardNavigationHandler {
         if (selectedItem instanceof FolderShortcutItem) {
             // Check if this is a root level shortcut (can be renamed)
             const rootItems = await this.treeDataProvider.getChildren();
-            const isRootItem = rootItems.some(item =>
+            const isRootItem = rootItems.some((item: ShortcutItem) =>
                 item.resourceUri.fsPath === selectedItem.resourceUri.fsPath
             );
 
@@ -290,7 +300,7 @@ export class KeyboardNavigationHandler {
         if (selectedItem instanceof FolderShortcutItem) {
             // Check if this is a root level shortcut (can be removed)
             const rootItems = await this.treeDataProvider.getChildren();
-            const isRootItem = rootItems.some(item =>
+            const isRootItem = rootItems.some((item: ShortcutItem) =>
                 item.resourceUri.fsPath === selectedItem.resourceUri.fsPath
             );
 

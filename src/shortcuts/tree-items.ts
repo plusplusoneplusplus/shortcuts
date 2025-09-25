@@ -362,3 +362,114 @@ export class FileShortcutItem extends ShortcutItem {
         return path.basename(this.resourceUri.fsPath, this.extension);
     }
 }
+
+/**
+ * Tree item representing a logical group
+ * Can contain multiple folders and files organized by category
+ */
+export class LogicalGroupItem extends ShortcutItem {
+    public readonly contextValue = 'logicalGroup';
+
+    constructor(
+        label: string,
+        public readonly description?: string,
+        public readonly iconName?: string,
+        collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
+    ) {
+        // Use a dummy URI for logical groups
+        super(label, vscode.Uri.parse(`logical://group/${encodeURIComponent(label)}`), collapsibleState);
+        this.description = description;
+        this.iconPath = this.getIconPath();
+        this.tooltip = description || `Logical group: ${label}`;
+    }
+
+    isDirectory(): boolean {
+        return true; // Logical groups act like directories
+    }
+
+    getIconPath(): vscode.ThemeIcon {
+        if (this.iconName) {
+            return new vscode.ThemeIcon(this.iconName);
+        }
+
+        // Default logical group icons based on common names
+        const groupName = this.label.toLowerCase();
+        const groupIconMap: { [key: string]: string } = {
+            'projects': 'folder-library',
+            'work': 'briefcase',
+            'personal': 'person',
+            'development': 'code',
+            'documents': 'file-text',
+            'tools': 'tools',
+            'resources': 'library',
+            'favorites': 'star',
+            'recent': 'history',
+            'archive': 'archive'
+        };
+
+        const iconName = groupIconMap[groupName] || 'folder';
+        return new vscode.ThemeIcon(iconName, new vscode.ThemeColor('symbolIcon.folderForeground'));
+    }
+}
+
+/**
+ * Tree item representing an item within a logical group
+ * Can be either a folder or file reference
+ */
+export class LogicalGroupChildItem extends ShortcutItem {
+    public readonly contextValue: string;
+    public readonly command?: vscode.Command;
+
+    constructor(
+        label: string,
+        resourceUri: vscode.Uri,
+        public readonly itemType: 'folder' | 'file',
+        public readonly parentGroup: string
+    ) {
+        super(label, resourceUri, vscode.TreeItemCollapsibleState.None);
+        this.contextValue = `logicalGroupItem_${itemType}`;
+
+        // Set up command for files to open them
+        if (itemType === 'file') {
+            this.command = {
+                command: 'vscode.open',
+                title: 'Open File',
+                arguments: [this.resourceUri]
+            };
+        }
+
+        this.iconPath = this.getIconPath();
+    }
+
+    isDirectory(): boolean {
+        return this.itemType === 'folder';
+    }
+
+    getIconPath(): vscode.ThemeIcon {
+        if (this.itemType === 'folder') {
+            // Use same logic as FolderShortcutItem for folders
+            const folderName = path.basename(this.resourceUri.fsPath).toLowerCase();
+            // Simplified folder icon logic
+            return new vscode.ThemeIcon('folder', new vscode.ThemeColor('symbolIcon.folderForeground'));
+        } else {
+            // Use same logic as FileShortcutItem for files
+            const extension = path.extname(this.resourceUri.fsPath).toLowerCase();
+            const fileName = path.basename(this.resourceUri.fsPath).toLowerCase();
+
+            // Simplified file icon logic
+            const iconMap: { [key: string]: string } = {
+                '.js': 'symbol-method',
+                '.ts': 'symbol-method',
+                '.json': 'symbol-object',
+                '.md': 'book',
+                '.txt': 'note',
+                '.py': 'symbol-method',
+                '.html': 'symbol-color',
+                '.css': 'symbol-color'
+            };
+
+            const iconName = iconMap[extension] || 'file';
+            return new vscode.ThemeIcon(iconName);
+        }
+    }
+}

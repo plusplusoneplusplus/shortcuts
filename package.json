@@ -17,8 +17,10 @@
     "Productivity"
   ],
   "activationEvents": [
-    "onView:shortcutsPanel",
+    "onView:shortcutsPhysical",
+    "onView:shortcutsLogical",
     "onCommand:shortcuts.addFolder",
+    "onCommand:shortcuts.createLogicalGroup",
     "onViewContainer:shortcuts"
   ],
   "main": "./dist/extension.js",
@@ -35,16 +37,25 @@
     "views": {
       "shortcuts": [
         {
-          "id": "shortcutsPanel",
-          "name": "Quick Access",
+          "id": "shortcutsPhysical",
+          "name": "Physical Folders",
+          "when": "true"
+        },
+        {
+          "id": "shortcutsLogical",
+          "name": "Logical Groups",
           "when": "true"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "shortcutsPanel",
-        "contents": "Welcome to Shortcuts! 🚀\n\n[Add Folder Shortcut](command:shortcuts.addFolder)\n\nQuickly access your frequently used folders and projects. Click the button above to add your first shortcut.\n\n**Getting Started:**\n• Add folders you use frequently\n• Organize your workspace efficiently  \n• Navigate projects instantly\n\n**Pro Tips:**\n• Right-click to manage shortcuts\n• [Edit Configuration](command:shortcuts.openConfiguration) manually\n• Use keyboard shortcuts for faster navigation"
+        "view": "shortcutsPhysical",
+        "contents": "📁 **Physical Folders**\n\n[Add Folder Shortcut](command:shortcuts.addFolder)\n\nQuick access to actual folders on your filesystem.\n\n**Actions:**\n• Add existing folders\n• Navigate to folder locations\n• Open folders in explorer"
+      },
+      {
+        "view": "shortcutsLogical",
+        "contents": "🏷️ **Logical Groups**\n\n[Create New Group](command:shortcuts.createLogicalGroup)\n\nOrganize shortcuts into custom categories.\n\n**Actions:**\n• Create custom groups\n• Add shortcuts to groups\n• Organize by project, type, or workflow"
       }
     ],
     "commands": [
@@ -74,41 +85,34 @@
         "icon": "$(gear)"
       },
       {
-        "command": "shortcuts.handleEnterKey",
-        "title": "Open/Expand Item"
-      },
-      {
-        "command": "shortcuts.handleSpaceKey",
-        "title": "Toggle Expansion"
-      },
-      {
-        "command": "shortcuts.handleHomeKey",
-        "title": "Navigate to First Item"
-      },
-      {
-        "command": "shortcuts.handleEndKey",
-        "title": "Navigate to Last Item"
-      },
-      {
-        "command": "shortcuts.handleRightArrow",
-        "title": "Expand Folder"
-      },
-      {
-        "command": "shortcuts.handleLeftArrow",
-        "title": "Collapse Folder"
-      },
-      {
-        "command": "shortcuts.handleF2Key",
-        "title": "Rename Shortcut"
-      },
-      {
-        "command": "shortcuts.handleDeleteKey",
-        "title": "Delete Shortcut"
-      },
-      {
         "command": "shortcuts.showKeyboardHelp",
         "title": "Show Keyboard Navigation Help",
         "icon": "$(question)"
+      },
+      {
+        "command": "shortcuts.createLogicalGroup",
+        "title": "Create Logical Group",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "shortcuts.addToLogicalGroup",
+        "title": "Add to Group",
+        "icon": "$(add)"
+      },
+      {
+        "command": "shortcuts.removeFromLogicalGroup",
+        "title": "Remove from Group",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "shortcuts.renameLogicalGroup",
+        "title": "Rename Group",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "shortcuts.deleteLogicalGroup",
+        "title": "Delete Group",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -156,44 +160,84 @@
     },
     "keybindings": [
       {
-        "command": "shortcuts.handleEnterKey",
+        "command": "shortcuts.physical.handleEnterKey",
         "key": "enter",
-        "when": "focusedView == shortcutsPanel"
+        "when": "focusedView == shortcutsPhysical"
       },
       {
-        "command": "shortcuts.handleSpaceKey",
+        "command": "shortcuts.physical.handleSpaceKey",
         "key": "space",
-        "when": "focusedView == shortcutsPanel"
+        "when": "focusedView == shortcutsPhysical"
       },
       {
-        "command": "shortcuts.handleHomeKey",
+        "command": "shortcuts.physical.handleHomeKey",
         "key": "home",
-        "when": "focusedView == shortcutsPanel"
+        "when": "focusedView == shortcutsPhysical"
       },
       {
-        "command": "shortcuts.handleEndKey",
+        "command": "shortcuts.physical.handleEndKey",
         "key": "end",
-        "when": "focusedView == shortcutsPanel"
+        "when": "focusedView == shortcutsPhysical"
       },
       {
-        "command": "shortcuts.handleRightArrow",
+        "command": "shortcuts.physical.handleRightArrow",
         "key": "right",
-        "when": "focusedView == shortcutsPanel"
+        "when": "focusedView == shortcutsPhysical"
       },
       {
-        "command": "shortcuts.handleLeftArrow",
+        "command": "shortcuts.physical.handleLeftArrow",
         "key": "left",
-        "when": "focusedView == shortcutsPanel"
+        "when": "focusedView == shortcutsPhysical"
       },
       {
-        "command": "shortcuts.handleF2Key",
+        "command": "shortcuts.physical.handleF2Key",
         "key": "f2",
-        "when": "focusedView == shortcutsPanel"
+        "when": "focusedView == shortcutsPhysical"
       },
       {
-        "command": "shortcuts.handleDeleteKey",
+        "command": "shortcuts.physical.handleDeleteKey",
         "key": "delete",
-        "when": "focusedView == shortcutsPanel"
+        "when": "focusedView == shortcutsPhysical"
+      },
+      {
+        "command": "shortcuts.logical.handleEnterKey",
+        "key": "enter",
+        "when": "focusedView == shortcutsLogical"
+      },
+      {
+        "command": "shortcuts.logical.handleSpaceKey",
+        "key": "space",
+        "when": "focusedView == shortcutsLogical"
+      },
+      {
+        "command": "shortcuts.logical.handleHomeKey",
+        "key": "home",
+        "when": "focusedView == shortcutsLogical"
+      },
+      {
+        "command": "shortcuts.logical.handleEndKey",
+        "key": "end",
+        "when": "focusedView == shortcutsLogical"
+      },
+      {
+        "command": "shortcuts.logical.handleRightArrow",
+        "key": "right",
+        "when": "focusedView == shortcutsLogical"
+      },
+      {
+        "command": "shortcuts.logical.handleLeftArrow",
+        "key": "left",
+        "when": "focusedView == shortcutsLogical"
+      },
+      {
+        "command": "shortcuts.logical.handleF2Key",
+        "key": "f2",
+        "when": "focusedView == shortcutsLogical"
+      },
+      {
+        "command": "shortcuts.logical.handleDeleteKey",
+        "key": "delete",
+        "when": "focusedView == shortcutsLogical"
       }
     ]
   },

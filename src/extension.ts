@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ShortcutsTreeDataProvider } from './shortcuts/tree-data-provider';
+import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 
 /**
@@ -26,22 +27,38 @@ export function activate(context: vscode.ExtensionContext) {
     console.log(`Initializing shortcuts panel for workspace: ${workspaceRoot}`);
 
     try {
-        // Initialize tree data provider
-        const treeDataProvider = new ShortcutsTreeDataProvider(workspaceRoot);
+        // Initialize physical tree data provider
+        const physicalTreeDataProvider = new ShortcutsTreeDataProvider(workspaceRoot);
 
-        // Register tree view with VS Code with theming support
-        const treeView = vscode.window.createTreeView('shortcutsPanel', {
-            treeDataProvider: treeDataProvider,
+        // Initialize logical tree data provider
+        const logicalTreeDataProvider = new LogicalTreeDataProvider(
+            workspaceRoot,
+            physicalTreeDataProvider.getConfigurationManager(),
+            physicalTreeDataProvider.getThemeManager()
+        );
+
+        // Register physical tree view
+        const physicalTreeView = vscode.window.createTreeView('shortcutsPhysical', {
+            treeDataProvider: physicalTreeDataProvider,
             showCollapseAll: true,
             canSelectMany: false,
-            dragAndDropController: undefined // Disable drag and drop for now
+            dragAndDropController: undefined
         });
 
-        // Initialize keyboard navigation handler
-        const keyboardNavigationHandler = new KeyboardNavigationHandler(treeView, treeDataProvider);
+        // Register logical tree view
+        const logicalTreeView = vscode.window.createTreeView('shortcutsLogical', {
+            treeDataProvider: logicalTreeDataProvider,
+            showCollapseAll: true,
+            canSelectMany: false,
+            dragAndDropController: undefined
+        });
+
+        // Initialize keyboard navigation handlers for both views
+        const physicalKeyboardNavigationHandler = new KeyboardNavigationHandler(physicalTreeView, physicalTreeDataProvider, 'physical');
+        const logicalKeyboardNavigationHandler = new KeyboardNavigationHandler(logicalTreeView, logicalTreeDataProvider, 'logical');
 
         // Initialize command handlers
-        const commandsHandler = new ShortcutsCommands(treeDataProvider);
+        const commandsHandler = new ShortcutsCommands(physicalTreeDataProvider, logicalTreeDataProvider);
         const commandDisposables = commandsHandler.registerCommands(context);
 
         // Register keyboard help command
@@ -55,9 +72,12 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Collect all disposables for proper cleanup
         const disposables: vscode.Disposable[] = [
-            treeView,
-            treeDataProvider,
-            keyboardNavigationHandler,
+            physicalTreeView,
+            logicalTreeView,
+            physicalTreeDataProvider,
+            logicalTreeDataProvider,
+            physicalKeyboardNavigationHandler,
+            logicalKeyboardNavigationHandler,
             keyboardHelpCommand,
             ...commandDisposables
         ];
