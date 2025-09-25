@@ -1,7 +1,17 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as os from 'os';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ShortcutsTreeDataProvider } from './shortcuts/tree-data-provider';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
+
+/**
+ * Get a stable global configuration path when no workspace is open
+ */
+function getGlobalConfigPath(): string {
+    // Use VS Code's global storage path or fallback to home directory
+    return path.join(os.homedir(), '.vscode-shortcuts');
+}
 
 /**
  * This method is called when your extension is activated
@@ -10,9 +20,9 @@ import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 export function activate(context: vscode.ExtensionContext) {
     console.log('Shortcuts extension is now active!');
 
-    // Check if we have a workspace folder, use temp directory if none
+    // Check if we have a workspace folder, use stable directory if none
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    const workspaceRoot = workspaceFolder?.uri.fsPath || require('os').tmpdir();
+    const workspaceRoot = workspaceFolder?.uri.fsPath || getGlobalConfigPath();
     console.log(`Initializing shortcuts panel for workspace: ${workspaceRoot}`);
 
     try {
