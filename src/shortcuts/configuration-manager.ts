@@ -7,14 +7,14 @@ import { CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, ShortcutC
 /**
  * Manages loading, saving, and validation of shortcuts configuration
  *
- * Configuration Hierarchy:
- * 1. Workspace config: {workspace}/.vscode/shortcuts.yaml (highest priority)
- * 2. Global config: ~/.vscode-shortcuts/.vscode/shortcuts.yaml (fallback)
+ * Configuration Override Hierarchy:
+ * 1. Project config: {workspace}/.vscode/shortcuts.yaml (complete override)
+ * 2. Global config: ~/.vscode-shortcuts/.vscode/shortcuts.yaml (fallback only)
  *
- * When both exist:
- * - Workspace shortcuts override global ones with the same path
- * - Global shortcuts supplement workspace ones for different paths
- * - Global shortcuts are marked with "(Global)" suffix for clarity
+ * Simple override behavior:
+ * - If project config exists → use ONLY project config
+ * - If no project config → use global config as fallback
+ * - No merging - project config completely overrides global when present
  */
 export class ConfigurationManager {
     private readonly configPath: string;
@@ -29,48 +29,43 @@ export class ConfigurationManager {
     }
 
     /**
-     * Load configuration from YAML file with hierarchy support
-     * Workspace config overrides global config when both exist
+     * Load configuration from YAML file with override hierarchy
+     * Project config completely overrides global config when both exist
      * @returns Promise resolving to ShortcutsConfig
      */
     async loadConfiguration(): Promise<ShortcutsConfig> {
         try {
-            let workspaceConfig: ShortcutsConfig | null = null;
-            let globalConfig: ShortcutsConfig | null = null;
-
-            // Try to load workspace-specific config first
+            // Try to load workspace-specific config first (highest priority)
             if (this.isWorkspaceConfig() && fs.existsSync(this.configPath)) {
                 try {
                     const workspaceContent = fs.readFileSync(this.configPath, 'utf8');
                     const parsedWorkspaceConfig = yaml.load(workspaceContent) as any;
-                    workspaceConfig = this.validateConfiguration(parsedWorkspaceConfig);
+                    const workspaceConfig = this.validateConfiguration(parsedWorkspaceConfig);
+                    console.log('Using workspace configuration');
+                    return workspaceConfig;
                 } catch (error) {
-                    console.warn('Error loading workspace config:', error);
+                    console.warn('Error loading workspace config, falling back to global:', error);
                 }
             }
 
-            // Try to load global config as fallback/supplement
+            // Fallback to global config if workspace doesn't exist or failed to load
             const globalConfigPath = this.getGlobalConfigPath();
             if (fs.existsSync(globalConfigPath)) {
                 try {
                     const globalContent = fs.readFileSync(globalConfigPath, 'utf8');
                     const parsedGlobalConfig = yaml.load(globalContent) as any;
-                    globalConfig = this.validateConfiguration(parsedGlobalConfig);
+                    const globalConfig = this.validateConfiguration(parsedGlobalConfig);
+                    console.log('Using global configuration');
+                    return globalConfig;
                 } catch (error) {
                     console.warn('Error loading global config:', error);
                 }
             }
 
-            // Merge configurations with workspace taking precedence
-            const mergedConfig = this.mergeConfigurations(globalConfig, workspaceConfig);
-
             // If no configuration exists, create default in appropriate location
-            if (!workspaceConfig && !globalConfig) {
-                await this.saveConfiguration(DEFAULT_SHORTCUTS_CONFIG);
-                return DEFAULT_SHORTCUTS_CONFIG;
-            }
-
-            return mergedConfig;
+            console.log('No configuration found, creating default');
+            await this.saveConfiguration(DEFAULT_SHORTCUTS_CONFIG);
+            return DEFAULT_SHORTCUTS_CONFIG;
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -264,52 +259,6 @@ export class ConfigurationManager {
         return !this.workspaceRoot.includes('.vscode-shortcuts');
     }
 
-    /**
-     * Merge global and workspace configurations
-     * Workspace shortcuts override global ones with same path
-     */
-    private mergeConfigurations(
-        globalConfig: ShortcutsConfig | null,
-        workspaceConfig: ShortcutsConfig | null
-    ): ShortcutsConfig {
-        if (!globalConfig && !workspaceConfig) {
-            return DEFAULT_SHORTCUTS_CONFIG;
-        }
-
-        if (!globalConfig) {
-            return workspaceConfig!;
-        }
-
-        if (!workspaceConfig) {
-            return globalConfig;
-        }
-
-        // Create a map of workspace shortcuts by path for easy lookup
-        const workspaceShortcutMap = new Map<string, ShortcutConfig>();
-        workspaceConfig.shortcuts.forEach(shortcut => {
-            const normalizedPath = path.resolve(shortcut.path);
-            workspaceShortcutMap.set(normalizedPath, shortcut);
-        });
-
-        // Start with workspace shortcuts (they have priority)
-        const mergedShortcuts = [...workspaceConfig.shortcuts];
-
-        // Add global shortcuts that don't conflict with workspace ones
-        globalConfig.shortcuts.forEach(globalShortcut => {
-            const normalizedPath = path.resolve(globalShortcut.path);
-            if (!workspaceShortcutMap.has(normalizedPath)) {
-                mergedShortcuts.push({
-                    ...globalShortcut,
-                    // Mark as global for UI differentiation if needed
-                    name: globalShortcut.name ? `${globalShortcut.name} (Global)` : undefined
-                });
-            }
-        });
-
-        return {
-            shortcuts: mergedShortcuts
-        };
-    }
 
     /**
      * Start watching the configuration file for external changes
