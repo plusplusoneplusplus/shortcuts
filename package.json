@@ -28,10 +28,7 @@
         {
           "id": "shortcuts",
           "title": "Shortcuts",
-          "icon": {
-            "light": "./resources/icons/shortcuts-light.svg",
-            "dark": "./resources/icons/shortcuts-dark.svg"
-          }
+          "icon": "./resources/icons/shortcuts.svg"
         }
       ]
     },
