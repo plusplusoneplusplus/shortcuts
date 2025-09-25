@@ -12,26 +12,42 @@
     "vscode": "^1.74.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Keymaps",
+    "Productivity"
   ],
   "activationEvents": [
     "onView:shortcutsPanel",
-    "onCommand:shortcuts.addFolder"
+    "onCommand:shortcuts.addFolder",
+    "onViewContainer:shortcuts"
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "shortcuts",
+          "title": "Shortcuts",
+          "icon": {
+            "light": "./resources/icons/shortcuts-light.svg",
+            "dark": "./resources/icons/shortcuts-dark.svg"
+          }
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "shortcuts": [
         {
           "id": "shortcutsPanel",
-          "name": "Shortcuts"
+          "name": "Quick Access",
+          "when": "true"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "shortcutsPanel",
-        "contents": "No shortcuts configured yet.\n[Add Folder Shortcut](command:shortcuts.addFolder)\nShortcuts allow you to quickly access frequently used folders. Click the button above to add your first shortcut.\n\nYou can also:\n• Right-click in this panel to add shortcuts\n• [Open Configuration File](command:shortcuts.openConfiguration) to edit manually\n• Share shortcuts with your team by committing the configuration file"
+        "contents": "Welcome to Shortcuts! 🚀\n\n[Add Folder Shortcut](command:shortcuts.addFolder)\n\nQuickly access your frequently used folders and projects. Click the button above to add your first shortcut.\n\n**Getting Started:**\n• Add folders you use frequently\n• Organize your workspace efficiently  \n• Navigate projects instantly\n\n**Pro Tips:**\n• Right-click to manage shortcuts\n• [Edit Configuration](command:shortcuts.openConfiguration) manually\n• Use keyboard shortcuts for faster navigation"
       }
     ],
     "commands": [
