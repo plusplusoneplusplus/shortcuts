@@ -6,6 +6,15 @@ import { CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, ShortcutC
 
 /**
  * Manages loading, saving, and validation of shortcuts configuration
+ *
+ * Configuration Hierarchy:
+ * 1. Workspace config: {workspace}/.vscode/shortcuts.yaml (highest priority)
+ * 2. Global config: ~/.vscode-shortcuts/.vscode/shortcuts.yaml (fallback)
+ *
+ * When both exist:
+ * - Workspace shortcuts override global ones with the same path
+ * - Global shortcuts supplement workspace ones for different paths
+ * - Global shortcuts are marked with "(Global)" suffix for clarity
  */
 export class ConfigurationManager {
     private readonly configPath: string;
@@ -20,25 +29,48 @@ export class ConfigurationManager {
     }
 
     /**
-     * Load configuration from YAML file
+     * Load configuration from YAML file with hierarchy support
+     * Workspace config overrides global config when both exist
      * @returns Promise resolving to ShortcutsConfig
      */
     async loadConfiguration(): Promise<ShortcutsConfig> {
         try {
-            // Check if config file exists
-            if (!fs.existsSync(this.configPath)) {
-                // Create default configuration if file doesn't exist
+            let workspaceConfig: ShortcutsConfig | null = null;
+            let globalConfig: ShortcutsConfig | null = null;
+
+            // Try to load workspace-specific config first
+            if (this.isWorkspaceConfig() && fs.existsSync(this.configPath)) {
+                try {
+                    const workspaceContent = fs.readFileSync(this.configPath, 'utf8');
+                    const parsedWorkspaceConfig = yaml.load(workspaceContent) as any;
+                    workspaceConfig = this.validateConfiguration(parsedWorkspaceConfig);
+                } catch (error) {
+                    console.warn('Error loading workspace config:', error);
+                }
+            }
+
+            // Try to load global config as fallback/supplement
+            const globalConfigPath = this.getGlobalConfigPath();
+            if (fs.existsSync(globalConfigPath)) {
+                try {
+                    const globalContent = fs.readFileSync(globalConfigPath, 'utf8');
+                    const parsedGlobalConfig = yaml.load(globalContent) as any;
+                    globalConfig = this.validateConfiguration(parsedGlobalConfig);
+                } catch (error) {
+                    console.warn('Error loading global config:', error);
+                }
+            }
+
+            // Merge configurations with workspace taking precedence
+            const mergedConfig = this.mergeConfigurations(globalConfig, workspaceConfig);
+
+            // If no configuration exists, create default in appropriate location
+            if (!workspaceConfig && !globalConfig) {
                 await this.saveConfiguration(DEFAULT_SHORTCUTS_CONFIG);
                 return DEFAULT_SHORTCUTS_CONFIG;
             }
 
-            // Read and parse YAML file
-            const fileContent = fs.readFileSync(this.configPath, 'utf8');
-            const parsedConfig = yaml.load(fileContent) as any;
-
-            // Validate and normalize configuration
-            const config = this.validateConfiguration(parsedConfig);
-            return config;
+            return mergedConfig;
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -215,6 +247,68 @@ export class ConfigurationManager {
      */
     getConfigPath(): string {
         return this.configPath;
+    }
+
+    /**
+     * Get the global configuration path
+     */
+    private getGlobalConfigPath(): string {
+        const os = require('os');
+        return path.join(os.homedir(), '.vscode-shortcuts', CONFIG_DIRECTORY, CONFIG_FILE_NAME);
+    }
+
+    /**
+     * Check if current config is workspace-specific
+     */
+    private isWorkspaceConfig(): boolean {
+        return !this.workspaceRoot.includes('.vscode-shortcuts');
+    }
+
+    /**
+     * Merge global and workspace configurations
+     * Workspace shortcuts override global ones with same path
+     */
+    private mergeConfigurations(
+        globalConfig: ShortcutsConfig | null,
+        workspaceConfig: ShortcutsConfig | null
+    ): ShortcutsConfig {
+        if (!globalConfig && !workspaceConfig) {
+            return DEFAULT_SHORTCUTS_CONFIG;
+        }
+
+        if (!globalConfig) {
+            return workspaceConfig!;
+        }
+
+        if (!workspaceConfig) {
+            return globalConfig;
+        }
+
+        // Create a map of workspace shortcuts by path for easy lookup
+        const workspaceShortcutMap = new Map<string, ShortcutConfig>();
+        workspaceConfig.shortcuts.forEach(shortcut => {
+            const normalizedPath = path.resolve(shortcut.path);
+            workspaceShortcutMap.set(normalizedPath, shortcut);
+        });
+
+        // Start with workspace shortcuts (they have priority)
+        const mergedShortcuts = [...workspaceConfig.shortcuts];
+
+        // Add global shortcuts that don't conflict with workspace ones
+        globalConfig.shortcuts.forEach(globalShortcut => {
+            const normalizedPath = path.resolve(globalShortcut.path);
+            if (!workspaceShortcutMap.has(normalizedPath)) {
+                mergedShortcuts.push({
+                    ...globalShortcut,
+                    // Mark as global for UI differentiation if needed
+                    name: globalShortcut.name ? `${globalShortcut.name} (Global)` : undefined
+                });
+            }
+        });
+
+        return {
+            shortcuts: mergedShortcuts
+        };
     }
 
     /**
