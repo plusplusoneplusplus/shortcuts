@@ -24,16 +24,14 @@
       "explorer": [
         {
           "id": "shortcutsPanel",
-          "name": "Shortcuts",
-          "when": "workspaceFolderCount > 0"
+          "name": "Shortcuts"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "shortcutsPanel",
-        "contents": "No shortcuts configured yet.\n[Add Folder Shortcut](command:shortcuts.addFolder)\nShortcuts allow you to quickly access frequently used folders in your workspace. Click the button above to add your first shortcut.\n\nYou can also:\n• Right-click in this panel to add shortcuts\n• [Open Configuration File](command:shortcuts.openConfiguration) to edit manually\n• Share shortcuts with your team by committing the configuration file",
-        "when": "workspaceFolderCount > 0"
+        "contents": "No shortcuts configured yet.\n[Add Folder Shortcut](command:shortcuts.addFolder)\nShortcuts allow you to quickly access frequently used folders. Click the button above to add your first shortcut.\n\nYou can also:\n• Right-click in this panel to add shortcuts\n• [Open Configuration File](command:shortcuts.openConfiguration) to edit manually\n• Share shortcuts with your team by committing the configuration file"
       }
     ],
     "commands": [

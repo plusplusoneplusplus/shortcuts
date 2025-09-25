@@ -10,14 +10,9 @@ import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 export function activate(context: vscode.ExtensionContext) {
     console.log('Shortcuts extension is now active!');
 
-    // Check if we have a workspace folder
+    // Check if we have a workspace folder, use temp directory if none
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-        console.log('No workspace folder found, shortcuts panel will not be activated');
-        return;
-    }
-
-    const workspaceRoot = workspaceFolder.uri.fsPath;
+    const workspaceRoot = workspaceFolder?.uri.fsPath || require('os').tmpdir();
     console.log(`Initializing shortcuts panel for workspace: ${workspaceRoot}`);
 
     try {
