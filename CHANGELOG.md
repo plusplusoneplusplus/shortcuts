@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2025-09-25
+
+### Changed
+- Convert extension icon from SVG to PNG format for better marketplace compatibility
+- Update package.json to reference PNG icon instead of SVG
+
 ## [1.0.0] - 2025-09-24
 
 ### Added
