@@ -5,31 +5,21 @@
 			"label": "npm: watch",
 			"type": "npm",
 			"script": "watch",
-			"problemMatcher": [
-				"$webpack-watch",
-				"$tsc-watch"
-			],
+			"problemMatcher": "$tsc-watch",
 			"isBackground": true,
 			"presentation": {
-				"reveal": "never",
-				"panel": "dedicated"
+				"reveal": "never"
 			},
 			"group": {
 				"kind": "build",
 				"isDefault": true
-			},
-			"runOptions": {
-				"runOn": "folderOpen"
 			}
 		},
 		{
 			"label": "npm: compile",
 			"type": "npm",
 			"script": "compile",
-			"problemMatcher": [
-				"$webpack",
-				"$tsc"
-			],
+			"problemMatcher": "$tsc",
 			"group": "build"
 		},
 		{
