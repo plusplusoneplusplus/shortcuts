@@ -4,13 +4,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { ShortcutsTreeDataProvider } from '../../shortcuts/tree-data-provider';
+import { LogicalTreeDataProvider } from '../../shortcuts/logical-tree-data-provider';
 import { ShortcutsCommands } from '../../shortcuts/commands';
 import { FolderShortcutItem } from '../../shortcuts/tree-items';
 import { DEFAULT_SHORTCUTS_CONFIG } from '../../shortcuts/types';
 
 suite('ShortcutsCommands Integration Tests', () => {
     let tempDir: string;
-    let provider: ShortcutsTreeDataProvider;
+    let physicalProvider: ShortcutsTreeDataProvider;
+    let logicalProvider: LogicalTreeDataProvider;
     let commands: ShortcutsCommands;
     let testFolder: string;
     let disposables: vscode.Disposable[] = [];
@@ -41,8 +43,13 @@ suite('ShortcutsCommands Integration Tests', () => {
     });
 
     setup(() => {
-        provider = new ShortcutsTreeDataProvider(tempDir);
-        commands = new ShortcutsCommands(provider);
+        physicalProvider = new ShortcutsTreeDataProvider(tempDir);
+        logicalProvider = new LogicalTreeDataProvider(
+            tempDir,
+            physicalProvider.getConfigurationManager(),
+            physicalProvider.getThemeManager()
+        );
+        commands = new ShortcutsCommands(physicalProvider, logicalProvider);
 
         // Create a mock extension context
         const mockContext = {
@@ -63,7 +70,8 @@ suite('ShortcutsCommands Integration Tests', () => {
     });
 
     teardown(() => {
-        provider.dispose();
+        physicalProvider.dispose();
+        logicalProvider.dispose();
         // Note: disposables are cleaned up in suiteTeardown
     });
 
@@ -82,8 +90,8 @@ suite('ShortcutsCommands Integration Tests', () => {
 
         const registeredDisposables = commands.registerCommands(mockContext);
 
-        // Should register 6 commands
-        assert.strictEqual(registeredDisposables.length, 6);
+        // Should register more commands now (including logical group commands)
+        assert.ok(registeredDisposables.length >= 6);
 
         // All should be disposables
         registeredDisposables.forEach(disposable => {
@@ -96,8 +104,8 @@ suite('ShortcutsCommands Integration Tests', () => {
         let refreshCalled = false;
 
         // Mock the refresh method to track calls
-        const originalRefresh = provider.refresh.bind(provider);
-        provider.refresh = () => {
+        const originalRefresh = physicalProvider.refresh.bind(physicalProvider);
+        physicalProvider.refresh = () => {
             refreshCalled = true;
             originalRefresh();
         };
@@ -110,7 +118,7 @@ suite('ShortcutsCommands Integration Tests', () => {
 
     test('should reset configuration when reset command is executed', async () => {
         // First, create a configuration with shortcuts
-        const configManager = provider.getConfigurationManager();
+        const configManager = physicalProvider.getConfigurationManager();
         const configWithShortcuts = {
             shortcuts: [
                 { path: 'test-folder', name: 'Test Folder' }
@@ -145,7 +153,7 @@ suite('ShortcutsCommands Integration Tests', () => {
 
     test('should not reset configuration when user cancels', async () => {
         // Create a configuration with shortcuts
-        const configManager = provider.getConfigurationManager();
+        const configManager = physicalProvider.getConfigurationManager();
         const configWithShortcuts = {
             shortcuts: [
                 { path: 'test-folder', name: 'Test Folder' }
@@ -204,7 +212,7 @@ suite('ShortcutsCommands Integration Tests', () => {
 
     test('should handle remove shortcut command with confirmation', async () => {
         // Set up configuration with shortcuts
-        const configManager = provider.getConfigurationManager();
+        const configManager = physicalProvider.getConfigurationManager();
         await configManager.saveConfiguration({
             shortcuts: [
                 { path: testFolder, name: 'Test Folder' }
@@ -240,7 +248,7 @@ suite('ShortcutsCommands Integration Tests', () => {
 
     test('should not remove shortcut when user cancels confirmation', async () => {
         // Set up configuration with shortcuts
-        const configManager = provider.getConfigurationManager();
+        const configManager = physicalProvider.getConfigurationManager();
         await configManager.saveConfiguration({
             shortcuts: [
                 { path: testFolder, name: 'Test Folder' }
@@ -276,7 +284,7 @@ suite('ShortcutsCommands Integration Tests', () => {
 
     test('should handle rename shortcut command', async () => {
         // Set up configuration with shortcuts
-        const configManager = provider.getConfigurationManager();
+        const configManager = physicalProvider.getConfigurationManager();
         await configManager.saveConfiguration({
             shortcuts: [
                 { path: testFolder, name: 'Test Folder' }
@@ -313,7 +321,7 @@ suite('ShortcutsCommands Integration Tests', () => {
 
     test('should not rename shortcut when user cancels or enters empty name', async () => {
         // Set up configuration with shortcuts
-        const configManager = provider.getConfigurationManager();
+        const configManager = physicalProvider.getConfigurationManager();
         await configManager.saveConfiguration({
             shortcuts: [
                 { path: testFolder, name: 'Test Folder' }
@@ -366,7 +374,7 @@ suite('ShortcutsCommands Integration Tests', () => {
             await vscode.commands.executeCommand('shortcuts.addFolder');
 
             // Verify shortcut was added
-            const configManager = provider.getConfigurationManager();
+            const configManager = physicalProvider.getConfigurationManager();
             const config = await configManager.loadConfiguration();
             assert.strictEqual(config.shortcuts.length, 1);
             assert.strictEqual(config.shortcuts[0].name, 'Custom Name');
@@ -391,7 +399,7 @@ suite('ShortcutsCommands Integration Tests', () => {
             await vscode.commands.executeCommand('shortcuts.addFolder');
 
             // Verify no shortcut was added
-            const configManager = provider.getConfigurationManager();
+            const configManager = physicalProvider.getConfigurationManager();
             const config = await configManager.loadConfiguration();
             assert.strictEqual(config.shortcuts.length, 0);
 
@@ -419,7 +427,7 @@ suite('ShortcutsCommands Integration Tests', () => {
             await vscode.commands.executeCommand('shortcuts.addFolder');
 
             // Verify shortcut was added with folder name
-            const configManager = provider.getConfigurationManager();
+            const configManager = physicalProvider.getConfigurationManager();
             const config = await configManager.loadConfiguration();
             assert.strictEqual(config.shortcuts.length, 1);
             assert.strictEqual(config.shortcuts[0].name, undefined); // Should use folder name
@@ -470,14 +478,14 @@ suite('ShortcutsCommands Integration Tests', () => {
 
     test('should maintain tree view refresh after command operations', async () => {
         let refreshCount = 0;
-        const originalRefresh = provider.refresh.bind(provider);
-        provider.refresh = () => {
+        const originalRefresh = physicalProvider.refresh.bind(physicalProvider);
+        physicalProvider.refresh = () => {
             refreshCount++;
             originalRefresh();
         };
 
         // Set up configuration
-        const configManager = provider.getConfigurationManager();
+        const configManager = physicalProvider.getConfigurationManager();
         await configManager.saveConfiguration({
             shortcuts: [
                 { path: testFolder, name: 'Test Folder' }
@@ -504,5 +512,221 @@ suite('ShortcutsCommands Integration Tests', () => {
         } finally {
             vscode.window.showWarningMessage = originalShowWarningMessage;
         }
+    });
+
+    // ===== CONFIGURATION PRESERVATION TESTS =====
+    // These tests specifically address the bug where openConfiguration
+    // was overwriting existing configuration files
+
+    test('should NOT overwrite existing configuration when opening config file', async () => {
+        // Set up configuration with both shortcuts and logical groups
+        const configManager = physicalProvider.getConfigurationManager();
+        const existingConfig = {
+            shortcuts: [
+                { path: testFolder, name: 'Test Folder' }
+            ],
+            logicalGroups: [
+                {
+                    name: 'Test Group',
+                    description: 'A test logical group',
+                    items: [
+                        { path: testFolder, name: 'Test Item', type: 'folder' as const }
+                    ]
+                }
+            ]
+        };
+
+        await configManager.saveConfiguration(existingConfig);
+
+        // Verify configuration was saved correctly
+        let config = await configManager.loadConfiguration();
+        assert.strictEqual(config.shortcuts.length, 1);
+        assert.strictEqual(config.logicalGroups?.length, 1);
+        assert.strictEqual(config.logicalGroups?.[0].name, 'Test Group');
+
+        // Mock showTextDocument to prevent actual file opening
+        let documentOpened = false;
+        const originalShowTextDocument = vscode.window.showTextDocument;
+        vscode.window.showTextDocument = async (document: any) => {
+            documentOpened = true;
+            return {} as any;
+        };
+
+        try {
+            // Execute open configuration command
+            await vscode.commands.executeCommand('shortcuts.openConfiguration');
+
+            // Verify document was opened
+            assert.ok(documentOpened, 'Configuration file should have been opened');
+
+            // CRITICAL: Verify configuration was NOT overwritten
+            config = await configManager.loadConfiguration();
+            assert.strictEqual(config.shortcuts.length, 1, 'Shortcuts should be preserved');
+            assert.strictEqual(config.logicalGroups?.length, 1, 'Logical groups should be preserved');
+            assert.strictEqual(config.shortcuts[0].name, 'Test Folder', 'Shortcut name should be preserved');
+            assert.strictEqual(config.logicalGroups?.[0].name, 'Test Group', 'Logical group name should be preserved');
+
+        } finally {
+            vscode.window.showTextDocument = originalShowTextDocument;
+        }
+    });
+
+    test('should create default configuration only when file does not exist', async () => {
+        const configManager = physicalProvider.getConfigurationManager();
+        const configPath = configManager.getConfigPath();
+
+        // Ensure config file does not exist
+        if (fs.existsSync(configPath)) {
+            fs.unlinkSync(configPath);
+        }
+
+        // Mock showTextDocument
+        let documentOpened = false;
+        const originalShowTextDocument = vscode.window.showTextDocument;
+        vscode.window.showTextDocument = async (document: any) => {
+            documentOpened = true;
+            return {} as any;
+        };
+
+        try {
+            // Execute open configuration command
+            await vscode.commands.executeCommand('shortcuts.openConfiguration');
+
+            // Verify document was opened
+            assert.ok(documentOpened, 'Configuration file should have been opened');
+
+            // Verify file was created
+            assert.ok(fs.existsSync(configPath), 'Configuration file should have been created');
+
+            // Verify it contains default configuration
+            const config = await configManager.loadConfiguration();
+            assert.deepStrictEqual(config, DEFAULT_SHORTCUTS_CONFIG);
+
+        } finally {
+            vscode.window.showTextDocument = originalShowTextDocument;
+        }
+    });
+
+    test('should preserve complex configuration with multiple logical groups', async () => {
+        const configManager = physicalProvider.getConfigurationManager();
+
+        // Create a complex configuration with multiple items
+        const complexConfig = {
+            shortcuts: [
+                { path: testFolder, name: 'Main Folder' },
+                { path: path.join(tempDir, 'test-folder-2'), name: 'Secondary Folder' }
+            ],
+            logicalGroups: [
+                {
+                    name: 'Frontend',
+                    description: 'Frontend components and files',
+                    items: [
+                        { path: testFolder, name: 'Components', type: 'folder' as const },
+                        { path: path.join(testFolder, 'test-file.txt'), name: 'Config File', type: 'file' as const }
+                    ],
+                    icon: 'symbol-class'
+                },
+                {
+                    name: 'Backend',
+                    description: 'Backend services',
+                    items: [
+                        { path: path.join(tempDir, 'test-folder-2'), name: 'API', type: 'folder' as const }
+                    ]
+                }
+            ]
+        };
+
+        await configManager.saveConfiguration(complexConfig);
+
+        // Mock showTextDocument
+        const originalShowTextDocument = vscode.window.showTextDocument;
+        vscode.window.showTextDocument = async () => ({} as any);
+
+        try {
+            // Open configuration multiple times (this was the bug scenario)
+            await vscode.commands.executeCommand('shortcuts.openConfiguration');
+            await vscode.commands.executeCommand('shortcuts.openConfiguration');
+            await vscode.commands.executeCommand('shortcuts.openConfiguration');
+
+            // Verify all data is still preserved
+            const config = await configManager.loadConfiguration();
+
+            assert.strictEqual(config.shortcuts.length, 2, 'Both shortcuts should be preserved');
+            assert.strictEqual(config.logicalGroups?.length, 2, 'Both logical groups should be preserved');
+
+            // Check first logical group
+            const frontendGroup = config.logicalGroups?.find(g => g.name === 'Frontend');
+            assert.ok(frontendGroup, 'Frontend group should exist');
+            assert.strictEqual(frontendGroup?.description, 'Frontend components and files');
+            assert.strictEqual(frontendGroup?.items.length, 2, 'Frontend group should have 2 items');
+            assert.strictEqual(frontendGroup?.icon, 'symbol-class');
+
+            // Check second logical group
+            const backendGroup = config.logicalGroups?.find(g => g.name === 'Backend');
+            assert.ok(backendGroup, 'Backend group should exist');
+            assert.strictEqual(backendGroup?.items.length, 1, 'Backend group should have 1 item');
+
+        } finally {
+            vscode.window.showTextDocument = originalShowTextDocument;
+        }
+    });
+
+    test('should handle concurrent configuration operations without corruption', async () => {
+        const configManager = physicalProvider.getConfigurationManager();
+
+        const initialConfig = {
+            shortcuts: [{ path: testFolder, name: 'Test' }],
+            logicalGroups: [{
+                name: 'Group1',
+                items: [{ path: testFolder, name: 'Item1', type: 'folder' as const }]
+            }]
+        };
+
+        await configManager.saveConfiguration(initialConfig);
+
+        // Mock showTextDocument
+        const originalShowTextDocument = vscode.window.showTextDocument;
+        vscode.window.showTextDocument = async () => ({} as any);
+
+        try {
+            // Simulate concurrent operations (open config + add to logical group)
+            const openPromise = vscode.commands.executeCommand('shortcuts.openConfiguration');
+
+            // Add more data while opening
+            await configManager.createLogicalGroup('NewGroup', 'Added during open');
+
+            await openPromise;
+
+            // Verify both operations completed successfully
+            const config = await configManager.loadConfiguration();
+            assert.strictEqual(config.shortcuts.length, 1, 'Original shortcut should be preserved');
+            assert.strictEqual(config.logicalGroups?.length, 2, 'Both original and new group should exist');
+
+            const originalGroup = config.logicalGroups?.find(g => g.name === 'Group1');
+            const newGroup = config.logicalGroups?.find(g => g.name === 'NewGroup');
+
+            assert.ok(originalGroup, 'Original group should still exist');
+            assert.ok(newGroup, 'New group should have been added');
+            assert.strictEqual(newGroup?.description, 'Added during open');
+
+        } finally {
+            vscode.window.showTextDocument = originalShowTextDocument;
+        }
+    });
+
+    test('should update command count expectation for logical group commands', () => {
+        const mockContext = {
+            subscriptions: [],
+            workspaceState: { get: () => undefined, update: () => Promise.resolve() },
+            globalState: { get: () => undefined, update: () => Promise.resolve() }
+        } as any;
+
+        const registeredDisposables = commands.registerCommands(mockContext);
+
+        // With logical group commands, we should have significantly more than 6
+        // Physical commands: addFolder, removeShortcut, renameShortcut, refresh, resetConfiguration, openConfiguration (6)
+        // Logical commands: createLogicalGroup, addToLogicalGroup, removeFromLogicalGroup, renameLogicalGroup, deleteLogicalGroup (5)
+        // Total: 11 commands
+        assert.strictEqual(registeredDisposables.length, 11, 'Should register exactly 11 commands');
     });
 });

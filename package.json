@@ -119,41 +119,71 @@
       "view/title": [
         {
           "command": "shortcuts.addFolder",
-          "when": "view == shortcutsPanel",
+          "when": "view == shortcutsPhysical",
+          "group": "navigation"
+        },
+        {
+          "command": "shortcuts.createLogicalGroup",
+          "when": "view == shortcutsLogical",
           "group": "navigation"
         },
         {
           "command": "shortcuts.refresh",
-          "when": "view == shortcutsPanel",
+          "when": "view == shortcutsPhysical || view == shortcutsLogical",
           "group": "navigation"
         },
         {
           "command": "shortcuts.openConfiguration",
-          "when": "view == shortcutsPanel",
+          "when": "view == shortcutsPhysical || view == shortcutsLogical",
           "group": "navigation"
         },
         {
           "command": "shortcuts.showKeyboardHelp",
-          "when": "view == shortcutsPanel",
+          "when": "view == shortcutsPhysical || view == shortcutsLogical",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "shortcuts.removeShortcut",
-          "when": "view == shortcutsPanel && viewItem == folder",
+          "when": "view == shortcutsPhysical && viewItem == folder",
           "group": "shortcuts@1"
         },
         {
           "command": "shortcuts.renameShortcut",
-          "when": "view == shortcutsPanel && viewItem == folder",
+          "when": "view == shortcutsPhysical && viewItem == folder",
           "group": "shortcuts@2"
+        },
+        {
+          "command": "shortcuts.addToLogicalGroup",
+          "when": "view == shortcutsLogical && viewItem == logicalGroup",
+          "group": "logicalGroup@1"
+        },
+        {
+          "command": "shortcuts.renameLogicalGroup",
+          "when": "view == shortcutsLogical && viewItem == logicalGroup",
+          "group": "logicalGroup@2"
+        },
+        {
+          "command": "shortcuts.deleteLogicalGroup",
+          "when": "view == shortcutsLogical && viewItem == logicalGroup",
+          "group": "logicalGroup@3"
+        },
+        {
+          "command": "shortcuts.removeFromLogicalGroup",
+          "when": "view == shortcutsLogical && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "group": "logicalGroupItem@1"
         }
       ],
       "view/context": [
         {
           "command": "shortcuts.addFolder",
-          "when": "view == shortcutsPanel",
+          "when": "view == shortcutsPhysical",
+          "group": "shortcuts@1"
+        },
+        {
+          "command": "shortcuts.createLogicalGroup",
+          "when": "view == shortcutsLogical",
           "group": "shortcuts@1"
         }
       ]

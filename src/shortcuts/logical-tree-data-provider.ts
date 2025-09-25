@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
-import { LogicalGroupItem, LogicalGroupChildItem, ShortcutItem } from './tree-items';
+import { LogicalGroupItem, LogicalGroupChildItem, ShortcutItem, FolderShortcutItem, FileShortcutItem } from './tree-items';
 import { LogicalGroup, LogicalGroupItem as LogicalGroupItemConfig } from './types';
 import { ThemeManager } from './theme-manager';
 
@@ -42,8 +42,14 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
             } else if (element instanceof LogicalGroupItem) {
                 // Return contents of the logical group
                 return await this.getLogicalGroupContents(element);
+            } else if (element instanceof LogicalGroupChildItem && element.itemType === 'folder') {
+                // Return filesystem contents of folders within logical groups
+                return await this.getFolderContents(element);
+            } else if (element instanceof FolderShortcutItem) {
+                // Return filesystem contents of expanded folders (nested folders)
+                return await this.getFolderContentsFromFolderItem(element);
             } else {
-                // Individual items have no children
+                // Files and other items have no children
                 return [];
             }
         } catch (error) {
@@ -197,5 +203,135 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
     async findLogicalGroup(groupName: string): Promise<LogicalGroup | undefined> {
         const groups = await this.getLogicalGroups();
         return groups.find(g => g.name === groupName);
+    }
+
+    /**
+     * Get filesystem contents of a folder within a logical group
+     */
+    private async getFolderContents(folderItem: LogicalGroupChildItem): Promise<ShortcutItem[]> {
+        const items: ShortcutItem[] = [];
+
+        try {
+            const folderPath = folderItem.resourceUri.fsPath;
+
+            if (!fs.existsSync(folderPath)) {
+                console.warn(`Folder does not exist: ${folderPath}`);
+                return [];
+            }
+
+            const stat = fs.statSync(folderPath);
+            if (!stat.isDirectory()) {
+                console.warn(`Path is not a directory: ${folderPath}`);
+                return [];
+            }
+
+            const dirEntries = fs.readdirSync(folderPath, { withFileTypes: true });
+
+            // Sort entries: directories first, then files, both alphabetically
+            const sortedEntries = dirEntries.sort((a, b) => {
+                if (a.isDirectory() && !b.isDirectory()) {
+                    return -1;
+                }
+                if (!a.isDirectory() && b.isDirectory()) {
+                    return 1;
+                }
+                return a.name.localeCompare(b.name);
+            });
+
+            for (const entry of sortedEntries) {
+                try {
+                    const entryPath = path.join(folderPath, entry.name);
+                    const entryUri = vscode.Uri.file(entryPath);
+
+                    if (entry.isDirectory()) {
+                        // Create folder item that can be further expanded
+                        const folderItem = new FolderShortcutItem(
+                            entry.name,
+                            entryUri,
+                            vscode.TreeItemCollapsibleState.Collapsed
+                        );
+                        items.push(folderItem);
+                    } else if (entry.isFile()) {
+                        // Create file item
+                        const fileItem = new FileShortcutItem(entry.name, entryUri);
+                        items.push(fileItem);
+                    }
+                } catch (error) {
+                    const err = error instanceof Error ? error : new Error('Unknown error');
+                    console.warn(`Error processing entry ${entry.name}:`, err);
+                }
+            }
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error(`Error reading folder contents for ${folderItem.fsPath}:`, err);
+            vscode.window.showErrorMessage(`Error reading folder: ${err.message}`);
+        }
+
+        return items;
+    }
+
+    /**
+     * Get filesystem contents of a FolderShortcutItem (for nested folder expansion)
+     */
+    private async getFolderContentsFromFolderItem(folderItem: FolderShortcutItem): Promise<ShortcutItem[]> {
+        const items: ShortcutItem[] = [];
+
+        try {
+            const folderPath = folderItem.resourceUri.fsPath;
+
+            if (!fs.existsSync(folderPath)) {
+                console.warn(`Folder does not exist: ${folderPath}`);
+                return [];
+            }
+
+            const stat = fs.statSync(folderPath);
+            if (!stat.isDirectory()) {
+                console.warn(`Path is not a directory: ${folderPath}`);
+                return [];
+            }
+
+            const dirEntries = fs.readdirSync(folderPath, { withFileTypes: true });
+
+            // Sort entries: directories first, then files, both alphabetically
+            const sortedEntries = dirEntries.sort((a, b) => {
+                if (a.isDirectory() && !b.isDirectory()) {
+                    return -1;
+                }
+                if (!a.isDirectory() && b.isDirectory()) {
+                    return 1;
+                }
+                return a.name.localeCompare(b.name);
+            });
+
+            for (const entry of sortedEntries) {
+                try {
+                    const entryPath = path.join(folderPath, entry.name);
+                    const entryUri = vscode.Uri.file(entryPath);
+
+                    if (entry.isDirectory()) {
+                        // Create folder item that can be further expanded
+                        const nestedFolderItem = new FolderShortcutItem(
+                            entry.name,
+                            entryUri,
+                            vscode.TreeItemCollapsibleState.Collapsed
+                        );
+                        items.push(nestedFolderItem);
+                    } else if (entry.isFile()) {
+                        // Create file item
+                        const fileItem = new FileShortcutItem(entry.name, entryUri);
+                        items.push(fileItem);
+                    }
+                } catch (error) {
+                    const err = error instanceof Error ? error : new Error('Unknown error');
+                    console.warn(`Error processing entry ${entry.name}:`, err);
+                }
+            }
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error(`Error reading folder contents for ${folderItem.fsPath}:`, err);
+            vscode.window.showErrorMessage(`Error reading folder: ${err.message}`);
+        }
+
+        return items;
     }
 }

@@ -268,9 +268,12 @@ export class ShortcutsCommands {
             const configPath = configManager.getConfigPath();
             const configUri = vscode.Uri.file(configPath);
 
-            // Create the file if it doesn't exist
-            const { DEFAULT_SHORTCUTS_CONFIG } = await import('./types');
-            await configManager.saveConfiguration(DEFAULT_SHORTCUTS_CONFIG);
+            // Only create the file if it doesn't exist - don't overwrite existing configuration
+            const fs = require('fs');
+            if (!fs.existsSync(configPath)) {
+                const { DEFAULT_SHORTCUTS_CONFIG } = await import('./types');
+                await configManager.saveConfiguration(DEFAULT_SHORTCUTS_CONFIG);
+            }
 
             // Open the configuration file
             await vscode.window.showTextDocument(configUri);
@@ -333,24 +336,22 @@ export class ShortcutsCommands {
         }
 
         try {
-            const itemType = await vscode.window.showQuickPick(['Folder', 'File'], {
-                placeHolder: 'Select item type to add'
-            });
-
-            if (!itemType) {
-                return;
-            }
-
+            // Allow selection of both files and folders - let the user choose what they want
             const uri = await vscode.window.showOpenDialog({
-                canSelectFiles: itemType === 'File',
-                canSelectFolders: itemType === 'Folder',
+                canSelectFiles: true,
+                canSelectFolders: true,
                 canSelectMany: false,
-                openLabel: `Add ${itemType}`
+                openLabel: 'Add to Group'
             });
 
             if (!uri || uri.length === 0) {
                 return;
             }
+
+            // Automatically detect the type based on what was selected
+            const fs = require('fs');
+            const stat = fs.statSync(uri[0].fsPath);
+            const itemType = stat.isDirectory() ? 'folder' : 'file';
 
             const displayName = await vscode.window.showInputBox({
                 prompt: 'Enter a display name for this item',
@@ -367,11 +368,11 @@ export class ShortcutsCommands {
                 groupItem.label,
                 uri[0].fsPath,
                 displayName.trim(),
-                itemType.toLowerCase() as 'folder' | 'file'
+                itemType
             );
 
             this.logicalTreeDataProvider.refresh();
-            vscode.window.showInformationMessage('Item added to logical group successfully!');
+            vscode.window.showInformationMessage(`${itemType.charAt(0).toUpperCase() + itemType.slice(1)} added to logical group successfully!`);
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');

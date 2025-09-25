@@ -426,7 +426,13 @@ export class LogicalGroupChildItem extends ShortcutItem {
         public readonly itemType: 'folder' | 'file',
         public readonly parentGroup: string
     ) {
-        super(label, resourceUri, vscode.TreeItemCollapsibleState.None);
+        super(
+            label,
+            resourceUri,
+            itemType === 'folder'
+                ? vscode.TreeItemCollapsibleState.Collapsed
+                : vscode.TreeItemCollapsibleState.None
+        );
         this.contextValue = `logicalGroupItem_${itemType}`;
 
         // Set up command for files to open them
