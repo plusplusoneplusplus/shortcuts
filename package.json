@@ -1,20 +1,33 @@
 {
-  "name": "shortcuts",
-  "displayName": "Shortcuts",
-  "description": "A VSCode extension for managing shortcuts and quick actions",
-  "version": "0.0.1",
-  "publisher": "your-publisher-name",
+  "name": "workspace-shortcuts",
+  "displayName": "Workspace Shortcuts",
+  "description": "Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.",
+  "version": "1.0.0",
+  "publisher": "yihengtao",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/shortcuts.git"
+    "url": "https://github.com/plusplusoneplusplus/shortcuts.git"
   },
   "engines": {
     "vscode": "^1.74.0"
   },
+  "keywords": [
+    "shortcuts",
+    "folders",
+    "navigation",
+    "productivity",
+    "workspace",
+    "quick access",
+    "tree view",
+    "file management"
+  ],
+  "icon": "resources/icons/shortcuts.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
   "categories": [
-    "Other",
-    "Keymaps",
-    "Productivity"
+    "Other"
   ],
   "activationEvents": [
     "onView:shortcutsPhysical",
@@ -280,7 +293,9 @@
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
+    "test": "node ./out/test/runTest.js",
+    "vsce:package": "vsce package",
+    "vsce:publish": "vsce publish"
   },
   "devDependencies": {
     "@types/glob": "^8.0.0",

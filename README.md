@@ -1,95 +1,103 @@
-# VSCode Extension Basic Setup
+# Workspace Shortcuts - VSCode Extension
 
-A basic VSCode extension template with TypeScript, webpack bundling, and testing infrastructure.
+[![Version](https://img.shields.io/visual-studio-marketplace/v/yihengtao.workspace-shortcuts.svg)](https://marketplace.visualstudio.com/items?itemName=yihengtao.workspace-shortcuts)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/yihengtao.workspace-shortcuts.svg)](https://marketplace.visualstudio.com/items?itemName=yihengtao.workspace-shortcuts)
+[![Rating](https://img.shields.io/visual-studio-marketplace/r/yihengtao.workspace-shortcuts.svg)](https://marketplace.visualstudio.com/items?itemName=yihengtao.workspace-shortcuts)
+
+Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.
 
 ## Features
 
-- TypeScript support with strict configuration
-- Webpack bundling for optimized extension packaging
-- Testing infrastructure with Mocha
-- Debug configuration for Extension Development Host
-- Basic "Hello World" command implementation
+### 📁 Physical Folders
+- **Quick Access**: Add shortcuts to frequently used folders on your filesystem
+- **Split View Navigation**: Open folders in a split pane or replace current view
+- **Context Menu Actions**: Right-click for rename, remove, and other actions
+- **Keyboard Navigation**: Full keyboard support with Enter, Space, Arrow keys, F2, Delete
 
-## Prerequisites
+### 🏷️ Logical Groups
+- **Custom Organization**: Create custom groups to organize shortcuts by project, type, or workflow
+- **Flexible Management**: Add files and folders to groups regardless of their physical location
+- **Group Operations**: Create, rename, delete groups and manage their contents
+- **Tree View**: Hierarchical display of groups and their items
 
-- [Node.js](https://nodejs.org/) (version 16 or higher)
-- [VSCode](https://code.visualstudio.com/) (version 1.74.0 or higher)
-- [VSCode Extension Manager (vsce)](https://github.com/microsoft/vscode-vsce) for packaging
+### ⌨️ Keyboard Navigation
+- **Enter**: Open item in current view
+- **Space**: Open item in split view
+- **F2**: Rename selected item
+- **Delete**: Remove selected item
+- **Arrow Keys**: Navigate and expand/collapse groups
+- **Home/End**: Jump to first/last item
 
-## Setup
+## Installation
 
-1. Clone or download this project
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+1. Open VSCode
+2. Go to Extensions (`Ctrl+Shift+X` / `Cmd+Shift+X`)
+3. Search for "Workspace Shortcuts"
+4. Click Install on the extension by yihengtao
 
-## Development
+## Usage
 
-### Running the Extension
+### Getting Started
 
-1. Open the project in VSCode
-2. Press `F5` or go to Run and Debug view and click "Run Extension"
-3. This will open a new Extension Development Host window
-4. In the new window, open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
-5. Type "Hello World" and run the command
+1. After installation, you'll see the Shortcuts icon in the Activity Bar
+2. Click on it to open the Shortcuts panel with two sections:
+   - **Physical Folders**: Direct access to filesystem folders
+   - **Logical Groups**: Custom organization of shortcuts
 
-### Building
+### Adding Physical Folder Shortcuts
 
-- **Compile TypeScript**: `npm run compile`
-- **Watch mode**: `npm run watch`
-- **Package extension**: `npm run package`
+1. Click the "+" button in the Physical Folders section
+2. Select a folder from your filesystem
+3. The folder will appear as a shortcut in the tree view
+4. Click to navigate, right-click for more options
 
-### Testing
+### Creating Logical Groups
 
-Run tests with:
-```bash
-npm test
-```
+1. Click the "+" button in the Logical Groups section
+2. Enter a name for your group
+3. Right-click on the group to add folders or files
+4. Organize your shortcuts however makes sense for your workflow
 
-### Debugging
+### Navigation Options
 
-The project includes debug configuration for VSCode:
-- Press `F5` to launch Extension Development Host
-- Set breakpoints in your TypeScript code
-- Use the Debug Console for interactive debugging
+- **Single Click**: Navigate to the folder/file
+- **Space Bar**: Open in split view (when focused)
+- **Right Click**: Access context menu for rename, remove, etc.
 
-## Project Structure
+## Configuration
 
-```
-├── src/
-│   ├── extension.ts          # Main extension entry point
-│   └── test/
-│       └── suite/
-│           ├── index.ts      # Test suite configuration
-│           └── extension.test.ts # Extension tests
-├── .vscode/
-│   ├── launch.json           # Debug configuration
-│   ├── tasks.json            # Build tasks
-│   └── settings.json         # Workspace settings
-├── package.json              # Extension manifest
-├── tsconfig.json             # TypeScript configuration
-├── webpack.config.js         # Build configuration
-└── README.md                 # This file
-```
+The extension stores its configuration in your workspace or global settings. You can access the configuration file through the gear icon in the Shortcuts panel.
 
-## Extension Commands
+## Requirements
 
-- `extension.helloWorld`: Displays a "Hello World" message
+- VSCode version 1.74.0 or higher
+- Node.js (for development)
 
-## Publishing
+## Known Issues
 
-1. Install vsce globally: `npm install -g vsce`
-2. Package the extension: `npm run package`
-3. Publish to marketplace: `vsce publish`
+None currently reported. Please file issues on the [GitHub repository](https://github.com/plusplusoneplusplus/shortcuts/issues).
+
+## Release Notes
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
+
+### 1.0.0
+
+Initial release with:
+- Physical folder shortcuts
+- Logical group organization
+- Split-view navigation
+- Keyboard navigation support
+- Context menu actions
 
 ## Contributing
 
-1. Make your changes
-2. Run tests: `npm test`
-3. Build the extension: `npm run compile`
-4. Test in Extension Development Host
+Contributions are welcome! Please see the [GitHub repository](https://github.com/plusplusoneplusplus/shortcuts) for guidelines.
 
 ## License
 
-[MIT](LICENSE)
+[MIT License](LICENSE)
+
+---
+
+**Enjoy organizing your workspace with Shortcuts! ⚡**
