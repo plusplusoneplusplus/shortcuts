@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { NotificationManager } from './notification-manager';
 
 /**
  * Error types for better categorization and handling
@@ -52,14 +53,15 @@ export class ErrorHandler {
     /**
      * Handle an error with appropriate user notification and logging
      * @param errorInfo Error information
+     * @param timeout Optional timeout in milliseconds for the notification
      * @returns Promise that resolves when error handling is complete
      */
-    static async handleError(errorInfo: ErrorInfo): Promise<void> {
+    static async handleError(errorInfo: ErrorInfo, timeout?: number): Promise<void> {
         // Log the error for debugging
         this.logError(errorInfo);
 
         // Show user notification based on severity
-        await this.showUserNotification(errorInfo);
+        await this.showUserNotification(errorInfo, timeout);
     }
 
     /**
@@ -197,32 +199,35 @@ export class ErrorHandler {
     /**
      * Show informational message to user
      * @param message Message to show
+     * @param timeout Optional timeout in milliseconds
      */
-    static showInfo(message: string): void {
-        vscode.window.showInformationMessage(message);
+    static showInfo(message: string, timeout?: number): void {
+        NotificationManager.showInfo(message, { timeout });
         this.logMessage('INFO', message);
     }
 
     /**
      * Show warning message to user
      * @param message Message to show
+     * @param timeout Optional timeout in milliseconds
      * @param actions Optional action buttons
      * @returns Promise resolving to selected action
      */
-    static async showWarning(message: string, ...actions: string[]): Promise<string | undefined> {
+    static async showWarning(message: string, timeout?: number, ...actions: string[]): Promise<string | undefined> {
         this.logMessage('WARNING', message);
-        return await vscode.window.showWarningMessage(message, ...actions);
+        return await NotificationManager.showWarning(message, { timeout, actions });
     }
 
     /**
      * Show error message to user
      * @param message Message to show
+     * @param timeout Optional timeout in milliseconds
      * @param actions Optional action buttons
      * @returns Promise resolving to selected action
      */
-    static async showError(message: string, ...actions: string[]): Promise<string | undefined> {
+    static async showError(message: string, timeout?: number, ...actions: string[]): Promise<string | undefined> {
         this.logMessage('ERROR', message);
-        return await vscode.window.showErrorMessage(message, ...actions);
+        return await NotificationManager.showError(message, { timeout, actions });
     }
 
     /**
@@ -270,8 +275,9 @@ export class ErrorHandler {
     /**
      * Show user notification based on error severity
      * @param errorInfo Error information
+     * @param timeout Optional timeout in milliseconds (default: 5000ms for info, no timeout for warnings/errors)
      */
-    private static async showUserNotification(errorInfo: ErrorInfo): Promise<void> {
+    private static async showUserNotification(errorInfo: ErrorInfo, timeout?: number): Promise<void> {
         const actions: string[] = [];
 
         // Add relevant action buttons based on error type
@@ -284,15 +290,18 @@ export class ErrorHandler {
 
         let selectedAction: string | undefined;
 
+        // Set default timeout based on severity if not provided
+        const defaultTimeout = timeout ?? (errorInfo.severity === ErrorSeverity.INFO ? 5000 : undefined);
+
         switch (errorInfo.severity) {
             case ErrorSeverity.INFO:
-                vscode.window.showInformationMessage(errorInfo.message);
+                selectedAction = await NotificationManager.showInfo(errorInfo.message, { timeout: defaultTimeout, actions });
                 break;
             case ErrorSeverity.WARNING:
-                selectedAction = await vscode.window.showWarningMessage(errorInfo.message, ...actions);
+                selectedAction = await NotificationManager.showWarning(errorInfo.message, { timeout: defaultTimeout, actions });
                 break;
             case ErrorSeverity.ERROR:
-                selectedAction = await vscode.window.showErrorMessage(errorInfo.message, ...actions);
+                selectedAction = await NotificationManager.showError(errorInfo.message, { timeout: defaultTimeout, actions });
                 break;
         }
 
@@ -332,5 +341,6 @@ export class ErrorHandler {
         if (this.outputChannel) {
             this.outputChannel.dispose();
         }
+        NotificationManager.dispose();
     }
 }

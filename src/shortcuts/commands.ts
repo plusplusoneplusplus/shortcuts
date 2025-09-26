@@ -3,6 +3,7 @@ import { ShortcutsTreeDataProvider } from './tree-data-provider';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { FolderShortcutItem, FileShortcutItem, LogicalGroupItem, LogicalGroupChildItem } from './tree-items';
 import { LogicalGroup } from './types';
+import { NotificationManager } from './notification-manager';
 
 /**
  * Command handlers for the shortcuts panel
@@ -150,7 +151,7 @@ export class ShortcutsCommands {
             // Refresh the tree view
             this.physicalTreeDataProvider.refresh();
 
-            vscode.window.showInformationMessage('Folder shortcut added successfully!');
+            NotificationManager.showInfo('Folder shortcut added successfully!', { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -183,7 +184,7 @@ export class ShortcutsCommands {
             // Refresh the tree view
             this.physicalTreeDataProvider.refresh();
 
-            vscode.window.showInformationMessage('Shortcut removed successfully!');
+            NotificationManager.showInfo('Shortcut removed successfully!', { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -216,7 +217,7 @@ export class ShortcutsCommands {
             // Refresh the tree view
             this.physicalTreeDataProvider.refresh();
 
-            vscode.window.showInformationMessage('Shortcut renamed successfully!');
+            NotificationManager.showInfo('Shortcut renamed successfully!', { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -233,7 +234,7 @@ export class ShortcutsCommands {
         if (this.logicalTreeDataProvider) {
             this.logicalTreeDataProvider.refresh();
         }
-        vscode.window.showInformationMessage('Shortcuts refreshed!');
+        NotificationManager.showInfo('Shortcuts refreshed!', { timeout: 2000 });
     }
 
     /**
@@ -263,7 +264,7 @@ export class ShortcutsCommands {
                 this.logicalTreeDataProvider.refresh();
             }
 
-            vscode.window.showInformationMessage('Configuration reset to default successfully!');
+            NotificationManager.showInfo('Configuration reset to default successfully!', { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -331,7 +332,7 @@ export class ShortcutsCommands {
             await configManager.createLogicalGroup(groupName.trim(), description?.trim());
 
             this.logicalTreeDataProvider.refresh();
-            vscode.window.showInformationMessage('Logical group created successfully!');
+            NotificationManager.showInfo('Logical group created successfully!', { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -395,7 +396,7 @@ export class ShortcutsCommands {
             // Show appropriate success message based on results
             if (addedCount > 0 && skippedCount === 0) {
                 const itemText = addedCount === 1 ? 'item' : 'items';
-                vscode.window.showInformationMessage(`${addedCount} ${itemText} added to logical group successfully!`);
+                NotificationManager.showInfo(`${addedCount} ${itemText} added to logical group successfully!`, { timeout: 3000 });
             } else if (addedCount > 0 && skippedCount > 0) {
                 vscode.window.showWarningMessage(`${addedCount} items added successfully, ${skippedCount} items skipped (may already exist in group).`);
             } else {
@@ -432,7 +433,7 @@ export class ShortcutsCommands {
             await configManager.removeFromLogicalGroup(item.parentGroup, item.fsPath);
 
             this.logicalTreeDataProvider.refresh();
-            vscode.window.showInformationMessage('Item removed from logical group successfully!');
+            NotificationManager.showInfo('Item removed from logical group successfully!', { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -470,7 +471,7 @@ export class ShortcutsCommands {
             await configManager.renameLogicalGroup(groupItem.label, newName.trim());
 
             this.logicalTreeDataProvider.refresh();
-            vscode.window.showInformationMessage('Logical group renamed successfully!');
+            NotificationManager.showInfo('Logical group renamed successfully!', { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -502,7 +503,7 @@ export class ShortcutsCommands {
             await configManager.deleteLogicalGroup(groupItem.label);
 
             this.logicalTreeDataProvider.refresh();
-            vscode.window.showInformationMessage('Logical group deleted successfully!');
+            NotificationManager.showInfo('Logical group deleted successfully!', { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -546,7 +547,7 @@ export class ShortcutsCommands {
 
             // Show confirmation message
             const pathType = absolute ? 'Absolute' : 'Relative';
-            vscode.window.showInformationMessage(`${pathType} path copied to clipboard: ${pathToCopy}`);
+            NotificationManager.showInfo(`${pathType} path copied to clipboard: ${pathToCopy}`, { timeout: 2000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');

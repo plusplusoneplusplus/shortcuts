@@ -5,6 +5,7 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ShortcutsTreeDataProvider } from './shortcuts/tree-data-provider';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
+import { NotificationManager } from './shortcuts/notification-manager';
 
 /**
  * Get a stable global configuration path when no workspace is open
@@ -90,9 +91,9 @@ export function activate(context: vscode.ExtensionContext) {
         // Show welcome message on first activation
         const hasShownWelcome = context.globalState.get('shortcuts.hasShownWelcome', false);
         if (!hasShownWelcome) {
-            vscode.window.showInformationMessage(
+            NotificationManager.showInfo(
                 'Shortcuts panel is now available! Right-click in the panel to add folder shortcuts.',
-                'Got it!'
+                { timeout: 8000, actions: ['Got it!'] }
             ).then(() => {
                 context.globalState.update('shortcuts.hasShownWelcome', true);
             });
