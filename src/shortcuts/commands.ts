@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ShortcutsTreeDataProvider } from './tree-data-provider';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
-import { FolderShortcutItem, LogicalGroupItem, LogicalGroupChildItem } from './tree-items';
+import { FolderShortcutItem, FileShortcutItem, LogicalGroupItem, LogicalGroupChildItem } from './tree-items';
 import { LogicalGroup } from './types';
 
 /**
@@ -95,6 +95,19 @@ export class ShortcutsCommands {
                 })
             );
         }
+
+        // Copy path commands (work for both physical and logical items)
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.copyRelativePath', async (item: FolderShortcutItem | FileShortcutItem | LogicalGroupChildItem) => {
+                await this.copyPath(item, false);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.copyAbsolutePath', async (item: FolderShortcutItem | FileShortcutItem | LogicalGroupChildItem) => {
+                await this.copyPath(item, true);
+            })
+        );
 
         return disposables;
     }
@@ -328,7 +341,7 @@ export class ShortcutsCommands {
     }
 
     /**
-     * Add a folder or file to a logical group
+     * Add folders or files to a logical group (supports multi-select)
      */
     private async addToLogicalGroup(groupItem: LogicalGroupItem): Promise<void> {
         if (!this.logicalTreeDataProvider) {
@@ -336,43 +349,58 @@ export class ShortcutsCommands {
         }
 
         try {
-            // Allow selection of both files and folders - let the user choose what they want
-            const uri = await vscode.window.showOpenDialog({
+            // Allow selection of both files and folders, and enable multi-select
+            const uris = await vscode.window.showOpenDialog({
                 canSelectFiles: true,
                 canSelectFolders: true,
-                canSelectMany: false,
+                canSelectMany: true,
                 openLabel: 'Add to Group'
             });
 
-            if (!uri || uri.length === 0) {
-                return;
-            }
-
-            // Automatically detect the type based on what was selected
-            const fs = require('fs');
-            const stat = fs.statSync(uri[0].fsPath);
-            const itemType = stat.isDirectory() ? 'folder' : 'file';
-
-            const displayName = await vscode.window.showInputBox({
-                prompt: 'Enter a display name for this item',
-                placeHolder: 'Item display name',
-                value: uri[0].path.split('/').pop() || ''
-            });
-
-            if (!displayName) {
+            if (!uris || uris.length === 0) {
                 return;
             }
 
             const configManager = this.logicalTreeDataProvider.getConfigurationManager();
-            await configManager.addToLogicalGroup(
-                groupItem.label,
-                uri[0].fsPath,
-                displayName.trim(),
-                itemType
-            );
+            const fs = require('fs');
+            let addedCount = 0;
+            let skippedCount = 0;
+
+            // Process each selected item
+            for (const uri of uris) {
+                try {
+                    // Automatically detect the type based on what was selected
+                    const stat = fs.statSync(uri.fsPath);
+                    const itemType = stat.isDirectory() ? 'folder' : 'file';
+
+                    // Use the filename as the default display name
+                    const defaultName = uri.path.split('/').pop() || '';
+
+                    await configManager.addToLogicalGroup(
+                        groupItem.originalName,
+                        uri.fsPath,
+                        defaultName,
+                        itemType
+                    );
+
+                    addedCount++;
+                } catch (error) {
+                    console.warn(`Failed to add ${uri.fsPath}:`, error);
+                    skippedCount++;
+                }
+            }
 
             this.logicalTreeDataProvider.refresh();
-            vscode.window.showInformationMessage(`${itemType.charAt(0).toUpperCase() + itemType.slice(1)} added to logical group successfully!`);
+
+            // Show appropriate success message based on results
+            if (addedCount > 0 && skippedCount === 0) {
+                const itemText = addedCount === 1 ? 'item' : 'items';
+                vscode.window.showInformationMessage(`${addedCount} ${itemText} added to logical group successfully!`);
+            } else if (addedCount > 0 && skippedCount > 0) {
+                vscode.window.showWarningMessage(`${addedCount} items added successfully, ${skippedCount} items skipped (may already exist in group).`);
+            } else {
+                vscode.window.showWarningMessage('No items were added. They may already exist in the group.');
+            }
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -480,6 +508,50 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error deleting logical group:', err);
             vscode.window.showErrorMessage(`Failed to delete logical group: ${err.message}`);
+        }
+    }
+
+    /**
+     * Copy the path of an item to clipboard
+     * @param item The tree item to copy the path from
+     * @param absolute Whether to copy absolute or relative path
+     */
+    private async copyPath(item: FolderShortcutItem | FileShortcutItem | LogicalGroupChildItem, absolute: boolean): Promise<void> {
+        try {
+            let pathToCopy: string;
+
+            // Get the file system path from the item
+            const fsPath = item.resourceUri?.fsPath;
+            if (!fsPath) {
+                vscode.window.showErrorMessage('Unable to get path for this item');
+                return;
+            }
+
+            if (absolute) {
+                // Use absolute path
+                pathToCopy = fsPath;
+            } else {
+                // Calculate relative path from workspace root
+                const workspaceFolder = vscode.workspace.getWorkspaceFolder(item.resourceUri!);
+                if (workspaceFolder) {
+                    pathToCopy = vscode.workspace.asRelativePath(item.resourceUri!, false);
+                } else {
+                    // If not in workspace, use the path as-is
+                    pathToCopy = fsPath;
+                }
+            }
+
+            // Copy to clipboard
+            await vscode.env.clipboard.writeText(pathToCopy);
+
+            // Show confirmation message
+            const pathType = absolute ? 'Absolute' : 'Relative';
+            vscode.window.showInformationMessage(`${pathType} path copied to clipboard: ${pathToCopy}`);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error copying path:', err);
+            vscode.window.showErrorMessage(`Failed to copy path: ${err.message}`);
         }
     }
 }

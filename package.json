@@ -126,6 +126,16 @@
         "command": "shortcuts.deleteLogicalGroup",
         "title": "Delete Group",
         "icon": "$(trash)"
+      },
+      {
+        "command": "shortcuts.copyRelativePath",
+        "title": "Copy Relative Path",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "shortcuts.copyAbsolutePath",
+        "title": "Copy Absolute Path",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
@@ -168,6 +178,26 @@
           "group": "shortcuts@2"
         },
         {
+          "command": "shortcuts.copyRelativePath",
+          "when": "view == shortcutsPhysical && viewItem == folder",
+          "group": "shortcuts@3"
+        },
+        {
+          "command": "shortcuts.copyAbsolutePath",
+          "when": "view == shortcutsPhysical && viewItem == folder",
+          "group": "shortcuts@4"
+        },
+        {
+          "command": "shortcuts.copyRelativePath",
+          "when": "view == shortcutsPhysical && viewItem == file",
+          "group": "file@1"
+        },
+        {
+          "command": "shortcuts.copyAbsolutePath",
+          "when": "view == shortcutsPhysical && viewItem == file",
+          "group": "file@2"
+        },
+        {
           "command": "shortcuts.addToLogicalGroup",
           "when": "view == shortcutsLogical && viewItem == logicalGroup",
           "group": "logicalGroup@1"
@@ -186,6 +216,36 @@
           "command": "shortcuts.removeFromLogicalGroup",
           "when": "view == shortcutsLogical && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
           "group": "logicalGroupItem@1"
+        },
+        {
+          "command": "shortcuts.copyRelativePath",
+          "when": "view == shortcutsLogical && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "group": "logicalGroupItem@2"
+        },
+        {
+          "command": "shortcuts.copyAbsolutePath",
+          "when": "view == shortcutsLogical && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "group": "logicalGroupItem@3"
+        },
+        {
+          "command": "shortcuts.copyRelativePath",
+          "when": "view == shortcutsLogical && viewItem == folder",
+          "group": "folder@1"
+        },
+        {
+          "command": "shortcuts.copyAbsolutePath",
+          "when": "view == shortcutsLogical && viewItem == folder",
+          "group": "folder@2"
+        },
+        {
+          "command": "shortcuts.copyRelativePath",
+          "when": "view == shortcutsLogical && viewItem == file",
+          "group": "file@1"
+        },
+        {
+          "command": "shortcuts.copyAbsolutePath",
+          "when": "view == shortcutsLogical && viewItem == file",
+          "group": "file@2"
         }
       ],
       "view/context": [

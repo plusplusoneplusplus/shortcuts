@@ -119,8 +119,8 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
         const config = await this.configurationManager.loadConfiguration();
         const items: ShortcutItem[] = [];
 
-        // Find the logical group configuration
-        const groupConfig = config.logicalGroups?.find(g => g.name === groupItem.label);
+        // Find the logical group configuration using the original name
+        const groupConfig = config.logicalGroups?.find(g => g.name === groupItem.originalName);
         if (!groupConfig) {
             return [];
         }
@@ -161,7 +161,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                         itemConfig.name,
                         uri,
                         actualType,
-                        groupItem.label
+                        groupItem.originalName
                     );
 
                     items.push(childItem);

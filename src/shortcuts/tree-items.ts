@@ -369,6 +369,7 @@ export class FileShortcutItem extends ShortcutItem {
  */
 export class LogicalGroupItem extends ShortcutItem {
     public readonly contextValue = 'logicalGroup';
+    public readonly originalName: string; // Store the original name for configuration matching
 
     constructor(
         label: string,
@@ -376,8 +377,10 @@ export class LogicalGroupItem extends ShortcutItem {
         public readonly iconName?: string,
         collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
     ) {
-        // Use a dummy URI for logical groups
-        super(label, vscode.Uri.parse(`logical://group/${encodeURIComponent(label)}`), collapsibleState);
+        // Use a visually distinct label and dummy URI for logical groups
+        super(`📂 ${label}`, vscode.Uri.parse(`logical://group/${encodeURIComponent(label)}`), collapsibleState);
+
+        this.originalName = label; // Store original name for configuration lookup
         this.description = description;
         this.iconPath = this.getIconPath();
         this.tooltip = description || `Logical group: ${label}`;
@@ -389,10 +392,11 @@ export class LogicalGroupItem extends ShortcutItem {
 
     getIconPath(): vscode.ThemeIcon {
         if (this.iconName) {
-            return new vscode.ThemeIcon(this.iconName);
+            // Use accent color for custom icons to make them stand out
+            return new vscode.ThemeIcon(this.iconName, new vscode.ThemeColor('focusBorder'));
         }
 
-        // Default logical group icons based on common names
+        // Default logical group icons based on common names - use more distinctive icons
         const groupName = this.label.toLowerCase();
         const groupIconMap: { [key: string]: string } = {
             'projects': 'folder-library',
@@ -402,13 +406,14 @@ export class LogicalGroupItem extends ShortcutItem {
             'documents': 'file-text',
             'tools': 'tools',
             'resources': 'library',
-            'favorites': 'star',
+            'favorites': 'star-full',  // Use filled star for better visibility
             'recent': 'history',
             'archive': 'archive'
         };
 
-        const iconName = groupIconMap[groupName] || 'folder';
-        return new vscode.ThemeIcon(iconName, new vscode.ThemeColor('symbolIcon.folderForeground'));
+        // Use a more distinctive default icon and accent color
+        const iconName = groupIconMap[groupName] || 'tag';  // Use tag instead of folder for better distinction
+        return new vscode.ThemeIcon(iconName, new vscode.ThemeColor('focusBorder'));
     }
 }
 
