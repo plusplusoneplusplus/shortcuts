@@ -16,6 +16,7 @@ export class ShortcutsTreeDataProvider implements vscode.TreeDataProvider<Shortc
     private configurationManager: ConfigurationManager;
     private workspaceRoot: string;
     private themeManager: ThemeManager;
+    private searchFilter: string = '';
 
     constructor(workspaceRoot: string) {
         this.workspaceRoot = workspaceRoot;
@@ -86,6 +87,29 @@ export class ShortcutsTreeDataProvider implements vscode.TreeDataProvider<Shortc
      */
     getThemeManager(): ThemeManager {
         return this.themeManager;
+    }
+
+    /**
+     * Set search filter
+     */
+    setSearchFilter(filter: string): void {
+        this.searchFilter = filter.toLowerCase();
+        this.refresh();
+    }
+
+    /**
+     * Clear search filter
+     */
+    clearSearchFilter(): void {
+        this.searchFilter = '';
+        this.refresh();
+    }
+
+    /**
+     * Get current search filter
+     */
+    getSearchFilter(): string {
+        return this.searchFilter;
     }
 
     /**
@@ -201,6 +225,19 @@ export class ShortcutsTreeDataProvider implements vscode.TreeDataProvider<Shortc
                 const entryPath = path.join(folderPath, entry.name);
                 const uri = vscode.Uri.file(entryPath);
 
+                // Apply search filter if active
+                if (this.searchFilter && !entry.name.toLowerCase().includes(this.searchFilter)) {
+                    // If searching, check if folder contains matching items
+                    if (entry.isDirectory()) {
+                        const hasMatchingChildren = await this.hasMatchingChildren(entryPath, this.searchFilter);
+                        if (!hasMatchingChildren) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+
                 if (entry.isDirectory()) {
                     const subfolderItem = new FolderShortcutItem(
                         entry.name,
@@ -220,6 +257,77 @@ export class ShortcutsTreeDataProvider implements vscode.TreeDataProvider<Shortc
         }
 
         return items;
+    }
+
+    /**
+     * Check if a folder contains items matching the search filter
+     */
+    private async hasMatchingChildren(folderPath: string, searchFilter: string): Promise<boolean> {
+        const MAX_DEPTH = 3;
+        const MAX_FILES = 100;
+        return this.hasMatchingChildrenWithLimits(folderPath, searchFilter, 0, MAX_DEPTH, MAX_FILES);
+    }
+
+    /**
+     * Check if a folder contains items matching the search filter with depth and file limits
+     */
+    private async hasMatchingChildrenWithLimits(
+        folderPath: string,
+        searchFilter: string,
+        currentDepth: number,
+        maxDepth: number,
+        maxFiles: number
+    ): Promise<boolean> {
+        if (currentDepth >= maxDepth || maxFiles <= 0) {
+            return false;
+        }
+
+        try {
+            if (!fs.existsSync(folderPath)) {
+                return false;
+            }
+
+            const entries = fs.readdirSync(folderPath, { withFileTypes: true });
+            let filesChecked = 0;
+
+            for (const entry of entries) {
+                if (filesChecked >= maxFiles) {
+                    break;
+                }
+
+                // Skip hidden files
+                if (entry.name.startsWith('.')) {
+                    continue;
+                }
+
+                // Check if entry name matches search
+                if (entry.name.toLowerCase().includes(searchFilter)) {
+                    return true;
+                }
+
+                // Recursively check subdirectories
+                if (entry.isDirectory()) {
+                    const subFolderPath = path.join(folderPath, entry.name);
+                    const hasMatchingInSubfolder = await this.hasMatchingChildrenWithLimits(
+                        subFolderPath,
+                        searchFilter,
+                        currentDepth + 1,
+                        maxDepth,
+                        maxFiles - filesChecked
+                    );
+                    if (hasMatchingInSubfolder) {
+                        return true;
+                    }
+                }
+
+                filesChecked++;
+            }
+
+            return false;
+        } catch (error) {
+            console.warn(`Error checking for matching children in ${folderPath}:`, error);
+            return false;
+        }
     }
 
     /**

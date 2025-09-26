@@ -22,6 +22,8 @@ export class ConfigurationManager {
     private fileWatcher?: vscode.FileSystemWatcher;
     private reloadCallback?: () => void;
     private debounceTimer?: NodeJS.Timeout;
+    private configCache?: { config: ShortcutsConfig; timestamp: number };
+    private readonly CACHE_TTL = 5000; // 5 seconds
 
     constructor(workspaceRoot: string) {
         this.workspaceRoot = workspaceRoot;
@@ -34,6 +36,28 @@ export class ConfigurationManager {
      * @returns Promise resolving to ShortcutsConfig
      */
     async loadConfiguration(): Promise<ShortcutsConfig> {
+        // Check cache first
+        if (this.configCache && Date.now() - this.configCache.timestamp < this.CACHE_TTL) {
+            return this.configCache.config;
+        }
+
+        try {
+            const config = await this.loadConfigurationFromDisk();
+
+            // Cache the configuration
+            this.configCache = { config, timestamp: Date.now() };
+
+            return config;
+        } catch (error) {
+            // If caching fails, return the configuration anyway
+            return this.loadConfigurationFromDisk();
+        }
+    }
+
+    /**
+     * Load configuration from disk without caching
+     */
+    private async loadConfigurationFromDisk(): Promise<ShortcutsConfig> {
         try {
             // Try to load workspace-specific config first (highest priority)
             if (this.isWorkspaceConfig() && fs.existsSync(this.configPath)) {
@@ -99,6 +123,9 @@ export class ConfigurationManager {
      */
     async saveConfiguration(config: ShortcutsConfig): Promise<void> {
         try {
+            // Invalidate cache before saving
+            this.configCache = undefined;
+
             // Ensure .vscode directory exists
             const configDir = path.dirname(this.configPath);
             if (!fs.existsSync(configDir)) {
@@ -447,6 +474,9 @@ export class ConfigurationManager {
      * Handle configuration file changes with debouncing
      */
     private handleConfigFileChange(): void {
+        // Invalidate cache when config file changes
+        this.configCache = undefined;
+
         // Debounce rapid file changes (e.g., during save operations)
         if (this.debounceTimer) {
             clearTimeout(this.debounceTimer);

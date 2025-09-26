@@ -484,3 +484,58 @@ export class LogicalGroupChildItem extends ShortcutItem {
         }
     }
 }
+
+/**
+ * Search input tree item for embedded search functionality
+ */
+export class SearchTreeItem extends ShortcutItem {
+    constructor(
+        public readonly placeholder: string,
+        public readonly currentValue: string = ''
+    ) {
+        // Create label that looks like an input box
+        const label = currentValue ? `${currentValue}` : `${placeholder}`;
+
+        // Create a fake URI for the search item
+        super(label, vscode.Uri.file('search'), vscode.TreeItemCollapsibleState.None);
+
+        this.id = `search-${Date.now()}`;
+        this.contextValue = 'searchInput';
+
+        // Style the description to look like an input box
+        if (currentValue) {
+            this.description = '🔍 Active search';
+        } else {
+            this.description = '🔍 Click to search';
+        }
+
+        this.tooltip = `${placeholder} - Click or press F2 to edit`;
+
+        // Always show search icon, but with different style for active search
+        this.iconPath = new vscode.ThemeIcon('search');
+
+        // Add command to trigger editing on click
+        this.command = {
+            command: 'shortcuts.editSearchInput',
+            title: 'Search',
+            arguments: [this]
+        };
+    }
+
+    // Implement required ShortcutItem properties
+    get fsPath(): string {
+        return 'search';
+    }
+
+    get displayName(): string {
+        return this.label?.toString() || this.placeholder;
+    }
+
+    isDirectory(): boolean {
+        return false;
+    }
+
+    getIconPath(): vscode.ThemeIcon {
+        return this.iconPath as vscode.ThemeIcon;
+    }
+}

@@ -50,6 +50,13 @@
     "views": {
       "shortcuts": [
         {
+          "id": "shortcutsSearch",
+          "name": "",
+          "type": "webview",
+          "when": "true",
+          "visibility": "visible"
+        },
+        {
           "id": "shortcutsPhysical",
           "name": "Physical Folders",
           "when": "true"
@@ -136,6 +143,11 @@
         "command": "shortcuts.copyAbsolutePath",
         "title": "Copy Absolute Path",
         "icon": "$(copy)"
+      },
+      {
+        "command": "shortcuts.clearSearch",
+        "title": "Clear Search",
+        "icon": "$(clear-all)"
       }
     ],
     "menus": {
@@ -164,6 +176,11 @@
           "command": "shortcuts.showKeyboardHelp",
           "when": "view == shortcutsPhysical || view == shortcutsLogical",
           "group": "navigation"
+        },
+        {
+          "command": "shortcuts.clearSearch",
+          "when": "view == shortcutsPhysical || view == shortcutsLogical",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -246,6 +263,16 @@
           "command": "shortcuts.copyAbsolutePath",
           "when": "view == shortcutsLogical && viewItem == file",
           "group": "file@2"
+        },
+        {
+          "command": "shortcuts.editSearchInput",
+          "when": "viewItem == searchInput",
+          "group": "search@1"
+        },
+        {
+          "command": "shortcuts.clearSearchFromItem",
+          "when": "viewItem == searchInput",
+          "group": "search@2"
         }
       ],
       "view/context": [

@@ -4,6 +4,7 @@ import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { FolderShortcutItem, FileShortcutItem, LogicalGroupItem, LogicalGroupChildItem } from './tree-items';
 import { LogicalGroup } from './types';
 import { NotificationManager } from './notification-manager';
+import { InlineSearchProvider } from './inline-search-provider';
 
 /**
  * Command handlers for the shortcuts panel
@@ -11,7 +12,9 @@ import { NotificationManager } from './notification-manager';
 export class ShortcutsCommands {
     constructor(
         private physicalTreeDataProvider: ShortcutsTreeDataProvider,
-        private logicalTreeDataProvider?: LogicalTreeDataProvider
+        private logicalTreeDataProvider?: LogicalTreeDataProvider,
+        private updateSearchDescriptions?: () => void,
+        private unifiedSearchProvider?: InlineSearchProvider
     ) { }
 
     /**
@@ -109,6 +112,14 @@ export class ShortcutsCommands {
                 await this.copyPath(item, true);
             })
         );
+
+        // Unified search commands
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.clearSearch', () => {
+                this.clearUnifiedSearch();
+            })
+        );
+
 
         return disposables;
     }
@@ -555,4 +566,33 @@ export class ShortcutsCommands {
             vscode.window.showErrorMessage(`Failed to copy path: ${err.message}`);
         }
     }
+
+    /**
+     * Clear unified search filter
+     */
+    private clearUnifiedSearch(): void {
+        try {
+            // Clear both tree providers
+            this.physicalTreeDataProvider.clearSearchFilter();
+            if (this.logicalTreeDataProvider) {
+                this.logicalTreeDataProvider.clearSearchFilter();
+            }
+
+            // Clear the unified search input
+            if (this.unifiedSearchProvider) {
+                this.unifiedSearchProvider.updateSearchValue('');
+            }
+
+            this.updateSearchDescriptions?.();
+            NotificationManager.showInfo('Search cleared', { timeout: 2000 });
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error clearing search:', err);
+            vscode.window.showErrorMessage(`Failed to clear search: ${err.message}`);
+        }
+    }
+
+
+
 }

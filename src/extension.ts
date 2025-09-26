@@ -6,6 +6,7 @@ import { ShortcutsTreeDataProvider } from './shortcuts/tree-data-provider';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { NotificationManager } from './shortcuts/notification-manager';
+import { InlineSearchProvider } from './shortcuts/inline-search-provider';
 
 /**
  * Get a stable global configuration path when no workspace is open
@@ -54,12 +55,40 @@ export function activate(context: vscode.ExtensionContext) {
             dragAndDropController: undefined
         });
 
+        // Create unified search provider
+        const unifiedSearchProvider = new InlineSearchProvider(
+            context.extensionUri,
+            'shortcutsSearch',
+            'Search folders and groups...'
+        );
+
+        // Register webview provider
+        context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider('shortcutsSearch', unifiedSearchProvider)
+        );
+
+        // Connect search provider to both tree data providers
+        unifiedSearchProvider.onSearchChanged((searchTerm) => {
+            physicalTreeDataProvider.setSearchFilter(searchTerm);
+            logicalTreeDataProvider.setSearchFilter(searchTerm);
+        });
+
+        // Function to update view descriptions - simplified since we have inline search
+        const updateSearchDescriptions = () => {
+            // Clear descriptions since search is now inline
+            physicalTreeView.description = undefined;
+            logicalTreeView.description = undefined;
+        };
+
+        // Initial description setup
+        updateSearchDescriptions();
+
         // Initialize keyboard navigation handlers for both views
         const physicalKeyboardNavigationHandler = new KeyboardNavigationHandler(physicalTreeView, physicalTreeDataProvider, 'physical');
         const logicalKeyboardNavigationHandler = new KeyboardNavigationHandler(logicalTreeView, logicalTreeDataProvider, 'logical');
 
         // Initialize command handlers
-        const commandsHandler = new ShortcutsCommands(physicalTreeDataProvider, logicalTreeDataProvider);
+        const commandsHandler = new ShortcutsCommands(physicalTreeDataProvider, logicalTreeDataProvider, updateSearchDescriptions, unifiedSearchProvider);
         const commandDisposables = commandsHandler.registerCommands(context);
 
         // Register keyboard help command

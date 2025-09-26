@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ShortcutItem, FolderShortcutItem, FileShortcutItem } from './tree-items';
+import { ShortcutItem, FolderShortcutItem, FileShortcutItem, SearchTreeItem } from './tree-items';
 
 /**
  * Interface for tree data providers that support keyboard navigation
@@ -283,6 +283,9 @@ export class KeyboardNavigationHandler {
             } else {
                 vscode.window.showInformationMessage('Only root-level shortcuts can be renamed.');
             }
+        } else if (selectedItem instanceof SearchTreeItem) {
+            // Handle F2 for search items - trigger inline editing
+            await vscode.commands.executeCommand('shortcuts.editSearchInput', selectedItem);
         }
     }
 

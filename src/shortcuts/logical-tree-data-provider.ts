@@ -17,6 +17,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
     private configurationManager: ConfigurationManager;
     private workspaceRoot: string;
     private themeManager: ThemeManager;
+    private searchFilter: string = '';
 
     constructor(workspaceRoot: string, configurationManager: ConfigurationManager, themeManager: ThemeManager) {
         this.workspaceRoot = workspaceRoot;
@@ -75,6 +76,29 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
     }
 
     /**
+     * Set search filter
+     */
+    setSearchFilter(filter: string): void {
+        this.searchFilter = filter.toLowerCase();
+        this.refresh();
+    }
+
+    /**
+     * Clear search filter
+     */
+    clearSearchFilter(): void {
+        this.searchFilter = '';
+        this.refresh();
+    }
+
+    /**
+     * Get current search filter
+     */
+    getSearchFilter(): string {
+        return this.searchFilter;
+    }
+
+    /**
      * Dispose of resources
      */
     dispose(): void {
@@ -95,6 +119,24 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
 
         for (const groupConfig of config.logicalGroups) {
             try {
+                // Apply search filter to group names and contents
+                if (this.searchFilter) {
+                    const groupMatches = groupConfig.name.toLowerCase().includes(this.searchFilter) ||
+                                       (groupConfig.description && groupConfig.description.toLowerCase().includes(this.searchFilter));
+
+                    if (!groupMatches) {
+                        // Check if any items in the group match
+                        const hasMatchingItems = groupConfig.items.some(item =>
+                            item.name.toLowerCase().includes(this.searchFilter) ||
+                            item.path.toLowerCase().includes(this.searchFilter)
+                        );
+
+                        if (!hasMatchingItems) {
+                            continue;
+                        }
+                    }
+                }
+
                 const groupItem = new LogicalGroupItem(
                     groupConfig.name,
                     groupConfig.description,
@@ -139,6 +181,25 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
 
             for (const itemConfig of sortedItems) {
                 try {
+                    // Apply search filter to item names and paths
+                    if (this.searchFilter) {
+                        const itemMatches = itemConfig.name.toLowerCase().includes(this.searchFilter) ||
+                                          itemConfig.path.toLowerCase().includes(this.searchFilter);
+
+                        if (!itemMatches) {
+                            // For folders, check if they contain matching items
+                            if (itemConfig.type === 'folder') {
+                                const resolvedPath = this.resolvePath(itemConfig.path);
+                                const hasMatchingChildren = await this.hasMatchingChildren(resolvedPath, this.searchFilter);
+                                if (!hasMatchingChildren) {
+                                    continue;
+                                }
+                            } else {
+                                continue;
+                            }
+                        }
+                    }
+
                     const resolvedPath = this.resolvePath(itemConfig.path);
                     const uri = vscode.Uri.file(resolvedPath);
 
@@ -209,11 +270,23 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
      * Get filesystem contents of a folder within a logical group
      */
     private async getFolderContents(folderItem: LogicalGroupChildItem): Promise<ShortcutItem[]> {
+        return this.getFolderContentsGeneric(folderItem.resourceUri.fsPath, folderItem.fsPath);
+    }
+
+    /**
+     * Get filesystem contents of a FolderShortcutItem (for nested folder expansion)
+     */
+    private async getFolderContentsFromFolderItem(folderItem: FolderShortcutItem): Promise<ShortcutItem[]> {
+        return this.getFolderContentsGeneric(folderItem.resourceUri.fsPath, folderItem.fsPath);
+    }
+
+    /**
+     * Generic method to get filesystem contents of any folder
+     */
+    private async getFolderContentsGeneric(folderPath: string, displayPath: string): Promise<ShortcutItem[]> {
         const items: ShortcutItem[] = [];
 
         try {
-            const folderPath = folderItem.resourceUri.fsPath;
-
             if (!fs.existsSync(folderPath)) {
                 console.warn(`Folder does not exist: ${folderPath}`);
                 return [];
@@ -242,6 +315,19 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                 try {
                     const entryPath = path.join(folderPath, entry.name);
                     const entryUri = vscode.Uri.file(entryPath);
+
+                    // Apply search filter if active
+                    if (this.searchFilter && !entry.name.toLowerCase().includes(this.searchFilter)) {
+                        // If searching, check if folder contains matching items
+                        if (entry.isDirectory()) {
+                            const hasMatchingChildren = await this.hasMatchingChildren(entryPath, this.searchFilter);
+                            if (!hasMatchingChildren) {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
 
                     if (entry.isDirectory()) {
                         // Create folder item that can be further expanded
@@ -263,7 +349,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
             }
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error(`Error reading folder contents for ${folderItem.fsPath}:`, err);
+            console.error(`Error reading folder contents for ${displayPath}:`, err);
             vscode.window.showErrorMessage(`Error reading folder: ${err.message}`);
         }
 
@@ -271,67 +357,73 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
     }
 
     /**
-     * Get filesystem contents of a FolderShortcutItem (for nested folder expansion)
+     * Check if a folder contains items matching the search filter
      */
-    private async getFolderContentsFromFolderItem(folderItem: FolderShortcutItem): Promise<ShortcutItem[]> {
-        const items: ShortcutItem[] = [];
+    private async hasMatchingChildren(folderPath: string, searchFilter: string): Promise<boolean> {
+        const MAX_DEPTH = 3;
+        const MAX_FILES = 100;
+        return this.hasMatchingChildrenWithLimits(folderPath, searchFilter, 0, MAX_DEPTH, MAX_FILES);
+    }
 
-        try {
-            const folderPath = folderItem.resourceUri.fsPath;
-
-            if (!fs.existsSync(folderPath)) {
-                console.warn(`Folder does not exist: ${folderPath}`);
-                return [];
-            }
-
-            const stat = fs.statSync(folderPath);
-            if (!stat.isDirectory()) {
-                console.warn(`Path is not a directory: ${folderPath}`);
-                return [];
-            }
-
-            const dirEntries = fs.readdirSync(folderPath, { withFileTypes: true });
-
-            // Sort entries: directories first, then files, both alphabetically
-            const sortedEntries = dirEntries.sort((a, b) => {
-                if (a.isDirectory() && !b.isDirectory()) {
-                    return -1;
-                }
-                if (!a.isDirectory() && b.isDirectory()) {
-                    return 1;
-                }
-                return a.name.localeCompare(b.name);
-            });
-
-            for (const entry of sortedEntries) {
-                try {
-                    const entryPath = path.join(folderPath, entry.name);
-                    const entryUri = vscode.Uri.file(entryPath);
-
-                    if (entry.isDirectory()) {
-                        // Create folder item that can be further expanded
-                        const nestedFolderItem = new FolderShortcutItem(
-                            entry.name,
-                            entryUri,
-                            vscode.TreeItemCollapsibleState.Collapsed
-                        );
-                        items.push(nestedFolderItem);
-                    } else if (entry.isFile()) {
-                        // Create file item
-                        const fileItem = new FileShortcutItem(entry.name, entryUri);
-                        items.push(fileItem);
-                    }
-                } catch (error) {
-                    const err = error instanceof Error ? error : new Error('Unknown error');
-                    console.warn(`Error processing entry ${entry.name}:`, err);
-                }
-            }
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error(`Error reading folder contents for ${folderItem.fsPath}:`, err);
-            vscode.window.showErrorMessage(`Error reading folder: ${err.message}`);
+    /**
+     * Check if a folder contains items matching the search filter with depth and file limits
+     */
+    private async hasMatchingChildrenWithLimits(
+        folderPath: string,
+        searchFilter: string,
+        currentDepth: number,
+        maxDepth: number,
+        maxFiles: number
+    ): Promise<boolean> {
+        if (currentDepth >= maxDepth || maxFiles <= 0) {
+            return false;
         }
 
-        return items;
+        try {
+            if (!fs.existsSync(folderPath)) {
+                return false;
+            }
+
+            const entries = fs.readdirSync(folderPath, { withFileTypes: true });
+            let filesChecked = 0;
+
+            for (const entry of entries) {
+                if (filesChecked >= maxFiles) {
+                    break;
+                }
+
+                // Skip hidden files
+                if (entry.name.startsWith('.')) {
+                    continue;
+                }
+
+                // Check if entry name matches search
+                if (entry.name.toLowerCase().includes(searchFilter)) {
+                    return true;
+                }
+
+                // Recursively check subdirectories
+                if (entry.isDirectory()) {
+                    const subFolderPath = path.join(folderPath, entry.name);
+                    const hasMatchingInSubfolder = await this.hasMatchingChildrenWithLimits(
+                        subFolderPath,
+                        searchFilter,
+                        currentDepth + 1,
+                        maxDepth,
+                        maxFiles - filesChecked
+                    );
+                    if (hasMatchingInSubfolder) {
+                        return true;
+                    }
+                }
+
+                filesChecked++;
+            }
+
+            return false;
+        } catch (error) {
+            console.warn(`Error checking for matching children in ${folderPath}:`, error);
+            return false;
+        }
     }
 }
