@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ShortcutsTreeDataProvider } from './tree-data-provider';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { FolderShortcutItem, FileShortcutItem, LogicalGroupItem, LogicalGroupChildItem } from './tree-items';
@@ -399,7 +400,7 @@ export class ShortcutsCommands {
                     const itemType = stat.isDirectory() ? 'folder' : 'file';
 
                     // Use the filename as the default display name
-                    const defaultName = uri.path.split('/').pop() || '';
+                    const defaultName = path.basename(uri.fsPath);
 
                     await configManager.addToLogicalGroup(
                         groupItem.originalName,
@@ -653,7 +654,7 @@ export class ShortcutsCommands {
             const configManager = this.logicalTreeDataProvider.getConfigurationManager();
 
             // Use the filename as the default display name
-            const defaultName = item.resourceUri.path.split('/').pop() || '';
+            const defaultName = path.basename(item.resourceUri.fsPath);
 
             await configManager.addToLogicalGroup(
                 selectedGroupItem.group.name,
