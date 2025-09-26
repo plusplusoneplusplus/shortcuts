@@ -120,6 +120,19 @@ export class ShortcutsCommands {
             })
         );
 
+        // Add file to logical group command
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.addFileToLogicalGroup', async (item: FileShortcutItem) => {
+                await this.addItemToLogicalGroup(item, 'file');
+            })
+        );
+
+        // Add folder to logical group command
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.addFolderToLogicalGroup', async (item: FolderShortcutItem) => {
+                await this.addItemToLogicalGroup(item, 'folder');
+            })
+        );
 
         return disposables;
     }
@@ -590,6 +603,77 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error clearing search:', err);
             vscode.window.showErrorMessage(`Failed to clear search: ${err.message}`);
+        }
+    }
+
+    /**
+     * Add an item (file or folder) from Physical Folders to a logical group
+     */
+    private async addItemToLogicalGroup(item: FileShortcutItem | FolderShortcutItem, itemType: 'file' | 'folder'): Promise<void> {
+        if (!this.logicalTreeDataProvider) {
+            vscode.window.showErrorMessage('Logical groups are not available');
+            return;
+        }
+
+        try {
+            // Get all available logical groups
+            const groups = await this.logicalTreeDataProvider.getLogicalGroups();
+
+            if (groups.length === 0) {
+                const createAction = await vscode.window.showInformationMessage(
+                    'No logical groups exist. Would you like to create one?',
+                    'Create Group',
+                    'Cancel'
+                );
+
+                if (createAction === 'Create Group') {
+                    await this.createLogicalGroup();
+                    // After creating, try again
+                    return this.addItemToLogicalGroup(item, itemType);
+                }
+                return;
+            }
+
+            // Show quick pick to select the group
+            const groupItems = groups.map(group => ({
+                label: group.name,
+                description: group.description || '',
+                group: group
+            }));
+
+            const selectedGroupItem = await vscode.window.showQuickPick(groupItems, {
+                placeHolder: `Select logical group to add ${itemType} to`,
+                title: `Add ${itemType} to Logical Group`
+            });
+
+            if (!selectedGroupItem) {
+                return; // User cancelled
+            }
+
+            const configManager = this.logicalTreeDataProvider.getConfigurationManager();
+
+            // Use the filename as the default display name
+            const defaultName = item.resourceUri.path.split('/').pop() || '';
+
+            await configManager.addToLogicalGroup(
+                selectedGroupItem.group.name,
+                item.resourceUri.fsPath,
+                defaultName,
+                itemType
+            );
+
+            // Refresh the logical tree view
+            this.logicalTreeDataProvider.refresh();
+
+            NotificationManager.showInfo(
+                `${itemType.charAt(0).toUpperCase() + itemType.slice(1)} "${defaultName}" added to group "${selectedGroupItem.group.name}"`,
+                { timeout: 3000 }
+            );
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error(`Error adding ${itemType} to logical group:`, err);
+            vscode.window.showErrorMessage(`Failed to add ${itemType} to group: ${err.message}`);
         }
     }
 

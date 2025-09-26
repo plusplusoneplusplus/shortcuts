@@ -148,6 +148,16 @@
         "command": "shortcuts.clearSearch",
         "title": "Clear Search",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "shortcuts.addFileToLogicalGroup",
+        "title": "Add File to Group",
+        "icon": "$(add)"
+      },
+      {
+        "command": "shortcuts.addFolderToLogicalGroup",
+        "title": "Add Folder to Group",
+        "icon": "$(add)"
       }
     ],
     "menus": {
@@ -205,6 +215,11 @@
           "group": "shortcuts@4"
         },
         {
+          "command": "shortcuts.addFolderToLogicalGroup",
+          "when": "view == shortcutsPhysical && viewItem == folder",
+          "group": "shortcuts@5"
+        },
+        {
           "command": "shortcuts.copyRelativePath",
           "when": "view == shortcutsPhysical && viewItem == file",
           "group": "file@1"
@@ -213,6 +228,11 @@
           "command": "shortcuts.copyAbsolutePath",
           "when": "view == shortcutsPhysical && viewItem == file",
           "group": "file@2"
+        },
+        {
+          "command": "shortcuts.addFileToLogicalGroup",
+          "when": "view == shortcutsPhysical && viewItem == file",
+          "group": "file@3"
         },
         {
           "command": "shortcuts.addToLogicalGroup",
