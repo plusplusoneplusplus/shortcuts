@@ -158,6 +158,16 @@
         "command": "shortcuts.addFolderToLogicalGroup",
         "title": "Add Folder to Group",
         "icon": "$(add)"
+      },
+      {
+        "command": "shortcuts.editSearchInput",
+        "title": "Edit Search",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "shortcuts.clearSearchFromItem",
+        "title": "Clear Search",
+        "icon": "$(clear-all)"
       }
     ],
     "menus": {

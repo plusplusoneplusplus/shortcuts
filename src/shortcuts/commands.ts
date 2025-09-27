@@ -135,6 +135,19 @@ export class ShortcutsCommands {
             })
         );
 
+        // Search input commands
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.editSearchInput', () => {
+                this.editSearchInput();
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.clearSearchFromItem', () => {
+                this.clearSearchFromItem();
+            })
+        );
+
         return disposables;
     }
 
@@ -380,7 +393,11 @@ export class ShortcutsCommands {
                 canSelectFiles: true,
                 canSelectFolders: true,
                 canSelectMany: true,
-                openLabel: 'Add to Group'
+                openLabel: 'Add Files and Folders to Group',
+                title: `Select files and folders to add to "${groupItem.label}"`,
+                filters: {
+                    'All Files': ['*']
+                }
             });
 
             if (!uris || uris.length === 0) {
@@ -421,7 +438,7 @@ export class ShortcutsCommands {
             // Show appropriate success message based on results
             if (addedCount > 0 && skippedCount === 0) {
                 const itemText = addedCount === 1 ? 'item' : 'items';
-                NotificationManager.showInfo(`${addedCount} ${itemText} added to logical group successfully!`, { timeout: 3000 });
+                NotificationManager.showInfo(`${addedCount} ${itemText} added to group "${groupItem.label}" successfully!`, { timeout: 3000 });
             } else if (addedCount > 0 && skippedCount > 0) {
                 vscode.window.showWarningMessage(`${addedCount} items added successfully, ${skippedCount} items skipped (may already exist in group).`);
             } else {
@@ -678,6 +695,47 @@ export class ShortcutsCommands {
         }
     }
 
+    /**
+     * Edit/focus the search input
+     */
+    private editSearchInput(): void {
+        try {
+            if (this.unifiedSearchProvider) {
+                this.unifiedSearchProvider.focusSearchInput();
+            } else {
+                vscode.window.showInformationMessage('Search functionality is not available');
+            }
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error focusing search input:', err);
+            vscode.window.showErrorMessage(`Failed to focus search input: ${err.message}`);
+        }
+    }
 
+    /**
+     * Clear search from item context menu
+     */
+    private clearSearchFromItem(): void {
+        try {
+            // Clear both tree providers
+            this.physicalTreeDataProvider.clearSearchFilter();
+            if (this.logicalTreeDataProvider) {
+                this.logicalTreeDataProvider.clearSearchFilter();
+            }
+
+            // Clear the unified search input
+            if (this.unifiedSearchProvider) {
+                this.unifiedSearchProvider.updateSearchValue('');
+            }
+
+            this.updateSearchDescriptions?.();
+            NotificationManager.showInfo('Search cleared', { timeout: 2000 });
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error clearing search from item:', err);
+            vscode.window.showErrorMessage(`Failed to clear search: ${err.message}`);
+        }
+    }
 
 }

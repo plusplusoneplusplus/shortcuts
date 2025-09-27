@@ -62,6 +62,14 @@ export class InlineSearchProvider implements vscode.WebviewViewProvider {
         return this.currentValue;
     }
 
+    public focusSearchInput() {
+        if (this._view) {
+            this._view.webview.postMessage({
+                type: 'focusInput'
+            });
+        }
+    }
+
     private _getHtmlForWebview(webview: vscode.Webview) {
         return `<!DOCTYPE html>
             <html lang="en">
@@ -238,6 +246,10 @@ export class InlineSearchProvider implements vscode.WebviewViewProvider {
                                     } else {
                                         clearButton.classList.remove('visible');
                                     }
+                                    break;
+                                case 'focusInput':
+                                    searchInput.focus();
+                                    searchInput.select();
                                     break;
                             }
                         });
