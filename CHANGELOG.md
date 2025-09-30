@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2025-09-29
+
+### Added
+- Multi-selection support for batch operations in both Physical and Logical views
+  - Select multiple items using Ctrl/Cmd+Click or Shift+Click
+  - Batch remove shortcuts from Physical Folders view
+  - Batch remove items from logical groups
+  - Batch delete logical groups
+  - Batch copy paths (joined with newlines)
+  - Batch add files and folders to logical groups
+  - Smart confirmation messages for batch operations with item counts
+
 ## [1.3.1] - 2025-09-29
 
 ### Fixed
