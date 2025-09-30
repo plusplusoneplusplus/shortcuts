@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Drag and Drop Support**: Move files and folders by dragging them to different locations
+  - Works in both Physical Folders and Logical Groups views
+  - Supports dragging files and folders to any folder
+  - Prompts for confirmation when overwriting existing files
+  - Prevents moving folders into themselves
+  - Uses VS Code's file system API for safe operations
+- **Undo Last Move**: Press Ctrl+Z (Cmd+Z on Mac) to undo the last drag-and-drop move
+  - Works in both Physical and Logical views
+  - Available for 1 minute after the move operation
+  - Safely restores files to their original location
+  - Shows helpful notifications with undo hints
+
 ## [1.0.1] - 2025-09-25
 
 ### Changed

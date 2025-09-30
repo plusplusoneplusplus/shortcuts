@@ -1,12 +1,13 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
 import * as os from 'os';
+import * as path from 'path';
+import * as vscode from 'vscode';
 import { ShortcutsCommands } from './shortcuts/commands';
-import { ShortcutsTreeDataProvider } from './shortcuts/tree-data-provider';
-import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
-import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
-import { NotificationManager } from './shortcuts/notification-manager';
+import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { InlineSearchProvider } from './shortcuts/inline-search-provider';
+import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
+import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
+import { NotificationManager } from './shortcuts/notification-manager';
+import { ShortcutsTreeDataProvider } from './shortcuts/tree-data-provider';
 
 /**
  * Get a stable global configuration path when no workspace is open
@@ -39,20 +40,24 @@ export function activate(context: vscode.ExtensionContext) {
             physicalTreeDataProvider.getThemeManager()
         );
 
-        // Register physical tree view
+        // Initialize drag and drop controllers for both views
+        const physicalDragDropController = new ShortcutsDragDropController();
+        const logicalDragDropController = new ShortcutsDragDropController();
+
+        // Register physical tree view with drag and drop support
         const physicalTreeView = vscode.window.createTreeView('shortcutsPhysical', {
             treeDataProvider: physicalTreeDataProvider,
             showCollapseAll: true,
             canSelectMany: false,
-            dragAndDropController: undefined
+            dragAndDropController: physicalDragDropController
         });
 
-        // Register logical tree view
+        // Register logical tree view with drag and drop support
         const logicalTreeView = vscode.window.createTreeView('shortcutsLogical', {
             treeDataProvider: logicalTreeDataProvider,
             showCollapseAll: true,
             canSelectMany: false,
-            dragAndDropController: undefined
+            dragAndDropController: logicalDragDropController
         });
 
         // Create unified search provider
@@ -100,6 +105,18 @@ export function activate(context: vscode.ExtensionContext) {
             );
         });
 
+        // Register undo command for drag and drop operations
+        const undoMoveCommand = vscode.commands.registerCommand('shortcuts.undoMove', async () => {
+            // Try to undo from physical controller first, then logical
+            if (physicalDragDropController.canUndo()) {
+                await physicalDragDropController.undoLastMove();
+            } else if (logicalDragDropController.canUndo()) {
+                await logicalDragDropController.undoLastMove();
+            } else {
+                vscode.window.showInformationMessage('No move operation to undo.');
+            }
+        });
+
         // Collect all disposables for proper cleanup
         const disposables: vscode.Disposable[] = [
             physicalTreeView,
@@ -109,6 +126,7 @@ export function activate(context: vscode.ExtensionContext) {
             physicalKeyboardNavigationHandler,
             logicalKeyboardNavigationHandler,
             keyboardHelpCommand,
+            undoMoveCommand,
             ...commandDisposables
         ];
 

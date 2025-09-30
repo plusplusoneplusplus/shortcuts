@@ -160,6 +160,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "shortcuts.undoMove",
+        "title": "Undo Last Move",
+        "icon": "$(discard)"
+      },
+      {
         "command": "shortcuts.editSearchInput",
         "title": "Edit Search",
         "icon": "$(edit)"
@@ -398,6 +403,12 @@
         "command": "shortcuts.logical.handleDeleteKey",
         "key": "delete",
         "when": "focusedView == shortcutsLogical"
+      },
+      {
+        "command": "shortcuts.undoMove",
+        "key": "ctrl+z",
+        "mac": "cmd+z",
+        "when": "focusedView == shortcutsPhysical || focusedView == shortcutsLogical"
       }
     ]
   },

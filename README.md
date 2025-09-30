@@ -11,12 +11,14 @@ Organize your workspace with customizable folder shortcuts and logical groups. Q
 ### 📁 Physical Folders
 - **Quick Access**: Add shortcuts to frequently used folders on your filesystem
 - **Split View Navigation**: Open folders in a split pane or replace current view
+- **Drag and Drop**: Move files and folders by dragging them to different locations
 - **Context Menu Actions**: Right-click for rename, remove, and other actions
 - **Keyboard Navigation**: Full keyboard support with Enter, Space, Arrow keys, F2, Delete
 
 ### 🏷️ Logical Groups
 - **Custom Organization**: Create custom groups to organize shortcuts by project, type, or workflow
 - **Flexible Management**: Add files and folders to groups regardless of their physical location
+- **Drag and Drop**: Move files and folders by dragging them to different locations
 - **Group Operations**: Create, rename, delete groups and manage their contents
 - **Tree View**: Hierarchical display of groups and their items
 
@@ -25,6 +27,7 @@ Organize your workspace with customizable folder shortcuts and logical groups. Q
 - **Space**: Open item in split view
 - **F2**: Rename selected item
 - **Delete**: Remove selected item
+- **Ctrl+Z / Cmd+Z**: Undo last move operation
 - **Arrow Keys**: Navigate and expand/collapse groups
 - **Home/End**: Jump to first/last item
 
@@ -63,6 +66,16 @@ Organize your workspace with customizable folder shortcuts and logical groups. Q
 - **Single Click**: Navigate to the folder/file
 - **Space Bar**: Open in split view (when focused)
 - **Right Click**: Access context menu for rename, remove, etc.
+
+### Moving Files and Folders with Drag and Drop
+
+1. **Drag**: Click and hold on any file or folder in either view
+2. **Drop**: Drag it to a folder where you want to move it
+3. **Confirm**: If a file with the same name exists, you'll be prompted to overwrite or skip
+4. **Result**: The file/folder is moved to the new location on your filesystem
+5. **Undo**: Press `Ctrl+Z` (or `Cmd+Z` on Mac) to undo the last move within 1 minute
+
+**Note**: You can drag items between any folders in both Physical and Logical views. The drag and drop operation performs an actual file system move. Undo is available for the last move operation within 1 minute.
 
 ## Configuration
 
