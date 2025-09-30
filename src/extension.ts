@@ -48,7 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
         const physicalTreeView = vscode.window.createTreeView('shortcutsPhysical', {
             treeDataProvider: physicalTreeDataProvider,
             showCollapseAll: true,
-            canSelectMany: false,
+            canSelectMany: true,
             dragAndDropController: physicalDragDropController
         });
 
@@ -56,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
         const logicalTreeView = vscode.window.createTreeView('shortcutsLogical', {
             treeDataProvider: logicalTreeDataProvider,
             showCollapseAll: true,
-            canSelectMany: false,
+            canSelectMany: true,
             dragAndDropController: logicalDragDropController
         });
 
@@ -102,7 +102,14 @@ export function activate(context: vscode.ExtensionContext) {
         const logicalKeyboardNavigationHandler = new KeyboardNavigationHandler(logicalTreeView, logicalTreeDataProvider, 'logical');
 
         // Initialize command handlers
-        const commandsHandler = new ShortcutsCommands(physicalTreeDataProvider, logicalTreeDataProvider, updateSearchDescriptions, unifiedSearchProvider);
+        const commandsHandler = new ShortcutsCommands(
+            physicalTreeDataProvider,
+            logicalTreeDataProvider,
+            updateSearchDescriptions,
+            unifiedSearchProvider,
+            physicalTreeView,
+            logicalTreeView
+        );
         const commandDisposables = commandsHandler.registerCommands(context);
 
         // Register keyboard help command

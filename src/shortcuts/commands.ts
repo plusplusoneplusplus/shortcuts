@@ -1,11 +1,10 @@
-import * as vscode from 'vscode';
 import * as path from 'path';
-import { ShortcutsTreeDataProvider } from './tree-data-provider';
-import { LogicalTreeDataProvider } from './logical-tree-data-provider';
-import { FolderShortcutItem, FileShortcutItem, LogicalGroupItem, LogicalGroupChildItem } from './tree-items';
-import { LogicalGroup } from './types';
-import { NotificationManager } from './notification-manager';
+import * as vscode from 'vscode';
 import { InlineSearchProvider } from './inline-search-provider';
+import { LogicalTreeDataProvider } from './logical-tree-data-provider';
+import { NotificationManager } from './notification-manager';
+import { ShortcutsTreeDataProvider } from './tree-data-provider';
+import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem } from './tree-items';
 
 /**
  * Command handlers for the shortcuts panel
@@ -15,7 +14,9 @@ export class ShortcutsCommands {
         private physicalTreeDataProvider: ShortcutsTreeDataProvider,
         private logicalTreeDataProvider?: LogicalTreeDataProvider,
         private updateSearchDescriptions?: () => void,
-        private unifiedSearchProvider?: InlineSearchProvider
+        private unifiedSearchProvider?: InlineSearchProvider,
+        private physicalTreeView?: vscode.TreeView<any>,
+        private logicalTreeView?: vscode.TreeView<any>
     ) { }
 
     /**
@@ -199,14 +200,26 @@ export class ShortcutsCommands {
     }
 
     /**
-     * Remove a shortcut
+     * Remove a shortcut (supports multi-selection)
      * @param item The folder item to remove
      */
     private async removeShortcut(item: FolderShortcutItem): Promise<void> {
         try {
+            // Get all selected items from the tree view
+            const selectedItems = this.physicalTreeView?.selection || [item];
+            const folderItems = selectedItems.filter(i => i instanceof FolderShortcutItem) as FolderShortcutItem[];
+
+            if (folderItems.length === 0) {
+                return;
+            }
+
             // Confirm removal
+            const message = folderItems.length === 1
+                ? `Are you sure you want to remove the shortcut "${folderItems[0].displayName}"?`
+                : `Are you sure you want to remove ${folderItems.length} shortcuts?`;
+
             const confirmation = await vscode.window.showWarningMessage(
-                `Are you sure you want to remove the shortcut "${item.displayName}"?`,
+                message,
                 { modal: true },
                 'Remove'
             );
@@ -215,14 +228,19 @@ export class ShortcutsCommands {
                 return; // User cancelled
             }
 
-            // Remove the shortcut using configuration manager
+            // Remove all selected shortcuts
             const configManager = this.physicalTreeDataProvider.getConfigurationManager();
-            await configManager.removeShortcut(item.fsPath);
+            for (const folderItem of folderItems) {
+                await configManager.removeShortcut(folderItem.fsPath);
+            }
 
             // Refresh the tree view
             this.physicalTreeDataProvider.refresh();
 
-            NotificationManager.showInfo('Shortcut removed successfully!', { timeout: 3000 });
+            const successMessage = folderItems.length === 1
+                ? 'Shortcut removed successfully!'
+                : `${folderItems.length} shortcuts removed successfully!`;
+            NotificationManager.showInfo(successMessage, { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -453,7 +471,7 @@ export class ShortcutsCommands {
     }
 
     /**
-     * Remove an item from a logical group
+     * Remove an item from a logical group (supports multi-selection)
      */
     private async removeFromLogicalGroup(item: LogicalGroupChildItem): Promise<void> {
         if (!this.logicalTreeDataProvider) {
@@ -461,8 +479,21 @@ export class ShortcutsCommands {
         }
 
         try {
+            // Get all selected items from the tree view
+            const selectedItems = this.logicalTreeView?.selection || [item];
+            const groupChildItems = selectedItems.filter(i => i instanceof LogicalGroupChildItem) as LogicalGroupChildItem[];
+
+            if (groupChildItems.length === 0) {
+                return;
+            }
+
+            // Confirm removal
+            const message = groupChildItems.length === 1
+                ? `Are you sure you want to remove "${groupChildItems[0].label}" from the group "${groupChildItems[0].parentGroup}"?`
+                : `Are you sure you want to remove ${groupChildItems.length} items from their groups?`;
+
             const confirmation = await vscode.window.showWarningMessage(
-                `Are you sure you want to remove "${item.label}" from the group "${item.parentGroup}"?`,
+                message,
                 { modal: true },
                 'Remove'
             );
@@ -471,11 +502,18 @@ export class ShortcutsCommands {
                 return;
             }
 
+            // Remove all selected items
             const configManager = this.logicalTreeDataProvider.getConfigurationManager();
-            await configManager.removeFromLogicalGroup(item.parentGroup, item.fsPath);
+            for (const childItem of groupChildItems) {
+                await configManager.removeFromLogicalGroup(childItem.parentGroup, childItem.fsPath);
+            }
 
             this.logicalTreeDataProvider.refresh();
-            NotificationManager.showInfo('Item removed from logical group successfully!', { timeout: 3000 });
+
+            const successMessage = groupChildItems.length === 1
+                ? 'Item removed from logical group successfully!'
+                : `${groupChildItems.length} items removed from groups successfully!`;
+            NotificationManager.showInfo(successMessage, { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -523,7 +561,7 @@ export class ShortcutsCommands {
     }
 
     /**
-     * Delete a logical group
+     * Delete a logical group (supports multi-selection)
      */
     private async deleteLogicalGroup(groupItem: LogicalGroupItem): Promise<void> {
         if (!this.logicalTreeDataProvider) {
@@ -531,8 +569,21 @@ export class ShortcutsCommands {
         }
 
         try {
+            // Get all selected items from the tree view
+            const selectedItems = this.logicalTreeView?.selection || [groupItem];
+            const groupItems = selectedItems.filter(i => i instanceof LogicalGroupItem) as LogicalGroupItem[];
+
+            if (groupItems.length === 0) {
+                return;
+            }
+
+            // Confirm deletion
+            const message = groupItems.length === 1
+                ? `Are you sure you want to delete the logical group "${groupItems[0].label}"? This will remove all items from the group.`
+                : `Are you sure you want to delete ${groupItems.length} logical groups? This will remove all items from these groups.`;
+
             const confirmation = await vscode.window.showWarningMessage(
-                `Are you sure you want to delete the logical group "${groupItem.label}"? This will remove all items from the group.`,
+                message,
                 { modal: true },
                 'Delete'
             );
@@ -541,11 +592,18 @@ export class ShortcutsCommands {
                 return;
             }
 
+            // Delete all selected groups
             const configManager = this.logicalTreeDataProvider.getConfigurationManager();
-            await configManager.deleteLogicalGroup(groupItem.label);
+            for (const group of groupItems) {
+                await configManager.deleteLogicalGroup(group.label);
+            }
 
             this.logicalTreeDataProvider.refresh();
-            NotificationManager.showInfo('Logical group deleted successfully!', { timeout: 3000 });
+
+            const successMessage = groupItems.length === 1
+                ? 'Logical group deleted successfully!'
+                : `${groupItems.length} logical groups deleted successfully!`;
+            NotificationManager.showInfo(successMessage, { timeout: 3000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -555,41 +613,68 @@ export class ShortcutsCommands {
     }
 
     /**
-     * Copy the path of an item to clipboard
+     * Copy the path of an item to clipboard (supports multi-selection)
      * @param item The tree item to copy the path from
      * @param absolute Whether to copy absolute or relative path
      */
     private async copyPath(item: FolderShortcutItem | FileShortcutItem | LogicalGroupChildItem, absolute: boolean): Promise<void> {
         try {
-            let pathToCopy: string;
+            // Determine which tree view to use based on item type
+            const treeView = item instanceof LogicalGroupChildItem ? this.logicalTreeView : this.physicalTreeView;
+            const selectedItems = treeView?.selection || [item];
 
-            // Get the file system path from the item
-            const fsPath = item.resourceUri?.fsPath;
-            if (!fsPath) {
-                vscode.window.showErrorMessage('Unable to get path for this item');
+            // Filter items that have valid paths
+            const validItems = selectedItems.filter(i =>
+                i instanceof FolderShortcutItem ||
+                i instanceof FileShortcutItem ||
+                i instanceof LogicalGroupChildItem
+            ) as (FolderShortcutItem | FileShortcutItem | LogicalGroupChildItem)[];
+
+            if (validItems.length === 0) {
+                vscode.window.showErrorMessage('No valid items selected');
                 return;
             }
 
-            if (absolute) {
-                // Use absolute path
-                pathToCopy = fsPath;
-            } else {
-                // Calculate relative path from workspace root
-                const workspaceFolder = vscode.workspace.getWorkspaceFolder(item.resourceUri!);
-                if (workspaceFolder) {
-                    pathToCopy = vscode.workspace.asRelativePath(item.resourceUri!, false);
-                } else {
-                    // If not in workspace, use the path as-is
-                    pathToCopy = fsPath;
+            // Collect all paths
+            const paths: string[] = [];
+            for (const validItem of validItems) {
+                const fsPath = validItem.resourceUri?.fsPath;
+                if (!fsPath) {
+                    continue;
                 }
+
+                let pathToCopy: string;
+                if (absolute) {
+                    // Use absolute path
+                    pathToCopy = fsPath;
+                } else {
+                    // Calculate relative path from workspace root
+                    const workspaceFolder = vscode.workspace.getWorkspaceFolder(validItem.resourceUri!);
+                    if (workspaceFolder) {
+                        pathToCopy = vscode.workspace.asRelativePath(validItem.resourceUri!, false);
+                    } else {
+                        // If not in workspace, use the path as-is
+                        pathToCopy = fsPath;
+                    }
+                }
+                paths.push(pathToCopy);
             }
 
-            // Copy to clipboard
-            await vscode.env.clipboard.writeText(pathToCopy);
+            if (paths.length === 0) {
+                vscode.window.showErrorMessage('Unable to get paths for selected items');
+                return;
+            }
+
+            // Copy to clipboard (join with newlines for multiple paths)
+            const pathsText = paths.join('\n');
+            await vscode.env.clipboard.writeText(pathsText);
 
             // Show confirmation message
             const pathType = absolute ? 'Absolute' : 'Relative';
-            NotificationManager.showInfo(`${pathType} path copied to clipboard: ${pathToCopy}`, { timeout: 2000 });
+            const message = paths.length === 1
+                ? `${pathType} path copied to clipboard: ${paths[0]}`
+                : `${paths.length} ${pathType.toLowerCase()} paths copied to clipboard`;
+            NotificationManager.showInfo(message, { timeout: 2000 });
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -625,7 +710,7 @@ export class ShortcutsCommands {
     }
 
     /**
-     * Add an item (file or folder) from Physical Folders to a logical group
+     * Add an item (file or folder) from Physical Folders to a logical group (supports multi-selection)
      */
     private async addItemToLogicalGroup(item: FileShortcutItem | FolderShortcutItem, itemType: 'file' | 'folder'): Promise<void> {
         if (!this.logicalTreeDataProvider) {
@@ -634,6 +719,20 @@ export class ShortcutsCommands {
         }
 
         try {
+            // Get all selected items from the tree view
+            const selectedItems = this.physicalTreeView?.selection || [item];
+            const validItems = selectedItems.filter(i => {
+                if (itemType === 'file') {
+                    return i instanceof FileShortcutItem;
+                } else {
+                    return i instanceof FolderShortcutItem;
+                }
+            }) as (FileShortcutItem | FolderShortcutItem)[];
+
+            if (validItems.length === 0) {
+                return;
+            }
+
             // Get all available logical groups
             const groups = await this.logicalTreeDataProvider.getLogicalGroups();
 
@@ -659,9 +758,12 @@ export class ShortcutsCommands {
                 group: group
             }));
 
+            const itemTypeText = validItems.length === 1 ? itemType : `${itemType}s`;
             const selectedGroupItem = await vscode.window.showQuickPick(groupItems, {
-                placeHolder: `Select logical group to add ${itemType} to`,
-                title: `Add ${itemType} to Logical Group`
+                placeHolder: validItems.length === 1
+                    ? `Select logical group to add ${itemType} to`
+                    : `Select logical group to add ${validItems.length} ${itemTypeText} to`,
+                title: `Add ${itemTypeText} to Logical Group`
             });
 
             if (!selectedGroupItem) {
@@ -669,24 +771,40 @@ export class ShortcutsCommands {
             }
 
             const configManager = this.logicalTreeDataProvider.getConfigurationManager();
+            let addedCount = 0;
+            let skippedCount = 0;
 
-            // Use the filename as the default display name
-            const defaultName = path.basename(item.resourceUri.fsPath);
-
-            await configManager.addToLogicalGroup(
-                selectedGroupItem.group.name,
-                item.resourceUri.fsPath,
-                defaultName,
-                itemType
-            );
+            // Add all selected items
+            for (const validItem of validItems) {
+                try {
+                    const defaultName = path.basename(validItem.resourceUri.fsPath);
+                    await configManager.addToLogicalGroup(
+                        selectedGroupItem.group.name,
+                        validItem.resourceUri.fsPath,
+                        defaultName,
+                        itemType
+                    );
+                    addedCount++;
+                } catch (error) {
+                    console.warn(`Failed to add ${validItem.resourceUri.fsPath}:`, error);
+                    skippedCount++;
+                }
+            }
 
             // Refresh the logical tree view
             this.logicalTreeDataProvider.refresh();
 
-            NotificationManager.showInfo(
-                `${itemType.charAt(0).toUpperCase() + itemType.slice(1)} "${defaultName}" added to group "${selectedGroupItem.group.name}"`,
-                { timeout: 3000 }
-            );
+            // Show appropriate success message
+            if (addedCount > 0 && skippedCount === 0) {
+                const message = addedCount === 1
+                    ? `${itemType.charAt(0).toUpperCase() + itemType.slice(1)} added to group "${selectedGroupItem.group.name}"`
+                    : `${addedCount} ${itemTypeText} added to group "${selectedGroupItem.group.name}"`;
+                NotificationManager.showInfo(message, { timeout: 3000 });
+            } else if (addedCount > 0 && skippedCount > 0) {
+                vscode.window.showWarningMessage(`${addedCount} items added successfully, ${skippedCount} items skipped (may already exist in group).`);
+            } else {
+                vscode.window.showWarningMessage('No items were added. They may already exist in the group.');
+            }
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
