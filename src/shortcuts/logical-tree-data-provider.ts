@@ -2,9 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
-import { LogicalGroupItem, LogicalGroupChildItem, ShortcutItem, FolderShortcutItem, FileShortcutItem } from './tree-items';
-import { LogicalGroup, LogicalGroupItem as LogicalGroupItemConfig } from './types';
 import { ThemeManager } from './theme-manager';
+import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, ShortcutItem } from './tree-items';
+import { LogicalGroup } from './types';
 
 /**
  * Tree data provider for the logical groups panel
@@ -122,7 +122,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                 // Apply search filter to group names and contents
                 if (this.searchFilter) {
                     const groupMatches = groupConfig.name.toLowerCase().includes(this.searchFilter) ||
-                                       (groupConfig.description && groupConfig.description.toLowerCase().includes(this.searchFilter));
+                        (groupConfig.description && groupConfig.description.toLowerCase().includes(this.searchFilter));
 
                     if (!groupMatches) {
                         // Check if any items in the group match
@@ -184,7 +184,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                     // Apply search filter to item names and paths
                     if (this.searchFilter) {
                         const itemMatches = itemConfig.name.toLowerCase().includes(this.searchFilter) ||
-                                          itemConfig.path.toLowerCase().includes(this.searchFilter);
+                            itemConfig.path.toLowerCase().includes(this.searchFilter);
 
                         if (!itemMatches) {
                             // For folders, check if they contain matching items
@@ -218,8 +218,11 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                         // Use actual type instead of configured type
                     }
 
+                    // Add absolute path to the item name
+                    const displayName = `${itemConfig.name} (${resolvedPath})`;
+
                     const childItem = new LogicalGroupChildItem(
-                        itemConfig.name,
+                        displayName,
                         uri,
                         actualType,
                         groupItem.originalName

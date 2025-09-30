@@ -2,8 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
-import { FileShortcutItem, FolderShortcutItem, ShortcutItem } from './tree-items';
 import { ThemeManager } from './theme-manager';
+import { FileShortcutItem, FolderShortcutItem, ShortcutItem } from './tree-items';
 
 /**
  * Tree data provider for the shortcuts panel
@@ -171,7 +171,8 @@ export class ShortcutsTreeDataProvider implements vscode.TreeDataProvider<Shortc
                 }
 
                 // Use configured name or default to folder name
-                const displayName = shortcutConfig.name || path.basename(resolvedPath);
+                const baseName = shortcutConfig.name || path.basename(resolvedPath);
+                const displayName = `${baseName} (${resolvedPath})`;
 
                 const folderItem = new FolderShortcutItem(
                     displayName,
