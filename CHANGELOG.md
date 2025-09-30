@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2025-09-29
+
+### Fixed
+- Automatically refresh both Physical and Logical views after drag-drop move operations
+- Automatically refresh both views after undo operations
+
 ## [1.3.0] - 2025-09-29
 
 ### Added
