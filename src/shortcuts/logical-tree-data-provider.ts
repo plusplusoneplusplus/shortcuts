@@ -137,8 +137,18 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                     }
                 }
 
+                // Calculate common path prefix for the group
+                const resolvedPaths = groupConfig.items.map(item => this.resolvePath(item.path));
+                const commonPrefix = this.findCommonPathPrefix(resolvedPaths);
+
+                // Add common prefix to group label if it exists and items > 1
+                let groupLabel = groupConfig.name;
+                if (commonPrefix && groupConfig.items.length > 1) {
+                    groupLabel = `${groupConfig.name} (${commonPrefix})`;
+                }
+
                 const groupItem = new LogicalGroupItem(
-                    groupConfig.name,
+                    groupLabel,
                     groupConfig.description,
                     groupConfig.icon,
                     vscode.TreeItemCollapsibleState.Collapsed
@@ -179,6 +189,10 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                 return a.name.localeCompare(b.name);
             });
 
+            // Calculate common path prefix for smart path display
+            const resolvedPaths = sortedItems.map(item => this.resolvePath(item.path));
+            const commonPrefix = this.findCommonPathPrefix(resolvedPaths);
+
             for (const itemConfig of sortedItems) {
                 try {
                     // Apply search filter to item names and paths
@@ -218,8 +232,16 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                         // Use actual type instead of configured type
                     }
 
-                    // Add absolute path to the item name
-                    const displayName = `${itemConfig.name} (${resolvedPath})`;
+                    // Determine display name based on common prefix
+                    let displayName: string;
+                    if (commonPrefix && sortedItems.length > 1) {
+                        // Use relative path from common prefix
+                        const relativePath = resolvedPath.substring(commonPrefix.length);
+                        displayName = `${itemConfig.name} (${relativePath})`;
+                    } else {
+                        // Use full absolute path
+                        displayName = `${itemConfig.name} (${resolvedPath})`;
+                    }
 
                     const childItem = new LogicalGroupChildItem(
                         displayName,
@@ -428,5 +450,50 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
             console.warn(`Error checking for matching children in ${folderPath}:`, error);
             return false;
         }
+    }
+
+    /**
+     * Find the common path prefix among multiple paths
+     * Returns the longest common directory path, or empty string if no common prefix
+     */
+    private findCommonPathPrefix(paths: string[]): string {
+        if (paths.length === 0) {
+            return '';
+        }
+
+        if (paths.length === 1) {
+            // For a single path, return the directory containing it
+            return path.dirname(paths[0]) + path.sep;
+        }
+
+        // Split all paths into segments
+        const pathSegments = paths.map(p => p.split(path.sep));
+
+        // Find the minimum number of segments
+        const minSegments = Math.min(...pathSegments.map(segments => segments.length));
+
+        // Find common prefix segments
+        let commonSegments: string[] = [];
+        for (let i = 0; i < minSegments; i++) {
+            const segment = pathSegments[0][i];
+            const allMatch = pathSegments.every(segments => segments[i] === segment);
+
+            if (allMatch) {
+                commonSegments.push(segment);
+            } else {
+                break;
+            }
+        }
+
+        // If no common segments or only root, return empty
+        if (commonSegments.length === 0 || (commonSegments.length === 1 && commonSegments[0] === '')) {
+            return '';
+        }
+
+        // Build the common path
+        const commonPath = commonSegments.join(path.sep);
+
+        // Ensure it ends with a separator for clean relative paths
+        return commonPath + path.sep;
     }
 }
