@@ -21,6 +21,14 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
 
     private lastMoveOperation: MoveOperation | null = null;
     private static readonly UNDO_TIMEOUT_MS = 60000; // 1 minute timeout for undo
+    private refreshCallback?: () => void;
+
+    /**
+     * Set the refresh callback to update the tree view after operations
+     */
+    public setRefreshCallback(callback: () => void): void {
+        this.refreshCallback = callback;
+    }
 
     /**
      * Handle drag operation
@@ -158,6 +166,11 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
                     timestamp: Date.now()
                 };
 
+                // Refresh the tree view to show changes
+                if (this.refreshCallback) {
+                    this.refreshCallback();
+                }
+
                 // Show success notification with undo hint
                 vscode.window.showInformationMessage(
                     `Moved "${fileName}" to "${path.basename(targetFolder)}" (Ctrl+Z to undo)`
@@ -203,6 +216,11 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
                 vscode.Uri.file(sourcePath),
                 { overwrite: true }
             );
+
+            // Refresh the tree view to show changes
+            if (this.refreshCallback) {
+                this.refreshCallback();
+            }
 
             vscode.window.showInformationMessage(
                 `Undid move: "${fileName}" restored to original location`

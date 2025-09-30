@@ -60,6 +60,15 @@ export function activate(context: vscode.ExtensionContext) {
             dragAndDropController: logicalDragDropController
         });
 
+        // Connect refresh callbacks to drag-drop controllers
+        // When files are moved, both views should refresh to show the changes
+        const refreshBothViews = () => {
+            physicalTreeDataProvider.refresh();
+            logicalTreeDataProvider.refresh();
+        };
+        physicalDragDropController.setRefreshCallback(refreshBothViews);
+        logicalDragDropController.setRefreshCallback(refreshBothViews);
+
         // Create unified search provider
         const unifiedSearchProvider = new InlineSearchProvider(
             context.extensionUri,
