@@ -430,6 +430,18 @@ export class ConfigurationManager {
     }
 
     /**
+     * Normalize a path for cross-platform comparison
+     * Converts to lowercase on Windows and normalizes separators
+     * @param filePath Path to normalize
+     * @returns Normalized path
+     */
+    private normalizePath(filePath: string): string {
+        const normalized = path.normalize(filePath);
+        // On Windows, paths are case-insensitive, so normalize case for comparison
+        return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+    }
+
+    /**
      * Create a new logical group
      * @param groupName Name of the group
      * @param description Optional description
@@ -493,9 +505,12 @@ export class ConfigurationManager {
             const resolvedPath = this.resolvePath(itemPath);
 
             // Check if item already exists in group
-            const existingItem = group.items.find(item =>
-                path.resolve(this.workspaceRoot, item.path) === resolvedPath
-            );
+            // Use normalized paths for cross-platform comparison (Windows is case-insensitive)
+            const normalizedResolvedPath = this.normalizePath(resolvedPath);
+            const existingItem = group.items.find(item => {
+                const itemResolvedPath = path.resolve(this.workspaceRoot, item.path);
+                return this.normalizePath(itemResolvedPath) === normalizedResolvedPath;
+            });
 
             if (existingItem) {
                 vscode.window.showWarningMessage('This item is already in the logical group.');
@@ -545,10 +560,13 @@ export class ConfigurationManager {
             const resolvedPath = this.resolvePath(itemPath);
 
             // Find and remove the item
+            // Use normalized paths for cross-platform comparison (Windows is case-insensitive)
+            const normalizedResolvedPath = this.normalizePath(resolvedPath);
             const initialLength = group.items.length;
-            group.items = group.items.filter(item =>
-                path.resolve(this.workspaceRoot, item.path) !== resolvedPath
-            );
+            group.items = group.items.filter(item => {
+                const itemResolvedPath = path.resolve(this.workspaceRoot, item.path);
+                return this.normalizePath(itemResolvedPath) !== normalizedResolvedPath;
+            });
 
             if (group.items.length === initialLength) {
                 vscode.window.showWarningMessage('Item not found in logical group.');

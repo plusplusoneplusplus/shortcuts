@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed Windows path comparison issue preventing files from being added to logical groups
+  - Added case-insensitive path comparison for Windows platform
+  - Files can now be successfully added to logical groups on Windows
+
 ## [1.3.5] - 2025-09-29
 
 ### Fixed

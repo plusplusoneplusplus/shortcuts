@@ -297,6 +297,58 @@ suite('ConfigurationManager Tests', () => {
             assert.strictEqual(config.logicalGroups[0].items.length, 0);
         });
 
+        test('should handle case-insensitive path comparison on Windows', async () => {
+            // Create a test file with a specific case
+            const testFile = path.join(tempDir, 'TestFile.txt');
+            fs.writeFileSync(testFile, 'test content');
+
+            await configManager.createLogicalGroup('Case Test Group');
+
+            // Add the file with original case
+            await configManager.addToLogicalGroup('Case Test Group', testFile, 'Test File', 'file');
+
+            let config = await configManager.loadConfiguration();
+            assert.strictEqual(config.logicalGroups[0].items.length, 1);
+
+            // Try to add the same file with different case (should be prevented on all platforms)
+            const differentCasePath = path.join(tempDir, 'testfile.txt');
+            await configManager.addToLogicalGroup('Case Test Group', differentCasePath, 'Test File 2', 'file');
+
+            config = await configManager.loadConfiguration();
+            // On Windows, this should still be 1 (duplicate prevented)
+            // On macOS/Linux with case-sensitive filesystems, this might be 2
+            // But since we're testing the same actual file, it should be 1 on Windows
+            if (process.platform === 'win32') {
+                assert.strictEqual(config.logicalGroups[0].items.length, 1, 'Should prevent duplicate with different case on Windows');
+            }
+
+            // Try to remove using different case
+            await configManager.removeFromLogicalGroup('Case Test Group', differentCasePath);
+
+            config = await configManager.loadConfiguration();
+            // On Windows, removal should work with different case
+            if (process.platform === 'win32') {
+                assert.strictEqual(config.logicalGroups[0].items.length, 0, 'Should remove item with different case on Windows');
+            }
+        });
+
+        test('should add single file to logical group', async () => {
+            // Create a single test file
+            const testFile = path.join(tempDir, 'single-file.txt');
+            fs.writeFileSync(testFile, 'test content');
+
+            // Create group first
+            await configManager.createLogicalGroup('Single File Group');
+
+            // Add the single file to group
+            await configManager.addToLogicalGroup('Single File Group', testFile, 'Single File', 'file');
+
+            const config = await configManager.loadConfiguration();
+            assert.strictEqual(config.logicalGroups[0].items.length, 1);
+            assert.strictEqual(config.logicalGroups[0].items[0].name, 'Single File');
+            assert.strictEqual(config.logicalGroups[0].items[0].type, 'file');
+        });
+
         test('should rename logical group', async () => {
             await configManager.createLogicalGroup('Old Name');
 
