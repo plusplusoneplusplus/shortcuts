@@ -6,30 +6,43 @@ suite('Extension Test Suite', () => {
     vscode.window.showInformationMessage('Start all tests.');
 
     test('Extension should be present', () => {
-        assert.ok(vscode.extensions.getExtension('your-publisher-name.shortcuts'));
+        const extension = vscode.extensions.getExtension('yihengtao.workspace-shortcuts');
+        assert.ok(extension, 'Extension should be installed');
     });
 
     test('Extension should activate', async () => {
-        const extension = vscode.extensions.getExtension('your-publisher-name.shortcuts');
+        const extension = vscode.extensions.getExtension('yihengtao.workspace-shortcuts');
         if (extension) {
             await extension.activate();
             assert.strictEqual(extension.isActive, true);
         }
     });
 
-    test('Should register hello world command', async () => {
+    test('Should register logical group commands', async () => {
         // Get all available commands
         const commands = await vscode.commands.getCommands(true);
 
-        // Check if our command is registered
-        const commandExists = commands.includes('shortcuts.helloWorld');
-        assert.strictEqual(commandExists, true, 'Hello World command should be registered');
+        // Check if key commands are registered
+        const requiredCommands = [
+            'shortcuts.refresh',
+            'shortcuts.createLogicalGroup',
+            'shortcuts.addToLogicalGroup',
+            'shortcuts.removeFromLogicalGroup',
+            'shortcuts.renameLogicalGroup',
+            'shortcuts.deleteLogicalGroup',
+            'shortcuts.openConfiguration'
+        ];
+
+        for (const cmd of requiredCommands) {
+            const commandExists = commands.includes(cmd);
+            assert.ok(commandExists, `Command ${cmd} should be registered`);
+        }
     });
 
-    test('Hello world command should execute without error', async () => {
+    test('Refresh command should execute without error', async () => {
         // Execute the command and ensure it doesn't throw
         try {
-            await vscode.commands.executeCommand('shortcuts.helloWorld');
+            await vscode.commands.executeCommand('shortcuts.refresh');
             // If we get here, the command executed successfully
             assert.ok(true);
         } catch (error) {

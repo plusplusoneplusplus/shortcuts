@@ -3,16 +3,6 @@
  */
 
 /**
- * Configuration for a single shortcut entry
- */
-export interface ShortcutConfig {
-    /** Relative or absolute path to the folder */
-    path: string;
-    /** Optional display name (defaults to folder name if not provided) */
-    name?: string;
-}
-
-/**
  * Configuration for a logical group item (can be folder or file)
  */
 export interface LogicalGroupItem {
@@ -42,17 +32,14 @@ export interface LogicalGroup {
  * Main configuration structure for shortcuts
  */
 export interface ShortcutsConfig {
-    /** Array of physical shortcut configurations */
-    shortcuts: ShortcutConfig[];
     /** Array of logical group configurations */
-    logicalGroups?: LogicalGroup[];
+    logicalGroups: LogicalGroup[];
 }
 
 /**
  * Default empty configuration structure
  */
 export const DEFAULT_SHORTCUTS_CONFIG: ShortcutsConfig = {
-    shortcuts: [],
     logicalGroups: []
 };
 

@@ -341,6 +341,11 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
 
             for (const entry of sortedEntries) {
                 try {
+                    // Skip hidden files and directories (starting with .)
+                    if (entry.name.startsWith('.')) {
+                        continue;
+                    }
+
                     const entryPath = path.join(folderPath, entry.name);
                     const entryUri = vscode.Uri.file(entryPath);
 

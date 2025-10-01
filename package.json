@@ -30,9 +30,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:shortcutsPhysical",
-    "onView:shortcutsLogical",
-    "onCommand:shortcuts.addFolder",
+    "onView:shortcutsView",
     "onCommand:shortcuts.createLogicalGroup",
     "onViewContainer:shortcuts"
   ],
@@ -57,43 +55,19 @@
           "visibility": "visible"
         },
         {
-          "id": "shortcutsPhysical",
-          "name": "Physical Folders",
-          "when": "true"
-        },
-        {
-          "id": "shortcutsLogical",
-          "name": "Logical Groups",
+          "id": "shortcutsView",
+          "name": "Groups",
           "when": "true"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "shortcutsPhysical",
-        "contents": "📁 **Physical Folders**\n\n[Add Folder Shortcut](command:shortcuts.addFolder)\n\nQuick access to actual folders on your filesystem.\n\n**Actions:**\n• Add existing folders\n• Navigate to folder locations\n• Open folders in explorer"
-      },
-      {
-        "view": "shortcutsLogical",
-        "contents": "🏷️ **Logical Groups**\n\n[Create New Group](command:shortcuts.createLogicalGroup)\n\nOrganize shortcuts into custom categories.\n\n**Actions:**\n• Create custom groups\n• Add shortcuts to groups\n• Organize by project, type, or workflow"
+        "view": "shortcutsView",
+        "contents": "📁 **Shortcuts Groups**\n\n[Create New Group](command:shortcuts.createLogicalGroup)\n\nOrganize your workspace with custom groups.\n\n**Actions:**\n• Create groups to organize files and folders\n• Add files and folders to groups\n• Organize by project, type, or workflow\n• Quick access to frequently used locations"
       }
     ],
     "commands": [
-      {
-        "command": "shortcuts.addFolder",
-        "title": "Add Folder Shortcut",
-        "icon": "$(add)"
-      },
-      {
-        "command": "shortcuts.removeShortcut",
-        "title": "Remove Shortcut",
-        "icon": "$(remove)"
-      },
-      {
-        "command": "shortcuts.renameShortcut",
-        "title": "Rename Shortcut",
-        "icon": "$(edit)"
-      },
       {
         "command": "shortcuts.refresh",
         "title": "Refresh",
@@ -150,16 +124,6 @@
         "icon": "$(clear-all)"
       },
       {
-        "command": "shortcuts.addFileToLogicalGroup",
-        "title": "Add File to Group",
-        "icon": "$(add)"
-      },
-      {
-        "command": "shortcuts.addFolderToLogicalGroup",
-        "title": "Add Folder to Group",
-        "icon": "$(add)"
-      },
-      {
         "command": "shortcuts.undoMove",
         "title": "Undo Last Move",
         "icon": "$(discard)"
@@ -178,125 +142,80 @@
     "menus": {
       "view/title": [
         {
-          "command": "shortcuts.addFolder",
-          "when": "view == shortcutsPhysical",
-          "group": "navigation"
-        },
-        {
           "command": "shortcuts.createLogicalGroup",
-          "when": "view == shortcutsLogical",
+          "when": "view == shortcutsView",
           "group": "navigation"
         },
         {
           "command": "shortcuts.refresh",
-          "when": "view == shortcutsPhysical || view == shortcutsLogical",
+          "when": "view == shortcutsView",
           "group": "navigation"
         },
         {
           "command": "shortcuts.openConfiguration",
-          "when": "view == shortcutsPhysical || view == shortcutsLogical",
+          "when": "view == shortcutsView",
           "group": "navigation"
         },
         {
           "command": "shortcuts.showKeyboardHelp",
-          "when": "view == shortcutsPhysical || view == shortcutsLogical",
+          "when": "view == shortcutsView",
           "group": "navigation"
         },
         {
           "command": "shortcuts.clearSearch",
-          "when": "view == shortcutsPhysical || view == shortcutsLogical",
+          "when": "view == shortcutsView",
           "group": "navigation@1"
         }
       ],
       "view/item/context": [
         {
-          "command": "shortcuts.removeShortcut",
-          "when": "view == shortcutsPhysical && viewItem == folder",
-          "group": "shortcuts@1"
-        },
-        {
-          "command": "shortcuts.renameShortcut",
-          "when": "view == shortcutsPhysical && viewItem == folder",
-          "group": "shortcuts@2"
-        },
-        {
-          "command": "shortcuts.copyRelativePath",
-          "when": "view == shortcutsPhysical && viewItem == folder",
-          "group": "shortcuts@3"
-        },
-        {
-          "command": "shortcuts.copyAbsolutePath",
-          "when": "view == shortcutsPhysical && viewItem == folder",
-          "group": "shortcuts@4"
-        },
-        {
-          "command": "shortcuts.addFolderToLogicalGroup",
-          "when": "view == shortcutsPhysical && viewItem == folder",
-          "group": "shortcuts@5"
-        },
-        {
-          "command": "shortcuts.copyRelativePath",
-          "when": "view == shortcutsPhysical && viewItem == file",
-          "group": "file@1"
-        },
-        {
-          "command": "shortcuts.copyAbsolutePath",
-          "when": "view == shortcutsPhysical && viewItem == file",
-          "group": "file@2"
-        },
-        {
-          "command": "shortcuts.addFileToLogicalGroup",
-          "when": "view == shortcutsPhysical && viewItem == file",
-          "group": "file@3"
-        },
-        {
           "command": "shortcuts.addToLogicalGroup",
-          "when": "view == shortcutsLogical && viewItem == logicalGroup",
+          "when": "view == shortcutsView && viewItem == logicalGroup",
           "group": "logicalGroup@1"
         },
         {
           "command": "shortcuts.renameLogicalGroup",
-          "when": "view == shortcutsLogical && viewItem == logicalGroup",
+          "when": "view == shortcutsView && viewItem == logicalGroup",
           "group": "logicalGroup@2"
         },
         {
           "command": "shortcuts.deleteLogicalGroup",
-          "when": "view == shortcutsLogical && viewItem == logicalGroup",
+          "when": "view == shortcutsView && viewItem == logicalGroup",
           "group": "logicalGroup@3"
         },
         {
           "command": "shortcuts.removeFromLogicalGroup",
-          "when": "view == shortcutsLogical && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
           "group": "logicalGroupItem@1"
         },
         {
           "command": "shortcuts.copyRelativePath",
-          "when": "view == shortcutsLogical && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
           "group": "logicalGroupItem@2"
         },
         {
           "command": "shortcuts.copyAbsolutePath",
-          "when": "view == shortcutsLogical && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
           "group": "logicalGroupItem@3"
         },
         {
           "command": "shortcuts.copyRelativePath",
-          "when": "view == shortcutsLogical && viewItem == folder",
+          "when": "view == shortcutsView && viewItem == folder",
           "group": "folder@1"
         },
         {
           "command": "shortcuts.copyAbsolutePath",
-          "when": "view == shortcutsLogical && viewItem == folder",
+          "when": "view == shortcutsView && viewItem == folder",
           "group": "folder@2"
         },
         {
           "command": "shortcuts.copyRelativePath",
-          "when": "view == shortcutsLogical && viewItem == file",
+          "when": "view == shortcutsView && viewItem == file",
           "group": "file@1"
         },
         {
           "command": "shortcuts.copyAbsolutePath",
-          "when": "view == shortcutsLogical && viewItem == file",
+          "when": "view == shortcutsView && viewItem == file",
           "group": "file@2"
         },
         {
@@ -312,103 +231,58 @@
       ],
       "view/context": [
         {
-          "command": "shortcuts.addFolder",
-          "when": "view == shortcutsPhysical",
-          "group": "shortcuts@1"
-        },
-        {
           "command": "shortcuts.createLogicalGroup",
-          "when": "view == shortcutsLogical",
+          "when": "view == shortcutsView",
           "group": "shortcuts@1"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "shortcuts.physical.handleEnterKey",
-        "key": "enter",
-        "when": "focusedView == shortcutsPhysical"
-      },
-      {
-        "command": "shortcuts.physical.handleSpaceKey",
-        "key": "space",
-        "when": "focusedView == shortcutsPhysical"
-      },
-      {
-        "command": "shortcuts.physical.handleHomeKey",
-        "key": "home",
-        "when": "focusedView == shortcutsPhysical"
-      },
-      {
-        "command": "shortcuts.physical.handleEndKey",
-        "key": "end",
-        "when": "focusedView == shortcutsPhysical"
-      },
-      {
-        "command": "shortcuts.physical.handleRightArrow",
-        "key": "right",
-        "when": "focusedView == shortcutsPhysical"
-      },
-      {
-        "command": "shortcuts.physical.handleLeftArrow",
-        "key": "left",
-        "when": "focusedView == shortcutsPhysical"
-      },
-      {
-        "command": "shortcuts.physical.handleF2Key",
-        "key": "f2",
-        "when": "focusedView == shortcutsPhysical"
-      },
-      {
-        "command": "shortcuts.physical.handleDeleteKey",
-        "key": "delete",
-        "when": "focusedView == shortcutsPhysical"
-      },
-      {
         "command": "shortcuts.logical.handleEnterKey",
         "key": "enter",
-        "when": "focusedView == shortcutsLogical"
+        "when": "focusedView == shortcutsView"
       },
       {
         "command": "shortcuts.logical.handleSpaceKey",
         "key": "space",
-        "when": "focusedView == shortcutsLogical"
+        "when": "focusedView == shortcutsView"
       },
       {
         "command": "shortcuts.logical.handleHomeKey",
         "key": "home",
-        "when": "focusedView == shortcutsLogical"
+        "when": "focusedView == shortcutsView"
       },
       {
         "command": "shortcuts.logical.handleEndKey",
         "key": "end",
-        "when": "focusedView == shortcutsLogical"
+        "when": "focusedView == shortcutsView"
       },
       {
         "command": "shortcuts.logical.handleRightArrow",
         "key": "right",
-        "when": "focusedView == shortcutsLogical"
+        "when": "focusedView == shortcutsView"
       },
       {
         "command": "shortcuts.logical.handleLeftArrow",
         "key": "left",
-        "when": "focusedView == shortcutsLogical"
+        "when": "focusedView == shortcutsView"
       },
       {
         "command": "shortcuts.logical.handleF2Key",
         "key": "f2",
-        "when": "focusedView == shortcutsLogical"
+        "when": "focusedView == shortcutsView"
       },
       {
         "command": "shortcuts.logical.handleDeleteKey",
         "key": "delete",
-        "when": "focusedView == shortcutsLogical"
+        "when": "focusedView == shortcutsView"
       },
       {
         "command": "shortcuts.undoMove",
         "key": "ctrl+z",
         "mac": "cmd+z",
-        "when": "focusedView == shortcutsPhysical || focusedView == shortcutsLogical"
+        "when": "focusedView == shortcutsView"
       }
     ]
   },

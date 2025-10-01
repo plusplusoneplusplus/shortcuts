@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is the "Workspace Shortcuts" VSCode extension that provides customizable folder shortcuts and logical groups for improved workspace navigation. The extension creates a sidebar panel with two main views:
+This is the "Workspace Shortcuts" VSCode extension that provides customizable groups for organizing files and folders in your workspace. The extension creates a sidebar panel with:
 
-1. **Physical Folders** - Direct shortcuts to filesystem folders
-2. **Logical Groups** - Custom organization of files and folders into thematic groups
-3. **Unified Search** - Cross-view search functionality via webview
+1. **Shortcut Groups** - Custom organization of files and folders into thematic groups
+2. **Unified Search** - Search functionality via webview
+3. **Flexible Organization** - Group any files and folders regardless of their physical location
 
 ## Development Commands
 
@@ -32,15 +32,15 @@ This is the "Workspace Shortcuts" VSCode extension that provides customizable fo
 ### Core Components
 
 **Main Entry Point (`src/extension.ts`)**
-- Activates extension and registers all tree views
+- Activates extension and registers the tree view
 - Initializes configuration management with workspace root detection
-- Sets up keyboard navigation handlers for both views
-- Registers webview search provider and connects to tree data providers
+- Sets up keyboard navigation handlers
+- Registers webview search provider and connects to tree data provider
 
-**Tree Data Providers**
-- `ShortcutsTreeDataProvider` (`src/shortcuts/tree-data-provider.ts`) - Handles physical folder shortcuts
+**Tree Data Provider**
 - `LogicalTreeDataProvider` (`src/shortcuts/logical-tree-data-provider.ts`) - Manages logical groups and their contents
-- Both implement VSCode's `TreeDataProvider<T>` interface and support search filtering
+- Implements VSCode's `TreeDataProvider<T>` interface and supports search filtering
+- Handles all shortcut organization through groups
 
 **Configuration Management (`src/shortcuts/configuration-manager.ts`)**
 - Manages YAML configuration files (`.vscode/shortcuts.yaml`)
@@ -51,35 +51,41 @@ This is the "Workspace Shortcuts" VSCode extension that provides customizable fo
 **Search and Navigation**
 - `InlineSearchProvider` (`src/shortcuts/inline-search-provider.ts`) - Webview-based unified search
 - `KeyboardNavigationHandler` (`src/shortcuts/keyboard-navigation.ts`) - Keyboard shortcuts (Enter, Space, F2, Delete, arrows)
-- Search filters both physical and logical views simultaneously
+- Search filters the group view
 
 **Command System (`src/shortcuts/commands.ts`)**
 - Centralized command registration and handling
-- Supports folder/group operations (add, remove, rename)
-- File operations (copy paths, add to groups)
+- Supports group operations (create, rename, delete)
+- Item operations (add to group, remove from group, copy paths)
 - Search management commands
 
 ### Data Flow
 
 1. **Configuration Loading**: Extension reads `.vscode/shortcuts.yaml` or creates default config
-2. **Tree Population**: Tree data providers parse config and generate tree items
-3. **User Interaction**: Commands modify configuration and trigger tree refresh
-4. **Search Integration**: Search provider filters tree views via shared search state
-5. **Persistence**: Changes are automatically saved to YAML configuration
+2. **Migration**: Old physical shortcuts automatically converted to logical groups on first load
+3. **Tree Population**: Tree data provider parses config and generates tree items
+4. **User Interaction**: Commands modify configuration and trigger tree refresh
+5. **Search Integration**: Search provider filters tree view
+6. **Persistence**: Changes are automatically saved to YAML configuration
 
 ### Key Types (`src/shortcuts/types.ts`)
 
 ```typescript
-interface ShortcutConfig {
-    path: string;    // Relative or absolute path
-    name?: string;   // Optional display name
-}
-
 interface LogicalGroup {
     name: string;           // Group identifier
     description?: string;   // Optional description
     items: LogicalGroupItem[];  // Folder/file items
     icon?: string;         // Optional group icon
+}
+
+interface LogicalGroupItem {
+    path: string;      // Relative or absolute path
+    name: string;      // Display name
+    type: 'folder' | 'file';  // Item type
+}
+
+interface ShortcutsConfig {
+    logicalGroups: LogicalGroup[];  // All groups
 }
 ```
 
@@ -96,11 +102,6 @@ interface LogicalGroup {
 The extension uses YAML configuration files stored at `.vscode/shortcuts.yaml` with this structure:
 
 ```yaml
-shortcuts:
-  - path: "src"
-    name: "Source Code"
-  - path: "/absolute/path/to/folder"
-
 logicalGroups:
   - name: "Project Files"
     description: "Core project components"
@@ -111,7 +112,15 @@ logicalGroups:
       - path: "src"
         name: "Source"
         type: "folder"
+  - name: "Quick Access"
+    description: "Frequently used folders"
+    items:
+      - path: "/absolute/path/to/folder"
+        name: "External Folder"
+        type: "folder"
 ```
+
+**Note**: Old configurations with a `shortcuts` array are automatically migrated to `logicalGroups` format on first load.
 
 ## Development Notes
 
@@ -129,8 +138,17 @@ logicalGroups:
 Tests are located in `src/test/suite/` and cover:
 - Command functionality
 - Tree data provider behavior
-- Configuration management
+- Configuration management (including migration)
 - Theming system
 - Extension activation
 
 Run tests with `npm test` which handles compilation and setup automatically.
+
+## Version 2.0 Changes
+
+The extension has been simplified to use a single unified view with logical groups:
+- Removed the separate "Physical Folders" view
+- All shortcuts now organized through logical groups
+- Old physical shortcuts automatically migrate to single-item groups
+- Cleaner, more intuitive interface
+- Same functionality with better organization

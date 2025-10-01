@@ -2,12 +2,13 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ShortcutsCommands } from './shortcuts/commands';
+import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { InlineSearchProvider } from './shortcuts/inline-search-provider';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import { NotificationManager } from './shortcuts/notification-manager';
-import { ShortcutsTreeDataProvider } from './shortcuts/tree-data-provider';
+import { ThemeManager } from './shortcuts/theme-manager';
 
 /**
  * Get a stable global configuration path when no workspace is open
@@ -30,50 +31,47 @@ export function activate(context: vscode.ExtensionContext) {
     console.log(`Initializing shortcuts panel for workspace: ${workspaceRoot}`);
 
     try {
-        // Initialize physical tree data provider
-        const physicalTreeDataProvider = new ShortcutsTreeDataProvider(workspaceRoot);
+        // Initialize configuration and theme managers
+        const configurationManager = new ConfigurationManager(workspaceRoot);
+        const themeManager = new ThemeManager();
 
-        // Initialize logical tree data provider
-        const logicalTreeDataProvider = new LogicalTreeDataProvider(
+        // Set up file watcher for configuration changes
+        const treeDataProvider = new LogicalTreeDataProvider(
             workspaceRoot,
-            physicalTreeDataProvider.getConfigurationManager(),
-            physicalTreeDataProvider.getThemeManager()
+            configurationManager,
+            themeManager
         );
 
-        // Initialize drag and drop controllers for both views
-        const physicalDragDropController = new ShortcutsDragDropController();
-        const logicalDragDropController = new ShortcutsDragDropController();
-
-        // Register physical tree view with drag and drop support
-        const physicalTreeView = vscode.window.createTreeView('shortcutsPhysical', {
-            treeDataProvider: physicalTreeDataProvider,
-            showCollapseAll: true,
-            canSelectMany: true,
-            dragAndDropController: physicalDragDropController
+        configurationManager.watchConfigFile(() => {
+            treeDataProvider.refresh();
         });
 
-        // Register logical tree view with drag and drop support
-        const logicalTreeView = vscode.window.createTreeView('shortcutsLogical', {
-            treeDataProvider: logicalTreeDataProvider,
-            showCollapseAll: true,
-            canSelectMany: true,
-            dragAndDropController: logicalDragDropController
+        // Initialize theme management with refresh callback
+        themeManager.initialize(() => {
+            treeDataProvider.refresh();
         });
 
-        // Connect refresh callbacks to drag-drop controllers
-        // When files are moved, both views should refresh to show the changes
-        const refreshBothViews = () => {
-            physicalTreeDataProvider.refresh();
-            logicalTreeDataProvider.refresh();
-        };
-        physicalDragDropController.setRefreshCallback(refreshBothViews);
-        logicalDragDropController.setRefreshCallback(refreshBothViews);
+        // Initialize drag and drop controller
+        const dragDropController = new ShortcutsDragDropController();
+
+        // Register tree view with drag and drop support
+        const treeView = vscode.window.createTreeView('shortcutsView', {
+            treeDataProvider: treeDataProvider,
+            showCollapseAll: true,
+            canSelectMany: true,
+            dragAndDropController: dragDropController
+        });
+
+        // Connect refresh callback to drag-drop controller
+        dragDropController.setRefreshCallback(() => {
+            treeDataProvider.refresh();
+        });
 
         // Create unified search provider
         const unifiedSearchProvider = new InlineSearchProvider(
             context.extensionUri,
             'shortcutsSearch',
-            'Search folders and groups...'
+            'Search groups...'
         );
 
         // Register webview provider
@@ -81,34 +79,29 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.registerWebviewViewProvider('shortcutsSearch', unifiedSearchProvider)
         );
 
-        // Connect search provider to both tree data providers
+        // Connect search provider to tree data provider
         unifiedSearchProvider.onSearchChanged((searchTerm) => {
-            physicalTreeDataProvider.setSearchFilter(searchTerm);
-            logicalTreeDataProvider.setSearchFilter(searchTerm);
+            treeDataProvider.setSearchFilter(searchTerm);
         });
 
         // Function to update view descriptions - simplified since we have inline search
         const updateSearchDescriptions = () => {
             // Clear descriptions since search is now inline
-            physicalTreeView.description = undefined;
-            logicalTreeView.description = undefined;
+            treeView.description = undefined;
         };
 
         // Initial description setup
         updateSearchDescriptions();
 
-        // Initialize keyboard navigation handlers for both views
-        const physicalKeyboardNavigationHandler = new KeyboardNavigationHandler(physicalTreeView, physicalTreeDataProvider, 'physical');
-        const logicalKeyboardNavigationHandler = new KeyboardNavigationHandler(logicalTreeView, logicalTreeDataProvider, 'logical');
+        // Initialize keyboard navigation handler
+        const keyboardNavigationHandler = new KeyboardNavigationHandler(treeView, treeDataProvider, 'logical');
 
         // Initialize command handlers
         const commandsHandler = new ShortcutsCommands(
-            physicalTreeDataProvider,
-            logicalTreeDataProvider,
+            treeDataProvider,
             updateSearchDescriptions,
             unifiedSearchProvider,
-            physicalTreeView,
-            logicalTreeView
+            treeView
         );
         const commandDisposables = commandsHandler.registerCommands(context);
 
@@ -123,11 +116,8 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Register undo command for drag and drop operations
         const undoMoveCommand = vscode.commands.registerCommand('shortcuts.undoMove', async () => {
-            // Try to undo from physical controller first, then logical
-            if (physicalDragDropController.canUndo()) {
-                await physicalDragDropController.undoLastMove();
-            } else if (logicalDragDropController.canUndo()) {
-                await logicalDragDropController.undoLastMove();
+            if (dragDropController.canUndo()) {
+                await dragDropController.undoLastMove();
             } else {
                 vscode.window.showInformationMessage('No move operation to undo.');
             }
@@ -135,12 +125,11 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Collect all disposables for proper cleanup
         const disposables: vscode.Disposable[] = [
-            physicalTreeView,
-            logicalTreeView,
-            physicalTreeDataProvider,
-            logicalTreeDataProvider,
-            physicalKeyboardNavigationHandler,
-            logicalKeyboardNavigationHandler,
+            treeView,
+            treeDataProvider,
+            configurationManager,
+            themeManager,
+            keyboardNavigationHandler,
             keyboardHelpCommand,
             undoMoveCommand,
             ...commandDisposables
@@ -155,7 +144,7 @@ export function activate(context: vscode.ExtensionContext) {
         const hasShownWelcome = context.globalState.get('shortcuts.hasShownWelcome', false);
         if (!hasShownWelcome) {
             NotificationManager.showInfo(
-                'Shortcuts panel is now available! Right-click in the panel to add folder shortcuts.',
+                'Shortcuts panel is now available! Right-click in the panel to add groups.',
                 { timeout: 8000, actions: ['Got it!'] }
             ).then(() => {
                 context.globalState.update('shortcuts.hasShownWelcome', true);

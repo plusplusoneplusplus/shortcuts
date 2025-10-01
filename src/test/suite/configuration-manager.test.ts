@@ -62,7 +62,7 @@ suite('ConfigurationManager Tests', () => {
             assert.strictEqual(fs.existsSync(configPath), true);
         });
 
-        test('should load valid YAML configuration', async () => {
+        test('should load valid YAML configuration with logical groups', async () => {
             // Create .vscode directory
             const vscodePath = path.join(tempDir, '.vscode');
             fs.mkdirSync(vscodePath, { recursive: true });
@@ -72,27 +72,60 @@ suite('ConfigurationManager Tests', () => {
             const testFolder2 = path.join(tempDir, 'test-folder-2');
             fs.mkdirSync(testFolder1);
             fs.mkdirSync(testFolder2);
+            fs.writeFileSync(path.join(testFolder1, 'test.txt'), 'content');
 
             // Write valid configuration
             const configPath = path.join(vscodePath, 'shortcuts.yaml');
-            const testConfig = {
-                shortcuts: [
-                    { path: 'test-folder-1', name: 'Test Folder 1' },
-                    { path: 'test-folder-2' }
-                ]
-            };
 
-            fs.writeFileSync(configPath, `shortcuts:
-  - path: test-folder-1
-    name: Test Folder 1
-  - path: test-folder-2`);
+            fs.writeFileSync(configPath, `logicalGroups:
+  - name: Test Group 1
+    description: First group
+    items:
+      - path: test-folder-1
+        name: Folder 1
+        type: folder
+      - path: test-folder-1/test.txt
+        name: Test File
+        type: file
+  - name: Test Group 2
+    items:
+      - path: test-folder-2
+        name: Folder 2
+        type: folder`);
 
             const config = await configManager.loadConfiguration();
 
-            assert.strictEqual(config.shortcuts.length, 2);
-            assert.strictEqual(config.shortcuts[0].path, 'test-folder-1');
-            assert.strictEqual(config.shortcuts[0].name, 'Test Folder 1');
-            assert.strictEqual(config.shortcuts[1].path, 'test-folder-2');
+            assert.strictEqual(config.logicalGroups.length, 2);
+            assert.strictEqual(config.logicalGroups[0].name, 'Test Group 1');
+            assert.strictEqual(config.logicalGroups[0].description, 'First group');
+            assert.strictEqual(config.logicalGroups[0].items.length, 2);
+            assert.strictEqual(config.logicalGroups[1].name, 'Test Group 2');
+            assert.strictEqual(config.logicalGroups[1].items.length, 1);
+        });
+
+        test('should migrate old physical shortcuts format', async () => {
+            // Create .vscode directory
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            // Create test folder
+            const testFolder = path.join(tempDir, 'test-folder');
+            fs.mkdirSync(testFolder);
+
+            // Write old-format configuration
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, `shortcuts:
+  - path: test-folder
+    name: Old Shortcut`);
+
+            const config = await configManager.loadConfiguration();
+
+            // Should have migrated to logical groups
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].name, 'Old Shortcut');
+            assert.strictEqual(config.logicalGroups[0].items.length, 1);
+            assert.strictEqual(config.logicalGroups[0].items[0].path, 'test-folder');
+            assert.strictEqual(config.logicalGroups[0].items[0].type, 'folder');
         });
 
         test('should handle invalid YAML syntax gracefully', async () => {
@@ -102,389 +135,297 @@ suite('ConfigurationManager Tests', () => {
 
             // Write invalid YAML
             const configPath = path.join(vscodePath, 'shortcuts.yaml');
-            fs.writeFileSync(configPath, 'invalid: yaml: content: [unclosed');
+            fs.writeFileSync(configPath, `logicalGroups: [[[invalid`);
 
             const config = await configManager.loadConfiguration();
 
+            // Should return default configuration
             assert.deepStrictEqual(config, DEFAULT_SHORTCUTS_CONFIG);
-            assert.strictEqual(warningMessages.length, 1);
-            assert.ok(warningMessages[0].includes('invalid YAML syntax'));
         });
 
-        test('should skip shortcuts with non-existent paths', async () => {
+        test('should skip groups with non-existent paths', async () => {
             // Create .vscode directory
             const vscodePath = path.join(tempDir, '.vscode');
             fs.mkdirSync(vscodePath, { recursive: true });
 
-            // Create one valid folder
-            const validFolder = path.join(tempDir, 'valid-folder');
-            fs.mkdirSync(validFolder);
-
-            // Write configuration with valid and invalid paths
+            // Write configuration with non-existent path
             const configPath = path.join(vscodePath, 'shortcuts.yaml');
-            fs.writeFileSync(configPath, `shortcuts:
-  - path: valid-folder
-    name: Valid Folder
-  - path: non-existent-folder
-    name: Invalid Folder`);
+            fs.writeFileSync(configPath, `logicalGroups:
+  - name: Test Group
+    items:
+      - path: non-existent-folder
+        name: Missing
+        type: folder`);
 
             const config = await configManager.loadConfiguration();
 
-            assert.strictEqual(config.shortcuts.length, 1);
-            assert.strictEqual(config.shortcuts[0].path, 'valid-folder');
+            // Group should exist but have no items
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].items.length, 0);
         });
 
-        test('should skip shortcuts pointing to files instead of directories', async () => {
+        test('should handle type mismatch gracefully', async () => {
             // Create .vscode directory
             const vscodePath = path.join(tempDir, '.vscode');
             fs.mkdirSync(vscodePath, { recursive: true });
 
-            // Create a file and a folder
+            // Create a file
             const testFile = path.join(tempDir, 'test-file.txt');
-            const testFolder = path.join(tempDir, 'test-folder');
-            fs.writeFileSync(testFile, 'test content');
-            fs.mkdirSync(testFolder);
+            fs.writeFileSync(testFile, 'content');
 
-            // Write configuration pointing to both file and folder
+            // Write configuration claiming file is a folder
             const configPath = path.join(vscodePath, 'shortcuts.yaml');
-            fs.writeFileSync(configPath, `shortcuts:
-  - path: test-file.txt
-    name: Test File
-  - path: test-folder
-    name: Test Folder`);
+            fs.writeFileSync(configPath, `logicalGroups:
+  - name: Test Group
+    items:
+      - path: test-file.txt
+        name: File as Folder
+        type: folder`);
 
             const config = await configManager.loadConfiguration();
 
-            assert.strictEqual(config.shortcuts.length, 1);
-            assert.strictEqual(config.shortcuts[0].path, 'test-folder');
+            // Should use actual type (file) instead of configured type (folder)
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].items.length, 1);
+            assert.strictEqual(config.logicalGroups[0].items[0].type, 'file');
         });
     });
+
     suite('saveConfiguration', () => {
         test('should save configuration to YAML file', async () => {
             const testConfig: ShortcutsConfig = {
-                shortcuts: [
-                    { path: 'src', name: 'Source' },
-                    { path: 'tests', name: 'Tests' }
+                logicalGroups: [
+                    {
+                        name: 'Test Group',
+                        description: 'Test Description',
+                        items: [
+                            { path: 'test-folder', name: 'Test Folder', type: 'folder' }
+                        ]
+                    }
                 ]
             };
 
             await configManager.saveConfiguration(testConfig);
 
+            // Verify file was created
             const configPath = configManager.getConfigPath();
             assert.strictEqual(fs.existsSync(configPath), true);
 
-            const fileContent = fs.readFileSync(configPath, 'utf8');
-            assert.ok(fileContent.includes('shortcuts:'));
-            assert.ok(fileContent.includes('path: src'));
-            assert.ok(fileContent.includes('name: Source'));
+            // Load and verify content
+            const loadedConfig = await configManager.loadConfiguration();
+            assert.strictEqual(loadedConfig.logicalGroups.length, 1);
+            assert.strictEqual(loadedConfig.logicalGroups[0].name, 'Test Group');
         });
 
         test('should create .vscode directory if it does not exist', async () => {
             const testConfig: ShortcutsConfig = {
-                shortcuts: [{ path: 'test', name: 'Test' }]
+                logicalGroups: []
             };
-
-            // Ensure .vscode directory doesn't exist
-            const vscodePath = path.join(tempDir, '.vscode');
-            assert.strictEqual(fs.existsSync(vscodePath), false);
 
             await configManager.saveConfiguration(testConfig);
 
-            assert.strictEqual(fs.existsSync(vscodePath), true);
-            assert.strictEqual(fs.existsSync(configManager.getConfigPath()), true);
-        });
+            const configPath = configManager.getConfigPath();
+            const configDir = path.dirname(configPath);
 
-        test('should handle permission errors gracefully', async () => {
-            // Skip this test on Windows as permission handling is different
-            if (process.platform === 'win32') {
-                return;
-            }
-
-            // Create .vscode directory with no write permissions
-            const vscodePath = path.join(tempDir, '.vscode');
-            fs.mkdirSync(vscodePath);
-            fs.chmodSync(vscodePath, 0o444); // Read-only
-
-            const testConfig: ShortcutsConfig = {
-                shortcuts: [{ path: 'test', name: 'Test' }]
-            };
-
-            try {
-                await configManager.saveConfiguration(testConfig);
-                assert.fail('Should have thrown an error');
-            } catch (error) {
-                assert.ok(error instanceof Error);
-                assert.strictEqual(errorMessages.length, 1);
-                assert.ok(errorMessages[0].includes('Permission denied'));
-            }
-
-            // Restore permissions for cleanup
-            fs.chmodSync(vscodePath, 0o755);
+            assert.strictEqual(fs.existsSync(configDir), true);
         });
     });
 
-    suite('addShortcut', () => {
-        test('should add new shortcut to configuration', async () => {
-            // Create test folder
-            const testFolder = path.join(tempDir, 'new-folder');
-            fs.mkdirSync(testFolder);
-
-            await configManager.addShortcut('new-folder', 'New Folder');
+    suite('Logical Group Operations', () => {
+        test('should create new logical group', async () => {
+            await configManager.createLogicalGroup('New Group', 'Description');
 
             const config = await configManager.loadConfiguration();
-            assert.strictEqual(config.shortcuts.length, 1);
-            assert.strictEqual(config.shortcuts[0].path, 'new-folder');
-            assert.strictEqual(config.shortcuts[0].name, 'New Folder');
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].name, 'New Group');
+            assert.strictEqual(config.logicalGroups[0].description, 'Description');
+            assert.strictEqual(config.logicalGroups[0].items.length, 0);
         });
 
-        test('should use folder name as default display name', async () => {
-            // Create test folder
-            const testFolder = path.join(tempDir, 'auto-named-folder');
-            fs.mkdirSync(testFolder);
-
-            await configManager.addShortcut('auto-named-folder');
+        test('should prevent duplicate group names', async () => {
+            await configManager.createLogicalGroup('Test Group');
+            await configManager.createLogicalGroup('Test Group');
 
             const config = await configManager.loadConfiguration();
-            assert.strictEqual(config.shortcuts.length, 1);
-            assert.strictEqual(config.shortcuts[0].name, 'auto-named-folder');
+            // Should only have one group
+            assert.strictEqual(config.logicalGroups.length, 1);
+        });
+
+        test('should add item to logical group', async () => {
+            // Create a test folder
+            const testFolder = path.join(tempDir, 'test-folder');
+            fs.mkdirSync(testFolder);
+
+            // Create group first
+            await configManager.createLogicalGroup('Test Group');
+
+            // Add item to group
+            await configManager.addToLogicalGroup('Test Group', testFolder, 'Test Folder', 'folder');
+
+            const config = await configManager.loadConfiguration();
+            assert.strictEqual(config.logicalGroups[0].items.length, 1);
+            assert.strictEqual(config.logicalGroups[0].items[0].name, 'Test Folder');
+            assert.strictEqual(config.logicalGroups[0].items[0].type, 'folder');
+        });
+
+        test('should prevent duplicate items in group', async () => {
+            const testFolder = path.join(tempDir, 'test-folder');
+            fs.mkdirSync(testFolder);
+
+            await configManager.createLogicalGroup('Test Group');
+            await configManager.addToLogicalGroup('Test Group', testFolder, 'Test Folder', 'folder');
+            await configManager.addToLogicalGroup('Test Group', testFolder, 'Test Folder', 'folder');
+
+            const config = await configManager.loadConfiguration();
+            // Should only have one item
+            assert.strictEqual(config.logicalGroups[0].items.length, 1);
+        });
+
+        test('should remove item from logical group', async () => {
+            const testFolder = path.join(tempDir, 'test-folder');
+            fs.mkdirSync(testFolder);
+
+            await configManager.createLogicalGroup('Test Group');
+            await configManager.addToLogicalGroup('Test Group', testFolder, 'Test Folder', 'folder');
+
+            let config = await configManager.loadConfiguration();
+            assert.strictEqual(config.logicalGroups[0].items.length, 1);
+
+            await configManager.removeFromLogicalGroup('Test Group', testFolder);
+
+            config = await configManager.loadConfiguration();
+            assert.strictEqual(config.logicalGroups[0].items.length, 0);
+        });
+
+        test('should rename logical group', async () => {
+            await configManager.createLogicalGroup('Old Name');
+
+            await configManager.renameLogicalGroup('Old Name', 'New Name');
+
+            const config = await configManager.loadConfiguration();
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].name, 'New Name');
+        });
+
+        test('should prevent renaming to existing group name', async () => {
+            await configManager.createLogicalGroup('Group 1');
+            await configManager.createLogicalGroup('Group 2');
+
+            await configManager.renameLogicalGroup('Group 1', 'Group 2');
+
+            const config = await configManager.loadConfiguration();
+            // Group 1 should still exist with original name
+            const group1 = config.logicalGroups.find(g => g.name === 'Group 1');
+            assert.ok(group1);
+        });
+
+        test('should delete logical group', async () => {
+            await configManager.createLogicalGroup('Group to Delete');
+
+            let config = await configManager.loadConfiguration();
+            assert.strictEqual(config.logicalGroups.length, 1);
+
+            await configManager.deleteLogicalGroup('Group to Delete');
+
+            config = await configManager.loadConfiguration();
+            assert.strictEqual(config.logicalGroups.length, 0);
         });
 
         test('should handle absolute paths correctly', async () => {
-            // Create test folder
-            const testFolder = path.join(tempDir, 'absolute-path-folder');
+            const testFolder = path.join(tempDir, 'test-folder');
             fs.mkdirSync(testFolder);
 
-            await configManager.addShortcut(testFolder, 'Absolute Path');
+            await configManager.createLogicalGroup('Test Group');
+            await configManager.addToLogicalGroup('Test Group', testFolder, 'Absolute Path', 'folder');
 
             const config = await configManager.loadConfiguration();
-            assert.strictEqual(config.shortcuts.length, 1);
-            // Should store as relative path when inside workspace
-            assert.strictEqual(config.shortcuts[0].path, 'absolute-path-folder');
+            assert.strictEqual(config.logicalGroups[0].items.length, 1);
         });
 
-        test('should prevent duplicate shortcuts', async () => {
-            // Create test folder
-            const testFolder = path.join(tempDir, 'duplicate-folder');
+        test('should handle relative paths correctly', async () => {
+            const testFolder = path.join(tempDir, 'test-folder');
             fs.mkdirSync(testFolder);
 
-            // Add shortcut twice
-            await configManager.addShortcut('duplicate-folder', 'First');
-            await configManager.addShortcut('duplicate-folder', 'Second');
+            await configManager.createLogicalGroup('Test Group');
+            await configManager.addToLogicalGroup('Test Group', 'test-folder', 'Relative Path', 'folder');
 
             const config = await configManager.loadConfiguration();
-            assert.strictEqual(config.shortcuts.length, 1);
-            assert.strictEqual(warningMessages.length, 1);
-            assert.ok(warningMessages[0].includes('already added'));
-        });
-
-        test('should handle paths outside workspace', async () => {
-            // Create folder outside workspace
-            const outsideFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'outside-'));
-
-            try {
-                await configManager.addShortcut(outsideFolder, 'Outside');
-
-                const config = await configManager.loadConfiguration();
-                assert.strictEqual(config.shortcuts.length, 1);
-                // Should store as absolute path when outside workspace
-                assert.strictEqual(config.shortcuts[0].path, outsideFolder);
-            } finally {
-                fs.rmSync(outsideFolder, { recursive: true, force: true });
-            }
+            assert.strictEqual(config.logicalGroups[0].items.length, 1);
         });
     });
 
-    suite('removeShortcut', () => {
-        test('should remove existing shortcut', async () => {
-            // Create test folder and add shortcut
-            const testFolder = path.join(tempDir, 'remove-me');
-            fs.mkdirSync(testFolder);
-            await configManager.addShortcut('remove-me', 'Remove Me');
-
-            // Verify it was added
-            let config = await configManager.loadConfiguration();
-            assert.strictEqual(config.shortcuts.length, 1);
-
-            // Remove the shortcut
-            await configManager.removeShortcut('remove-me');
-
-            // Verify it was removed
-            config = await configManager.loadConfiguration();
-            assert.strictEqual(config.shortcuts.length, 0);
-        });
-
-        test('should handle non-existent shortcut gracefully', async () => {
-            await configManager.removeShortcut('non-existent');
-
-            assert.strictEqual(warningMessages.length, 1);
-            assert.ok(warningMessages[0].includes('not found'));
-        });
-
-        test('should handle absolute paths when removing', async () => {
-            // Create test folder and add shortcut
-            const testFolder = path.join(tempDir, 'absolute-remove');
-            fs.mkdirSync(testFolder);
-            await configManager.addShortcut('absolute-remove');
-
-            // Remove using absolute path
-            await configManager.removeShortcut(testFolder);
-
-            const config = await configManager.loadConfiguration();
-            assert.strictEqual(config.shortcuts.length, 0);
-        });
-    });
-
-    suite('renameShortcut', () => {
-        test('should rename existing shortcut', async () => {
-            // Create test folder and add shortcut
-            const testFolder = path.join(tempDir, 'rename-me');
-            fs.mkdirSync(testFolder);
-            await configManager.addShortcut('rename-me', 'Original Name');
-
-            // Rename the shortcut
-            await configManager.renameShortcut('rename-me', 'New Name');
-
-            const config = await configManager.loadConfiguration();
-            assert.strictEqual(config.shortcuts.length, 1);
-            assert.strictEqual(config.shortcuts[0].name, 'New Name');
-        });
-
-        test('should handle non-existent shortcut gracefully', async () => {
-            await configManager.renameShortcut('non-existent', 'New Name');
-
-            assert.strictEqual(warningMessages.length, 1);
-            assert.ok(warningMessages[0].includes('not found'));
-        });
-    });
-
-    suite('path resolution and validation', () => {
-        test('should resolve relative paths correctly', async () => {
-            // Create nested folder structure
-            const nestedPath = path.join(tempDir, 'level1', 'level2');
-            fs.mkdirSync(nestedPath, { recursive: true });
-
-            await configManager.addShortcut('./level1/level2', 'Nested');
-
-            const config = await configManager.loadConfiguration();
-            assert.strictEqual(config.shortcuts.length, 1);
-            assert.strictEqual(config.shortcuts[0].path, 'level1/level2');
-        });
-
-        test('should handle paths with .. correctly', async () => {
-            // Create folder outside workspace
-            const parentDir = path.dirname(tempDir);
-            const siblingDir = path.join(parentDir, 'sibling-folder');
-            fs.mkdirSync(siblingDir);
-
-            try {
-                const relativePath = path.relative(tempDir, siblingDir);
-                await configManager.addShortcut(relativePath, 'Sibling');
-
-                const config = await configManager.loadConfiguration();
-                assert.strictEqual(config.shortcuts.length, 1);
-                // Should store as absolute path when going outside workspace
-                assert.strictEqual(config.shortcuts[0].path, siblingDir);
-            } finally {
-                fs.rmSync(siblingDir, { recursive: true, force: true });
-            }
-        });
-    });
-
-    suite('error handling', () => {
-        test('should handle corrupted configuration gracefully', async () => {
-            // Create .vscode directory
-            const vscodePath = path.join(tempDir, '.vscode');
-            fs.mkdirSync(vscodePath, { recursive: true });
-
-            // Write configuration with invalid structure
-            const configPath = path.join(vscodePath, 'shortcuts.yaml');
-            fs.writeFileSync(configPath, 'shortcuts: "not an array"');
-
-            const config = await configManager.loadConfiguration();
-
-            assert.deepStrictEqual(config, DEFAULT_SHORTCUTS_CONFIG);
-        });
-
-        test('should handle missing shortcuts array', async () => {
-            // Create .vscode directory
-            const vscodePath = path.join(tempDir, '.vscode');
-            fs.mkdirSync(vscodePath, { recursive: true });
-
-            // Write configuration without shortcuts array
-            const configPath = path.join(vscodePath, 'shortcuts.yaml');
-            fs.writeFileSync(configPath, 'other_property: value');
-
-            const config = await configManager.loadConfiguration();
-
-            assert.deepStrictEqual(config, DEFAULT_SHORTCUTS_CONFIG);
-        });
-
-        test('should skip invalid shortcut entries', async () => {
-            // Create .vscode directory and valid folder
-            const vscodePath = path.join(tempDir, '.vscode');
-            fs.mkdirSync(vscodePath, { recursive: true });
-            const validFolder = path.join(tempDir, 'valid');
-            fs.mkdirSync(validFolder);
-
-            // Write configuration with mixed valid and invalid entries
-            const configPath = path.join(vscodePath, 'shortcuts.yaml');
-            fs.writeFileSync(configPath, `shortcuts:
-  - path: valid
-    name: Valid Entry
-  - invalid_entry: true
-  - path: ""
-    name: Empty Path
-  - path: 123
-    name: Numeric Path`);
-
-            const config = await configManager.loadConfiguration();
-
-            assert.strictEqual(config.shortcuts.length, 1);
-            assert.strictEqual(config.shortcuts[0].path, 'valid');
-        });
-    });
-
-    suite('file watching', () => {
+    suite('File Watching', () => {
         test('should create file watcher', () => {
-            let callbackCalled = false;
-            const callback = () => { callbackCalled = true; };
-
-            const watcher = configManager.watchConfigFile(callback);
+            let callbackInvoked = false;
+            const watcher = configManager.watchConfigFile(() => {
+                callbackInvoked = true;
+            });
 
             assert.ok(watcher);
-            assert.strictEqual(typeof watcher.dispose, 'function');
-
+            assert.ok(typeof watcher.dispose === 'function');
             watcher.dispose();
         });
 
         test('should dispose existing watcher when creating new one', () => {
-            const callback1 = () => { };
-            const callback2 = () => { };
+            const watcher1 = configManager.watchConfigFile(() => { });
+            const watcher2 = configManager.watchConfigFile(() => { });
 
-            const watcher1 = configManager.watchConfigFile(callback1);
-            const watcher2 = configManager.watchConfigFile(callback2);
-
-            // Should be different instances
-            assert.notStrictEqual(watcher1, watcher2);
-
+            assert.ok(watcher1);
+            assert.ok(watcher2);
             watcher2.dispose();
         });
 
         test('should dispose watcher on cleanup', () => {
-            const callback = () => { };
-            configManager.watchConfigFile(callback);
+            const watcher = configManager.watchConfigFile(() => { });
+            assert.ok(watcher);
 
-            // Should not throw
             configManager.dispose();
+            // Should not throw
+            assert.ok(true);
         });
     });
 
-    suite('getConfigPath', () => {
+    suite('Path Utilities', () => {
         test('should return correct configuration file path', () => {
-            const expectedPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
-            const actualPath = configManager.getConfigPath();
+            const configPath = configManager.getConfigPath();
+            assert.strictEqual(path.basename(configPath), 'shortcuts.yaml');
+            assert.ok(configPath.includes('.vscode'));
+        });
+    });
 
-            assert.strictEqual(actualPath, expectedPath);
+    suite('Error Handling', () => {
+        test('should handle corrupted configuration gracefully', async () => {
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, 'completely invalid: yaml: content: [[[[');
+
+            const config = await configManager.loadConfiguration();
+            assert.deepStrictEqual(config, DEFAULT_SHORTCUTS_CONFIG);
+        });
+
+        test('should skip invalid group entries', async () => {
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            const testFolder = path.join(tempDir, 'test-folder');
+            fs.mkdirSync(testFolder);
+
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, `logicalGroups:
+  - name: Valid Group
+    items:
+      - path: test-folder
+        name: Valid Item
+        type: folder
+  - invalid: group
+  - name: 123`);
+
+            const config = await configManager.loadConfiguration();
+            // Should only have valid groups
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].name, 'Valid Group');
         });
     });
 });

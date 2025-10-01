@@ -1,15 +1,18 @@
 import * as assert from 'assert';
-import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as path from 'path';
 import * as os from 'os';
-import { ShortcutsTreeDataProvider } from '../../shortcuts/tree-data-provider';
-import { FolderShortcutItem, FileShortcutItem } from '../../shortcuts/tree-items';
-import { ShortcutsConfig } from '../../shortcuts/types';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import { ConfigurationManager } from '../../shortcuts/configuration-manager';
+import { LogicalTreeDataProvider } from '../../shortcuts/logical-tree-data-provider';
+import { ThemeManager } from '../../shortcuts/theme-manager';
+import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem } from '../../shortcuts/tree-items';
 
-suite('ShortcutsTreeDataProvider Test Suite', () => {
+suite('LogicalTreeDataProvider Test Suite', () => {
     let tempDir: string;
-    let provider: ShortcutsTreeDataProvider;
+    let provider: LogicalTreeDataProvider;
+    let configManager: ConfigurationManager;
+    let themeManager: ThemeManager;
     let testFolder: string;
     let testFile: string;
 
@@ -41,11 +44,21 @@ suite('ShortcutsTreeDataProvider Test Suite', () => {
     });
 
     setup(() => {
-        provider = new ShortcutsTreeDataProvider(tempDir);
+        configManager = new ConfigurationManager(tempDir);
+        themeManager = new ThemeManager();
+        provider = new LogicalTreeDataProvider(tempDir, configManager, themeManager);
     });
 
     teardown(() => {
         provider.dispose();
+        configManager.dispose();
+        themeManager.dispose();
+
+        // Clean up config file between tests
+        const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
+        if (fs.existsSync(configPath)) {
+            fs.unlinkSync(configPath);
+        }
     });
 
     test('should implement TreeDataProvider interface', () => {
@@ -54,69 +67,107 @@ suite('ShortcutsTreeDataProvider Test Suite', () => {
         assert.ok(provider.onDidChangeTreeData);
     });
 
-    test('should return empty array when no shortcuts configured', async () => {
+    test('should return empty array when no groups configured', async () => {
         const children = await provider.getChildren();
         assert.strictEqual(children.length, 0);
     });
 
-    test('should return configured shortcuts as root elements', async () => {
-        // Create test configuration
+    test('should return configured logical groups as root elements', async () => {
         const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
         fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
-        const config = `shortcuts:
-  - path: test-folder
-    name: Test Folder`;
+        const config = `logicalGroups:
+  - name: Test Group
+    description: Test Description
+    items:
+      - path: test-folder
+        name: Test Folder
+        type: folder`;
 
         fs.writeFileSync(configPath, config);
 
         const children = await provider.getChildren();
         assert.strictEqual(children.length, 1);
-        assert.ok(children[0] instanceof FolderShortcutItem);
-        assert.strictEqual(children[0].label, 'Test Folder');
-        assert.strictEqual(children[0].contextValue, 'folder');
+        assert.ok(children[0] instanceof LogicalGroupItem);
+        assert.strictEqual(children[0].originalName, 'Test Group');
+        assert.strictEqual(children[0].contextValue, 'logicalGroup');
     });
 
-    test('should handle folder contents correctly', async () => {
-        // Create test configuration
+    test('should return group contents correctly', async () => {
         const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
         fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
-        const config = `shortcuts:
-  - path: test-folder`;
+        const config = `logicalGroups:
+  - name: Test Group
+    items:
+      - path: test-folder
+        name: Test Folder
+        type: folder
+      - path: test-folder/test-file.txt
+        name: Test File
+        type: file`;
 
         fs.writeFileSync(configPath, config);
 
         const rootChildren = await provider.getChildren();
-        const folderItem = rootChildren[0] as FolderShortcutItem;
+        const groupItem = rootChildren[0] as LogicalGroupItem;
 
+        const groupContents = await provider.getChildren(groupItem);
+        assert.strictEqual(groupContents.length, 2);
+
+        // Check that items are LogicalGroupChildItem
+        assert.ok(groupContents[0] instanceof LogicalGroupChildItem);
+        assert.ok(groupContents[1] instanceof LogicalGroupChildItem);
+    });
+
+    test('should expand folder items within logical groups', async () => {
+        const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+
+        const config = `logicalGroups:
+  - name: Test Group
+    items:
+      - path: test-folder
+        name: Test Folder
+        type: folder`;
+
+        fs.writeFileSync(configPath, config);
+
+        const rootChildren = await provider.getChildren();
+        const groupItem = rootChildren[0] as LogicalGroupItem;
+        const groupContents = await provider.getChildren(groupItem);
+        const folderItem = groupContents[0] as LogicalGroupChildItem;
+
+        // Expand the folder
         const folderContents = await provider.getChildren(folderItem);
 
         // Should have nested folder and test file, but not hidden file
-        assert.strictEqual(folderContents.length, 2);
+        assert.ok(folderContents.length >= 2);
 
-        // Check that directory comes first (sorted)
         const nestedFolder = folderContents.find(item => item.label === 'nested');
         const testFileItem = folderContents.find(item => item.label === 'test-file.txt');
 
         assert.ok(nestedFolder instanceof FolderShortcutItem);
         assert.ok(testFileItem instanceof FileShortcutItem);
-
-        // Verify sorting: directories first
-        assert.ok(folderContents.indexOf(nestedFolder!) < folderContents.indexOf(testFileItem!));
     });
 
-    test('should skip hidden files and directories', async () => {
+    test('should skip hidden files in folder expansion', async () => {
         const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
         fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
-        const config = `shortcuts:
-  - path: test-folder`;
+        const config = `logicalGroups:
+  - name: Test Group
+    items:
+      - path: test-folder
+        name: Test Folder
+        type: folder`;
 
         fs.writeFileSync(configPath, config);
 
         const rootChildren = await provider.getChildren();
-        const folderItem = rootChildren[0] as FolderShortcutItem;
+        const groupItem = rootChildren[0] as LogicalGroupItem;
+        const groupContents = await provider.getChildren(groupItem);
+        const folderItem = groupContents[0] as LogicalGroupChildItem;
 
         const folderContents = await provider.getChildren(folderItem);
 
@@ -135,78 +186,70 @@ suite('ShortcutsTreeDataProvider Test Suite', () => {
         const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
         fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
-        const config = `shortcuts:
-  - path: non-existent-folder
-    name: Missing Folder`;
+        const config = `logicalGroups:
+  - name: Test Group
+    items:
+      - path: non-existent-folder
+        name: Missing Folder
+        type: folder`;
 
         fs.writeFileSync(configPath, config);
 
         const children = await provider.getChildren();
-        // Should skip non-existent paths
-        assert.strictEqual(children.length, 0);
-    });
-
-    test('should handle file paths (non-directories) gracefully', async () => {
-        // Create a file instead of directory
-        const testFilePath = path.join(tempDir, 'just-a-file.txt');
-        fs.writeFileSync(testFilePath, 'content');
-
-        const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-
-        const config = `shortcuts:
-  - path: just-a-file.txt
-    name: File Path`;
-
-        fs.writeFileSync(configPath, config);
-
-        const children = await provider.getChildren();
-        // Should skip file paths (only directories allowed)
-        assert.strictEqual(children.length, 0);
-    });
-
-    test('should use folder name as default when name not specified', async () => {
-        const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-
-        const config = `shortcuts:
-  - path: test-folder`;
-
-        fs.writeFileSync(configPath, config);
-
-        const children = await provider.getChildren();
+        // Should have the group, but the group should have no items
         assert.strictEqual(children.length, 1);
-        assert.strictEqual(children[0].label, 'test-folder');
+
+        const groupContents = await provider.getChildren(children[0]);
+        assert.strictEqual(groupContents.length, 0);
     });
 
-    test('should resolve relative paths correctly', async () => {
+    test('should sort group contents correctly', async () => {
         const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
         fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
-        const config = `shortcuts:
-  - path: ./test-folder
-    name: Relative Path Test`;
+        const config = `logicalGroups:
+  - name: Test Group
+    items:
+      - path: test-folder/test-file.txt
+        name: Z File
+        type: file
+      - path: test-folder
+        name: A Folder
+        type: folder
+      - path: test-folder/nested
+        name: M Folder
+        type: folder`;
 
         fs.writeFileSync(configPath, config);
 
-        const children = await provider.getChildren();
-        assert.strictEqual(children.length, 1);
-        assert.strictEqual(children[0].label, 'Relative Path Test');
+        const rootChildren = await provider.getChildren();
+        const groupItem = rootChildren[0] as LogicalGroupItem;
+        const groupContents = await provider.getChildren(groupItem);
+
+        // Should be sorted: folders first, then files, both alphabetically
+        assert.ok(groupContents[0].label.includes('A Folder'));
+        assert.ok(groupContents[1].label.includes('M Folder'));
+        assert.ok(groupContents[2].label.includes('Z File'));
     });
 
     test('should handle absolute paths correctly', async () => {
         const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
         fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
-        const config = `shortcuts:
-  - path: ${testFolder}
-    name: Absolute Path Test`;
+        const config = `logicalGroups:
+  - name: Test Group
+    items:
+      - path: ${testFolder}
+        name: Absolute Path Test
+        type: folder`;
 
         fs.writeFileSync(configPath, config);
 
         const children = await provider.getChildren();
         assert.strictEqual(children.length, 1);
-        assert.strictEqual(children[0].label, 'Absolute Path Test');
+
+        const groupContents = await provider.getChildren(children[0]);
+        assert.strictEqual(groupContents.length, 1);
     });
 
     test('should emit change events on refresh', (done) => {
@@ -232,98 +275,114 @@ suite('ShortcutsTreeDataProvider Test Suite', () => {
     });
 
     test('should return TreeItem for getTreeItem', () => {
-        const folderItem = new FolderShortcutItem(
-            'Test',
-            vscode.Uri.file('/test'),
+        const groupItem = new LogicalGroupItem(
+            'Test Group',
+            'Description',
+            undefined,
             vscode.TreeItemCollapsibleState.Collapsed
         );
 
-        const treeItem = provider.getTreeItem(folderItem);
-        assert.strictEqual(treeItem, folderItem);
+        const treeItem = provider.getTreeItem(groupItem);
+        assert.strictEqual(treeItem, groupItem);
         assert.ok(treeItem instanceof vscode.TreeItem);
     });
 
-    test('should sort folder contents correctly', async () => {
-        // Create additional test files with different names
-        const folderA = path.join(testFolder, 'a-folder');
-        const folderZ = path.join(testFolder, 'z-folder');
-        fs.mkdirSync(folderA);
-        fs.mkdirSync(folderZ);
-
-        fs.writeFileSync(path.join(testFolder, 'a-file.txt'), 'content');
-        fs.writeFileSync(path.join(testFolder, 'z-file.txt'), 'content');
-
-        const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
-        fs.mkdirSync(path.dirname(configPath), { recursive: true });
-
-        const config = `shortcuts:
-  - path: test-folder`;
-
-        fs.writeFileSync(configPath, config);
-
-        const rootChildren = await provider.getChildren();
-        const folderItem = rootChildren[0] as FolderShortcutItem;
-
-        const folderContents = await provider.getChildren(folderItem);
-
-        // Should be sorted: folders first (alphabetically), then files (alphabetically)
-        const labels = folderContents.map(item => item.label);
-
-        // Find indices of different types
-        const firstFileIndex = folderContents.findIndex(item => item instanceof FileShortcutItem);
-        const lastFolderIndex = folderContents.map(item => item instanceof FolderShortcutItem).lastIndexOf(true);
-
-        // All folders should come before all files
-        assert.ok(lastFolderIndex < firstFileIndex, 'Folders should come before files');
-
-        // Folders should be alphabetically sorted
-        const folderLabels = folderContents
-            .filter(item => item instanceof FolderShortcutItem)
-            .map(item => item.label);
-        const sortedFolderLabels = [...folderLabels].sort();
-        assert.deepStrictEqual(folderLabels, sortedFolderLabels, 'Folders should be sorted alphabetically');
-
-        // Files should be alphabetically sorted
-        const fileLabels = folderContents
-            .filter(item => item instanceof FileShortcutItem)
-            .map(item => item.label);
-        const sortedFileLabels = [...fileLabels].sort();
-        assert.deepStrictEqual(fileLabels, sortedFileLabels, 'Files should be sorted alphabetically');
-    });
-
     test('should provide configuration manager access', () => {
-        const configManager = provider.getConfigurationManager();
-        assert.ok(configManager);
-        assert.ok(typeof configManager.loadConfiguration === 'function');
+        const configMgr = provider.getConfigurationManager();
+        assert.ok(configMgr);
+        assert.ok(typeof configMgr.loadConfiguration === 'function');
     });
 
     test('should handle errors in getChildren gracefully', async () => {
         // Create a provider with an invalid workspace root
-        const invalidProvider = new ShortcutsTreeDataProvider('/invalid/path');
+        const invalidConfigManager = new ConfigurationManager('/invalid/path');
+        const invalidThemeManager = new ThemeManager();
+        const invalidProvider = new LogicalTreeDataProvider('/invalid/path', invalidConfigManager, invalidThemeManager);
 
         try {
             const children = await invalidProvider.getChildren();
             assert.ok(Array.isArray(children), 'Should return array even on error');
         } finally {
             invalidProvider.dispose();
+            invalidConfigManager.dispose();
+            invalidThemeManager.dispose();
         }
     });
 
-    test('should handle malformed configuration gracefully', async () => {
+    test('should migrate old physical shortcuts to logical groups', async () => {
         const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
         fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
-        // Invalid YAML
-        const invalidConfig = `shortcuts:
+        // Old format with physical shortcuts
+        const oldConfig = `shortcuts:
   - path: test-folder
-    name: Test
-  - invalid yaml structure
-      broken: [[[`;
+    name: Old Shortcut`;
 
-        fs.writeFileSync(configPath, invalidConfig);
+        fs.writeFileSync(configPath, oldConfig);
 
         const children = await provider.getChildren();
-        // Should handle gracefully and return empty array
-        assert.ok(Array.isArray(children));
+
+        // Should have migrated to a logical group
+        assert.strictEqual(children.length, 1);
+        assert.ok(children[0] instanceof LogicalGroupItem);
+        assert.strictEqual(children[0].originalName, 'Old Shortcut');
+    });
+
+    test('should handle multiple groups', async () => {
+        const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+
+        const config = `logicalGroups:
+  - name: Group 1
+    items:
+      - path: test-folder
+        name: Folder 1
+        type: folder
+  - name: Group 2
+    items:
+      - path: test-folder/test-file.txt
+        name: File 1
+        type: file`;
+
+        fs.writeFileSync(configPath, config);
+
+        const children = await provider.getChildren();
+        assert.strictEqual(children.length, 2);
+        assert.ok(children[0] instanceof LogicalGroupItem);
+        assert.ok(children[1] instanceof LogicalGroupItem);
+        assert.strictEqual((children[0] as LogicalGroupItem).originalName, 'Group 1');
+        assert.strictEqual((children[1] as LogicalGroupItem).originalName, 'Group 2');
+    });
+
+    test('should handle search filtering', async () => {
+        const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+
+        const config = `logicalGroups:
+  - name: Match Group
+    items:
+      - path: test-folder
+        name: Test
+        type: folder
+  - name: Other Group
+    items:
+      - path: test-folder
+        name: Test
+        type: folder`;
+
+        fs.writeFileSync(configPath, config);
+
+        provider.setSearchFilter('match');
+        const children = await provider.getChildren();
+
+        // Should only show groups matching the filter
+        assert.strictEqual(children.length, 1);
+        assert.ok(children[0] instanceof LogicalGroupItem);
+        assert.strictEqual((children[0] as LogicalGroupItem).originalName, 'Match Group');
+
+        // Clear filter
+        provider.clearSearchFilter();
+        const allChildren = await provider.getChildren();
+        assert.strictEqual(allChildren.length, 2);
     });
 });

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, ShortcutConfig, ShortcutsConfig, LogicalGroup, LogicalGroupItem } from './types';
+import { CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, LogicalGroup, LogicalGroupItem, ShortcutsConfig } from './types';
 
 /**
  * Manages loading, saving, and validation of shortcuts configuration
@@ -160,111 +160,6 @@ export class ConfigurationManager {
     }
 
     /**
-     * Add a new folder shortcut to the configuration
-     * @param folderPath Path to the folder
-     * @param displayName Optional display name
-     */
-    async addShortcut(folderPath: string, displayName?: string): Promise<void> {
-        try {
-            const config = await this.loadConfiguration();
-
-            // Resolve and validate the path
-            const resolvedPath = this.resolvePath(folderPath);
-
-            // Check if shortcut already exists
-            const existingShortcut = config.shortcuts.find(s =>
-                path.resolve(this.workspaceRoot, s.path) === resolvedPath
-            );
-
-            if (existingShortcut) {
-                vscode.window.showWarningMessage('This folder is already added as a shortcut.');
-                return;
-            }
-
-            // Create relative path from workspace root
-            const relativePath = path.relative(this.workspaceRoot, resolvedPath);
-
-            // Add new shortcut
-            const newShortcut: ShortcutConfig = {
-                path: relativePath.startsWith('..') ? resolvedPath : relativePath,
-                name: displayName || path.basename(resolvedPath)
-            };
-
-            config.shortcuts.push(newShortcut);
-            await this.saveConfiguration(config);
-
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error adding shortcut:', err);
-            vscode.window.showErrorMessage(`Failed to add shortcut: ${err.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Remove a shortcut from the configuration
-     * @param folderPath Path to the folder to remove
-     */
-    async removeShortcut(folderPath: string): Promise<void> {
-        try {
-            const config = await this.loadConfiguration();
-
-            const resolvedPath = this.resolvePath(folderPath);
-
-            // Find and remove the shortcut
-            const initialLength = config.shortcuts.length;
-            config.shortcuts = config.shortcuts.filter(s =>
-                path.resolve(this.workspaceRoot, s.path) !== resolvedPath
-            );
-
-            if (config.shortcuts.length === initialLength) {
-                vscode.window.showWarningMessage('Shortcut not found.');
-                return;
-            }
-
-            await this.saveConfiguration(config);
-
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error removing shortcut:', err);
-            vscode.window.showErrorMessage(`Failed to remove shortcut: ${err.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Rename a shortcut in the configuration
-     * @param folderPath Path to the folder
-     * @param newName New display name
-     */
-    async renameShortcut(folderPath: string, newName: string): Promise<void> {
-        try {
-            const config = await this.loadConfiguration();
-
-            const resolvedPath = this.resolvePath(folderPath);
-
-            // Find and update the shortcut
-            const shortcut = config.shortcuts.find(s =>
-                path.resolve(this.workspaceRoot, s.path) === resolvedPath
-            );
-
-            if (!shortcut) {
-                vscode.window.showWarningMessage('Shortcut not found.');
-                return;
-            }
-
-            shortcut.name = newName;
-            await this.saveConfiguration(config);
-
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error renaming shortcut:', err);
-            vscode.window.showErrorMessage(`Failed to rename shortcut: ${err.message}`);
-            throw error;
-        }
-    }
-
-    /**
      * Get the full path to the configuration file
      */
     getConfigPath(): string {
@@ -337,6 +232,79 @@ export class ConfigurationManager {
     }
 
     /**
+     * Migrate old physical shortcuts to logical groups
+     * @param config Configuration with possible old shortcuts array
+     * @returns Configuration with shortcuts migrated to logical groups
+     */
+    private migratePhysicalShortcuts(config: any): any {
+        // If there are old physical shortcuts, migrate them to logical groups
+        if (config.shortcuts && Array.isArray(config.shortcuts) && config.shortcuts.length > 0) {
+            console.log('Migrating physical shortcuts to logical groups...');
+
+            if (!config.logicalGroups) {
+                config.logicalGroups = [];
+            }
+
+            // Convert each physical shortcut to a logical group
+            for (const shortcut of config.shortcuts) {
+                if (!shortcut || typeof shortcut !== 'object') {
+                    continue;
+                }
+
+                if (typeof shortcut.path !== 'string' || !shortcut.path.trim()) {
+                    continue;
+                }
+
+                // Validate that the path exists
+                try {
+                    const resolvedPath = this.resolvePath(shortcut.path);
+                    if (!fs.existsSync(resolvedPath)) {
+                        console.warn(`Skipping migration of shortcut with non-existent path: ${shortcut.path}`);
+                        continue;
+                    }
+
+                    if (!fs.statSync(resolvedPath).isDirectory()) {
+                        console.warn(`Skipping migration of shortcut with non-directory path: ${shortcut.path}`);
+                        continue;
+                    }
+
+                    const groupName = shortcut.name || path.basename(resolvedPath);
+
+                    // Check if group with this name already exists
+                    const existingGroup = config.logicalGroups.find((g: any) => g.name === groupName);
+                    if (existingGroup) {
+                        console.warn(`Group "${groupName}" already exists, skipping migration of shortcut`);
+                        continue;
+                    }
+
+                    // Create a new logical group with this single folder
+                    const newGroup: LogicalGroup = {
+                        name: groupName,
+                        items: [
+                            {
+                                path: shortcut.path,
+                                name: path.basename(resolvedPath),
+                                type: 'folder'
+                            }
+                        ]
+                    };
+
+                    config.logicalGroups.push(newGroup);
+                } catch (error) {
+                    const err = error instanceof Error ? error : new Error('Unknown error');
+                    console.warn(`Error migrating shortcut ${shortcut.path}:`, err);
+                }
+            }
+
+            // Remove the old shortcuts array
+            delete config.shortcuts;
+            console.log('Migration complete. Physical shortcuts have been converted to logical groups.');
+        }
+
+        return config;
+    }
+
+    /**
      * Validate and normalize configuration object
      * @param config Raw configuration object
      * @returns Validated ShortcutsConfig
@@ -346,47 +314,8 @@ export class ConfigurationManager {
             throw new Error('Configuration must be an object');
         }
 
-        if (!Array.isArray(config.shortcuts)) {
-            throw new Error('Configuration must contain a "shortcuts" array');
-        }
-
-        // Validate each shortcut entry
-        const validShortcuts: ShortcutConfig[] = [];
-
-        for (const shortcut of config.shortcuts) {
-            if (!shortcut || typeof shortcut !== 'object') {
-                console.warn('Skipping invalid shortcut entry:', shortcut);
-                continue;
-            }
-
-            if (typeof shortcut.path !== 'string' || !shortcut.path.trim()) {
-                console.warn('Skipping shortcut with invalid path:', shortcut);
-                continue;
-            }
-
-            // Validate that the path exists
-            try {
-                const resolvedPath = this.resolvePath(shortcut.path);
-                if (!fs.existsSync(resolvedPath)) {
-                    console.warn(`Skipping shortcut with non-existent path: ${shortcut.path}`);
-                    continue;
-                }
-
-                if (!fs.statSync(resolvedPath).isDirectory()) {
-                    console.warn(`Skipping shortcut with non-directory path: ${shortcut.path}`);
-                    continue;
-                }
-            } catch (error) {
-                const err = error instanceof Error ? error : new Error('Unknown error');
-                console.warn(`Skipping shortcut with invalid path: ${shortcut.path}`, err);
-                continue;
-            }
-
-            validShortcuts.push({
-                path: shortcut.path,
-                name: typeof shortcut.name === 'string' ? shortcut.name : undefined
-            });
-        }
+        // Migrate old physical shortcuts to logical groups if they exist
+        config = this.migratePhysicalShortcuts(config);
 
         // Validate logical groups
         let validLogicalGroups: LogicalGroup[] = [];
@@ -465,7 +394,6 @@ export class ConfigurationManager {
         }
 
         return {
-            shortcuts: validShortcuts,
             logicalGroups: validLogicalGroups
         };
     }
