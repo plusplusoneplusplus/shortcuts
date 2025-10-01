@@ -109,6 +109,32 @@ export class ShortcutsCommands {
             })
         );
 
+        // Create file/folder in logical group commands
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.createFileInLogicalGroup', async (item: LogicalGroupItem) => {
+                await this.createFileInLogicalGroup(item);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.createFolderInLogicalGroup', async (item: LogicalGroupItem) => {
+                await this.createFolderInLogicalGroup(item);
+            })
+        );
+
+        // Create file/folder in subfolder commands
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.createFileInFolder', async (item: LogicalGroupChildItem | FolderShortcutItem) => {
+                await this.createFileInFolder(item);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.createFolderInFolder', async (item: LogicalGroupChildItem | FolderShortcutItem) => {
+                await this.createFolderInFolder(item);
+            })
+        );
+
         return disposables;
     }
 
@@ -573,6 +599,390 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error clearing search from item:', err);
             vscode.window.showErrorMessage(`Failed to clear search: ${err.message}`);
+        }
+    }
+
+    /**
+     * Create a new file in a logical group
+     */
+    private async createFileInLogicalGroup(groupItem: LogicalGroupItem): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            // Get the filename
+            const fileName = await vscode.window.showInputBox({
+                prompt: 'Enter the name for the new file',
+                placeHolder: 'filename.txt',
+                validateInput: (value) => {
+                    if (!value || value.trim() === '') {
+                        return 'File name cannot be empty';
+                    }
+                    if (value.includes('/') || value.includes('\\')) {
+                        return 'File name cannot contain path separators';
+                    }
+                    return null;
+                }
+            });
+
+            if (!fileName) {
+                return;
+            }
+
+            // Ask where to create the file
+            const location = await vscode.window.showQuickPick(
+                [
+                    { label: 'Workspace Root', value: 'workspace' },
+                    { label: 'Custom Location...', value: 'custom' }
+                ],
+                {
+                    placeHolder: 'Where should the file be created?'
+                }
+            );
+
+            if (!location) {
+                return;
+            }
+
+            let targetPath: string;
+            const fs = require('fs');
+
+            if (location.value === 'custom') {
+                // Show file save dialog
+                const uri = await vscode.window.showSaveDialog({
+                    defaultUri: vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', fileName)),
+                    saveLabel: 'Create File Here',
+                    filters: {
+                        'All Files': ['*']
+                    }
+                });
+
+                if (!uri) {
+                    return;
+                }
+
+                targetPath = uri.fsPath;
+            } else {
+                // Create in workspace root
+                const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (!workspaceRoot) {
+                    vscode.window.showErrorMessage('No workspace folder found');
+                    return;
+                }
+                targetPath = path.join(workspaceRoot, fileName);
+            }
+
+            // Create the file if it doesn't exist
+            if (fs.existsSync(targetPath)) {
+                const overwrite = await vscode.window.showWarningMessage(
+                    `File "${path.basename(targetPath)}" already exists. Do you want to add it to the group anyway?`,
+                    { modal: true },
+                    'Yes'
+                );
+                if (overwrite !== 'Yes') {
+                    return;
+                }
+            } else {
+                // Create empty file
+                fs.writeFileSync(targetPath, '', 'utf8');
+            }
+
+            // Add to logical group
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            await configManager.addToLogicalGroup(
+                groupItem.originalName,
+                targetPath,
+                path.basename(targetPath),
+                'file'
+            );
+
+            this.treeDataProvider.refresh();
+            NotificationManager.showInfo(`File "${path.basename(targetPath)}" created and added to group!`, { timeout: 3000 });
+
+            // Open the file in the editor
+            const fileUri = vscode.Uri.file(targetPath);
+            await vscode.window.showTextDocument(fileUri);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating file in logical group:', err);
+            vscode.window.showErrorMessage(`Failed to create file: ${err.message}`);
+        }
+    }
+
+    /**
+     * Create a new file in a subfolder
+     */
+    private async createFileInFolder(folderItem: LogicalGroupChildItem | FolderShortcutItem): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            const parentFolder = folderItem.resourceUri.fsPath;
+
+            // Verify the parent is actually a folder
+            const fs = require('fs');
+            const stat = fs.statSync(parentFolder);
+            if (!stat.isDirectory()) {
+                vscode.window.showErrorMessage('Selected item is not a folder');
+                return;
+            }
+
+            // Get the filename
+            const fileName = await vscode.window.showInputBox({
+                prompt: `Enter the name for the new file in ${path.basename(parentFolder)}`,
+                placeHolder: 'filename.txt',
+                validateInput: (value) => {
+                    if (!value || value.trim() === '') {
+                        return 'File name cannot be empty';
+                    }
+                    if (value.includes('/') || value.includes('\\')) {
+                        return 'File name cannot contain path separators';
+                    }
+                    return null;
+                }
+            });
+
+            if (!fileName) {
+                return;
+            }
+
+            const targetPath = path.join(parentFolder, fileName);
+
+            // Create the file if it doesn't exist
+            if (fs.existsSync(targetPath)) {
+                const overwrite = await vscode.window.showWarningMessage(
+                    `File "${fileName}" already exists. Do you want to open it anyway?`,
+                    { modal: true },
+                    'Open'
+                );
+                if (overwrite !== 'Open') {
+                    return;
+                }
+            } else {
+                // Create empty file
+                fs.writeFileSync(targetPath, '', 'utf8');
+            }
+
+            // If this is within a logical group, add to the group
+            if (folderItem instanceof LogicalGroupChildItem) {
+                const configManager = this.treeDataProvider.getConfigurationManager();
+                await configManager.addToLogicalGroup(
+                    folderItem.parentGroup,
+                    targetPath,
+                    fileName,
+                    'file'
+                );
+                NotificationManager.showInfo(`File "${fileName}" created and added to group "${folderItem.parentGroup}"!`, { timeout: 3000 });
+            } else {
+                NotificationManager.showInfo(`File "${fileName}" created in ${path.basename(parentFolder)}!`, { timeout: 3000 });
+            }
+
+            this.treeDataProvider.refresh();
+
+            // Open the file in the editor
+            const fileUri = vscode.Uri.file(targetPath);
+            await vscode.window.showTextDocument(fileUri);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating file in folder:', err);
+            vscode.window.showErrorMessage(`Failed to create file: ${err.message}`);
+        }
+    }
+
+    /**
+     * Create a new folder in a subfolder
+     */
+    private async createFolderInFolder(folderItem: LogicalGroupChildItem | FolderShortcutItem): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            const parentFolder = folderItem.resourceUri.fsPath;
+
+            // Verify the parent is actually a folder
+            const fs = require('fs');
+            const stat = fs.statSync(parentFolder);
+            if (!stat.isDirectory()) {
+                vscode.window.showErrorMessage('Selected item is not a folder');
+                return;
+            }
+
+            // Get the folder name
+            const folderName = await vscode.window.showInputBox({
+                prompt: `Enter the name for the new folder in ${path.basename(parentFolder)}`,
+                placeHolder: 'folder-name',
+                validateInput: (value) => {
+                    if (!value || value.trim() === '') {
+                        return 'Folder name cannot be empty';
+                    }
+                    if (value.includes('/') || value.includes('\\')) {
+                        return 'Folder name cannot contain path separators';
+                    }
+                    return null;
+                }
+            });
+
+            if (!folderName) {
+                return;
+            }
+
+            const targetPath = path.join(parentFolder, folderName);
+
+            // Create the folder if it doesn't exist
+            if (fs.existsSync(targetPath)) {
+                const stat = fs.statSync(targetPath);
+                if (!stat.isDirectory()) {
+                    vscode.window.showErrorMessage(`A file with name "${folderName}" already exists at this location`);
+                    return;
+                }
+                const addExisting = await vscode.window.showWarningMessage(
+                    `Folder "${folderName}" already exists.`,
+                    { modal: true },
+                    'OK'
+                );
+                if (addExisting !== 'OK') {
+                    return;
+                }
+            } else {
+                // Create the folder
+                fs.mkdirSync(targetPath, { recursive: true });
+            }
+
+            // If this is within a logical group, add to the group
+            if (folderItem instanceof LogicalGroupChildItem) {
+                const configManager = this.treeDataProvider.getConfigurationManager();
+                await configManager.addToLogicalGroup(
+                    folderItem.parentGroup,
+                    targetPath,
+                    folderName,
+                    'folder'
+                );
+                NotificationManager.showInfo(`Folder "${folderName}" created and added to group "${folderItem.parentGroup}"!`, { timeout: 3000 });
+            } else {
+                NotificationManager.showInfo(`Folder "${folderName}" created in ${path.basename(parentFolder)}!`, { timeout: 3000 });
+            }
+
+            this.treeDataProvider.refresh();
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating folder in folder:', err);
+            vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
+        }
+    }
+
+    /**
+     * Create a new folder in a logical group
+     */
+    private async createFolderInLogicalGroup(groupItem: LogicalGroupItem): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            // Get the folder name
+            const folderName = await vscode.window.showInputBox({
+                prompt: 'Enter the name for the new folder',
+                placeHolder: 'folder-name',
+                validateInput: (value) => {
+                    if (!value || value.trim() === '') {
+                        return 'Folder name cannot be empty';
+                    }
+                    if (value.includes('/') || value.includes('\\')) {
+                        return 'Folder name cannot contain path separators';
+                    }
+                    return null;
+                }
+            });
+
+            if (!folderName) {
+                return;
+            }
+
+            // Ask where to create the folder
+            const location = await vscode.window.showQuickPick(
+                [
+                    { label: 'Workspace Root', value: 'workspace' },
+                    { label: 'Custom Location...', value: 'custom' }
+                ],
+                {
+                    placeHolder: 'Where should the folder be created?'
+                }
+            );
+
+            if (!location) {
+                return;
+            }
+
+            let targetPath: string;
+            const fs = require('fs');
+
+            if (location.value === 'custom') {
+                // Show folder selection dialog
+                const uris = await vscode.window.showOpenDialog({
+                    canSelectFiles: false,
+                    canSelectFolders: true,
+                    canSelectMany: false,
+                    openLabel: 'Select Parent Folder',
+                    title: 'Select where to create the new folder'
+                });
+
+                if (!uris || uris.length === 0) {
+                    return;
+                }
+
+                targetPath = path.join(uris[0].fsPath, folderName);
+            } else {
+                // Create in workspace root
+                const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (!workspaceRoot) {
+                    vscode.window.showErrorMessage('No workspace folder found');
+                    return;
+                }
+                targetPath = path.join(workspaceRoot, folderName);
+            }
+
+            // Create the folder if it doesn't exist
+            if (fs.existsSync(targetPath)) {
+                const stat = fs.statSync(targetPath);
+                if (!stat.isDirectory()) {
+                    vscode.window.showErrorMessage(`A file with name "${folderName}" already exists at this location`);
+                    return;
+                }
+                const addExisting = await vscode.window.showWarningMessage(
+                    `Folder "${folderName}" already exists. Do you want to add it to the group anyway?`,
+                    { modal: true },
+                    'Yes'
+                );
+                if (addExisting !== 'Yes') {
+                    return;
+                }
+            } else {
+                // Create the folder
+                fs.mkdirSync(targetPath, { recursive: true });
+            }
+
+            // Add to logical group
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            await configManager.addToLogicalGroup(
+                groupItem.originalName,
+                targetPath,
+                path.basename(targetPath),
+                'folder'
+            );
+
+            this.treeDataProvider.refresh();
+            NotificationManager.showInfo(`Folder "${path.basename(targetPath)}" created and added to group!`, { timeout: 3000 });
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating folder in logical group:', err);
+            vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
         }
     }
 

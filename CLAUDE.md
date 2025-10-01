@@ -57,6 +57,7 @@ This is the "Workspace Shortcuts" VSCode extension that provides customizable gr
 - Centralized command registration and handling
 - Supports group operations (create, rename, delete)
 - Item operations (add to group, remove from group, copy paths)
+- Create new files and folders directly in logical groups
 - Search management commands
 
 ### Data Flow
@@ -152,3 +153,45 @@ The extension has been simplified to use a single unified view with logical grou
 - Old physical shortcuts automatically migrate to single-item groups
 - Cleaner, more intuitive interface
 - Same functionality with better organization
+
+## Create File and Folder Support
+
+The extension now supports creating new files and folders at multiple levels:
+
+### Features
+
+#### Create at Group Level
+- Right-click on any logical group to access "Create File" or "Create Folder" options
+- Interactive workflow guides you through:
+  1. Entering the file/folder name (with validation)
+  2. Choosing location (workspace root or custom location)
+  3. Automatic creation and addition to the group
+
+#### Create in Subfolders (New!)
+- Right-click on **any folder** within a logical group to create files/folders inside it
+- Works with both:
+  - Folders that are direct members of logical groups
+  - Nested folders expanded from the file tree
+- Creates files/folders directly in the selected folder location
+- Automatically adds new items to the parent logical group (if applicable)
+
+#### Common Features
+- For files: automatically opens the newly created file in the editor
+- Handles existing files/folders gracefully with confirmation prompts
+- Input validation prevents invalid file/folder names
+- Integrates seamlessly with the existing configuration system
+
+### Implementation Details
+
+#### Commands
+- `shortcuts.createFileInLogicalGroup` - Create file at group level
+- `shortcuts.createFolderInLogicalGroup` - Create folder at group level
+- `shortcuts.createFileInFolder` - Create file in a subfolder
+- `shortcuts.createFolderInFolder` - Create folder in a subfolder
+
+#### Menu Context
+- Group level: `viewItem == logicalGroup`
+- Folder within group: `viewItem == logicalGroupItem_folder`
+- Nested folder: `viewItem == folder`
+
+All commands are registered in `src/shortcuts/commands.ts` and use native VSCode dialogs for input validation.

@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Workspace Shortcuts",
   "description": "Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
@@ -137,6 +137,26 @@
         "command": "shortcuts.clearSearchFromItem",
         "title": "Clear Search",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "shortcuts.createFileInLogicalGroup",
+        "title": "Create File",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "shortcuts.createFolderInLogicalGroup",
+        "title": "Create Folder",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "shortcuts.createFileInFolder",
+        "title": "Create File",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "shortcuts.createFolderInFolder",
+        "title": "Create Folder",
+        "icon": "$(new-folder)"
       }
     ],
     "menus": {
@@ -169,44 +189,74 @@
       ],
       "view/item/context": [
         {
-          "command": "shortcuts.addToLogicalGroup",
+          "command": "shortcuts.createFileInLogicalGroup",
           "when": "view == shortcutsView && viewItem == logicalGroup",
           "group": "logicalGroup@1"
         },
         {
-          "command": "shortcuts.renameLogicalGroup",
+          "command": "shortcuts.createFolderInLogicalGroup",
           "when": "view == shortcutsView && viewItem == logicalGroup",
           "group": "logicalGroup@2"
         },
         {
-          "command": "shortcuts.deleteLogicalGroup",
+          "command": "shortcuts.addToLogicalGroup",
           "when": "view == shortcutsView && viewItem == logicalGroup",
           "group": "logicalGroup@3"
         },
         {
-          "command": "shortcuts.removeFromLogicalGroup",
-          "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "command": "shortcuts.renameLogicalGroup",
+          "when": "view == shortcutsView && viewItem == logicalGroup",
+          "group": "logicalGroup@4"
+        },
+        {
+          "command": "shortcuts.deleteLogicalGroup",
+          "when": "view == shortcutsView && viewItem == logicalGroup",
+          "group": "logicalGroup@5"
+        },
+        {
+          "command": "shortcuts.createFileInFolder",
+          "when": "view == shortcutsView && viewItem == logicalGroupItem_folder",
           "group": "logicalGroupItem@1"
         },
         {
-          "command": "shortcuts.copyRelativePath",
-          "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "command": "shortcuts.createFolderInFolder",
+          "when": "view == shortcutsView && viewItem == logicalGroupItem_folder",
           "group": "logicalGroupItem@2"
         },
         {
-          "command": "shortcuts.copyAbsolutePath",
+          "command": "shortcuts.removeFromLogicalGroup",
           "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
           "group": "logicalGroupItem@3"
         },
         {
           "command": "shortcuts.copyRelativePath",
+          "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "group": "logicalGroupItem@4"
+        },
+        {
+          "command": "shortcuts.copyAbsolutePath",
+          "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "group": "logicalGroupItem@5"
+        },
+        {
+          "command": "shortcuts.createFileInFolder",
           "when": "view == shortcutsView && viewItem == folder",
           "group": "folder@1"
         },
         {
-          "command": "shortcuts.copyAbsolutePath",
+          "command": "shortcuts.createFolderInFolder",
           "when": "view == shortcutsView && viewItem == folder",
           "group": "folder@2"
+        },
+        {
+          "command": "shortcuts.copyRelativePath",
+          "when": "view == shortcutsView && viewItem == folder",
+          "group": "folder@3"
+        },
+        {
+          "command": "shortcuts.copyAbsolutePath",
+          "when": "view == shortcutsView && viewItem == folder",
+          "group": "folder@4"
         },
         {
           "command": "shortcuts.copyRelativePath",
