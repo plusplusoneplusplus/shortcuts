@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.5] - 2025-09-29
+
+### Fixed
+- Fixed logical group items not appearing after enabling multi-selection
+- Simplified group and item name display for better reliability
+
+### Added
+- Display common path prefix in logical group descriptions (with • separator)
+- Show relative paths from common prefix in item descriptions
+- Show parent directory for single-item groups
+
 ## [1.3.2] - 2025-09-29
 
 ### Added

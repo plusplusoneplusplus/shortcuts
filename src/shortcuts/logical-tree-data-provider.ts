@@ -141,15 +141,17 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                 const resolvedPaths = groupConfig.items.map(item => this.resolvePath(item.path));
                 const commonPrefix = this.findCommonPathPrefix(resolvedPaths);
 
-                // Add common prefix to group label if it exists and items > 1
-                let groupLabel = groupConfig.name;
+                // Show common prefix in description if it exists and there are multiple items
+                let groupDescription = groupConfig.description;
                 if (commonPrefix && groupConfig.items.length > 1) {
-                    groupLabel = `${groupConfig.name} (${commonPrefix})`;
+                    groupDescription = groupConfig.description
+                        ? `${groupConfig.description} • ${commonPrefix}`
+                        : commonPrefix;
                 }
 
                 const groupItem = new LogicalGroupItem(
-                    groupLabel,
-                    groupConfig.description,
+                    groupConfig.name,
+                    groupDescription,
                     groupConfig.icon,
                     vscode.TreeItemCollapsibleState.Collapsed
                 );
@@ -189,7 +191,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                 return a.name.localeCompare(b.name);
             });
 
-            // Calculate common path prefix for smart path display
+            // Calculate common path prefix for descriptions
             const resolvedPaths = sortedItems.map(item => this.resolvePath(item.path));
             const commonPrefix = this.findCommonPathPrefix(resolvedPaths);
 
@@ -232,23 +234,24 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                         // Use actual type instead of configured type
                     }
 
-                    // Determine display name based on common prefix
-                    let displayName: string;
-                    if (commonPrefix && sortedItems.length > 1) {
-                        // Use relative path from common prefix
-                        const relativePath = resolvedPath.substring(commonPrefix.length);
-                        displayName = `${itemConfig.name} (${relativePath})`;
-                    } else {
-                        // Use full absolute path
-                        displayName = `${itemConfig.name} (${resolvedPath})`;
-                    }
-
+                    // Create child item with configured name
                     const childItem = new LogicalGroupChildItem(
-                        displayName,
+                        itemConfig.name,
                         uri,
                         actualType,
                         groupItem.originalName
                     );
+
+                    // Set description to show relative path from common prefix
+                    if (commonPrefix && sortedItems.length > 1) {
+                        const relativePath = resolvedPath.substring(commonPrefix.length);
+                        if (relativePath) {
+                            childItem.description = relativePath;
+                        }
+                    } else if (sortedItems.length === 1) {
+                        // For single items, show the parent directory
+                        childItem.description = path.dirname(resolvedPath);
+                    }
 
                     items.push(childItem);
                 } catch (error) {
