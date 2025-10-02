@@ -3,10 +3,20 @@
  */
 
 /**
+ * Configuration for a base path alias (e.g., git root)
+ */
+export interface BasePath {
+    /** Alias name used in path references (e.g., @myrepo) */
+    alias: string;
+    /** Actual filesystem path (can be relative to workspace or absolute) */
+    path: string;
+}
+
+/**
  * Configuration for a logical group item (can be folder or file)
  */
 export interface LogicalGroupItem {
-    /** Relative or absolute path to the folder or file */
+    /** Relative or absolute path to the folder or file. Can use base path aliases like @alias/path/to/file */
     path: string;
     /** Display name for this item */
     name: string;
@@ -32,6 +42,8 @@ export interface LogicalGroup {
  * Main configuration structure for shortcuts
  */
 export interface ShortcutsConfig {
+    /** Base paths/aliases for organizing multiple git roots or common paths */
+    basePaths?: BasePath[];
     /** Array of logical group configurations */
     logicalGroups: LogicalGroup[];
 }

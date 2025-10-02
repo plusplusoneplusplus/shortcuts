@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, LogicalGroup, LogicalGroupItem, ShortcutsConfig } from './types';
+import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, LogicalGroup, LogicalGroupItem, ShortcutsConfig } from './types';
 
 /**
  * Manages loading, saving, and validation of shortcuts configuration
@@ -255,9 +255,9 @@ export class ConfigurationManager {
                     continue;
                 }
 
-                // Validate that the path exists
+                // Validate that the path exists (no basePaths during migration as they're from old config)
                 try {
-                    const resolvedPath = this.resolvePath(shortcut.path);
+                    const resolvedPath = this.resolvePath(shortcut.path, config.basePaths);
                     if (!fs.existsSync(resolvedPath)) {
                         console.warn(`Skipping migration of shortcut with non-existent path: ${shortcut.path}`);
                         continue;
@@ -317,6 +317,37 @@ export class ConfigurationManager {
         // Migrate old physical shortcuts to logical groups if they exist
         config = this.migratePhysicalShortcuts(config);
 
+        // Validate base paths
+        let validBasePaths: BasePath[] = [];
+        if (config.basePaths && Array.isArray(config.basePaths)) {
+            for (const basePath of config.basePaths) {
+                if (!basePath || typeof basePath !== 'object') {
+                    console.warn('Skipping invalid base path:', basePath);
+                    continue;
+                }
+
+                if (typeof basePath.alias !== 'string' || !basePath.alias.trim()) {
+                    console.warn('Skipping base path with invalid alias:', basePath);
+                    continue;
+                }
+
+                // Ensure alias starts with @
+                const normalizedAlias = basePath.alias.startsWith('@')
+                    ? basePath.alias
+                    : `@${basePath.alias}`;
+
+                if (typeof basePath.path !== 'string' || !basePath.path.trim()) {
+                    console.warn('Skipping base path with invalid path:', basePath);
+                    continue;
+                }
+
+                validBasePaths.push({
+                    alias: normalizedAlias,
+                    path: basePath.path
+                });
+            }
+        }
+
         // Validate logical groups
         let validLogicalGroups: LogicalGroup[] = [];
         if (config.logicalGroups && Array.isArray(config.logicalGroups)) {
@@ -360,7 +391,7 @@ export class ConfigurationManager {
 
                     // Validate that the path exists
                     try {
-                        const resolvedPath = this.resolvePath(item.path);
+                        const resolvedPath = this.resolvePath(item.path, validBasePaths);
                         if (!fs.existsSync(resolvedPath)) {
                             console.warn(`Skipping logical group item with non-existent path: ${item.path}`);
                             continue;
@@ -394,6 +425,7 @@ export class ConfigurationManager {
         }
 
         return {
+            basePaths: validBasePaths.length > 0 ? validBasePaths : undefined,
             logicalGroups: validLogicalGroups
         };
     }
@@ -418,15 +450,57 @@ export class ConfigurationManager {
     }
 
     /**
-     * Resolve a path relative to the workspace root
-     * @param inputPath Path to resolve
-     * @returns Absolute path
+     * Resolve base path aliases in a path string
+     * @param inputPath Path that may contain base path aliases (e.g., @myrepo/src/file.ts)
+     * @param basePaths Array of base path configurations
+     * @returns Path with aliases resolved
      */
-    private resolvePath(inputPath: string): string {
-        if (path.isAbsolute(inputPath)) {
+    private resolveBasePathAlias(inputPath: string, basePaths?: BasePath[]): string {
+        if (!basePaths || basePaths.length === 0) {
             return inputPath;
         }
-        return path.resolve(this.workspaceRoot, inputPath);
+
+        // Check if the path starts with an alias (e.g., @myrepo/...)
+        const aliasMatch = inputPath.match(/^@([^/\\]+)([\\/].*)?$/);
+        if (!aliasMatch) {
+            return inputPath;
+        }
+
+        const aliasName = `@${aliasMatch[1]}`;
+        const remainingPath = aliasMatch[2] || '';
+
+        // Find the matching base path
+        const basePath = basePaths.find(bp => bp.alias === aliasName);
+        if (!basePath) {
+            console.warn(`Base path alias "${aliasName}" not found in configuration`);
+            return inputPath;
+        }
+
+        // Combine the base path with the remaining path
+        const resolvedBasePath = path.isAbsolute(basePath.path)
+            ? basePath.path
+            : path.resolve(this.workspaceRoot, basePath.path);
+
+        // Handle both forward and backward slashes in the remaining path
+        const normalizedRemaining = remainingPath.replace(/^[\\/]+/, '');
+        return path.join(resolvedBasePath, normalizedRemaining);
+    }
+
+    /**
+     * Resolve a path relative to the workspace root, with support for base path aliases
+     * @param inputPath Path to resolve (may contain aliases like @myrepo/path)
+     * @param basePaths Optional array of base path configurations
+     * @returns Absolute path
+     */
+    private resolvePath(inputPath: string, basePaths?: BasePath[]): string {
+        // First resolve any base path aliases
+        const pathWithResolvedAlias = this.resolveBasePathAlias(inputPath, basePaths);
+
+        // Then resolve relative paths
+        if (path.isAbsolute(pathWithResolvedAlias)) {
+            return pathWithResolvedAlias;
+        }
+        return path.resolve(this.workspaceRoot, pathWithResolvedAlias);
     }
 
     /**
@@ -502,13 +576,13 @@ export class ConfigurationManager {
             }
 
             // Resolve and validate the path
-            const resolvedPath = this.resolvePath(itemPath);
+            const resolvedPath = this.resolvePath(itemPath, config.basePaths);
 
             // Check if item already exists in group
             // Use normalized paths for cross-platform comparison (Windows is case-insensitive)
             const normalizedResolvedPath = this.normalizePath(resolvedPath);
             const existingItem = group.items.find(item => {
-                const itemResolvedPath = path.resolve(this.workspaceRoot, item.path);
+                const itemResolvedPath = this.resolvePath(item.path, config.basePaths);
                 return this.normalizePath(itemResolvedPath) === normalizedResolvedPath;
             });
 
@@ -557,14 +631,14 @@ export class ConfigurationManager {
                 return;
             }
 
-            const resolvedPath = this.resolvePath(itemPath);
+            const resolvedPath = this.resolvePath(itemPath, config.basePaths);
 
             // Find and remove the item
             // Use normalized paths for cross-platform comparison (Windows is case-insensitive)
             const normalizedResolvedPath = this.normalizePath(resolvedPath);
             const initialLength = group.items.length;
             group.items = group.items.filter(item => {
-                const itemResolvedPath = path.resolve(this.workspaceRoot, item.path);
+                const itemResolvedPath = this.resolvePath(item.path, config.basePaths);
                 return this.normalizePath(itemResolvedPath) !== normalizedResolvedPath;
             });
 

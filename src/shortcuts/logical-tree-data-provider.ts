@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
 import { ThemeManager } from './theme-manager';
 import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, ShortcutItem } from './tree-items';
-import { LogicalGroup } from './types';
+import { BasePath, LogicalGroup } from './types';
 
 /**
  * Tree data provider for the logical groups panel
@@ -192,7 +192,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
             });
 
             // Calculate common path prefix for descriptions
-            const resolvedPaths = sortedItems.map(item => this.resolvePath(item.path));
+            const resolvedPaths = sortedItems.map(item => this.resolvePath(item.path, config.basePaths));
             const commonPrefix = this.findCommonPathPrefix(resolvedPaths);
 
             for (const itemConfig of sortedItems) {
@@ -205,7 +205,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                         if (!itemMatches) {
                             // For folders, check if they contain matching items
                             if (itemConfig.type === 'folder') {
-                                const resolvedPath = this.resolvePath(itemConfig.path);
+                                const resolvedPath = this.resolvePath(itemConfig.path, config.basePaths);
                                 const hasMatchingChildren = await this.hasMatchingChildren(resolvedPath, this.searchFilter);
                                 if (!hasMatchingChildren) {
                                     continue;
@@ -216,7 +216,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                         }
                     }
 
-                    const resolvedPath = this.resolvePath(itemConfig.path);
+                    const resolvedPath = this.resolvePath(itemConfig.path, config.basePaths);
                     const uri = vscode.Uri.file(resolvedPath);
 
                     // Check if path exists
@@ -269,13 +269,57 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
     }
 
     /**
-     * Resolve a path relative to the workspace root
+     * Resolve base path aliases in a path string
+     * @param inputPath Path that may contain base path aliases (e.g., @myrepo/src/file.ts)
+     * @param basePaths Array of base path configurations
+     * @returns Path with aliases resolved
      */
-    private resolvePath(inputPath: string): string {
-        if (path.isAbsolute(inputPath)) {
+    private resolveBasePathAlias(inputPath: string, basePaths?: BasePath[]): string {
+        if (!basePaths || basePaths.length === 0) {
             return inputPath;
         }
-        return path.resolve(this.workspaceRoot, inputPath);
+
+        // Check if the path starts with an alias (e.g., @myrepo/...)
+        const aliasMatch = inputPath.match(/^@([^/\\]+)([\\/].*)?$/);
+        if (!aliasMatch) {
+            return inputPath;
+        }
+
+        const aliasName = `@${aliasMatch[1]}`;
+        const remainingPath = aliasMatch[2] || '';
+
+        // Find the matching base path
+        const basePath = basePaths.find(bp => bp.alias === aliasName);
+        if (!basePath) {
+            console.warn(`Base path alias "${aliasName}" not found in configuration`);
+            return inputPath;
+        }
+
+        // Combine the base path with the remaining path
+        const resolvedBasePath = path.isAbsolute(basePath.path)
+            ? basePath.path
+            : path.resolve(this.workspaceRoot, basePath.path);
+
+        // Handle both forward and backward slashes in the remaining path
+        const normalizedRemaining = remainingPath.replace(/^[\\/]+/, '');
+        return path.join(resolvedBasePath, normalizedRemaining);
+    }
+
+    /**
+     * Resolve a path relative to the workspace root, with support for base path aliases
+     * @param inputPath Path to resolve (may contain aliases like @myrepo/path)
+     * @param basePaths Optional array of base path configurations
+     * @returns Absolute path
+     */
+    private resolvePath(inputPath: string, basePaths?: BasePath[]): string {
+        // First resolve any base path aliases
+        const pathWithResolvedAlias = this.resolveBasePathAlias(inputPath, basePaths);
+
+        // Then resolve relative paths
+        if (path.isAbsolute(pathWithResolvedAlias)) {
+            return pathWithResolvedAlias;
+        }
+        return path.resolve(this.workspaceRoot, pathWithResolvedAlias);
     }
 
     /**

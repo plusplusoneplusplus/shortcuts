@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from '../../shortcuts/configuration-manager';
-import { DEFAULT_SHORTCUTS_CONFIG, ShortcutsConfig } from '../../shortcuts/types';
+import { ShortcutsConfig } from '../../shortcuts/types';
 
 suite('ConfigurationManager Tests', () => {
     let tempDir: string;
@@ -55,7 +55,9 @@ suite('ConfigurationManager Tests', () => {
         test('should create default configuration when file does not exist', async () => {
             const config = await configManager.loadConfiguration();
 
-            assert.deepStrictEqual(config, DEFAULT_SHORTCUTS_CONFIG);
+            assert.strictEqual(Array.isArray(config.logicalGroups), true);
+            assert.strictEqual(config.logicalGroups.length, 0);
+            // basePaths is optional and may be undefined
 
             // Verify file was created
             const configPath = configManager.getConfigPath();
@@ -140,7 +142,9 @@ suite('ConfigurationManager Tests', () => {
             const config = await configManager.loadConfiguration();
 
             // Should return default configuration
-            assert.deepStrictEqual(config, DEFAULT_SHORTCUTS_CONFIG);
+            assert.strictEqual(Array.isArray(config.logicalGroups), true);
+            assert.strictEqual(config.logicalGroups.length, 0);
+            // basePaths is optional and may be undefined
         });
 
         test('should skip groups with non-existent paths', async () => {
@@ -454,7 +458,9 @@ suite('ConfigurationManager Tests', () => {
             fs.writeFileSync(configPath, 'completely invalid: yaml: content: [[[[');
 
             const config = await configManager.loadConfiguration();
-            assert.deepStrictEqual(config, DEFAULT_SHORTCUTS_CONFIG);
+            assert.strictEqual(Array.isArray(config.logicalGroups), true);
+            assert.strictEqual(config.logicalGroups.length, 0);
+            // basePaths is optional and may be undefined
         });
 
         test('should skip invalid group entries', async () => {

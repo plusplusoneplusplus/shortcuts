@@ -72,6 +72,11 @@ This is the "Workspace Shortcuts" VSCode extension that provides customizable gr
 ### Key Types (`src/shortcuts/types.ts`)
 
 ```typescript
+interface BasePath {
+    alias: string;     // Alias name (e.g., @myrepo)
+    path: string;      // Actual filesystem path
+}
+
 interface LogicalGroup {
     name: string;           // Group identifier
     description?: string;   // Optional description
@@ -80,12 +85,13 @@ interface LogicalGroup {
 }
 
 interface LogicalGroupItem {
-    path: string;      // Relative or absolute path
+    path: string;      // Relative, absolute, or alias path (e.g., @myrepo/src)
     name: string;      // Display name
     type: 'folder' | 'file';  // Item type
 }
 
 interface ShortcutsConfig {
+    basePaths?: BasePath[];         // Optional base path aliases
     logicalGroups: LogicalGroup[];  // All groups
 }
 ```
@@ -103,6 +109,15 @@ interface ShortcutsConfig {
 The extension uses YAML configuration files stored at `.vscode/shortcuts.yaml` with this structure:
 
 ```yaml
+# Optional: Define base paths for multiple git roots or common directories
+basePaths:
+  - alias: "@frontend"
+    path: "/path/to/frontend/repo"
+  - alias: "@backend"
+    path: "/path/to/backend/repo"
+  - alias: "@shared"
+    path: "../shared-libs"
+
 logicalGroups:
   - name: "Project Files"
     description: "Core project components"
@@ -119,7 +134,30 @@ logicalGroups:
       - path: "/absolute/path/to/folder"
         name: "External Folder"
         type: "folder"
+      - path: "@frontend/src/components"
+        name: "Frontend Components"
+        type: "folder"
+      - path: "@backend/api/routes"
+        name: "API Routes"
+        type: "folder"
 ```
+
+### Base Paths Configuration
+
+The `basePaths` section allows you to define aliases for multiple git roots or common directories:
+
+- **alias**: A name starting with `@` that you can use to reference the base path (e.g., `@myrepo`)
+- **path**: The actual filesystem path, can be:
+  - Absolute path (e.g., `/Users/name/projects/myrepo`)
+  - Relative to workspace root (e.g., `../sibling-repo` or `subproject`)
+
+Use base path aliases in your item paths like: `@frontend/src/components/Button.tsx`
+
+**Benefits of Base Paths:**
+- Work with multiple git repositories in a single shortcuts configuration
+- Use meaningful aliases instead of long absolute paths
+- Easily relocate projects by updating just the base path
+- Share configurations across team members with different directory structures
 
 **Note**: Old configurations with a `shortcuts` array are automatically migrated to `logicalGroups` format on first load.
 
