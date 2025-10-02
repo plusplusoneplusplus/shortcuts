@@ -159,6 +159,15 @@ Use base path aliases in your item paths like: `@frontend/src/components/Button.
 - Easily relocate projects by updating just the base path
 - Share configurations across team members with different directory structures
 
+**Automatic Alias Detection:**
+When adding files or folders to a group, the extension automatically:
+1. Checks if the file is within a path that has a defined base path alias
+2. If found, uses the alias in the stored path (e.g., `@frontend/src/file.ts`)
+3. Detects git repository roots and uses their aliases if available
+4. Falls back to relative or absolute paths if no alias matches
+
+This means you can define your base paths once, and the extension will automatically use them when you add items!
+
 **Note**: Old configurations with a `shortcuts` array are automatically migrated to `logicalGroups` format on first load.
 
 ## Development Notes

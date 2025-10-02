@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
@@ -516,6 +517,79 @@ export class ConfigurationManager {
     }
 
     /**
+     * Find the git root directory for a given path
+     * @param filePath Path to find git root for
+     * @returns Git root path or undefined if not in a git repository
+     */
+    private findGitRoot(filePath: string): string | undefined {
+        try {
+            const directory = fs.statSync(filePath).isDirectory() ? filePath : path.dirname(filePath);
+            const gitRoot = execSync('git rev-parse --show-toplevel', {
+                cwd: directory,
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'ignore'] // Suppress stderr
+            }).trim();
+            return gitRoot;
+        } catch (error) {
+            // Not in a git repository or git not available
+            return undefined;
+        }
+    }
+
+    /**
+     * Find a matching base path alias for a given file path
+     * @param filePath Path to find alias for
+     * @param basePaths Array of base path configurations
+     * @returns Matching alias or undefined if no match found
+     */
+    private findMatchingAlias(filePath: string, basePaths?: BasePath[]): { alias: string; relativePath: string } | undefined {
+        if (!basePaths || basePaths.length === 0) {
+            return undefined;
+        }
+
+        const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(this.workspaceRoot, filePath);
+        const normalizedPath = this.normalizePath(absolutePath);
+
+        // Try to find a base path that contains this file
+        for (const basePath of basePaths) {
+            const resolvedBasePath = path.isAbsolute(basePath.path)
+                ? basePath.path
+                : path.resolve(this.workspaceRoot, basePath.path);
+            const normalizedBasePath = this.normalizePath(resolvedBasePath);
+
+            // Check if the file is within this base path
+            if (normalizedPath.startsWith(normalizedBasePath)) {
+                const relativePath = path.relative(resolvedBasePath, absolutePath);
+                // Make sure it's actually a relative path (not starting with ..)
+                if (!relativePath.startsWith('..')) {
+                    return {
+                        alias: basePath.alias,
+                        relativePath: relativePath
+                    };
+                }
+            }
+        }
+
+        return undefined;
+    }
+
+    /**
+     * Convert an absolute path to use an alias if available
+     * @param filePath Path to convert
+     * @param basePaths Array of base path configurations
+     * @returns Path using alias if available, or original path
+     */
+    private convertPathToAlias(filePath: string, basePaths?: BasePath[]): string {
+        const match = this.findMatchingAlias(filePath, basePaths);
+        if (match) {
+            // Use forward slashes for consistency in config files
+            const normalizedRelative = match.relativePath.replace(/\\/g, '/');
+            return `${match.alias}/${normalizedRelative}`;
+        }
+        return filePath;
+    }
+
+    /**
      * Create a new logical group
      * @param groupName Name of the group
      * @param description Optional description
@@ -554,7 +628,7 @@ export class ConfigurationManager {
     }
 
     /**
-     * Add an item to a logical group
+     * Add an item to a logical group with automatic alias detection
      * @param groupName Name of the group
      * @param itemPath Path to the item
      * @param itemName Display name for the item
@@ -591,12 +665,51 @@ export class ConfigurationManager {
                 return;
             }
 
-            // Create relative path from workspace root
-            const relativePath = path.relative(this.workspaceRoot, resolvedPath);
+            // Try to use an alias if available
+            let pathToStore: string;
+
+            // First, try to find an existing alias that matches
+            const aliasMatch = this.findMatchingAlias(resolvedPath, config.basePaths);
+            if (aliasMatch) {
+                // Use forward slashes for consistency
+                const normalizedRelative = aliasMatch.relativePath.replace(/\\/g, '/');
+                pathToStore = `${aliasMatch.alias}/${normalizedRelative}`;
+                console.log(`Using existing alias for path: ${pathToStore}`);
+            } else {
+                // Check if file is in a git repository
+                const gitRoot = this.findGitRoot(resolvedPath);
+
+                if (gitRoot && config.basePaths) {
+                    // Check if this git root already has an alias
+                    const normalizedGitRoot = this.normalizePath(gitRoot);
+                    const existingAliasForGitRoot = config.basePaths.find(bp => {
+                        const resolvedBasePath = path.isAbsolute(bp.path)
+                            ? bp.path
+                            : path.resolve(this.workspaceRoot, bp.path);
+                        return this.normalizePath(resolvedBasePath) === normalizedGitRoot;
+                    });
+
+                    if (existingAliasForGitRoot) {
+                        // Use the existing alias
+                        const relativePath = path.relative(gitRoot, resolvedPath);
+                        const normalizedRelative = relativePath.replace(/\\/g, '/');
+                        pathToStore = `${existingAliasForGitRoot.alias}/${normalizedRelative}`;
+                        console.log(`Using git root alias for path: ${pathToStore}`);
+                    } else {
+                        // Use relative or absolute path as before
+                        const relativePath = path.relative(this.workspaceRoot, resolvedPath);
+                        pathToStore = relativePath.startsWith('..') ? resolvedPath : relativePath;
+                    }
+                } else {
+                    // Use relative or absolute path as before
+                    const relativePath = path.relative(this.workspaceRoot, resolvedPath);
+                    pathToStore = relativePath.startsWith('..') ? resolvedPath : relativePath;
+                }
+            }
 
             // Add new item
             const newItem: LogicalGroupItem = {
-                path: relativePath.startsWith('..') ? resolvedPath : relativePath,
+                path: pathToStore,
                 name: itemName,
                 type: itemType
             };

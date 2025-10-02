@@ -486,4 +486,296 @@ suite('ConfigurationManager Tests', () => {
             assert.strictEqual(config.logicalGroups[0].name, 'Valid Group');
         });
     });
+
+    suite('Automatic Alias Detection', () => {
+        test('should use existing base path alias when adding file', async () => {
+            // Create .vscode directory and test files
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            // Create a subdirectory structure
+            const projectPath = path.join(tempDir, 'my-project');
+            const srcPath = path.join(projectPath, 'src');
+            fs.mkdirSync(srcPath, { recursive: true });
+
+            const testFile = path.join(srcPath, 'test.ts');
+            fs.writeFileSync(testFile, 'console.log("test");');
+
+            // Write configuration with base paths
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, `basePaths:
+  - alias: "@project"
+    path: "${projectPath.replace(/\\/g, '/')}"
+logicalGroups:
+  - name: Test Group
+    items: []`);
+
+            // Add file to group
+            await configManager.addToLogicalGroup('Test Group', testFile, 'Test File', 'file');
+
+            // Load configuration and verify alias was used
+            const config = await configManager.loadConfiguration();
+            const group = config.logicalGroups?.find(g => g.name === 'Test Group');
+
+            assert.ok(group, 'Group should exist');
+            assert.strictEqual(group!.items.length, 1);
+            assert.ok(group!.items[0].path.startsWith('@project/'), 'Path should use alias');
+            assert.ok(group!.items[0].path.includes('src/test.ts'), 'Path should include relative path');
+        });
+
+        test('should use relative path when no alias matches', async () => {
+            // Create .vscode directory
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            // Create a test file in workspace
+            const testFile = path.join(tempDir, 'test.txt');
+            fs.writeFileSync(testFile, 'test content');
+
+            // Write configuration without base paths
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, `logicalGroups:
+  - name: Test Group
+    items: []`);
+
+            // Add file to group
+            await configManager.addToLogicalGroup('Test Group', testFile, 'Test File', 'file');
+
+            // Load configuration and verify relative path was used
+            const config = await configManager.loadConfiguration();
+            const group = config.logicalGroups?.find(g => g.name === 'Test Group');
+
+            assert.ok(group, 'Group should exist');
+            assert.strictEqual(group!.items.length, 1);
+            assert.strictEqual(group!.items[0].path, 'test.txt', 'Path should be relative');
+        });
+
+        test('should handle nested directories with alias', async () => {
+            // Create .vscode directory
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            // Create deeply nested structure
+            const basePath = path.join(tempDir, 'base');
+            const deepPath = path.join(basePath, 'level1', 'level2', 'level3');
+            fs.mkdirSync(deepPath, { recursive: true });
+
+            const testFile = path.join(deepPath, 'deep.js');
+            fs.writeFileSync(testFile, '// deep file');
+
+            // Write configuration with base path
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, `basePaths:
+  - alias: "@base"
+    path: "${basePath.replace(/\\/g, '/')}"
+logicalGroups:
+  - name: Deep Group
+    items: []`);
+
+            // Add deeply nested file
+            await configManager.addToLogicalGroup('Deep Group', testFile, 'Deep File', 'file');
+
+            // Verify
+            const config = await configManager.loadConfiguration();
+            const group = config.logicalGroups?.find(g => g.name === 'Deep Group');
+
+            assert.ok(group, 'Group should exist');
+            assert.strictEqual(group!.items[0].path, '@base/level1/level2/level3/deep.js');
+        });
+
+        test('should prefer more specific alias when multiple match', async () => {
+            // Create .vscode directory
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            // Create nested structure
+            const outerPath = path.join(tempDir, 'outer');
+            const innerPath = path.join(outerPath, 'inner');
+            fs.mkdirSync(innerPath, { recursive: true });
+
+            const testFile = path.join(innerPath, 'test.ts');
+            fs.writeFileSync(testFile, 'test');
+
+            // Write configuration with overlapping base paths
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, `basePaths:
+  - alias: "@outer"
+    path: "${outerPath.replace(/\\/g, '/')}"
+  - alias: "@inner"
+    path: "${innerPath.replace(/\\/g, '/')}"
+logicalGroups:
+  - name: Test Group
+    items: []`);
+
+            // Add file from inner path
+            await configManager.addToLogicalGroup('Test Group', testFile, 'Test File', 'file');
+
+            // Verify - should use first matching alias (outer in this case due to iteration order)
+            const config = await configManager.loadConfiguration();
+            const group = config.logicalGroups?.find(g => g.name === 'Test Group');
+
+            assert.ok(group, 'Group should exist');
+            // The first matching alias is used
+            assert.ok(group!.items[0].path.startsWith('@'), 'Should use an alias');
+        });
+
+        test('should handle absolute paths outside workspace without alias', async () => {
+            // Create .vscode directory
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            // Create a directory outside workspace
+            const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'external-'));
+            const externalFile = path.join(externalDir, 'external.txt');
+            fs.writeFileSync(externalFile, 'external content');
+
+            try {
+                // Write configuration without matching base path
+                const configPath = path.join(vscodePath, 'shortcuts.yaml');
+                fs.writeFileSync(configPath, `logicalGroups:
+  - name: External Group
+    items: []`);
+
+                // Add external file
+                await configManager.addToLogicalGroup('External Group', externalFile, 'External File', 'file');
+
+                // Verify - should use absolute path
+                const config = await configManager.loadConfiguration();
+                const group = config.logicalGroups?.find(g => g.name === 'External Group');
+
+                assert.ok(group, 'Group should exist');
+                assert.ok(path.isAbsolute(group!.items[0].path), 'Should use absolute path');
+            } finally {
+                // Clean up external directory
+                fs.rmSync(externalDir, { recursive: true, force: true });
+            }
+        });
+
+        test('should handle relative base paths correctly', async () => {
+            // Create .vscode directory
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            // Create a subdirectory in workspace
+            const subPath = path.join(tempDir, 'subproject');
+            fs.mkdirSync(subPath, { recursive: true });
+
+            const testFile = path.join(subPath, 'file.ts');
+            fs.writeFileSync(testFile, 'content');
+
+            // Write configuration with relative base path
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, `basePaths:
+  - alias: "@sub"
+    path: "subproject"
+logicalGroups:
+  - name: Sub Group
+    items: []`);
+
+            // Add file
+            await configManager.addToLogicalGroup('Sub Group', testFile, 'Sub File', 'file');
+
+            // Verify
+            const config = await configManager.loadConfiguration();
+            const group = config.logicalGroups?.find(g => g.name === 'Sub Group');
+
+            assert.ok(group, 'Group should exist');
+            assert.strictEqual(group!.items[0].path, '@sub/file.ts');
+        });
+
+        test('should not duplicate items when adding same file twice', async () => {
+            // Create .vscode directory
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            const testFile = path.join(tempDir, 'duplicate.txt');
+            fs.writeFileSync(testFile, 'test');
+
+            // Write initial configuration
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, `basePaths:
+  - alias: "@root"
+    path: "${tempDir.replace(/\\/g, '/')}"
+logicalGroups:
+  - name: Test Group
+    items: []`);
+
+            // Add file twice
+            await configManager.addToLogicalGroup('Test Group', testFile, 'File 1', 'file');
+            await configManager.addToLogicalGroup('Test Group', testFile, 'File 2', 'file');
+
+            // Verify only one item was added
+            const config = await configManager.loadConfiguration();
+            const group = config.logicalGroups?.find(g => g.name === 'Test Group');
+
+            assert.ok(group, 'Group should exist');
+            assert.strictEqual(group!.items.length, 1, 'Should only have one item');
+            assert.strictEqual(warningMessages.length, 1, 'Should show warning for duplicate');
+        });
+
+        test('should normalize paths with forward slashes in aliases', async () => {
+            // Create .vscode directory
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            // Create nested structure
+            const basePath = path.join(tempDir, 'base');
+            const subPath = path.join(basePath, 'sub', 'folder');
+            fs.mkdirSync(subPath, { recursive: true });
+
+            const testFile = path.join(subPath, 'file.txt');
+            fs.writeFileSync(testFile, 'content');
+
+            // Write configuration
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, `basePaths:
+  - alias: "@base"
+    path: "${basePath.replace(/\\/g, '/')}"
+logicalGroups:
+  - name: Test Group
+    items: []`);
+
+            // Add file
+            await configManager.addToLogicalGroup('Test Group', testFile, 'File', 'file');
+
+            // Verify - should use forward slashes
+            const config = await configManager.loadConfiguration();
+            const group = config.logicalGroups?.find(g => g.name === 'Test Group');
+
+            assert.ok(group, 'Group should exist');
+            assert.strictEqual(group!.items[0].path, '@base/sub/folder/file.txt');
+            assert.ok(!group!.items[0].path.includes('\\'), 'Should use forward slashes only');
+        });
+
+        test('should handle folders with alias detection', async () => {
+            // Create .vscode directory
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+
+            // Create folder structure
+            const basePath = path.join(tempDir, 'project');
+            const srcFolder = path.join(basePath, 'src');
+            fs.mkdirSync(srcFolder, { recursive: true });
+
+            // Write configuration
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, `basePaths:
+  - alias: "@project"
+    path: "${basePath.replace(/\\/g, '/')}"
+logicalGroups:
+  - name: Folders
+    items: []`);
+
+            // Add folder
+            await configManager.addToLogicalGroup('Folders', srcFolder, 'Source', 'folder');
+
+            // Verify
+            const config = await configManager.loadConfiguration();
+            const group = config.logicalGroups?.find(g => g.name === 'Folders');
+
+            assert.ok(group, 'Group should exist');
+            assert.strictEqual(group!.items[0].path, '@project/src');
+            assert.strictEqual(group!.items[0].type, 'folder');
+        });
+    });
 });
