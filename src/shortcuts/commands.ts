@@ -257,15 +257,16 @@ export class ShortcutsCommands {
 
         try {
             // Allow selection of both files and folders, and enable multi-select
+            // Note: On Windows, filters can interfere with file visibility when both
+            // canSelectFiles and canSelectFolders are true. Omitting filters allows
+            // the native dialog to properly show both files and folders.
             const uris = await vscode.window.showOpenDialog({
                 canSelectFiles: true,
                 canSelectFolders: true,
                 canSelectMany: true,
                 openLabel: 'Add Files and Folders to Group',
                 title: `Select files and folders to add to "${groupItem.label}"`,
-                filters: {
-                    'All Files': ['*', '*.*']
-                }
+                defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
             });
 
             if (!uris || uris.length === 0) {
@@ -649,13 +650,10 @@ export class ShortcutsCommands {
             const fs = require('fs');
 
             if (location.value === 'custom') {
-                // Show file save dialog
+                // Show file save dialog (no filters needed - defaultUri includes filename)
                 const uri = await vscode.window.showSaveDialog({
                     defaultUri: vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', fileName)),
-                    saveLabel: 'Create File Here',
-                    filters: {
-                        'All Files': ['*', '*.*']
-                    }
+                    saveLabel: 'Create File Here'
                 });
 
                 if (!uri) {
