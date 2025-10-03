@@ -370,17 +370,21 @@ export class FileShortcutItem extends ShortcutItem {
 export class LogicalGroupItem extends ShortcutItem {
     public readonly contextValue = 'logicalGroup';
     public readonly originalName: string; // Store the original name for configuration matching
+    public readonly parentGroupPath?: string; // Path to parent group (e.g., "parent/child")
 
     constructor(
         label: string,
         public readonly description?: string,
         public readonly iconName?: string,
-        collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
+        collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed,
+        parentGroupPath?: string
     ) {
         // Use a visually distinct label and dummy URI for logical groups
-        super(`📂 ${label}`, vscode.Uri.parse(`logical://group/${encodeURIComponent(label)}`), collapsibleState);
+        const groupPath = parentGroupPath ? `${parentGroupPath}/${label}` : label;
+        super(`📂 ${label}`, vscode.Uri.parse(`logical://group/${encodeURIComponent(groupPath)}`), collapsibleState);
 
         this.originalName = label; // Store original name for configuration lookup
+        this.parentGroupPath = parentGroupPath;
         this.description = description;
         this.iconPath = this.getIconPath();
         this.tooltip = description || `Logical group: ${label}`;

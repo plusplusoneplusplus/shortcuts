@@ -628,6 +628,65 @@ export class ConfigurationManager {
     }
 
     /**
+     * Create a nested logical group within a parent group
+     * @param parentGroupPath Path to the parent group (e.g., "parent" or "parent/child")
+     * @param groupName Name of the new nested group
+     * @param description Optional description
+     */
+    async createNestedLogicalGroup(parentGroupPath: string, groupName: string, description?: string): Promise<void> {
+        try {
+            const config = await this.loadConfiguration();
+
+            // Find the parent group
+            const pathParts = parentGroupPath.split('/');
+            let currentGroups = config.logicalGroups;
+            let targetGroup: LogicalGroup | undefined;
+
+            for (const part of pathParts) {
+                targetGroup = currentGroups.find(g => g.name === part);
+                if (!targetGroup) {
+                    vscode.window.showErrorMessage(`Parent group "${parentGroupPath}" not found.`);
+                    return;
+                }
+                currentGroups = targetGroup.groups || [];
+            }
+
+            // Final check to ensure targetGroup is defined (TypeScript safety)
+            if (!targetGroup) {
+                vscode.window.showErrorMessage(`Parent group "${parentGroupPath}" not found.`);
+                return;
+            }
+
+            // Check if nested group already exists in parent
+            if (targetGroup.groups && targetGroup.groups.some(g => g.name === groupName)) {
+                vscode.window.showWarningMessage(`A nested group with the name "${groupName}" already exists in this group.`);
+                return;
+            }
+
+            // Initialize groups array if it doesn't exist
+            if (!targetGroup.groups) {
+                targetGroup.groups = [];
+            }
+
+            // Add new nested group
+            const newGroup: LogicalGroup = {
+                name: groupName,
+                description: description,
+                items: []
+            };
+
+            targetGroup.groups.push(newGroup);
+            await this.saveConfiguration(config);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating nested logical group:', err);
+            vscode.window.showErrorMessage(`Failed to create nested group: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
      * Add an item to a logical group with automatic alias detection
      * @param groupName Name of the group
      * @param itemPath Path to the item

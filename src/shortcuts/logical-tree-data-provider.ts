@@ -167,19 +167,76 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
     }
 
     /**
+     * Find a group by path (supports nested groups)
+     */
+    private findGroupByPath(groups: LogicalGroup[], groupPath: string): LogicalGroup | undefined {
+        const pathParts = groupPath.split('/');
+        let currentGroups = groups;
+        let targetGroup: LogicalGroup | undefined;
+
+        for (const part of pathParts) {
+            targetGroup = currentGroups.find(g => g.name === part);
+            if (!targetGroup) {
+                return undefined;
+            }
+            currentGroups = targetGroup.groups || [];
+        }
+
+        return targetGroup;
+    }
+
+    /**
      * Get contents of a logical group
      */
     private async getLogicalGroupContents(groupItem: LogicalGroupItem): Promise<ShortcutItem[]> {
         const config = await this.configurationManager.loadConfiguration();
         const items: ShortcutItem[] = [];
 
-        // Find the logical group configuration using the original name
-        const groupConfig = config.logicalGroups?.find(g => g.name === groupItem.originalName);
+        // Build the full group path
+        const groupPath = groupItem.parentGroupPath
+            ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
+            : groupItem.originalName;
+
+        // Find the logical group configuration using the path
+        const groupConfig = this.findGroupByPath(config.logicalGroups, groupPath);
         if (!groupConfig) {
             return [];
         }
 
         try {
+            // Add nested groups first
+            if (groupConfig.groups && groupConfig.groups.length > 0) {
+                for (const nestedGroup of groupConfig.groups) {
+                    // Apply search filter to nested group names
+                    if (this.searchFilter) {
+                        const groupMatches = nestedGroup.name.toLowerCase().includes(this.searchFilter) ||
+                            (nestedGroup.description && nestedGroup.description.toLowerCase().includes(this.searchFilter));
+
+                        if (!groupMatches) {
+                            // Check if any items in the nested group match
+                            const hasMatchingItems = nestedGroup.items.some(item =>
+                                item.name.toLowerCase().includes(this.searchFilter) ||
+                                item.path.toLowerCase().includes(this.searchFilter)
+                            );
+
+                            if (!hasMatchingItems) {
+                                continue;
+                            }
+                        }
+                    }
+
+                    const nestedGroupItem = new LogicalGroupItem(
+                        nestedGroup.name,
+                        nestedGroup.description,
+                        nestedGroup.icon,
+                        vscode.TreeItemCollapsibleState.Collapsed,
+                        groupPath // Pass parent path for nested groups
+                    );
+
+                    items.push(nestedGroupItem);
+                }
+            }
+
             // Sort items: folders first, then files, both alphabetically
             const sortedItems = [...groupConfig.items].sort((a, b) => {
                 if (a.type === 'folder' && b.type === 'file') {

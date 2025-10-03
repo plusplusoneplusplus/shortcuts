@@ -89,6 +89,12 @@ export class ShortcutsCommands {
             })
         );
 
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.createNestedLogicalGroup', async (item: LogicalGroupItem) => {
+                await this.createNestedLogicalGroup(item);
+            })
+        );
+
         // Copy path commands (work for both physical and logical items)
         disposables.push(
             vscode.commands.registerCommand('shortcuts.copyRelativePath', async (item: FolderShortcutItem | FileShortcutItem | LogicalGroupChildItem) => {
@@ -290,6 +296,53 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error creating logical group:', err);
             vscode.window.showErrorMessage(`Failed to create logical group: ${err.message}`);
+        }
+    }
+
+    /**
+     * Create a nested logical group within a parent group
+     */
+    private async createNestedLogicalGroup(parentGroup: LogicalGroupItem): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            const groupName = await vscode.window.showInputBox({
+                prompt: `Enter a name for the new group inside "${parentGroup.originalName}"`,
+                placeHolder: 'Subgroup name',
+                validateInput: (value) => {
+                    if (!value || value.trim() === '') {
+                        return 'Group name cannot be empty';
+                    }
+                    return null;
+                }
+            });
+
+            if (!groupName) {
+                return;
+            }
+
+            const description = await vscode.window.showInputBox({
+                prompt: 'Enter a description for the group (optional)',
+                placeHolder: 'Group description'
+            });
+
+            // Build the parent group path
+            const parentGroupPath = parentGroup.parentGroupPath
+                ? `${parentGroup.parentGroupPath}/${parentGroup.originalName}`
+                : parentGroup.originalName;
+
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            await configManager.createNestedLogicalGroup(parentGroupPath, groupName.trim(), description?.trim());
+
+            this.treeDataProvider.refresh();
+            NotificationManager.showInfo(`Subgroup "${groupName}" created successfully!`, { timeout: 3000 });
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating nested logical group:', err);
+            vscode.window.showErrorMessage(`Failed to create subgroup: ${err.message}`);
         }
     }
 

@@ -34,6 +34,8 @@ export interface LogicalGroup {
     description?: string;
     /** Items in this logical group */
     items: LogicalGroupItem[];
+    /** Optional nested groups within this group */
+    groups?: LogicalGroup[];
     /** Optional icon for the group */
     icon?: string;
 }
