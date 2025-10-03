@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
+import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
 import { InlineSearchProvider } from './shortcuts/inline-search-provider';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
@@ -42,8 +43,23 @@ export function activate(context: vscode.ExtensionContext) {
             themeManager
         );
 
+        // Set up file system watchers for referenced folders
+        const fileSystemWatcherManager = new FileSystemWatcherManager(
+            workspaceRoot,
+            configurationManager,
+            () => {
+                treeDataProvider.refresh();
+            }
+        );
+
+        // Initialize file system watchers
+        fileSystemWatcherManager.initialize();
+
+        // Watch configuration file for changes
         configurationManager.watchConfigFile(() => {
             treeDataProvider.refresh();
+            // Update file system watchers when configuration changes
+            fileSystemWatcherManager.updateWatchers();
         });
 
         // Initialize theme management with refresh callback
@@ -129,6 +145,7 @@ export function activate(context: vscode.ExtensionContext) {
             treeDataProvider,
             configurationManager,
             themeManager,
+            fileSystemWatcherManager,
             keyboardNavigationHandler,
             keyboardHelpCommand,
             undoMoveCommand,

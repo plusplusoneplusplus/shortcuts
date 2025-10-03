@@ -12,6 +12,7 @@ Organize your workspace with customizable groups of shortcuts. Quick access to f
 - **Custom Organization**: Create custom groups to organize files and folders by project, type, or workflow
 - **Flexible Management**: Add any files and folders to groups, organizing them however makes sense for you
 - **Quick Access**: Instant access to frequently used locations from a single, unified view
+- **Auto-Refresh**: Automatically refreshes tree view when files/folders in watched directories change
 - **Split View Navigation**: Open files and folders in a split pane or replace current view
 - **Drag and Drop**: Move files and folders by dragging them to different locations
 - **Group Operations**: Create, rename, delete groups and manage their contents
