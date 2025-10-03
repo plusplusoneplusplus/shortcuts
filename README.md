@@ -83,7 +83,7 @@ The extension stores its configuration in your workspace or global settings. You
 
 ## Platform Notes
 
-- Windows: Due to OS limitations in native file dialogs, selecting both files and folders simultaneously in a single dialog is not supported. The extension will prompt you to choose whether to add Files, Folders, or Both (handled via two dialogs) when using "Add to Group".
+- Windows: Due to OS limitations in native file dialogs, selecting both files and folders simultaneously in a single dialog is not supported. On Windows, right‑click a group and use "Add Files to Group" or "Add Folders to Group". On macOS/Linux, the single "Add to Group" entry allows selecting both in one dialog.
 
 If you encounter any issues, please file them on the [GitHub repository](https://github.com/plusplusoneplusplus/shortcuts/issues).
 

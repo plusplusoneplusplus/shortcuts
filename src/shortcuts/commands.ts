@@ -58,6 +58,19 @@ export class ShortcutsCommands {
             })
         );
 
+        // Windows-only: Separate add files/folders commands to avoid mixed dialog limitation
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.addFilesToLogicalGroup', async (item: LogicalGroupItem) => {
+                await this.addFilesToLogicalGroup(item);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.addFoldersToLogicalGroup', async (item: LogicalGroupItem) => {
+                await this.addFoldersToLogicalGroup(item);
+            })
+        );
+
         disposables.push(
             vscode.commands.registerCommand('shortcuts.removeFromLogicalGroup', async (item: LogicalGroupChildItem) => {
                 await this.removeFromLogicalGroup(item);
@@ -256,79 +269,16 @@ export class ShortcutsCommands {
         }
 
         try {
-            // Windows limitation: native dialogs cannot select files and folders together.
-            // Electron/VS Code maps to OS dialogs that do not support mixed selection on Windows.
-            // Workaround: On Windows, ask user which to add (files, folders, or both),
-            // and run separate dialogs as needed. On other platforms keep mixed selection.
-
-            const isWindows = process.platform === 'win32';
-            let uris: vscode.Uri[] | undefined = [];
-
-            if (isWindows) {
-                const choice = await vscode.window.showQuickPick(
-                    [
-                        { label: 'Add Files', description: 'Select one or more files', value: 'files' },
-                        { label: 'Add Folders', description: 'Select one or more folders', value: 'folders' },
-                        { label: 'Add Files and Folders', description: 'Pick files first, then folders', value: 'both' }
-                    ],
-                    { placeHolder: `What do you want to add to "${groupItem.label}"?` }
-                );
-
-                if (!choice) {
-                    return; // user cancelled
-                }
-
-                const workspaceDefault = vscode.workspace.workspaceFolders?.[0]?.uri;
-                const collected: vscode.Uri[] = [];
-
-                if (choice.value === 'files' || choice.value === 'both') {
-                    const files = await vscode.window.showOpenDialog({
-                        canSelectFiles: true,
-                        canSelectFolders: false,
-                        canSelectMany: true,
-                        openLabel: 'Add Files to Group',
-                        title: `Select files to add to "${groupItem.label}"`,
-                        defaultUri: workspaceDefault
-                    });
-                    if (files && files.length) {
-                        collected.push(...files);
-                    }
-                    // If user picked 'files' only and cancelled, treat as no selection
-                    if (choice.value === 'files' && collected.length === 0) {
-                        return;
-                    }
-                }
-
-                if (choice.value === 'folders' || choice.value === 'both') {
-                    const folders = await vscode.window.showOpenDialog({
-                        canSelectFiles: false,
-                        canSelectFolders: true,
-                        canSelectMany: true,
-                        openLabel: 'Add Folders to Group',
-                        title: `Select folders to add to "${groupItem.label}"`,
-                        defaultUri: workspaceDefault
-                    });
-                    if (folders && folders.length) {
-                        collected.push(...folders);
-                    }
-                    // If choice was only folders and none selected, treat as cancel
-                    if (choice.value === 'folders' && collected.length === 0) {
-                        return;
-                    }
-                }
-
-                uris = collected;
-            } else {
-                // Non-Windows platforms: allow mixed selection in one dialog
-                uris = await vscode.window.showOpenDialog({
-                    canSelectFiles: true,
-                    canSelectFolders: true,
-                    canSelectMany: true,
-                    openLabel: 'Add Files and Folders to Group',
-                    title: `Select files and folders to add to "${groupItem.label}"`,
-                    defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
-                });
-            }
+            // Cross-platform default: allow mixed selection where supported (macOS/Linux)
+            // On Windows this command will be hidden in menus; users use dedicated commands instead.
+            const uris = await vscode.window.showOpenDialog({
+                canSelectFiles: true,
+                canSelectFolders: true,
+                canSelectMany: true,
+                openLabel: 'Add Files and Folders to Group',
+                title: `Select files and folders to add to "${groupItem.label}"`,
+                defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
+            });
 
             if (!uris || uris.length === 0) {
                 return;
@@ -379,6 +329,126 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error adding to logical group:', err);
             vscode.window.showErrorMessage(`Failed to add to logical group: ${err.message}`);
+        }
+    }
+
+    /**
+     * Windows-only convenience: Add only files to a logical group
+     */
+    private async addFilesToLogicalGroup(groupItem: LogicalGroupItem): Promise<void> {
+        try {
+            const uris = await vscode.window.showOpenDialog({
+                canSelectFiles: true,
+                canSelectFolders: false,
+                canSelectMany: true,
+                openLabel: 'Add Files to Group',
+                title: `Select files to add to "${groupItem.label}"`,
+                defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
+            });
+            if (!uris || uris.length === 0) {
+                return;
+            }
+
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            const fs = require('fs');
+            let addedCount = 0;
+            let skippedCount = 0;
+
+            for (const uri of uris) {
+                try {
+                    const stat = fs.statSync(uri.fsPath);
+                    if (stat.isDirectory()) {
+                        // Skip folders when adding files-only
+                        skippedCount++;
+                        continue;
+                    }
+                    const defaultName = path.basename(uri.fsPath);
+                    await configManager.addToLogicalGroup(
+                        groupItem.originalName,
+                        uri.fsPath,
+                        defaultName,
+                        'file'
+                    );
+                    addedCount++;
+                } catch (e) {
+                    skippedCount++;
+                }
+            }
+
+            this.treeDataProvider.refresh();
+            if (addedCount > 0 && skippedCount === 0) {
+                const itemText = addedCount === 1 ? 'file' : 'files';
+                NotificationManager.showInfo(`${addedCount} ${itemText} added to group "${groupItem.label}" successfully!`, { timeout: 3000 });
+            } else if (addedCount > 0 && skippedCount > 0) {
+                vscode.window.showWarningMessage(`${addedCount} files added successfully, ${skippedCount} items skipped.`);
+            } else {
+                vscode.window.showWarningMessage('No files were added.');
+            }
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error adding files to logical group:', err);
+            vscode.window.showErrorMessage(`Failed to add files: ${err.message}`);
+        }
+    }
+
+    /**
+     * Windows-only convenience: Add only folders to a logical group
+     */
+    private async addFoldersToLogicalGroup(groupItem: LogicalGroupItem): Promise<void> {
+        try {
+            const uris = await vscode.window.showOpenDialog({
+                canSelectFiles: false,
+                canSelectFolders: true,
+                canSelectMany: true,
+                openLabel: 'Add Folders to Group',
+                title: `Select folders to add to "${groupItem.label}"`,
+                defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
+            });
+            if (!uris || uris.length === 0) {
+                return;
+            }
+
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            const fs = require('fs');
+            let addedCount = 0;
+            let skippedCount = 0;
+
+            for (const uri of uris) {
+                try {
+                    const stat = fs.statSync(uri.fsPath);
+                    if (!stat.isDirectory()) {
+                        // Skip files when adding folders-only
+                        skippedCount++;
+                        continue;
+                    }
+                    const defaultName = path.basename(uri.fsPath);
+                    await configManager.addToLogicalGroup(
+                        groupItem.originalName,
+                        uri.fsPath,
+                        defaultName,
+                        'folder'
+                    );
+                    addedCount++;
+                } catch (e) {
+                    skippedCount++;
+                }
+            }
+
+            this.treeDataProvider.refresh();
+            if (addedCount > 0 && skippedCount === 0) {
+                const itemText = addedCount === 1 ? 'folder' : 'folders';
+                NotificationManager.showInfo(`${addedCount} ${itemText} added to group "${groupItem.label}" successfully!`, { timeout: 3000 });
+            } else if (addedCount > 0 && skippedCount > 0) {
+                vscode.window.showWarningMessage(`${addedCount} folders added successfully, ${skippedCount} items skipped.`);
+            } else {
+                vscode.window.showWarningMessage('No folders were added.');
+            }
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error adding folders to logical group:', err);
+            vscode.window.showErrorMessage(`Failed to add folders: ${err.message}`);
         }
     }
 

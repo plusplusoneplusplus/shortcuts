@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Workspace Shortcuts",
   "description": "Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
@@ -91,6 +91,16 @@
       {
         "command": "shortcuts.addToLogicalGroup",
         "title": "Add to Group",
+        "icon": "$(add)"
+      },
+      {
+        "command": "shortcuts.addFilesToLogicalGroup",
+        "title": "Add Files to Group",
+        "icon": "$(add)"
+      },
+      {
+        "command": "shortcuts.addFoldersToLogicalGroup",
+        "title": "Add Folders to Group",
         "icon": "$(add)"
       },
       {
@@ -200,18 +210,28 @@
         },
         {
           "command": "shortcuts.addToLogicalGroup",
-          "when": "view == shortcutsView && viewItem == logicalGroup",
+          "when": "view == shortcutsView && viewItem == logicalGroup && !isWindows",
           "group": "logicalGroup@3"
+        },
+        {
+          "command": "shortcuts.addFilesToLogicalGroup",
+          "when": "view == shortcutsView && viewItem == logicalGroup && isWindows",
+          "group": "logicalGroup@3"
+        },
+        {
+          "command": "shortcuts.addFoldersToLogicalGroup",
+          "when": "view == shortcutsView && viewItem == logicalGroup && isWindows",
+          "group": "logicalGroup@4"
         },
         {
           "command": "shortcuts.renameLogicalGroup",
           "when": "view == shortcutsView && viewItem == logicalGroup",
-          "group": "logicalGroup@4"
+          "group": "logicalGroup@5"
         },
         {
           "command": "shortcuts.deleteLogicalGroup",
           "when": "view == shortcutsView && viewItem == logicalGroup",
-          "group": "logicalGroup@5"
+          "group": "logicalGroup@6"
         },
         {
           "command": "shortcuts.createFileInFolder",
