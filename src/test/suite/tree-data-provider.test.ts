@@ -227,9 +227,9 @@ suite('LogicalTreeDataProvider Test Suite', () => {
         const groupContents = await provider.getChildren(groupItem);
 
         // Should be sorted: folders first, then files, both alphabetically
-        assert.ok(groupContents[0].label.includes('A Folder'));
-        assert.ok(groupContents[1].label.includes('M Folder'));
-        assert.ok(groupContents[2].label.includes('Z File'));
+        assert.ok(groupContents[0].label && typeof groupContents[0].label === 'string' && groupContents[0].label.includes('A Folder'));
+        assert.ok(groupContents[1].label && typeof groupContents[1].label === 'string' && groupContents[1].label.includes('M Folder'));
+        assert.ok(groupContents[2].label && typeof groupContents[2].label === 'string' && groupContents[2].label.includes('Z File'));
     });
 
     test('should handle absolute paths correctly', async () => {

@@ -6,7 +6,7 @@ import { ShortcutItem, FolderShortcutItem, FileShortcutItem, SearchTreeItem } fr
  */
 interface NavigableTreeDataProvider {
     refresh(): void;
-    getChildren(element?: ShortcutItem): Promise<ShortcutItem[]>;
+    getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]>;
 }
 
 /**
@@ -14,13 +14,13 @@ interface NavigableTreeDataProvider {
  * Provides accessibility support and enhanced navigation experience
  */
 export class KeyboardNavigationHandler {
-    private treeView: vscode.TreeView<ShortcutItem>;
+    private treeView: vscode.TreeView<vscode.TreeItem>;
     private treeDataProvider: NavigableTreeDataProvider;
     private keyListeners: vscode.Disposable[] = [];
     private viewId: string;
 
     constructor(
-        treeView: vscode.TreeView<ShortcutItem>,
+        treeView: vscode.TreeView<vscode.TreeItem>,
         treeDataProvider: NavigableTreeDataProvider,
         viewId: string
     ) {
@@ -112,7 +112,7 @@ export class KeyboardNavigationHandler {
 
         // Set up tree view selection listener for accessibility
         const selectionListener = this.treeView.onDidChangeSelection(
-            (e: vscode.TreeViewSelectionChangeEvent<ShortcutItem>) => {
+            (e: vscode.TreeViewSelectionChangeEvent<vscode.TreeItem>) => {
                 this.handleSelectionChange(e);
             }
         );
@@ -274,8 +274,8 @@ export class KeyboardNavigationHandler {
         if (selectedItem instanceof FolderShortcutItem) {
             // Check if this is a root level shortcut (can be renamed)
             const rootItems = await this.treeDataProvider.getChildren();
-            const isRootItem = rootItems.some((item: ShortcutItem) =>
-                item.resourceUri.fsPath === selectedItem.resourceUri.fsPath
+            const isRootItem = rootItems.some((item: vscode.TreeItem) =>
+                item instanceof ShortcutItem && item.resourceUri.fsPath === selectedItem.resourceUri.fsPath
             );
 
             if (isRootItem) {
@@ -303,8 +303,8 @@ export class KeyboardNavigationHandler {
         if (selectedItem instanceof FolderShortcutItem) {
             // Check if this is a root level shortcut (can be removed)
             const rootItems = await this.treeDataProvider.getChildren();
-            const isRootItem = rootItems.some((item: ShortcutItem) =>
-                item.resourceUri.fsPath === selectedItem.resourceUri.fsPath
+            const isRootItem = rootItems.some((item: vscode.TreeItem) =>
+                item instanceof ShortcutItem && item.resourceUri.fsPath === selectedItem.resourceUri.fsPath
             );
 
             if (isRootItem) {
@@ -318,7 +318,7 @@ export class KeyboardNavigationHandler {
     /**
      * Handle selection change for accessibility
      */
-    private handleSelectionChange(event: vscode.TreeViewSelectionChangeEvent<ShortcutItem>): void {
+    private handleSelectionChange(event: vscode.TreeViewSelectionChangeEvent<vscode.TreeItem>): void {
         if (event.selection && event.selection.length > 0) {
             const selectedItem = event.selection[0];
 
@@ -381,7 +381,7 @@ export class KeyboardNavigationHandler {
     /**
      * Find the last visible descendant of a folder
      */
-    private async getLastVisibleDescendant(item: FolderShortcutItem): Promise<ShortcutItem | null> {
+    private async getLastVisibleDescendant(item: FolderShortcutItem): Promise<vscode.TreeItem | null> {
         try {
             const children = await this.treeDataProvider.getChildren(item);
             if (!children || children.length === 0) {

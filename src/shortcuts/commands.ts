@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { InlineSearchProvider } from './inline-search-provider';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
-import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem } from './tree-items';
+import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, TaskShortcutItem } from './tree-items';
 
 /**
  * Command handlers for the shortcuts panel
@@ -164,6 +164,19 @@ export class ShortcutsCommands {
         disposables.push(
             vscode.commands.registerCommand('shortcuts.openInTerminal', async (item: LogicalGroupChildItem | FolderShortcutItem | FileShortcutItem) => {
                 await this.openInTerminal(item);
+            })
+        );
+
+        // Command and task execution
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.executeCommandItem', async (item: CommandShortcutItem) => {
+                await this.executeCommandItem(item);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.executeTaskItem', async (item: TaskShortcutItem) => {
+                await this.executeTaskItem(item);
             })
         );
 
@@ -1256,6 +1269,64 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error opening terminal:', err);
             vscode.window.showErrorMessage(`Failed to open terminal: ${err.message}`);
+        }
+    }
+
+    /**
+     * Execute a command item
+     */
+    private async executeCommandItem(item: CommandShortcutItem): Promise<void> {
+        try {
+            if (!item.commandId) {
+                vscode.window.showErrorMessage('Command item has no command ID');
+                return;
+            }
+
+            // Execute the command with optional arguments
+            if (item.commandArgs && item.commandArgs.length > 0) {
+                await vscode.commands.executeCommand(item.commandId, ...item.commandArgs);
+            } else {
+                await vscode.commands.executeCommand(item.commandId);
+            }
+
+            NotificationManager.showInfo(`Executed command: ${item.label}`, { timeout: 2000 });
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error executing command:', err);
+            vscode.window.showErrorMessage(`Failed to execute command "${item.label}": ${err.message}`);
+        }
+    }
+
+    /**
+     * Execute a task item
+     */
+    private async executeTaskItem(item: TaskShortcutItem): Promise<void> {
+        try {
+            if (!item.taskName) {
+                vscode.window.showErrorMessage('Task item has no task name');
+                return;
+            }
+
+            // Fetch all tasks
+            const tasks = await vscode.tasks.fetchTasks();
+
+            // Find the task by name
+            const task = tasks.find(t => t.name === item.taskName);
+
+            if (!task) {
+                vscode.window.showErrorMessage(`Task "${item.taskName}" not found. Make sure it's defined in tasks.json.`);
+                return;
+            }
+
+            // Execute the task
+            await vscode.tasks.executeTask(task);
+            NotificationManager.showInfo(`Running task: ${item.label}`, { timeout: 2000 });
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error executing task:', err);
+            vscode.window.showErrorMessage(`Failed to execute task "${item.label}": ${err.message}`);
         }
     }
 

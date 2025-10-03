@@ -715,6 +715,9 @@ export class ConfigurationManager {
             // Use normalized paths for cross-platform comparison (Windows is case-insensitive)
             const normalizedResolvedPath = this.normalizePath(resolvedPath);
             const existingItem = group.items.find(item => {
+                if (!item.path) {
+                    return false; // Skip command/task items
+                }
                 const itemResolvedPath = this.resolvePath(item.path, config.basePaths);
                 return this.normalizePath(itemResolvedPath) === normalizedResolvedPath;
             });
@@ -810,6 +813,9 @@ export class ConfigurationManager {
             const normalizedResolvedPath = this.normalizePath(resolvedPath);
             const initialLength = group.items.length;
             group.items = group.items.filter(item => {
+                if (!item.path) {
+                    return true; // Keep command/task items
+                }
                 const itemResolvedPath = this.resolvePath(item.path, config.basePaths);
                 return this.normalizePath(itemResolvedPath) !== normalizedResolvedPath;
             });

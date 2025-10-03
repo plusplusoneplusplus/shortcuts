@@ -47,7 +47,7 @@ export class FileSystemWatcherManager implements vscode.Disposable {
             if (config.logicalGroups) {
                 for (const group of config.logicalGroups) {
                     for (const item of group.items) {
-                        if (item.type === 'folder') {
+                        if (item.type === 'folder' && item.path) {
                             const resolvedPath = this.resolvePath(item.path, config.basePaths);
                             if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isDirectory()) {
                                 watchedPaths.add(resolvedPath);

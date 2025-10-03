@@ -364,6 +364,77 @@ export class FileShortcutItem extends ShortcutItem {
 }
 
 /**
+ * Tree item representing a command that can be executed
+ */
+export class CommandShortcutItem extends vscode.TreeItem {
+    public readonly contextValue = 'command';
+    public readonly commandId: string;
+    public readonly commandArgs?: any[];
+
+    constructor(
+        label: string,
+        commandId: string,
+        commandArgs?: any[],
+        iconName?: string
+    ) {
+        super(label, vscode.TreeItemCollapsibleState.None);
+        this.commandId = commandId;
+        this.commandArgs = commandArgs;
+        this.tooltip = `Command: ${commandId}`;
+        this.iconPath = this.getIconPath(iconName);
+
+        // Set up the command to execute when clicked
+        this.command = {
+            command: 'shortcuts.executeCommandItem',
+            title: 'Execute Command',
+            arguments: [this]
+        };
+    }
+
+    private getIconPath(iconName?: string): vscode.ThemeIcon {
+        if (iconName) {
+            return new vscode.ThemeIcon(iconName, new vscode.ThemeColor('terminal.ansiYellow'));
+        }
+        // Default to bolt/lightning icon for commands
+        return new vscode.ThemeIcon('symbol-event', new vscode.ThemeColor('terminal.ansiYellow'));
+    }
+}
+
+/**
+ * Tree item representing a task that can be run
+ */
+export class TaskShortcutItem extends vscode.TreeItem {
+    public readonly contextValue = 'task';
+    public readonly taskName: string;
+
+    constructor(
+        label: string,
+        taskName: string,
+        iconName?: string
+    ) {
+        super(label, vscode.TreeItemCollapsibleState.None);
+        this.taskName = taskName;
+        this.tooltip = `Task: ${taskName}`;
+        this.iconPath = this.getIconPath(iconName);
+
+        // Set up the command to execute when clicked
+        this.command = {
+            command: 'shortcuts.executeTaskItem',
+            title: 'Run Task',
+            arguments: [this]
+        };
+    }
+
+    private getIconPath(iconName?: string): vscode.ThemeIcon {
+        if (iconName) {
+            return new vscode.ThemeIcon(iconName, new vscode.ThemeColor('terminal.ansiGreen'));
+        }
+        // Default to play/run icon for tasks
+        return new vscode.ThemeIcon('play', new vscode.ThemeColor('terminal.ansiGreen'));
+    }
+}
+
+/**
  * Tree item representing a logical group
  * Can contain multiple folders and files organized by category
  */

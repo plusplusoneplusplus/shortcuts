@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Workspace Shortcuts",
   "description": "Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
@@ -192,6 +192,16 @@
         "command": "shortcuts.openInTerminal",
         "title": "Open in Integrated Terminal",
         "icon": "$(terminal)"
+      },
+      {
+        "command": "shortcuts.executeCommandItem",
+        "title": "Execute Command",
+        "icon": "$(run)"
+      },
+      {
+        "command": "shortcuts.executeTaskItem",
+        "title": "Run Task",
+        "icon": "$(play)"
       }
     ],
     "menus": {
@@ -347,6 +357,16 @@
           "command": "shortcuts.openInTerminal",
           "when": "view == shortcutsView && viewItem == file",
           "group": "file@4"
+        },
+        {
+          "command": "shortcuts.executeCommandItem",
+          "when": "view == shortcutsView && viewItem == command",
+          "group": "command@1"
+        },
+        {
+          "command": "shortcuts.executeTaskItem",
+          "when": "view == shortcutsView && viewItem == task",
+          "group": "task@1"
         },
         {
           "command": "shortcuts.editSearchInput",

@@ -3,16 +3,16 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
 import { ThemeManager } from './theme-manager';
-import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, ShortcutItem } from './tree-items';
+import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, ShortcutItem, TaskShortcutItem } from './tree-items';
 import { BasePath, LogicalGroup } from './types';
 
 /**
  * Tree data provider for the logical groups panel
  * Handles custom logical groupings of shortcuts
  */
-export class LogicalTreeDataProvider implements vscode.TreeDataProvider<ShortcutItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<ShortcutItem | undefined | null | void> = new vscode.EventEmitter<ShortcutItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<ShortcutItem | undefined | null | void> = this._onDidChangeTreeData.event;
+export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+    private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
+    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
     private configurationManager: ConfigurationManager;
     private workspaceRoot: string;
@@ -28,14 +28,14 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
     /**
      * Get the tree item representation of an element
      */
-    getTreeItem(element: ShortcutItem): vscode.TreeItem {
+    getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
         return element;
     }
 
     /**
      * Get the children of an element or root elements if no element is provided
      */
-    async getChildren(element?: ShortcutItem): Promise<ShortcutItem[]> {
+    async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
         try {
             if (!element) {
                 // Return root level logical groups
@@ -128,7 +128,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                         // Check if any items in the group match
                         const hasMatchingItems = groupConfig.items.some(item =>
                             item.name.toLowerCase().includes(this.searchFilter) ||
-                            item.path.toLowerCase().includes(this.searchFilter)
+                            (item.path && item.path.toLowerCase().includes(this.searchFilter))
                         );
 
                         if (!hasMatchingItems) {
@@ -138,7 +138,9 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                 }
 
                 // Calculate common path prefix for the group
-                const resolvedPaths = groupConfig.items.map(item => this.resolvePath(item.path));
+                const resolvedPaths = groupConfig.items
+                    .map(item => item.path ? this.resolvePath(item.path) : '')
+                    .filter(p => p);
                 const commonPrefix = this.findCommonPathPrefix(resolvedPaths);
 
                 // Show common prefix in description if it exists and there are multiple items
@@ -188,9 +190,9 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
     /**
      * Get contents of a logical group
      */
-    private async getLogicalGroupContents(groupItem: LogicalGroupItem): Promise<ShortcutItem[]> {
+    private async getLogicalGroupContents(groupItem: LogicalGroupItem): Promise<vscode.TreeItem[]> {
         const config = await this.configurationManager.loadConfiguration();
-        const items: ShortcutItem[] = [];
+        const items: vscode.TreeItem[] = [];
 
         // Build the full group path
         const groupPath = groupItem.parentGroupPath
@@ -216,7 +218,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                             // Check if any items in the nested group match
                             const hasMatchingItems = nestedGroup.items.some(item =>
                                 item.name.toLowerCase().includes(this.searchFilter) ||
-                                item.path.toLowerCase().includes(this.searchFilter)
+                                (item.path && item.path.toLowerCase().includes(this.searchFilter))
                             );
 
                             if (!hasMatchingItems) {
@@ -237,31 +239,35 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                 }
             }
 
-            // Sort items: folders first, then files, both alphabetically
+            // Sort items: folders first, then files, then commands/tasks, all alphabetically
             const sortedItems = [...groupConfig.items].sort((a, b) => {
-                if (a.type === 'folder' && b.type === 'file') {
-                    return -1;
-                }
-                if (a.type === 'file' && b.type === 'folder') {
-                    return 1;
+                const typeOrder = { folder: 0, file: 1, command: 2, task: 3 };
+                const aOrder = typeOrder[a.type] ?? 4;
+                const bOrder = typeOrder[b.type] ?? 4;
+
+                if (aOrder !== bOrder) {
+                    return aOrder - bOrder;
                 }
                 return a.name.localeCompare(b.name);
             });
 
-            // Calculate common path prefix for descriptions
-            const resolvedPaths = sortedItems.map(item => this.resolvePath(item.path, config.basePaths));
-            const commonPrefix = this.findCommonPathPrefix(resolvedPaths);
+            // Calculate common path prefix for descriptions (only for file/folder items)
+            const fileItems = sortedItems.filter(item => item.type === 'file' || item.type === 'folder');
+            const resolvedPaths = fileItems.map(item => item.path ? this.resolvePath(item.path, config.basePaths) : '');
+            const commonPrefix = this.findCommonPathPrefix(resolvedPaths.filter(p => p));
 
             for (const itemConfig of sortedItems) {
                 try {
-                    // Apply search filter to item names and paths
+                    // Apply search filter to item names
                     if (this.searchFilter) {
                         const itemMatches = itemConfig.name.toLowerCase().includes(this.searchFilter) ||
-                            itemConfig.path.toLowerCase().includes(this.searchFilter);
+                            (itemConfig.path && itemConfig.path.toLowerCase().includes(this.searchFilter)) ||
+                            (itemConfig.command && itemConfig.command.toLowerCase().includes(this.searchFilter)) ||
+                            (itemConfig.task && itemConfig.task.toLowerCase().includes(this.searchFilter));
 
                         if (!itemMatches) {
                             // For folders, check if they contain matching items
-                            if (itemConfig.type === 'folder') {
+                            if (itemConfig.type === 'folder' && itemConfig.path) {
                                 const resolvedPath = this.resolvePath(itemConfig.path, config.basePaths);
                                 const hasMatchingChildren = await this.hasMatchingChildren(resolvedPath, this.searchFilter);
                                 if (!hasMatchingChildren) {
@@ -271,6 +277,43 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<Shortcut
                                 continue;
                             }
                         }
+                    }
+
+                    // Handle command items
+                    if (itemConfig.type === 'command') {
+                        if (!itemConfig.command) {
+                            console.warn(`Command item missing command ID: ${itemConfig.name}`);
+                            continue;
+                        }
+                        const commandItem = new CommandShortcutItem(
+                            itemConfig.name,
+                            itemConfig.command,
+                            itemConfig.args,
+                            itemConfig.icon
+                        );
+                        items.push(commandItem);
+                        continue;
+                    }
+
+                    // Handle task items
+                    if (itemConfig.type === 'task') {
+                        if (!itemConfig.task) {
+                            console.warn(`Task item missing task name: ${itemConfig.name}`);
+                            continue;
+                        }
+                        const taskItem = new TaskShortcutItem(
+                            itemConfig.name,
+                            itemConfig.task,
+                            itemConfig.icon
+                        );
+                        items.push(taskItem);
+                        continue;
+                    }
+
+                    // Handle file/folder items
+                    if (!itemConfig.path) {
+                        console.warn(`File/folder item missing path: ${itemConfig.name}`);
+                        continue;
                     }
 
                     const resolvedPath = this.resolvePath(itemConfig.path, config.basePaths);

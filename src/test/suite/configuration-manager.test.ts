@@ -519,8 +519,8 @@ logicalGroups:
 
             assert.ok(group, 'Group should exist');
             assert.strictEqual(group!.items.length, 1);
-            assert.ok(group!.items[0].path.startsWith('@project/'), 'Path should use alias');
-            assert.ok(group!.items[0].path.includes('src/test.ts'), 'Path should include relative path');
+            assert.ok(group!.items[0].path && group!.items[0].path.startsWith('@project/'), 'Path should use alias');
+            assert.ok(group!.items[0].path && group!.items[0].path.includes('src/test.ts'), 'Path should include relative path');
         });
 
         test('should use relative path when no alias matches', async () => {
@@ -616,7 +616,7 @@ logicalGroups:
 
             assert.ok(group, 'Group should exist');
             // The first matching alias is used
-            assert.ok(group!.items[0].path.startsWith('@'), 'Should use an alias');
+            assert.ok(group!.items[0].path && group!.items[0].path.startsWith('@'), 'Should use an alias');
         });
 
         test('should handle absolute paths outside workspace without alias', async () => {
@@ -644,7 +644,7 @@ logicalGroups:
                 const group = config.logicalGroups?.find(g => g.name === 'External Group');
 
                 assert.ok(group, 'Group should exist');
-                assert.ok(path.isAbsolute(group!.items[0].path), 'Should use absolute path');
+                assert.ok(group!.items[0].path && path.isAbsolute(group!.items[0].path), 'Should use absolute path');
             } finally {
                 // Clean up external directory
                 fs.rmSync(externalDir, { recursive: true, force: true });

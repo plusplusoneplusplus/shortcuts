@@ -13,15 +13,28 @@ export interface BasePath {
 }
 
 /**
- * Configuration for a logical group item (can be folder or file)
+ * Type of logical group item
+ */
+export type LogicalGroupItemType = 'folder' | 'file' | 'command' | 'task';
+
+/**
+ * Configuration for a logical group item (can be folder, file, command, or task)
  */
 export interface LogicalGroupItem {
     /** Relative or absolute path to the folder or file. Can use base path aliases like @alias/path/to/file */
-    path: string;
+    path?: string;
     /** Display name for this item */
     name: string;
-    /** Type of item: 'folder' or 'file' */
-    type: 'folder' | 'file';
+    /** Type of item: 'folder', 'file', 'command', or 'task' */
+    type: LogicalGroupItemType;
+    /** Command ID to execute (for command items) */
+    command?: string;
+    /** Task name to run (for task items) */
+    task?: string;
+    /** Optional arguments for command execution */
+    args?: any[];
+    /** Optional icon override */
+    icon?: string;
 }
 
 /**
