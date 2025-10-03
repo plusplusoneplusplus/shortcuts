@@ -81,9 +81,11 @@ The extension stores its configuration in your workspace or global settings. You
 - VSCode version 1.74.0 or higher
 - Node.js (for development)
 
-## Known Issues
+## Platform Notes
 
-None currently reported. Please file issues on the [GitHub repository](https://github.com/plusplusoneplusplus/shortcuts/issues).
+- Windows: Due to OS limitations in native file dialogs, selecting both files and folders simultaneously in a single dialog is not supported. The extension will prompt you to choose whether to add Files, Folders, or Both (handled via two dialogs) when using "Add to Group".
+
+If you encounter any issues, please file them on the [GitHub repository](https://github.com/plusplusoneplusplus/shortcuts/issues).
 
 ## Release Notes
 

@@ -256,18 +256,79 @@ export class ShortcutsCommands {
         }
 
         try {
-            // Allow selection of both files and folders, and enable multi-select
-            // Note: On Windows, filters can interfere with file visibility when both
-            // canSelectFiles and canSelectFolders are true. Omitting filters allows
-            // the native dialog to properly show both files and folders.
-            const uris = await vscode.window.showOpenDialog({
-                canSelectFiles: true,
-                canSelectFolders: true,
-                canSelectMany: true,
-                openLabel: 'Add Files and Folders to Group',
-                title: `Select files and folders to add to "${groupItem.label}"`,
-                defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
-            });
+            // Windows limitation: native dialogs cannot select files and folders together.
+            // Electron/VS Code maps to OS dialogs that do not support mixed selection on Windows.
+            // Workaround: On Windows, ask user which to add (files, folders, or both),
+            // and run separate dialogs as needed. On other platforms keep mixed selection.
+
+            const isWindows = process.platform === 'win32';
+            let uris: vscode.Uri[] | undefined = [];
+
+            if (isWindows) {
+                const choice = await vscode.window.showQuickPick(
+                    [
+                        { label: 'Add Files', description: 'Select one or more files', value: 'files' },
+                        { label: 'Add Folders', description: 'Select one or more folders', value: 'folders' },
+                        { label: 'Add Files and Folders', description: 'Pick files first, then folders', value: 'both' }
+                    ],
+                    { placeHolder: `What do you want to add to "${groupItem.label}"?` }
+                );
+
+                if (!choice) {
+                    return; // user cancelled
+                }
+
+                const workspaceDefault = vscode.workspace.workspaceFolders?.[0]?.uri;
+                const collected: vscode.Uri[] = [];
+
+                if (choice.value === 'files' || choice.value === 'both') {
+                    const files = await vscode.window.showOpenDialog({
+                        canSelectFiles: true,
+                        canSelectFolders: false,
+                        canSelectMany: true,
+                        openLabel: 'Add Files to Group',
+                        title: `Select files to add to "${groupItem.label}"`,
+                        defaultUri: workspaceDefault
+                    });
+                    if (files && files.length) {
+                        collected.push(...files);
+                    }
+                    // If user picked 'files' only and cancelled, treat as no selection
+                    if (choice.value === 'files' && collected.length === 0) {
+                        return;
+                    }
+                }
+
+                if (choice.value === 'folders' || choice.value === 'both') {
+                    const folders = await vscode.window.showOpenDialog({
+                        canSelectFiles: false,
+                        canSelectFolders: true,
+                        canSelectMany: true,
+                        openLabel: 'Add Folders to Group',
+                        title: `Select folders to add to "${groupItem.label}"`,
+                        defaultUri: workspaceDefault
+                    });
+                    if (folders && folders.length) {
+                        collected.push(...folders);
+                    }
+                    // If choice was only folders and none selected, treat as cancel
+                    if (choice.value === 'folders' && collected.length === 0) {
+                        return;
+                    }
+                }
+
+                uris = collected;
+            } else {
+                // Non-Windows platforms: allow mixed selection in one dialog
+                uris = await vscode.window.showOpenDialog({
+                    canSelectFiles: true,
+                    canSelectFolders: true,
+                    canSelectMany: true,
+                    openLabel: 'Add Files and Folders to Group',
+                    title: `Select files and folders to add to "${groupItem.label}"`,
+                    defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
+                });
+            }
 
             if (!uris || uris.length === 0) {
                 return;
