@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { NotificationManager } from './notification-manager';
 import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, ShortcutItem } from './tree-items';
 
 /**
@@ -93,7 +94,7 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
 
         if (!target) {
             // Dropped on root - not supported for file moves
-            vscode.window.showWarningMessage('Cannot move files to root. Please drop on a folder.');
+            NotificationManager.showWarning('Cannot move files to root. Please drop on a folder.');
             return;
         }
 
@@ -107,7 +108,7 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
         }
 
         if (!targetFolder) {
-            vscode.window.showErrorMessage('Unable to determine target folder.');
+            NotificationManager.showError('Unable to determine target folder.');
             return;
         }
 
@@ -128,7 +129,7 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
 
             // Check if source is parent of target (prevent moving folder into itself)
             if (targetFolder.startsWith(sourcePath + path.sep)) {
-                vscode.window.showWarningMessage(
+                NotificationManager.showWarning(
                     `Cannot move "${fileName}" into itself.`
                 );
                 continue;
@@ -137,11 +138,9 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             // Check if target already exists
             try {
                 await vscode.workspace.fs.stat(vscode.Uri.file(targetPath));
-                const overwrite = await vscode.window.showWarningMessage(
+                const overwrite = await NotificationManager.showWarning(
                     `"${fileName}" already exists in the target location. Do you want to overwrite it?`,
-                    { modal: true },
-                    'Overwrite',
-                    'Skip'
+                    { timeout: 0, actions: ['Overwrite', 'Skip'] }
                 );
 
                 if (overwrite !== 'Overwrite') {
@@ -172,12 +171,12 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
                 }
 
                 // Show success notification with undo hint
-                vscode.window.showInformationMessage(
+                NotificationManager.showInfo(
                     `Moved "${fileName}" to "${path.basename(targetFolder)}" (Ctrl+Z to undo)`
                 );
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-                vscode.window.showErrorMessage(
+                NotificationManager.showError(
                     `Failed to move "${fileName}": ${errorMessage}`
                 );
             }
@@ -189,14 +188,14 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
      */
     public async undoLastMove(): Promise<void> {
         if (!this.lastMoveOperation) {
-            vscode.window.showInformationMessage('No move operation to undo.');
+            NotificationManager.showInfo('No move operation to undo.');
             return;
         }
 
         // Check if the undo operation is still within the timeout window
         const timeSinceMove = Date.now() - this.lastMoveOperation.timestamp;
         if (timeSinceMove > ShortcutsDragDropController.UNDO_TIMEOUT_MS) {
-            vscode.window.showWarningMessage(
+            NotificationManager.showWarning(
                 'Cannot undo: Move operation is too old (> 1 minute).'
             );
             this.lastMoveOperation = null;
@@ -222,7 +221,7 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
                 this.refreshCallback();
             }
 
-            vscode.window.showInformationMessage(
+            NotificationManager.showInfo(
                 `Undid move: "${fileName}" restored to original location`
             );
 
@@ -230,7 +229,7 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             this.lastMoveOperation = null;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            vscode.window.showErrorMessage(
+            NotificationManager.showError(
                 `Failed to undo move for "${fileName}": ${errorMessage}`
             );
             // Clear the operation since it can't be undone

@@ -16,7 +16,7 @@ export class NotificationManager {
      * @returns Promise resolving to selected action or undefined
      */
     static async showInfo(message: string, options: NotificationOptions = {}): Promise<string | undefined> {
-        const { timeout, actions = [] } = options;
+        const { timeout = 3000, actions = [] } = options;
 
         if (timeout && timeout > 0) {
             return this.showNotificationWithTimeout(
@@ -35,7 +35,7 @@ export class NotificationManager {
      * @returns Promise resolving to selected action or undefined
      */
     static async showWarning(message: string, options: NotificationOptions = {}): Promise<string | undefined> {
-        const { timeout, actions = [] } = options;
+        const { timeout = 3000, actions = [] } = options;
 
         if (timeout && timeout > 0) {
             return this.showNotificationWithTimeout(
@@ -54,7 +54,7 @@ export class NotificationManager {
      * @returns Promise resolving to selected action or undefined
      */
     static async showError(message: string, options: NotificationOptions = {}): Promise<string | undefined> {
-        const { timeout, actions = [] } = options;
+        const { timeout = 3000, actions = [] } = options;
 
         if (timeout && timeout > 0) {
             return this.showNotificationWithTimeout(

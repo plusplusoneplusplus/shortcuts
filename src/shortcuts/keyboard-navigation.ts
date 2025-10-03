@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { NotificationManager } from './notification-manager';
 import { ShortcutItem, FolderShortcutItem, FileShortcutItem, SearchTreeItem } from './tree-items';
 
 /**
@@ -281,7 +282,7 @@ export class KeyboardNavigationHandler {
             if (isRootItem) {
                 await vscode.commands.executeCommand('shortcuts.renameShortcut', selectedItem);
             } else {
-                vscode.window.showInformationMessage('Only root-level shortcuts can be renamed.');
+                NotificationManager.showInfo('Only root-level shortcuts can be renamed.');
             }
         } else if (selectedItem instanceof SearchTreeItem) {
             // Handle F2 for search items - trigger inline editing
@@ -310,7 +311,7 @@ export class KeyboardNavigationHandler {
             if (isRootItem) {
                 await vscode.commands.executeCommand('shortcuts.removeShortcut', selectedItem);
             } else {
-                vscode.window.showInformationMessage('Only root-level shortcuts can be removed.');
+                NotificationManager.showInfo('Only root-level shortcuts can be removed.');
             }
         }
     }

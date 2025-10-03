@@ -217,10 +217,9 @@ export class ShortcutsCommands {
     private async resetConfiguration(): Promise<void> {
         try {
             // Confirm reset
-            const confirmation = await vscode.window.showWarningMessage(
+            const confirmation = await NotificationManager.showWarning(
                 'Are you sure you want to reset the shortcuts configuration? This will remove all existing shortcuts.',
-                { modal: true },
-                'Reset'
+                { timeout: 0, actions: ['Reset'] }
             );
 
             if (confirmation !== 'Reset') {
@@ -240,7 +239,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error resetting configuration:', err);
-            vscode.window.showErrorMessage(`Failed to reset configuration: ${err.message}`);
+            NotificationManager.showError(`Failed to reset configuration: ${err.message}`);
         }
     }
 
@@ -266,7 +265,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error opening configuration file:', err);
-            vscode.window.showErrorMessage(`Failed to open configuration file: ${err.message}`);
+            NotificationManager.showError(`Failed to open configuration file: ${err.message}`);
         }
     }
 
@@ -308,7 +307,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error creating logical group:', err);
-            vscode.window.showErrorMessage(`Failed to create logical group: ${err.message}`);
+            NotificationManager.showError(`Failed to create logical group: ${err.message}`);
         }
     }
 
@@ -355,7 +354,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error creating nested logical group:', err);
-            vscode.window.showErrorMessage(`Failed to create subgroup: ${err.message}`);
+            NotificationManager.showError(`Failed to create subgroup: ${err.message}`);
         }
     }
 
@@ -419,15 +418,15 @@ export class ShortcutsCommands {
                 const itemText = addedCount === 1 ? 'item' : 'items';
                 NotificationManager.showInfo(`${addedCount} ${itemText} added to group "${groupItem.label}" successfully!`, { timeout: 3000 });
             } else if (addedCount > 0 && skippedCount > 0) {
-                vscode.window.showWarningMessage(`${addedCount} items added successfully, ${skippedCount} items skipped (may already exist in group).`);
+                NotificationManager.showWarning(`${addedCount} items added successfully, ${skippedCount} items skipped (may already exist in group).`);
             } else {
-                vscode.window.showWarningMessage('No items were added. They may already exist in the group.');
+                NotificationManager.showWarning('No items were added. They may already exist in the group.');
             }
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error adding to logical group:', err);
-            vscode.window.showErrorMessage(`Failed to add to logical group: ${err.message}`);
+            NotificationManager.showError(`Failed to add to logical group: ${err.message}`);
         }
     }
 
@@ -479,15 +478,15 @@ export class ShortcutsCommands {
                 const itemText = addedCount === 1 ? 'file' : 'files';
                 NotificationManager.showInfo(`${addedCount} ${itemText} added to group "${groupItem.label}" successfully!`, { timeout: 3000 });
             } else if (addedCount > 0 && skippedCount > 0) {
-                vscode.window.showWarningMessage(`${addedCount} files added successfully, ${skippedCount} items skipped.`);
+                NotificationManager.showWarning(`${addedCount} files added successfully, ${skippedCount} items skipped.`);
             } else {
-                vscode.window.showWarningMessage('No files were added.');
+                NotificationManager.showWarning('No files were added.');
             }
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error adding files to logical group:', err);
-            vscode.window.showErrorMessage(`Failed to add files: ${err.message}`);
+            NotificationManager.showError(`Failed to add files: ${err.message}`);
         }
     }
 
@@ -539,15 +538,15 @@ export class ShortcutsCommands {
                 const itemText = addedCount === 1 ? 'folder' : 'folders';
                 NotificationManager.showInfo(`${addedCount} ${itemText} added to group "${groupItem.label}" successfully!`, { timeout: 3000 });
             } else if (addedCount > 0 && skippedCount > 0) {
-                vscode.window.showWarningMessage(`${addedCount} folders added successfully, ${skippedCount} items skipped.`);
+                NotificationManager.showWarning(`${addedCount} folders added successfully, ${skippedCount} items skipped.`);
             } else {
-                vscode.window.showWarningMessage('No folders were added.');
+                NotificationManager.showWarning('No folders were added.');
             }
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error adding folders to logical group:', err);
-            vscode.window.showErrorMessage(`Failed to add folders: ${err.message}`);
+            NotificationManager.showError(`Failed to add folders: ${err.message}`);
         }
     }
 
@@ -573,10 +572,9 @@ export class ShortcutsCommands {
                 ? `Are you sure you want to remove "${groupChildItems[0].label}" from the group "${groupChildItems[0].parentGroup}"?`
                 : `Are you sure you want to remove ${groupChildItems.length} items from their groups?`;
 
-            const confirmation = await vscode.window.showWarningMessage(
+            const confirmation = await NotificationManager.showWarning(
                 message,
-                { modal: true },
-                'Remove'
+                { timeout: 0, actions: ['Remove'] }
             );
 
             if (confirmation !== 'Remove') {
@@ -599,7 +597,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error removing from logical group:', err);
-            vscode.window.showErrorMessage(`Failed to remove from logical group: ${err.message}`);
+            NotificationManager.showError(`Failed to remove from logical group: ${err.message}`);
         }
     }
 
@@ -637,7 +635,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error renaming logical group:', err);
-            vscode.window.showErrorMessage(`Failed to rename logical group: ${err.message}`);
+            NotificationManager.showError(`Failed to rename logical group: ${err.message}`);
         }
     }
 
@@ -663,10 +661,9 @@ export class ShortcutsCommands {
                 ? `Are you sure you want to delete the logical group "${groupItems[0].label}"? This will remove all items from the group.`
                 : `Are you sure you want to delete ${groupItems.length} logical groups? This will remove all items from these groups.`;
 
-            const confirmation = await vscode.window.showWarningMessage(
+            const confirmation = await NotificationManager.showWarning(
                 message,
-                { modal: true },
-                'Delete'
+                { timeout: 0, actions: ['Delete'] }
             );
 
             if (confirmation !== 'Delete') {
@@ -689,7 +686,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error deleting logical group:', err);
-            vscode.window.showErrorMessage(`Failed to delete logical group: ${err.message}`);
+            NotificationManager.showError(`Failed to delete logical group: ${err.message}`);
         }
     }
 
@@ -712,7 +709,7 @@ export class ShortcutsCommands {
             ) as (FolderShortcutItem | FileShortcutItem | LogicalGroupChildItem)[];
 
             if (validItems.length === 0) {
-                vscode.window.showErrorMessage('No valid items selected');
+                NotificationManager.showError('No valid items selected');
                 return;
             }
 
@@ -742,7 +739,7 @@ export class ShortcutsCommands {
             }
 
             if (paths.length === 0) {
-                vscode.window.showErrorMessage('Unable to get paths for selected items');
+                NotificationManager.showError('Unable to get paths for selected items');
                 return;
             }
 
@@ -760,7 +757,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error copying path:', err);
-            vscode.window.showErrorMessage(`Failed to copy path: ${err.message}`);
+            NotificationManager.showError(`Failed to copy path: ${err.message}`);
         }
     }
 
@@ -786,7 +783,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error clearing search:', err);
-            vscode.window.showErrorMessage(`Failed to clear search: ${err.message}`);
+            NotificationManager.showError(`Failed to clear search: ${err.message}`);
         }
     }
 
@@ -798,12 +795,12 @@ export class ShortcutsCommands {
             if (this.unifiedSearchProvider) {
                 this.unifiedSearchProvider.focusSearchInput();
             } else {
-                vscode.window.showInformationMessage('Search functionality is not available');
+                NotificationManager.showInfo('Search functionality is not available');
             }
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error focusing search input:', err);
-            vscode.window.showErrorMessage(`Failed to focus search input: ${err.message}`);
+            NotificationManager.showError(`Failed to focus search input: ${err.message}`);
         }
     }
 
@@ -829,7 +826,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error clearing search from item:', err);
-            vscode.window.showErrorMessage(`Failed to clear search: ${err.message}`);
+            NotificationManager.showError(`Failed to clear search: ${err.message}`);
         }
     }
 
@@ -895,7 +892,7 @@ export class ShortcutsCommands {
                 // Create in workspace root
                 const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                 if (!workspaceRoot) {
-                    vscode.window.showErrorMessage('No workspace folder found');
+                    NotificationManager.showError('No workspace folder found');
                     return;
                 }
                 targetPath = path.join(workspaceRoot, fileName);
@@ -903,10 +900,9 @@ export class ShortcutsCommands {
 
             // Create the file if it doesn't exist
             if (fs.existsSync(targetPath)) {
-                const overwrite = await vscode.window.showWarningMessage(
+                const overwrite = await NotificationManager.showWarning(
                     `File "${path.basename(targetPath)}" already exists. Do you want to add it to the group anyway?`,
-                    { modal: true },
-                    'Yes'
+                    { timeout: 0, actions: ['Yes'] }
                 );
                 if (overwrite !== 'Yes') {
                     return;
@@ -935,7 +931,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error creating file in logical group:', err);
-            vscode.window.showErrorMessage(`Failed to create file: ${err.message}`);
+            NotificationManager.showError(`Failed to create file: ${err.message}`);
         }
     }
 
@@ -954,7 +950,7 @@ export class ShortcutsCommands {
             const fs = require('fs');
             const stat = fs.statSync(parentFolder);
             if (!stat.isDirectory()) {
-                vscode.window.showErrorMessage('Selected item is not a folder');
+                NotificationManager.showError('Selected item is not a folder');
                 return;
             }
 
@@ -981,10 +977,9 @@ export class ShortcutsCommands {
 
             // Create the file if it doesn't exist
             if (fs.existsSync(targetPath)) {
-                const overwrite = await vscode.window.showWarningMessage(
+                const overwrite = await NotificationManager.showWarning(
                     `File "${fileName}" already exists. Do you want to open it anyway?`,
-                    { modal: true },
-                    'Open'
+                    { timeout: 0, actions: ['Open'] }
                 );
                 if (overwrite !== 'Open') {
                     return;
@@ -1017,7 +1012,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error creating file in folder:', err);
-            vscode.window.showErrorMessage(`Failed to create file: ${err.message}`);
+            NotificationManager.showError(`Failed to create file: ${err.message}`);
         }
     }
 
@@ -1036,7 +1031,7 @@ export class ShortcutsCommands {
             const fs = require('fs');
             const stat = fs.statSync(parentFolder);
             if (!stat.isDirectory()) {
-                vscode.window.showErrorMessage('Selected item is not a folder');
+                NotificationManager.showError('Selected item is not a folder');
                 return;
             }
 
@@ -1065,13 +1060,12 @@ export class ShortcutsCommands {
             if (fs.existsSync(targetPath)) {
                 const stat = fs.statSync(targetPath);
                 if (!stat.isDirectory()) {
-                    vscode.window.showErrorMessage(`A file with name "${folderName}" already exists at this location`);
+                    NotificationManager.showError(`A file with name "${folderName}" already exists at this location`);
                     return;
                 }
-                const addExisting = await vscode.window.showWarningMessage(
+                const addExisting = await NotificationManager.showWarning(
                     `Folder "${folderName}" already exists.`,
-                    { modal: true },
-                    'OK'
+                    { timeout: 0, actions: ['OK'] }
                 );
                 if (addExisting !== 'OK') {
                     return;
@@ -1100,7 +1094,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error creating folder in folder:', err);
-            vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
+            NotificationManager.showError(`Failed to create folder: ${err.message}`);
         }
     }
 
@@ -1169,7 +1163,7 @@ export class ShortcutsCommands {
                 // Create in workspace root
                 const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                 if (!workspaceRoot) {
-                    vscode.window.showErrorMessage('No workspace folder found');
+                    NotificationManager.showError('No workspace folder found');
                     return;
                 }
                 targetPath = path.join(workspaceRoot, folderName);
@@ -1179,13 +1173,12 @@ export class ShortcutsCommands {
             if (fs.existsSync(targetPath)) {
                 const stat = fs.statSync(targetPath);
                 if (!stat.isDirectory()) {
-                    vscode.window.showErrorMessage(`A file with name "${folderName}" already exists at this location`);
+                    NotificationManager.showError(`A file with name "${folderName}" already exists at this location`);
                     return;
                 }
-                const addExisting = await vscode.window.showWarningMessage(
+                const addExisting = await NotificationManager.showWarning(
                     `Folder "${folderName}" already exists. Do you want to add it to the group anyway?`,
-                    { modal: true },
-                    'Yes'
+                    { timeout: 0, actions: ['Yes'] }
                 );
                 if (addExisting !== 'Yes') {
                     return;
@@ -1210,7 +1203,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error creating folder in logical group:', err);
-            vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
+            NotificationManager.showError(`Failed to create folder: ${err.message}`);
         }
     }
 
@@ -1220,7 +1213,7 @@ export class ShortcutsCommands {
     private async revealInExplorer(item: LogicalGroupChildItem | FolderShortcutItem | FileShortcutItem): Promise<void> {
         try {
             if (!item.resourceUri) {
-                vscode.window.showErrorMessage('Cannot reveal item: no resource URI');
+                NotificationManager.showError('Cannot reveal item: no resource URI');
                 return;
             }
 
@@ -1229,7 +1222,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error revealing in explorer:', err);
-            vscode.window.showErrorMessage(`Failed to reveal in explorer: ${err.message}`);
+            NotificationManager.showError(`Failed to reveal in explorer: ${err.message}`);
         }
     }
 
@@ -1239,7 +1232,7 @@ export class ShortcutsCommands {
     private async openInTerminal(item: LogicalGroupChildItem | FolderShortcutItem | FileShortcutItem): Promise<void> {
         try {
             if (!item.resourceUri) {
-                vscode.window.showErrorMessage('Cannot open terminal: no resource URI');
+                NotificationManager.showError('Cannot open terminal: no resource URI');
                 return;
             }
 
@@ -1268,7 +1261,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error opening terminal:', err);
-            vscode.window.showErrorMessage(`Failed to open terminal: ${err.message}`);
+            NotificationManager.showError(`Failed to open terminal: ${err.message}`);
         }
     }
 
@@ -1278,7 +1271,7 @@ export class ShortcutsCommands {
     private async executeCommandItem(item: CommandShortcutItem): Promise<void> {
         try {
             if (!item.commandId) {
-                vscode.window.showErrorMessage('Command item has no command ID');
+                NotificationManager.showError('Command item has no command ID');
                 return;
             }
 
@@ -1294,7 +1287,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error executing command:', err);
-            vscode.window.showErrorMessage(`Failed to execute command "${item.label}": ${err.message}`);
+            NotificationManager.showError(`Failed to execute command "${item.label}": ${err.message}`);
         }
     }
 
@@ -1304,7 +1297,7 @@ export class ShortcutsCommands {
     private async executeTaskItem(item: TaskShortcutItem): Promise<void> {
         try {
             if (!item.taskName) {
-                vscode.window.showErrorMessage('Task item has no task name');
+                NotificationManager.showError('Task item has no task name');
                 return;
             }
 
@@ -1315,7 +1308,7 @@ export class ShortcutsCommands {
             const task = tasks.find(t => t.name === item.taskName);
 
             if (!task) {
-                vscode.window.showErrorMessage(`Task "${item.taskName}" not found. Make sure it's defined in tasks.json.`);
+                NotificationManager.showError(`Task "${item.taskName}" not found. Make sure it's defined in tasks.json.`);
                 return;
             }
 
@@ -1326,7 +1319,7 @@ export class ShortcutsCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error executing task:', err);
-            vscode.window.showErrorMessage(`Failed to execute task "${item.label}": ${err.message}`);
+            NotificationManager.showError(`Failed to execute task "${item.label}": ${err.message}`);
         }
     }
 

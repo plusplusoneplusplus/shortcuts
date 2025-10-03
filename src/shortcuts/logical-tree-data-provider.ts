@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
+import { NotificationManager } from './notification-manager';
 import { ThemeManager } from './theme-manager';
 import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, ShortcutItem, TaskShortcutItem } from './tree-items';
 import { BasePath, LogicalGroup } from './types';
@@ -56,7 +57,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error getting logical tree children:', err);
-            vscode.window.showErrorMessage(`Error loading logical groups: ${err.message}`);
+            NotificationManager.showError(`Error loading logical groups: ${err.message}`);
             return [];
         }
     }
@@ -362,7 +363,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error(`Error reading logical group contents for ${groupItem.label}:`, err);
-            vscode.window.showErrorMessage(`Error reading group: ${err.message}`);
+            NotificationManager.showError(`Error reading group: ${err.message}`);
         }
 
         return items;
@@ -527,7 +528,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error(`Error reading folder contents for ${displayPath}:`, err);
-            vscode.window.showErrorMessage(`Error reading folder: ${err.message}`);
+            NotificationManager.showError(`Error reading folder: ${err.message}`);
         }
 
         return items;

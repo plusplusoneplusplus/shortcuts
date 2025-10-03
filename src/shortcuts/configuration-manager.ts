@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { NotificationManager } from './notification-manager';
 import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, LogicalGroup, LogicalGroupItem, ShortcutsConfig } from './types';
 
 /**
@@ -101,17 +102,17 @@ export class ConfigurationManager {
                 userMessage = 'Configuration file not found. A default configuration will be created.';
             } else if (err.message.includes('EACCES') || err.message.includes('permission denied')) {
                 userMessage = 'Permission denied accessing configuration file. Please check file permissions.';
-                vscode.window.showWarningMessage(userMessage);
+                NotificationManager.showWarning(userMessage);
             } else if (err.message.includes('YAMLException') || err.message.includes('invalid yaml')) {
                 userMessage = 'Configuration file contains invalid YAML syntax. Please check the file format.';
-                vscode.window.showWarningMessage(userMessage, 'Open Configuration File').then(action => {
+                NotificationManager.showWarning(userMessage, { timeout: 0, actions: ['Open Configuration File'] }).then(action => {
                     if (action === 'Open Configuration File') {
                         vscode.commands.executeCommand('vscode.open', vscode.Uri.file(this.configPath));
                     }
                 });
             } else {
                 userMessage = 'Failed to load configuration file. Using default settings.';
-                vscode.window.showWarningMessage(userMessage);
+                NotificationManager.showWarning(userMessage);
             }
 
             return DEFAULT_SHORTCUTS_CONFIG;
@@ -155,7 +156,7 @@ export class ConfigurationManager {
                 userMessage = 'Failed to save configuration file. Changes may not be persisted.';
             }
 
-            vscode.window.showErrorMessage(userMessage);
+            NotificationManager.showError(userMessage);
             throw error;
         }
     }
@@ -600,7 +601,7 @@ export class ConfigurationManager {
 
             // Check if group already exists
             if (config.logicalGroups && config.logicalGroups.some(g => g.name === groupName)) {
-                vscode.window.showWarningMessage('A logical group with this name already exists.');
+                NotificationManager.showWarning('A logical group with this name already exists.');
                 return;
             }
 
@@ -622,7 +623,7 @@ export class ConfigurationManager {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error creating logical group:', err);
-            vscode.window.showErrorMessage(`Failed to create logical group: ${err.message}`);
+            NotificationManager.showError(`Failed to create logical group: ${err.message}`);
             throw error;
         }
     }
@@ -645,7 +646,7 @@ export class ConfigurationManager {
             for (const part of pathParts) {
                 targetGroup = currentGroups.find(g => g.name === part);
                 if (!targetGroup) {
-                    vscode.window.showErrorMessage(`Parent group "${parentGroupPath}" not found.`);
+                    NotificationManager.showError(`Parent group "${parentGroupPath}" not found.`);
                     return;
                 }
                 currentGroups = targetGroup.groups || [];
@@ -653,13 +654,13 @@ export class ConfigurationManager {
 
             // Final check to ensure targetGroup is defined (TypeScript safety)
             if (!targetGroup) {
-                vscode.window.showErrorMessage(`Parent group "${parentGroupPath}" not found.`);
+                NotificationManager.showError(`Parent group "${parentGroupPath}" not found.`);
                 return;
             }
 
             // Check if nested group already exists in parent
             if (targetGroup.groups && targetGroup.groups.some(g => g.name === groupName)) {
-                vscode.window.showWarningMessage(`A nested group with the name "${groupName}" already exists in this group.`);
+                NotificationManager.showWarning(`A nested group with the name "${groupName}" already exists in this group.`);
                 return;
             }
 
@@ -681,7 +682,7 @@ export class ConfigurationManager {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error creating nested logical group:', err);
-            vscode.window.showErrorMessage(`Failed to create nested group: ${err.message}`);
+            NotificationManager.showError(`Failed to create nested group: ${err.message}`);
             throw error;
         }
     }
@@ -704,7 +705,7 @@ export class ConfigurationManager {
 
             const group = config.logicalGroups.find(g => g.name === groupName);
             if (!group) {
-                vscode.window.showErrorMessage('Logical group not found.');
+                NotificationManager.showError('Logical group not found.');
                 return;
             }
 
@@ -723,7 +724,7 @@ export class ConfigurationManager {
             });
 
             if (existingItem) {
-                vscode.window.showWarningMessage('This item is already in the logical group.');
+                NotificationManager.showWarning('This item is already in the logical group.');
                 return;
             }
 
@@ -782,7 +783,7 @@ export class ConfigurationManager {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error adding to logical group:', err);
-            vscode.window.showErrorMessage(`Failed to add to logical group: ${err.message}`);
+            NotificationManager.showError(`Failed to add to logical group: ${err.message}`);
             throw error;
         }
     }
@@ -802,7 +803,7 @@ export class ConfigurationManager {
 
             const group = config.logicalGroups.find(g => g.name === groupName);
             if (!group) {
-                vscode.window.showErrorMessage('Logical group not found.');
+                NotificationManager.showError('Logical group not found.');
                 return;
             }
 
@@ -821,7 +822,7 @@ export class ConfigurationManager {
             });
 
             if (group.items.length === initialLength) {
-                vscode.window.showWarningMessage('Item not found in logical group.');
+                NotificationManager.showWarning('Item not found in logical group.');
                 return;
             }
 
@@ -830,7 +831,7 @@ export class ConfigurationManager {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error removing from logical group:', err);
-            vscode.window.showErrorMessage(`Failed to remove from logical group: ${err.message}`);
+            NotificationManager.showError(`Failed to remove from logical group: ${err.message}`);
             throw error;
         }
     }
@@ -850,13 +851,13 @@ export class ConfigurationManager {
 
             // Check if new name already exists
             if (config.logicalGroups.some(g => g.name === newName)) {
-                vscode.window.showWarningMessage('A logical group with this name already exists.');
+                NotificationManager.showWarning('A logical group with this name already exists.');
                 return;
             }
 
             const group = config.logicalGroups.find(g => g.name === oldName);
             if (!group) {
-                vscode.window.showErrorMessage('Logical group not found.');
+                NotificationManager.showError('Logical group not found.');
                 return;
             }
 
@@ -866,7 +867,7 @@ export class ConfigurationManager {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error renaming logical group:', err);
-            vscode.window.showErrorMessage(`Failed to rename logical group: ${err.message}`);
+            NotificationManager.showError(`Failed to rename logical group: ${err.message}`);
             throw error;
         }
     }
@@ -888,7 +889,7 @@ export class ConfigurationManager {
             config.logicalGroups = config.logicalGroups.filter(g => g.name !== groupName);
 
             if (config.logicalGroups.length === initialLength) {
-                vscode.window.showWarningMessage('Logical group not found.');
+                NotificationManager.showWarning('Logical group not found.');
                 return;
             }
 
@@ -897,7 +898,7 @@ export class ConfigurationManager {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error deleting logical group:', err);
-            vscode.window.showErrorMessage(`Failed to delete logical group: ${err.message}`);
+            NotificationManager.showError(`Failed to delete logical group: ${err.message}`);
             throw error;
         }
     }
