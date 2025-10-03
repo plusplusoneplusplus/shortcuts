@@ -262,7 +262,10 @@ export class ShortcutsCommands {
                 canSelectFolders: true,
                 canSelectMany: true,
                 openLabel: 'Add Files and Folders to Group',
-                title: `Select files and folders to add to "${groupItem.label}"`
+                title: `Select files and folders to add to "${groupItem.label}"`,
+                filters: {
+                    'All Files': ['*', '*.*']
+                }
             });
 
             if (!uris || uris.length === 0) {
@@ -649,7 +652,10 @@ export class ShortcutsCommands {
                 // Show file save dialog
                 const uri = await vscode.window.showSaveDialog({
                     defaultUri: vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', fileName)),
-                    saveLabel: 'Create File Here'
+                    saveLabel: 'Create File Here',
+                    filters: {
+                        'All Files': ['*', '*.*']
+                    }
                 });
 
                 if (!uri) {
