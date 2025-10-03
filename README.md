@@ -74,7 +74,15 @@ Organize your workspace with customizable groups of shortcuts. Quick access to f
 
 ## Configuration
 
-The extension stores its configuration in your workspace or global settings. You can access the configuration file through the gear icon in the Shortcuts panel.
+### YAML Configuration File
+
+The extension stores its shortcuts configuration in a YAML file (`.vscode/shortcuts.yaml` for workspace or `~/.vscode-shortcuts/.vscode/shortcuts.yaml` for global). You can access the configuration file through the gear icon in the Shortcuts panel.
+
+### VS Code Settings
+
+The extension provides the following VS Code settings (accessible via Settings UI or `settings.json`):
+
+- **`workspaceShortcuts.openMarkdownInPreview`** (default: `false`): When enabled, Markdown (.md) files will automatically open in preview mode instead of edit mode when created or opened from shortcuts.
 
 ## Requirements
 

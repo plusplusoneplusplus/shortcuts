@@ -160,6 +160,26 @@ export class ShortcutsCommands {
     }
 
     /**
+     * Open a file in the editor, respecting user preferences for markdown preview
+     * @param fileUri URI of the file to open
+     */
+    private async openFile(fileUri: vscode.Uri): Promise<void> {
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts');
+        const openMarkdownInPreview = config.get<boolean>('openMarkdownInPreview', false);
+
+        // Check if it's a markdown file
+        const isMarkdown = fileUri.fsPath.toLowerCase().endsWith('.md');
+
+        if (isMarkdown && openMarkdownInPreview) {
+            // Open in preview mode
+            await vscode.commands.executeCommand('markdown.showPreview', fileUri);
+        } else {
+            // Open normally in text editor
+            await vscode.window.showTextDocument(fileUri);
+        }
+    }
+
+    /**
      * Reset configuration to default
      */
     private async resetConfiguration(): Promise<void> {
@@ -831,7 +851,7 @@ export class ShortcutsCommands {
 
             // Open the file in the editor
             const fileUri = vscode.Uri.file(targetPath);
-            await vscode.window.showTextDocument(fileUri);
+            await this.openFile(fileUri);
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -913,7 +933,7 @@ export class ShortcutsCommands {
 
             // Open the file in the editor
             const fileUri = vscode.Uri.file(targetPath);
-            await vscode.window.showTextDocument(fileUri);
+            await this.openFile(fileUri);
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');

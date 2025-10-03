@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Workspace Shortcuts",
   "description": "Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.",
-  "version": "2.0.10",
+  "version": "2.1.0",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
@@ -67,6 +67,16 @@
         "contents": "📁 **Shortcuts Groups**\n\n[Create New Group](command:shortcuts.createLogicalGroup)\n\nOrganize your workspace with custom groups.\n\n**Actions:**\n• Create groups to organize files and folders\n• Add files and folders to groups\n• Organize by project, type, or workflow\n• Quick access to frequently used locations"
       }
     ],
+    "configuration": {
+      "title": "Workspace Shortcuts",
+      "properties": {
+        "workspaceShortcuts.openMarkdownInPreview": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically open Markdown (.md) files in preview mode instead of edit mode when creating or opening from shortcuts"
+        }
+      }
+    },
     "commands": [
       {
         "command": "shortcuts.refresh",
