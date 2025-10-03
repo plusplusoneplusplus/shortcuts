@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Workspace Shortcuts",
   "description": "Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
@@ -177,6 +177,16 @@
         "command": "shortcuts.createFolderInFolder",
         "title": "Create Folder",
         "icon": "$(new-folder)"
+      },
+      {
+        "command": "shortcuts.revealInExplorer",
+        "title": "Reveal in Explorer",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "shortcuts.openInTerminal",
+        "title": "Open in Integrated Terminal",
+        "icon": "$(terminal)"
       }
     ],
     "menus": {
@@ -269,6 +279,16 @@
           "group": "logicalGroupItem@5"
         },
         {
+          "command": "shortcuts.revealInExplorer",
+          "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "group": "logicalGroupItem@6"
+        },
+        {
+          "command": "shortcuts.openInTerminal",
+          "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
+          "group": "logicalGroupItem@7"
+        },
+        {
           "command": "shortcuts.createFileInFolder",
           "when": "view == shortcutsView && viewItem == folder",
           "group": "folder@1"
@@ -289,6 +309,16 @@
           "group": "folder@4"
         },
         {
+          "command": "shortcuts.revealInExplorer",
+          "when": "view == shortcutsView && viewItem == folder",
+          "group": "folder@5"
+        },
+        {
+          "command": "shortcuts.openInTerminal",
+          "when": "view == shortcutsView && viewItem == folder",
+          "group": "folder@6"
+        },
+        {
           "command": "shortcuts.copyRelativePath",
           "when": "view == shortcutsView && viewItem == file",
           "group": "file@1"
@@ -297,6 +327,16 @@
           "command": "shortcuts.copyAbsolutePath",
           "when": "view == shortcutsView && viewItem == file",
           "group": "file@2"
+        },
+        {
+          "command": "shortcuts.revealInExplorer",
+          "when": "view == shortcutsView && viewItem == file",
+          "group": "file@3"
+        },
+        {
+          "command": "shortcuts.openInTerminal",
+          "when": "view == shortcutsView && viewItem == file",
+          "group": "file@4"
         },
         {
           "command": "shortcuts.editSearchInput",

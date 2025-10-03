@@ -148,6 +148,19 @@ export class ShortcutsCommands {
             })
         );
 
+        // Reveal in explorer and terminal commands
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.revealInExplorer', async (item: LogicalGroupChildItem | FolderShortcutItem | FileShortcutItem) => {
+                await this.revealInExplorer(item);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.openInTerminal', async (item: LogicalGroupChildItem | FolderShortcutItem | FileShortcutItem) => {
+                await this.openInTerminal(item);
+            })
+        );
+
         return disposables;
     }
 
@@ -1132,6 +1145,64 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error creating folder in logical group:', err);
             vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
+        }
+    }
+
+    /**
+     * Reveal item in VS Code Explorer
+     */
+    private async revealInExplorer(item: LogicalGroupChildItem | FolderShortcutItem | FileShortcutItem): Promise<void> {
+        try {
+            if (!item.resourceUri) {
+                vscode.window.showErrorMessage('Cannot reveal item: no resource URI');
+                return;
+            }
+
+            // Use VS Code's built-in reveal in explorer command
+            await vscode.commands.executeCommand('revealInExplorer', item.resourceUri);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error revealing in explorer:', err);
+            vscode.window.showErrorMessage(`Failed to reveal in explorer: ${err.message}`);
+        }
+    }
+
+    /**
+     * Open terminal at item location (for folders) or at parent folder (for files)
+     */
+    private async openInTerminal(item: LogicalGroupChildItem | FolderShortcutItem | FileShortcutItem): Promise<void> {
+        try {
+            if (!item.resourceUri) {
+                vscode.window.showErrorMessage('Cannot open terminal: no resource URI');
+                return;
+            }
+
+            const fs = require('fs');
+            let terminalPath: string;
+
+            // Determine the path to open terminal at
+            const itemPath = item.resourceUri.fsPath;
+            const stat = fs.statSync(itemPath);
+
+            if (stat.isDirectory()) {
+                // For folders, open terminal at the folder
+                terminalPath = itemPath;
+            } else {
+                // For files, open terminal at the parent folder
+                terminalPath = path.dirname(itemPath);
+            }
+
+            // Create a new terminal at the location
+            const terminal = vscode.window.createTerminal({
+                name: `Terminal - ${path.basename(terminalPath)}`,
+                cwd: terminalPath
+            });
+
+            terminal.show();
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error opening terminal:', err);
+            vscode.window.showErrorMessage(`Failed to open terminal: ${err.message}`);
         }
     }
 
