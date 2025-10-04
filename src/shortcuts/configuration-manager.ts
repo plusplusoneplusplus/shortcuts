@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { CURRENT_CONFIG_VERSION, detectConfigVersion, migrateConfig } from './config-migrations';
 import { NotificationManager } from './notification-manager';
 import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, LogicalGroup, LogicalGroupItem, ShortcutsConfig } from './types';
 
@@ -141,8 +142,14 @@ export class ConfigurationManager {
                 fs.mkdirSync(configDir, { recursive: true });
             }
 
+            // Add version number to config before saving
+            const versionedConfig = {
+                version: CURRENT_CONFIG_VERSION,
+                ...config
+            };
+
             // Convert to YAML and write to file
-            const yamlContent = yaml.dump(config, {
+            const yamlContent = yaml.dump(versionedConfig, {
                 indent: 2,
                 lineWidth: -1,
                 noRefs: true
@@ -323,8 +330,28 @@ export class ConfigurationManager {
             throw new Error('Configuration must be an object');
         }
 
-        // Migrate old physical shortcuts to logical groups if they exist
-        config = this.migratePhysicalShortcuts(config);
+        // Detect version and migrate if needed
+        const configVersion = detectConfigVersion(config);
+        if (configVersion < CURRENT_CONFIG_VERSION) {
+            const migrationResult = migrateConfig(config, {
+                workspaceRoot: this.workspaceRoot,
+                verbose: true
+            });
+
+            if (migrationResult.migrated) {
+                console.log(`Configuration migrated from v${migrationResult.fromVersion} to v${migrationResult.toVersion}`);
+
+                if (migrationResult.warnings.length > 0) {
+                    console.warn('Migration warnings:', migrationResult.warnings);
+                    NotificationManager.showWarning(
+                        `Configuration migrated with ${migrationResult.warnings.length} warning(s). Check console for details.`,
+                        { timeout: 5000 }
+                    );
+                }
+            }
+
+            config = migrationResult.config;
+        }
 
         // Validate base paths
         let validBasePaths: BasePath[] = [];

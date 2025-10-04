@@ -201,6 +201,70 @@ The extension has been simplified to use a single unified view with logical grou
 - Cleaner, more intuitive interface
 - Same functionality with better organization
 
+## Configuration Migration System
+
+The extension includes a comprehensive versioned configuration system for backward compatibility:
+
+### Architecture
+
+**Migration Module (`src/shortcuts/config-migrations.ts`)**
+- Centralized migration logic with version detection
+- Sequential migration chain (v1→v2→v3)
+- Pure functions for each migration step
+- Comprehensive error handling and warnings
+
+**Version History:**
+- **v1**: Original `shortcuts` array format (pre-2.0)
+- **v2**: Logical groups without nesting (2.0-2.4)
+- **v3**: Logical groups with nested groups support (2.5+)
+
+### Key Features
+
+1. **Automatic Detection**: Detects configuration version from structure
+2. **Sequential Migration**: Applies migrations in order (v1→v2→v3)
+3. **Non-Destructive**: Preserves data, skips invalid entries with warnings
+4. **Validation**: Checks paths exist, validates types, handles edge cases
+5. **Verbose Mode**: Optional detailed logging for debugging
+6. **Test Coverage**: 25 comprehensive tests covering all scenarios
+
+### API
+
+```typescript
+// Detect version
+const version = detectConfigVersion(config);
+
+// Migrate configuration
+const result = migrateConfig(config, {
+    workspaceRoot: '/path',
+    verbose: true
+});
+
+// Check if migration is possible
+const canMigrate = canMigrate(config);
+
+// Get supported versions
+const versions = getSupportedVersions(); // [1, 2, 3]
+```
+
+### Integration
+
+The `ConfigurationManager` automatically:
+1. Detects configuration version on load
+2. Applies necessary migrations
+3. Shows warnings if any issues occur
+4. Saves migrated config with version number
+
+### Adding New Versions
+
+To add a new configuration version:
+1. Increment `CURRENT_CONFIG_VERSION`
+2. Create migration function: `migrateVxToVy(config, context)`
+3. Register: `registerMigration(x, migrateVxToVy)`
+4. Add tests in `config-migrations.test.ts`
+5. Update `MIGRATION_GUIDE.md`
+
+See `MIGRATION_GUIDE.md` for detailed documentation.
+
 ## Create File and Folder Support
 
 The extension now supports creating new files and folders at multiple levels:
