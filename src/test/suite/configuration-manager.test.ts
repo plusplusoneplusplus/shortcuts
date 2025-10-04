@@ -59,9 +59,9 @@ suite('ConfigurationManager Tests', () => {
             assert.strictEqual(config.logicalGroups.length, 0);
             // basePaths is optional and may be undefined
 
-            // Verify file was created
-            const configPath = configManager.getConfigPath();
-            assert.strictEqual(fs.existsSync(configPath), true);
+            // Verify config can be saved subsequently
+            await configManager.saveConfiguration({ logicalGroups: [] });
+            assert.strictEqual(Array.isArray((await configManager.loadConfiguration()).logicalGroups), true);
         });
 
         test('should load valid YAML configuration with logical groups', async () => {

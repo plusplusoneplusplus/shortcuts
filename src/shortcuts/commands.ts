@@ -613,7 +613,7 @@ export class ShortcutsCommands {
             const newName = await vscode.window.showInputBox({
                 prompt: 'Enter a new name for the logical group',
                 placeHolder: 'Group name',
-                value: groupItem.label,
+                value: groupItem.originalName,
                 validateInput: (value) => {
                     if (!value || value.trim() === '') {
                         return 'Group name cannot be empty';
@@ -622,12 +622,12 @@ export class ShortcutsCommands {
                 }
             });
 
-            if (!newName || newName.trim() === groupItem.label) {
+            if (!newName || newName.trim() === groupItem.originalName) {
                 return;
             }
 
             const configManager = this.treeDataProvider.getConfigurationManager();
-            await configManager.renameLogicalGroup(groupItem.label, newName.trim());
+            await configManager.renameLogicalGroup(groupItem.originalName, newName.trim());
 
             this.treeDataProvider.refresh();
             NotificationManager.showInfo('Logical group renamed successfully!', { timeout: 3000 });
@@ -648,17 +648,31 @@ export class ShortcutsCommands {
         }
 
         try {
-            // Get all selected items from the tree view
-            const selectedItems = this.treeView?.selection || [groupItem];
-            const groupItems = selectedItems.filter(i => i instanceof LogicalGroupItem) as LogicalGroupItem[];
+            // Prefer the explicitly provided item to avoid cross-module instanceof issues
+            // Prefer the explicitly provided item; fall back to selection only if none provided
+            let groupItems: LogicalGroupItem[] = [];
+            if (groupItem) {
+                groupItems = [groupItem];
+            } else {
+                const selection = this.treeView?.selection;
+                if (selection && selection.length > 0) {
+                    groupItems = selection
+                        .filter((i: any) => i && (i.contextValue === 'logicalGroup' || i.originalName))
+                        .map((i: any) => (i as LogicalGroupItem));
+                }
+            }
 
             if (groupItems.length === 0) {
                 return;
             }
 
             // Confirm deletion
+            const groupNameForMessage = (gi: LogicalGroupItem) => {
+                const label = (gi.label as any)?.label ?? gi.label ?? '';
+                return typeof label === 'string' ? label : String(label);
+            };
             const message = groupItems.length === 1
-                ? `Are you sure you want to delete the logical group "${groupItems[0].label}"? This will remove all items from the group.`
+                ? `Are you sure you want to delete the logical group "${groupNameForMessage(groupItems[0])}"? This will remove all items from the group.`
                 : `Are you sure you want to delete ${groupItems.length} logical groups? This will remove all items from these groups.`;
 
             const confirmation = await NotificationManager.showWarning(
@@ -673,7 +687,7 @@ export class ShortcutsCommands {
             // Delete all selected groups
             const configManager = this.treeDataProvider.getConfigurationManager();
             for (const group of groupItems) {
-                await configManager.deleteLogicalGroup(group.label);
+                await configManager.deleteLogicalGroup(group.originalName);
             }
 
             this.treeDataProvider.refresh();

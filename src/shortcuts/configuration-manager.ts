@@ -33,6 +33,13 @@ export class ConfigurationManager {
     }
 
     /**
+     * Invalidate the in-memory configuration cache. Useful for tests to force reloads.
+     */
+    public invalidateCache(): void {
+        this.configCache = undefined;
+    }
+
+    /**
      * Load configuration from YAML file with override hierarchy
      * Project config completely overrides global config when both exist
      * @returns Promise resolving to ShortcutsConfig
@@ -426,10 +433,13 @@ export class ConfigurationManager {
             }
         }
 
-        return {
-            basePaths: validBasePaths.length > 0 ? validBasePaths : undefined,
+        const result: ShortcutsConfig = {
             logicalGroups: validLogicalGroups
         };
+        if (validBasePaths.length > 0) {
+            result.basePaths = validBasePaths;
+        }
+        return result;
     }
 
     /**
