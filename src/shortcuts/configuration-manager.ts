@@ -424,11 +424,18 @@ export class ConfigurationManager {
                     }
                 }
 
+                // Recursively validate nested groups
+                let validNestedGroups: LogicalGroup[] | undefined;
+                if (group.groups && Array.isArray(group.groups)) {
+                    validNestedGroups = this.validateNestedGroups(group.groups, validBasePaths);
+                }
+
                 validLogicalGroups.push({
                     name: group.name,
                     description: typeof group.description === 'string' ? group.description : undefined,
                     items: validItems,
-                    icon: typeof group.icon === 'string' ? group.icon : undefined
+                    icon: typeof group.icon === 'string' ? group.icon : undefined,
+                    groups: validNestedGroups
                 });
             }
         }
@@ -440,6 +447,125 @@ export class ConfigurationManager {
             result.basePaths = validBasePaths;
         }
         return result;
+    }
+
+    /**
+     * Recursively validate nested groups
+     * @param groups Array of nested groups to validate
+     * @param validBasePaths Valid base paths for path resolution
+     * @returns Array of validated nested groups
+     */
+    private validateNestedGroups(groups: any[], validBasePaths: BasePath[]): LogicalGroup[] {
+        const validGroups: LogicalGroup[] = [];
+
+        for (const group of groups) {
+            if (!group || typeof group !== 'object') {
+                console.warn('Skipping invalid nested group:', group);
+                continue;
+            }
+
+            if (typeof group.name !== 'string' || !group.name.trim()) {
+                console.warn('Skipping nested group with invalid name:', group);
+                continue;
+            }
+
+            if (!Array.isArray(group.items)) {
+                console.warn('Skipping nested group with invalid items array:', group);
+                continue;
+            }
+
+            const validItems: LogicalGroupItem[] = [];
+            for (const item of group.items) {
+                if (!item || typeof item !== 'object') {
+                    console.warn('Skipping invalid nested group item:', item);
+                    continue;
+                }
+
+                // Items can be files/folders or commands/tasks
+                if (item.type === 'command' || item.type === 'task') {
+                    // Validate command or task items
+                    if (item.type === 'command' && typeof item.command !== 'string') {
+                        console.warn('Skipping command item with invalid command:', item);
+                        continue;
+                    }
+                    if (item.type === 'task' && typeof item.task !== 'string') {
+                        console.warn('Skipping task item with invalid task name:', item);
+                        continue;
+                    }
+                    if (typeof item.name !== 'string' || !item.name.trim()) {
+                        console.warn('Skipping command/task item with invalid name:', item);
+                        continue;
+                    }
+
+                    validItems.push({
+                        name: item.name,
+                        type: item.type,
+                        command: item.command,
+                        task: item.task,
+                        args: item.args,
+                        icon: typeof item.icon === 'string' ? item.icon : undefined
+                    } as LogicalGroupItem);
+                    continue;
+                }
+
+                // Validate file/folder items
+                if (typeof item.path !== 'string' || !item.path.trim()) {
+                    console.warn('Skipping nested group item with invalid path:', item);
+                    continue;
+                }
+
+                if (typeof item.name !== 'string' || !item.name.trim()) {
+                    console.warn('Skipping nested group item with invalid name:', item);
+                    continue;
+                }
+
+                if (item.type !== 'folder' && item.type !== 'file') {
+                    console.warn('Skipping nested group item with invalid type:', item);
+                    continue;
+                }
+
+                // Validate that the path exists
+                try {
+                    const resolvedPath = this.resolvePath(item.path, validBasePaths);
+                    if (!fs.existsSync(resolvedPath)) {
+                        console.warn(`Skipping nested group item with non-existent path: ${item.path}`);
+                        continue;
+                    }
+
+                    const stat = fs.statSync(resolvedPath);
+                    const actualType = stat.isDirectory() ? 'folder' : 'file';
+                    if (actualType !== item.type) {
+                        console.warn(`Nested group item type mismatch for ${item.path}: expected ${item.type}, found ${actualType}. Using actual type.`);
+                    }
+
+                    validItems.push({
+                        path: item.path,
+                        name: item.name,
+                        type: actualType as 'folder' | 'file'
+                    });
+                } catch (error) {
+                    const err = error instanceof Error ? error : new Error('Unknown error');
+                    console.warn(`Skipping nested group item with invalid path: ${item.path}`, err);
+                    continue;
+                }
+            }
+
+            // Recursively validate deeper nested groups
+            let validNestedGroups: LogicalGroup[] | undefined;
+            if (group.groups && Array.isArray(group.groups)) {
+                validNestedGroups = this.validateNestedGroups(group.groups, validBasePaths);
+            }
+
+            validGroups.push({
+                name: group.name,
+                description: typeof group.description === 'string' ? group.description : undefined,
+                items: validItems,
+                icon: typeof group.icon === 'string' ? group.icon : undefined,
+                groups: validNestedGroups
+            });
+        }
+
+        return validGroups;
     }
 
     /**

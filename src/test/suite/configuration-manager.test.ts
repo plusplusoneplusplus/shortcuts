@@ -375,6 +375,103 @@ suite('ConfigurationManager Tests', () => {
             assert.ok(group1);
         });
 
+        test('should create nested logical group', async () => {
+            // Create a parent group
+            await configManager.createLogicalGroup('Parent Group', 'Parent description');
+
+            // Create a nested group inside the parent
+            await configManager.createNestedLogicalGroup('Parent Group', 'Child Group', 'Child description');
+
+            const config = await configManager.loadConfiguration();
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].name, 'Parent Group');
+            assert.ok(config.logicalGroups[0].groups, 'Parent group should have groups array');
+            assert.strictEqual(config.logicalGroups[0].groups!.length, 1);
+            assert.strictEqual(config.logicalGroups[0].groups![0].name, 'Child Group');
+            assert.strictEqual(config.logicalGroups[0].groups![0].description, 'Child description');
+            assert.strictEqual(config.logicalGroups[0].groups![0].items.length, 0);
+        });
+
+        test('should create deeply nested logical groups', async () => {
+            // Create parent group
+            await configManager.createLogicalGroup('Parent');
+
+            // Create child group
+            await configManager.createNestedLogicalGroup('Parent', 'Child');
+
+            // Create grandchild group
+            await configManager.createNestedLogicalGroup('Parent/Child', 'Grandchild');
+
+            const config = await configManager.loadConfiguration();
+            const parentGroup = config.logicalGroups[0];
+            assert.strictEqual(parentGroup.name, 'Parent');
+            assert.ok(parentGroup.groups, 'Parent should have groups');
+            assert.strictEqual(parentGroup.groups!.length, 1);
+
+            const childGroup = parentGroup.groups![0];
+            assert.strictEqual(childGroup.name, 'Child');
+            assert.ok(childGroup.groups, 'Child should have groups');
+            assert.strictEqual(childGroup.groups!.length, 1);
+
+            const grandchildGroup = childGroup.groups![0];
+            assert.strictEqual(grandchildGroup.name, 'Grandchild');
+        });
+
+        test('should prevent duplicate nested group names in same parent', async () => {
+            await configManager.createLogicalGroup('Parent Group');
+            await configManager.createNestedLogicalGroup('Parent Group', 'Child Group');
+            await configManager.createNestedLogicalGroup('Parent Group', 'Child Group');
+
+            const config = await configManager.loadConfiguration();
+            const parentGroup = config.logicalGroups[0];
+            // Should only have one nested group
+            assert.strictEqual(parentGroup.groups!.length, 1);
+        });
+
+        test('should allow same group name in different parents', async () => {
+            // Create two parent groups
+            await configManager.createLogicalGroup('Parent 1');
+            await configManager.createLogicalGroup('Parent 2');
+
+            // Create nested groups with the same name in different parents
+            await configManager.createNestedLogicalGroup('Parent 1', 'Child');
+            await configManager.createNestedLogicalGroup('Parent 2', 'Child');
+
+            const config = await configManager.loadConfiguration();
+            const parent1 = config.logicalGroups.find(g => g.name === 'Parent 1');
+            const parent2 = config.logicalGroups.find(g => g.name === 'Parent 2');
+
+            assert.ok(parent1?.groups);
+            assert.ok(parent2?.groups);
+            assert.strictEqual(parent1!.groups!.length, 1);
+            assert.strictEqual(parent2!.groups!.length, 1);
+            assert.strictEqual(parent1!.groups![0].name, 'Child');
+            assert.strictEqual(parent2!.groups![0].name, 'Child');
+        });
+
+        test('should handle non-existent parent group gracefully', async () => {
+            // Try to create nested group in non-existent parent
+            await configManager.createNestedLogicalGroup('NonExistent', 'Child');
+
+            const config = await configManager.loadConfiguration();
+            // No groups should be created
+            assert.strictEqual(config.logicalGroups.length, 0);
+        });
+
+        test('should create multiple nested groups in same parent', async () => {
+            await configManager.createLogicalGroup('Parent');
+            await configManager.createNestedLogicalGroup('Parent', 'Child 1', 'First child');
+            await configManager.createNestedLogicalGroup('Parent', 'Child 2', 'Second child');
+            await configManager.createNestedLogicalGroup('Parent', 'Child 3', 'Third child');
+
+            const config = await configManager.loadConfiguration();
+            const parentGroup = config.logicalGroups[0];
+            assert.strictEqual(parentGroup.groups!.length, 3);
+            assert.strictEqual(parentGroup.groups![0].name, 'Child 1');
+            assert.strictEqual(parentGroup.groups![1].name, 'Child 2');
+            assert.strictEqual(parentGroup.groups![2].name, 'Child 3');
+        });
+
         test('should delete logical group', async () => {
             await configManager.createLogicalGroup('Group to Delete');
 
