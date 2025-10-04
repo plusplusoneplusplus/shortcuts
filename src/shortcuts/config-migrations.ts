@@ -375,9 +375,22 @@ function processGroupItems(
             const gitRoot = findGitRoot(realPath);
 
             if (gitRoot && !gitRootMap.has(gitRoot)) {
-                // New git root found - generate alias
-                const alias = generateGitAlias(gitRoot, existingAliases);
-                gitRootMap.set(gitRoot, alias);
+                // Check if this git root is already covered by existing base paths
+                const realGitRoot = fs.realpathSync(gitRoot);
+                const alreadyExists = existingBasePaths.some(bp => {
+                    try {
+                        const realBasePath = fs.realpathSync(resolveItemPath(bp.path, workspaceRoot, []));
+                        return realBasePath === realGitRoot;
+                    } catch {
+                        return false;
+                    }
+                });
+
+                if (!alreadyExists) {
+                    // New git root found - generate alias
+                    const alias = generateGitAlias(gitRoot, existingAliases);
+                    gitRootMap.set(gitRoot, alias);
+                }
             }
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');

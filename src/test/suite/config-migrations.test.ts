@@ -290,7 +290,7 @@ suite('Configuration Migration Tests', () => {
 
             assert.strictEqual(result.migrated, true);
             assert.strictEqual(result.fromVersion, 2);
-            assert.strictEqual(result.toVersion, 3);
+            assert.strictEqual(result.toVersion, 4);
 
             // All data should be preserved
             assert.strictEqual(result.config.logicalGroups.length, 1);

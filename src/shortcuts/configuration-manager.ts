@@ -416,18 +416,50 @@ export class ConfigurationManager {
                         continue;
                     }
 
-                    if (typeof item.path !== 'string' || !item.path.trim()) {
-                        console.warn('Skipping logical group item with invalid path:', item);
-                        continue;
-                    }
-
                     if (typeof item.name !== 'string' || !item.name.trim()) {
                         console.warn('Skipping logical group item with invalid name:', item);
                         continue;
                     }
 
-                    if (item.type !== 'folder' && item.type !== 'file') {
+                    if (item.type !== 'folder' && item.type !== 'file' && item.type !== 'command' && item.type !== 'task') {
                         console.warn('Skipping logical group item with invalid type:', item);
+                        continue;
+                    }
+
+                    // Handle command items
+                    if (item.type === 'command') {
+                        if (typeof item.command !== 'string' || !item.command.trim()) {
+                            console.warn('Skipping command item with invalid command ID:', item);
+                            continue;
+                        }
+                        validItems.push({
+                            name: item.name,
+                            type: 'command',
+                            command: item.command,
+                            args: item.args,
+                            icon: typeof item.icon === 'string' ? item.icon : undefined
+                        });
+                        continue;
+                    }
+
+                    // Handle task items
+                    if (item.type === 'task') {
+                        if (typeof item.task !== 'string' || !item.task.trim()) {
+                            console.warn('Skipping task item with invalid task name:', item);
+                            continue;
+                        }
+                        validItems.push({
+                            name: item.name,
+                            type: 'task',
+                            task: item.task,
+                            icon: typeof item.icon === 'string' ? item.icon : undefined
+                        });
+                        continue;
+                    }
+
+                    // Handle folder and file items (require path)
+                    if (typeof item.path !== 'string' || !item.path.trim()) {
+                        console.warn('Skipping logical group item with invalid path:', item);
                         continue;
                     }
 

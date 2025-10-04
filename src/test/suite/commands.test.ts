@@ -121,10 +121,11 @@ suite('ShortcutsCommands Integration Tests', () => {
             // Execute reset command
             await vscode.commands.executeCommand('shortcuts.resetConfiguration');
 
-            // Verify configuration was reset
+            // Verify configuration was reset to default (with Quick Actions group)
             configManager.invalidateCache();
             config = await configManager.loadConfiguration();
-            assert.strictEqual(config.logicalGroups.length, 0);
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].name, 'Quick Actions');
 
         } finally {
             // Restore original method
@@ -240,7 +241,8 @@ suite('ShortcutsCommands Integration Tests', () => {
             const exists = fs.existsSync(configPath);
             const config = await configManager.loadConfiguration();
             assert.strictEqual(Array.isArray(config.logicalGroups), true);
-            assert.strictEqual(config.logicalGroups.length, 0);
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].name, 'Quick Actions');
 
         } finally {
             vscode.window.showTextDocument = originalShowTextDocument;
