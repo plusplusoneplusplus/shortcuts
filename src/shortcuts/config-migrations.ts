@@ -8,17 +8,19 @@
  * - v1: Original format with `shortcuts` array (pre-2.0)
  * - v2: Logical groups format without nested groups (2.0-2.4)
  * - v3: Logical groups with nested groups support (2.5+)
+ * - v4: Auto-detected git roots as base paths (2.6+)
  */
 
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { LogicalGroup, ShortcutsConfig } from './types';
+import { BasePath, LogicalGroup, ShortcutsConfig } from './types';
 
 /**
  * Configuration version number
  * Increment this when making breaking changes to the config format
  */
-export const CURRENT_CONFIG_VERSION = 3;
+export const CURRENT_CONFIG_VERSION = 4;
 
 /**
  * Versioned configuration that includes version metadata
@@ -227,6 +229,313 @@ function migrateV2ToV3(config: any, context: MigrationContext): any {
 }
 
 registerMigration(2, migrateV2ToV3);
+
+// ============================================================================
+// Migration v3 -> v4: Auto-detect git roots and convert to base paths
+// ============================================================================
+
+/**
+ * Find the git root directory for a given path
+ * @param filePath Path to find git root for
+ * @returns Git root path or undefined if not in a git repository
+ */
+function findGitRoot(filePath: string): string | undefined {
+    try {
+        // Resolve to real path to handle symlinks (e.g., /var -> /private/var on macOS)
+        const realPath = fs.realpathSync(filePath);
+        const directory = fs.statSync(realPath).isDirectory() ? realPath : path.dirname(realPath);
+        const gitRoot = execSync('git rev-parse --show-toplevel', {
+            cwd: directory,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'] // Suppress stderr
+        }).trim();
+        return gitRoot;
+    } catch (error) {
+        // Not in a git repository or git not available
+        return undefined;
+    }
+}
+
+/**
+ * Resolve a path (relative, absolute, or alias-based) to absolute path
+ * @param itemPath Path to resolve
+ * @param workspaceRoot Workspace root for relative paths
+ * @param basePaths Existing base paths for alias resolution
+ * @returns Absolute path
+ */
+function resolveItemPath(itemPath: string, workspaceRoot: string, basePaths: BasePath[]): string {
+    // Check if path uses an alias
+    if (itemPath.startsWith('@')) {
+        const aliasEnd = itemPath.indexOf('/');
+        const alias = aliasEnd > 0 ? itemPath.substring(0, aliasEnd) : itemPath;
+        const basePath = basePaths.find(bp => bp.alias === alias);
+
+        if (basePath) {
+            const remainingPath = aliasEnd > 0 ? itemPath.substring(aliasEnd + 1) : '';
+            const baseResolved = path.isAbsolute(basePath.path)
+                ? basePath.path
+                : path.resolve(workspaceRoot, basePath.path);
+            return remainingPath ? path.join(baseResolved, remainingPath) : baseResolved;
+        }
+    }
+
+    // Absolute path
+    if (path.isAbsolute(itemPath)) {
+        return itemPath;
+    }
+
+    // Relative path
+    return path.resolve(workspaceRoot, itemPath);
+}
+
+/**
+ * Generate a unique alias name for a git root
+ * @param gitRoot Git root path
+ * @param existingAliases Already used aliases
+ * @returns Unique alias name
+ */
+function generateGitAlias(gitRoot: string, existingAliases: Set<string>): string {
+    const repoName = path.basename(gitRoot);
+    let alias = `@${repoName}`;
+    let counter = 1;
+
+    while (existingAliases.has(alias)) {
+        alias = `@${repoName}${counter}`;
+        counter++;
+    }
+
+    existingAliases.add(alias);
+    return alias;
+}
+
+/**
+ * Convert absolute path to use git root alias if applicable
+ * @param absolutePath Absolute path to convert
+ * @param gitRootMap Map of git roots to their aliases
+ * @returns Path with alias or original path
+ */
+function convertToAliasPath(absolutePath: string, gitRootMap: Map<string, string>): string {
+    // Find the longest matching git root (most specific)
+    let longestMatch: string | undefined;
+    let longestMatchLength = 0;
+
+    for (const [gitRoot] of gitRootMap) {
+        if (absolutePath.startsWith(gitRoot + path.sep) || absolutePath === gitRoot) {
+            if (gitRoot.length > longestMatchLength) {
+                longestMatch = gitRoot;
+                longestMatchLength = gitRoot.length;
+            }
+        }
+    }
+
+    if (longestMatch) {
+        const alias = gitRootMap.get(longestMatch)!;
+        const relativePath = path.relative(longestMatch, absolutePath);
+        return relativePath ? `${alias}/${relativePath.replace(/\\/g, '/')}` : alias;
+    }
+
+    return absolutePath;
+}
+
+/**
+ * Process items in a group recursively to collect git roots and convert paths
+ * @param group Group to process
+ * @param workspaceRoot Workspace root
+ * @param existingBasePaths Existing base paths
+ * @param gitRootMap Map to collect git roots
+ * @param warnings Array to collect warnings
+ */
+function processGroupItems(
+    group: LogicalGroup,
+    workspaceRoot: string,
+    existingBasePaths: BasePath[],
+    gitRootMap: Map<string, string>,
+    existingAliases: Set<string>,
+    warnings: string[]
+): void {
+    // Process items
+    for (const item of group.items) {
+        if (!item.path || item.type === 'command' || item.type === 'task') {
+            continue;
+        }
+
+        try {
+            // Resolve the item path to absolute
+            const absolutePath = resolveItemPath(item.path, workspaceRoot, existingBasePaths);
+
+            if (!fs.existsSync(absolutePath)) {
+                warnings.push(`Path does not exist: ${item.path}`);
+                continue;
+            }
+
+            // Resolve to real path to handle symlinks
+            const realPath = fs.realpathSync(absolutePath);
+
+            // Find git root for this path
+            const gitRoot = findGitRoot(realPath);
+
+            if (gitRoot && !gitRootMap.has(gitRoot)) {
+                // New git root found - generate alias
+                const alias = generateGitAlias(gitRoot, existingAliases);
+                gitRootMap.set(gitRoot, alias);
+            }
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            warnings.push(`Error processing path ${item.path}: ${err.message}`);
+        }
+    }
+
+    // Process nested groups recursively
+    if (group.groups && Array.isArray(group.groups)) {
+        for (const nestedGroup of group.groups) {
+            processGroupItems(nestedGroup, workspaceRoot, existingBasePaths, gitRootMap, existingAliases, warnings);
+        }
+    }
+}
+
+/**
+ * Convert item paths in a group to use aliases
+ * @param group Group to convert
+ * @param workspaceRoot Workspace root
+ * @param existingBasePaths Existing base paths
+ * @param gitRootMap Map of git roots to aliases
+ */
+function convertGroupPaths(
+    group: LogicalGroup,
+    workspaceRoot: string,
+    existingBasePaths: BasePath[],
+    gitRootMap: Map<string, string>
+): void {
+    // Convert item paths
+    for (const item of group.items) {
+        if (!item.path || item.type === 'command' || item.type === 'task') {
+            continue;
+        }
+
+        try {
+            const absolutePath = resolveItemPath(item.path, workspaceRoot, existingBasePaths);
+
+            // Resolve to real path to handle symlinks
+            const realPath = fs.existsSync(absolutePath) ? fs.realpathSync(absolutePath) : absolutePath;
+            const aliasPath = convertToAliasPath(realPath, gitRootMap);
+
+            if (aliasPath !== realPath) {
+                item.path = aliasPath;
+            }
+        } catch (error) {
+            // Keep original path if conversion fails
+        }
+    }
+
+    // Convert nested groups recursively
+    if (group.groups && Array.isArray(group.groups)) {
+        for (const nestedGroup of group.groups) {
+            convertGroupPaths(nestedGroup, workspaceRoot, existingBasePaths, gitRootMap);
+        }
+    }
+}
+
+/**
+ * Migrate from v3 to v4 (auto-detect git roots and convert to base paths)
+ * 
+ * This migration:
+ * 1. Scans all file/folder paths in logical groups
+ * 2. Detects git repositories for each path
+ * 3. Creates base path aliases for detected git roots
+ * 4. Converts absolute paths to use the new aliases
+ * 
+ * Example:
+ * ```yaml
+ * # Before (v3)
+ * version: 3
+ * logicalGroups:
+ *   - name: Frontend
+ *     items:
+ *       - path: /Users/name/projects/myapp/src
+ *         name: Source
+ *         type: folder
+ * 
+ * # After (v4)
+ * version: 4
+ * basePaths:
+ *   - alias: "@myapp"
+ *     path: /Users/name/projects/myapp
+ * logicalGroups:
+ *   - name: Frontend
+ *     items:
+ *       - path: "@myapp/src"
+ *         name: Source
+ *         type: folder
+ * ```
+ */
+function migrateV3ToV4(config: any, context: MigrationContext): any {
+    const warnings: string[] = [];
+
+    if (context.verbose) {
+        console.log('[Migration v3->v4] Auto-detecting git roots and converting to base paths');
+    }
+
+    // Collect existing base paths and aliases
+    const existingBasePaths: BasePath[] = config.basePaths || [];
+    const existingAliases = new Set<string>(existingBasePaths.map(bp => bp.alias));
+
+    // Map to store detected git roots and their aliases
+    const gitRootMap = new Map<string, string>();
+
+    // First pass: collect all git roots
+    if (config.logicalGroups && Array.isArray(config.logicalGroups)) {
+        for (const group of config.logicalGroups) {
+            processGroupItems(group, context.workspaceRoot, existingBasePaths, gitRootMap, existingAliases, warnings);
+        }
+    }
+
+    if (context.verbose && gitRootMap.size > 0) {
+        console.log(`[Migration v3->v4] Detected ${gitRootMap.size} git root(s)`);
+        for (const [gitRoot, alias] of gitRootMap) {
+            console.log(`  ${alias} -> ${gitRoot}`);
+        }
+    }
+
+    // Second pass: convert paths to use aliases
+    if (config.logicalGroups && Array.isArray(config.logicalGroups)) {
+        for (const group of config.logicalGroups) {
+            convertGroupPaths(group, context.workspaceRoot, existingBasePaths, gitRootMap);
+        }
+    }
+
+    // Add detected git roots to base paths
+    if (gitRootMap.size > 0) {
+        if (!config.basePaths) {
+            config.basePaths = [];
+        }
+
+        // Add new git roots at the beginning
+        const newBasePaths: BasePath[] = [];
+        for (const [gitRoot, alias] of gitRootMap) {
+            newBasePaths.push({
+                alias,
+                path: gitRoot,
+                type: 'git',
+                description: `Git repository: ${path.basename(gitRoot)}`
+            });
+        }
+
+        // Prepend new base paths (git roots first)
+        config.basePaths = [...newBasePaths, ...config.basePaths];
+    }
+
+    // Set version
+    config.version = 4;
+
+    // Store warnings
+    if (warnings.length > 0) {
+        (config as any)._migrationWarnings = warnings;
+    }
+
+    return config;
+}
+
+registerMigration(3, migrateV3ToV4);
 
 // ============================================================================
 // Migration Engine

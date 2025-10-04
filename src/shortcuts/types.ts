@@ -3,6 +3,11 @@
  */
 
 /**
+ * Type of base path
+ */
+export type BasePathType = 'git' | 'workspace' | 'docs' | 'build' | 'config' | 'custom';
+
+/**
  * Configuration for a base path alias (e.g., git root)
  */
 export interface BasePath {
@@ -10,6 +15,10 @@ export interface BasePath {
     alias: string;
     /** Actual filesystem path (can be relative to workspace or absolute) */
     path: string;
+    /** Type of base path (e.g., 'git', 'workspace', 'project') */
+    type?: BasePathType;
+    /** Optional description of what this base path represents */
+    description?: string;
 }
 
 /**

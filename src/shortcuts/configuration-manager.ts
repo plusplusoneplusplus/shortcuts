@@ -377,9 +377,15 @@ export class ConfigurationManager {
                     continue;
                 }
 
+                // Validate type if provided
+                const validTypes = ['git', 'workspace', 'docs', 'build', 'config', 'custom'];
+                const type = basePath.type && validTypes.includes(basePath.type) ? basePath.type : undefined;
+
                 validBasePaths.push({
                     alias: normalizedAlias,
-                    path: basePath.path
+                    path: basePath.path,
+                    type,
+                    description: typeof basePath.description === 'string' ? basePath.description : undefined
                 });
             }
         }

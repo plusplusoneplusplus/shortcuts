@@ -493,4 +493,442 @@ suite('Configuration Migration Tests', () => {
             assert.ok(result.appliedMigrations.length > 0);
         });
     });
+
+    suite('Migration v3 -> v4 (Git Root Detection)', () => {
+        let gitRepoDir: string;
+
+        setup(() => {
+            // Create a mock git repository
+            gitRepoDir = path.join(tempDir, 'git-repo');
+            fs.mkdirSync(gitRepoDir);
+            fs.mkdirSync(path.join(gitRepoDir, '.git'));
+            fs.mkdirSync(path.join(gitRepoDir, 'src'));
+            fs.mkdirSync(path.join(gitRepoDir, 'docs'));
+
+            // Initialize git repo
+            try {
+                require('child_process').execSync('git init', { cwd: gitRepoDir, stdio: 'ignore' });
+                require('child_process').execSync('git config user.email "test@test.com"', { cwd: gitRepoDir, stdio: 'ignore' });
+                require('child_process').execSync('git config user.name "Test"', { cwd: gitRepoDir, stdio: 'ignore' });
+            } catch (error) {
+                console.warn('Git not available for tests, skipping git-dependent tests');
+            }
+        });
+
+        test('should detect git root and create base path alias', () => {
+            const srcPath = path.join(gitRepoDir, 'src');
+
+            const v3Config = {
+                version: 3,
+                logicalGroups: [
+                    {
+                        name: 'Source',
+                        items: [
+                            { path: srcPath, name: 'Source Code', type: 'folder' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            assert.strictEqual(result.migrated, true);
+            assert.strictEqual(result.fromVersion, 3);
+            assert.strictEqual(result.toVersion, 4);
+
+            // Should have created a base path
+            assert.ok(result.config.basePaths);
+            assert.strictEqual(result.config.basePaths.length, 1);
+            assert.strictEqual(result.config.basePaths[0].alias, '@git-repo');
+            // Use realpath to handle symlinks (e.g., /var -> /private/var on macOS)
+            assert.strictEqual(result.config.basePaths[0].path, fs.realpathSync(gitRepoDir));
+            // Should have type 'git'
+            assert.strictEqual(result.config.basePaths[0].type, 'git');
+            // Should have description
+            assert.ok(result.config.basePaths[0].description);
+            assert.ok(result.config.basePaths[0].description!.includes('git-repo'));
+
+            // Path should be converted to use alias
+            assert.strictEqual(result.config.logicalGroups[0].items[0].path, '@git-repo/src');
+        });
+
+        test('should handle multiple paths in same git repo', () => {
+            const srcPath = path.join(gitRepoDir, 'src');
+            const docsPath = path.join(gitRepoDir, 'docs');
+
+            const v3Config = {
+                version: 3,
+                logicalGroups: [
+                    {
+                        name: 'Project',
+                        items: [
+                            { path: srcPath, name: 'Source', type: 'folder' },
+                            { path: docsPath, name: 'Docs', type: 'folder' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            // Should only create one base path for the repo
+            assert.ok(result.config.basePaths);
+            assert.strictEqual(result.config.basePaths!.length, 1);
+            assert.strictEqual(result.config.basePaths![0].alias, '@git-repo');
+            assert.strictEqual(result.config.basePaths![0].type, 'git');
+
+            // Both paths should use the same alias
+            assert.strictEqual(result.config.logicalGroups[0].items[0].path, '@git-repo/src');
+            assert.strictEqual(result.config.logicalGroups[0].items[1].path, '@git-repo/docs');
+        });
+
+        test('should handle nested groups with git paths', () => {
+            const srcPath = path.join(gitRepoDir, 'src');
+
+            const v3Config = {
+                version: 3,
+                logicalGroups: [
+                    {
+                        name: 'Parent',
+                        items: [],
+                        groups: [
+                            {
+                                name: 'Child',
+                                items: [
+                                    { path: srcPath, name: 'Source', type: 'folder' }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            // Should detect git root in nested group
+            assert.ok(result.config.basePaths);
+            assert.strictEqual(result.config.basePaths!.length, 1);
+            assert.strictEqual(result.config.basePaths![0].alias, '@git-repo');
+
+            // Nested path should be converted
+            assert.strictEqual(
+                result.config.logicalGroups[0].groups![0].items[0].path,
+                '@git-repo/src'
+            );
+        });
+
+        test('should preserve existing base paths', () => {
+            const srcPath = path.join(gitRepoDir, 'src');
+
+            const v3Config = {
+                version: 3,
+                basePaths: [
+                    { alias: '@existing', path: '/some/path' }
+                ],
+                logicalGroups: [
+                    {
+                        name: 'Source',
+                        items: [
+                            { path: srcPath, name: 'Source', type: 'folder' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            // Should have both base paths
+            assert.ok(result.config.basePaths);
+            assert.strictEqual(result.config.basePaths!.length, 2);
+
+            // New git root should be first with type 'git'
+            assert.strictEqual(result.config.basePaths![0].alias, '@git-repo');
+            assert.strictEqual(result.config.basePaths![0].type, 'git');
+
+            // Existing base path should be preserved (no type)
+            assert.strictEqual(result.config.basePaths![1].alias, '@existing');
+            assert.strictEqual(result.config.basePaths![1].path, '/some/path');
+            assert.strictEqual(result.config.basePaths![1].type, undefined);
+        });
+
+        test('should handle paths already using aliases', () => {
+            // Use realpath for the base path to match what migration does
+            const realGitRepoDir = fs.realpathSync(gitRepoDir);
+
+            const v3Config = {
+                version: 3,
+                basePaths: [
+                    { alias: '@myrepo', path: realGitRepoDir }
+                ],
+                logicalGroups: [
+                    {
+                        name: 'Source',
+                        items: [
+                            { path: '@myrepo/src', name: 'Source', type: 'folder' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            // Should not create duplicate base path
+            assert.ok(result.config.basePaths);
+            assert.strictEqual(result.config.basePaths!.length, 1);
+            assert.strictEqual(result.config.basePaths![0].alias, '@myrepo');
+
+            // Path should remain unchanged
+            assert.strictEqual(result.config.logicalGroups[0].items[0].path, '@myrepo/src');
+        });
+
+        test('should handle non-git paths gracefully', () => {
+            const nonGitPath = path.join(tempDir, 'non-git-folder');
+            fs.mkdirSync(nonGitPath);
+
+            const v3Config = {
+                version: 3,
+                logicalGroups: [
+                    {
+                        name: 'Other',
+                        items: [
+                            { path: nonGitPath, name: 'Non-Git', type: 'folder' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            // Should not create base paths for non-git folders
+            assert.ok(!result.config.basePaths || result.config.basePaths.length === 0);
+
+            // Path should remain unchanged
+            assert.strictEqual(result.config.logicalGroups[0].items[0].path, nonGitPath);
+        });
+
+        test('should handle relative paths in git repo', () => {
+            // Create a git repo in workspace root
+            const workspaceGitDir = path.join(tempDir, 'workspace-git');
+            fs.mkdirSync(workspaceGitDir);
+            fs.mkdirSync(path.join(workspaceGitDir, '.git'));
+            fs.mkdirSync(path.join(workspaceGitDir, 'src'));
+
+            try {
+                require('child_process').execSync('git init', { cwd: workspaceGitDir, stdio: 'ignore' });
+            } catch (error) {
+                // Skip if git not available
+                return;
+            }
+
+            const v3Config = {
+                version: 3,
+                logicalGroups: [
+                    {
+                        name: 'Source',
+                        items: [
+                            { path: 'workspace-git/src', name: 'Source', type: 'folder' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            // Should detect git root and create alias
+            assert.ok(result.config.basePaths);
+            assert.strictEqual(result.config.basePaths.length, 1);
+            assert.strictEqual(result.config.basePaths[0].alias, '@workspace-git');
+
+            // Path should be converted to alias
+            assert.strictEqual(result.config.logicalGroups[0].items[0].path, '@workspace-git/src');
+        });
+
+        test('should handle duplicate repo names with counter', () => {
+            // Create two repos with the same name in different locations
+            const repo1 = path.join(tempDir, 'myrepo');
+            const repo2 = path.join(tempDir, 'other', 'myrepo');
+
+            fs.mkdirSync(repo1);
+            fs.mkdirSync(path.join(repo1, '.git'));
+            fs.mkdirSync(path.join(repo1, 'src'));
+
+            fs.mkdirSync(path.join(tempDir, 'other'), { recursive: true });
+            fs.mkdirSync(repo2);
+            fs.mkdirSync(path.join(repo2, '.git'));
+            fs.mkdirSync(path.join(repo2, 'src'));
+
+            try {
+                require('child_process').execSync('git init', { cwd: repo1, stdio: 'ignore' });
+                require('child_process').execSync('git init', { cwd: repo2, stdio: 'ignore' });
+            } catch (error) {
+                return;
+            }
+
+            const v3Config = {
+                version: 3,
+                logicalGroups: [
+                    {
+                        name: 'Repos',
+                        items: [
+                            { path: path.join(repo1, 'src'), name: 'Repo1 Src', type: 'folder' },
+                            { path: path.join(repo2, 'src'), name: 'Repo2 Src', type: 'folder' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            // Should create two base paths with unique aliases
+            assert.ok(result.config.basePaths);
+            assert.strictEqual(result.config.basePaths!.length, 2);
+
+            const aliases = result.config.basePaths!.map(bp => bp.alias).sort();
+            assert.ok(aliases.includes('@myrepo'));
+            assert.ok(aliases.includes('@myrepo1'));
+
+            // Both should have type 'git'
+            assert.ok(result.config.basePaths!.every(bp => bp.type === 'git'));
+        });
+
+        test('should skip command and task items', () => {
+            const v3Config = {
+                version: 3,
+                logicalGroups: [
+                    {
+                        name: 'Commands',
+                        items: [
+                            { name: 'Run Test', type: 'command', command: 'test.run' },
+                            { name: 'Build', type: 'task', task: 'build' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            // Should not create base paths for commands/tasks
+            assert.ok(!result.config.basePaths || result.config.basePaths.length === 0);
+
+            // Items should remain unchanged
+            assert.strictEqual(result.config.logicalGroups[0].items[0].type, 'command');
+            assert.strictEqual(result.config.logicalGroups[0].items[1].type, 'task');
+        });
+
+        test('should handle non-existent paths with warnings', () => {
+            const v3Config = {
+                version: 3,
+                logicalGroups: [
+                    {
+                        name: 'Missing',
+                        items: [
+                            { path: '/non/existent/path', name: 'Missing', type: 'folder' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            // Should have warnings
+            assert.ok(result.warnings.length > 0);
+            assert.ok(result.warnings.some(w => w.includes('does not exist')));
+
+            // Should not create base paths
+            assert.ok(!result.config.basePaths || result.config.basePaths.length === 0);
+        });
+
+        test('should handle git root at exact item path', () => {
+            // Item path is the git root itself
+            const v3Config = {
+                version: 3,
+                logicalGroups: [
+                    {
+                        name: 'Repo Root',
+                        items: [
+                            { path: gitRepoDir, name: 'Repository', type: 'folder' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            // Should create base path
+            assert.ok(result.config.basePaths);
+            assert.strictEqual(result.config.basePaths!.length, 1);
+            assert.strictEqual(result.config.basePaths![0].alias, '@git-repo');
+
+            // Path should be just the alias (no subpath)
+            assert.strictEqual(result.config.logicalGroups[0].items[0].path, '@git-repo');
+        });
+
+        test('should set type and description for detected git roots', () => {
+            const srcPath = path.join(gitRepoDir, 'src');
+
+            const v3Config = {
+                version: 3,
+                logicalGroups: [
+                    {
+                        name: 'Source',
+                        items: [
+                            { path: srcPath, name: 'Source', type: 'folder' }
+                        ]
+                    }
+                ]
+            };
+
+            const result = migrateConfig(v3Config, {
+                workspaceRoot: tempDir,
+                verbose: false
+            });
+
+            assert.ok(result.config.basePaths);
+            assert.strictEqual(result.config.basePaths.length, 1);
+
+            const basePath = result.config.basePaths[0];
+
+            // Should have type 'git'
+            assert.strictEqual(basePath.type, 'git');
+
+            // Should have description
+            assert.ok(basePath.description);
+            assert.strictEqual(typeof basePath.description, 'string');
+            assert.ok(basePath.description.includes('Git repository'));
+            assert.ok(basePath.description.includes('git-repo'));
+        });
+    });
 });

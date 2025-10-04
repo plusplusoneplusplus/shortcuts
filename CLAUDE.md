@@ -113,10 +113,16 @@ The extension uses YAML configuration files stored at `.vscode/shortcuts.yaml` w
 basePaths:
   - alias: "@frontend"
     path: "/path/to/frontend/repo"
+    type: "git"
+    description: "Git repository: frontend"
   - alias: "@backend"
     path: "/path/to/backend/repo"
+    type: "git"
+    description: "Git repository: backend"
   - alias: "@shared"
     path: "../shared-libs"
+    type: "custom"
+    description: "Shared libraries"
 
 logicalGroups:
   - name: "Project Files"
@@ -150,6 +156,14 @@ The `basePaths` section allows you to define aliases for multiple git roots or c
 - **path**: The actual filesystem path, can be:
   - Absolute path (e.g., `/Users/name/projects/myrepo`)
   - Relative to workspace root (e.g., `../sibling-repo` or `subproject`)
+- **type** (optional): The type of base path, one of:
+  - `git` - Git repository root (auto-detected during migration)
+  - `workspace` - VS Code workspace folder
+  - `docs` - Documentation directories
+  - `build` - Build output directories
+  - `config` - Configuration directories
+  - `custom` - User-defined paths (default)
+- **description** (optional): Human-readable description of what this base path represents
 
 Use base path aliases in your item paths like: `@frontend/src/components/Button.tsx`
 
@@ -216,16 +230,18 @@ The extension includes a comprehensive versioned configuration system for backwa
 **Version History:**
 - **v1**: Original `shortcuts` array format (pre-2.0)
 - **v2**: Logical groups without nesting (2.0-2.4)
-- **v3**: Logical groups with nested groups support (2.5+)
+- **v3**: Logical groups with nested groups support (2.5)
+- **v4**: Auto-detected git roots as base paths (2.6+)
 
 ### Key Features
 
 1. **Automatic Detection**: Detects configuration version from structure
-2. **Sequential Migration**: Applies migrations in order (v1→v2→v3)
+2. **Sequential Migration**: Applies migrations in order (v1→v2→v3→v4)
 3. **Non-Destructive**: Preserves data, skips invalid entries with warnings
 4. **Validation**: Checks paths exist, validates types, handles edge cases
 5. **Verbose Mode**: Optional detailed logging for debugging
-6. **Test Coverage**: 25 comprehensive tests covering all scenarios
+6. **Git Root Detection**: Automatically detects git repositories and creates base path aliases
+7. **Test Coverage**: 37 comprehensive tests covering all scenarios including git detection
 
 ### API
 
@@ -243,27 +259,92 @@ const result = migrateConfig(config, {
 const canMigrate = canMigrate(config);
 
 // Get supported versions
-const versions = getSupportedVersions(); // [1, 2, 3]
+const versions = getSupportedVersions(); // [1, 2, 3, 4]
 ```
+
+### V4 Migration: Auto Git Root Detection
+
+Version 4 introduces automatic git root detection and conversion to base paths:
+
+**What it does:**
+1. Scans all file/folder paths in your configuration
+2. Detects git repositories for each path
+3. Automatically creates base path aliases (e.g., `@myrepo`)
+4. Converts absolute paths to use the new aliases
+
+**Example:**
+```yaml
+# Before (v3)
+version: 3
+logicalGroups:
+  - name: Frontend
+    items:
+      - path: /Users/name/projects/myapp/src
+        name: Source
+        type: folder
+
+# After (v4)
+version: 4
+basePaths:
+  - alias: "@myapp"
+    path: /Users/name/projects/myapp
+    type: git
+    description: "Git repository: myapp"
+logicalGroups:
+  - name: Frontend
+    items:
+      - path: "@myapp/src"
+        name: Source
+        type: folder
+```
+
+**Benefits:**
+- Makes configurations portable across machines
+- Cleaner, more maintainable paths
+- Automatic detection - no manual work required
+- Handles multiple git repositories
+- Preserves existing base paths
+- Automatically adds type metadata ('git') and descriptions
 
 ### Integration
 
 The `ConfigurationManager` automatically:
 1. Detects configuration version on load
-2. Applies necessary migrations
+2. Applies necessary migrations (including git root detection)
 3. Shows warnings if any issues occur
-4. Saves migrated config with version number
+4. Saves migrated config with version number and detected base paths
 
 ### Adding New Versions
 
 To add a new configuration version:
-1. Increment `CURRENT_CONFIG_VERSION`
+1. Increment `CURRENT_CONFIG_VERSION` in `config-migrations.ts`
 2. Create migration function: `migrateVxToVy(config, context)`
 3. Register: `registerMigration(x, migrateVxToVy)`
-4. Add tests in `config-migrations.test.ts`
-5. Update `MIGRATION_GUIDE.md`
+4. Add comprehensive tests in `config-migrations.test.ts`
+5. Update this documentation
 
-See `MIGRATION_GUIDE.md` for detailed documentation.
+### Migration Test Coverage
+
+The migration system has 38 tests covering:
+- **Version Detection** (5 tests): Detecting v1, v2, v3, v4 configs
+- **V1→V2 Migration** (8 tests): Physical shortcuts to logical groups
+- **V2→V3 Migration** (2 tests): Adding nested group support
+- **V3→V4 Migration** (13 tests): Git root detection and path conversion
+  - Single and multiple paths in same repo
+  - Nested groups with git paths
+  - Preserving existing base paths
+  - Handling paths already using aliases
+  - Non-git paths
+  - Relative paths in git repos
+  - Duplicate repo names
+  - Command/task items
+  - Non-existent paths
+  - Git root at exact item path
+  - Type and description metadata
+- **Multi-Version** (2 tests): End-to-end migrations (v1→v4)
+- **Validation** (3 tests): Migration validation and supported versions
+- **Edge Cases** (4 tests): Empty configs, absolute paths, base paths
+- **Verbose Mode** (1 test): Logging functionality
 
 ## Create File and Folder Support
 
