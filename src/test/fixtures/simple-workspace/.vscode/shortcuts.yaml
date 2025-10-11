@@ -1,0 +1,21 @@
+version: 4
+logicalGroups:
+  - name: Core Files
+    description: Essential project files
+    items:
+      - path: package.json
+        name: Package Config
+        type: file
+      - path: README.md
+        name: Readme
+        type: file
+  - name: Source Code
+    description: Application source
+    items:
+      - path: src
+        name: Source Directory
+        type: folder
+      - path: src/index.ts
+        name: Entry Point
+        type: file
+

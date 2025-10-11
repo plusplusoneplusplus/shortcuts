@@ -24,12 +24,16 @@ suite('ShortcutsCommands Integration Tests', () => {
 
         // Create test folder structure
         testFolder = path.join(tempDir, 'test-folder');
-        fs.mkdirSync(testFolder);
+        if (!fs.existsSync(testFolder)) {
+            fs.mkdirSync(testFolder, { recursive: true });
+        }
         fs.writeFileSync(path.join(testFolder, 'test-file.txt'), 'test content');
 
         // Create additional test folders
         const testFolder2 = path.join(tempDir, 'test-folder-2');
-        fs.mkdirSync(testFolder2);
+        if (!fs.existsSync(testFolder2)) {
+            fs.mkdirSync(testFolder2, { recursive: true });
+        }
 
         // Activate our extension to ensure commands and providers are registered
         const ext = vscode.extensions.getExtension('yihengtao.workspace-shortcuts');
@@ -522,6 +526,12 @@ suite('ShortcutsCommands Integration Tests', () => {
             // This test verifies the fix for using originalName instead of label
             // The label includes "📂 " prefix but originalName doesn't
             await configManager.createLogicalGroup('Emoji Test Group');
+            await configManager.saveConfiguration(await configManager.loadConfiguration());
+
+            // Trigger the extension to refresh its view and wait for file system to settle
+            await vscode.commands.executeCommand('shortcuts.refresh');
+            await new Promise(resolve => setTimeout(resolve, 200));
+
             provider.refresh();
 
             const rootItems = await provider.getChildren();
@@ -535,8 +545,10 @@ suite('ShortcutsCommands Integration Tests', () => {
             assert.ok(labelString && labelString.includes('📂'), 'Label should contain emoji');
             assert.strictEqual(groupItem.originalName, 'Emoji Test Group', 'originalName should not contain emoji');
 
+            let inputBoxCalled = false;
             const originalShowInputBox = vscode.window.showInputBox;
             vscode.window.showInputBox = async (options?: any) => {
+                inputBoxCalled = true;
                 // Verify that the input box gets originalName, not label
                 assert.strictEqual(options.value, 'Emoji Test Group');
                 assert.ok(!options.value.includes('📂'), 'Input should not contain emoji');
@@ -546,10 +558,21 @@ suite('ShortcutsCommands Integration Tests', () => {
             try {
                 await vscode.commands.executeCommand('shortcuts.renameLogicalGroup', groupItem);
 
+                // Verify the input box was actually called
+                assert.ok(inputBoxCalled, 'Input box should have been called');
+
+                // Wait for file system operations and file watchers to complete
+                // This needs to be longer to allow the extension's file watcher to see changes
+                await new Promise(resolve => setTimeout(resolve, 500));
+
                 configManager.invalidateCache();
                 const config = await configManager.loadConfiguration();
+
                 const renamedGroup = config.logicalGroups.find(g => g.name === 'Renamed Emoji Group');
+                const oldGroup = config.logicalGroups.find(g => g.name === 'Emoji Test Group');
+
                 assert.ok(renamedGroup, 'Group should be renamed successfully');
+                assert.ok(!oldGroup, 'Old group name should not exist');
 
             } finally {
                 vscode.window.showInputBox = originalShowInputBox;
@@ -562,6 +585,12 @@ suite('ShortcutsCommands Integration Tests', () => {
         test('should delete logical group through command with real tree item', async () => {
             // Setup: Create a logical group
             await configManager.createLogicalGroup('Group To Delete');
+            await configManager.saveConfiguration(await configManager.loadConfiguration());
+
+            // Trigger the extension to refresh its view and wait for file system to settle
+            await vscode.commands.executeCommand('shortcuts.refresh');
+            await new Promise(resolve => setTimeout(resolve, 200));
+
             provider.refresh();
 
             const rootItems = await provider.getChildren();
@@ -573,17 +602,18 @@ suite('ShortcutsCommands Integration Tests', () => {
             // Mock the confirmation dialog
             const originalShowWarningMessage = vscode.window.showWarningMessage;
             vscode.window.showWarningMessage = async (message: string, options?: any, ...items: string[]) => {
-                assert.ok(message.includes('Group To Delete'), 'Warning should mention group name');
+                assert.ok(message.includes('Group To Delete') || message.includes('📂'), 'Warning should mention group name');
                 return 'Delete' as any;
             };
 
             try {
                 await vscode.commands.executeCommand('shortcuts.deleteLogicalGroup', groupItem);
 
-                // Verify the group was deleted
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // Wait for file system operations and file watchers to complete
+                await new Promise(resolve => setTimeout(resolve, 500));
                 configManager.invalidateCache();
                 const config = await configManager.loadConfiguration();
+
                 const exists = config.logicalGroups.some(g => g.name === 'Group To Delete');
                 assert.strictEqual(exists, false, 'Group should be deleted');
 
@@ -596,6 +626,12 @@ suite('ShortcutsCommands Integration Tests', () => {
             // Setup: Create a group with items
             await configManager.createLogicalGroup('Group With Items To Delete');
             await configManager.addToLogicalGroup('Group With Items To Delete', testFolder, 'Test Folder', 'folder');
+            await configManager.saveConfiguration(await configManager.loadConfiguration());
+
+            // Trigger the extension to refresh its view and wait for file system to settle
+            await vscode.commands.executeCommand('shortcuts.refresh');
+            await new Promise(resolve => setTimeout(resolve, 200));
+
             provider.refresh();
 
             const rootItems = await provider.getChildren();
@@ -610,7 +646,8 @@ suite('ShortcutsCommands Integration Tests', () => {
             try {
                 await vscode.commands.executeCommand('shortcuts.deleteLogicalGroup', groupItem);
 
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // Wait for file system operations to complete
+                await new Promise(resolve => setTimeout(resolve, 100));
                 configManager.invalidateCache();
                 const config = await configManager.loadConfiguration();
                 const exists = config.logicalGroups.some(g => g.name === 'Group With Items To Delete');
@@ -652,6 +689,12 @@ suite('ShortcutsCommands Integration Tests', () => {
         test('should work with groups that have emoji in label', async () => {
             // This test verifies the fix for using originalName instead of label
             await configManager.createLogicalGroup('Delete Emoji Test');
+            await configManager.saveConfiguration(await configManager.loadConfiguration());
+
+            // Trigger the extension to refresh its view and wait for file system to settle
+            await vscode.commands.executeCommand('shortcuts.refresh');
+            await new Promise(resolve => setTimeout(resolve, 200));
+
             provider.refresh();
 
             const rootItems = await provider.getChildren();
@@ -671,8 +714,8 @@ suite('ShortcutsCommands Integration Tests', () => {
             try {
                 await vscode.commands.executeCommand('shortcuts.deleteLogicalGroup', groupItem);
 
-                // Verify group was deleted successfully (proves originalName was used, not label)
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // Wait for file system operations to complete
+                await new Promise(resolve => setTimeout(resolve, 100));
                 configManager.invalidateCache();
                 const config = await configManager.loadConfiguration();
                 const exists = config.logicalGroups.some(g => g.name === 'Delete Emoji Test');

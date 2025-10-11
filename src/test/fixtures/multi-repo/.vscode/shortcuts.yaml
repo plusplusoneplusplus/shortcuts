@@ -1,0 +1,28 @@
+version: 4
+basePaths:
+  - alias: "@frontend"
+    path: "frontend-repo"
+    type: git
+    description: "Frontend repository"
+  - alias: "@backend"
+    path: "backend-repo"
+    type: git
+    description: "Backend repository"
+logicalGroups:
+  - name: Frontend Components
+    items:
+      - path: "@frontend/src/components"
+        name: Components
+        type: folder
+      - path: "@frontend/package.json"
+        name: Frontend Package
+        type: file
+  - name: Backend Services
+    items:
+      - path: "@backend/src/services"
+        name: Services
+        type: folder
+      - path: "@backend/package.json"
+        name: Backend Package
+        type: file
+

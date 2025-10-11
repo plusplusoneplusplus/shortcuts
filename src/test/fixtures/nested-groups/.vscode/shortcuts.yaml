@@ -1,0 +1,28 @@
+version: 4
+logicalGroups:
+  - name: Frontend
+    description: Frontend code
+    items:
+      - path: frontend/src
+        name: Frontend Source
+        type: folder
+    groups:
+      - name: Components
+        description: React components
+        items:
+          - path: frontend/src/components
+            name: Components Folder
+            type: folder
+      - name: Styles
+        description: CSS and styling
+        items:
+          - path: frontend/src/styles
+            name: Styles Folder
+            type: folder
+  - name: Backend
+    description: Backend code
+    items:
+      - path: backend/api
+        name: API Routes
+        type: folder
+

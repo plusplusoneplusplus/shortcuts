@@ -443,7 +443,7 @@
     "package": "webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint && mkdir -p out/test/fixtures && cp -r src/test/fixtures/* out/test/fixtures/",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
     "vsce:package": "vsce package",
