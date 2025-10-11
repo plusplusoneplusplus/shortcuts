@@ -55,13 +55,6 @@ export function activate(context: vscode.ExtensionContext) {
         // Initialize file system watchers
         fileSystemWatcherManager.initialize();
 
-        // Watch configuration file for changes
-        configurationManager.watchConfigFile(() => {
-            treeDataProvider.refresh();
-            // Update file system watchers when configuration changes
-            fileSystemWatcherManager.updateWatchers();
-        });
-
         // Initialize theme management with refresh callback
         themeManager.initialize(() => {
             treeDataProvider.refresh();
@@ -100,14 +93,36 @@ export function activate(context: vscode.ExtensionContext) {
             treeDataProvider.setSearchFilter(searchTerm);
         });
 
-        // Function to update view descriptions - simplified since we have inline search
+        // Function to update view descriptions - show config source
         const updateSearchDescriptions = () => {
-            // Clear descriptions since search is now inline
-            treeView.description = undefined;
+            // Show which config source is active
+            const configInfo = configurationManager.getActiveConfigSource();
+            let sourceLabel: string;
+
+            switch (configInfo.source) {
+                case 'workspace':
+                    sourceLabel = '📁 Workspace';
+                    break;
+                case 'global':
+                    sourceLabel = '🌐 Global';
+                    break;
+                case 'default':
+                    sourceLabel = '⚙️ Default';
+                    break;
+            }
+
+            treeView.description = sourceLabel;
         };
 
         // Initial description setup
         updateSearchDescriptions();
+
+        // Watch configuration file for changes
+        configurationManager.watchConfigFile(() => {
+            treeDataProvider.refresh();
+            fileSystemWatcherManager.updateWatchers();
+            updateSearchDescriptions();
+        });
 
         // Initialize keyboard navigation handler
         const keyboardNavigationHandler = new KeyboardNavigationHandler(treeView, treeDataProvider, 'logical');

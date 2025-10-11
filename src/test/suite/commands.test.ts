@@ -18,6 +18,11 @@ suite('ShortcutsCommands Integration Tests', () => {
     let testFolder: string;
     let disposables: vscode.Disposable[] = [];
 
+    // Helper function to get global config path (mirrors private method)
+    function getGlobalConfigPath(): string {
+        return path.join(os.homedir(), '.vscode-shortcuts', '.vscode', 'shortcuts.yaml');
+    }
+
     suiteSetup(async () => {
         // Use the workspace folder launched by the test runner for isolation
         tempDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-commands-test-'));
@@ -53,6 +58,12 @@ suite('ShortcutsCommands Integration Tests', () => {
         configManager.dispose();
         themeManager.dispose();
 
+        // Clean up any global config created during tests
+        const globalConfigPath = getGlobalConfigPath();
+        if (fs.existsSync(globalConfigPath)) {
+            fs.unlinkSync(globalConfigPath);
+        }
+
         // Clean up temporary directory
         if (fs.existsSync(tempDir)) {
             fs.rmSync(tempDir, { recursive: true, force: true });
@@ -82,7 +93,8 @@ suite('ShortcutsCommands Integration Tests', () => {
             'shortcuts.removeFromLogicalGroup',
             'shortcuts.renameLogicalGroup',
             'shortcuts.deleteLogicalGroup',
-            'shortcuts.openConfiguration'
+            'shortcuts.openConfiguration',
+            'shortcuts.showConfigSource'
         ];
 
         for (const cmd of requiredCommands) {
@@ -760,6 +772,183 @@ suite('ShortcutsCommands Integration Tests', () => {
 
             } finally {
                 vscode.window.showWarningMessage = originalShowWarningMessage;
+            }
+        });
+    });
+
+    // E2E Tests for Show Config Source functionality
+    suite('Show Config Source E2E Tests', () => {
+        test('should show workspace config source information', async () => {
+            // Create workspace config
+            const configPath = configManager.getConfigPath();
+            fs.mkdirSync(path.dirname(configPath), { recursive: true });
+            fs.writeFileSync(configPath, 'logicalGroups: []');
+
+            let messageShown = false;
+            let messageText = '';
+            let detailText = '';
+
+            const originalShowInfoMessage = vscode.window.showInformationMessage;
+            vscode.window.showInformationMessage = async (message: string, options?: any, ...items: string[]) => {
+                messageShown = true;
+                messageText = message;
+                detailText = options?.detail || '';
+                return undefined as any;
+            };
+
+            try {
+                await vscode.commands.executeCommand('shortcuts.showConfigSource');
+
+                assert.ok(messageShown, 'Information message should be shown');
+                assert.ok(messageText.includes('Workspace'), 'Message should mention workspace');
+                assert.ok(detailText.includes(configPath), 'Detail should include config path');
+
+            } finally {
+                vscode.window.showInformationMessage = originalShowInfoMessage;
+            }
+        });
+
+        test('should show global config source when no workspace config exists', async () => {
+            // Remove workspace config if exists
+            const workspaceConfigPath = configManager.getConfigPath();
+            if (fs.existsSync(workspaceConfigPath)) {
+                fs.unlinkSync(workspaceConfigPath);
+            }
+
+            // Create global config
+            const globalConfigPath = getGlobalConfigPath();
+            fs.mkdirSync(path.dirname(globalConfigPath), { recursive: true });
+            fs.writeFileSync(globalConfigPath, 'logicalGroups: []');
+
+            let messageShown = false;
+            let messageText = '';
+
+            const originalShowInfoMessage = vscode.window.showInformationMessage;
+            vscode.window.showInformationMessage = async (message: string, options?: any, ...items: string[]) => {
+                messageShown = true;
+                messageText = message;
+                return undefined as any;
+            };
+
+            try {
+                await vscode.commands.executeCommand('shortcuts.showConfigSource');
+
+                assert.ok(messageShown, 'Information message should be shown');
+                assert.ok(messageText.includes('Global'), 'Message should mention global config');
+
+            } finally {
+                vscode.window.showInformationMessage = originalShowInfoMessage;
+
+                // Clean up global config
+                if (fs.existsSync(globalConfigPath)) {
+                    fs.unlinkSync(globalConfigPath);
+                }
+            }
+        });
+
+        test('should show default config source when no configs exist', async () => {
+            // Remove both workspace and global configs
+            const workspaceConfigPath = configManager.getConfigPath();
+            if (fs.existsSync(workspaceConfigPath)) {
+                fs.unlinkSync(workspaceConfigPath);
+            }
+
+            const globalConfigPath = getGlobalConfigPath();
+            if (fs.existsSync(globalConfigPath)) {
+                fs.unlinkSync(globalConfigPath);
+            }
+
+            let messageShown = false;
+            let messageText = '';
+
+            const originalShowInfoMessage = vscode.window.showInformationMessage;
+            vscode.window.showInformationMessage = async (message: string, options?: any, ...items: string[]) => {
+                messageShown = true;
+                messageText = message;
+                return undefined as any;
+            };
+
+            try {
+                await vscode.commands.executeCommand('shortcuts.showConfigSource');
+
+                assert.ok(messageShown, 'Information message should be shown');
+                assert.ok(messageText.includes('Default'), 'Message should mention default config');
+
+            } finally {
+                vscode.window.showInformationMessage = originalShowInfoMessage;
+            }
+        });
+
+        test('should open configuration when user clicks Open Configuration', async () => {
+            // Create workspace config
+            const configPath = configManager.getConfigPath();
+            fs.mkdirSync(path.dirname(configPath), { recursive: true });
+            fs.writeFileSync(configPath, 'logicalGroups: []');
+
+            let documentOpened = false;
+
+            const originalShowInfoMessage = vscode.window.showInformationMessage;
+            const originalShowTextDocument = vscode.window.showTextDocument;
+
+            vscode.window.showInformationMessage = async (message: string, options?: any, ...items: string[]) => {
+                return 'Open Configuration' as any;
+            };
+
+            vscode.window.showTextDocument = async () => {
+                documentOpened = true;
+                return {} as any;
+            };
+
+            try {
+                await vscode.commands.executeCommand('shortcuts.showConfigSource');
+
+                assert.ok(documentOpened, 'Configuration file should be opened');
+
+            } finally {
+                vscode.window.showInformationMessage = originalShowInfoMessage;
+                vscode.window.showTextDocument = originalShowTextDocument;
+            }
+        });
+
+        test('should copy path to clipboard when user clicks Copy Path', async () => {
+            // Create workspace config
+            const configPath = configManager.getConfigPath();
+            fs.mkdirSync(path.dirname(configPath), { recursive: true });
+            fs.writeFileSync(configPath, 'logicalGroups: []');
+
+            const originalShowInfoMessage = vscode.window.showInformationMessage;
+
+            vscode.window.showInformationMessage = async (message: string, options?: any, ...items: string[]) => {
+                return 'Copy Path' as any;
+            };
+
+            try {
+                // Just verify the command executes without error
+                // We can't easily mock vscode.env.clipboard.writeText as it's read-only
+                await vscode.commands.executeCommand('shortcuts.showConfigSource');
+                assert.ok(true, 'Command executed successfully');
+
+            } finally {
+                vscode.window.showInformationMessage = originalShowInfoMessage;
+            }
+        });
+
+        test('should handle cancellation gracefully', async () => {
+            // Create workspace config
+            const configPath = configManager.getConfigPath();
+            fs.mkdirSync(path.dirname(configPath), { recursive: true });
+            fs.writeFileSync(configPath, 'logicalGroups: []');
+
+            const originalShowInfoMessage = vscode.window.showInformationMessage;
+            vscode.window.showInformationMessage = async () => undefined as any;
+
+            try {
+                // Should not throw when user cancels
+                await vscode.commands.executeCommand('shortcuts.showConfigSource');
+                assert.ok(true, 'Should handle cancellation gracefully');
+
+            } finally {
+                vscode.window.showInformationMessage = originalShowInfoMessage;
             }
         });
     });

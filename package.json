@@ -89,6 +89,11 @@
         "icon": "$(gear)"
       },
       {
+        "command": "shortcuts.showConfigSource",
+        "title": "Show Active Configuration Source",
+        "icon": "$(info)"
+      },
+      {
         "command": "shortcuts.showKeyboardHelp",
         "title": "Show Keyboard Navigation Help",
         "icon": "$(question)"
@@ -213,6 +218,11 @@
         },
         {
           "command": "shortcuts.refresh",
+          "when": "view == shortcutsView",
+          "group": "navigation"
+        },
+        {
+          "command": "shortcuts.showConfigSource",
           "when": "view == shortcutsView",
           "group": "navigation"
         },

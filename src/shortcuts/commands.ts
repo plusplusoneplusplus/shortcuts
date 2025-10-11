@@ -45,6 +45,13 @@ export class ShortcutsCommands {
             })
         );
 
+        // Show active configuration source command
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.showConfigSource', async () => {
+                await this.showActiveConfigSource();
+            })
+        );
+
         // Logical group management commands
         disposables.push(
             vscode.commands.registerCommand('shortcuts.createLogicalGroup', async () => {
@@ -266,6 +273,53 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error opening configuration file:', err);
             NotificationManager.showError(`Failed to open configuration file: ${err.message}`);
+        }
+    }
+
+    /**
+     * Show information about which configuration source is currently active
+     */
+    private async showActiveConfigSource(): Promise<void> {
+        try {
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            const configInfo = configManager.getActiveConfigSource();
+
+            let message: string;
+            let detailMessage: string;
+
+            switch (configInfo.source) {
+                case 'workspace':
+                    message = '📁 Using Workspace Configuration';
+                    detailMessage = `Configuration is loaded from your workspace-specific file.\n\nPath: ${configInfo.path}\n\nThis configuration takes priority over any global configuration.`;
+                    break;
+                case 'global':
+                    message = '🌐 Using Global Configuration';
+                    detailMessage = `Configuration is loaded from your global shortcuts file.\n\nPath: ${configInfo.path}\n\nTo use a workspace-specific configuration, create a file at:\n${configManager.getConfigPath()}`;
+                    break;
+                case 'default':
+                    message = '⚙️ Using Default Configuration';
+                    detailMessage = `No configuration file found. Using built-in defaults.\n\nA workspace configuration will be created at:\n${configInfo.path}\n\nwhen you make changes or open the configuration file.`;
+                    break;
+            }
+
+            const action = await vscode.window.showInformationMessage(
+                message,
+                { modal: false, detail: detailMessage },
+                'Open Configuration',
+                'Copy Path'
+            );
+
+            if (action === 'Open Configuration') {
+                await this.openConfiguration();
+            } else if (action === 'Copy Path') {
+                await vscode.env.clipboard.writeText(configInfo.path);
+                NotificationManager.showInfo('Configuration path copied to clipboard');
+            }
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error showing active config source:', err);
+            NotificationManager.showError(`Failed to get configuration source: ${err.message}`);
         }
     }
 

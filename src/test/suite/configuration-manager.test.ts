@@ -14,6 +14,11 @@ suite('ConfigurationManager Tests', () => {
     let warningMessages: string[];
     let errorMessages: string[];
 
+    // Helper function to get global config path (mirrors private method)
+    function getGlobalConfigPath(): string {
+        return path.join(os.homedir(), '.vscode-shortcuts', '.vscode', 'shortcuts.yaml');
+    }
+
     setup(() => {
         // Create temporary directory for testing
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-test-'));
@@ -41,6 +46,12 @@ suite('ConfigurationManager Tests', () => {
         // Clean up temporary directory
         if (fs.existsSync(tempDir)) {
             fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+
+        // Clean up any global config created during tests
+        const globalConfigPath = getGlobalConfigPath();
+        if (fs.existsSync(globalConfigPath)) {
+            fs.unlinkSync(globalConfigPath);
         }
 
         // Restore original vscode methods
@@ -873,6 +884,93 @@ logicalGroups:
             assert.ok(group, 'Group should exist');
             assert.strictEqual(group!.items[0].path, '@project/src');
             assert.strictEqual(group!.items[0].type, 'folder');
+        });
+    });
+
+    suite('getActiveConfigSource', () => {
+        test('should return workspace source when workspace config exists', async () => {
+            // Create workspace config
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(configPath, 'logicalGroups: []');
+
+            const configInfo = configManager.getActiveConfigSource();
+
+            assert.strictEqual(configInfo.source, 'workspace');
+            assert.strictEqual(configInfo.path, configPath);
+            assert.strictEqual(configInfo.exists, true);
+        });
+
+        test('should return global source when only global config exists', async () => {
+            // Ensure workspace config doesn't exist
+            const workspaceConfigPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
+            if (fs.existsSync(workspaceConfigPath)) {
+                fs.unlinkSync(workspaceConfigPath);
+            }
+
+            // Create global config directory and file
+            const globalConfigPath = getGlobalConfigPath();
+            fs.mkdirSync(path.dirname(globalConfigPath), { recursive: true });
+            fs.writeFileSync(globalConfigPath, 'logicalGroups: []');
+
+            try {
+                const configInfo = configManager.getActiveConfigSource();
+
+                assert.strictEqual(configInfo.source, 'global');
+                assert.strictEqual(configInfo.path, globalConfigPath);
+                assert.strictEqual(configInfo.exists, true);
+            } finally {
+                // Clean up global config
+                if (fs.existsSync(globalConfigPath)) {
+                    fs.unlinkSync(globalConfigPath);
+                }
+            }
+        });
+
+        test('should return default source when no config exists', async () => {
+            // Ensure no configs exist
+            const workspaceConfigPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
+            if (fs.existsSync(workspaceConfigPath)) {
+                fs.unlinkSync(workspaceConfigPath);
+            }
+
+            const globalConfigPath = getGlobalConfigPath();
+            if (fs.existsSync(globalConfigPath)) {
+                fs.unlinkSync(globalConfigPath);
+            }
+
+            const configInfo = configManager.getActiveConfigSource();
+
+            assert.strictEqual(configInfo.source, 'default');
+            assert.strictEqual(configInfo.path, workspaceConfigPath);
+            assert.strictEqual(configInfo.exists, false);
+        });
+
+        test('should prioritize workspace config over global config', async () => {
+            // Create both workspace and global configs
+            const vscodePath = path.join(tempDir, '.vscode');
+            fs.mkdirSync(vscodePath, { recursive: true });
+            const workspaceConfigPath = path.join(vscodePath, 'shortcuts.yaml');
+            fs.writeFileSync(workspaceConfigPath, 'logicalGroups: []');
+
+            const globalConfigPath = getGlobalConfigPath();
+            fs.mkdirSync(path.dirname(globalConfigPath), { recursive: true });
+            fs.writeFileSync(globalConfigPath, 'logicalGroups: []');
+
+            try {
+                const configInfo = configManager.getActiveConfigSource();
+
+                // Should prefer workspace
+                assert.strictEqual(configInfo.source, 'workspace');
+                assert.strictEqual(configInfo.path, workspaceConfigPath);
+                assert.strictEqual(configInfo.exists, true);
+            } finally {
+                // Clean up global config
+                if (fs.existsSync(globalConfigPath)) {
+                    fs.unlinkSync(globalConfigPath);
+                }
+            }
         });
     });
 });

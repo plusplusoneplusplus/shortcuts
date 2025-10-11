@@ -197,6 +197,38 @@ export class ConfigurationManager {
         return !this.workspaceRoot.includes('.vscode-shortcuts');
     }
 
+    /**
+     * Get information about which configuration source is currently active
+     * @returns Object with source type and path
+     */
+    getActiveConfigSource(): { source: 'workspace' | 'global' | 'default'; path: string; exists: boolean } {
+        // Check workspace config first
+        if (this.isWorkspaceConfig() && fs.existsSync(this.configPath)) {
+            return {
+                source: 'workspace',
+                path: this.configPath,
+                exists: true
+            };
+        }
+
+        // Check global config
+        const globalConfigPath = this.getGlobalConfigPath();
+        if (fs.existsSync(globalConfigPath)) {
+            return {
+                source: 'global',
+                path: globalConfigPath,
+                exists: true
+            };
+        }
+
+        // No config exists yet - will use default
+        return {
+            source: 'default',
+            path: this.configPath,
+            exists: false
+        };
+    }
+
 
     /**
      * Start watching the configuration file for external changes

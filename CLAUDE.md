@@ -184,6 +184,34 @@ This means you can define your base paths once, and the extension will automatic
 
 **Note**: Old configurations with a `shortcuts` array are automatically migrated to `logicalGroups` format on first load.
 
+### Configuration Source Visibility
+
+The extension provides transparency about which configuration is currently active:
+
+**Visual Indicators:**
+- The tree view description shows the active config source:
+  - 📁 Workspace - Using `.vscode/shortcuts.yaml` in the workspace
+  - 🌐 Global - Using `~/.vscode-shortcuts/.vscode/shortcuts.yaml`
+  - ⚙️ Default - No config file exists, using built-in defaults
+
+**Configuration Source Command:**
+- Command: `shortcuts.showConfigSource` - "Show Active Configuration Source"
+- Accessible via toolbar icon (ℹ️) in the Shortcuts panel
+- Shows detailed information about the active configuration:
+  - Source type (workspace/global/default)
+  - Full file path
+  - Actions: Open Configuration, Copy Path
+
+**Configuration Priority:**
+1. **Workspace config** (highest): If `.vscode/shortcuts.yaml` exists, it's used exclusively
+2. **Global config** (fallback): Used only if workspace config doesn't exist
+3. **Default config** (fallback): Built-in defaults when no files exist
+
+**Implementation:**
+- `ConfigurationManager.getActiveConfigSource()` - Returns current config source info
+- Tree view description updates automatically when config changes
+- Visual feedback helps users understand which configuration is in effect
+
 ## Development Notes
 
 - Uses webpack for bundling with TypeScript compilation
