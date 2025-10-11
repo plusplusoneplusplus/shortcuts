@@ -468,32 +468,40 @@ The extension supports cloud synchronization of shortcuts configuration across d
 
 ### Configuration
 
-Sync configuration is stored in the shortcuts YAML file:
+**IMPORTANT: Sync configuration is now stored entirely in VSCode settings, not in the shortcuts.yaml file.**
 
-```yaml
-sync:
-  enabled: true
-  autoSync: true
-  syncInterval: 300  # seconds (optional)
-  providers:
-    vscodeSync:
-      enabled: true
-      scope: global  # or 'workspace'
-    azure:
-      enabled: true
-      container: shortcuts-container
-      accountName: mystorageaccount
-```
+Sync configuration is managed through VSCode settings (in `settings.json` or via Settings UI):
 
-VSCode Settings (in `settings.json`):
 ```json
 {
   "workspaceShortcuts.sync.enabled": true,
   "workspaceShortcuts.sync.autoSync": true,
-  "workspaceShortcuts.sync.providers": ["vscode", "azure"],
-  "workspaceShortcuts.sync.syncInterval": 300
+  "workspaceShortcuts.sync.syncInterval": 300,
+  "workspaceShortcuts.sync.provider": "vscode",  // or "azure"
+
+  // VSCode Sync Provider Settings
+  "workspaceShortcuts.sync.vscode.scope": "global",  // or "workspace"
+
+  // Azure Blob Storage Provider Settings
+  "workspaceShortcuts.sync.azure.container": "shortcuts-container",
+  "workspaceShortcuts.sync.azure.accountName": "mystorageaccount"
+  // Note: Azure SAS token is stored securely in VSCode SecretStorage, not in settings
 }
 ```
+
+**Settings UI:**
+- Open VSCode Settings (Ctrl+, or Cmd+,)
+- Search for "Workspace Shortcuts Sync"
+- Use the dropdown to select your preferred sync provider
+- Configure provider-specific settings
+- Azure credentials (SAS token) are prompted during configuration and stored securely
+
+**Benefits of settings-based configuration:**
+- Sync settings are separate from your shortcuts data
+- Provider credentials never appear in YAML files
+- Easy to configure via Settings UI with dropdowns
+- Can be synced via VSCode Settings Sync independently
+- Better security for sensitive information
 
 ### Sync Commands
 
@@ -559,7 +567,9 @@ VSCode Settings (in `settings.json`):
 ### Integration Points
 
 **ConfigurationManager:**
-- `initializeSyncManager()` - Initialize sync on activation
+- `initializeSyncManager()` - Initialize sync on activation (reads from VSCode settings)
+- `reinitializeSyncManager()` - Reinitialize when settings change
+- `getSyncConfigFromSettings()` - Build SyncConfig from VSCode settings
 - `loadConfiguration()` - Check cloud for updates
 - `saveConfiguration()` - Trigger auto-sync on save
 - `syncToCloud()` / `syncFromCloud()` - Manual sync methods
@@ -572,6 +582,8 @@ VSCode Settings (in `settings.json`):
 
 ### Testing
 
+**Note:** Sync tests need to be updated to work with the new settings-based configuration approach.
+
 Sync functionality includes:
 - **Unit Tests** (`src/test/suite/sync.test.ts`):
   - Provider interface tests
@@ -579,7 +591,8 @@ Sync functionality includes:
   - Sync configuration structure validation
   - Device ID management
   - Checksum validation
-  
+  - **TODO:** Update tests to use VSCode settings instead of config.sync
+
 - **Integration Tests** (`src/test/suite/sync-integration.test.ts`):
   - Provider switching with real VSCode context
   - Configure and switch between VSCode and Azure providers
@@ -587,21 +600,24 @@ Sync functionality includes:
   - Test sync operations after provider switch
   - Error handling and edge cases
   - Auto-sync toggle testing
-  
-See [SYNC_INTEGRATION_TESTING.md](docs/SYNC_INTEGRATION_TESTING.md) for detailed testing guide.
+  - **TODO:** Update tests to use VSCode settings API
+
+See [SYNC_INTEGRATION_TESTING.md](docs/SYNC_INTEGRATION_TESTING.md) for detailed testing guide (needs update).
 
 ### Troubleshooting
 
 **Common Issues:**
 
 1. **Credentials not configured:**
-   - Run configuration wizard again
+   - Run configuration wizard (`Shortcuts: Configure Cloud Sync`) again
    - Check VSCode SecretStorage has necessary permissions
+   - For Azure, verify SAS token is valid and has appropriate permissions
 
 2. **Sync not triggering:**
-   - Verify `sync.enabled: true` in config
-   - Check `autoSync` setting
+   - Verify `workspaceShortcuts.sync.enabled: true` in VSCode settings
+   - Check `workspaceShortcuts.sync.autoSync` setting
    - Review console for errors
+   - Ensure a provider is selected in `workspaceShortcuts.sync.provider`
 
 3. **Conflicts:**
    - Last-write-wins automatically resolves
@@ -611,7 +627,12 @@ See [SYNC_INTEGRATION_TESTING.md](docs/SYNC_INTEGRATION_TESTING.md) for detailed
 4. **Provider connection errors:**
    - Verify network connectivity
    - Check provider credentials validity
-   - Review provider-specific permissions (bucket access, etc.)
+   - Review provider-specific permissions (Azure container access, etc.)
+   - For Azure, verify account name and container name are correct in settings
+
+5. **Settings not taking effect:**
+   - After changing settings, use `Shortcuts: Enable Cloud Sync` to reinitialize
+   - Or reload VSCode window to apply changes
 
 ### Future Enhancements
 

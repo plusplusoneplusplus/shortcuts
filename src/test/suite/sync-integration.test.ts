@@ -1,6 +1,7 @@
 /**
  * Integration tests for sync functionality with real VSCode context
  * These tests interact with the actual extension and test provider switching
+ * Updated to use settings-based sync configuration
  */
 
 import * as assert from 'assert';
@@ -11,13 +12,15 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from '../../shortcuts/configuration-manager';
 import { ShortcutsConfig } from '../../shortcuts/types';
 
-suite('Sync Integration Tests', function () {
+suite('Sync Integration Tests (Settings-based)', function () {
     // Increase timeout for integration tests
     this.timeout(30000);
 
     let context: vscode.ExtensionContext;
     let testWorkspaceRoot: string;
     let configManager: ConfigurationManager;
+    let mockSyncConfig: MockWorkspaceConfiguration;
+    const originalGetConfiguration = vscode.workspace.getConfiguration;
 
     suiteSetup(async function () {
         // Get the extension
@@ -39,9 +42,16 @@ suite('Sync Integration Tests', function () {
     });
 
     setup(async function () {
+        // Set up mock configuration for sync settings
+        mockSyncConfig = new MockWorkspaceConfiguration();
+        (vscode.workspace as any).getConfiguration = (section?: string) => {
+            if (section === 'workspaceShortcuts.sync') {
+                return mockSyncConfig;
+            }
+            return originalGetConfiguration(section);
+        };
+
         // Create a mock context for testing
-        // Note: In real tests, we'd use the actual extension context
-        // For now, we'll create a minimal mock that works with our code
         const mockGlobalState = new MockMemento();
         const mockWorkspaceState = new MockMemento();
         const mockSecrets = new MockSecretStorage();
@@ -71,6 +81,9 @@ suite('Sync Integration Tests', function () {
         if (syncManager) {
             syncManager.dispose();
         }
+
+        // Restore original configuration
+        (vscode.workspace as any).getConfiguration = originalGetConfiguration;
     });
 
     suiteTeardown(function () {
@@ -80,28 +93,24 @@ suite('Sync Integration Tests', function () {
         }
     });
 
-    suite('Provider Switching', () => {
+    suite('Provider Switching via Settings', () => {
         test('should initialize with no sync configuration', async () => {
-            const config = await configManager.loadConfiguration();
-            assert.strictEqual(config.sync, undefined, 'New config should have no sync');
+            // No settings configured, so no sync
+            await mockSyncConfig.update('enabled', false);
+            await configManager.initializeSyncManager();
+
+            const syncManager = configManager.getSyncManager();
+            assert.strictEqual(syncManager, undefined, 'Sync manager should not exist when disabled');
         });
 
-        test('should configure VSCode sync provider', async () => {
-            const config: ShortcutsConfig = {
-                logicalGroups: [],
-                sync: {
-                    enabled: true,
-                    autoSync: true,
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'global'
-                        }
-                    }
-                }
-            };
+        test('should configure VSCode sync provider via settings', async () => {
+            // Configure VSCode sync in settings
+            await mockSyncConfig.update('enabled', true);
+            await mockSyncConfig.update('autoSync', true);
+            await mockSyncConfig.update('provider', 'vscode');
+            await mockSyncConfig.update('vscode.scope', 'global');
 
-            await configManager.saveConfiguration(config);
+            // Initialize sync manager
             await configManager.initializeSyncManager();
 
             const syncManager = configManager.getSyncManager();
@@ -115,21 +124,11 @@ suite('Sync Integration Tests', function () {
 
         test('should switch from VSCode to Azure provider', async () => {
             // Start with VSCode sync
-            let config: ShortcutsConfig = {
-                logicalGroups: [],
-                sync: {
-                    enabled: true,
-                    autoSync: true,
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'global'
-                        }
-                    }
-                }
-            };
+            await mockSyncConfig.update('enabled', true);
+            await mockSyncConfig.update('autoSync', true);
+            await mockSyncConfig.update('provider', 'vscode');
+            await mockSyncConfig.update('vscode.scope', 'global');
 
-            await configManager.saveConfiguration(config);
             await configManager.initializeSyncManager();
 
             let syncManager = configManager.getSyncManager();
@@ -137,18 +136,11 @@ suite('Sync Integration Tests', function () {
             assert.ok(syncManager.getProviders().has('vscode'), 'Should have VSCode provider');
 
             // Switch to Azure
-            if (config.sync) {
-                config.sync.providers = {
-                    azure: {
-                        enabled: true,
-                        container: 'test-container',
-                        accountName: 'testaccount'
-                    }
-                };
-            }
+            await mockSyncConfig.update('provider', 'azure');
+            await mockSyncConfig.update('azure.container', 'test-container');
+            await mockSyncConfig.update('azure.accountName', 'testaccount');
 
-            await configManager.saveConfiguration(config);
-            await configManager.initializeSyncManager();
+            await configManager.reinitializeSyncManager();
 
             syncManager = configManager.getSyncManager();
             assert.ok(syncManager, 'Sync manager should still exist');
@@ -159,55 +151,12 @@ suite('Sync Integration Tests', function () {
             assert.ok(!providers.has('vscode'), 'Should not have VSCode provider anymore');
         });
 
-        test('should enable both providers simultaneously', async () => {
-            const config: ShortcutsConfig = {
-                logicalGroups: [],
-                sync: {
-                    enabled: true,
-                    autoSync: true,
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'workspace'
-                        },
-                        azure: {
-                            enabled: true,
-                            container: 'test-container',
-                            accountName: 'testaccount'
-                        }
-                    }
-                }
-            };
-
-            await configManager.saveConfiguration(config);
-            await configManager.initializeSyncManager();
-
-            const syncManager = configManager.getSyncManager();
-            assert.ok(syncManager, 'Sync manager should exist');
-
-            const providers = syncManager.getProviders();
-            assert.strictEqual(providers.size, 2, 'Should have 2 providers');
-            assert.ok(providers.has('vscode'), 'Should have VSCode provider');
-            assert.ok(providers.has('azure'), 'Should have Azure provider');
-        });
-
         test('should disable sync completely', async () => {
             // Start with sync enabled
-            let config: ShortcutsConfig = {
-                logicalGroups: [],
-                sync: {
-                    enabled: true,
-                    autoSync: true,
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'global'
-                        }
-                    }
-                }
-            };
+            await mockSyncConfig.update('enabled', true);
+            await mockSyncConfig.update('provider', 'vscode');
+            await mockSyncConfig.update('vscode.scope', 'global');
 
-            await configManager.saveConfiguration(config);
             await configManager.initializeSyncManager();
 
             let syncManager = configManager.getSyncManager();
@@ -215,33 +164,19 @@ suite('Sync Integration Tests', function () {
             assert.strictEqual(syncManager.isEnabled(), true, 'Sync should be enabled');
 
             // Disable sync
-            if (config.sync) {
-                config.sync.enabled = false;
-            }
-            await configManager.saveConfiguration(config);
-            await configManager.initializeSyncManager();
+            await mockSyncConfig.update('enabled', false);
+            await configManager.reinitializeSyncManager();
 
             syncManager = configManager.getSyncManager();
-            assert.strictEqual(syncManager?.isEnabled(), false, 'Sync should be disabled');
+            assert.strictEqual(syncManager, undefined, 'Sync manager should not exist when disabled');
         });
 
         test('should handle switching between global and workspace scope for VSCode sync', async () => {
             // Start with global scope
-            let config: ShortcutsConfig = {
-                logicalGroups: [],
-                sync: {
-                    enabled: true,
-                    autoSync: true,
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'global'
-                        }
-                    }
-                }
-            };
+            await mockSyncConfig.update('enabled', true);
+            await mockSyncConfig.update('provider', 'vscode');
+            await mockSyncConfig.update('vscode.scope', 'global');
 
-            await configManager.saveConfiguration(config);
             await configManager.initializeSyncManager();
 
             let syncManager = configManager.getSyncManager();
@@ -249,11 +184,8 @@ suite('Sync Integration Tests', function () {
             assert.ok(vscodeProvider1, 'VSCode provider should exist');
 
             // Switch to workspace scope
-            if (config.sync && config.sync.providers.vscodeSync) {
-                config.sync.providers.vscodeSync.scope = 'workspace';
-            }
-            await configManager.saveConfiguration(config);
-            await configManager.initializeSyncManager();
+            await mockSyncConfig.update('vscode.scope', 'workspace');
+            await configManager.reinitializeSyncManager();
 
             syncManager = configManager.getSyncManager();
             const vscodeProvider2 = syncManager?.getProviders().get('vscode');
@@ -261,26 +193,21 @@ suite('Sync Integration Tests', function () {
         });
     });
 
-    suite('Sync Operations with Provider Switching', () => {
-        test('should sync to cloud after provider switch', async () => {
+    suite('Sync Operations with Settings', () => {
+        test('should sync to cloud after provider configuration', async () => {
             // Configure with VSCode sync
+            await mockSyncConfig.update('enabled', true);
+            await mockSyncConfig.update('autoSync', false); // Manual sync for testing
+            await mockSyncConfig.update('provider', 'vscode');
+            await mockSyncConfig.update('vscode.scope', 'global');
+
             const config: ShortcutsConfig = {
                 logicalGroups: [
                     {
                         name: 'Test Group',
                         items: []
                     }
-                ],
-                sync: {
-                    enabled: true,
-                    autoSync: false, // Manual sync for testing
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'global'
-                        }
-                    }
-                }
+                ]
             };
 
             await configManager.saveConfiguration(config);
@@ -296,28 +223,18 @@ suite('Sync Integration Tests', function () {
                 // This is acceptable for this test
             }
 
-            // Verify config was saved
+            // Verify config was saved (should not contain sync property)
             const savedConfig = await configManager.loadConfiguration();
             assert.strictEqual(savedConfig.logicalGroups.length, 1, 'Config should have 1 group');
             assert.strictEqual(savedConfig.logicalGroups[0].name, 'Test Group', 'Group name should match');
+            assert.strictEqual((savedConfig as any).sync, undefined, 'Config should not contain sync property');
         });
 
         test('should get sync status for active providers', async () => {
-            const config: ShortcutsConfig = {
-                logicalGroups: [],
-                sync: {
-                    enabled: true,
-                    autoSync: true,
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'global'
-                        }
-                    }
-                }
-            };
+            await mockSyncConfig.update('enabled', true);
+            await mockSyncConfig.update('provider', 'vscode');
+            await mockSyncConfig.update('vscode.scope', 'global');
 
-            await configManager.saveConfiguration(config);
             await configManager.initializeSyncManager();
 
             const status = await configManager.getSyncStatus();
@@ -326,79 +243,72 @@ suite('Sync Integration Tests', function () {
         });
 
         test('should handle auto-sync setting toggle', async () => {
-            const config: ShortcutsConfig = {
-                logicalGroups: [],
-                sync: {
-                    enabled: true,
-                    autoSync: true,
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'global'
-                        }
-                    }
-                }
-            };
+            await mockSyncConfig.update('enabled', true);
+            await mockSyncConfig.update('autoSync', true);
+            await mockSyncConfig.update('provider', 'vscode');
+            await mockSyncConfig.update('vscode.scope', 'global');
 
-            await configManager.saveConfiguration(config);
             await configManager.initializeSyncManager();
 
             let syncManager = configManager.getSyncManager();
             assert.strictEqual(syncManager?.isAutoSyncEnabled(), true, 'Auto-sync should be enabled');
 
             // Disable auto-sync
-            if (config.sync) {
-                config.sync.autoSync = false;
-            }
-            await configManager.saveConfiguration(config);
-            await configManager.initializeSyncManager();
+            await mockSyncConfig.update('autoSync', false);
+            await configManager.reinitializeSyncManager();
 
             syncManager = configManager.getSyncManager();
             assert.strictEqual(syncManager?.isAutoSyncEnabled(), false, 'Auto-sync should be disabled');
         });
     });
 
-    suite('Error Handling', () => {
-        test('should handle missing sync configuration gracefully', async () => {
-            const config: ShortcutsConfig = {
-                logicalGroups: []
-                // No sync configuration
-            };
+    suite('Settings Validation', () => {
+        test('should handle missing provider setting gracefully', async () => {
+            await mockSyncConfig.update('enabled', true);
+            // No provider specified
 
-            await configManager.saveConfiguration(config);
             await configManager.initializeSyncManager();
 
             const syncManager = configManager.getSyncManager();
-            assert.strictEqual(syncManager, undefined, 'Sync manager should not exist without config');
+            // Should not initialize without a provider
+            assert.strictEqual(syncManager, undefined, 'Sync manager should not exist without provider');
         });
 
-        test('should handle sync manager reinitialization', async () => {
+        test('should handle incomplete Azure configuration', async () => {
+            await mockSyncConfig.update('enabled', true);
+            await mockSyncConfig.update('provider', 'azure');
+            await mockSyncConfig.update('azure.container', 'test-container');
+            // Missing accountName
+
+            await configManager.initializeSyncManager();
+
+            const syncManager = configManager.getSyncManager();
+            // Should not initialize with incomplete Azure config
+            assert.strictEqual(syncManager, undefined, 'Sync manager should not exist with incomplete Azure config');
+        });
+
+        test('should separate sync settings from shortcuts data', async () => {
+            // Configure sync in settings
+            await mockSyncConfig.update('enabled', true);
+            await mockSyncConfig.update('provider', 'vscode');
+            await mockSyncConfig.update('vscode.scope', 'global');
+
             const config: ShortcutsConfig = {
-                logicalGroups: [],
-                sync: {
-                    enabled: true,
-                    autoSync: true,
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'global'
-                        }
+                logicalGroups: [
+                    {
+                        name: 'Test Group',
+                        items: []
                     }
-                }
+                ]
             };
 
-            // Initialize once
             await configManager.saveConfiguration(config);
             await configManager.initializeSyncManager();
 
-            const syncManager1 = configManager.getSyncManager();
-            assert.ok(syncManager1, 'First sync manager should exist');
-
-            // Reinitialize
-            await configManager.initializeSyncManager();
-
-            const syncManager2 = configManager.getSyncManager();
-            assert.ok(syncManager2, 'Second sync manager should exist');
+            // Load and verify config doesn't contain sync
+            const loadedConfig = await configManager.loadConfiguration();
+            assert.strictEqual((loadedConfig as any).sync, undefined, 'Loaded config should not have sync property');
+            assert.strictEqual(loadedConfig.logicalGroups.length, 1, 'Should have shortcuts data');
         });
     });
 });
@@ -454,3 +364,34 @@ class MockSecretStorage implements vscode.SecretStorage {
     onDidChange: vscode.Event<vscode.SecretStorageChangeEvent> = new vscode.EventEmitter<vscode.SecretStorageChangeEvent>().event;
 }
 
+/**
+ * Mock WorkspaceConfiguration for testing sync settings
+ */
+class MockWorkspaceConfiguration implements vscode.WorkspaceConfiguration {
+    private settings = new Map<string, any>();
+
+    get<T>(section: string): T | undefined;
+    get<T>(section: string, defaultValue: T): T;
+    get<T>(section: string, defaultValue?: T): T | undefined {
+        const value = this.settings.get(section);
+        return value !== undefined ? value : defaultValue;
+    }
+
+    has(section: string): boolean {
+        return this.settings.has(section);
+    }
+
+    inspect<T>(section: string): { key: string; } | undefined {
+        return undefined;
+    }
+
+    async update(section: string, value: any, configurationTarget?: vscode.ConfigurationTarget | boolean): Promise<void> {
+        if (value === undefined) {
+            this.settings.delete(section);
+        } else {
+            this.settings.set(section, value);
+        }
+    }
+
+    readonly [key: string]: any;
+}

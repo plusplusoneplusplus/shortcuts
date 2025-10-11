@@ -1427,7 +1427,7 @@ export class ShortcutsCommands {
      */
     private async configureSyncCommand(): Promise<void> {
         try {
-            const config = await this.treeDataProvider.getConfigurationManager().loadConfiguration();
+            const settingsConfig = vscode.workspace.getConfiguration('workspaceShortcuts.sync');
 
             // Show quick pick for provider selection
             const providerOptions = [
@@ -1436,67 +1436,85 @@ export class ShortcutsCommands {
             ];
 
             const selected = await vscode.window.showQuickPick(providerOptions, {
-                placeHolder: 'Select a cloud sync provider',
-                canPickMany: true
+                placeHolder: 'Select a cloud sync provider'
             });
 
-            if (!selected || selected.length === 0) {
+            if (!selected) {
                 return;
             }
 
-            // Initialize sync config if not present
-            if (!config.sync) {
-                config.sync = {
-                    enabled: false,
-                    autoSync: true,
-                    providers: {}
-                };
-            }
-
-            // Configure each selected provider
-            for (const provider of selected) {
-                switch (provider.value) {
-                    case 'vscode':
-                        const scope = await vscode.window.showQuickPick(
-                            [
-                                { label: 'Global', value: 'global' as const },
-                                { label: 'Workspace', value: 'workspace' as const }
-                            ],
-                            { placeHolder: 'Select VSCode sync scope' }
-                        );
-                        if (scope) {
-                            config.sync.providers.vscodeSync = {
-                                enabled: true,
-                                scope: scope.value
-                            };
-                        }
-                        break;
-
-                    case 'azure':
-                        const container = await vscode.window.showInputBox({
-                            prompt: 'Enter Azure container name',
-                            placeHolder: 'shortcuts-container'
-                        });
-                        const accountName = await vscode.window.showInputBox({
-                            prompt: 'Enter Azure storage account name',
-                            placeHolder: 'mystorageaccount'
-                        });
-                        if (container && accountName) {
-                            config.sync.providers.azure = {
-                                enabled: true,
-                                container,
-                                accountName
-                            };
-                            NotificationManager.showInfo(
-                                'Azure configured. Use VSCode command palette to set credentials securely.',
-                                { timeout: 5000 }
-                            );
-                        }
-                        break;
+            // Configure the selected provider
+            if (selected.value === 'vscode') {
+                const scope = await vscode.window.showQuickPick(
+                    [
+                        { label: 'Global', value: 'global' },
+                        { label: 'Workspace', value: 'workspace' }
+                    ],
+                    { placeHolder: 'Select VSCode sync scope' }
+                );
+                if (scope) {
+                    await settingsConfig.update('provider', 'vscode', vscode.ConfigurationTarget.Global);
+                    await settingsConfig.update('vscode.scope', scope.value, vscode.ConfigurationTarget.Global);
+                    NotificationManager.showInfo('VSCode Settings Sync configured successfully');
                 }
-            }
+            } else if (selected.value === 'azure') {
+                const container = await vscode.window.showInputBox({
+                    prompt: 'Enter Azure container name',
+                    placeHolder: 'shortcuts-container',
+                    validateInput: (value) => {
+                        if (!value || value.trim() === '') {
+                            return 'Container name cannot be empty';
+                        }
+                        return null;
+                    }
+                });
+                if (!container) {
+                    return;
+                }
 
-            await this.treeDataProvider.getConfigurationManager().saveConfiguration(config);
+                const accountName = await vscode.window.showInputBox({
+                    prompt: 'Enter Azure storage account name',
+                    placeHolder: 'mystorageaccount',
+                    validateInput: (value) => {
+                        if (!value || value.trim() === '') {
+                            return 'Account name cannot be empty';
+                        }
+                        return null;
+                    }
+                });
+                if (!accountName) {
+                    return;
+                }
+
+                // Prompt for SAS token or connection string (stored in secrets)
+                const sasToken = await vscode.window.showInputBox({
+                    prompt: 'Enter Azure SAS token or connection string (stored securely)',
+                    placeHolder: 'SAS token or connection string',
+                    password: true,
+                    validateInput: (value) => {
+                        if (!value || value.trim() === '') {
+                            return 'SAS token or connection string cannot be empty';
+                        }
+                        return null;
+                    }
+                });
+                if (!sasToken) {
+                    return;
+                }
+
+                // Save settings
+                await settingsConfig.update('provider', 'azure', vscode.ConfigurationTarget.Global);
+                await settingsConfig.update('azure.container', container, vscode.ConfigurationTarget.Global);
+                await settingsConfig.update('azure.accountName', accountName, vscode.ConfigurationTarget.Global);
+
+                // Store SAS token securely
+                const context = (this as any).context; // Get context if available
+                if (context?.secrets) {
+                    await context.secrets.store('workspaceShortcuts.azure.sasToken', sasToken);
+                }
+
+                NotificationManager.showInfo('Azure Blob Storage configured successfully');
+            }
 
             // Ask if user wants to enable sync now
             const enable = await vscode.window.showQuickPick(
@@ -1506,10 +1524,9 @@ export class ShortcutsCommands {
 
             if (enable === 'Yes') {
                 await this.enableSyncCommand();
+            } else {
+                NotificationManager.showInfo('Cloud sync configured but not enabled. Use "Enable Cloud Sync" command to enable.');
             }
-
-            NotificationManager.showInfo('Cloud sync configuration saved');
-            this.refreshShortcuts();
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -1523,9 +1540,10 @@ export class ShortcutsCommands {
      */
     private async enableSyncCommand(): Promise<void> {
         try {
-            const config = await this.treeDataProvider.getConfigurationManager().loadConfiguration();
+            const settingsConfig = vscode.workspace.getConfiguration('workspaceShortcuts.sync');
+            const provider = settingsConfig.get<string>('provider');
 
-            if (!config.sync) {
+            if (!provider) {
                 NotificationManager.showWarning('Cloud sync is not configured. Please configure it first.');
                 const configure = await vscode.window.showQuickPick(
                     ['Configure Now', 'Cancel'],
@@ -1537,11 +1555,11 @@ export class ShortcutsCommands {
                 return;
             }
 
-            config.sync.enabled = true;
-            await this.treeDataProvider.getConfigurationManager().saveConfiguration(config);
+            // Enable sync
+            await settingsConfig.update('enabled', true, vscode.ConfigurationTarget.Global);
 
             // Reinitialize sync manager
-            await this.treeDataProvider.getConfigurationManager().initializeSyncManager();
+            await this.treeDataProvider.getConfigurationManager().reinitializeSyncManager();
 
             NotificationManager.showInfo('Cloud sync enabled');
             this.refreshShortcuts();
@@ -1558,15 +1576,13 @@ export class ShortcutsCommands {
      */
     private async disableSyncCommand(): Promise<void> {
         try {
-            const config = await this.treeDataProvider.getConfigurationManager().loadConfiguration();
+            const settingsConfig = vscode.workspace.getConfiguration('workspaceShortcuts.sync');
 
-            if (!config.sync) {
-                NotificationManager.showInfo('Cloud sync is not configured');
-                return;
-            }
+            // Disable sync
+            await settingsConfig.update('enabled', false, vscode.ConfigurationTarget.Global);
 
-            config.sync.enabled = false;
-            await this.treeDataProvider.getConfigurationManager().saveConfiguration(config);
+            // Reinitialize sync manager (will dispose it)
+            await this.treeDataProvider.getConfigurationManager().reinitializeSyncManager();
 
             NotificationManager.showInfo('Cloud sync disabled');
             this.refreshShortcuts();

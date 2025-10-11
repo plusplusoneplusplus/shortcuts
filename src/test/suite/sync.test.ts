@@ -76,59 +76,49 @@ suite('Sync Provider Tests', () => {
         });
     });
 
-    suite('Sync Configuration', () => {
-        test('should validate sync config structure', () => {
-            const validConfig: ShortcutsConfig = {
-                logicalGroups: [],
-                sync: {
-                    enabled: true,
-                    autoSync: true,
-                    syncInterval: 300,
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'global'
-                        }
-                    }
-                }
-            };
-
-            assert.strictEqual(validConfig.sync?.enabled, true);
-            assert.strictEqual(validConfig.sync?.autoSync, true);
-            assert.strictEqual(validConfig.sync?.syncInterval, 300);
-            assert.strictEqual(validConfig.sync?.providers.vscodeSync?.enabled, true);
-        });
-
-        test('should handle missing sync config', () => {
-            const configWithoutSync: ShortcutsConfig = {
+    suite('Sync Configuration (Settings-based)', () => {
+        test('should not include sync in shortcuts config', () => {
+            const config: ShortcutsConfig = {
                 logicalGroups: []
             };
 
-            assert.strictEqual(configWithoutSync.sync, undefined);
+            // Sync configuration is now in VSCode settings, not in ShortcutsConfig
+            assert.strictEqual((config as any).sync, undefined, 'ShortcutsConfig should not have sync property');
         });
 
-        test('should support multiple providers', () => {
-            const multiProviderConfig: ShortcutsConfig = {
-                logicalGroups: [],
-                sync: {
-                    enabled: true,
-                    autoSync: true,
-                    providers: {
-                        vscodeSync: {
-                            enabled: true,
-                            scope: 'global'
-                        },
-                        azure: {
-                            enabled: true,
-                            container: 'test-container',
-                            accountName: 'testaccount'
-                        }
+        test('should validate shortcuts config without sync', () => {
+            const validConfig: ShortcutsConfig = {
+                logicalGroups: [
+                    {
+                        name: 'Test Group',
+                        items: []
                     }
-                }
+                ]
             };
 
-            assert.strictEqual(multiProviderConfig.sync?.providers.vscodeSync?.enabled, true);
-            assert.strictEqual(multiProviderConfig.sync?.providers.azure?.enabled, true);
+            assert.strictEqual(validConfig.logicalGroups.length, 1);
+            assert.strictEqual(validConfig.logicalGroups[0].name, 'Test Group');
+            // Verify no sync property exists
+            assert.strictEqual((validConfig as any).sync, undefined);
+        });
+
+        test('should verify sync settings are in VSCode configuration', () => {
+            // Note: Sync settings are now managed via:
+            // - workspaceShortcuts.sync.enabled
+            // - workspaceShortcuts.sync.autoSync
+            // - workspaceShortcuts.sync.provider
+            // - workspaceShortcuts.sync.vscode.scope
+            // - workspaceShortcuts.sync.azure.container
+            // - workspaceShortcuts.sync.azure.accountName
+
+            // This test verifies the separation of concerns
+            const config: ShortcutsConfig = {
+                logicalGroups: []
+            };
+
+            // Config should only contain shortcuts data, not sync settings
+            const keys = Object.keys(config);
+            assert.ok(!keys.includes('sync'), 'Config should not contain sync property');
         });
     });
 

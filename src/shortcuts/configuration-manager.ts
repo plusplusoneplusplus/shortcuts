@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { CURRENT_CONFIG_VERSION, detectConfigVersion, migrateConfig } from './config-migrations';
 import { NotificationManager } from './notification-manager';
 import { SyncManager } from './sync/sync-manager';
-import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, LogicalGroup, LogicalGroupItem, ShortcutsConfig } from './types';
+import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, LogicalGroup, LogicalGroupItem, ShortcutsConfig, SyncConfig } from './types';
 
 /**
  * Manages loading, saving, and validation of shortcuts configuration
@@ -52,16 +52,64 @@ export class ConfigurationManager {
             return;
         }
 
-        // Load current configuration to get sync settings
-        const config = await this.loadConfigurationFromDisk();
+        // Read sync settings from VSCode settings
+        const syncConfig = this.getSyncConfigFromSettings();
 
-        if (config.sync?.enabled) {
-            this.syncManager = new SyncManager(this.extensionContext, config.sync);
+        if (syncConfig?.enabled) {
+            this.syncManager = new SyncManager(this.extensionContext, syncConfig);
             await this.syncManager.initialize();
 
             // Check for cloud updates on initialization
             await this.checkAndSyncFromCloud();
         }
+    }
+
+    /**
+     * Get sync configuration from VSCode settings
+     */
+    private getSyncConfigFromSettings(): SyncConfig | undefined {
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts.sync');
+
+        const enabled = config.get<boolean>('enabled', false);
+        if (!enabled) {
+            return undefined;
+        }
+
+        const provider = config.get<string>('provider', 'vscode');
+        const autoSync = config.get<boolean>('autoSync', true);
+        const syncInterval = config.get<number>('syncInterval', 300);
+
+        const syncConfig: SyncConfig = {
+            enabled,
+            autoSync,
+            syncInterval,
+            providers: {}
+        };
+
+        // Configure VSCode sync provider
+        if (provider === 'vscode') {
+            const scope = config.get<'global' | 'workspace'>('vscode.scope', 'global');
+            syncConfig.providers.vscodeSync = {
+                enabled: true,
+                scope
+            };
+        }
+
+        // Configure Azure provider
+        if (provider === 'azure') {
+            const container = config.get<string>('azure.container', '');
+            const accountName = config.get<string>('azure.accountName', '');
+
+            if (container && accountName) {
+                syncConfig.providers.azure = {
+                    enabled: true,
+                    container,
+                    accountName
+                };
+            }
+        }
+
+        return syncConfig;
     }
 
     /**
@@ -1343,5 +1391,19 @@ export class ConfigurationManager {
      */
     getSyncManager(): SyncManager | undefined {
         return this.syncManager;
+    }
+
+    /**
+     * Reinitialize sync manager when settings change
+     */
+    async reinitializeSyncManager(): Promise<void> {
+        // Dispose existing sync manager
+        if (this.syncManager) {
+            this.syncManager.dispose();
+            this.syncManager = undefined;
+        }
+
+        // Reinitialize with new settings
+        await this.initializeSyncManager();
     }
 }

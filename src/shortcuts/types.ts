@@ -104,8 +104,6 @@ export interface ShortcutsConfig {
     basePaths?: BasePath[];
     /** Array of logical group configurations */
     logicalGroups: LogicalGroup[];
-    /** Optional sync configuration for cloud providers */
-    sync?: SyncConfig;
 }
 
 /**
