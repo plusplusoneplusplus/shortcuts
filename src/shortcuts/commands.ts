@@ -187,6 +187,37 @@ export class ShortcutsCommands {
             })
         );
 
+        // Sync commands
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.sync.configure', async () => {
+                await this.configureSyncCommand();
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.sync.enable', async () => {
+                await this.enableSyncCommand();
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.sync.disable', async () => {
+                await this.disableSyncCommand();
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.sync.now', async () => {
+                await this.syncNowCommand();
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.sync.status', async () => {
+                await this.syncStatusCommand();
+            })
+        );
+
         return disposables;
     }
 
@@ -1388,6 +1419,207 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error executing task:', err);
             NotificationManager.showError(`Failed to execute task "${item.label}": ${err.message}`);
+        }
+    }
+
+    /**
+     * Configure cloud sync
+     */
+    private async configureSyncCommand(): Promise<void> {
+        try {
+            const config = await this.treeDataProvider.getConfigurationManager().loadConfiguration();
+
+            // Show quick pick for provider selection
+            const providerOptions = [
+                { label: 'VSCode Settings Sync', value: 'vscode', description: 'Sync via VSCode built-in sync' },
+                { label: 'Azure Blob Storage', value: 'azure', description: 'Sync to Azure Blob Storage' }
+            ];
+
+            const selected = await vscode.window.showQuickPick(providerOptions, {
+                placeHolder: 'Select a cloud sync provider',
+                canPickMany: true
+            });
+
+            if (!selected || selected.length === 0) {
+                return;
+            }
+
+            // Initialize sync config if not present
+            if (!config.sync) {
+                config.sync = {
+                    enabled: false,
+                    autoSync: true,
+                    providers: {}
+                };
+            }
+
+            // Configure each selected provider
+            for (const provider of selected) {
+                switch (provider.value) {
+                    case 'vscode':
+                        const scope = await vscode.window.showQuickPick(
+                            [
+                                { label: 'Global', value: 'global' as const },
+                                { label: 'Workspace', value: 'workspace' as const }
+                            ],
+                            { placeHolder: 'Select VSCode sync scope' }
+                        );
+                        if (scope) {
+                            config.sync.providers.vscodeSync = {
+                                enabled: true,
+                                scope: scope.value
+                            };
+                        }
+                        break;
+
+                    case 'azure':
+                        const container = await vscode.window.showInputBox({
+                            prompt: 'Enter Azure container name',
+                            placeHolder: 'shortcuts-container'
+                        });
+                        const accountName = await vscode.window.showInputBox({
+                            prompt: 'Enter Azure storage account name',
+                            placeHolder: 'mystorageaccount'
+                        });
+                        if (container && accountName) {
+                            config.sync.providers.azure = {
+                                enabled: true,
+                                container,
+                                accountName
+                            };
+                            NotificationManager.showInfo(
+                                'Azure configured. Use VSCode command palette to set credentials securely.',
+                                { timeout: 5000 }
+                            );
+                        }
+                        break;
+                }
+            }
+
+            await this.treeDataProvider.getConfigurationManager().saveConfiguration(config);
+
+            // Ask if user wants to enable sync now
+            const enable = await vscode.window.showQuickPick(
+                ['Yes', 'No'],
+                { placeHolder: 'Enable cloud sync now?' }
+            );
+
+            if (enable === 'Yes') {
+                await this.enableSyncCommand();
+            }
+
+            NotificationManager.showInfo('Cloud sync configuration saved');
+            this.refreshShortcuts();
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error configuring sync:', err);
+            NotificationManager.showError(`Failed to configure sync: ${err.message}`);
+        }
+    }
+
+    /**
+     * Enable cloud sync
+     */
+    private async enableSyncCommand(): Promise<void> {
+        try {
+            const config = await this.treeDataProvider.getConfigurationManager().loadConfiguration();
+
+            if (!config.sync) {
+                NotificationManager.showWarning('Cloud sync is not configured. Please configure it first.');
+                const configure = await vscode.window.showQuickPick(
+                    ['Configure Now', 'Cancel'],
+                    { placeHolder: 'Would you like to configure cloud sync?' }
+                );
+                if (configure === 'Configure Now') {
+                    await this.configureSyncCommand();
+                }
+                return;
+            }
+
+            config.sync.enabled = true;
+            await this.treeDataProvider.getConfigurationManager().saveConfiguration(config);
+
+            // Reinitialize sync manager
+            await this.treeDataProvider.getConfigurationManager().initializeSyncManager();
+
+            NotificationManager.showInfo('Cloud sync enabled');
+            this.refreshShortcuts();
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error enabling sync:', err);
+            NotificationManager.showError(`Failed to enable sync: ${err.message}`);
+        }
+    }
+
+    /**
+     * Disable cloud sync
+     */
+    private async disableSyncCommand(): Promise<void> {
+        try {
+            const config = await this.treeDataProvider.getConfigurationManager().loadConfiguration();
+
+            if (!config.sync) {
+                NotificationManager.showInfo('Cloud sync is not configured');
+                return;
+            }
+
+            config.sync.enabled = false;
+            await this.treeDataProvider.getConfigurationManager().saveConfiguration(config);
+
+            NotificationManager.showInfo('Cloud sync disabled');
+            this.refreshShortcuts();
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error disabling sync:', err);
+            NotificationManager.showError(`Failed to disable sync: ${err.message}`);
+        }
+    }
+
+    /**
+     * Manually trigger sync now
+     */
+    private async syncNowCommand(): Promise<void> {
+        try {
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Syncing configuration...',
+                    cancellable: false
+                },
+                async () => {
+                    await this.treeDataProvider.getConfigurationManager().syncToCloud();
+                    await this.treeDataProvider.getConfigurationManager().syncFromCloud();
+                }
+            );
+
+            this.refreshShortcuts();
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error syncing:', err);
+            NotificationManager.showError(`Failed to sync: ${err.message}`);
+        }
+    }
+
+    /**
+     * Show sync status
+     */
+    private async syncStatusCommand(): Promise<void> {
+        try {
+            const status = await this.treeDataProvider.getConfigurationManager().getSyncStatus();
+
+            vscode.window.showInformationMessage(
+                'Cloud Sync Status',
+                { modal: true, detail: status }
+            );
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error getting sync status:', err);
+            NotificationManager.showError(`Failed to get sync status: ${err.message}`);
         }
     }
 

@@ -74,6 +74,37 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically open Markdown (.md) files in preview mode instead of edit mode when creating or opening from shortcuts"
+        },
+        "workspaceShortcuts.sync.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable cloud synchronization of shortcuts configuration"
+        },
+        "workspaceShortcuts.sync.autoSync": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically sync configuration changes to cloud"
+        },
+        "workspaceShortcuts.sync.providers": {
+          "type": "array",
+          "default": [
+            "vscode"
+          ],
+          "description": "Enabled sync providers",
+          "items": {
+            "type": "string",
+            "enum": [
+              "vscode",
+              "aws",
+              "gcs",
+              "azure"
+            ]
+          }
+        },
+        "workspaceShortcuts.sync.syncInterval": {
+          "type": "number",
+          "default": 300,
+          "description": "Periodic sync interval in seconds (0 to disable periodic sync)"
         }
       }
     },
@@ -207,6 +238,31 @@
         "command": "shortcuts.executeTaskItem",
         "title": "Run Task",
         "icon": "$(play)"
+      },
+      {
+        "command": "shortcuts.sync.configure",
+        "title": "Configure Cloud Sync",
+        "icon": "$(cloud)"
+      },
+      {
+        "command": "shortcuts.sync.enable",
+        "title": "Enable Cloud Sync",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "shortcuts.sync.disable",
+        "title": "Disable Cloud Sync",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "shortcuts.sync.now",
+        "title": "Sync Now",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "shortcuts.sync.status",
+        "title": "Show Sync Status",
+        "icon": "$(info)"
       }
     ],
     "menus": {
@@ -234,6 +290,16 @@
         {
           "command": "shortcuts.showKeyboardHelp",
           "when": "view == shortcutsView",
+          "group": "navigation"
+        },
+        {
+          "command": "shortcuts.sync.now",
+          "when": "view == shortcutsView && config.workspaceShortcuts.sync.enabled",
+          "group": "navigation"
+        },
+        {
+          "command": "shortcuts.sync.status",
+          "when": "view == shortcutsView && config.workspaceShortcuts.sync.enabled",
           "group": "navigation"
         },
         {
@@ -478,6 +544,7 @@
     "webpack-cli": "^5.0.0"
   },
   "dependencies": {
+    "@azure/storage-blob": "^12.17.0",
     "js-yaml": "^4.1.0"
   }
 }

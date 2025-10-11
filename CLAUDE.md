@@ -416,3 +416,198 @@ The extension now supports creating new files and folders at multiple levels:
 - Nested folder: `viewItem == folder`
 
 All commands are registered in `src/shortcuts/commands.ts` and use native VSCode dialogs for input validation.
+
+## Cloud Sync
+
+The extension supports cloud synchronization of shortcuts configuration across devices via multiple providers:
+
+### Sync Providers
+
+**1. VSCode Settings Sync (Built-in)**
+- Leverages VSCode's native sync infrastructure
+- Automatically syncs with your Microsoft/GitHub account
+- No additional configuration required
+- Supports both global and workspace scope
+- Simplest option for basic sync needs
+
+**2. Azure Blob Storage**
+- Store configuration in Azure Blob container
+- Requires connection string or SAS token
+- Configuration: container name, storage account name
+- Credentials stored securely via SecretStorage API
+
+### Sync Architecture
+
+**Core Components:**
+
+`src/shortcuts/sync/sync-provider.ts`
+- `ISyncProvider` interface defining sync operations
+- `SyncResult` and `SyncMetadata` types
+- Status tracking and error handling
+
+`src/shortcuts/sync/cloud-sync-provider.ts`
+- Base class for cloud providers
+- Retry logic with exponential backoff
+- Authentication error detection
+- Checksum validation for data integrity
+
+`src/shortcuts/sync/vscode-sync-provider.ts`
+- VSCode Settings Sync implementation
+- Uses `context.globalState` or `context.workspaceState`
+- Device ID generation and tracking
+
+`src/shortcuts/sync/providers/`
+- `azure-blob-provider.ts` - Azure Blob Storage implementation
+
+`src/shortcuts/sync/sync-manager.ts`
+- Orchestrates sync across multiple providers
+- Last-write-wins conflict resolution
+- Debounced auto-sync
+- Periodic sync checking
+- Device ID management
+
+### Configuration
+
+Sync configuration is stored in the shortcuts YAML file:
+
+```yaml
+sync:
+  enabled: true
+  autoSync: true
+  syncInterval: 300  # seconds (optional)
+  providers:
+    vscodeSync:
+      enabled: true
+      scope: global  # or 'workspace'
+    azure:
+      enabled: true
+      container: shortcuts-container
+      accountName: mystorageaccount
+```
+
+VSCode Settings (in `settings.json`):
+```json
+{
+  "workspaceShortcuts.sync.enabled": true,
+  "workspaceShortcuts.sync.autoSync": true,
+  "workspaceShortcuts.sync.providers": ["vscode", "azure"],
+  "workspaceShortcuts.sync.syncInterval": 300
+}
+```
+
+### Sync Commands
+
+- `shortcuts.sync.configure` - Interactive sync provider configuration wizard
+- `shortcuts.sync.enable` - Enable cloud synchronization
+- `shortcuts.sync.disable` - Disable cloud synchronization
+- `shortcuts.sync.now` - Manually trigger immediate sync (upload and download)
+- `shortcuts.sync.status` - Show sync status for all providers
+
+### Conflict Resolution
+
+**Last-Write-Wins Strategy:**
+1. Each configuration stores metadata with timestamp and device ID
+2. On load, fetches all provider configs and compares timestamps
+3. Uses the configuration with the newest timestamp
+4. On save, uploads to all enabled providers with current timestamp
+5. Notifications inform user when cloud config is newer
+
+### Security
+
+**Credential Storage:**
+- All cloud provider credentials stored via VSCode's SecretStorage API
+- Never stored in configuration files or workspace settings
+- Encrypted at rest by VSCode
+- Per-workspace or global storage options
+
+**Data Integrity:**
+- Checksums calculated for all uploaded configs
+- Verification on download
+- Corruption detection and warnings
+
+**Network Security:**
+- All cloud communications use HTTPS
+- Provider SDK handles authentication
+- Retry logic with exponential backoff
+- Authentication error detection
+
+### Usage Flow
+
+**Initial Setup:**
+1. Run command `Shortcuts: Configure Cloud Sync`
+2. Select one or more providers
+3. Enter provider-specific configuration
+4. Store credentials securely (prompted separately for security)
+5. Enable sync when prompted
+
+**Automatic Sync:**
+- Configuration changes automatically trigger upload (debounced)
+- On load, checks cloud for newer configuration
+- Downloads and applies if cloud is newer
+- Periodic background checks (configurable interval)
+
+**Manual Sync:**
+- Use `Shortcuts: Sync Now` to force immediate sync
+- Useful for testing or recovering from errors
+- Shows progress notification
+
+**Status Monitoring:**
+- Use `Shortcuts: Show Sync Status` to view provider status
+- Shows connection status, last sync time, errors
+- Indicates if cloud has newer configuration
+
+### Integration Points
+
+**ConfigurationManager:**
+- `initializeSyncManager()` - Initialize sync on activation
+- `loadConfiguration()` - Check cloud for updates
+- `saveConfiguration()` - Trigger auto-sync on save
+- `syncToCloud()` / `syncFromCloud()` - Manual sync methods
+- `getSyncStatus()` - Query sync provider status
+
+**Extension Activation:**
+- Passes `ExtensionContext` to ConfigurationManager
+- Initializes sync manager with context.secrets
+- Registers sync commands
+
+### Testing
+
+Sync functionality includes:
+- Provider interface tests
+- Conflict resolution tests
+- Retry logic tests
+- Credential storage tests
+- End-to-end sync scenarios
+
+### Troubleshooting
+
+**Common Issues:**
+
+1. **Credentials not configured:**
+   - Run configuration wizard again
+   - Check VSCode SecretStorage has necessary permissions
+
+2. **Sync not triggering:**
+   - Verify `sync.enabled: true` in config
+   - Check `autoSync` setting
+   - Review console for errors
+
+3. **Conflicts:**
+   - Last-write-wins automatically resolves
+   - Check sync status to see which device last modified
+   - Manual sync can force update
+
+4. **Provider connection errors:**
+   - Verify network connectivity
+   - Check provider credentials validity
+   - Review provider-specific permissions (bucket access, etc.)
+
+### Future Enhancements
+
+Potential improvements:
+- Manual conflict resolution UI
+- Sync history/audit log
+- Configuration encryption
+- Differential sync (only changed groups)
+- Webhook notifications
+- Additional providers (AWS S3, Google Cloud Storage, Dropbox, OneDrive)

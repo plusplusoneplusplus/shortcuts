@@ -19,6 +19,14 @@ Organize your workspace with customizable groups of shortcuts. Quick access to f
 - **Tree View**: Hierarchical display of groups and their items
 - **Context Menu Actions**: Right-click for quick actions on groups and items
 
+### ☁️ Cloud Sync (New!)
+- **Multi-Device Sync**: Keep your shortcuts synchronized across all your devices
+- **Multiple Providers**: Choose from VSCode Settings Sync or Azure Blob Storage
+- **Automatic Sync**: Changes automatically sync to cloud (configurable)
+- **Conflict Resolution**: Last-write-wins strategy ensures consistency
+- **Secure Storage**: Credentials encrypted via VSCode's SecretStorage API
+- **Manual Control**: Trigger sync manually or configure automatic intervals
+
 ### ⌨️ Keyboard Navigation
 - **Enter**: Open item in current view
 - **Space**: Open item in split view
@@ -73,6 +81,42 @@ Organize your workspace with customizable groups of shortcuts. Quick access to f
 
 **Note**: Drag and drop performs an actual file system move. Undo is available for the last move operation within 1 minute.
 
+### Setting Up Cloud Sync
+
+1. **Configure Sync Provider**:
+   - Open Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
+   - Run "Shortcuts: Configure Cloud Sync"
+   - Select one or more providers (VSCode Sync or Azure)
+
+2. **Provider-Specific Setup**:
+
+   **VSCode Settings Sync** (Easiest):
+   - Choose scope (Global or Workspace)
+   - Automatically syncs with your Microsoft/GitHub account
+   - No additional credentials needed
+
+   **Azure Blob Storage**:
+   - Enter container name and storage account name
+   - Provide connection string or SAS token
+   - Ensure container exists or has create permissions
+
+3. **Enable Sync**:
+   - Run "Shortcuts: Enable Cloud Sync" or enable during configuration
+   - Your configuration will automatically sync on changes
+
+4. **Monitor Sync**:
+   - Use "Shortcuts: Show Sync Status" to check sync status
+   - Use "Shortcuts: Sync Now" to manually trigger sync
+   - Toolbar buttons visible when sync is enabled
+
+### Sync Behavior
+
+- **Automatic Sync**: Configuration changes are automatically uploaded (debounced by 2 seconds)
+- **Conflict Resolution**: Last-write-wins - the newest configuration is always used
+- **Multi-Provider**: Can sync to multiple providers simultaneously
+- **Device Tracking**: Each device has a unique ID for tracking changes
+- **Periodic Check**: Optional background checks for cloud updates (configurable interval)
+
 ## Configuration
 
 ### YAML Configuration File
@@ -84,6 +128,13 @@ The extension stores its shortcuts configuration in a YAML file (`.vscode/shortc
 The extension provides the following VS Code settings (accessible via Settings UI or `settings.json`):
 
 - **`workspaceShortcuts.openMarkdownInPreview`** (default: `false`): When enabled, Markdown (.md) files will automatically open in preview mode instead of edit mode when created or opened from shortcuts.
+
+#### Cloud Sync Settings
+
+- **`workspaceShortcuts.sync.enabled`** (default: `false`): Enable cloud synchronization of shortcuts configuration
+- **`workspaceShortcuts.sync.autoSync`** (default: `true`): Automatically sync configuration changes to cloud
+- **`workspaceShortcuts.sync.providers`** (default: `["vscode"]`): Enabled sync providers (options: "vscode", "azure")
+- **`workspaceShortcuts.sync.syncInterval`** (default: `300`): Periodic sync interval in seconds (0 to disable)
 
 ## Requirements
 

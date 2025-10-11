@@ -23,7 +23,7 @@ function getGlobalConfigPath(): string {
  * This method is called when your extension is activated
  * Your extension is activated the very first time the command is executed
  */
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('Shortcuts extension is now active!');
 
     // Check if we have a workspace folder, use stable directory if none
@@ -33,8 +33,11 @@ export function activate(context: vscode.ExtensionContext) {
 
     try {
         // Initialize configuration and theme managers
-        const configurationManager = new ConfigurationManager(workspaceRoot);
+        const configurationManager = new ConfigurationManager(workspaceRoot, context);
         const themeManager = new ThemeManager();
+
+        // Initialize sync manager
+        await configurationManager.initializeSyncManager();
 
         // Set up file watcher for configuration changes
         const treeDataProvider = new LogicalTreeDataProvider(

@@ -63,6 +63,40 @@ export interface LogicalGroup {
 }
 
 /**
+ * VSCode sync provider configuration
+ */
+export interface VSCodeSyncConfig {
+    enabled: boolean;
+    scope: 'global' | 'workspace';
+}
+
+/**
+ * Azure Blob Storage sync provider configuration
+ */
+export interface AzureSyncConfig {
+    enabled: boolean;
+    container: string;
+    accountName: string;
+}
+
+/**
+ * Sync configuration for cloud providers
+ */
+export interface SyncConfig {
+    /** Whether sync is enabled globally */
+    enabled: boolean;
+    /** Automatically sync on configuration changes */
+    autoSync: boolean;
+    /** Optional periodic sync interval in seconds */
+    syncInterval?: number;
+    /** Provider-specific configurations */
+    providers: {
+        vscodeSync?: VSCodeSyncConfig;
+        azure?: AzureSyncConfig;
+    };
+}
+
+/**
  * Main configuration structure for shortcuts
  */
 export interface ShortcutsConfig {
@@ -70,6 +104,8 @@ export interface ShortcutsConfig {
     basePaths?: BasePath[];
     /** Array of logical group configurations */
     logicalGroups: LogicalGroup[];
+    /** Optional sync configuration for cloud providers */
+    sync?: SyncConfig;
 }
 
 /**

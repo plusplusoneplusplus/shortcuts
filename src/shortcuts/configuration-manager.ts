@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { CURRENT_CONFIG_VERSION, detectConfigVersion, migrateConfig } from './config-migrations';
 import { NotificationManager } from './notification-manager';
+import { SyncManager } from './sync/sync-manager';
 import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, LogicalGroup, LogicalGroupItem, ShortcutsConfig } from './types';
 
 /**
@@ -27,10 +28,13 @@ export class ConfigurationManager {
     private debounceTimer?: NodeJS.Timeout;
     private configCache?: { config: ShortcutsConfig; timestamp: number };
     private readonly CACHE_TTL = 5000; // 5 seconds
+    private syncManager?: SyncManager;
+    private extensionContext?: vscode.ExtensionContext;
 
-    constructor(workspaceRoot: string) {
+    constructor(workspaceRoot: string, context?: vscode.ExtensionContext) {
         this.workspaceRoot = workspaceRoot;
         this.configPath = path.join(workspaceRoot, CONFIG_DIRECTORY, CONFIG_FILE_NAME);
+        this.extensionContext = context;
     }
 
     /**
@@ -38,6 +42,26 @@ export class ConfigurationManager {
      */
     public invalidateCache(): void {
         this.configCache = undefined;
+    }
+
+    /**
+     * Initialize sync manager
+     */
+    async initializeSyncManager(): Promise<void> {
+        if (!this.extensionContext) {
+            return;
+        }
+
+        // Load current configuration to get sync settings
+        const config = await this.loadConfigurationFromDisk();
+
+        if (config.sync?.enabled) {
+            this.syncManager = new SyncManager(this.extensionContext, config.sync);
+            await this.syncManager.initialize();
+
+            // Check for cloud updates on initialization
+            await this.checkAndSyncFromCloud();
+        }
     }
 
     /**
@@ -53,6 +77,16 @@ export class ConfigurationManager {
 
         try {
             const config = await this.loadConfigurationFromDisk();
+
+            // Check for cloud updates if sync is enabled
+            if (this.syncManager?.isEnabled()) {
+                const cloudUpdate = await this.checkAndSyncFromCloud();
+                if (cloudUpdate) {
+                    // Cache the cloud configuration
+                    this.configCache = { config: cloudUpdate, timestamp: Date.now() };
+                    return cloudUpdate;
+                }
+            }
 
             // Cache the configuration
             this.configCache = { config, timestamp: Date.now() };
@@ -156,6 +190,11 @@ export class ConfigurationManager {
             });
 
             fs.writeFileSync(this.configPath, yamlContent, 'utf8');
+
+            // Sync to cloud if enabled
+            if (this.syncManager?.isAutoSyncEnabled()) {
+                this.syncManager.scheduleSyncToCloud(config);
+            }
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -1134,5 +1173,175 @@ export class ConfigurationManager {
             NotificationManager.showError(`Failed to delete logical group: ${err.message}`);
             throw error;
         }
+    }
+
+    /**
+     * Check for cloud updates and sync if newer
+     * @returns The cloud configuration if newer, undefined otherwise
+     */
+    private async checkAndSyncFromCloud(): Promise<ShortcutsConfig | undefined> {
+        if (!this.syncManager?.isEnabled()) {
+            return undefined;
+        }
+
+        try {
+            const result = await this.syncManager.checkForUpdates();
+
+            if (!result.hasUpdates) {
+                return undefined;
+            }
+
+            // Get local file timestamp
+            const localTimestamp = fs.existsSync(this.configPath)
+                ? fs.statSync(this.configPath).mtimeMs
+                : 0;
+
+            // If cloud is newer, download and use it
+            if (result.timestamp && result.timestamp > localTimestamp) {
+                console.log(`Cloud configuration is newer (${result.source}), syncing...`);
+                const syncResult = await this.syncManager.syncFromCloud();
+
+                if (syncResult.config) {
+                    // Save the cloud config locally
+                    await this.saveConfigurationWithoutSync(syncResult.config);
+                    NotificationManager.showInfo(
+                        `Configuration updated from ${syncResult.source}`,
+                        { timeout: 3000 }
+                    );
+                    return syncResult.config;
+                }
+            }
+
+            return undefined;
+        } catch (error) {
+            console.error('Error checking for cloud updates:', error);
+            return undefined;
+        }
+    }
+
+    /**
+     * Save configuration to disk without triggering sync
+     * Used when saving cloud-synced config to avoid circular sync
+     */
+    private async saveConfigurationWithoutSync(config: ShortcutsConfig): Promise<void> {
+        try {
+            // Invalidate cache before saving
+            this.configCache = undefined;
+
+            // Ensure .vscode directory exists
+            const configDir = path.dirname(this.configPath);
+            if (!fs.existsSync(configDir)) {
+                fs.mkdirSync(configDir, { recursive: true });
+            }
+
+            // Add version number to config before saving
+            const versionedConfig = {
+                version: CURRENT_CONFIG_VERSION,
+                ...config
+            };
+
+            // Convert to YAML and write to file
+            const yamlContent = yaml.dump(versionedConfig, {
+                indent: 2,
+                lineWidth: -1,
+                noRefs: true
+            });
+
+            fs.writeFileSync(this.configPath, yamlContent, 'utf8');
+
+        } catch (error) {
+            console.error('Error saving configuration from cloud:', error);
+        }
+    }
+
+    /**
+     * Manually trigger sync to cloud
+     */
+    async syncToCloud(): Promise<void> {
+        if (!this.syncManager?.isEnabled()) {
+            NotificationManager.showWarning('Cloud sync is not enabled');
+            return;
+        }
+
+        try {
+            const config = await this.loadConfiguration();
+            const results = await this.syncManager.syncToCloud(config);
+
+            const successCount = Array.from(results.values()).filter(r => r.success).length;
+            const totalCount = results.size;
+
+            if (successCount === totalCount) {
+                NotificationManager.showInfo(`Successfully synced to ${totalCount} provider(s)`);
+            } else {
+                NotificationManager.showWarning(
+                    `Synced to ${successCount}/${totalCount} provider(s). Check console for details.`
+                );
+            }
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error syncing to cloud:', err);
+            NotificationManager.showError(`Failed to sync: ${err.message}`);
+        }
+    }
+
+    /**
+     * Manually trigger sync from cloud
+     */
+    async syncFromCloud(): Promise<void> {
+        if (!this.syncManager?.isEnabled()) {
+            NotificationManager.showWarning('Cloud sync is not enabled');
+            return;
+        }
+
+        try {
+            const result = await this.syncManager.syncFromCloud();
+
+            if (result.config) {
+                await this.saveConfigurationWithoutSync(result.config);
+                NotificationManager.showInfo(`Configuration synced from ${result.source}`);
+
+                // Trigger reload callback
+                if (this.reloadCallback) {
+                    this.reloadCallback();
+                }
+            } else {
+                NotificationManager.showInfo('No cloud configuration found');
+            }
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error syncing from cloud:', err);
+            NotificationManager.showError(`Failed to sync: ${err.message}`);
+        }
+    }
+
+    /**
+     * Get sync status
+     */
+    async getSyncStatus(): Promise<string> {
+        if (!this.syncManager?.isEnabled()) {
+            return 'Cloud sync is not enabled';
+        }
+
+        const statusMap = await this.syncManager.getSyncStatus();
+        const lines: string[] = ['Cloud Sync Status:', ''];
+
+        for (const [key, info] of statusMap.entries()) {
+            lines.push(`${info.name}: ${info.status}`);
+        }
+
+        const updateCheck = await this.syncManager.checkForUpdates();
+        if (updateCheck.hasUpdates) {
+            lines.push('');
+            lines.push(`Updates available from ${updateCheck.source}`);
+        }
+
+        return lines.join('\n');
+    }
+
+    /**
+     * Get the sync manager instance
+     */
+    getSyncManager(): SyncManager | undefined {
+        return this.syncManager;
     }
 }
