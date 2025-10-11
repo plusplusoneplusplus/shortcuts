@@ -573,11 +573,22 @@ VSCode Settings (in `settings.json`):
 ### Testing
 
 Sync functionality includes:
-- Provider interface tests
-- Conflict resolution tests
-- Retry logic tests
-- Credential storage tests
-- End-to-end sync scenarios
+- **Unit Tests** (`src/test/suite/sync.test.ts`):
+  - Provider interface tests
+  - Conflict resolution tests
+  - Sync configuration structure validation
+  - Device ID management
+  - Checksum validation
+  
+- **Integration Tests** (`src/test/suite/sync-integration.test.ts`):
+  - Provider switching with real VSCode context
+  - Configure and switch between VSCode and Azure providers
+  - Enable both providers simultaneously
+  - Test sync operations after provider switch
+  - Error handling and edge cases
+  - Auto-sync toggle testing
+  
+See [SYNC_INTEGRATION_TESTING.md](docs/SYNC_INTEGRATION_TESTING.md) for detailed testing guide.
 
 ### Troubleshooting
 
