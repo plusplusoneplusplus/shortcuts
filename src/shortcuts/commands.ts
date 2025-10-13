@@ -482,8 +482,13 @@ export class ShortcutsCommands {
                     // Use the filename as the default display name
                     const defaultName = path.basename(uri.fsPath);
 
+                    // Build the full group path for nested groups
+                    const groupPath = groupItem.parentGroupPath
+                        ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
+                        : groupItem.originalName;
+
                     await configManager.addToLogicalGroup(
-                        groupItem.originalName,
+                        groupPath,
                         uri.fsPath,
                         defaultName,
                         itemType
@@ -546,8 +551,14 @@ export class ShortcutsCommands {
                         continue;
                     }
                     const defaultName = path.basename(uri.fsPath);
+
+                    // Build the full group path for nested groups
+                    const groupPath = groupItem.parentGroupPath
+                        ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
+                        : groupItem.originalName;
+
                     await configManager.addToLogicalGroup(
-                        groupItem.originalName,
+                        groupPath,
                         uri.fsPath,
                         defaultName,
                         'file'
@@ -606,8 +617,14 @@ export class ShortcutsCommands {
                         continue;
                     }
                     const defaultName = path.basename(uri.fsPath);
+
+                    // Build the full group path for nested groups
+                    const groupPath = groupItem.parentGroupPath
+                        ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
+                        : groupItem.originalName;
+
                     await configManager.addToLogicalGroup(
-                        groupItem.originalName,
+                        groupPath,
                         uri.fsPath,
                         defaultName,
                         'folder'
@@ -1013,8 +1030,14 @@ export class ShortcutsCommands {
 
             // Add to logical group
             const configManager = this.treeDataProvider.getConfigurationManager();
+
+            // Build the full group path for nested groups
+            const groupPath = groupItem.parentGroupPath
+                ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
+                : groupItem.originalName;
+
             await configManager.addToLogicalGroup(
-                groupItem.originalName,
+                groupPath,
                 targetPath,
                 path.basename(targetPath),
                 'file'
@@ -1289,8 +1312,14 @@ export class ShortcutsCommands {
 
             // Add to logical group
             const configManager = this.treeDataProvider.getConfigurationManager();
+
+            // Build the full group path for nested groups
+            const groupPath = groupItem.parentGroupPath
+                ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
+                : groupItem.originalName;
+
             await configManager.addToLogicalGroup(
-                groupItem.originalName,
+                groupPath,
                 targetPath,
                 path.basename(targetPath),
                 'folder'

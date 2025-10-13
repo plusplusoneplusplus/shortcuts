@@ -1,7 +1,8 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { ConfigurationManager } from './configuration-manager';
 import { NotificationManager } from './notification-manager';
-import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, ShortcutItem } from './tree-items';
+import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, ShortcutItem } from './tree-items';
 
 /**
  * Interface for tracking move operations that can be undone
@@ -17,18 +18,26 @@ interface MoveOperation {
  * Implements vscode.TreeDragAndDropController interface
  */
 export class ShortcutsDragDropController implements vscode.TreeDragAndDropController<ShortcutItem> {
-    dropMimeTypes = ['application/vnd.code.tree.shortcutsphysical', 'application/vnd.code.tree.shortcutslogical'];
+    dropMimeTypes = ['application/vnd.code.tree.shortcutsphysical', 'application/vnd.code.tree.shortcutslogical', 'text/uri-list'];
     dragMimeTypes = ['text/uri-list'];
 
     private lastMoveOperation: MoveOperation | null = null;
     private static readonly UNDO_TIMEOUT_MS = 60000; // 1 minute timeout for undo
     private refreshCallback?: () => void;
+    private configurationManager?: ConfigurationManager;
 
     /**
      * Set the refresh callback to update the tree view after operations
      */
     public setRefreshCallback(callback: () => void): void {
         this.refreshCallback = callback;
+    }
+
+    /**
+     * Set the configuration manager for adding items to groups
+     */
+    public setConfigurationManager(configManager: ConfigurationManager): void {
+        this.configurationManager = configManager;
     }
 
     /**
@@ -75,20 +84,291 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
         dataTransfer: vscode.DataTransfer,
         token: vscode.CancellationToken
     ): Promise<void> {
-        // Get the dragged items
-        const physicalData = dataTransfer.get('application/vnd.code.tree.shortcutsphysical');
-        const logicalData = dataTransfer.get('application/vnd.code.tree.shortcutslogical');
-        const data = physicalData || logicalData;
-
-        if (!data) {
+        // Check if dropping onto a logical group or nested group
+        if (target instanceof LogicalGroupItem) {
+            await this.handleDropOntoLogicalGroup(target, dataTransfer, token);
             return;
         }
 
-        const draggedItems = data.value as ShortcutItem[];
+        // Get the dragged items from internal tree
+        const physicalData = dataTransfer.get('application/vnd.code.tree.shortcutsphysical');
+        const logicalData = dataTransfer.get('application/vnd.code.tree.shortcutslogical');
+        const internalData = physicalData || logicalData;
+
+        // Check if dropping external files (from explorer)
+        const uriListData = dataTransfer.get('text/uri-list');
+
+        if (uriListData) {
+            // Handle external file drops
+            await this.handleExternalFileDrop(target, uriListData, token);
+            return;
+        }
+
+        if (!internalData) {
+            return;
+        }
+
+        const draggedItems = internalData.value as ShortcutItem[];
         if (!draggedItems || draggedItems.length === 0) {
             return;
         }
 
+        // Handle physical file system moves
+        await this.handlePhysicalFileMove(target, draggedItems, token);
+    }
+
+    /**
+     * Handle dropping files onto a logical group
+     */
+    private async handleDropOntoLogicalGroup(
+        groupItem: LogicalGroupItem,
+        dataTransfer: vscode.DataTransfer,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        if (!this.configurationManager) {
+            NotificationManager.showError('Configuration manager not initialized');
+            return;
+        }
+
+        // Check for external files (from explorer)
+        const uriListData = dataTransfer.get('text/uri-list');
+        let uris: vscode.Uri[] = [];
+        let isFromInternalTree = false;
+        let sourceGroupItems: LogicalGroupChildItem[] = [];
+
+        if (uriListData) {
+            // Handle external URIs (from VS Code explorer or other sources)
+            const uriList = uriListData.value;
+            console.log('URI list data type:', typeof uriList, 'value:', uriList);
+
+            // Handle different URI formats
+            if (typeof uriList === 'string') {
+                // String format: parse newline-separated URIs
+                const uriStrings = uriList.split('\n').filter(s => s.trim());
+                uris = uriStrings.map(s => vscode.Uri.parse(s.trim()));
+            } else if (Array.isArray(uriList)) {
+                uris = uriList;
+            } else if (uriList && typeof uriList === 'object' && 'fsPath' in uriList) {
+                // Single URI object
+                uris = [uriList as vscode.Uri];
+            } else {
+                console.warn('Unknown URI list format:', uriList);
+            }
+        }
+
+        // Check for internal items being moved to a different group
+        if (uris.length === 0) {
+            const physicalData = dataTransfer.get('application/vnd.code.tree.shortcutsphysical');
+            const logicalData = dataTransfer.get('application/vnd.code.tree.shortcutslogical');
+            const internalData = physicalData || logicalData;
+
+            if (!internalData) {
+                return;
+            }
+
+            const draggedItems = internalData.value as ShortcutItem[];
+            if (!draggedItems || draggedItems.length === 0) {
+                return;
+            }
+
+            isFromInternalTree = true;
+
+            // Convert items to URIs
+            uris = draggedItems
+                .filter(item => item instanceof LogicalGroupChildItem ||
+                    item instanceof FolderShortcutItem ||
+                    item instanceof FileShortcutItem)
+                .map(item => item.resourceUri);
+
+            // Track source group items for move operations
+            sourceGroupItems = draggedItems.filter(item => item instanceof LogicalGroupChildItem) as LogicalGroupChildItem[];
+        }
+
+        if (uris.length === 0) {
+            console.warn('No URIs to process');
+            return;
+        }
+
+        // Build the full group path for nested groups
+        const targetGroupPath = groupItem.parentGroupPath
+            ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
+            : groupItem.originalName;
+
+        // Determine if we should move or copy
+        let shouldMove = false;
+        if (isFromInternalTree && sourceGroupItems.length > 0) {
+            // Check if moving between groups
+            for (const sourceItem of sourceGroupItems) {
+                if (sourceItem.parentGroup !== targetGroupPath) {
+                    // Check if both are subgroups of the same parent
+                    const sourceParent = this.getParentGroupPath(sourceItem.parentGroup);
+                    const targetParent = this.getParentGroupPath(targetGroupPath);
+
+                    if (sourceParent && targetParent && sourceParent === targetParent) {
+                        // Both are subgroups of the same parent - move instead of copy
+                        shouldMove = true;
+                    } else if (sourceParent !== targetParent) {
+                        // Different parent groups - move (remove from source)
+                        shouldMove = true;
+                    }
+                }
+            }
+        }
+
+        let addedCount = 0;
+        let skippedCount = 0;
+
+        // Add each file/folder to the logical group
+        for (const uri of uris) {
+            if (token.isCancellationRequested) {
+                break;
+            }
+
+            try {
+                const fs = require('fs');
+                const fsPath = uri.fsPath;
+
+                if (!fs.existsSync(fsPath)) {
+                    console.warn(`Path does not exist: ${fsPath}`);
+                    skippedCount++;
+                    continue;
+                }
+
+                const stat = fs.statSync(fsPath);
+                const itemType = stat.isDirectory() ? 'folder' : 'file';
+                const itemName = path.basename(fsPath);
+
+                // Try to add to target group
+                await this.configurationManager.addToLogicalGroup(
+                    targetGroupPath,
+                    fsPath,
+                    itemName,
+                    itemType
+                );
+
+                addedCount++;
+            } catch (error) {
+                console.warn(`Failed to add ${uri.fsPath} to group:`, error);
+                skippedCount++;
+            }
+        }
+
+        // If we should move, remove from source groups
+        if (shouldMove && sourceGroupItems.length > 0) {
+            for (const sourceItem of sourceGroupItems) {
+                if (sourceItem.parentGroup !== targetGroupPath) {
+                    try {
+                        await this.configurationManager.removeFromLogicalGroup(
+                            sourceItem.parentGroup,
+                            sourceItem.fsPath
+                        );
+                    } catch (error) {
+                        console.warn(`Failed to remove item from source group: ${error}`);
+                    }
+                }
+            }
+        }
+
+        // Refresh the tree view
+        if (this.refreshCallback) {
+            this.refreshCallback();
+        }
+
+        // Show result notification
+        if (addedCount > 0 && skippedCount === 0) {
+            const itemText = addedCount === 1 ? 'item' : 'items';
+            const action = shouldMove ? 'moved to' : 'added to';
+            NotificationManager.showInfo(`${addedCount} ${itemText} ${action} group "${groupItem.originalName}"`);
+        } else if (addedCount > 0 && skippedCount > 0) {
+            NotificationManager.showWarning(`${addedCount} items added, ${skippedCount} items skipped (may already exist)`);
+        } else if (skippedCount > 0) {
+            NotificationManager.showWarning('No items were added. They may already exist in the group.');
+        }
+    }
+
+    /**
+     * Get the parent group path from a full group path
+     * E.g., "Parent/Child" -> "Parent", "Parent/Child/Grandchild" -> "Parent/Child"
+     */
+    private getParentGroupPath(groupPath: string): string | null {
+        const parts = groupPath.split('/');
+        if (parts.length <= 1) {
+            return null; // Top-level group has no parent
+        }
+        return parts.slice(0, -1).join('/');
+    }
+
+    /**
+     * Handle dropping external files (from explorer) onto folders
+     */
+    private async handleExternalFileDrop(
+        target: ShortcutItem | undefined,
+        uriListData: vscode.DataTransferItem,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        if (!target) {
+            NotificationManager.showWarning('Cannot drop files here. Please drop on a folder or group.');
+            return;
+        }
+
+        // Determine target folder
+        let targetFolder: string | undefined;
+
+        if (target instanceof FolderShortcutItem ||
+            (target instanceof LogicalGroupChildItem && target.itemType === 'folder')) {
+            targetFolder = target.fsPath;
+        } else if (target instanceof FileShortcutItem ||
+            (target instanceof LogicalGroupChildItem && target.itemType === 'file')) {
+            targetFolder = path.dirname(target.fsPath);
+        }
+
+        if (!targetFolder) {
+            NotificationManager.showError('Unable to determine target folder.');
+            return;
+        }
+
+        const uriList = uriListData.value as vscode.Uri[];
+        const uris = Array.isArray(uriList) ? uriList : [uriList];
+
+        // Copy files to target folder
+        let copiedCount = 0;
+        for (const uri of uris) {
+            if (token.isCancellationRequested) {
+                break;
+            }
+
+            const fileName = path.basename(uri.fsPath);
+            const targetPath = path.join(targetFolder, fileName);
+
+            try {
+                await vscode.workspace.fs.copy(
+                    uri,
+                    vscode.Uri.file(targetPath),
+                    { overwrite: false }
+                );
+                copiedCount++;
+            } catch (error) {
+                console.warn(`Failed to copy ${fileName}:`, error);
+            }
+        }
+
+        if (copiedCount > 0) {
+            if (this.refreshCallback) {
+                this.refreshCallback();
+            }
+            const itemText = copiedCount === 1 ? 'file' : 'files';
+            NotificationManager.showInfo(`${copiedCount} ${itemText} copied to ${path.basename(targetFolder)}`);
+        }
+    }
+
+    /**
+     * Handle physical file system moves
+     */
+    private async handlePhysicalFileMove(
+        target: ShortcutItem | undefined,
+        draggedItems: ShortcutItem[],
+        token: vscode.CancellationToken
+    ): Promise<void> {
         // Determine the target folder
         let targetFolder: string | undefined;
 

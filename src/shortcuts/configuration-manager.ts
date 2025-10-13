@@ -1008,24 +1008,46 @@ export class ConfigurationManager {
     }
 
     /**
+     * Find a group by path (supports nested groups)
+     * @param groups Array of groups to search
+     * @param groupPath Path to the group (e.g., "parent/child")
+     * @returns The found group or undefined
+     */
+    private findGroupByPath(groups: LogicalGroup[], groupPath: string): LogicalGroup | undefined {
+        const pathParts = groupPath.split('/');
+        let currentGroups = groups;
+        let targetGroup: LogicalGroup | undefined;
+
+        for (const part of pathParts) {
+            targetGroup = currentGroups.find(g => g.name === part);
+            if (!targetGroup) {
+                return undefined;
+            }
+            currentGroups = targetGroup.groups || [];
+        }
+
+        return targetGroup;
+    }
+
+    /**
      * Add an item to a logical group with automatic alias detection
-     * @param groupName Name of the group
+     * @param groupPath Path to the group (supports nested groups like "parent/child")
      * @param itemPath Path to the item
      * @param itemName Display name for the item
      * @param itemType Type of the item (folder or file)
      */
-    async addToLogicalGroup(groupName: string, itemPath: string, itemName: string, itemType: 'folder' | 'file'): Promise<void> {
+    async addToLogicalGroup(groupPath: string, itemPath: string, itemName: string, itemType: 'folder' | 'file'): Promise<void> {
         try {
             const config = await this.loadConfiguration();
 
-            // Find the group
+            // Find the group (supports nested groups)
             if (!config.logicalGroups) {
                 config.logicalGroups = [];
             }
 
-            const group = config.logicalGroups.find(g => g.name === groupName);
+            const group = this.findGroupByPath(config.logicalGroups, groupPath);
             if (!group) {
-                NotificationManager.showError('Logical group not found.');
+                NotificationManager.showError(`Logical group not found: ${groupPath}`);
                 return;
             }
 
@@ -1110,10 +1132,10 @@ export class ConfigurationManager {
 
     /**
      * Remove an item from a logical group
-     * @param groupName Name of the group
+     * @param groupPath Path to the group (supports nested groups like "parent/child")
      * @param itemPath Path to the item to remove
      */
-    async removeFromLogicalGroup(groupName: string, itemPath: string): Promise<void> {
+    async removeFromLogicalGroup(groupPath: string, itemPath: string): Promise<void> {
         try {
             const config = await this.loadConfiguration();
 
@@ -1121,9 +1143,9 @@ export class ConfigurationManager {
                 return;
             }
 
-            const group = config.logicalGroups.find(g => g.name === groupName);
+            const group = this.findGroupByPath(config.logicalGroups, groupPath);
             if (!group) {
-                NotificationManager.showError('Logical group not found.');
+                NotificationManager.showError(`Logical group not found: ${groupPath}`);
                 return;
             }
 

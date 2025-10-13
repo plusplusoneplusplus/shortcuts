@@ -74,10 +74,11 @@ export async function activate(context: vscode.ExtensionContext) {
             dragAndDropController: dragDropController
         });
 
-        // Connect refresh callback to drag-drop controller
+        // Connect refresh callback and configuration manager to drag-drop controller
         dragDropController.setRefreshCallback(() => {
             treeDataProvider.refresh();
         });
+        dragDropController.setConfigurationManager(configurationManager);
 
         // Create unified search provider
         const unifiedSearchProvider = new InlineSearchProvider(
