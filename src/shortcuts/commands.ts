@@ -669,21 +669,7 @@ export class ShortcutsCommands {
                 return;
             }
 
-            // Confirm removal
-            const message = groupChildItems.length === 1
-                ? `Are you sure you want to remove "${groupChildItems[0].label}" from the group "${groupChildItems[0].parentGroup}"?`
-                : `Are you sure you want to remove ${groupChildItems.length} items from their groups?`;
-
-            const confirmation = await NotificationManager.showWarning(
-                message,
-                { timeout: 0, actions: ['Remove'] }
-            );
-
-            if (confirmation !== 'Remove') {
-                return;
-            }
-
-            // Remove all selected items
+            // Remove all selected items (no confirmation prompt)
             const configManager = this.treeDataProvider.getConfigurationManager();
             for (const childItem of groupChildItems) {
                 await configManager.removeFromLogicalGroup(childItem.parentGroup, childItem.fsPath);

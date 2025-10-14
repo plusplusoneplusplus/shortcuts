@@ -952,4 +952,71 @@ suite('ShortcutsCommands Integration Tests', () => {
             }
         });
     });
+
+    // Tests for Remove From Logical Group - Verify No Confirmation Prompt
+    suite('Remove From Logical Group - No Confirmation', () => {
+        test('removeFromLogicalGroup works without confirmation', async () => {
+            // Test that the underlying ConfigurationManager method works correctly
+            await configManager.createLogicalGroup('Test Group');
+            await configManager.addToLogicalGroup('Test Group', testFolder, 'Test Folder', 'folder');
+
+            let config = await configManager.loadConfiguration();
+            assert.ok(config.logicalGroups[0].items.length > 0, 'Should have items');
+
+            // Remove item - no confirmation prompt in the ConfigurationManager method
+            await configManager.removeFromLogicalGroup('Test Group', testFolder);
+
+            config = await configManager.loadConfiguration();
+            assert.strictEqual(config.logicalGroups[0].items.length, 0, 'Item should be removed');
+        });
+
+        test('command should be registered', async () => {
+            // Verify the command is properly registered
+            const commands = await vscode.commands.getCommands(true);
+            assert.ok(commands.includes('shortcuts.removeFromLogicalGroup'),
+                'removeFromLogicalGroup command should be registered');
+        });
+
+        test('removeFromLogicalGroup works with nested groups', async () => {
+            // Test that removal works in nested groups
+            await configManager.createLogicalGroup('Parent');
+            await configManager.createNestedLogicalGroup('Parent', 'Child', 'Child group');
+            await configManager.addToLogicalGroup('Parent/Child', testFolder, 'Test Folder', 'folder');
+
+            let config = await configManager.loadConfiguration();
+            const childGroup = config.logicalGroups[0].groups![0];
+            assert.ok(childGroup.items.length > 0, 'Should have item in nested group');
+
+            // Remove from nested group
+            await configManager.removeFromLogicalGroup('Parent/Child', testFolder);
+
+            config = await configManager.loadConfiguration();
+            const updatedChildGroup = config.logicalGroups[0].groups![0];
+            assert.strictEqual(updatedChildGroup.items.length, 0, 'Item should be removed from nested group');
+        });
+
+        test('removeFromLogicalGroup handles multiple sequential removals', async () => {
+            // Test multiple removals work correctly
+            const testFile = path.join(testFolder, 'test-file.txt');
+            const testFolder2 = path.join(tempDir, 'test-folder-2');
+
+            await configManager.createLogicalGroup('Multi Items');
+            await configManager.addToLogicalGroup('Multi Items', testFile, 'File', 'file');
+            await configManager.addToLogicalGroup('Multi Items', testFolder2, 'Folder', 'folder');
+
+            let config = await configManager.loadConfiguration();
+            assert.ok(config.logicalGroups[0].items.length >= 2, 'Should have multiple items');
+
+            // Remove first item
+            await configManager.removeFromLogicalGroup('Multi Items', testFile);
+            config = await configManager.loadConfiguration();
+            const afterFirst = config.logicalGroups[0].items.length;
+            assert.ok(afterFirst < 2, 'Should have fewer items after first removal');
+
+            // Remove second item
+            await configManager.removeFromLogicalGroup('Multi Items', testFolder2);
+            config = await configManager.loadConfiguration();
+            assert.ok(config.logicalGroups[0].items.length < afterFirst, 'Should have even fewer items after second removal');
+        });
+    });
 });
