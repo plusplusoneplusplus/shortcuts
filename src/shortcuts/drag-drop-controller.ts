@@ -19,7 +19,7 @@ interface MoveOperation {
  */
 export class ShortcutsDragDropController implements vscode.TreeDragAndDropController<ShortcutItem> {
     dropMimeTypes = ['application/vnd.code.tree.shortcutsphysical', 'application/vnd.code.tree.shortcutslogical', 'text/uri-list'];
-    dragMimeTypes = ['text/uri-list'];
+    dragMimeTypes = ['application/vnd.code.tree.shortcutsphysical', 'application/vnd.code.tree.shortcutslogical', 'text/uri-list'];
 
     private lastMoveOperation: MoveOperation | null = null;
     private static readonly UNDO_TIMEOUT_MS = 60000; // 1 minute timeout for undo
@@ -51,6 +51,11 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
         dataTransfer: vscode.DataTransfer,
         token: vscode.CancellationToken
     ): Promise<void> {
+        console.log('[DRAG-DROP] handleDrag called:', {
+            sourceCount: source.length,
+            sourceTypes: source.map(item => item.constructor.name)
+        });
+
         // Only allow dragging files, folders, and notes (not logical groups)
         const draggableItems = source.filter(item =>
             item instanceof FolderShortcutItem ||
@@ -59,7 +64,13 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             item instanceof NoteShortcutItem
         );
 
+        console.log('[DRAG-DROP] Draggable items:', {
+            count: draggableItems.length,
+            types: draggableItems.map(item => item.constructor.name)
+        });
+
         if (draggableItems.length === 0) {
+            console.log('[DRAG-DROP] No draggable items, returning');
             return;
         }
 
@@ -143,6 +154,12 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
             : groupItem.originalName;
 
+        console.log('[DRAG-DROP] Drop onto logical group:', {
+            groupName: groupItem.originalName,
+            parentGroupPath: groupItem.parentGroupPath,
+            targetGroupPath
+        });
+
         // Check for external files (from explorer)
         const uriListData = dataTransfer.get('text/uri-list');
         let uris: vscode.Uri[] = [];
@@ -175,12 +192,25 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             const logicalData = dataTransfer.get('application/vnd.code.tree.shortcutslogical');
             const internalData = physicalData || logicalData;
 
+            console.log('[DRAG-DROP] Checking internal data:', {
+                hasPhysicalData: !!physicalData,
+                hasLogicalData: !!logicalData,
+                hasInternalData: !!internalData
+            });
+
             if (!internalData) {
+                console.log('[DRAG-DROP] No internal data found, returning');
                 return;
             }
 
             const draggedItems = internalData.value as ShortcutItem[];
+            console.log('[DRAG-DROP] Dragged items:', {
+                count: draggedItems?.length || 0,
+                types: draggedItems?.map(item => item.constructor.name) || []
+            });
+
             if (!draggedItems || draggedItems.length === 0) {
+                console.log('[DRAG-DROP] No dragged items, returning');
                 return;
             }
 
@@ -189,8 +219,14 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             // Separate notes from files/folders
             const noteItems = draggedItems.filter(item => item instanceof NoteShortcutItem) as unknown as NoteShortcutItem[];
 
+            console.log('[DRAG-DROP] Note items found:', {
+                count: noteItems.length,
+                notes: noteItems.map(n => ({ label: n.label, noteId: n.noteId, parentGroup: n.parentGroup }))
+            });
+
             // Handle note moves separately
             if (noteItems.length > 0) {
+                console.log('[DRAG-DROP] Calling handleNoteMove');
                 await this.handleNoteMove(noteItems, targetGroupPath);
                 return;
             }
@@ -315,27 +351,39 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             return;
         }
 
+        console.log('[DRAG-DROP] handleNoteMove called:', {
+            noteCount: noteItems.length,
+            targetGroupPath,
+            notes: noteItems.map(n => ({
+                label: n.label,
+                noteId: n.noteId,
+                parentGroup: n.parentGroup
+            }))
+        });
+
         let movedCount = 0;
         let skippedCount = 0;
 
         for (const noteItem of noteItems) {
             // Check if moving to a different group
             if (noteItem.parentGroup === targetGroupPath) {
-                console.log(`Note "${noteItem.label}" is already in target group, skipping`);
+                console.log(`[DRAG-DROP] Note "${noteItem.label}" is already in target group, skipping`);
                 skippedCount++;
                 continue;
             }
 
             try {
+                console.log(`[DRAG-DROP] Moving note "${noteItem.label}" from "${noteItem.parentGroup}" to "${targetGroupPath}"`);
                 // Move the note to the target group
                 await this.configurationManager.moveNote(
                     noteItem.parentGroup,
                     targetGroupPath,
                     noteItem.noteId
                 );
+                console.log(`[DRAG-DROP] Successfully moved note "${noteItem.label}"`);
                 movedCount++;
             } catch (error) {
-                console.warn(`Failed to move note "${noteItem.label}":`, error);
+                console.error(`[DRAG-DROP] Failed to move note "${noteItem.label}":`, error);
                 skippedCount++;
             }
         }
