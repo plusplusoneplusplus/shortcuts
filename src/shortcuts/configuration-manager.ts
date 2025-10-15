@@ -1422,23 +1422,36 @@ export class ConfigurationManager {
             const config = await this.loadConfiguration();
 
             if (!config.logicalGroups) {
-                return;
+                throw new Error('No logical groups found in configuration');
             }
+
+            console.log(`Moving note ${noteId} from "${sourceGroupPath}" to "${targetGroupPath}"`);
 
             // Find source and target groups
             const sourceGroup = this.findGroupByPath(config.logicalGroups, sourceGroupPath);
             const targetGroup = this.findGroupByPath(config.logicalGroups, targetGroupPath);
 
-            if (!sourceGroup || !targetGroup) {
-                NotificationManager.showError('Source or target group not found');
-                return;
+            if (!sourceGroup) {
+                const error = `Source group not found: ${sourceGroupPath}`;
+                console.error(error);
+                NotificationManager.showError(error);
+                throw new Error(error);
+            }
+
+            if (!targetGroup) {
+                const error = `Target group not found: ${targetGroupPath}`;
+                console.error(error);
+                NotificationManager.showError(error);
+                throw new Error(error);
             }
 
             // Find and remove note from source group
             const noteItem = sourceGroup.items.find(item => item.noteId === noteId);
             if (!noteItem) {
-                NotificationManager.showError('Note not found in source group');
-                return;
+                const error = `Note not found in source group "${sourceGroupPath}"`;
+                console.error(error, 'Available note IDs:', sourceGroup.items.filter(i => i.type === 'note').map(i => i.noteId));
+                NotificationManager.showError(error);
+                throw new Error(error);
             }
 
             sourceGroup.items = sourceGroup.items.filter(item => item.noteId !== noteId);
@@ -1447,11 +1460,14 @@ export class ConfigurationManager {
             targetGroup.items.push(noteItem);
 
             await this.saveConfiguration(config);
+            console.log(`Successfully moved note ${noteId} to "${targetGroupPath}"`);
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error moving note:', err);
-            NotificationManager.showError(`Failed to move note: ${err.message}`);
+            if (!err.message.includes('not found')) {
+                NotificationManager.showError(`Failed to move note: ${err.message}`);
+            }
             throw error;
         }
     }
