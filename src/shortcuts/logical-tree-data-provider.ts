@@ -340,7 +340,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
                         itemConfig.name,
                         uri,
                         actualType,
-                        groupItem.originalName
+                        groupPath
                     );
 
                     // Set description to show relative path from common prefix
