@@ -260,6 +260,26 @@
         "icon": "$(play)"
       },
       {
+        "command": "shortcuts.createNote",
+        "title": "Create Note",
+        "icon": "$(note)"
+      },
+      {
+        "command": "shortcuts.editNote",
+        "title": "Edit Note",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "shortcuts.deleteNote",
+        "title": "Delete Note",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "shortcuts.renameNote",
+        "title": "Rename Note",
+        "icon": "$(edit)"
+      },
+      {
         "command": "shortcuts.sync.configure",
         "title": "Configure Cloud Sync",
         "icon": "$(cloud)"
@@ -333,6 +353,11 @@
           "command": "shortcuts.createFolderInLogicalGroup",
           "when": "view == shortcutsView && viewItem == logicalGroup",
           "group": "logicalGroup@2"
+        },
+        {
+          "command": "shortcuts.createNote",
+          "when": "view == shortcutsView && viewItem == logicalGroup",
+          "group": "logicalGroup@2.3"
         },
         {
           "command": "shortcuts.createNestedLogicalGroup",
@@ -458,6 +483,21 @@
           "command": "shortcuts.executeTaskItem",
           "when": "view == shortcutsView && viewItem == task",
           "group": "task@1"
+        },
+        {
+          "command": "shortcuts.editNote",
+          "when": "view == shortcutsView && viewItem == note",
+          "group": "note@1"
+        },
+        {
+          "command": "shortcuts.renameNote",
+          "when": "view == shortcutsView && viewItem == note",
+          "group": "note@2"
+        },
+        {
+          "command": "shortcuts.deleteNote",
+          "when": "view == shortcutsView && viewItem == note",
+          "group": "note@3"
         },
         {
           "command": "shortcuts.editSearchInput",

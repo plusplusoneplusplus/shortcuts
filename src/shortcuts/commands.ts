@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { InlineSearchProvider } from './inline-search-provider';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
-import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, TaskShortcutItem } from './tree-items';
+import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
 
 /**
  * Command handlers for the shortcuts panel
@@ -13,7 +13,8 @@ export class ShortcutsCommands {
         private treeDataProvider: LogicalTreeDataProvider,
         private updateSearchDescriptions?: () => void,
         private unifiedSearchProvider?: InlineSearchProvider,
-        private treeView?: vscode.TreeView<any>
+        private treeView?: vscode.TreeView<any>,
+        private noteDocumentManager?: any // Will be typed properly when wired up
     ) { }
 
     /**
@@ -184,6 +185,31 @@ export class ShortcutsCommands {
         disposables.push(
             vscode.commands.registerCommand('shortcuts.executeTaskItem', async (item: TaskShortcutItem) => {
                 await this.executeTaskItem(item);
+            })
+        );
+
+        // Note commands
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.createNote', async (item: LogicalGroupItem) => {
+                await this.createNote(item);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.editNote', async (item: NoteShortcutItem) => {
+                await this.editNote(item);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.deleteNote', async (item: NoteShortcutItem) => {
+                await this.deleteNote(item);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.renameNote', async (item: NoteShortcutItem) => {
+                await this.renameNote(item);
             })
         );
 
@@ -1651,6 +1677,181 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error getting sync status:', err);
             NotificationManager.showError(`Failed to get sync status: ${err.message}`);
+        }
+    }
+
+    /**
+     * Create a new note in a logical group
+     */
+    private async createNote(groupItem: LogicalGroupItem): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            // Get the note name
+            const noteName = await vscode.window.showInputBox({
+                prompt: 'Enter a name for the new note',
+                placeHolder: 'Note name',
+                validateInput: (value) => {
+                    if (!value || value.trim() === '') {
+                        return 'Note name cannot be empty';
+                    }
+                    return null;
+                }
+            });
+
+            if (!noteName) {
+                return;
+            }
+
+            // Build the full group path for nested groups
+            const groupPath = groupItem.parentGroupPath
+                ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
+                : groupItem.originalName;
+
+            // Create the note
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            const noteId = await configManager.createNote(groupPath, noteName.trim());
+
+            this.treeDataProvider.refresh();
+            NotificationManager.showInfo(`Note "${noteName}" created successfully!`, { timeout: 3000 });
+
+            // Open the note in the editor if noteDocumentManager is available
+            if (this.noteDocumentManager) {
+                await this.noteDocumentManager.openNote(noteId, noteName.trim());
+            }
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating note:', err);
+            NotificationManager.showError(`Failed to create note: ${err.message}`);
+        }
+    }
+
+    /**
+     * Open a note for editing
+     */
+    private async editNote(noteItem: NoteShortcutItem): Promise<void> {
+        try {
+            if (!this.noteDocumentManager) {
+                NotificationManager.showError('Note editor is not available');
+                return;
+            }
+
+            // Open the note in the editor
+            await this.noteDocumentManager.openNote(noteItem.noteId, noteItem.label as string);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error editing note:', err);
+            NotificationManager.showError(`Failed to open note: ${err.message}`);
+        }
+    }
+
+    /**
+     * Delete a note from a logical group
+     */
+    private async deleteNote(noteItem: NoteShortcutItem): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            // Confirm deletion
+            const confirmation = await NotificationManager.showWarning(
+                `Are you sure you want to delete the note "${noteItem.label}"? This cannot be undone.`,
+                { timeout: 0, actions: ['Delete'] }
+            );
+
+            if (confirmation !== 'Delete') {
+                return;
+            }
+
+            // Delete the note
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            await configManager.deleteNote(noteItem.parentGroup, noteItem.noteId);
+
+            this.treeDataProvider.refresh();
+            NotificationManager.showInfo(`Note "${noteItem.label}" deleted successfully!`, { timeout: 3000 });
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error deleting note:', err);
+            NotificationManager.showError(`Failed to delete note: ${err.message}`);
+        }
+    }
+
+    /**
+     * Rename a note
+     */
+    private async renameNote(noteItem: NoteShortcutItem): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            // Get the new name
+            const newName = await vscode.window.showInputBox({
+                prompt: 'Enter a new name for the note',
+                placeHolder: 'Note name',
+                value: noteItem.label as string,
+                validateInput: (value) => {
+                    if (!value || value.trim() === '') {
+                        return 'Note name cannot be empty';
+                    }
+                    return null;
+                }
+            });
+
+            if (!newName || newName.trim() === noteItem.label) {
+                return;
+            }
+
+            // Update the note name in configuration
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            const config = await configManager.loadConfiguration();
+
+            // Find the note item in the configuration and update its name
+            let found = false;
+            const updateNoteName = (groups: any[]): boolean => {
+                for (const group of groups) {
+                    // Check items in this group
+                    for (const item of group.items) {
+                        if (item.type === 'note' && item.noteId === noteItem.noteId) {
+                            item.name = newName.trim();
+                            found = true;
+                            return true;
+                        }
+                    }
+                    // Check nested groups
+                    if (group.groups && Array.isArray(group.groups)) {
+                        if (updateNoteName(group.groups)) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            };
+
+            if (config.logicalGroups) {
+                updateNoteName(config.logicalGroups);
+            }
+
+            if (!found) {
+                NotificationManager.showError('Note not found in configuration');
+                return;
+            }
+
+            await configManager.saveConfiguration(config);
+
+            this.treeDataProvider.refresh();
+            NotificationManager.showInfo(`Note renamed to "${newName}" successfully!`, { timeout: 3000 });
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error renaming note:', err);
+            NotificationManager.showError(`Failed to rename note: ${err.message}`);
         }
     }
 

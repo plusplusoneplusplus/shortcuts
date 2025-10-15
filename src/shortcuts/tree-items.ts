@@ -435,6 +435,43 @@ export class TaskShortcutItem extends vscode.TreeItem {
 }
 
 /**
+ * Tree item representing a note/notepad
+ */
+export class NoteShortcutItem extends vscode.TreeItem {
+    public readonly contextValue = 'note';
+    public readonly noteId: string;
+    public readonly parentGroup: string;
+
+    constructor(
+        label: string,
+        noteId: string,
+        parentGroup: string,
+        iconName?: string
+    ) {
+        super(label, vscode.TreeItemCollapsibleState.None);
+        this.noteId = noteId;
+        this.parentGroup = parentGroup;
+        this.tooltip = `Note: ${label}`;
+        this.iconPath = this.getIconPath(iconName);
+
+        // Set up the command to open note editor when clicked
+        this.command = {
+            command: 'shortcuts.editNote',
+            title: 'Edit Note',
+            arguments: [this]
+        };
+    }
+
+    private getIconPath(iconName?: string): vscode.ThemeIcon {
+        if (iconName) {
+            return new vscode.ThemeIcon(iconName, new vscode.ThemeColor('editorWarning.foreground'));
+        }
+        // Default to note icon for notes
+        return new vscode.ThemeIcon('note', new vscode.ThemeColor('editorWarning.foreground'));
+    }
+}
+
+/**
  * Tree item representing a logical group
  * Can contain multiple folders and files organized by category
  */

@@ -8,6 +8,7 @@ import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manage
 import { InlineSearchProvider } from './shortcuts/inline-search-provider';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
+import { NoteDocumentManager } from './shortcuts/note-document-provider';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { ThemeManager } from './shortcuts/theme-manager';
 
@@ -131,12 +132,16 @@ export async function activate(context: vscode.ExtensionContext) {
         // Initialize keyboard navigation handler
         const keyboardNavigationHandler = new KeyboardNavigationHandler(treeView, treeDataProvider, 'logical');
 
+        // Initialize note document manager
+        const noteDocumentManager = new NoteDocumentManager(configurationManager, context);
+
         // Initialize command handlers
         const commandsHandler = new ShortcutsCommands(
             treeDataProvider,
             updateSearchDescriptions,
             unifiedSearchProvider,
-            treeView
+            treeView,
+            noteDocumentManager
         );
         const commandDisposables = commandsHandler.registerCommands(context);
 
@@ -166,6 +171,7 @@ export async function activate(context: vscode.ExtensionContext) {
             themeManager,
             fileSystemWatcherManager,
             keyboardNavigationHandler,
+            noteDocumentManager,
             keyboardHelpCommand,
             undoMoveCommand,
             ...commandDisposables

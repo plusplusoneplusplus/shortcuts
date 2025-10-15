@@ -540,7 +540,7 @@ export class ConfigurationManager {
                         continue;
                     }
 
-                    if (item.type !== 'folder' && item.type !== 'file' && item.type !== 'command' && item.type !== 'task') {
+                    if (item.type !== 'folder' && item.type !== 'file' && item.type !== 'command' && item.type !== 'task' && item.type !== 'note') {
                         console.warn('Skipping logical group item with invalid type:', item);
                         continue;
                     }
@@ -571,6 +571,21 @@ export class ConfigurationManager {
                             name: item.name,
                             type: 'task',
                             task: item.task,
+                            icon: typeof item.icon === 'string' ? item.icon : undefined
+                        });
+                        continue;
+                    }
+
+                    // Handle note items
+                    if (item.type === 'note') {
+                        if (typeof item.noteId !== 'string' || !item.noteId.trim()) {
+                            console.warn('Skipping note item with invalid note ID:', item);
+                            continue;
+                        }
+                        validItems.push({
+                            name: item.name,
+                            type: 'note',
+                            noteId: item.noteId,
                             icon: typeof item.icon === 'string' ? item.icon : undefined
                         });
                         continue;
@@ -689,6 +704,25 @@ export class ConfigurationManager {
                         args: item.args,
                         icon: typeof item.icon === 'string' ? item.icon : undefined
                     } as LogicalGroupItem);
+                    continue;
+                }
+
+                // Handle note items
+                if (item.type === 'note') {
+                    if (typeof item.noteId !== 'string' || !item.noteId.trim()) {
+                        console.warn('Skipping note item with invalid note ID:', item);
+                        continue;
+                    }
+                    if (typeof item.name !== 'string' || !item.name.trim()) {
+                        console.warn('Skipping note item with invalid name:', item);
+                        continue;
+                    }
+                    validItems.push({
+                        name: item.name,
+                        type: 'note',
+                        noteId: item.noteId,
+                        icon: typeof item.icon === 'string' ? item.icon : undefined
+                    });
                     continue;
                 }
 
@@ -1241,6 +1275,183 @@ export class ConfigurationManager {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error deleting logical group:', err);
             NotificationManager.showError(`Failed to delete logical group: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Create a new note in a logical group
+     * @param groupPath Path to the group (supports nested groups)
+     * @param noteName Name of the note
+     */
+    async createNote(groupPath: string, noteName: string): Promise<string> {
+        if (!this.extensionContext) {
+            throw new Error('Extension context not available for note storage');
+        }
+
+        try {
+            const config = await this.loadConfiguration();
+
+            // Find the group
+            if (!config.logicalGroups) {
+                config.logicalGroups = [];
+            }
+
+            const group = this.findGroupByPath(config.logicalGroups, groupPath);
+            if (!group) {
+                throw new Error(`Logical group not found: ${groupPath}`);
+            }
+
+            // Generate unique note ID
+            const noteId = `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+            // Add note to group configuration
+            const newItem: LogicalGroupItem = {
+                name: noteName,
+                type: 'note',
+                noteId: noteId
+            };
+
+            group.items.push(newItem);
+            await this.saveConfiguration(config);
+
+            // Initialize note content in storage
+            await this.saveNoteContent(noteId, '');
+
+            return noteId;
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating note:', err);
+            NotificationManager.showError(`Failed to create note: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get note content from VSCode storage
+     * @param noteId ID of the note
+     */
+    async getNoteContent(noteId: string): Promise<string> {
+        if (!this.extensionContext) {
+            throw new Error('Extension context not available for note storage');
+        }
+
+        try {
+            const content = this.extensionContext.globalState.get<string>(`note_${noteId}`, '');
+            return content;
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error getting note content:', err);
+            return '';
+        }
+    }
+
+    /**
+     * Save note content to VSCode storage
+     * @param noteId ID of the note
+     * @param content Note content
+     */
+    async saveNoteContent(noteId: string, content: string): Promise<void> {
+        if (!this.extensionContext) {
+            throw new Error('Extension context not available for note storage');
+        }
+
+        try {
+            await this.extensionContext.globalState.update(`note_${noteId}`, content);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error saving note content:', err);
+            NotificationManager.showError(`Failed to save note: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a note from a logical group and storage
+     * @param groupPath Path to the group (supports nested groups)
+     * @param noteId ID of the note to delete
+     */
+    async deleteNote(groupPath: string, noteId: string): Promise<void> {
+        if (!this.extensionContext) {
+            throw new Error('Extension context not available for note storage');
+        }
+
+        try {
+            const config = await this.loadConfiguration();
+
+            if (!config.logicalGroups) {
+                return;
+            }
+
+            const group = this.findGroupByPath(config.logicalGroups, groupPath);
+            if (!group) {
+                NotificationManager.showError(`Logical group not found: ${groupPath}`);
+                return;
+            }
+
+            // Remove note from group
+            const initialLength = group.items.length;
+            group.items = group.items.filter(item => item.noteId !== noteId);
+
+            if (group.items.length === initialLength) {
+                NotificationManager.showWarning('Note not found in logical group.');
+                return;
+            }
+
+            await this.saveConfiguration(config);
+
+            // Delete note content from storage
+            await this.extensionContext.globalState.update(`note_${noteId}`, undefined);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error deleting note:', err);
+            NotificationManager.showError(`Failed to delete note: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Move a note between logical groups
+     * @param sourceGroupPath Source group path
+     * @param targetGroupPath Target group path
+     * @param noteId ID of the note to move
+     */
+    async moveNote(sourceGroupPath: string, targetGroupPath: string, noteId: string): Promise<void> {
+        try {
+            const config = await this.loadConfiguration();
+
+            if (!config.logicalGroups) {
+                return;
+            }
+
+            // Find source and target groups
+            const sourceGroup = this.findGroupByPath(config.logicalGroups, sourceGroupPath);
+            const targetGroup = this.findGroupByPath(config.logicalGroups, targetGroupPath);
+
+            if (!sourceGroup || !targetGroup) {
+                NotificationManager.showError('Source or target group not found');
+                return;
+            }
+
+            // Find and remove note from source group
+            const noteItem = sourceGroup.items.find(item => item.noteId === noteId);
+            if (!noteItem) {
+                NotificationManager.showError('Note not found in source group');
+                return;
+            }
+
+            sourceGroup.items = sourceGroup.items.filter(item => item.noteId !== noteId);
+
+            // Add note to target group
+            targetGroup.items.push(noteItem);
+
+            await this.saveConfiguration(config);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error moving note:', err);
+            NotificationManager.showError(`Failed to move note: ${err.message}`);
             throw error;
         }
     }

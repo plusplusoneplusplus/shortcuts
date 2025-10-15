@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
 import { NotificationManager } from './notification-manager';
 import { ThemeManager } from './theme-manager';
-import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, ShortcutItem, TaskShortcutItem } from './tree-items';
+import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, ShortcutItem, TaskShortcutItem } from './tree-items';
 import { BasePath, LogicalGroup } from './types';
 
 /**
@@ -240,11 +240,11 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
                 }
             }
 
-            // Sort items: folders first, then files, then commands/tasks, all alphabetically
+            // Sort items: folders first, then files, then notes, then commands/tasks, all alphabetically
             const sortedItems = [...groupConfig.items].sort((a, b) => {
-                const typeOrder = { folder: 0, file: 1, command: 2, task: 3 };
-                const aOrder = typeOrder[a.type] ?? 4;
-                const bOrder = typeOrder[b.type] ?? 4;
+                const typeOrder = { folder: 0, file: 1, note: 2, command: 3, task: 4 };
+                const aOrder = typeOrder[a.type] ?? 5;
+                const bOrder = typeOrder[b.type] ?? 5;
 
                 if (aOrder !== bOrder) {
                     return aOrder - bOrder;
@@ -308,6 +308,22 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
                             itemConfig.icon
                         );
                         items.push(taskItem);
+                        continue;
+                    }
+
+                    // Handle note items
+                    if (itemConfig.type === 'note') {
+                        if (!itemConfig.noteId) {
+                            console.warn(`Note item missing note ID: ${itemConfig.name}`);
+                            continue;
+                        }
+                        const noteItem = new NoteShortcutItem(
+                            itemConfig.name,
+                            itemConfig.noteId,
+                            groupPath,
+                            itemConfig.icon
+                        );
+                        items.push(noteItem);
                         continue;
                     }
 

@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
 import { NotificationManager } from './notification-manager';
-import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, ShortcutItem } from './tree-items';
+import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, ShortcutItem } from './tree-items';
 
 /**
  * Interface for tracking move operations that can be undone
@@ -51,22 +51,30 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
         dataTransfer: vscode.DataTransfer,
         token: vscode.CancellationToken
     ): Promise<void> {
-        // Only allow dragging files and folders (not logical groups)
+        // Only allow dragging files, folders, and notes (not logical groups)
         const draggableItems = source.filter(item =>
             item instanceof FolderShortcutItem ||
             item instanceof FileShortcutItem ||
-            item instanceof LogicalGroupChildItem
+            item instanceof LogicalGroupChildItem ||
+            item instanceof NoteShortcutItem
         );
 
         if (draggableItems.length === 0) {
             return;
         }
 
-        // Store the dragged items as URIs
-        const uris = draggableItems.map(item => item.resourceUri);
-        dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uris));
+        // Store the dragged items as URIs (only for items with resourceUri)
+        const uris = draggableItems
+            .filter(item => item instanceof FolderShortcutItem ||
+                           item instanceof FileShortcutItem ||
+                           item instanceof LogicalGroupChildItem)
+            .map(item => item.resourceUri);
 
-        // Also store internal data for more detailed handling
+        if (uris.length > 0) {
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uris));
+        }
+
+        // Also store internal data for more detailed handling (includes notes)
         dataTransfer.set('application/vnd.code.tree.shortcutsphysical',
             new vscode.DataTransferItem(draggableItems));
         dataTransfer.set('application/vnd.code.tree.shortcutslogical',
@@ -130,6 +138,11 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             return;
         }
 
+        // Build the full group path for nested groups (needed early for note moves)
+        const targetGroupPath = groupItem.parentGroupPath
+            ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
+            : groupItem.originalName;
+
         // Check for external files (from explorer)
         const uriListData = dataTransfer.get('text/uri-list');
         let uris: vscode.Uri[] = [];
@@ -173,7 +186,16 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
 
             isFromInternalTree = true;
 
-            // Convert items to URIs
+            // Separate notes from files/folders
+            const noteItems = draggedItems.filter(item => item instanceof NoteShortcutItem) as unknown as NoteShortcutItem[];
+
+            // Handle note moves separately
+            if (noteItems.length > 0) {
+                await this.handleNoteMove(noteItems, targetGroupPath);
+                return;
+            }
+
+            // Convert file/folder items to URIs
             uris = draggedItems
                 .filter(item => item instanceof LogicalGroupChildItem ||
                     item instanceof FolderShortcutItem ||
@@ -188,11 +210,6 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             console.warn('No URIs to process');
             return;
         }
-
-        // Build the full group path for nested groups
-        const targetGroupPath = groupItem.parentGroupPath
-            ? `${groupItem.parentGroupPath}/${groupItem.originalName}`
-            : groupItem.originalName;
 
         // Determine if we should move or copy
         let shouldMove = false;
@@ -283,6 +300,59 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             NotificationManager.showWarning(`${addedCount} items added, ${skippedCount} items skipped (may already exist)`);
         } else if (skippedCount > 0) {
             NotificationManager.showWarning('No items were added. They may already exist in the group.');
+        }
+    }
+
+    /**
+     * Handle moving notes between logical groups
+     */
+    private async handleNoteMove(
+        noteItems: NoteShortcutItem[],
+        targetGroupPath: string
+    ): Promise<void> {
+        if (!this.configurationManager) {
+            NotificationManager.showError('Configuration manager not initialized');
+            return;
+        }
+
+        let movedCount = 0;
+        let skippedCount = 0;
+
+        for (const noteItem of noteItems) {
+            // Check if moving to a different group
+            if (noteItem.parentGroup === targetGroupPath) {
+                console.log(`Note "${noteItem.label}" is already in target group, skipping`);
+                skippedCount++;
+                continue;
+            }
+
+            try {
+                // Move the note to the target group
+                await this.configurationManager.moveNote(
+                    noteItem.parentGroup,
+                    targetGroupPath,
+                    noteItem.noteId
+                );
+                movedCount++;
+            } catch (error) {
+                console.warn(`Failed to move note "${noteItem.label}":`, error);
+                skippedCount++;
+            }
+        }
+
+        // Refresh the tree view
+        if (this.refreshCallback) {
+            this.refreshCallback();
+        }
+
+        // Show result notification
+        if (movedCount > 0 && skippedCount === 0) {
+            const itemText = movedCount === 1 ? 'note' : 'notes';
+            NotificationManager.showInfo(`${movedCount} ${itemText} moved successfully`);
+        } else if (movedCount > 0 && skippedCount > 0) {
+            NotificationManager.showWarning(`${movedCount} notes moved, ${skippedCount} notes skipped`);
+        } else if (skippedCount > 0) {
+            NotificationManager.showWarning('No notes were moved. They may already be in the target group.');
         }
     }
 
