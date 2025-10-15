@@ -1,6 +1,5 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { InlineSearchProvider } from './inline-search-provider';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
 import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
@@ -12,7 +11,7 @@ export class ShortcutsCommands {
     constructor(
         private treeDataProvider: LogicalTreeDataProvider,
         private updateSearchDescriptions?: () => void,
-        private unifiedSearchProvider?: InlineSearchProvider,
+        private _unusedSearchProvider?: any,
         private treeView?: vscode.TreeView<any>,
         private noteDocumentManager?: any // Will be typed properly when wired up
     ) { }
@@ -43,13 +42,6 @@ export class ShortcutsCommands {
         disposables.push(
             vscode.commands.registerCommand('shortcuts.openConfiguration', async () => {
                 await this.openConfiguration();
-            })
-        );
-
-        // Show active configuration source command
-        disposables.push(
-            vscode.commands.registerCommand('shortcuts.showConfigSource', async () => {
-                await this.showActiveConfigSource();
             })
         );
 
@@ -113,26 +105,6 @@ export class ShortcutsCommands {
         disposables.push(
             vscode.commands.registerCommand('shortcuts.copyAbsolutePath', async (item: FolderShortcutItem | FileShortcutItem | LogicalGroupChildItem) => {
                 await this.copyPath(item, true);
-            })
-        );
-
-        // Unified search commands
-        disposables.push(
-            vscode.commands.registerCommand('shortcuts.clearSearch', () => {
-                this.clearUnifiedSearch();
-            })
-        );
-
-        // Search input commands
-        disposables.push(
-            vscode.commands.registerCommand('shortcuts.editSearchInput', () => {
-                this.editSearchInput();
-            })
-        );
-
-        disposables.push(
-            vscode.commands.registerCommand('shortcuts.clearSearchFromItem', () => {
-                this.clearSearchFromItem();
             })
         );
 
@@ -333,52 +305,6 @@ export class ShortcutsCommands {
         }
     }
 
-    /**
-     * Show information about which configuration source is currently active
-     */
-    private async showActiveConfigSource(): Promise<void> {
-        try {
-            const configManager = this.treeDataProvider.getConfigurationManager();
-            const configInfo = configManager.getActiveConfigSource();
-
-            let message: string;
-            let detailMessage: string;
-
-            switch (configInfo.source) {
-                case 'workspace':
-                    message = '📁 Using Workspace Configuration';
-                    detailMessage = `Configuration is loaded from your workspace-specific file.\n\nPath: ${configInfo.path}\n\nThis configuration takes priority over any global configuration.`;
-                    break;
-                case 'global':
-                    message = '🌐 Using Global Configuration';
-                    detailMessage = `Configuration is loaded from your global shortcuts file.\n\nPath: ${configInfo.path}\n\nTo use a workspace-specific configuration, create a file at:\n${configManager.getConfigPath()}`;
-                    break;
-                case 'default':
-                    message = '⚙️ Using Default Configuration';
-                    detailMessage = `No configuration file found. Using built-in defaults.\n\nA workspace configuration will be created at:\n${configInfo.path}\n\nwhen you make changes or open the configuration file.`;
-                    break;
-            }
-
-            const action = await vscode.window.showInformationMessage(
-                message,
-                { modal: false, detail: detailMessage },
-                'Open Configuration',
-                'Copy Path'
-            );
-
-            if (action === 'Open Configuration') {
-                await this.openConfiguration();
-            } else if (action === 'Copy Path') {
-                await vscode.env.clipboard.writeText(configInfo.path);
-                NotificationManager.showInfo('Configuration path copied to clipboard');
-            }
-
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error showing active config source:', err);
-            NotificationManager.showError(`Failed to get configuration source: ${err.message}`);
-        }
-    }
 
     /**
      * Create a new logical group
@@ -889,74 +815,6 @@ export class ShortcutsCommands {
         }
     }
 
-    /**
-     * Clear unified search filter
-     */
-    private clearUnifiedSearch(): void {
-        try {
-            // Clear both tree providers
-            this.treeDataProvider.clearSearchFilter();
-            if (this.treeDataProvider) {
-                this.treeDataProvider.clearSearchFilter();
-            }
-
-            // Clear the unified search input
-            if (this.unifiedSearchProvider) {
-                this.unifiedSearchProvider.updateSearchValue('');
-            }
-
-            this.updateSearchDescriptions?.();
-            NotificationManager.showInfo('Search cleared', { timeout: 2000 });
-
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error clearing search:', err);
-            NotificationManager.showError(`Failed to clear search: ${err.message}`);
-        }
-    }
-
-    /**
-     * Edit/focus the search input
-     */
-    private editSearchInput(): void {
-        try {
-            if (this.unifiedSearchProvider) {
-                this.unifiedSearchProvider.focusSearchInput();
-            } else {
-                NotificationManager.showInfo('Search functionality is not available');
-            }
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error focusing search input:', err);
-            NotificationManager.showError(`Failed to focus search input: ${err.message}`);
-        }
-    }
-
-    /**
-     * Clear search from item context menu
-     */
-    private clearSearchFromItem(): void {
-        try {
-            // Clear both tree providers
-            this.treeDataProvider.clearSearchFilter();
-            if (this.treeDataProvider) {
-                this.treeDataProvider.clearSearchFilter();
-            }
-
-            // Clear the unified search input
-            if (this.unifiedSearchProvider) {
-                this.unifiedSearchProvider.updateSearchValue('');
-            }
-
-            this.updateSearchDescriptions?.();
-            NotificationManager.showInfo('Search cleared', { timeout: 2000 });
-
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error clearing search from item:', err);
-            NotificationManager.showError(`Failed to clear search: ${err.message}`);
-        }
-    }
 
     /**
      * Create a new file in a logical group

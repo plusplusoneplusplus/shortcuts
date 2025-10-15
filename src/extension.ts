@@ -5,7 +5,6 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { InlineSearchProvider } from './shortcuts/inline-search-provider';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import { NoteDocumentManager } from './shortcuts/note-document-provider';
@@ -81,23 +80,6 @@ export async function activate(context: vscode.ExtensionContext) {
         });
         dragDropController.setConfigurationManager(configurationManager);
 
-        // Create unified search provider
-        const unifiedSearchProvider = new InlineSearchProvider(
-            context.extensionUri,
-            'shortcutsSearch',
-            'Search groups...'
-        );
-
-        // Register webview provider
-        context.subscriptions.push(
-            vscode.window.registerWebviewViewProvider('shortcutsSearch', unifiedSearchProvider)
-        );
-
-        // Connect search provider to tree data provider
-        unifiedSearchProvider.onSearchChanged((searchTerm) => {
-            treeDataProvider.setSearchFilter(searchTerm);
-        });
-
         // Function to update view descriptions - show config source
         const updateSearchDescriptions = () => {
             // Show which config source is active
@@ -139,7 +121,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const commandsHandler = new ShortcutsCommands(
             treeDataProvider,
             updateSearchDescriptions,
-            unifiedSearchProvider,
+            undefined,
             treeView,
             noteDocumentManager
         );

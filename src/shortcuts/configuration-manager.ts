@@ -1328,6 +1328,51 @@ export class ConfigurationManager {
     }
 
     /**
+     * Check if a note exists in the configuration
+     * @param noteId ID of the note
+     */
+    async noteExists(noteId: string): Promise<boolean> {
+        try {
+            const config = await this.loadConfiguration();
+
+            // Helper function to check if note exists in a group
+            const checkGroup = (group: any): boolean => {
+                // Check items in this group
+                if (group.items) {
+                    for (const item of group.items) {
+                        if (item.type === 'note' && item.noteId === noteId) {
+                            return true;
+                        }
+                    }
+                }
+
+                // Check nested groups
+                if (group.groups) {
+                    for (const nestedGroup of group.groups) {
+                        if (checkGroup(nestedGroup)) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            };
+
+            // Check all logical groups
+            for (const group of config.logicalGroups) {
+                if (checkGroup(group)) {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (error) {
+            console.error('Error checking note existence:', error);
+            return false;
+        }
+    }
+
+    /**
      * Get note content from VSCode storage
      * @param noteId ID of the note
      */

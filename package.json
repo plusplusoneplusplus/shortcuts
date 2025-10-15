@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Workspace Shortcuts",
   "description": "Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.",
-  "version": "2.7.2",
+  "version": "2.7.3",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
@@ -47,13 +47,6 @@
     },
     "views": {
       "shortcuts": [
-        {
-          "id": "shortcutsSearch",
-          "name": "",
-          "type": "webview",
-          "when": "true",
-          "visibility": "visible"
-        },
         {
           "id": "shortcutsView",
           "name": "Groups",
@@ -140,11 +133,6 @@
         "icon": "$(gear)"
       },
       {
-        "command": "shortcuts.showConfigSource",
-        "title": "Show Active Configuration Source",
-        "icon": "$(info)"
-      },
-      {
         "command": "shortcuts.showKeyboardHelp",
         "title": "Show Keyboard Navigation Help",
         "icon": "$(question)"
@@ -200,24 +188,9 @@
         "icon": "$(copy)"
       },
       {
-        "command": "shortcuts.clearSearch",
-        "title": "Clear Search",
-        "icon": "$(clear-all)"
-      },
-      {
         "command": "shortcuts.undoMove",
         "title": "Undo Last Move",
         "icon": "$(discard)"
-      },
-      {
-        "command": "shortcuts.editSearchInput",
-        "title": "Edit Search",
-        "icon": "$(edit)"
-      },
-      {
-        "command": "shortcuts.clearSearchFromItem",
-        "title": "Clear Search",
-        "icon": "$(clear-all)"
       },
       {
         "command": "shortcuts.createFileInLogicalGroup",
@@ -318,11 +291,6 @@
           "group": "navigation"
         },
         {
-          "command": "shortcuts.showConfigSource",
-          "when": "view == shortcutsView",
-          "group": "navigation"
-        },
-        {
           "command": "shortcuts.openConfiguration",
           "when": "view == shortcutsView",
           "group": "navigation"
@@ -336,11 +304,6 @@
           "command": "shortcuts.sync.status",
           "when": "view == shortcutsView && config.workspaceShortcuts.sync.enabled",
           "group": "navigation"
-        },
-        {
-          "command": "shortcuts.clearSearch",
-          "when": "view == shortcutsView",
-          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -498,16 +461,6 @@
           "command": "shortcuts.deleteNote",
           "when": "view == shortcutsView && viewItem == note",
           "group": "note@3"
-        },
-        {
-          "command": "shortcuts.editSearchInput",
-          "when": "viewItem == searchInput",
-          "group": "search@1"
-        },
-        {
-          "command": "shortcuts.clearSearchFromItem",
-          "when": "viewItem == searchInput",
-          "group": "search@2"
         }
       ],
       "view/context": [

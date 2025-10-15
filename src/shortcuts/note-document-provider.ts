@@ -9,21 +9,41 @@ export class NoteFileSystemProvider implements vscode.FileSystemProvider {
     private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
     readonly onDidChangeFile = this._emitter.event;
 
-    constructor(private configurationManager: ConfigurationManager) {}
+    constructor(private configurationManager: ConfigurationManager) { }
 
     watch(uri: vscode.Uri): vscode.Disposable {
         // We don't need file watching for notes
-        return new vscode.Disposable(() => {});
+        return new vscode.Disposable(() => { });
     }
 
-    stat(uri: vscode.Uri): vscode.FileStat {
-        // Return basic file stats
-        return {
-            type: vscode.FileType.File,
-            ctime: Date.now(),
-            mtime: Date.now(),
-            size: 0
-        };
+    async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
+        // Strip leading slash from path to get noteId
+        const noteId = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
+
+        try {
+            // Check if note exists in configuration
+            const exists = await this.configurationManager.noteExists(noteId);
+            if (!exists) {
+                throw vscode.FileSystemError.FileNotFound(uri);
+            }
+
+            // Get content to determine size
+            const content = await this.configurationManager.getNoteContent(noteId);
+
+            // Return basic file stats
+            return {
+                type: vscode.FileType.File,
+                ctime: Date.now(),
+                mtime: Date.now(),
+                size: Buffer.from(content, 'utf8').length
+            };
+        } catch (error) {
+            // If note doesn't exist or any error occurs, throw FileNotFound error
+            if (error instanceof vscode.FileSystemError) {
+                throw error;
+            }
+            throw vscode.FileSystemError.FileNotFound(uri);
+        }
     }
 
     readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
@@ -39,11 +59,22 @@ export class NoteFileSystemProvider implements vscode.FileSystemProvider {
         const noteId = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
 
         try {
+            // First check if note exists in configuration
+            const exists = await this.configurationManager.noteExists(noteId);
+            if (!exists) {
+                throw vscode.FileSystemError.FileNotFound(uri);
+            }
+
+            // Get the note content
             const content = await this.configurationManager.getNoteContent(noteId);
             return Buffer.from(content, 'utf8');
         } catch (error) {
             console.error('Error reading note:', error);
-            return Buffer.from('', 'utf8');
+            // Throw FileNotFound error so VSCode handles it properly
+            if (error instanceof vscode.FileSystemError) {
+                throw error;
+            }
+            throw vscode.FileSystemError.FileNotFound(uri);
         }
     }
 

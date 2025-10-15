@@ -7,10 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.3] - 2025-10-15
+
 ### Fixed
-- Fixed Windows path comparison issue preventing files from being added to logical groups
-  - Added case-insensitive path comparison for Windows platform
-  - Files can now be successfully added to logical groups on Windows
+- Fixed issue where notes would show errors when VSCode restarts with open note editors
+  - Added `noteExists()` method to properly verify note existence in configuration
+  - File system provider now throws proper `FileNotFound` errors for deleted notes
+  - VSCode now handles missing notes gracefully instead of showing confusing errors
+
+### Removed
+- Removed search functionality entirely from the extension
+  - Removed search webview panel
+  - Removed all search-related commands and UI elements
+- Removed "Show Active Configuration Source" button from toolbar
+  - Configuration source is still visible in the tree view description
+
+### Added
+- Comprehensive test suite for note reopening after VSCode restart
+  - 8 new tests covering note existence verification, restart scenarios, and error handling
+  - Tests simulate VSCode restart by disposing and recreating file system providers
 
 ## [1.3.5] - 2025-09-29
 

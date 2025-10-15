@@ -4,8 +4,8 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from '../../shortcuts/configuration-manager';
-import { NoteDocumentManager, NoteFileSystemProvider } from '../../shortcuts/note-document-provider';
 import { LogicalTreeDataProvider } from '../../shortcuts/logical-tree-data-provider';
+import { NoteDocumentManager, NoteFileSystemProvider } from '../../shortcuts/note-document-provider';
 import { ThemeManager } from '../../shortcuts/theme-manager';
 import { NoteShortcutItem } from '../../shortcuts/tree-items';
 
@@ -31,7 +31,7 @@ suite('Notes Feature Tests', () => {
                     mockStorage[key] = value;
                     (extensionContext.globalState as any)._storage = mockStorage;
                 },
-                setKeysForSync: () => {}
+                setKeysForSync: () => { }
             },
             subscriptions: []
         } as any;
@@ -386,7 +386,7 @@ suite('Notes Feature Tests', () => {
             const noteId = await configManager.createNote('Test Group', 'Test Note');
 
             const uri = vscode.Uri.parse(`shortcuts-note:/${noteId}`);
-            const stats = provider.stat(uri);
+            const stats = await provider.stat(uri);
 
             assert.strictEqual(stats.type, vscode.FileType.File);
             assert.ok(typeof stats.ctime === 'number');
@@ -536,7 +536,7 @@ suite('Notes Feature Tests', () => {
 
                 assert.ok(openedUri);
                 assert.ok(openedUri!.query.includes('My%20Special%20Note') ||
-                         openedUri!.query.includes('My+Special+Note'));
+                    openedUri!.query.includes('My+Special+Note'));
             } finally {
                 vscode.window.showTextDocument = originalShowTextDocument;
             }
@@ -788,6 +788,176 @@ suite('Notes Feature Tests', () => {
             const reloadedConfig = await configManager.loadConfiguration();
             const reloadedGroup = reloadedConfig.logicalGroups.find(g => g.name === 'Icon Group');
             assert.strictEqual(reloadedGroup!.items[0].icon, 'book');
+        });
+    });
+
+    suite('Note Existence and Restart Handling', () => {
+        test('should verify note exists in configuration', async () => {
+            await configManager.createLogicalGroup('Test Group');
+            const noteId = await configManager.createNote('Test Group', 'Test Note');
+
+            const exists = await configManager.noteExists(noteId);
+            assert.strictEqual(exists, true);
+        });
+
+        test('should return false for non-existent note', async () => {
+            const exists = await configManager.noteExists('non_existent_note_id');
+            assert.strictEqual(exists, false);
+        });
+
+        test('should find note in nested groups', async () => {
+            await configManager.createLogicalGroup('Parent');
+            await configManager.createNestedLogicalGroup('Parent', 'Child');
+            const noteId = await configManager.createNote('Parent/Child', 'Nested Note');
+
+            const exists = await configManager.noteExists(noteId);
+            assert.strictEqual(exists, true);
+        });
+
+        test('should handle file system stat for existing note', async () => {
+            await configManager.createLogicalGroup('Test Group');
+            const noteId = await configManager.createNote('Test Group', 'Test Note');
+            await configManager.saveNoteContent(noteId, 'Test content');
+
+            const provider = new NoteFileSystemProvider(configManager);
+            const uri = vscode.Uri.parse(`shortcuts-note:/${noteId}`);
+
+            const stats = await provider.stat(uri);
+            assert.strictEqual(stats.type, vscode.FileType.File);
+            assert.ok(stats.size > 0);
+
+            provider.dispose();
+        });
+
+        test('should throw FileNotFound for non-existent note in stat', async () => {
+            const provider = new NoteFileSystemProvider(configManager);
+            const uri = vscode.Uri.parse('shortcuts-note:/non_existent_note');
+
+            await assert.rejects(
+                async () => await provider.stat(uri),
+                (error: any) => {
+                    return error.code === 'FileNotFound';
+                }
+            );
+
+            provider.dispose();
+        });
+
+        test('should throw FileNotFound for deleted note in stat', async () => {
+            await configManager.createLogicalGroup('Test Group');
+            const noteId = await configManager.createNote('Test Group', 'Test Note');
+
+            const provider = new NoteFileSystemProvider(configManager);
+            const uri = vscode.Uri.parse(`shortcuts-note:/${noteId}`);
+
+            // Verify note exists first
+            const stats = await provider.stat(uri);
+            assert.ok(stats);
+
+            // Delete the note
+            await configManager.deleteNote('Test Group', noteId);
+
+            // Now stat should throw FileNotFound
+            await assert.rejects(
+                async () => await provider.stat(uri),
+                (error: any) => {
+                    return error.code === 'FileNotFound';
+                }
+            );
+
+            provider.dispose();
+        });
+
+        test('should throw FileNotFound when reading deleted note', async () => {
+            await configManager.createLogicalGroup('Test Group');
+            const noteId = await configManager.createNote('Test Group', 'Test Note');
+            await configManager.saveNoteContent(noteId, 'Content');
+
+            const provider = new NoteFileSystemProvider(configManager);
+            const uri = vscode.Uri.parse(`shortcuts-note:/${noteId}`);
+
+            // Verify we can read it first
+            const content = await provider.readFile(uri);
+            assert.ok(content);
+
+            // Delete the note
+            await configManager.deleteNote('Test Group', noteId);
+
+            // Now read should throw FileNotFound
+            await assert.rejects(
+                async () => await provider.readFile(uri),
+                (error: any) => {
+                    return error.code === 'FileNotFound';
+                }
+            );
+
+            provider.dispose();
+        });
+
+        test('should handle note reopening after restart simulation', async () => {
+            // Create a note
+            await configManager.createLogicalGroup('Test Group');
+            const noteId = await configManager.createNote('Test Group', 'Restart Test');
+            await configManager.saveNoteContent(noteId, 'Persistent content');
+
+            // Create provider (simulating extension activation)
+            const provider1 = new NoteFileSystemProvider(configManager);
+            const uri = vscode.Uri.parse(`shortcuts-note:/${noteId}`);
+
+            // Read the note
+            const content1 = await provider1.readFile(uri);
+            assert.strictEqual(Buffer.from(content1).toString('utf8'), 'Persistent content');
+
+            // Dispose provider (simulating extension deactivation)
+            provider1.dispose();
+
+            // Create new provider (simulating restart)
+            const provider2 = new NoteFileSystemProvider(configManager);
+
+            // Should still be able to read the note
+            const content2 = await provider2.readFile(uri);
+            assert.strictEqual(Buffer.from(content2).toString('utf8'), 'Persistent content');
+
+            provider2.dispose();
+        });
+
+        test('should handle note that was deleted between restarts', async () => {
+            // Create a note
+            await configManager.createLogicalGroup('Test Group');
+            const noteId = await configManager.createNote('Test Group', 'Will Be Deleted');
+            await configManager.saveNoteContent(noteId, 'Content');
+
+            // Create provider
+            const provider1 = new NoteFileSystemProvider(configManager);
+            const uri = vscode.Uri.parse(`shortcuts-note:/${noteId}`);
+
+            // Verify note exists
+            const stats1 = await provider1.stat(uri);
+            assert.ok(stats1);
+            provider1.dispose();
+
+            // Delete the note (simulating deletion while VSCode was closed)
+            await configManager.deleteNote('Test Group', noteId);
+
+            // Create new provider (simulating restart with deleted note)
+            const provider2 = new NoteFileSystemProvider(configManager);
+
+            // Should throw FileNotFound
+            await assert.rejects(
+                async () => await provider2.stat(uri),
+                (error: any) => {
+                    return error.code === 'FileNotFound';
+                }
+            );
+
+            await assert.rejects(
+                async () => await provider2.readFile(uri),
+                (error: any) => {
+                    return error.code === 'FileNotFound';
+                }
+            );
+
+            provider2.dispose();
         });
     });
 
