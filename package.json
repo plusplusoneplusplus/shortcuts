@@ -308,11 +308,6 @@
           "group": "navigation"
         },
         {
-          "command": "shortcuts.showKeyboardHelp",
-          "when": "view == shortcutsView",
-          "group": "navigation"
-        },
-        {
           "command": "shortcuts.sync.now",
           "when": "view == shortcutsView && config.workspaceShortcuts.sync.enabled",
           "group": "navigation"
