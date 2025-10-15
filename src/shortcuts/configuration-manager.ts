@@ -1425,8 +1425,6 @@ export class ConfigurationManager {
                 throw new Error('No logical groups found in configuration');
             }
 
-            console.log(`Moving note ${noteId} from "${sourceGroupPath}" to "${targetGroupPath}"`);
-
             // Find source and target groups
             const sourceGroup = this.findGroupByPath(config.logicalGroups, sourceGroupPath);
             const targetGroup = this.findGroupByPath(config.logicalGroups, targetGroupPath);
@@ -1449,18 +1447,16 @@ export class ConfigurationManager {
             const noteItem = sourceGroup.items.find(item => item.noteId === noteId);
             if (!noteItem) {
                 const error = `Note not found in source group "${sourceGroupPath}"`;
-                console.error(error, 'Available note IDs:', sourceGroup.items.filter(i => i.type === 'note').map(i => i.noteId));
+                console.error(error);
                 NotificationManager.showError(error);
                 throw new Error(error);
             }
 
+            // Remove from source and add to target
             sourceGroup.items = sourceGroup.items.filter(item => item.noteId !== noteId);
-
-            // Add note to target group
             targetGroup.items.push(noteItem);
 
             await this.saveConfiguration(config);
-            console.log(`Successfully moved note ${noteId} to "${targetGroupPath}"`);
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
