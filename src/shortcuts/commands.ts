@@ -1,8 +1,9 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { GlobalNotesTreeDataProvider } from './global-notes-tree-data-provider';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
-import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
+import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, GlobalNotesSectionItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
 
 /**
  * Command handlers for the shortcuts panel
@@ -13,7 +14,8 @@ export class ShortcutsCommands {
         private updateSearchDescriptions?: () => void,
         private _unusedSearchProvider?: any,
         private treeView?: vscode.TreeView<any>,
-        private noteDocumentManager?: any // Will be typed properly when wired up
+        private noteDocumentManager?: any, // Will be typed properly when wired up
+        private globalNotesTreeDataProvider?: GlobalNotesTreeDataProvider
     ) { }
 
     /**
@@ -182,6 +184,31 @@ export class ShortcutsCommands {
         disposables.push(
             vscode.commands.registerCommand('shortcuts.renameNote', async (item: NoteShortcutItem) => {
                 await this.renameNote(item);
+            })
+        );
+
+        // Global note commands
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.createGlobalNote', async () => {
+                await this.createGlobalNote();
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.editGlobalNote', async (item: GlobalNoteItem) => {
+                await this.editGlobalNote(item);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.deleteGlobalNote', async (item: GlobalNoteItem) => {
+                await this.deleteGlobalNote(item);
+            })
+        );
+
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.renameGlobalNote', async (item: GlobalNoteItem) => {
+                await this.renameGlobalNote(item);
             })
         );
 
@@ -1710,6 +1737,143 @@ export class ShortcutsCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error renaming note:', err);
             NotificationManager.showError(`Failed to rename note: ${err.message}`);
+        }
+    }
+
+    /**
+     * Create a new global note (not tied to any group)
+     */
+    private async createGlobalNote(): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            // Get the note name
+            const noteName = await vscode.window.showInputBox({
+                prompt: 'Enter a name for the new global note',
+                placeHolder: 'Note name',
+                validateInput: (value) => {
+                    if (!value || value.trim() === '') {
+                        return 'Note name cannot be empty';
+                    }
+                    return null;
+                }
+            });
+
+            if (!noteName) {
+                return;
+            }
+
+            // Create the global note
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            const noteId = await configManager.createGlobalNote(noteName.trim());
+
+            this.globalNotesTreeDataProvider?.refresh();
+            NotificationManager.showInfo(`Global note "${noteName}" created successfully!`, { timeout: 3000 });
+
+            // Open the note in the editor if noteDocumentManager is available
+            if (this.noteDocumentManager) {
+                await this.noteDocumentManager.openNote(noteId, noteName.trim());
+            }
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating global note:', err);
+            NotificationManager.showError(`Failed to create global note: ${err.message}`);
+        }
+    }
+
+    /**
+     * Open a global note for editing
+     */
+    private async editGlobalNote(noteItem: GlobalNoteItem): Promise<void> {
+        try {
+            if (!this.noteDocumentManager) {
+                NotificationManager.showError('Note editor is not available');
+                return;
+            }
+
+            // Open the note in the editor
+            await this.noteDocumentManager.openNote(noteItem.noteId, noteItem.label as string);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error editing global note:', err);
+            NotificationManager.showError(`Failed to open note: ${err.message}`);
+        }
+    }
+
+    /**
+     * Delete a global note
+     */
+    private async deleteGlobalNote(noteItem: GlobalNoteItem): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            // Confirm deletion
+            const confirmation = await NotificationManager.showWarning(
+                `Are you sure you want to delete the global note "${noteItem.label}"? This cannot be undone.`,
+                { timeout: 0, actions: ['Delete'] }
+            );
+
+            if (confirmation !== 'Delete') {
+                return;
+            }
+
+            // Delete the global note
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            await configManager.deleteGlobalNote(noteItem.noteId);
+
+            this.globalNotesTreeDataProvider?.refresh();
+            NotificationManager.showInfo(`Global note "${noteItem.label}" deleted successfully!`, { timeout: 3000 });
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error deleting global note:', err);
+            NotificationManager.showError(`Failed to delete global note: ${err.message}`);
+        }
+    }
+
+    /**
+     * Rename a global note
+     */
+    private async renameGlobalNote(noteItem: GlobalNoteItem): Promise<void> {
+        if (!this.treeDataProvider) {
+            return;
+        }
+
+        try {
+            // Get the new name
+            const newName = await vscode.window.showInputBox({
+                prompt: 'Enter a new name for the global note',
+                placeHolder: 'Note name',
+                value: noteItem.label as string,
+                validateInput: (value) => {
+                    if (!value || value.trim() === '') {
+                        return 'Note name cannot be empty';
+                    }
+                    return null;
+                }
+            });
+
+            if (!newName || newName.trim() === noteItem.label) {
+                return;
+            }
+
+            // Update the global note name
+            const configManager = this.treeDataProvider.getConfigurationManager();
+            await configManager.renameGlobalNote(noteItem.noteId, newName.trim());
+
+            this.globalNotesTreeDataProvider?.refresh();
+            NotificationManager.showInfo(`Global note renamed to "${newName}" successfully!`, { timeout: 3000 });
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error renaming global note:', err);
+            NotificationManager.showError(`Failed to rename global note: ${err.message}`);
         }
     }
 

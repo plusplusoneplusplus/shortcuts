@@ -99,6 +99,18 @@ export interface SyncConfig {
 }
 
 /**
+ * Configuration for a global note (not tied to any group)
+ */
+export interface GlobalNote {
+    /** Display name for the note */
+    name: string;
+    /** Note ID for storage reference */
+    noteId: string;
+    /** Optional icon override */
+    icon?: string;
+}
+
+/**
  * Main configuration structure for shortcuts
  */
 export interface ShortcutsConfig {
@@ -106,6 +118,8 @@ export interface ShortcutsConfig {
     basePaths?: BasePath[];
     /** Array of logical group configurations */
     logicalGroups: LogicalGroup[];
+    /** Global notes that are not tied to any specific group */
+    globalNotes?: GlobalNote[];
 }
 
 /**

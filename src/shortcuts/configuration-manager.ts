@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { CURRENT_CONFIG_VERSION, detectConfigVersion, migrateConfig } from './config-migrations';
 import { NotificationManager } from './notification-manager';
 import { SyncManager } from './sync/sync-manager';
-import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, LogicalGroup, LogicalGroupItem, ShortcutsConfig, SyncConfig } from './types';
+import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, GlobalNote, LogicalGroup, LogicalGroupItem, ShortcutsConfig, SyncConfig } from './types';
 
 /**
  * Manages loading, saving, and validation of shortcuts configuration
@@ -639,11 +639,41 @@ export class ConfigurationManager {
             }
         }
 
+        // Validate global notes
+        let validGlobalNotes: GlobalNote[] = [];
+        if (config.globalNotes && Array.isArray(config.globalNotes)) {
+            for (const note of config.globalNotes) {
+                if (!note || typeof note !== 'object') {
+                    console.warn('Skipping invalid global note:', note);
+                    continue;
+                }
+
+                if (typeof note.name !== 'string' || !note.name.trim()) {
+                    console.warn('Skipping global note with invalid name:', note);
+                    continue;
+                }
+
+                if (typeof note.noteId !== 'string' || !note.noteId.trim()) {
+                    console.warn('Skipping global note with invalid noteId:', note);
+                    continue;
+                }
+
+                validGlobalNotes.push({
+                    name: note.name,
+                    noteId: note.noteId,
+                    icon: typeof note.icon === 'string' ? note.icon : undefined
+                });
+            }
+        }
+
         const result: ShortcutsConfig = {
             logicalGroups: validLogicalGroups
         };
         if (validBasePaths.length > 0) {
             result.basePaths = validBasePaths;
+        }
+        if (validGlobalNotes.length > 0) {
+            result.globalNotes = validGlobalNotes;
         }
         return result;
     }
@@ -1335,6 +1365,11 @@ export class ConfigurationManager {
         try {
             const config = await this.loadConfiguration();
 
+            // Check global notes first
+            if (config.globalNotes && config.globalNotes.some(note => note.noteId === noteId)) {
+                return true;
+            }
+
             // Helper function to check if note exists in a group
             const checkGroup = (group: any): boolean => {
                 // Check items in this group
@@ -1463,45 +1498,81 @@ export class ConfigurationManager {
      * @param noteId ID of the note to move
      */
     async moveNote(sourceGroupPath: string, targetGroupPath: string, noteId: string): Promise<void> {
+        console.log(`[CONFIG-MANAGER] moveNote called:`, {
+            sourceGroupPath,
+            targetGroupPath,
+            noteId
+        });
+
         try {
             const config = await this.loadConfiguration();
+            console.log(`[CONFIG-MANAGER] Config loaded, has ${config.logicalGroups.length} logical groups`);
 
             if (!config.logicalGroups) {
                 throw new Error('No logical groups found in configuration');
             }
 
             // Find source and target groups
+            console.log(`[CONFIG-MANAGER] Finding source group: "${sourceGroupPath}"`);
             const sourceGroup = this.findGroupByPath(config.logicalGroups, sourceGroupPath);
+            console.log(`[CONFIG-MANAGER] Source group found:`, sourceGroup ? 'YES' : 'NO');
+            if (sourceGroup) {
+                console.log(`[CONFIG-MANAGER] Source group has ${sourceGroup.items.length} items`);
+            }
+
+            console.log(`[CONFIG-MANAGER] Finding target group: "${targetGroupPath}"`);
             const targetGroup = this.findGroupByPath(config.logicalGroups, targetGroupPath);
+            console.log(`[CONFIG-MANAGER] Target group found:`, targetGroup ? 'YES' : 'NO');
+            if (targetGroup) {
+                console.log(`[CONFIG-MANAGER] Target group has ${targetGroup.items.length} items`);
+            }
 
             if (!sourceGroup) {
                 const error = `Source group not found: ${sourceGroupPath}`;
-                console.error(error);
+                console.error(`[CONFIG-MANAGER] ERROR: ${error}`);
                 NotificationManager.showError(error);
                 throw new Error(error);
             }
 
             if (!targetGroup) {
                 const error = `Target group not found: ${targetGroupPath}`;
-                console.error(error);
+                console.error(`[CONFIG-MANAGER] ERROR: ${error}`);
                 NotificationManager.showError(error);
                 throw new Error(error);
             }
 
             // Find and remove note from source group
+            console.log(`[CONFIG-MANAGER] Looking for note with ID: ${noteId} in source group`);
             const noteItem = sourceGroup.items.find(item => item.noteId === noteId);
+            console.log(`[CONFIG-MANAGER] Note item found:`, noteItem ? 'YES' : 'NO');
+            if (noteItem) {
+                console.log(`[CONFIG-MANAGER] Note item:`, noteItem);
+            }
+
             if (!noteItem) {
+                const availableNotes = sourceGroup.items.filter(i => i.type === 'note').map(i => ({
+                    name: i.name,
+                    noteId: i.noteId
+                }));
                 const error = `Note not found in source group "${sourceGroupPath}"`;
-                console.error(error);
+                console.error(`[CONFIG-MANAGER] ERROR: ${error}`);
+                console.error(`[CONFIG-MANAGER] Available notes in source:`, availableNotes);
                 NotificationManager.showError(error);
                 throw new Error(error);
             }
 
+            console.log(`[CONFIG-MANAGER] Removing note from source group`);
             // Remove from source and add to target
             sourceGroup.items = sourceGroup.items.filter(item => item.noteId !== noteId);
-            targetGroup.items.push(noteItem);
+            console.log(`[CONFIG-MANAGER] Source group now has ${sourceGroup.items.length} items`);
 
+            console.log(`[CONFIG-MANAGER] Adding note to target group`);
+            targetGroup.items.push(noteItem);
+            console.log(`[CONFIG-MANAGER] Target group now has ${targetGroup.items.length} items`);
+
+            console.log(`[CONFIG-MANAGER] Saving configuration...`);
             await this.saveConfiguration(config);
+            console.log(`[CONFIG-MANAGER] Configuration saved successfully`);
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
@@ -1510,6 +1581,139 @@ export class ConfigurationManager {
                 NotificationManager.showError(`Failed to move note: ${err.message}`);
             }
             throw error;
+        }
+    }
+
+    /**
+     * Create a new global note (not tied to any group)
+     * @param noteName Name of the note
+     * @returns The note ID
+     */
+    async createGlobalNote(noteName: string): Promise<string> {
+        if (!this.extensionContext) {
+            throw new Error('Extension context not available for note storage');
+        }
+
+        try {
+            const config = await this.loadConfiguration();
+
+            // Initialize globalNotes array if it doesn't exist
+            if (!config.globalNotes) {
+                config.globalNotes = [];
+            }
+
+            // Check if note with same name already exists
+            if (config.globalNotes.some(n => n.name === noteName)) {
+                throw new Error('A global note with this name already exists');
+            }
+
+            // Generate unique note ID
+            const noteId = `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+            // Add note to configuration
+            const newNote: GlobalNote = {
+                name: noteName,
+                noteId: noteId
+            };
+
+            config.globalNotes.push(newNote);
+            await this.saveConfiguration(config);
+
+            // Initialize note content in storage
+            await this.saveNoteContent(noteId, '');
+
+            return noteId;
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error creating global note:', err);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a global note
+     * @param noteId ID of the note to delete
+     */
+    async deleteGlobalNote(noteId: string): Promise<void> {
+        if (!this.extensionContext) {
+            throw new Error('Extension context not available for note storage');
+        }
+
+        try {
+            const config = await this.loadConfiguration();
+
+            if (!config.globalNotes) {
+                return;
+            }
+
+            // Remove note from configuration
+            const initialLength = config.globalNotes.length;
+            config.globalNotes = config.globalNotes.filter(note => note.noteId !== noteId);
+
+            if (config.globalNotes.length === initialLength) {
+                NotificationManager.showWarning('Global note not found.');
+                return;
+            }
+
+            await this.saveConfiguration(config);
+
+            // Delete note content from storage
+            await this.extensionContext.globalState.update(`note_${noteId}`, undefined);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error deleting global note:', err);
+            NotificationManager.showError(`Failed to delete note: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Rename a global note
+     * @param noteId ID of the note to rename
+     * @param newName New name for the note
+     */
+    async renameGlobalNote(noteId: string, newName: string): Promise<void> {
+        try {
+            const config = await this.loadConfiguration();
+
+            if (!config.globalNotes) {
+                throw new Error('No global notes found');
+            }
+
+            // Find the note
+            const note = config.globalNotes.find(n => n.noteId === noteId);
+            if (!note) {
+                throw new Error('Global note not found');
+            }
+
+            // Check if new name already exists
+            if (config.globalNotes.some(n => n.name === newName && n.noteId !== noteId)) {
+                throw new Error('A global note with this name already exists');
+            }
+
+            // Update the name
+            note.name = newName;
+            await this.saveConfiguration(config);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error renaming global note:', err);
+            NotificationManager.showError(`Failed to rename note: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get all global notes
+     */
+    async getGlobalNotes(): Promise<GlobalNote[]> {
+        try {
+            const config = await this.loadConfiguration();
+            return config.globalNotes || [];
+        } catch (error) {
+            console.error('Error getting global notes:', error);
+            return [];
         }
     }
 

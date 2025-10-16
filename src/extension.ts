@@ -5,6 +5,7 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
+import { GlobalNotesTreeDataProvider } from './shortcuts/global-notes-tree-data-provider';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import { NoteDocumentManager } from './shortcuts/note-document-provider';
@@ -46,12 +47,16 @@ export async function activate(context: vscode.ExtensionContext) {
             themeManager
         );
 
+        // Set up global notes tree data provider
+        const globalNotesTreeDataProvider = new GlobalNotesTreeDataProvider(configurationManager);
+
         // Set up file system watchers for referenced folders
         const fileSystemWatcherManager = new FileSystemWatcherManager(
             workspaceRoot,
             configurationManager,
             () => {
                 treeDataProvider.refresh();
+                globalNotesTreeDataProvider.refresh();
             }
         );
 
@@ -61,6 +66,7 @@ export async function activate(context: vscode.ExtensionContext) {
         // Initialize theme management with refresh callback
         themeManager.initialize(() => {
             treeDataProvider.refresh();
+            globalNotesTreeDataProvider.refresh();
         });
 
         // Initialize drag and drop controller
@@ -72,6 +78,12 @@ export async function activate(context: vscode.ExtensionContext) {
             showCollapseAll: true,
             canSelectMany: true,
             dragAndDropController: dragDropController
+        });
+
+        // Register global notes tree view
+        const globalNotesTreeView = vscode.window.createTreeView('globalNotesView', {
+            treeDataProvider: globalNotesTreeDataProvider,
+            showCollapseAll: false
         });
 
         // Connect refresh callback and configuration manager to drag-drop controller
@@ -107,6 +119,7 @@ export async function activate(context: vscode.ExtensionContext) {
         // Watch configuration file for changes
         configurationManager.watchConfigFile(() => {
             treeDataProvider.refresh();
+            globalNotesTreeDataProvider.refresh();
             fileSystemWatcherManager.updateWatchers();
             updateSearchDescriptions();
         });
@@ -123,7 +136,8 @@ export async function activate(context: vscode.ExtensionContext) {
             updateSearchDescriptions,
             undefined,
             treeView,
-            noteDocumentManager
+            noteDocumentManager,
+            globalNotesTreeDataProvider
         );
         const commandDisposables = commandsHandler.registerCommands(context);
 
@@ -148,7 +162,9 @@ export async function activate(context: vscode.ExtensionContext) {
         // Collect all disposables for proper cleanup
         const disposables: vscode.Disposable[] = [
             treeView,
+            globalNotesTreeView,
             treeDataProvider,
+            globalNotesTreeDataProvider,
             configurationManager,
             themeManager,
             fileSystemWatcherManager,

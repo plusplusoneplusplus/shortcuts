@@ -651,3 +651,55 @@ export class SearchTreeItem extends ShortcutItem {
         return this.iconPath as vscode.ThemeIcon;
     }
 }
+
+/**
+ * Tree item representing the Global Notes section
+ * A dedicated section for notes not tied to any logical group
+ */
+export class GlobalNotesSectionItem extends vscode.TreeItem {
+    public readonly contextValue = 'globalNotesSection';
+
+    constructor(
+        collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Expanded
+    ) {
+        super('📝 Global Notes', collapsibleState);
+
+        this.tooltip = 'Notes accessible from anywhere - not tied to any specific group';
+        this.iconPath = new vscode.ThemeIcon('note', new vscode.ThemeColor('charts.yellow'));
+        this.description = 'Quick access notes';
+    }
+}
+
+/**
+ * Tree item representing a global note (not tied to any group)
+ */
+export class GlobalNoteItem extends vscode.TreeItem {
+    public readonly contextValue = 'globalNote';
+    public readonly noteId: string;
+
+    constructor(
+        label: string,
+        noteId: string,
+        iconName?: string
+    ) {
+        super(label, vscode.TreeItemCollapsibleState.None);
+        this.noteId = noteId;
+        this.tooltip = `Global Note: ${label}`;
+        this.iconPath = this.getIconPath(iconName);
+
+        // Set up the command to open note editor when clicked
+        this.command = {
+            command: 'shortcuts.editGlobalNote',
+            title: 'Edit Note',
+            arguments: [this]
+        };
+    }
+
+    private getIconPath(iconName?: string): vscode.ThemeIcon {
+        if (iconName) {
+            return new vscode.ThemeIcon(iconName, new vscode.ThemeColor('editorWarning.foreground'));
+        }
+        // Default to note icon for notes
+        return new vscode.ThemeIcon('note', new vscode.ThemeColor('editorWarning.foreground'));
+    }
+}

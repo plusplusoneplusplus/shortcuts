@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Workspace Shortcuts",
   "description": "Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.",
-  "version": "2.7.3",
+  "version": "2.7.4",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
@@ -48,6 +48,11 @@
     "views": {
       "shortcuts": [
         {
+          "id": "globalNotesView",
+          "name": "Global Notes",
+          "when": "true"
+        },
+        {
           "id": "shortcutsView",
           "name": "Groups",
           "when": "true"
@@ -55,6 +60,10 @@
       ]
     },
     "viewsWelcome": [
+      {
+        "view": "globalNotesView",
+        "contents": "📝 **Global Notes**\n\n[Create First Note](command:shortcuts.createGlobalNote)\n\nQuick access notes available everywhere.\n\n**Features:**\n• Create notes accessible from any workspace\n• No group assignment needed\n• Perfect for quick ideas and reminders\n• Automatically saved"
+      },
       {
         "view": "shortcutsView",
         "contents": "📁 **Shortcuts Groups**\n\n[Create New Group](command:shortcuts.createLogicalGroup)\n\nOrganize your workspace with custom groups.\n\n**Actions:**\n• Create groups to organize files and folders\n• Add files and folders to groups\n• Organize by project, type, or workflow\n• Quick access to frequently used locations"
@@ -253,6 +262,26 @@
         "icon": "$(edit)"
       },
       {
+        "command": "shortcuts.createGlobalNote",
+        "title": "Create Global Note",
+        "icon": "$(note)"
+      },
+      {
+        "command": "shortcuts.editGlobalNote",
+        "title": "Edit Global Note",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "shortcuts.deleteGlobalNote",
+        "title": "Delete Global Note",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "shortcuts.renameGlobalNote",
+        "title": "Rename Global Note",
+        "icon": "$(edit)"
+      },
+      {
         "command": "shortcuts.sync.configure",
         "title": "Configure Cloud Sync",
         "icon": "$(cloud)"
@@ -280,6 +309,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "shortcuts.createGlobalNote",
+          "when": "view == globalNotesView",
+          "group": "navigation"
+        },
         {
           "command": "shortcuts.createLogicalGroup",
           "when": "view == shortcutsView",
@@ -461,6 +495,21 @@
           "command": "shortcuts.deleteNote",
           "when": "view == shortcutsView && viewItem == note",
           "group": "note@3"
+        },
+        {
+          "command": "shortcuts.editGlobalNote",
+          "when": "view == globalNotesView && viewItem == globalNote",
+          "group": "globalNote@1"
+        },
+        {
+          "command": "shortcuts.renameGlobalNote",
+          "when": "view == globalNotesView && viewItem == globalNote",
+          "group": "globalNote@2"
+        },
+        {
+          "command": "shortcuts.deleteGlobalNote",
+          "when": "view == globalNotesView && viewItem == globalNote",
+          "group": "globalNote@3"
         }
       ],
       "view/context": [
