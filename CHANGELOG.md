@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.5] - 2025-10-17
+
+### Fixed
+- Fixed drag-drop regression where files were being copied instead of moved when dragging between physical folders
+  - Issue was introduced in commit ef186a5 when additional MIME types were added to dragMimeTypes
+  - Internal drags now correctly trigger physical file moves instead of external file copies
+  - Updated handleDrop() to prioritize internal data over text/uri-list
+
+### Added
+- Comprehensive drag-drop behavior documentation (docs/DRAG_DROP_BEHAVIOR.md)
+  - Documents all 7 drag-drop scenarios with detailed examples
+  - Includes decision logic flowcharts and edge case warnings
+  - Covers both physical file moves and logical configuration changes
+- 6 new test cases achieving 100% coverage for all drag-drop scenarios
+  - Scenario 1: File movement between folders in same logical group
+  - Scenario 2: File movement between folders in different logical groups
+  - Scenario 3a: LogicalGroupChildItem to physical folder (stale config warning)
+  - Scenario 3b: Physical folder contents to logical subgroup (config-only add)
+  - Scenario 5: Moving items between sibling subgroups
+  - Scenario 7: Moving notes between groups
+
 ## [2.7.3] - 2025-10-15
 
 ### Fixed
