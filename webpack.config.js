@@ -31,10 +31,13 @@ const extensionConfig = {
     rules: [
       {
         test: /\.ts$/,
-        exclude: [/node_modules/, /src\/test\/fixtures/],
+        exclude: [/node_modules/, /src\/test/],
         use: [
           {
-            loader: 'ts-loader'
+            loader: 'ts-loader',
+            options: {
+              configFile: 'tsconfig.webpack.json'
+            }
           }
         ]
       }

@@ -8,6 +8,8 @@ import { ConfigurationManager } from './configuration-manager';
 export class NoteFileSystemProvider implements vscode.FileSystemProvider {
     private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
     readonly onDidChangeFile = this._emitter.event;
+    private readonly MAX_RETRIES = 5;
+    private readonly RETRY_DELAY_MS = 200;
 
     constructor(private configurationManager: ConfigurationManager) { }
 
@@ -16,32 +18,66 @@ export class NoteFileSystemProvider implements vscode.FileSystemProvider {
         return new vscode.Disposable(() => { });
     }
 
+    /**
+     * Helper method to retry an operation with exponential backoff
+     * Useful for handling cases where configuration might not be loaded yet during VSCode restart
+     */
+    private async retryWithBackoff<T>(
+        operation: () => Promise<T>,
+        retries: number = this.MAX_RETRIES
+    ): Promise<T> {
+        for (let attempt = 0; attempt < retries; attempt++) {
+            try {
+                return await operation();
+            } catch (error) {
+                // If it's a FileSystemError, don't retry (file actually doesn't exist)
+                if (error instanceof vscode.FileSystemError) {
+                    throw error;
+                }
+
+                // On last attempt, throw the error
+                if (attempt === retries - 1) {
+                    throw error;
+                }
+
+                // Wait before retrying (exponential backoff)
+                const delay = this.RETRY_DELAY_MS * Math.pow(2, attempt);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                console.log(`Retrying operation, attempt ${attempt + 2}/${retries}...`);
+            }
+        }
+        throw new Error('Max retries exceeded');
+    }
+
     async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
         // Strip leading slash from path to get noteId
         const noteId = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
 
         try {
-            // Check if note exists in configuration
-            const exists = await this.configurationManager.noteExists(noteId);
-            if (!exists) {
-                throw vscode.FileSystemError.FileNotFound(uri);
-            }
+            return await this.retryWithBackoff(async () => {
+                // Check if note exists in configuration
+                const exists = await this.configurationManager.noteExists(noteId);
+                if (!exists) {
+                    throw vscode.FileSystemError.FileNotFound(uri);
+                }
 
-            // Get content to determine size
-            const content = await this.configurationManager.getNoteContent(noteId);
+                // Get content to determine size
+                const content = await this.configurationManager.getNoteContent(noteId);
 
-            // Return basic file stats
-            return {
-                type: vscode.FileType.File,
-                ctime: Date.now(),
-                mtime: Date.now(),
-                size: Buffer.from(content, 'utf8').length
-            };
+                // Return basic file stats
+                return {
+                    type: vscode.FileType.File,
+                    ctime: Date.now(),
+                    mtime: Date.now(),
+                    size: Buffer.from(content, 'utf8').length
+                };
+            });
         } catch (error) {
             // If note doesn't exist or any error occurs, throw FileNotFound error
             if (error instanceof vscode.FileSystemError) {
                 throw error;
             }
+            console.error('Error in stat after retries:', error);
             throw vscode.FileSystemError.FileNotFound(uri);
         }
     }
@@ -59,15 +95,17 @@ export class NoteFileSystemProvider implements vscode.FileSystemProvider {
         const noteId = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
 
         try {
-            // First check if note exists in configuration
-            const exists = await this.configurationManager.noteExists(noteId);
-            if (!exists) {
-                throw vscode.FileSystemError.FileNotFound(uri);
-            }
+            return await this.retryWithBackoff(async () => {
+                // First check if note exists in configuration
+                const exists = await this.configurationManager.noteExists(noteId);
+                if (!exists) {
+                    throw vscode.FileSystemError.FileNotFound(uri);
+                }
 
-            // Get the note content
-            const content = await this.configurationManager.getNoteContent(noteId);
-            return Buffer.from(content, 'utf8');
+                // Get the note content
+                const content = await this.configurationManager.getNoteContent(noteId);
+                return Buffer.from(content, 'utf8');
+            });
         } catch (error) {
             console.error('Error reading note:', error);
             // Throw FileNotFound error so VSCode handles it properly
