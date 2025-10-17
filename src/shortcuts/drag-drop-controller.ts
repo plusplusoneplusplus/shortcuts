@@ -109,31 +109,28 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             return;
         }
 
-        // Get the dragged items from internal tree
+        // Get the dragged items from internal tree first
         const physicalData = dataTransfer.get('application/vnd.code.tree.shortcutsphysical');
         const logicalData = dataTransfer.get('application/vnd.code.tree.shortcutslogical');
         const internalData = physicalData || logicalData;
 
+        // If we have internal data, handle as internal move
+        if (internalData) {
+            const draggedItems = internalData.value as ShortcutItem[];
+            if (draggedItems && draggedItems.length > 0) {
+                // Handle physical file system moves
+                await this.handlePhysicalFileMove(target, draggedItems, token);
+                return;
+            }
+        }
+
         // Check if dropping external files (from explorer)
         const uriListData = dataTransfer.get('text/uri-list');
-
         if (uriListData) {
             // Handle external file drops
             await this.handleExternalFileDrop(target, uriListData, token);
             return;
         }
-
-        if (!internalData) {
-            return;
-        }
-
-        const draggedItems = internalData.value as ShortcutItem[];
-        if (!draggedItems || draggedItems.length === 0) {
-            return;
-        }
-
-        // Handle physical file system moves
-        await this.handlePhysicalFileMove(target, draggedItems, token);
     }
 
     /**
