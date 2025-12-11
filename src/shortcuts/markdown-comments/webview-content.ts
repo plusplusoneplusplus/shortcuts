@@ -2092,7 +2092,8 @@ function getScript(): string {
                             const table = parseTableAt(lines, i);
                             if (table) {
                                 tables.push(table);
-                                i = table.endLine;
+                                // table.endLine is 1-based exclusive, convert back to 0-based for loop
+                                i = table.endLine - 1;
                                 continue;
                             }
                         }
@@ -2119,7 +2120,7 @@ function getScript(): string {
                 
                 // Parse body rows
                 const rows = [];
-                let i = startIndex + 2;
+                let i = startIndex + 2; // 0-based index starting after header and separator
                 while (i < lines.length && lines[i].includes('|')) {
                     const row = parseTableRow(lines[i]);
                     if (row.length > 0) {
@@ -2128,9 +2129,11 @@ function getScript(): string {
                     i++;
                 }
                 
+                // i is now the 0-based index of the first line AFTER the table
+                // Convert to 1-based for consistency with other block types
                 return {
-                    startLine: startIndex + 1, // 1-based
-                    endLine: i, // 1-based (exclusive)
+                    startLine: startIndex + 1, // 1-based (inclusive)
+                    endLine: i + 1, // 1-based (exclusive) - first line after the table
                     headers: headers,
                     alignments: alignments,
                     rows: rows,
