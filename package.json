@@ -33,7 +33,6 @@
     "onView:shortcutsView",
     "onView:markdownCommentsView",
     "onCommand:shortcuts.createLogicalGroup",
-    "onCommand:markdownComments.addComment",
     "onCustomEditor:reviewEditorView",
     "onViewContainer:shortcuts"
   ],
@@ -78,7 +77,7 @@
       },
       {
         "view": "markdownCommentsView",
-        "contents": "💬 **Markdown Comments**\n\nNo comments yet.\n\n**To add a comment:**\n1. Open a .md file\n2. Select text\n3. Press `Ctrl+Shift+M` (or `Cmd+Shift+M` on Mac)\n4. Enter your comment\n\n**Features:**\n• Add inline comments to markdown files\n• Generate AI prompts from comments\n• Track open vs resolved comments"
+        "contents": "💬 **Markdown Comments**\n\nNo comments yet.\n\n**To add a comment:**\n1. Right-click any .md file → 'Open with Review Editor'\n2. Select text in the editor\n3. Press `Ctrl+Shift+M` (or `Cmd+Shift+M`)\n4. Enter your comment in the floating panel\n\n**Features:**\n• Inline comments with visual highlighting\n• Comment bubbles on click\n• Generate AI prompts from comments"
       }
     ],
     "configuration": {
@@ -332,18 +331,6 @@
         "command": "shortcuts.sync.status",
         "title": "Show Sync Status",
         "icon": "$(info)"
-      },
-      {
-        "command": "markdownComments.addComment",
-        "title": "Add Comment",
-        "category": "Markdown Comments",
-        "icon": "$(comment)"
-      },
-      {
-        "command": "markdownComments.editComment",
-        "title": "Edit Comment",
-        "category": "Markdown Comments",
-        "icon": "$(edit)"
       },
       {
         "command": "markdownComments.deleteComment",
@@ -657,13 +644,6 @@
           "group": "commentFile@1"
         }
       ],
-      "editor/context": [
-        {
-          "command": "markdownComments.addComment",
-          "when": "editorHasSelection && resourceExtname == .md",
-          "group": "comments"
-        }
-      ],
       "explorer/context": [
         {
           "command": "markdownComments.openWithReviewEditor",
@@ -737,12 +717,6 @@
         "key": "ctrl+z",
         "mac": "cmd+z",
         "when": "focusedView == shortcutsView"
-      },
-      {
-        "command": "markdownComments.addComment",
-        "key": "ctrl+shift+m",
-        "mac": "cmd+shift+m",
-        "when": "editorHasSelection && resourceExtname == .md"
       }
     ]
   },

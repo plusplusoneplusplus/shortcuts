@@ -1,11 +1,12 @@
 /**
  * Webview content generator for the Review Editor View
+ * Provides inline commenting experience similar to GitHub PR reviews
  */
 
 import * as vscode from 'vscode';
 
 /**
- * Generate the HTML content for the custom editor webview
+ * Generate the HTML content for the Review Editor View webview
  */
 export function getWebviewContent(
     webview: vscode.Webview,
@@ -28,9 +29,6 @@ export function getWebviewContent(
 <body>
     <div class="toolbar">
         <div class="toolbar-group">
-            <button id="addCommentBtn" class="toolbar-btn" title="Add Comment (Select text first)">
-                <span class="icon">💬</span> Add Comment
-            </button>
             <button id="resolveAllBtn" class="toolbar-btn" title="Resolve All Comments">
                 <span class="icon">✅</span> Resolve All
             </button>
@@ -55,22 +53,37 @@ export function getWebviewContent(
         </div>
     </div>
     
-    <div class="editor-container">
+    <div class="editor-container" id="editorContainer">
         <div class="editor-wrapper">
             <div class="line-numbers" id="lineNumbers"></div>
             <div class="editor-content" id="editorContent" contenteditable="true" spellcheck="true"></div>
         </div>
     </div>
 
-    <div class="comment-dialog" id="commentDialog" style="display: none;">
-        <div class="dialog-content">
-            <h3 id="dialogTitle">Add Comment</h3>
-            <div class="selected-text-preview" id="selectedTextPreview"></div>
-            <textarea id="commentInput" placeholder="Enter your comment..." rows="4"></textarea>
-            <div class="dialog-buttons">
-                <button id="dialogCancel" class="btn btn-secondary">Cancel</button>
-                <button id="dialogConfirm" class="btn btn-primary">Add Comment</button>
-            </div>
+    <!-- Floating comment input panel -->
+    <div class="floating-comment-panel" id="floatingCommentPanel" style="display: none;">
+        <div class="floating-panel-header">
+            <span class="floating-panel-title">💬 Add Comment</span>
+            <button class="floating-panel-close" id="floatingPanelClose">×</button>
+        </div>
+        <div class="floating-panel-selection" id="floatingPanelSelection"></div>
+        <textarea id="floatingCommentInput" placeholder="What feedback do you have for this section?" rows="3"></textarea>
+        <div class="floating-panel-footer">
+            <button id="floatingCancelBtn" class="btn btn-secondary btn-sm">Cancel</button>
+            <button id="floatingSaveBtn" class="btn btn-primary btn-sm">Add Comment</button>
+        </div>
+    </div>
+
+    <!-- Inline comment edit panel (for editing existing comments) -->
+    <div class="inline-edit-panel" id="inlineEditPanel" style="display: none;">
+        <div class="inline-edit-header">
+            <span class="inline-edit-title">✏️ Edit Comment</span>
+            <button class="inline-edit-close" id="inlineEditClose">×</button>
+        </div>
+        <textarea id="inlineEditInput" rows="3"></textarea>
+        <div class="inline-edit-footer">
+            <button id="inlineEditCancelBtn" class="btn btn-secondary btn-sm">Cancel</button>
+            <button id="inlineEditSaveBtn" class="btn btn-primary btn-sm">Save</button>
         </div>
     </div>
 
@@ -104,6 +117,7 @@ function getStyles(): string {
             --border-color: var(--vscode-panel-border);
             --highlight-open: rgba(255, 235, 59, 0.3);
             --highlight-resolved: rgba(76, 175, 80, 0.2);
+            --highlight-hover: rgba(255, 235, 59, 0.5);
             --comment-bg: var(--vscode-editorWidget-background);
             --comment-border: var(--vscode-editorWidget-border);
             --button-bg: var(--vscode-button-background);
@@ -113,6 +127,7 @@ function getStyles(): string {
             --input-fg: var(--vscode-input-foreground);
             --input-border: var(--vscode-input-border);
             --line-number-color: var(--vscode-editorLineNumber-foreground);
+            --gutter-icon-color: #FFC107;
         }
 
         * {
@@ -207,6 +222,7 @@ function getStyles(): string {
             flex: 1;
             overflow: auto;
             padding: 16px;
+            position: relative;
         }
 
         .editor-wrapper {
@@ -215,7 +231,7 @@ function getStyles(): string {
         }
 
         .line-numbers {
-            width: 50px;
+            width: 60px;
             padding-right: 16px;
             text-align: right;
             color: var(--line-number-color);
@@ -229,6 +245,16 @@ function getStyles(): string {
         .line-number {
             height: auto;
             min-height: 21px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+        }
+
+        .line-number .gutter-icon {
+            color: var(--gutter-icon-color);
+            cursor: pointer;
+            font-size: 12px;
         }
 
         .editor-content {
@@ -252,6 +278,11 @@ function getStyles(): string {
             cursor: pointer;
             border-bottom: 2px solid #f9a825;
             position: relative;
+            transition: background-color 0.2s;
+        }
+
+        .commented-text:hover {
+            background-color: var(--highlight-hover);
         }
 
         .commented-text.resolved {
@@ -259,45 +290,57 @@ function getStyles(): string {
             border-bottom-color: #4caf50;
         }
 
-        .commented-text:hover {
-            filter: brightness(0.9);
+        .commented-text.resolved:hover {
+            background-color: rgba(76, 175, 80, 0.35);
         }
 
-        /* Inline comment block */
-        .comment-block {
-            display: block;
-            margin: 8px 0 8px 20px;
+        /* Inline comment bubble (appears on hover/click) */
+        .inline-comment-bubble {
+            position: absolute;
+            left: 0;
+            right: 0;
+            margin-top: 4px;
             padding: 12px;
             background: var(--comment-bg);
             border: 1px solid var(--comment-border);
-            border-radius: 6px;
+            border-radius: 8px;
             border-left: 4px solid #f9a825;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 100;
             font-family: var(--vscode-font-family);
             font-size: 13px;
+            animation: bubbleIn 0.15s ease-out;
         }
 
-        .comment-block.resolved {
+        .inline-comment-bubble.resolved {
             border-left-color: #4caf50;
-            opacity: 0.7;
+            opacity: 0.85;
         }
 
-        .comment-block.hidden {
-            display: none;
+        @keyframes bubbleIn {
+            from {
+                opacity: 0;
+                transform: translateY(-5px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
-        .comment-header {
+        .bubble-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
             margin-bottom: 8px;
         }
 
-        .comment-meta {
+        .bubble-meta {
             font-size: 11px;
             color: var(--vscode-descriptionForeground);
         }
 
-        .comment-meta .status {
+        .bubble-meta .status {
             display: inline-block;
             padding: 2px 6px;
             border-radius: 3px;
@@ -305,97 +348,118 @@ function getStyles(): string {
             margin-left: 8px;
         }
 
-        .comment-meta .status.open {
+        .bubble-meta .status.open {
             background: var(--highlight-open);
             color: #f57f17;
         }
 
-        .comment-meta .status.resolved {
+        .bubble-meta .status.resolved {
             background: var(--highlight-resolved);
             color: #2e7d32;
         }
 
-        .comment-actions {
+        .bubble-actions {
             display: flex;
             gap: 4px;
         }
 
-        .comment-action-btn {
+        .bubble-action-btn {
             background: none;
             border: none;
             cursor: pointer;
-            padding: 4px;
+            padding: 4px 6px;
             border-radius: 4px;
-            font-size: 14px;
+            font-size: 12px;
             opacity: 0.7;
             transition: opacity 0.2s, background-color 0.2s;
         }
 
-        .comment-action-btn:hover {
+        .bubble-action-btn:hover {
             opacity: 1;
             background: var(--vscode-toolbar-hoverBackground);
         }
 
-        .comment-selected-text {
+        .bubble-selected-text {
             background: var(--vscode-textBlockQuote-background);
-            padding: 6px 10px;
+            padding: 8px 10px;
             border-radius: 4px;
             font-family: var(--vscode-editor-font-family, monospace);
             font-size: 12px;
             margin-bottom: 8px;
             border-left: 3px solid var(--vscode-textBlockQuote-border);
-            max-height: 60px;
+            max-height: 80px;
             overflow: auto;
         }
 
-        .comment-text {
+        .bubble-comment-text {
             white-space: pre-wrap;
-            line-height: 1.4;
+            line-height: 1.5;
         }
 
-        /* Dialog */
-        .comment-dialog {
+        /* Floating comment panel (for adding new comments) */
+        .floating-comment-panel {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-
-        .dialog-content {
+            width: 380px;
             background: var(--comment-bg);
             border: 1px solid var(--comment-border);
             border-radius: 8px;
-            padding: 20px;
-            width: 90%;
-            max-width: 500px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            z-index: 1000;
+            animation: floatIn 0.2s ease-out;
         }
 
-        .dialog-content h3 {
-            margin-bottom: 16px;
-            font-size: 16px;
+        @keyframes floatIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
         }
 
-        .selected-text-preview {
+        .floating-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .floating-panel-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .floating-panel-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            color: var(--text-color);
+            opacity: 0.7;
+            padding: 0 4px;
+        }
+
+        .floating-panel-close:hover {
+            opacity: 1;
+        }
+
+        .floating-panel-selection {
             background: var(--vscode-textBlockQuote-background);
-            padding: 10px;
-            border-radius: 4px;
+            padding: 10px 16px;
             font-family: var(--vscode-editor-font-family, monospace);
             font-size: 12px;
-            margin-bottom: 16px;
             max-height: 100px;
             overflow: auto;
-            border-left: 3px solid var(--vscode-textBlockQuote-border);
+            border-left: 4px solid #f9a825;
+            margin: 0;
         }
 
-        .dialog-content textarea {
-            width: 100%;
+        .floating-comment-panel textarea {
+            width: calc(100% - 32px);
+            margin: 12px 16px;
             padding: 10px;
             background: var(--input-bg);
             color: var(--input-fg);
@@ -404,20 +468,86 @@ function getStyles(): string {
             font-family: var(--vscode-font-family);
             font-size: 13px;
             resize: vertical;
-            margin-bottom: 16px;
+            min-height: 80px;
         }
 
-        .dialog-content textarea:focus {
+        .floating-comment-panel textarea:focus {
             outline: none;
             border-color: var(--vscode-focusBorder);
         }
 
-        .dialog-buttons {
+        .floating-panel-footer {
             display: flex;
             justify-content: flex-end;
             gap: 8px;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color);
         }
 
+        /* Inline edit panel */
+        .inline-edit-panel {
+            position: fixed;
+            width: 350px;
+            background: var(--comment-bg);
+            border: 1px solid var(--comment-border);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            z-index: 1000;
+        }
+
+        .inline-edit-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .inline-edit-title {
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .inline-edit-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--text-color);
+            opacity: 0.7;
+        }
+
+        .inline-edit-close:hover {
+            opacity: 1;
+        }
+
+        .inline-edit-panel textarea {
+            width: calc(100% - 28px);
+            margin: 10px 14px;
+            padding: 8px;
+            background: var(--input-bg);
+            color: var(--input-fg);
+            border: 1px solid var(--input-border);
+            border-radius: 4px;
+            font-family: var(--vscode-font-family);
+            font-size: 13px;
+            resize: vertical;
+        }
+
+        .inline-edit-panel textarea:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+        }
+
+        .inline-edit-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 10px 14px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* Buttons */
         .btn {
             padding: 8px 16px;
             border: none;
@@ -425,6 +555,11 @@ function getStyles(): string {
             cursor: pointer;
             font-size: 13px;
             transition: background-color 0.2s;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
         }
 
         .btn-primary {
@@ -450,6 +585,34 @@ function getStyles(): string {
         ::selection {
             background: var(--vscode-editor-selectionBackground);
         }
+
+        /* Hint text for adding comment */
+        .add-comment-hint {
+            position: fixed;
+            background: var(--comment-bg);
+            border: 1px solid var(--comment-border);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            z-index: 500;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .add-comment-hint.visible {
+            opacity: 1;
+        }
+
+        .add-comment-hint kbd {
+            background: var(--vscode-keybindingLabel-background);
+            border: 1px solid var(--vscode-keybindingLabel-border);
+            border-radius: 3px;
+            padding: 1px 4px;
+            font-size: 11px;
+            margin-left: 6px;
+        }
     `;
 }
 
@@ -468,15 +631,17 @@ function getScript(): string {
             let settings = { showResolved: true };
             let pendingSelection = null;
             let editingCommentId = null;
+            let activeCommentBubble = null;
 
             // DOM elements
+            const editorContainer = document.getElementById('editorContainer');
             const editorContent = document.getElementById('editorContent');
             const lineNumbers = document.getElementById('lineNumbers');
-            const commentDialog = document.getElementById('commentDialog');
-            const commentInput = document.getElementById('commentInput');
-            const selectedTextPreview = document.getElementById('selectedTextPreview');
-            const dialogTitle = document.getElementById('dialogTitle');
-            const dialogConfirm = document.getElementById('dialogConfirm');
+            const floatingPanel = document.getElementById('floatingCommentPanel');
+            const floatingInput = document.getElementById('floatingCommentInput');
+            const floatingSelection = document.getElementById('floatingPanelSelection');
+            const inlineEditPanel = document.getElementById('inlineEditPanel');
+            const inlineEditInput = document.getElementById('inlineEditInput');
             const showResolvedCheckbox = document.getElementById('showResolvedCheckbox');
             const openCount = document.getElementById('openCount');
             const resolvedCount = document.getElementById('resolvedCount');
@@ -490,7 +655,6 @@ function getScript(): string {
             // Setup event listeners
             function setupEventListeners() {
                 // Toolbar buttons
-                document.getElementById('addCommentBtn').addEventListener('click', handleAddComment);
                 document.getElementById('resolveAllBtn').addEventListener('click', () => {
                     vscode.postMessage({ type: 'resolveAll' });
                 });
@@ -507,23 +671,49 @@ function getScript(): string {
                     render();
                 });
 
-                // Dialog buttons
-                document.getElementById('dialogCancel').addEventListener('click', closeDialog);
-                document.getElementById('dialogConfirm').addEventListener('click', confirmDialog);
+                // Floating panel buttons
+                document.getElementById('floatingPanelClose').addEventListener('click', closeFloatingPanel);
+                document.getElementById('floatingCancelBtn').addEventListener('click', closeFloatingPanel);
+                document.getElementById('floatingSaveBtn').addEventListener('click', saveNewComment);
+
+                // Inline edit panel buttons
+                document.getElementById('inlineEditClose').addEventListener('click', closeInlineEditPanel);
+                document.getElementById('inlineEditCancelBtn').addEventListener('click', closeInlineEditPanel);
+                document.getElementById('inlineEditSaveBtn').addEventListener('click', saveEditedComment);
 
                 // Editor input
                 editorContent.addEventListener('input', handleEditorInput);
                 editorContent.addEventListener('keydown', handleEditorKeydown);
+                editorContent.addEventListener('mouseup', handleSelectionChange);
+                editorContent.addEventListener('keyup', handleSelectionChange);
 
-                // Close dialog on escape
+                // Close panels on escape
                 document.addEventListener('keydown', (e) => {
-                    if (e.key === 'Escape' && commentDialog.style.display !== 'none') {
-                        closeDialog();
+                    if (e.key === 'Escape') {
+                        closeFloatingPanel();
+                        closeInlineEditPanel();
+                        closeActiveCommentBubble();
+                    }
+                });
+
+                // Close bubble when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (activeCommentBubble && !e.target.closest('.inline-comment-bubble') && 
+                        !e.target.closest('.commented-text') && !e.target.closest('.gutter-icon')) {
+                        closeActiveCommentBubble();
                     }
                 });
 
                 // Listen for messages from extension
                 window.addEventListener('message', handleMessage);
+
+                // Keyboard shortcut for adding comment
+                document.addEventListener('keydown', (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'm') {
+                        e.preventDefault();
+                        handleAddComment();
+                    }
+                });
             }
 
             // Handle messages from extension
@@ -544,6 +734,154 @@ function getScript(): string {
                 }
             }
 
+            // Handle text selection for adding comments
+            function handleSelectionChange() {
+                const selection = window.getSelection();
+                if (selection && !selection.isCollapsed) {
+                    const text = selection.toString().trim();
+                    if (text.length > 0) {
+                        // Show hint for adding comment (optional enhancement)
+                    }
+                }
+            }
+
+            // Handle add comment (Ctrl+Shift+M or from selection)
+            function handleAddComment() {
+                const selection = window.getSelection();
+                if (!selection || selection.isCollapsed) {
+                    alert('Please select some text first to add a comment.');
+                    return;
+                }
+
+                const selectedText = selection.toString().trim();
+                if (!selectedText) {
+                    alert('Please select some text first to add a comment.');
+                    return;
+                }
+
+                // Get selection position info
+                const range = selection.getRangeAt(0);
+                const selectionInfo = getSelectionPosition(range);
+                
+                if (!selectionInfo) {
+                    alert('Could not determine selection position.');
+                    return;
+                }
+
+                pendingSelection = {
+                    ...selectionInfo,
+                    selectedText: selectedText
+                };
+
+                // Position and show the floating panel near the selection
+                const rect = range.getBoundingClientRect();
+                showFloatingPanel(rect, selectedText);
+            }
+
+            // Show floating panel for new comment
+            function showFloatingPanel(selectionRect, selectedText) {
+                floatingSelection.textContent = selectedText;
+                floatingInput.value = '';
+                
+                // Position the panel near the selection
+                const panelWidth = 380;
+                const containerRect = editorContainer.getBoundingClientRect();
+                
+                let left = selectionRect.left;
+                let top = selectionRect.bottom + 10;
+                
+                // Adjust if panel would go off-screen
+                if (left + panelWidth > window.innerWidth - 20) {
+                    left = window.innerWidth - panelWidth - 20;
+                }
+                if (left < 20) {
+                    left = 20;
+                }
+                if (top + 250 > window.innerHeight) {
+                    top = selectionRect.top - 260;
+                }
+                
+                floatingPanel.style.left = left + 'px';
+                floatingPanel.style.top = top + 'px';
+                floatingPanel.style.display = 'block';
+                
+                setTimeout(() => floatingInput.focus(), 50);
+            }
+
+            // Close floating panel
+            function closeFloatingPanel() {
+                floatingPanel.style.display = 'none';
+                pendingSelection = null;
+                floatingInput.value = '';
+            }
+
+            // Save new comment from floating panel
+            function saveNewComment() {
+                const commentText = floatingInput.value.trim();
+                if (!commentText) {
+                    alert('Please enter a comment.');
+                    return;
+                }
+
+                if (pendingSelection) {
+                    vscode.postMessage({
+                        type: 'addComment',
+                        selection: pendingSelection,
+                        comment: commentText
+                    });
+                }
+
+                closeFloatingPanel();
+            }
+
+            // Show inline edit panel
+            function showInlineEditPanel(comment, rect) {
+                editingCommentId = comment.id;
+                inlineEditInput.value = comment.comment;
+                
+                // Position the panel
+                let left = rect.left;
+                let top = rect.bottom + 5;
+                
+                if (left + 350 > window.innerWidth - 20) {
+                    left = window.innerWidth - 370;
+                }
+                if (top + 150 > window.innerHeight) {
+                    top = rect.top - 160;
+                }
+                
+                inlineEditPanel.style.left = left + 'px';
+                inlineEditPanel.style.top = top + 'px';
+                inlineEditPanel.style.display = 'block';
+                
+                setTimeout(() => inlineEditInput.focus(), 50);
+            }
+
+            // Close inline edit panel
+            function closeInlineEditPanel() {
+                inlineEditPanel.style.display = 'none';
+                editingCommentId = null;
+            }
+
+            // Save edited comment
+            function saveEditedComment() {
+                const commentText = inlineEditInput.value.trim();
+                if (!commentText) {
+                    alert('Comment cannot be empty.');
+                    return;
+                }
+
+                if (editingCommentId) {
+                    vscode.postMessage({
+                        type: 'editComment',
+                        commentId: editingCommentId,
+                        comment: commentText
+                    });
+                }
+
+                closeInlineEditPanel();
+            }
+
             // Render the editor content with comments
             function render() {
                 const lines = currentContent.split('\\n');
@@ -555,38 +893,27 @@ function getScript(): string {
                 lines.forEach((line, index) => {
                     const lineNum = index + 1;
                     const lineComments = commentsMap.get(lineNum) || [];
+                    const visibleComments = lineComments.filter(c => 
+                        settings.showResolved || c.status !== 'resolved'
+                    );
+                    
+                    // Check if this line has comments
+                    const hasComments = visibleComments.length > 0;
+                    const gutterIcon = hasComments 
+                        ? '<span class="gutter-icon" title="Click to view comments">💬</span>' 
+                        : '';
                     
                     // Build line with highlighted sections
                     let lineHtml = escapeHtml(line) || '&nbsp;';
                     
-                    // Apply comment highlights (simplified - highlights entire line if commented)
-                    lineComments.forEach(comment => {
-                        if (comment.status === 'resolved' && !settings.showResolved) {
-                            return;
-                        }
+                    // Apply comment highlights
+                    visibleComments.forEach(comment => {
                         const statusClass = comment.status === 'resolved' ? 'resolved' : '';
-                        lineHtml = \`<span class="commented-text \${statusClass}" data-comment-id="\${comment.id}">\${lineHtml}</span>\`;
+                        lineHtml = '<span class="commented-text ' + statusClass + '" data-comment-id="' + comment.id + '">' + lineHtml + '</span>';
                     });
                     
-                    html += \`<div class="line" data-line="\${lineNum}">\${lineHtml}</div>\`;
-                    
-                    // Add comment blocks after the line
-                    lineComments.forEach(comment => {
-                        if (comment.status === 'resolved' && !settings.showResolved) {
-                            return;
-                        }
-                        html += renderCommentBlock(comment);
-                    });
-                    
-                    lineNumbersHtml += \`<div class="line-number">\${lineNum}</div>\`;
-                    
-                    // Add placeholder for comment blocks in line numbers
-                    lineComments.forEach(comment => {
-                        if (comment.status === 'resolved' && !settings.showResolved) {
-                            return;
-                        }
-                        lineNumbersHtml += \`<div class="line-number">&nbsp;</div>\`;
-                    });
+                    html += '<div class="line" data-line="' + lineNum + '">' + lineHtml + '</div>';
+                    lineNumbersHtml += '<div class="line-number">' + gutterIcon + lineNum + '</div>';
                 });
                 
                 editorContent.innerHTML = html;
@@ -598,8 +925,8 @@ function getScript(): string {
                 openCount.textContent = open;
                 resolvedCount.textContent = resolved;
                 
-                // Setup comment block event listeners
-                setupCommentBlockListeners();
+                // Setup click handlers for commented text and gutter icons
+                setupCommentInteractions();
             }
 
             // Group comments by their starting line
@@ -615,109 +942,120 @@ function getScript(): string {
                 return map;
             }
 
-            // Render a single comment block
-            function renderCommentBlock(comment) {
-                const statusClass = comment.status === 'resolved' ? 'resolved' : '';
-                const statusLabel = comment.status === 'open' ? 'Open' : 'Resolved';
-                const resolveBtn = comment.status === 'open' 
-                    ? \`<button class="comment-action-btn" data-action="resolve" data-id="\${comment.id}" title="Resolve">✅</button>\`
-                    : \`<button class="comment-action-btn" data-action="reopen" data-id="\${comment.id}" title="Reopen">🔄</button>\`;
-                
-                return \`
-                    <div class="comment-block \${statusClass}" data-comment-id="\${comment.id}">
-                        <div class="comment-header">
-                            <div class="comment-meta">
-                                Line \${comment.selection.startLine}\${comment.selection.endLine > comment.selection.startLine ? '-' + comment.selection.endLine : ''}
-                                <span class="status \${comment.status}">\${statusLabel}</span>
-                            </div>
-                            <div class="comment-actions">
-                                \${resolveBtn}
-                                <button class="comment-action-btn" data-action="edit" data-id="\${comment.id}" title="Edit">✏️</button>
-                                <button class="comment-action-btn" data-action="delete" data-id="\${comment.id}" title="Delete">🗑️</button>
-                            </div>
-                        </div>
-                        <div class="comment-selected-text">\${escapeHtml(comment.selectedText)}</div>
-                        <div class="comment-text">\${escapeHtml(comment.comment)}</div>
-                    </div>
-                \`;
+            // Setup click handlers for viewing/interacting with comments
+            function setupCommentInteractions() {
+                // Click on commented text to show bubble
+                document.querySelectorAll('.commented-text').forEach(el => {
+                    el.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const commentId = el.dataset.commentId;
+                        const comment = comments.find(c => c.id === commentId);
+                        if (comment) {
+                            showCommentBubble(comment, el);
+                        }
+                    });
+                });
+
+                // Click on gutter icon
+                document.querySelectorAll('.gutter-icon').forEach(icon => {
+                    icon.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const lineNumEl = icon.closest('.line-number');
+                        const index = Array.from(lineNumbers.children).indexOf(lineNumEl);
+                        const lineNum = index + 1;
+                        
+                        const lineComments = comments.filter(c => 
+                            c.selection.startLine === lineNum && 
+                            (settings.showResolved || c.status !== 'resolved')
+                        );
+                        
+                        if (lineComments.length > 0) {
+                            const lineEl = editorContent.querySelector('[data-line="' + lineNum + '"]');
+                            if (lineEl) {
+                                showCommentBubble(lineComments[0], lineEl);
+                            }
+                        }
+                    });
+                });
             }
 
-            // Setup event listeners for comment blocks
-            function setupCommentBlockListeners() {
-                document.querySelectorAll('.comment-action-btn').forEach(btn => {
+            // Show inline comment bubble
+            function showCommentBubble(comment, anchorEl) {
+                closeActiveCommentBubble();
+                
+                const bubble = document.createElement('div');
+                bubble.className = 'inline-comment-bubble' + (comment.status === 'resolved' ? ' resolved' : '');
+                bubble.innerHTML = renderCommentBubbleContent(comment);
+                
+                // Position after the anchor element
+                anchorEl.style.position = 'relative';
+                anchorEl.appendChild(bubble);
+                
+                activeCommentBubble = { element: bubble, anchor: anchorEl };
+                
+                // Setup bubble action handlers
+                setupBubbleActions(bubble, comment);
+            }
+
+            // Render comment bubble content
+            function renderCommentBubbleContent(comment) {
+                const statusClass = comment.status;
+                const statusLabel = comment.status === 'open' ? '○ Open' : '✓ Resolved';
+                const resolveBtn = comment.status === 'open'
+                    ? '<button class="bubble-action-btn" data-action="resolve" title="Resolve">✅</button>'
+                    : '<button class="bubble-action-btn" data-action="reopen" title="Reopen">🔄</button>';
+                
+                const lineRange = comment.selection.startLine === comment.selection.endLine
+                    ? 'Line ' + comment.selection.startLine
+                    : 'Lines ' + comment.selection.startLine + '-' + comment.selection.endLine;
+                
+                return '<div class="bubble-header">' +
+                    '<div class="bubble-meta">' + lineRange + 
+                    '<span class="status ' + statusClass + '">' + statusLabel + '</span></div>' +
+                    '<div class="bubble-actions">' +
+                    resolveBtn +
+                    '<button class="bubble-action-btn" data-action="edit" title="Edit">✏️</button>' +
+                    '<button class="bubble-action-btn" data-action="delete" title="Delete">🗑️</button>' +
+                    '</div></div>' +
+                    '<div class="bubble-selected-text">' + escapeHtml(comment.selectedText) + '</div>' +
+                    '<div class="bubble-comment-text">' + escapeHtml(comment.comment) + '</div>';
+            }
+
+            // Setup bubble action button handlers
+            function setupBubbleActions(bubble, comment) {
+                bubble.querySelectorAll('.bubble-action-btn').forEach(btn => {
                     btn.addEventListener('click', (e) => {
-                        const action = e.target.dataset.action;
-                        const id = e.target.dataset.id;
+                        e.stopPropagation();
+                        const action = btn.dataset.action;
                         
                         switch (action) {
                             case 'resolve':
-                                vscode.postMessage({ type: 'resolveComment', commentId: id });
+                                vscode.postMessage({ type: 'resolveComment', commentId: comment.id });
+                                closeActiveCommentBubble();
                                 break;
                             case 'reopen':
-                                vscode.postMessage({ type: 'reopenComment', commentId: id });
+                                vscode.postMessage({ type: 'reopenComment', commentId: comment.id });
+                                closeActiveCommentBubble();
                                 break;
                             case 'edit':
-                                editComment(id);
+                                closeActiveCommentBubble();
+                                showInlineEditPanel(comment, btn.getBoundingClientRect());
                                 break;
                             case 'delete':
-                                vscode.postMessage({ type: 'deleteComment', commentId: id });
+                                vscode.postMessage({ type: 'deleteComment', commentId: comment.id });
+                                closeActiveCommentBubble();
                                 break;
                         }
                     });
                 });
             }
 
-            // Handle add comment button
-            function handleAddComment() {
-                const selection = window.getSelection();
-                if (!selection || selection.isCollapsed) {
-                    alert('Please select some text first to add a comment.');
-                    return;
+            // Close active comment bubble
+            function closeActiveCommentBubble() {
+                if (activeCommentBubble) {
+                    activeCommentBubble.element.remove();
+                    activeCommentBubble = null;
                 }
-
-                const selectedText = selection.toString().trim();
-                if (!selectedText) {
-                    alert('Please select some text first to add a comment.');
-                    return;
-                }
-
-                // Get selection position
-                const range = selection.getRangeAt(0);
-                const selectionInfo = getSelectionPosition(range);
-                
-                if (!selectionInfo) {
-                    alert('Could not determine selection position.');
-                    return;
-                }
-
-                pendingSelection = {
-                    ...selectionInfo,
-                    selectedText: selectedText
-                };
-                editingCommentId = null;
-                
-                dialogTitle.textContent = 'Add Comment';
-                dialogConfirm.textContent = 'Add Comment';
-                selectedTextPreview.textContent = selectedText;
-                commentInput.value = '';
-                commentDialog.style.display = 'flex';
-                commentInput.focus();
-            }
-
-            // Edit existing comment
-            function editComment(commentId) {
-                const comment = comments.find(c => c.id === commentId);
-                if (!comment) return;
-
-                editingCommentId = commentId;
-                pendingSelection = null;
-                
-                dialogTitle.textContent = 'Edit Comment';
-                dialogConfirm.textContent = 'Save Changes';
-                selectedTextPreview.textContent = comment.selectedText;
-                commentInput.value = comment.comment;
-                commentDialog.style.display = 'flex';
-                commentInput.focus();
             }
 
             // Get selection position (line and column)
@@ -725,7 +1063,6 @@ function getScript(): string {
                 const startContainer = range.startContainer;
                 const endContainer = range.endContainer;
                 
-                // Find the line elements
                 const startLine = findLineElement(startContainer);
                 const endLine = findLineElement(endContainer);
                 
@@ -758,44 +1095,8 @@ function getScript(): string {
                 return null;
             }
 
-            // Close dialog
-            function closeDialog() {
-                commentDialog.style.display = 'none';
-                pendingSelection = null;
-                editingCommentId = null;
-                commentInput.value = '';
-            }
-
-            // Confirm dialog action
-            function confirmDialog() {
-                const commentText = commentInput.value.trim();
-                if (!commentText) {
-                    alert('Please enter a comment.');
-                    return;
-                }
-
-                if (editingCommentId) {
-                    // Edit existing comment
-                    vscode.postMessage({
-                        type: 'editComment',
-                        commentId: editingCommentId,
-                        comment: commentText
-                    });
-                } else if (pendingSelection) {
-                    // Add new comment
-                    vscode.postMessage({
-                        type: 'addComment',
-                        selection: pendingSelection,
-                        comment: commentText
-                    });
-                }
-
-                closeDialog();
-            }
-
             // Handle editor input (content changes)
             function handleEditorInput(e) {
-                // Get plain text content
                 const newContent = getPlainTextContent();
                 if (newContent !== currentContent) {
                     currentContent = newContent;
@@ -808,29 +1109,27 @@ function getScript(): string {
 
             // Handle special keys in editor
             function handleEditorKeydown(e) {
-                // Handle Tab
                 if (e.key === 'Tab') {
                     e.preventDefault();
                     document.execCommand('insertText', false, '    ');
                 }
             }
 
-            // Get plain text content from editor (excluding comment blocks)
+            // Get plain text content from editor
             function getPlainTextContent() {
                 const lines = [];
                 editorContent.querySelectorAll('.line').forEach(lineEl => {
-                    // Get text content, stripping any HTML
                     let text = '';
                     lineEl.childNodes.forEach(node => {
                         if (node.nodeType === Node.TEXT_NODE) {
                             text += node.textContent;
                         } else if (node.classList && node.classList.contains('commented-text')) {
                             text += node.textContent;
-                        } else if (node.nodeType === Node.ELEMENT_NODE && !node.classList.contains('comment-block')) {
+                        } else if (node.nodeType === Node.ELEMENT_NODE && 
+                                   !node.classList.contains('inline-comment-bubble')) {
                             text += node.textContent;
                         }
                     });
-                    // Handle empty lines (nbsp)
                     if (text === '\\u00a0' || text === '') {
                         text = '';
                     }
