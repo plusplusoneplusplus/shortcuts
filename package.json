@@ -31,7 +31,9 @@
   ],
   "activationEvents": [
     "onView:shortcutsView",
+    "onView:markdownCommentsView",
     "onCommand:shortcuts.createLogicalGroup",
+    "onCommand:markdownComments.addComment",
     "onViewContainer:shortcuts"
   ],
   "main": "./dist/extension.js",
@@ -56,6 +58,11 @@
           "id": "shortcutsView",
           "name": "Groups",
           "when": "true"
+        },
+        {
+          "id": "markdownCommentsView",
+          "name": "Markdown Comments",
+          "when": "true"
         }
       ]
     },
@@ -67,6 +74,10 @@
       {
         "view": "shortcutsView",
         "contents": "📁 **Shortcuts Groups**\n\n[Create New Group](command:shortcuts.createLogicalGroup)\n\nOrganize your workspace with custom groups.\n\n**Actions:**\n• Create groups to organize files and folders\n• Add files and folders to groups\n• Organize by project, type, or workflow\n• Quick access to frequently used locations"
+      },
+      {
+        "view": "markdownCommentsView",
+        "contents": "💬 **Markdown Comments**\n\nNo comments yet.\n\n**To add a comment:**\n1. Open a .md file\n2. Select text\n3. Press `Ctrl+Shift+M` (or `Cmd+Shift+M` on Mac)\n4. Enter your comment\n\n**Features:**\n• Add inline comments to markdown files\n• Generate AI prompts from comments\n• Track open vs resolved comments"
       }
     ],
     "configuration": {
@@ -127,6 +138,21 @@
           "type": "string",
           "default": "",
           "description": "Azure Blob Storage: Storage account name"
+        },
+        "workspaceShortcuts.markdownComments.showResolved": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show resolved comments in the comments panel"
+        },
+        "workspaceShortcuts.markdownComments.highlightColor": {
+          "type": "string",
+          "default": "rgba(255, 235, 59, 0.3)",
+          "description": "Background highlight color for open comments (CSS color)"
+        },
+        "workspaceShortcuts.markdownComments.resolvedHighlightColor": {
+          "type": "string",
+          "default": "rgba(76, 175, 80, 0.2)",
+          "description": "Background highlight color for resolved comments (CSS color)"
         }
       }
     },
@@ -305,6 +331,78 @@
         "command": "shortcuts.sync.status",
         "title": "Show Sync Status",
         "icon": "$(info)"
+      },
+      {
+        "command": "markdownComments.addComment",
+        "title": "Add Comment",
+        "category": "Markdown Comments",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "markdownComments.editComment",
+        "title": "Edit Comment",
+        "category": "Markdown Comments",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "markdownComments.deleteComment",
+        "title": "Delete Comment",
+        "category": "Markdown Comments",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "markdownComments.resolveComment",
+        "title": "Mark as Resolved",
+        "category": "Markdown Comments",
+        "icon": "$(check)"
+      },
+      {
+        "command": "markdownComments.reopenComment",
+        "title": "Reopen Comment",
+        "category": "Markdown Comments",
+        "icon": "$(circle-outline)"
+      },
+      {
+        "command": "markdownComments.resolveAll",
+        "title": "Resolve All Comments",
+        "category": "Markdown Comments",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "markdownComments.generatePrompt",
+        "title": "Generate AI Prompt",
+        "category": "Markdown Comments",
+        "icon": "$(hubot)"
+      },
+      {
+        "command": "markdownComments.generateAndCopyPrompt",
+        "title": "Generate & Copy AI Prompt",
+        "category": "Markdown Comments",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "markdownComments.goToComment",
+        "title": "Go to Comment",
+        "category": "Markdown Comments",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "markdownComments.toggleShowResolved",
+        "title": "Toggle Show Resolved",
+        "category": "Markdown Comments",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "markdownComments.refresh",
+        "title": "Refresh Comments",
+        "category": "Markdown Comments",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "markdownComments.openConfig",
+        "title": "Open Comments Configuration",
+        "category": "Markdown Comments",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -337,6 +435,21 @@
         {
           "command": "shortcuts.sync.status",
           "when": "view == shortcutsView && config.workspaceShortcuts.sync.enabled",
+          "group": "navigation"
+        },
+        {
+          "command": "markdownComments.generatePrompt",
+          "when": "view == markdownCommentsView",
+          "group": "navigation"
+        },
+        {
+          "command": "markdownComments.toggleShowResolved",
+          "when": "view == markdownCommentsView",
+          "group": "navigation"
+        },
+        {
+          "command": "markdownComments.refresh",
+          "when": "view == markdownCommentsView",
           "group": "navigation"
         }
       ],
@@ -510,6 +623,38 @@
           "command": "shortcuts.deleteGlobalNote",
           "when": "view == globalNotesView && viewItem == globalNote",
           "group": "globalNote@3"
+        },
+        {
+          "command": "markdownComments.resolveComment",
+          "when": "view == markdownCommentsView && viewItem == comment_open",
+          "group": "comment@1"
+        },
+        {
+          "command": "markdownComments.reopenComment",
+          "when": "view == markdownCommentsView && viewItem == comment_resolved",
+          "group": "comment@1"
+        },
+        {
+          "command": "markdownComments.editComment",
+          "when": "view == markdownCommentsView && (viewItem == comment_open || viewItem == comment_resolved)",
+          "group": "comment@2"
+        },
+        {
+          "command": "markdownComments.deleteComment",
+          "when": "view == markdownCommentsView && (viewItem == comment_open || viewItem == comment_resolved)",
+          "group": "comment@3"
+        },
+        {
+          "command": "markdownComments.resolveAll",
+          "when": "view == markdownCommentsView && viewItem == commentFile",
+          "group": "commentFile@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "markdownComments.addComment",
+          "when": "editorHasSelection && resourceExtname == .md",
+          "group": "comments"
         }
       ],
       "view/context": [
@@ -566,6 +711,12 @@
         "key": "ctrl+z",
         "mac": "cmd+z",
         "when": "focusedView == shortcutsView"
+      },
+      {
+        "command": "markdownComments.addComment",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "editorHasSelection && resourceExtname == .md"
       }
     ]
   },

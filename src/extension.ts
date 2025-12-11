@@ -8,6 +8,14 @@ import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manage
 import { GlobalNotesTreeDataProvider } from './shortcuts/global-notes-tree-data-provider';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
+import {
+    CommentsDecorationManager,
+    CommentsHoverProvider,
+    CommentsManager,
+    MarkdownCommentsCommands,
+    MarkdownCommentsTreeDataProvider,
+    PromptGenerator
+} from './shortcuts/markdown-comments';
 import { NoteDocumentManager } from './shortcuts/note-document-provider';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { ThemeManager } from './shortcuts/theme-manager';
@@ -159,6 +167,50 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         });
 
+        // Initialize Markdown Comments feature
+        const commentsManager = new CommentsManager(workspaceRoot);
+        await commentsManager.initialize();
+
+        const commentsTreeDataProvider = new MarkdownCommentsTreeDataProvider(commentsManager);
+        const commentsDecorationManager = new CommentsDecorationManager(commentsManager, context);
+        const commentsHoverProvider = new CommentsHoverProvider(commentsManager);
+        const promptGenerator = new PromptGenerator(commentsManager);
+        const commentsCommands = new MarkdownCommentsCommands(
+            commentsManager,
+            commentsDecorationManager,
+            commentsTreeDataProvider,
+            promptGenerator
+        );
+
+        // Register comments tree view
+        const commentsTreeView = vscode.window.createTreeView('markdownCommentsView', {
+            treeDataProvider: commentsTreeDataProvider,
+            showCollapseAll: true
+        });
+        commentsCommands.setTreeView(commentsTreeView);
+
+        // Update comments view description with count
+        const updateCommentsViewDescription = () => {
+            const openCount = commentsManager.getOpenCommentCount();
+            const resolvedCount = commentsManager.getResolvedCommentCount();
+            if (openCount > 0 || resolvedCount > 0) {
+                commentsTreeView.description = `${openCount} open, ${resolvedCount} resolved`;
+            } else {
+                commentsTreeView.description = undefined;
+            }
+        };
+        updateCommentsViewDescription();
+        commentsManager.onDidChangeComments(updateCommentsViewDescription);
+
+        // Register hover provider for markdown files
+        const hoverProviderDisposable = vscode.languages.registerHoverProvider(
+            { language: 'markdown', scheme: 'file' },
+            commentsHoverProvider
+        );
+
+        // Register markdown comments commands
+        const commentsCommandDisposables = commentsCommands.registerCommands(context);
+
         // Collect all disposables for proper cleanup
         const disposables: vscode.Disposable[] = [
             treeView,
@@ -172,7 +224,14 @@ export async function activate(context: vscode.ExtensionContext) {
             noteDocumentManager,
             keyboardHelpCommand,
             undoMoveCommand,
-            ...commandDisposables
+            ...commandDisposables,
+            // Markdown Comments disposables
+            commentsTreeView,
+            commentsManager,
+            commentsTreeDataProvider,
+            commentsDecorationManager,
+            hoverProviderDisposable,
+            ...commentsCommandDisposables
         ];
 
         // Add all disposables to context subscriptions
