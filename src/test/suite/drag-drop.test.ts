@@ -17,6 +17,7 @@ suite('Drag and Drop Tests', () => {
     let dragDropController: ShortcutsDragDropController;
     let testFolder: string;
     let testFile: string;
+    let extensionContext: vscode.ExtensionContext;
 
     suiteSetup(async () => {
         // Use the workspace folder launched by the test runner for isolation
@@ -44,8 +45,29 @@ suite('Drag and Drop Tests', () => {
             await ext.activate();
         }
 
-        // Setup providers
-        configManager = new ConfigurationManager(tempDir);
+        // Create a mock extension context for note storage
+        extensionContext = {
+            globalState: {
+                keys: () => [],
+                get: <T>(key: string, defaultValue?: T): T => {
+                    const mockStorage = (extensionContext.globalState as any)._storage || {};
+                    return mockStorage[key] !== undefined ? mockStorage[key] : defaultValue!;
+                },
+                update: async (key: string, value: any): Promise<void> => {
+                    const mockStorage = (extensionContext.globalState as any)._storage || {};
+                    mockStorage[key] = value;
+                    (extensionContext.globalState as any)._storage = mockStorage;
+                },
+                setKeysForSync: () => { }
+            },
+            subscriptions: []
+        } as any;
+
+        // Initialize storage
+        (extensionContext.globalState as any)._storage = {};
+
+        // Setup providers with mock context
+        configManager = new ConfigurationManager(tempDir, extensionContext);
         themeManager = new ThemeManager();
         provider = new LogicalTreeDataProvider(tempDir, configManager, themeManager);
 
@@ -590,17 +612,18 @@ suite('Drag and Drop Tests', () => {
         // Setup: Two groups, one with a note
         await configManager.createLogicalGroup('Group A', 'First group');
         await configManager.createLogicalGroup('Group B', 'Second group');
-        await configManager.createNote('Group A', 'My Note', 'Note content here');
+        const noteId = await configManager.createNote('Group A', 'My Note');
 
-        // Get the note ID
+        // Get the note items from Group A
         let config = await configManager.loadConfiguration();
-        assert.ok(config.logicalGroups[0].notes);
-        assert.strictEqual(config.logicalGroups[0].notes!.length, 1);
-        const noteId = config.logicalGroups[0].notes![0].id;
-        assert.strictEqual(config.logicalGroups[1].notes?.length || 0, 0, 'Group B should have no notes');
+        const groupANotes = config.logicalGroups[0].items.filter(item => item.type === 'note');
+        assert.strictEqual(groupANotes.length, 1, 'Group A should have one note');
+        assert.strictEqual(groupANotes[0].noteId, noteId);
+        const groupBNotes = config.logicalGroups[1].items.filter(item => item.type === 'note');
+        assert.strictEqual(groupBNotes.length, 0, 'Group B should have no notes');
 
         // Create note item and target group
-        const noteItem = new NoteShortcutItem('My Note', noteId, 'Group A', 'Note content here');
+        const noteItem = new NoteShortcutItem('My Note', noteId, 'Group A');
         const targetGroup = new LogicalGroupItem('Group B', 'Second group');
 
         // Drag note from Group A to Group B
@@ -612,11 +635,12 @@ suite('Drag and Drop Tests', () => {
 
         // Verify: Note moved in config
         config = await configManager.loadConfiguration();
-        assert.strictEqual(config.logicalGroups[0].notes?.length || 0, 0, 'Group A should have no notes (removed)');
-        assert.strictEqual(config.logicalGroups[1].notes?.length || 0, 1, 'Group B should have one note (added)');
-        assert.strictEqual(config.logicalGroups[1].notes![0].id, noteId);
-        assert.strictEqual(config.logicalGroups[1].notes![0].title, 'My Note');
-        assert.strictEqual(config.logicalGroups[1].notes![0].content, 'Note content here');
+        const groupANotesAfter = config.logicalGroups[0].items.filter(item => item.type === 'note');
+        const groupBNotesAfter = config.logicalGroups[1].items.filter(item => item.type === 'note');
+        assert.strictEqual(groupANotesAfter.length, 0, 'Group A should have no notes (removed)');
+        assert.strictEqual(groupBNotesAfter.length, 1, 'Group B should have one note (added)');
+        assert.strictEqual(groupBNotesAfter[0].noteId, noteId);
+        assert.strictEqual(groupBNotesAfter[0].name, 'My Note');
     });
 });
 

@@ -7,9 +7,13 @@
  * - Code block syntax highlighting (via highlight.js)
  * - Mermaid diagram rendering
  * - Inline commenting on text and diagrams
+ * 
+ * NOTE: Core calculation logic (e.g., table cell line numbers) is generated from
+ * webview-utils.ts to ensure it stays in sync with unit tests.
  */
 
 import * as vscode from 'vscode';
+import { getWebviewTableCellLineFunction } from './webview-utils';
 
 /**
  * Generate the HTML content for the Review Editor View webview
@@ -3173,35 +3177,7 @@ function getScript(): string {
                 return null;
             }
             
-            // Get line number from table cell
-            function getLineFromTableCell(cell) {
-                const container = cell.closest('.md-table-container');
-                if (!container) return null;
-                
-                const startLine = parseInt(container.dataset.startLine);
-                const table = container.querySelector('.md-table');
-                if (!table) return startLine;
-                
-                const row = cell.closest('tr');
-                if (!row) return startLine;
-                
-                // Count which row this is
-                const allRows = table.querySelectorAll('tr');
-                let rowIndex = 0;
-                for (let i = 0; i < allRows.length; i++) {
-                    if (allRows[i] === row) {
-                        rowIndex = i;
-                        break;
-                    }
-                }
-                
-                // Header row is at startLine, separator at startLine+1, data rows start at startLine+2
-                if (row.parentElement.tagName === 'THEAD') {
-                    return startLine;
-                }
-                // Data rows: startLine + 2 (header + separator) + rowIndex in tbody
-                return startLine + 2 + rowIndex;
-            }
+${getWebviewTableCellLineFunction()}
 
             // Handle editor input (content changes)
             function handleEditorInput(e) {
