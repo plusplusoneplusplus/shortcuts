@@ -87,6 +87,31 @@ export function getWebviewContent(
         </div>
     </div>
 
+    <!-- Context menu for adding comments -->
+    <div class="context-menu" id="contextMenu" style="display: none;">
+        <div class="context-menu-item" id="contextMenuCut">
+            <span class="context-menu-icon">✂️</span>
+            <span class="context-menu-label">Cut</span>
+            <span class="context-menu-shortcut">Ctrl+X</span>
+        </div>
+        <div class="context-menu-item" id="contextMenuCopy">
+            <span class="context-menu-icon">📋</span>
+            <span class="context-menu-label">Copy</span>
+            <span class="context-menu-shortcut">Ctrl+C</span>
+        </div>
+        <div class="context-menu-item" id="contextMenuPaste">
+            <span class="context-menu-icon">📄</span>
+            <span class="context-menu-label">Paste</span>
+            <span class="context-menu-shortcut">Ctrl+V</span>
+        </div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" id="contextMenuAddComment">
+            <span class="context-menu-icon">💬</span>
+            <span class="context-menu-label">Add Comment</span>
+            <span class="context-menu-shortcut">Ctrl+Shift+M</span>
+        </div>
+    </div>
+
     <script nonce="${nonce}">
         ${getScript()}
     </script>
@@ -613,6 +638,61 @@ function getStyles(): string {
             font-size: 11px;
             margin-left: 6px;
         }
+
+        /* Context menu */
+        .context-menu {
+            position: fixed;
+            min-width: 200px;
+            background: var(--comment-bg);
+            border: 1px solid var(--comment-border);
+            border-radius: 6px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+            z-index: 2000;
+            overflow: hidden;
+        }
+
+        .context-menu-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+
+        .context-menu-item:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .context-menu-item.disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .context-menu-item.disabled:hover {
+            background: transparent;
+        }
+
+        .context-menu-icon {
+            margin-right: 10px;
+            font-size: 14px;
+        }
+
+        .context-menu-label {
+            flex: 1;
+            font-size: 13px;
+        }
+
+        .context-menu-shortcut {
+            font-size: 11px;
+            opacity: 0.6;
+            margin-left: 16px;
+        }
+
+        .context-menu-separator {
+            height: 1px;
+            background: var(--border-color);
+            margin: 4px 8px;
+        }
     `;
 }
 
@@ -632,6 +712,7 @@ function getScript(): string {
             let pendingSelection = null;
             let editingCommentId = null;
             let activeCommentBubble = null;
+            let savedSelectionForContextMenu = null; // Saved selection when context menu opens
 
             // DOM elements
             const editorContainer = document.getElementById('editorContainer');
@@ -645,6 +726,11 @@ function getScript(): string {
             const showResolvedCheckbox = document.getElementById('showResolvedCheckbox');
             const openCount = document.getElementById('openCount');
             const resolvedCount = document.getElementById('resolvedCount');
+            const contextMenu = document.getElementById('contextMenu');
+            const contextMenuCut = document.getElementById('contextMenuCut');
+            const contextMenuCopy = document.getElementById('contextMenuCopy');
+            const contextMenuPaste = document.getElementById('contextMenuPaste');
+            const contextMenuAddComment = document.getElementById('contextMenuAddComment');
 
             // Initialize
             function init() {
@@ -714,6 +800,138 @@ function getScript(): string {
                         handleAddComment();
                     }
                 });
+
+                // Context menu
+                editorContent.addEventListener('contextmenu', handleContextMenu);
+                contextMenuCut.addEventListener('click', () => {
+                    hideContextMenu();
+                    handleCut();
+                });
+                contextMenuCopy.addEventListener('click', () => {
+                    hideContextMenu();
+                    handleCopy();
+                });
+                contextMenuPaste.addEventListener('click', () => {
+                    hideContextMenu();
+                    handlePaste();
+                });
+                contextMenuAddComment.addEventListener('click', () => {
+                    hideContextMenu();
+                    handleAddCommentFromContextMenu();
+                });
+
+                // Hide context menu on click outside or escape
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('.context-menu')) {
+                        hideContextMenu();
+                    }
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        hideContextMenu();
+                    }
+                });
+            }
+
+            // Handle context menu
+            function handleContextMenu(e) {
+                const selection = window.getSelection();
+                const hasSelection = selection && !selection.isCollapsed && selection.toString().trim().length > 0;
+
+                // Save selection info for later use (before menu click clears it)
+                if (hasSelection) {
+                    const range = selection.getRangeAt(0);
+                    const selectionInfo = getSelectionPosition(range);
+                    if (selectionInfo) {
+                        savedSelectionForContextMenu = {
+                            ...selectionInfo,
+                            selectedText: selection.toString().trim(),
+                            range: range.cloneRange(),
+                            rect: range.getBoundingClientRect()
+                        };
+                    }
+                } else {
+                    savedSelectionForContextMenu = null;
+                }
+
+                // Update menu item states based on selection
+                if (hasSelection) {
+                    contextMenuCut.classList.remove('disabled');
+                    contextMenuCopy.classList.remove('disabled');
+                    contextMenuAddComment.classList.remove('disabled');
+                } else {
+                    contextMenuCut.classList.add('disabled');
+                    contextMenuCopy.classList.add('disabled');
+                    contextMenuAddComment.classList.add('disabled');
+                }
+                // Paste is always enabled (depends on clipboard content, not selection)
+                contextMenuPaste.classList.remove('disabled');
+
+                // Position and show context menu
+                e.preventDefault();
+                const x = Math.min(e.clientX, window.innerWidth - 220);
+                const y = Math.min(e.clientY, window.innerHeight - 150);
+                contextMenu.style.left = x + 'px';
+                contextMenu.style.top = y + 'px';
+                contextMenu.style.display = 'block';
+            }
+
+            // Hide context menu
+            function hideContextMenu() {
+                contextMenu.style.display = 'none';
+            }
+
+            // Handle cut (uses saved selection from context menu)
+            function handleCut() {
+                if (savedSelectionForContextMenu && savedSelectionForContextMenu.selectedText) {
+                    navigator.clipboard.writeText(savedSelectionForContextMenu.selectedText).then(() => {
+                        // Restore selection and delete
+                        const selection = window.getSelection();
+                        selection.removeAllRanges();
+                        selection.addRange(savedSelectionForContextMenu.range);
+                        document.execCommand('delete');
+                        savedSelectionForContextMenu = null;
+                    });
+                }
+            }
+
+            // Handle copy (uses saved selection from context menu)
+            function handleCopy() {
+                if (savedSelectionForContextMenu && savedSelectionForContextMenu.selectedText) {
+                    navigator.clipboard.writeText(savedSelectionForContextMenu.selectedText);
+                }
+            }
+
+            // Handle paste
+            function handlePaste() {
+                navigator.clipboard.readText().then(text => {
+                    editorContent.focus();
+                    document.execCommand('insertText', false, text);
+                }).catch(() => {
+                    // Fallback if clipboard API fails
+                    editorContent.focus();
+                    document.execCommand('paste');
+                });
+            }
+
+            // Handle add comment from context menu (uses saved selection)
+            function handleAddCommentFromContextMenu() {
+                if (!savedSelectionForContextMenu) {
+                    alert('Please select some text first to add a comment.');
+                    return;
+                }
+
+                pendingSelection = {
+                    startLine: savedSelectionForContextMenu.startLine,
+                    startColumn: savedSelectionForContextMenu.startColumn,
+                    endLine: savedSelectionForContextMenu.endLine,
+                    endColumn: savedSelectionForContextMenu.endColumn,
+                    selectedText: savedSelectionForContextMenu.selectedText
+                };
+
+                // Show the floating panel
+                showFloatingPanel(savedSelectionForContextMenu.rect, savedSelectionForContextMenu.selectedText);
+                savedSelectionForContextMenu = null;
             }
 
             // Handle messages from extension
