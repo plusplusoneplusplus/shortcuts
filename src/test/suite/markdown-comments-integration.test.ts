@@ -582,5 +582,168 @@ Final thoughts and summary of the document.
 
             newManager.dispose();
         });
+
+        test('should have all required Review Editor View commands registered', async () => {
+            const commands = await vscode.commands.getCommands();
+
+            // Core commands for Review Editor View
+            const requiredCommands = [
+                'markdownComments.openWithReviewEditor',
+                'markdownComments.resolveComment',
+                'markdownComments.reopenComment',
+                'markdownComments.deleteComment',
+                'markdownComments.resolveAll',
+                'markdownComments.generatePrompt',
+                'markdownComments.generateAndCopyPrompt',
+                'markdownComments.goToComment',
+                'markdownComments.toggleShowResolved',
+                'markdownComments.refresh',
+                'markdownComments.openConfig'
+            ];
+
+            for (const cmd of requiredCommands) {
+                assert.ok(
+                    commands.includes(cmd),
+                    `Command ${cmd} should be registered`
+                );
+            }
+        });
+
+        test('should NOT have obsolete decoration-based commands', async () => {
+            const commands = await vscode.commands.getCommands();
+
+            // These commands were removed in favor of Review Editor View
+            const obsoleteCommands = [
+                'markdownComments.addComment',  // Now handled in webview
+                'markdownComments.editComment'   // Now handled in webview
+            ];
+
+            for (const cmd of obsoleteCommands) {
+                assert.ok(
+                    !commands.includes(cmd),
+                    `Obsolete command ${cmd} should NOT be registered`
+                );
+            }
+        });
+    });
+
+    suite('Comments Data Flow for Review Editor', () => {
+        test('should provide comments grouped by file for tree view', async () => {
+            await commentsManager.initialize();
+
+            // Add comments to multiple files
+            await commentsManager.addComment(testMarkdownFile, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'T1', 'Comment in file 1');
+
+            const file2 = path.join(tempDir, 'second.md');
+            fs.writeFileSync(file2, '# Second Document\n\nContent here.');
+            await commentsManager.addComment(file2, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'T2', 'Comment in file 2');
+            await commentsManager.addComment(testMarkdownFile, { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'T3', 'Another comment in file 1');
+
+            const grouped = commentsManager.getCommentsGroupedByFile();
+            assert.strictEqual(grouped.size, 2, 'Should have 2 files with comments');
+
+            // Check file 1 has 2 comments
+            let file1Comments = 0;
+            grouped.forEach((comments, filePath) => {
+                if (filePath.includes('test-document.md')) {
+                    file1Comments = comments.length;
+                }
+            });
+            assert.strictEqual(file1Comments, 2, 'File 1 should have 2 comments');
+        });
+
+        test('should filter comments by status for Review Editor display', async () => {
+            await commentsManager.initialize();
+
+            const c1 = await commentsManager.addComment(testMarkdownFile, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'T1', 'Open comment');
+            await commentsManager.addComment(testMarkdownFile, { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'T2', 'Resolved comment');
+            await commentsManager.resolveComment(c1.id);
+
+            const allComments = commentsManager.getCommentsForFile(testMarkdownFile);
+            assert.strictEqual(allComments.length, 2);
+
+            const openComments = allComments.filter(c => c.status === 'open');
+            const resolvedComments = allComments.filter(c => c.status === 'resolved');
+
+            assert.strictEqual(openComments.length, 1);
+            assert.strictEqual(resolvedComments.length, 1);
+        });
+
+        test('should emit events for Review Editor View to update UI', async () => {
+            await commentsManager.initialize();
+
+            const events: string[] = [];
+            const disposable = commentsManager.onDidChangeComments((event) => {
+                events.push(event.type);
+            });
+
+            // Simulate actions that would be triggered from Review Editor View
+            const comment = await commentsManager.addComment(testMarkdownFile, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'Text', 'Comment');
+            await commentsManager.updateComment(comment.id, { comment: 'Updated via Review Editor' });
+            await commentsManager.resolveComment(comment.id);
+            await commentsManager.deleteComment(comment.id);
+
+            assert.deepStrictEqual(events, [
+                'comment-added',
+                'comment-updated',
+                'comment-resolved',
+                'comment-deleted'
+            ]);
+
+            disposable.dispose();
+        });
+    });
+
+    suite('Review Editor View Prompt Generation', () => {
+        test('should generate prompt for Review Editor View toolbar action', async () => {
+            await commentsManager.initialize();
+
+            await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 5, startColumn: 1, endLine: 5, endColumn: 50 },
+                'This is a test document',
+                'Add more context here'
+            );
+            await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 10, startColumn: 1, endLine: 10, endColumn: 30 },
+                'Lorem ipsum',
+                'Expand this section'
+            );
+
+            const promptGenerator = new PromptGenerator(commentsManager);
+            const prompt = promptGenerator.generatePrompt({
+                includeFullFileContent: false,
+                groupByFile: true,
+                includeLineNumbers: true,
+                outputFormat: 'markdown'
+            });
+
+            // Verify prompt contains both comments
+            assert.ok(prompt.includes('Add more context here'));
+            assert.ok(prompt.includes('Expand this section'));
+            assert.ok(prompt.includes('Lines 5'));
+            assert.ok(prompt.includes('Lines 10'));
+        });
+
+        test('should exclude resolved comments from prompt', async () => {
+            await commentsManager.initialize();
+
+            const c1 = await commentsManager.addComment(testMarkdownFile, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'Text1', 'Open comment');
+            const c2 = await commentsManager.addComment(testMarkdownFile, { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'Text2', 'Resolved comment');
+
+            await commentsManager.resolveComment(c2.id);
+
+            const promptGenerator = new PromptGenerator(commentsManager);
+            const prompt = promptGenerator.generatePrompt({
+                includeFullFileContent: false,
+                groupByFile: true,
+                includeLineNumbers: true,
+                outputFormat: 'markdown'
+            });
+
+            assert.ok(prompt.includes('Open comment'));
+            assert.ok(!prompt.includes('Resolved comment'));
+        });
     });
 });
