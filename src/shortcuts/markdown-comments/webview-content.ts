@@ -2926,42 +2926,32 @@ function getScript(): string {
                 bubble.className = 'inline-comment-bubble' + (comment.status === 'resolved' ? ' resolved' : '');
                 bubble.innerHTML = renderCommentBubbleContent(comment);
                 
-                // Check if anchor is inside a table or code block
-                const isInTable = anchorEl.closest('.md-table-container');
-                const isInCodeBlock = anchorEl.closest('.code-block');
+                // Always use fixed positioning to avoid layout interference
+                // Appending to inline elements (like .commented-text spans) can cause text flow issues
+                bubble.style.position = 'fixed';
+                bubble.style.zIndex = '200';
                 
-                if (isInTable || isInCodeBlock) {
-                    // For table cells and code blocks, use fixed positioning
-                    bubble.style.position = 'fixed';
-                    bubble.style.zIndex = '200';
-                    
-                    const rect = anchorEl.getBoundingClientRect();
-                    let left = rect.left;
-                    let top = rect.bottom + 5;
-                    
-                    // Adjust if bubble would go off screen
-                    if (left + 350 > window.innerWidth - 20) {
-                        left = window.innerWidth - 370;
-                    }
-                    if (left < 20) {
-                        left = 20;
-                    }
-                    if (top + 200 > window.innerHeight) {
-                        top = rect.top - 210;
-                    }
-                    
-                    bubble.style.left = left + 'px';
-                    bubble.style.top = top + 'px';
-                    bubble.style.width = '350px';
-                    
-                    document.body.appendChild(bubble);
-                    activeCommentBubble = { element: bubble, anchor: anchorEl, isFixed: true };
-                } else {
-                    // For regular lines, position relative to anchor
-                    anchorEl.style.position = 'relative';
-                    anchorEl.appendChild(bubble);
-                    activeCommentBubble = { element: bubble, anchor: anchorEl, isFixed: false };
+                const rect = anchorEl.getBoundingClientRect();
+                let left = rect.left;
+                let top = rect.bottom + 5;
+                
+                // Adjust if bubble would go off screen
+                if (left + 350 > window.innerWidth - 20) {
+                    left = window.innerWidth - 370;
                 }
+                if (left < 20) {
+                    left = 20;
+                }
+                if (top + 200 > window.innerHeight) {
+                    top = rect.top - 210;
+                }
+                
+                bubble.style.left = left + 'px';
+                bubble.style.top = top + 'px';
+                bubble.style.width = '350px';
+                
+                document.body.appendChild(bubble);
+                activeCommentBubble = { element: bubble, anchor: anchorEl, isFixed: true };
                 
                 // Setup bubble action handlers
                 setupBubbleActions(bubble, comment);
