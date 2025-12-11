@@ -591,6 +591,7 @@ CommentsManager.onDidChangeComments event
 ## Related Documents
 
 - [SYNC_IMPLEMENTATION.md](./SYNC_IMPLEMENTATION.md) - For cloud sync of comments
+- [MARKDOWN_VIEWER_DESIGN.md](./MARKDOWN_VIEWER_DESIGN.md) - Syntax highlighting, code blocks, and Mermaid diagram support
 - [CLAUDE.md](../CLAUDE.md) - Main project documentation
 
 ---
