@@ -533,13 +533,13 @@ function getStyles(): string {
 
         /* Inline edit panel */
         .inline-edit-panel {
-            position: fixed;
+            position: absolute;
             width: 350px;
             background: var(--comment-bg);
             border: 1px solid var(--comment-border);
             border-radius: 8px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-            z-index: 1000;
+            z-index: 150;
         }
 
         .inline-edit-header {
@@ -992,6 +992,8 @@ function getStyles(): string {
             font-family: var(--vscode-editor-font-family, monospace);
             font-size: var(--vscode-editor-font-size, 13px);
             line-height: 1.5;
+            user-select: text;
+            cursor: text;
             display: block;
         }
         
@@ -1326,6 +1328,8 @@ function getStyles(): string {
             padding: 10px 14px;
             text-align: left;
             vertical-align: top;
+            user-select: text;
+            cursor: text;
         }
         
         .md-table th {
@@ -1494,8 +1498,13 @@ function getScript(): string {
                     }
                 });
 
-                // Context menu
-                editorContent.addEventListener('contextmenu', handleContextMenu);
+                // Context menu - attach to document to work with tables and code blocks too
+                document.addEventListener('contextmenu', (e) => {
+                    // Only handle context menu within the editor container
+                    if (e.target.closest('#editorContainer')) {
+                        handleContextMenu(e);
+                    }
+                });
                 contextMenuCut.addEventListener('click', () => {
                     hideContextMenu();
                     handleCut();
@@ -1778,15 +1787,26 @@ function getScript(): string {
                 editingCommentId = comment.id;
                 inlineEditInput.value = comment.comment;
                 
-                // Position the panel
-                let left = rect.left;
-                let top = rect.bottom + 5;
+                // Use absolute positioning relative to document
+                // Calculate position accounting for scroll
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
                 
-                if (left + 350 > window.innerWidth - 20) {
-                    left = window.innerWidth - 370;
+                let left = rect.left + scrollLeft;
+                let top = rect.bottom + scrollTop + 5;
+                
+                // Adjust if panel would go off-screen horizontally
+                if (left + 350 > window.innerWidth + scrollLeft - 20) {
+                    left = window.innerWidth + scrollLeft - 370;
                 }
-                if (top + 150 > window.innerHeight) {
-                    top = rect.top - 160;
+                if (left < scrollLeft + 20) {
+                    left = scrollLeft + 20;
+                }
+                
+                // Adjust if panel would go off-screen vertically
+                const viewportBottom = scrollTop + window.innerHeight;
+                if (top + 150 > viewportBottom) {
+                    top = rect.top + scrollTop - 160;
                 }
                 
                 inlineEditPanel.style.left = left + 'px';
@@ -2042,18 +2062,28 @@ function getScript(): string {
             }
             
             /**
-             * Render a code block with syntax highlighting
+             * Render a code block with syntax highlighting and comment highlights
              */
             function renderCodeBlock(block, commentsMap) {
                 const highlightedCode = highlightCode(block.code, block.language);
                 const codeLines = highlightedCode.split('\\n');
+                const plainCodeLines = block.code.split('\\n');
                 
                 const hasBlockComments = checkBlockHasComments(block.startLine, block.endLine, commentsMap);
                 const containerClass = 'code-block' + (hasBlockComments ? ' has-comments' : '');
                 
                 let linesHtml = codeLines.map((line, i) => {
                     const actualLine = block.startLine + 1 + i; // +1 for fence line
-                    return '<span class="code-line" data-line="' + actualLine + '">' + (line || '&nbsp;') + '</span>';
+                    const plainLine = plainCodeLines[i] || '';
+                    const lineComments = getCommentsForLine(actualLine, commentsMap);
+                    
+                    let lineContent = line || '&nbsp;';
+                    // Apply comment highlights to this code line
+                    if (lineComments.length > 0) {
+                        lineContent = applyCommentsToBlockContent(lineContent, plainLine, lineComments);
+                    }
+                    
+                    return '<span class="code-line" data-line="' + actualLine + '">' + lineContent + '</span>';
                 }).join('\\n');
                 
                 return '<div class="' + containerClass + '" data-start-line="' + block.startLine + '" data-end-line="' + block.endLine + '" data-block-id="' + block.id + '">' +
@@ -2165,7 +2195,7 @@ function getScript(): string {
             }
             
             /**
-             * Render a table as HTML
+             * Render a table as HTML with comment highlights
              */
             function renderTable(table, commentsMap) {
                 const hasComments = checkBlockHasComments(table.startLine, table.endLine - 1, commentsMap);
@@ -2174,27 +2204,40 @@ function getScript(): string {
                 let html = '<div class="' + containerClass + '" data-start-line="' + table.startLine + '" data-end-line="' + (table.endLine - 1) + '" data-table-id="' + table.id + '">';
                 html += '<table class="md-table">';
                 
+                // Header row is at startLine
+                const headerLineNum = table.startLine;
+                const headerComments = getCommentsForLine(headerLineNum, commentsMap);
+                
                 // Header
-                html += '<thead><tr>';
+                html += '<thead><tr data-line="' + headerLineNum + '">';
                 table.headers.forEach((header, i) => {
                     const align = table.alignments[i] || 'left';
-                    const alignClass = align !== 'left' ? ' class="align-' + align + '"' : '';
-                    html += '<th' + alignClass + '>' + applyInlineMarkdown(header) + '</th>';
+                    const alignClass = align !== 'left' ? ' align-' + align : '';
+                    let cellContent = applyInlineMarkdown(header);
+                    // Apply comment highlights to header cell
+                    cellContent = applyCommentsToBlockContent(cellContent, header, headerComments);
+                    html += '<th class="table-cell' + alignClass + '" data-line="' + headerLineNum + '">' + cellContent + '</th>';
                 });
                 html += '</tr></thead>';
                 
-                // Body
+                // Body - rows start at startLine + 2 (after header and separator)
                 html += '<tbody>';
-                table.rows.forEach(row => {
-                    html += '<tr>';
+                table.rows.forEach((row, rowIndex) => {
+                    const rowLineNum = table.startLine + 2 + rowIndex;
+                    const rowComments = getCommentsForLine(rowLineNum, commentsMap);
+                    
+                    html += '<tr data-line="' + rowLineNum + '">';
                     row.forEach((cell, i) => {
                         const align = table.alignments[i] || 'left';
-                        const alignClass = align !== 'left' ? ' class="align-' + align + '"' : '';
-                        html += '<td' + alignClass + '>' + applyInlineMarkdown(cell) + '</td>';
+                        const alignClass = align !== 'left' ? ' align-' + align : '';
+                        let cellContent = applyInlineMarkdown(cell);
+                        // Apply comment highlights to cell
+                        cellContent = applyCommentsToBlockContent(cellContent, cell, rowComments);
+                        html += '<td class="table-cell' + alignClass + '" data-line="' + rowLineNum + '">' + cellContent + '</td>';
                     });
                     // Fill in empty cells if row is shorter than header
                     for (let j = row.length; j < table.headers.length; j++) {
-                        html += '<td></td>';
+                        html += '<td class="table-cell" data-line="' + rowLineNum + '"></td>';
                     }
                     html += '</tr>';
                 });
@@ -2211,6 +2254,36 @@ function getScript(): string {
                 html += '</div>';
                 
                 return html;
+            }
+            
+            /**
+             * Get visible comments for a specific line
+             */
+            function getCommentsForLine(lineNum, commentsMap) {
+                const lineComments = commentsMap.get(lineNum) || [];
+                return lineComments.filter(c => settings.showResolved || c.status !== 'resolved');
+            }
+            
+            /**
+             * Apply comment highlights to block content (tables, code blocks)
+             */
+            function applyCommentsToBlockContent(htmlContent, plainText, lineComments) {
+                if (lineComments.length === 0) return htmlContent;
+                
+                // Sort comments by column descending to apply from right to left
+                const sortedComments = [...lineComments].sort((a, b) => {
+                    return b.selection.startColumn - a.selection.startColumn;
+                });
+                
+                let result = htmlContent;
+                sortedComments.forEach(comment => {
+                    const statusClass = comment.status === 'resolved' ? 'resolved' : '';
+                    result = applyCommentHighlightToRange(result, plainText, 
+                        comment.selection.startColumn, comment.selection.endColumn, 
+                        comment.id, statusClass);
+                });
+                
+                return result;
             }
             
             // ==============================
@@ -2484,10 +2557,47 @@ function getScript(): string {
                     
                     let lineHtml = result.html || '&nbsp;';
                     
-                    // Apply comment highlights
-                    visibleComments.forEach(comment => {
+                    // Apply comment highlights to specific text ranges
+                    // Sort comments by startColumn descending to apply from right to left
+                    // This prevents offset issues when inserting spans
+                    const sortedComments = [...visibleComments].sort((a, b) => {
+                        // For multi-line comments, use column 1 for non-start lines
+                        const aCol = a.selection.startLine === lineNum ? a.selection.startColumn : 1;
+                        const bCol = b.selection.startLine === lineNum ? b.selection.startColumn : 1;
+                        return bCol - aCol;
+                    });
+                    
+                    sortedComments.forEach(comment => {
                         const statusClass = comment.status === 'resolved' ? 'resolved' : '';
-                        lineHtml = '<span class="commented-text ' + statusClass + '" data-comment-id="' + comment.id + '">' + lineHtml + '</span>';
+                        const sel = comment.selection;
+                        
+                        // Determine the character range to highlight on this line
+                        let startCol, endCol;
+                        
+                        if (sel.startLine === sel.endLine && sel.startLine === lineNum) {
+                            // Single line comment - highlight specific range
+                            startCol = sel.startColumn;
+                            endCol = sel.endColumn;
+                        } else if (sel.startLine === lineNum) {
+                            // First line of multi-line comment
+                            startCol = sel.startColumn;
+                            endCol = line.length + 1;
+                        } else if (sel.endLine === lineNum) {
+                            // Last line of multi-line comment
+                            startCol = 1;
+                            endCol = sel.endColumn;
+                        } else if (lineNum > sel.startLine && lineNum < sel.endLine) {
+                            // Middle line of multi-line comment
+                            startCol = 1;
+                            endCol = line.length + 1;
+                        } else {
+                            // Shouldn't happen, but fallback to wrapping entire line
+                            startCol = 1;
+                            endCol = line.length + 1;
+                        }
+                        
+                        // Apply the highlight to the specific text range
+                        lineHtml = applyCommentHighlightToRange(lineHtml, line, startCol, endCol, comment.id, statusClass);
                     });
                     
                     html += '<div class="line" data-line="' + lineNum + '">' + lineHtml + '</div>';
@@ -2804,11 +2914,42 @@ function getScript(): string {
                 bubble.className = 'inline-comment-bubble' + (comment.status === 'resolved' ? ' resolved' : '');
                 bubble.innerHTML = renderCommentBubbleContent(comment);
                 
-                // Position after the anchor element
-                anchorEl.style.position = 'relative';
-                anchorEl.appendChild(bubble);
+                // Check if anchor is inside a table or code block
+                const isInTable = anchorEl.closest('.md-table-container');
+                const isInCodeBlock = anchorEl.closest('.code-block');
                 
-                activeCommentBubble = { element: bubble, anchor: anchorEl };
+                if (isInTable || isInCodeBlock) {
+                    // For table cells and code blocks, use fixed positioning
+                    bubble.style.position = 'fixed';
+                    bubble.style.zIndex = '200';
+                    
+                    const rect = anchorEl.getBoundingClientRect();
+                    let left = rect.left;
+                    let top = rect.bottom + 5;
+                    
+                    // Adjust if bubble would go off screen
+                    if (left + 350 > window.innerWidth - 20) {
+                        left = window.innerWidth - 370;
+                    }
+                    if (left < 20) {
+                        left = 20;
+                    }
+                    if (top + 200 > window.innerHeight) {
+                        top = rect.top - 210;
+                    }
+                    
+                    bubble.style.left = left + 'px';
+                    bubble.style.top = top + 'px';
+                    bubble.style.width = '350px';
+                    
+                    document.body.appendChild(bubble);
+                    activeCommentBubble = { element: bubble, anchor: anchorEl, isFixed: true };
+                } else {
+                    // For regular lines, position relative to anchor
+                    anchorEl.style.position = 'relative';
+                    anchorEl.appendChild(bubble);
+                    activeCommentBubble = { element: bubble, anchor: anchorEl, isFixed: false };
+                }
                 
                 // Setup bubble action handlers
                 setupBubbleActions(bubble, comment);
@@ -2880,17 +3021,83 @@ function getScript(): string {
                 const startContainer = range.startContainer;
                 const endContainer = range.endContainer;
                 
-                const startLine = findLineElement(startContainer);
-                const endLine = findLineElement(endContainer);
+                // Try to find regular line elements first
+                let startLine = findLineElement(startContainer);
+                let endLine = findLineElement(endContainer);
                 
+                let startLineNum, endLineNum;
+                let startColumn = range.startOffset + 1;
+                let endColumn = range.endOffset + 1;
+                
+                // Check if selection is in a table
+                const startCell = startContainer.nodeType === Node.TEXT_NODE 
+                    ? startContainer.parentElement?.closest('td, th')
+                    : startContainer.closest?.('td, th');
+                const endCell = endContainer.nodeType === Node.TEXT_NODE 
+                    ? endContainer.parentElement?.closest('td, th')
+                    : endContainer.closest?.('td, th');
+                
+                if (startCell && endCell) {
+                    // Selection is within a table
+                    startLineNum = getLineFromTableCell(startCell);
+                    endLineNum = getLineFromTableCell(endCell);
+                    
+                    if (startLineNum && endLineNum) {
+                        // Calculate column based on text position within cell
+                        const startText = getTextBeforeOffset(startCell, startContainer, range.startOffset);
+                        const endText = getTextBeforeOffset(endCell, endContainer, range.endOffset);
+                        startColumn = startText.length + 1;
+                        endColumn = endText.length + 1;
+                        
+                        return {
+                            startLine: startLineNum,
+                            startColumn: startColumn,
+                            endLine: endLineNum,
+                            endColumn: endColumn
+                        };
+                    }
+                }
+                
+                // Check if selection is in a code block
+                const codeBlock = findBlockContainer(startContainer);
+                if (codeBlock && codeBlock.classList.contains('code-block')) {
+                    // For code blocks, use the code-line elements
+                    if (startLine && startLine.classList.contains('code-line')) {
+                        startLineNum = parseInt(startLine.dataset.line);
+                    }
+                    if (endLine && endLine.classList.contains('code-line')) {
+                        endLineNum = parseInt(endLine.dataset.line);
+                    }
+                    
+                    if (startLineNum && endLineNum) {
+                        // Calculate column based on position in the line
+                        const startText = getTextBeforeOffset(startLine, startContainer, range.startOffset);
+                        const endText = getTextBeforeOffset(endLine, endContainer, range.endOffset);
+                        startColumn = startText.length + 1;
+                        endColumn = endText.length + 1;
+                        
+                        return {
+                            startLine: startLineNum,
+                            startColumn: startColumn,
+                            endLine: endLineNum,
+                            endColumn: endColumn
+                        };
+                    }
+                }
+                
+                // Standard line elements
                 if (!startLine || !endLine) return null;
                 
-                const startLineNum = parseInt(startLine.dataset.line);
-                const endLineNum = parseInt(endLine.dataset.line);
+                startLineNum = parseInt(startLine.dataset.line);
+                endLineNum = parseInt(endLine.dataset.line);
                 
-                // Simplified column calculation
-                const startColumn = range.startOffset + 1;
-                const endColumn = range.endOffset + 1;
+                if (!startLineNum || !endLineNum) return null;
+                
+                // Calculate column based on text position
+                const startText = getTextBeforeOffset(startLine, startContainer, range.startOffset);
+                const endText = getTextBeforeOffset(endLine, endContainer, range.endOffset);
+                startColumn = startText.length + 1;
+                endColumn = endText.length + 1;
                 
                 return {
                     startLine: startLineNum,
@@ -2899,17 +3106,101 @@ function getScript(): string {
                     endColumn: endColumn
                 };
             }
+            
+            // Get the text content before a specific offset within a container
+            function getTextBeforeOffset(container, targetNode, offset) {
+                let text = '';
+                let found = false;
+                
+                function traverse(node) {
+                    if (found) return;
+                    
+                    if (node === targetNode) {
+                        if (node.nodeType === Node.TEXT_NODE) {
+                            text += node.textContent.substring(0, offset);
+                        }
+                        found = true;
+                        return;
+                    }
+                    
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        text += node.textContent;
+                    } else if (node.nodeType === Node.ELEMENT_NODE) {
+                        // Skip comment bubbles and other non-content elements
+                        if (!node.classList?.contains('inline-comment-bubble')) {
+                            for (const child of node.childNodes) {
+                                traverse(child);
+                                if (found) break;
+                            }
+                        }
+                    }
+                }
+                
+                traverse(container);
+                return text;
+            }
 
-            // Find the parent line element
+            // Find the parent line element or line context
             function findLineElement(node) {
                 let current = node;
                 while (current && current !== editorContent) {
+                    // Regular markdown line
                     if (current.classList && current.classList.contains('line')) {
+                        return current;
+                    }
+                    // Code block line
+                    if (current.classList && current.classList.contains('code-line')) {
                         return current;
                     }
                     current = current.parentElement;
                 }
                 return null;
+            }
+            
+            // Find the block container (code block, table, or mermaid) for a node
+            function findBlockContainer(node) {
+                let current = node;
+                while (current && current !== editorContent) {
+                    if (current.classList) {
+                        if (current.classList.contains('code-block') ||
+                            current.classList.contains('md-table-container') ||
+                            current.classList.contains('mermaid-container')) {
+                            return current;
+                        }
+                    }
+                    current = current.parentElement;
+                }
+                return null;
+            }
+            
+            // Get line number from table cell
+            function getLineFromTableCell(cell) {
+                const container = cell.closest('.md-table-container');
+                if (!container) return null;
+                
+                const startLine = parseInt(container.dataset.startLine);
+                const table = container.querySelector('.md-table');
+                if (!table) return startLine;
+                
+                const row = cell.closest('tr');
+                if (!row) return startLine;
+                
+                // Count which row this is
+                const allRows = table.querySelectorAll('tr');
+                let rowIndex = 0;
+                for (let i = 0; i < allRows.length; i++) {
+                    if (allRows[i] === row) {
+                        rowIndex = i;
+                        break;
+                    }
+                }
+                
+                // Header row is at startLine, separator at startLine+1, data rows start at startLine+2
+                if (row.parentElement.tagName === 'THEAD') {
+                    return startLine;
+                }
+                // Data rows: startLine + 2 (header + separator) + rowIndex in tbody
+                return startLine + 2 + rowIndex;
             }
 
             // Handle editor input (content changes)
@@ -2953,6 +3244,128 @@ function getScript(): string {
                     lines.push(text);
                 });
                 return lines.join('\\n');
+            }
+
+            /**
+             * Apply comment highlight to a specific character range in HTML content
+             * This handles HTML tags and HTML entities by mapping character positions from plain text to HTML
+             */
+            function applyCommentHighlightToRange(htmlContent, plainText, startCol, endCol, commentId, statusClass) {
+                // Convert 1-based columns to 0-based indices
+                const startIdx = Math.max(0, startCol - 1);
+                const endIdx = Math.min(plainText.length, endCol - 1);
+                
+                // If the range is invalid or empty, wrap the entire line
+                if (startIdx >= endIdx || startIdx >= plainText.length) {
+                    return '<span class="commented-text ' + statusClass + '" data-comment-id="' + commentId + '">' + htmlContent + '</span>';
+                }
+                
+                // Create a mapping from plain text positions to HTML positions
+                // We need to skip over HTML tags and handle HTML entities
+                const plainToHtmlStart = [];
+                const plainToHtmlEnd = [];
+                let plainPos = 0;
+                let htmlPos = 0;
+                let inTag = false;
+                
+                while (htmlPos < htmlContent.length) {
+                    const char = htmlContent[htmlPos];
+                    
+                    if (char === '<') {
+                        inTag = true;
+                        htmlPos++;
+                    } else if (char === '>') {
+                        inTag = false;
+                        htmlPos++;
+                    } else if (inTag) {
+                        htmlPos++;
+                    } else if (char === '&') {
+                        // HTML entity - find the end
+                        const entityEnd = htmlContent.indexOf(';', htmlPos);
+                        if (entityEnd > htmlPos && entityEnd - htmlPos <= 10) {
+                            // Valid entity
+                            if (plainToHtmlStart[plainPos] === undefined) {
+                                plainToHtmlStart[plainPos] = htmlPos;
+                            }
+                            plainToHtmlEnd[plainPos] = entityEnd + 1;
+                            plainPos++;
+                            htmlPos = entityEnd + 1;
+                        } else {
+                            // Treat & as regular character
+                            if (plainToHtmlStart[plainPos] === undefined) {
+                                plainToHtmlStart[plainPos] = htmlPos;
+                            }
+                            plainToHtmlEnd[plainPos] = htmlPos + 1;
+                            plainPos++;
+                            htmlPos++;
+                        }
+                    } else {
+                        // Regular character
+                        if (plainToHtmlStart[plainPos] === undefined) {
+                            plainToHtmlStart[plainPos] = htmlPos;
+                        }
+                        plainToHtmlEnd[plainPos] = htmlPos + 1;
+                        plainPos++;
+                        htmlPos++;
+                    }
+                }
+                
+                // Handle edge case where plain text is shorter than expected
+                if (plainToHtmlStart[startIdx] === undefined) {
+                    return '<span class="commented-text ' + statusClass + '" data-comment-id="' + commentId + '">' + htmlContent + '</span>';
+                }
+                
+                // Get HTML positions
+                const htmlStartPos = plainToHtmlStart[startIdx];
+                // For end position, we need the position AFTER the last character
+                const lastCharIdx = Math.min(endIdx - 1, plainPos - 1);
+                let htmlEndPos = plainToHtmlEnd[lastCharIdx] !== undefined ? plainToHtmlEnd[lastCharIdx] : htmlContent.length;
+                
+                // Find tag boundaries - we need to be careful not to split HTML tags
+                // Extend the start to include any tag that's already wrapping this text
+                let adjustedStart = htmlStartPos;
+                let adjustedEnd = htmlEndPos;
+                
+                // Check if we're inside a tag and adjust
+                // Look backwards from start to see if we need to include opening tag
+                let depth = 0;
+                for (let i = htmlStartPos - 1; i >= 0; i--) {
+                    if (htmlContent[i] === '>') {
+                        // Check if this is an opening tag (not closing)
+                        const tagStart = htmlContent.lastIndexOf('<', i);
+                        if (tagStart >= 0) {
+                            const tagContent = htmlContent.substring(tagStart, i + 1);
+                            if (!tagContent.startsWith('</')) {
+                                // This is an opening tag, we should include it
+                                adjustedStart = tagStart;
+                                depth++;
+                            }
+                        }
+                        break;
+                    }
+                }
+                
+                // Look forward from end to include closing tags
+                for (let i = htmlEndPos; i < htmlContent.length && depth > 0; i++) {
+                    if (htmlContent[i] === '<' && htmlContent[i + 1] === '/') {
+                        // Find the end of this closing tag
+                        const tagEnd = htmlContent.indexOf('>', i);
+                        if (tagEnd >= 0) {
+                            adjustedEnd = tagEnd + 1;
+                            depth--;
+                        }
+                    } else if (htmlContent[i] === '<' && htmlContent[i + 1] !== '/') {
+                        // Another opening tag, increase depth
+                        depth++;
+                    }
+                }
+                
+                // Build the result
+                const before = htmlContent.substring(0, adjustedStart);
+                const highlighted = htmlContent.substring(adjustedStart, adjustedEnd);
+                const after = htmlContent.substring(adjustedEnd);
+                
+                return before + '<span class="commented-text ' + statusClass + '" data-comment-id="' + commentId + '">' + highlighted + '</span>' + after;
             }
 
             // Escape HTML entities
