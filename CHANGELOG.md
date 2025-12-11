@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2025-12-11
+
+### Added
+- **Markdown Review Editor**: New custom editor for reviewing and annotating Markdown files
+  - Open any `.md` file with "Open with Review Editor" from context menu
+  - Select text and press `Ctrl+Shift+M` (or `Cmd+Shift+M` on Mac) to add inline comments
+  - Visual highlighting for commented sections with configurable colors
+  - Comment bubbles appear on click for easy viewing
+  - Resolve/reopen comments to track review progress
+  - Generate AI prompts from comments for workflow integration
+- **Markdown Comments Panel**: New sidebar view to manage all comments
+  - View all comments organized by file
+  - Navigate directly to comment locations
+  - Bulk resolve comments per file
+  - Toggle visibility of resolved comments
+  - Refresh and configuration options
+- **Rich Markdown Rendering**: Enhanced markdown preview in review editor
+  - Syntax highlighting for code blocks
+  - Mermaid diagram support for flowcharts and diagrams
+  - Proper table rendering with 0-based and 1-based indexing compatibility
+  - Image handling improvements
+- **Comment Configuration**: Customizable comment appearance
+  - `workspaceShortcuts.markdownComments.showResolved`: Toggle resolved comment visibility
+  - `workspaceShortcuts.markdownComments.highlightColor`: Customize open comment highlight color
+  - `workspaceShortcuts.markdownComments.resolvedHighlightColor`: Customize resolved comment highlight color
+
 ## [2.7.5] - 2025-10-17
 
 ### Fixed
