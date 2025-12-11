@@ -811,12 +811,83 @@ function getStyles(): string {
         }
         
         /* Images */
-        .md-image {
+        .md-image-container {
+            display: inline-block;
+            vertical-align: middle;
+        }
+        
+        .md-image-syntax {
             color: var(--md-image-color);
+            font-size: 0.9em;
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        .md-image-preview {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            display: block;
+            margin: 8px 0;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .md-image-preview:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .md-image-error {
+            color: #f44336;
+            font-size: 12px;
+            padding: 8px;
+            background: rgba(244, 67, 54, 0.1);
+            border-radius: 4px;
+            display: inline-block;
         }
         
         .md-image-alt {
             color: var(--md-link-color);
+        }
+        
+        /* Image modal for full view */
+        .md-image-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            cursor: zoom-out;
+        }
+        
+        .md-image-modal img {
+            max-width: 95%;
+            max-height: 95%;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+        
+        .md-image-modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 32px;
+            color: white;
+            cursor: pointer;
+            background: none;
+            border: none;
+            opacity: 0.8;
+        }
+        
+        .md-image-modal-close:hover {
+            opacity: 1;
         }
         
         /* Blockquotes */
@@ -1236,26 +1307,79 @@ function getStyles(): string {
         }
         
         /* Table styles */
+        .md-table-container {
+            margin: 16px 0;
+            overflow-x: auto;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+        
         .md-table {
             border-collapse: collapse;
-            margin: 12px 0;
-            width: auto;
+            width: 100%;
+            min-width: 400px;
         }
         
         .md-table th,
         .md-table td {
             border: 1px solid var(--border-color);
-            padding: 8px 12px;
+            padding: 10px 14px;
             text-align: left;
+            vertical-align: top;
         }
         
         .md-table th {
             background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
             font-weight: 600;
+            white-space: nowrap;
+        }
+        
+        .md-table tr:nth-child(even) {
+            background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.02));
         }
         
         .md-table tr:hover {
-            background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
+            background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.08));
+        }
+        
+        .md-table td.align-center,
+        .md-table th.align-center {
+            text-align: center;
+        }
+        
+        .md-table td.align-right,
+        .md-table th.align-right {
+            text-align: right;
+        }
+        
+        .md-table-actions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 6px 10px;
+            background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .md-table-action-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 12px;
+            opacity: 0.7;
+            color: var(--text-color);
+            border-radius: 4px;
+        }
+        
+        .md-table-action-btn:hover {
+            opacity: 1;
+            background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+        }
+        
+        /* Table row being parsed (separator row) */
+        .md-table-separator {
+            color: var(--md-blockquote-color);
+            opacity: 0.5;
         }
     `;
 }
@@ -1272,6 +1396,8 @@ function getScript(): string {
             let currentContent = '';
             let comments = [];
             let filePath = '';
+            let fileDir = ''; // Directory of the current file for resolving relative paths
+            let workspaceRoot = ''; // Workspace root for resolving paths
             let settings = { showResolved: true };
             let pendingSelection = null;
             let editingCommentId = null;
@@ -1510,11 +1636,32 @@ function getScript(): string {
                         currentContent = message.content;
                         comments = message.comments || [];
                         filePath = message.filePath;
+                        fileDir = message.fileDir || '';
+                        workspaceRoot = message.workspaceRoot || '';
                         if (message.settings) {
                             settings = { ...settings, ...message.settings };
                             showResolvedCheckbox.checked = settings.showResolved;
                         }
                         render();
+                        break;
+                    
+                    case 'imageResolved':
+                        // Update the image with the resolved URI
+                        const img = document.querySelector('.md-image-preview[data-img-id="' + message.imgId + '"]');
+                        if (img) {
+                            if (message.uri) {
+                                img.src = message.uri;
+                                img.alt = message.alt || 'Image';
+                            } else {
+                                // Image not found
+                                img.style.display = 'none';
+                                const errorSpan = img.nextElementSibling;
+                                if (errorSpan && errorSpan.classList.contains('md-image-error')) {
+                                    errorSpan.style.display = 'inline';
+                                    errorSpan.textContent = '⚠️ ' + (message.error || 'Image not found: ' + img.dataset.pendingPath);
+                                }
+                            }
+                        }
                         break;
                 }
             }
@@ -1773,6 +1920,21 @@ function getScript(): string {
             }
             
             /**
+             * Resolve image path relative to the file or workspace
+             */
+            function resolveImagePath(src) {
+                // If it's already an absolute URL (http, https, data), return as is
+                if (/^(https?:|data:)/.test(src)) {
+                    return src;
+                }
+                
+                // For relative paths, we need to construct a proper path
+                // The webview will need to convert this to a webview URI
+                // For now, we'll mark it for post-processing
+                return 'IMG_PATH:' + src;
+            }
+            
+            /**
              * Apply inline markdown formatting (bold, italic, code, links, images)
              */
             function applyInlineMarkdown(text) {
@@ -1785,9 +1947,17 @@ function getScript(): string {
                 // Inline code (must be before bold/italic to avoid conflicts)
                 html = html.replace(/\`([^\`]+)\`/g, '<span class="md-inline-code">\`$1\`</span>');
                 
-                // Images ![alt](url)
-                html = html.replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, 
-                    '<span class="md-image">!<span class="md-image-alt">[$1]</span>($2)</span>');
+                // Images ![alt](url) - render as actual images with preview
+                html = html.replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, function(match, alt, src) {
+                    const resolvedSrc = resolveImagePath(src);
+                    const escapedAlt = alt || 'Image';
+                    const escapedSrc = escapeHtml(src);
+                    return '<span class="md-image-container" data-src="' + escapedSrc + '">' +
+                        '<span class="md-image-syntax">![' + escapeHtml(alt) + '](' + escapedSrc + ')</span>' +
+                        '<img class="md-image-preview" src="' + resolvedSrc + '" alt="' + escapeHtml(escapedAlt) + '" title="' + escapeHtml(escapedAlt) + '" loading="lazy" onerror="this.style.display=\\'none\\';this.nextElementSibling.style.display=\\'inline\\';">' +
+                        '<span class="md-image-error" style="display:none;">⚠️ Image not found</span>' +
+                    '</span>';
+                });
                 
                 // Links [text](url)
                 html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, 
@@ -1896,6 +2066,148 @@ function getScript(): string {
                     '</div>' +
                     '<pre class="code-block-content"><code class="hljs language-' + block.language + '">' + linesHtml + '</code></pre>' +
                 '</div>';
+            }
+            
+            // ==============================
+            // Table Parsing and Rendering
+            // ==============================
+            
+            /**
+             * Parse tables from content
+             */
+            function parseTables(content) {
+                const lines = content.split('\\n');
+                const tables = [];
+                let i = 0;
+                
+                while (i < lines.length) {
+                    const line = lines[i];
+                    
+                    // Check if this line could be a table header (contains |)
+                    if (line.includes('|') && i + 1 < lines.length) {
+                        const separatorLine = lines[i + 1];
+                        
+                        // Check if next line is a table separator (contains | and - or :)
+                        if (/^\\|?[\\s\\-:|]+\\|/.test(separatorLine)) {
+                            const table = parseTableAt(lines, i);
+                            if (table) {
+                                tables.push(table);
+                                i = table.endLine;
+                                continue;
+                            }
+                        }
+                    }
+                    i++;
+                }
+                
+                return tables;
+            }
+            
+            /**
+             * Parse a table starting at a specific line
+             */
+            function parseTableAt(lines, startIndex) {
+                const headerLine = lines[startIndex];
+                const separatorLine = lines[startIndex + 1];
+                
+                // Parse header cells
+                const headers = parseTableRow(headerLine);
+                if (headers.length === 0) return null;
+                
+                // Parse alignment from separator
+                const alignments = parseTableAlignments(separatorLine);
+                
+                // Parse body rows
+                const rows = [];
+                let i = startIndex + 2;
+                while (i < lines.length && lines[i].includes('|')) {
+                    const row = parseTableRow(lines[i]);
+                    if (row.length > 0) {
+                        rows.push(row);
+                    }
+                    i++;
+                }
+                
+                return {
+                    startLine: startIndex + 1, // 1-based
+                    endLine: i, // 1-based (exclusive)
+                    headers: headers,
+                    alignments: alignments,
+                    rows: rows,
+                    id: 'table-' + (startIndex + 1)
+                };
+            }
+            
+            /**
+             * Parse a table row into cells
+             */
+            function parseTableRow(line) {
+                // Remove leading/trailing pipes and split
+                const trimmed = line.replace(/^\\|/, '').replace(/\\|$/, '');
+                return trimmed.split('|').map(cell => cell.trim());
+            }
+            
+            /**
+             * Parse table alignments from separator line
+             */
+            function parseTableAlignments(line) {
+                const cells = parseTableRow(line);
+                return cells.map(cell => {
+                    const left = cell.startsWith(':');
+                    const right = cell.endsWith(':');
+                    if (left && right) return 'center';
+                    if (right) return 'right';
+                    return 'left';
+                });
+            }
+            
+            /**
+             * Render a table as HTML
+             */
+            function renderTable(table, commentsMap) {
+                const hasComments = checkBlockHasComments(table.startLine, table.endLine - 1, commentsMap);
+                const containerClass = 'md-table-container' + (hasComments ? ' has-comments' : '');
+                
+                let html = '<div class="' + containerClass + '" data-start-line="' + table.startLine + '" data-end-line="' + (table.endLine - 1) + '" data-table-id="' + table.id + '">';
+                html += '<table class="md-table">';
+                
+                // Header
+                html += '<thead><tr>';
+                table.headers.forEach((header, i) => {
+                    const align = table.alignments[i] || 'left';
+                    const alignClass = align !== 'left' ? ' class="align-' + align + '"' : '';
+                    html += '<th' + alignClass + '>' + applyInlineMarkdown(header) + '</th>';
+                });
+                html += '</tr></thead>';
+                
+                // Body
+                html += '<tbody>';
+                table.rows.forEach(row => {
+                    html += '<tr>';
+                    row.forEach((cell, i) => {
+                        const align = table.alignments[i] || 'left';
+                        const alignClass = align !== 'left' ? ' class="align-' + align + '"' : '';
+                        html += '<td' + alignClass + '>' + applyInlineMarkdown(cell) + '</td>';
+                    });
+                    // Fill in empty cells if row is shorter than header
+                    for (let j = row.length; j < table.headers.length; j++) {
+                        html += '<td></td>';
+                    }
+                    html += '</tr>';
+                });
+                html += '</tbody>';
+                
+                html += '</table>';
+                
+                // Actions
+                html += '<div class="md-table-actions">';
+                html += '<button class="md-table-action-btn table-copy-btn" title="Copy table as markdown" data-table-id="' + table.id + '">📋 Copy</button>';
+                html += '<button class="md-table-action-btn table-comment-btn" title="Add comment to table">💬</button>';
+                html += '</div>';
+                
+                html += '</div>';
+                
+                return html;
             }
             
             // ==============================
@@ -2049,18 +2361,27 @@ function getScript(): string {
             // ==============================
             
             /**
-             * Render the editor content with markdown highlighting, code blocks, and comments
+             * Render the editor content with markdown highlighting, code blocks, tables, and comments
              */
             function render() {
                 const lines = currentContent.split('\\n');
                 const commentsMap = groupCommentsByLine(comments);
                 const codeBlocks = parseCodeBlocks(currentContent);
+                const tables = parseTables(currentContent);
                 
                 // Create a map of lines that are part of code blocks
                 const codeBlockLines = new Map();
                 codeBlocks.forEach(block => {
                     for (let i = block.startLine; i <= block.endLine; i++) {
                         codeBlockLines.set(i, block);
+                    }
+                });
+                
+                // Create a map of lines that are part of tables
+                const tableLines = new Map();
+                tables.forEach(table => {
+                    for (let i = table.startLine; i < table.endLine; i++) {
+                        tableLines.set(i, table);
                     }
                 });
                 
@@ -2073,7 +2394,7 @@ function getScript(): string {
                 lines.forEach((line, index) => {
                     const lineNum = index + 1;
                     
-                    // Skip lines that are part of a rendered code/mermaid block
+                    // Skip lines that are part of a rendered code/mermaid/table block
                     if (lineNum <= skipUntilLine) {
                         lineNumbersHtml += '<div class="line-number">' + lineNum + '</div>';
                         return;
@@ -2131,6 +2452,28 @@ function getScript(): string {
                         }
                     }
                     
+                    // Check if this line starts a table
+                    const table = tables.find(t => t.startLine === lineNum);
+                    if (table) {
+                        // Render table
+                        html += renderTable(table, commentsMap);
+                        
+                        // Add line numbers for the table
+                        for (let i = table.startLine; i < table.endLine; i++) {
+                            const tableLineComments = commentsMap.get(i) || [];
+                            const tableHasComments = tableLineComments.filter(c => 
+                                settings.showResolved || c.status !== 'resolved'
+                            ).length > 0;
+                            const tableGutterIcon = tableHasComments 
+                                ? '<span class="gutter-icon" title="Click to view comments">💬</span>' 
+                                : '';
+                            lineNumbersHtml += '<div class="line-number">' + tableGutterIcon + i + '</div>';
+                        }
+                        
+                        skipUntilLine = table.endLine - 1;
+                        return;
+                    }
+                    
                     // Apply markdown highlighting
                     const result = applyMarkdownHighlighting(line, lineNum, inCodeBlock, currentCodeBlockLang);
                     inCodeBlock = result.inCodeBlock;
@@ -2165,6 +2508,15 @@ function getScript(): string {
                 
                 // Render mermaid diagrams
                 renderMermaidDiagrams();
+                
+                // Setup table handlers
+                setupTableHandlers();
+                
+                // Setup image handlers
+                setupImageHandlers();
+                
+                // Resolve image paths
+                resolveImagePaths();
             }
             
             /**
@@ -2205,6 +2557,119 @@ function getScript(): string {
                 });
             }
             
+            /**
+             * Setup handlers for table actions
+             */
+            function setupTableHandlers() {
+                // Get original table markdown for copy
+                const getTableMarkdown = (tableContainer) => {
+                    const startLine = parseInt(tableContainer.dataset.startLine);
+                    const endLine = parseInt(tableContainer.dataset.endLine);
+                    const lines = currentContent.split('\\n');
+                    return lines.slice(startLine - 1, endLine).join('\\n');
+                };
+                
+                // Copy table button handlers
+                document.querySelectorAll('.table-copy-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const container = btn.closest('.md-table-container');
+                        const markdown = getTableMarkdown(container);
+                        navigator.clipboard.writeText(markdown).then(() => {
+                            const originalText = btn.textContent;
+                            btn.textContent = '✅ Copied!';
+                            setTimeout(() => { btn.textContent = originalText; }, 1500);
+                        });
+                    });
+                });
+                
+                // Comment button handlers for tables
+                document.querySelectorAll('.table-comment-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const container = btn.closest('.md-table-container');
+                        const startLine = parseInt(container.dataset.startLine);
+                        const endLine = parseInt(container.dataset.endLine);
+                        
+                        pendingSelection = {
+                            startLine: startLine,
+                            startColumn: 1,
+                            endLine: endLine,
+                            endColumn: 1,
+                            selectedText: '[Table: lines ' + startLine + '-' + endLine + ']'
+                        };
+                        
+                        showFloatingPanel(btn.getBoundingClientRect(), 'Table');
+                    });
+                });
+            }
+            
+            /**
+             * Setup handlers for image interactions
+             */
+            function setupImageHandlers() {
+                // Click on image to open full view modal
+                document.querySelectorAll('.md-image-preview').forEach(img => {
+                    img.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openImageModal(img.src, img.alt);
+                    });
+                });
+            }
+            
+            /**
+             * Open image in a full-screen modal
+             */
+            function openImageModal(src, alt) {
+                const modal = document.createElement('div');
+                modal.className = 'md-image-modal';
+                modal.innerHTML = 
+                    '<button class="md-image-modal-close">&times;</button>' +
+                    '<img src="' + src + '" alt="' + escapeHtml(alt || 'Image') + '">';
+                
+                modal.addEventListener('click', () => modal.remove());
+                modal.querySelector('.md-image-modal-close').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    modal.remove();
+                });
+                
+                document.body.appendChild(modal);
+                
+                // Close on escape
+                const escHandler = (e) => {
+                    if (e.key === 'Escape') {
+                        modal.remove();
+                        document.removeEventListener('keydown', escHandler);
+                    }
+                };
+                document.addEventListener('keydown', escHandler);
+            }
+            
+            /**
+             * Resolve image paths to proper URIs
+             */
+            function resolveImagePaths() {
+                document.querySelectorAll('.md-image-preview').forEach(img => {
+                    const src = img.getAttribute('src');
+                    if (src && src.startsWith('IMG_PATH:')) {
+                        const relativePath = src.substring(9); // Remove 'IMG_PATH:' prefix
+                        
+                        // Request the extension to resolve the path
+                        vscode.postMessage({
+                            type: 'resolveImagePath',
+                            path: relativePath,
+                            imgId: img.dataset.imgId || Math.random().toString(36).substr(2, 9)
+                        });
+                        
+                        // Store the img element reference for later update
+                        img.dataset.imgId = img.dataset.imgId || Math.random().toString(36).substr(2, 9);
+                        img.dataset.pendingPath = relativePath;
+                        img.src = ''; // Clear src while waiting
+                        img.alt = 'Loading: ' + relativePath;
+                    }
+                });
+            }
+
             /**
              * Render all mermaid diagrams in the content
              */

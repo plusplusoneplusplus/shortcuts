@@ -9,6 +9,7 @@ import {
     detectHeadingLevel,
     detectLineType,
     escapeHtml,
+    extractImages,
     extractInlineCode,
     extractLinks,
     getLanguageDisplayName,
@@ -16,13 +17,19 @@ import {
     isBlockquote,
     isCodeFenceEnd,
     isCodeFenceStart,
+    isDataUrl,
+    isExternalImageUrl,
     isHorizontalRule,
     isOrderedListItem,
+    isTableRow,
+    isTableSeparator,
     isTaskListItem,
     isUnorderedListItem,
     parseCodeBlocks,
     parseMermaidBlocks,
-    parseTable
+    parseTable,
+    parseTableAlignments,
+    parseTableRow
 } from '../../shortcuts/markdown-comments';
 
 suite('Markdown Parser Tests', () => {
@@ -494,6 +501,83 @@ print("hi")
         });
     });
 
+    suite('parseTableRow', () => {
+        test('should parse simple row', () => {
+            const row = parseTableRow('| A | B | C |');
+            assert.deepStrictEqual(row, ['A', 'B', 'C']);
+        });
+
+        test('should handle no leading pipe', () => {
+            const row = parseTableRow('A | B | C |');
+            assert.deepStrictEqual(row, ['A', 'B', 'C']);
+        });
+
+        test('should trim whitespace', () => {
+            const row = parseTableRow('|  A  |  B  |  C  |');
+            assert.deepStrictEqual(row, ['A', 'B', 'C']);
+        });
+
+        test('should handle empty cells', () => {
+            const row = parseTableRow('| A |  | C |');
+            assert.deepStrictEqual(row, ['A', '', 'C']);
+        });
+    });
+
+    suite('parseTableAlignments', () => {
+        test('should detect left alignment (default)', () => {
+            const alignments = parseTableAlignments('|---|---|---|');
+            assert.deepStrictEqual(alignments, ['left', 'left', 'left']);
+        });
+
+        test('should detect center alignment', () => {
+            const alignments = parseTableAlignments('|:---:|:---:|');
+            assert.deepStrictEqual(alignments, ['center', 'center']);
+        });
+
+        test('should detect right alignment', () => {
+            const alignments = parseTableAlignments('|---:|---:|');
+            assert.deepStrictEqual(alignments, ['right', 'right']);
+        });
+
+        test('should detect mixed alignments', () => {
+            const alignments = parseTableAlignments('|---|:---:|---:|');
+            assert.deepStrictEqual(alignments, ['left', 'center', 'right']);
+        });
+
+        test('should handle left colon only as left', () => {
+            const alignments = parseTableAlignments('|:---|');
+            assert.deepStrictEqual(alignments, ['left']);
+        });
+    });
+
+    suite('isTableSeparator', () => {
+        test('should detect basic separator', () => {
+            assert.strictEqual(isTableSeparator('|---|---|'), true);
+        });
+
+        test('should detect separator with colons', () => {
+            assert.strictEqual(isTableSeparator('|:---:|---:|'), true);
+        });
+
+        test('should detect separator with spaces', () => {
+            assert.strictEqual(isTableSeparator('| --- | --- |'), true);
+        });
+
+        test('should return false for non-separator', () => {
+            assert.strictEqual(isTableSeparator('| A | B |'), false);
+        });
+    });
+
+    suite('isTableRow', () => {
+        test('should detect table row', () => {
+            assert.strictEqual(isTableRow('| A | B |'), true);
+        });
+
+        test('should return false for non-table row', () => {
+            assert.strictEqual(isTableRow('No pipe here'), false);
+        });
+    });
+
     suite('parseTable', () => {
         test('should parse simple table', () => {
             const lines = [
@@ -507,6 +591,7 @@ print("hi")
             assert.deepStrictEqual(result.headers, ['Header 1', 'Header 2']);
             assert.strictEqual(result.rows.length, 1);
             assert.deepStrictEqual(result.rows[0], ['Cell 1', 'Cell 2']);
+            assert.deepStrictEqual(result.alignments, ['left', 'left']);
         });
 
         test('should parse table with multiple rows', () => {
@@ -520,6 +605,18 @@ print("hi")
             const result = parseTable(lines, 0);
             assert.ok(result);
             assert.strictEqual(result.rows.length, 2);
+        });
+
+        test('should parse table with alignments', () => {
+            const lines = [
+                '| Left | Center | Right |',
+                '|:-----|:------:|------:|',
+                '| A    | B      | C     |'
+            ];
+
+            const result = parseTable(lines, 0);
+            assert.ok(result);
+            assert.deepStrictEqual(result.alignments, ['left', 'center', 'right']);
         });
 
         test('should return null for non-table', () => {
@@ -546,6 +643,99 @@ print("hi")
             const result = parseTable(lines, 0);
             assert.ok(result);
             assert.strictEqual(result.endIndex, 2);
+        });
+
+        test('should handle table starting at different index', () => {
+            const lines = [
+                'Some text',
+                '',
+                '| A | B |',
+                '|---|---|',
+                '| 1 | 2 |'
+            ];
+
+            const result = parseTable(lines, 2);
+            assert.ok(result);
+            assert.deepStrictEqual(result.headers, ['A', 'B']);
+        });
+    });
+
+    suite('extractImages', () => {
+        test('should extract single image', () => {
+            const images = extractImages('![Alt text](image.png)');
+            assert.strictEqual(images.length, 1);
+            assert.strictEqual(images[0].alt, 'Alt text');
+            assert.strictEqual(images[0].url, 'image.png');
+        });
+
+        test('should extract multiple images', () => {
+            const images = extractImages('![A](a.png) text ![B](b.jpg)');
+            assert.strictEqual(images.length, 2);
+            assert.strictEqual(images[0].alt, 'A');
+            assert.strictEqual(images[1].alt, 'B');
+        });
+
+        test('should handle empty alt text', () => {
+            const images = extractImages('![](image.png)');
+            assert.strictEqual(images.length, 1);
+            assert.strictEqual(images[0].alt, '');
+        });
+
+        test('should return empty array for no images', () => {
+            const images = extractImages('No images here');
+            assert.strictEqual(images.length, 0);
+        });
+
+        test('should include position information', () => {
+            const images = extractImages('![Alt](img.png)');
+            assert.strictEqual(images[0].start, 0);
+            assert.strictEqual(images[0].end, 15);
+        });
+
+        test('should handle URL with query params', () => {
+            const images = extractImages('![Alt](image.png?v=1)');
+            assert.strictEqual(images[0].url, 'image.png?v=1');
+        });
+    });
+
+    suite('isExternalImageUrl', () => {
+        test('should detect http URL', () => {
+            assert.strictEqual(isExternalImageUrl('http://example.com/image.png'), true);
+        });
+
+        test('should detect https URL', () => {
+            assert.strictEqual(isExternalImageUrl('https://example.com/image.png'), true);
+        });
+
+        test('should handle case insensitivity', () => {
+            assert.strictEqual(isExternalImageUrl('HTTP://example.com/image.png'), true);
+            assert.strictEqual(isExternalImageUrl('HTTPS://example.com/image.png'), true);
+        });
+
+        test('should return false for relative path', () => {
+            assert.strictEqual(isExternalImageUrl('./images/photo.png'), false);
+        });
+
+        test('should return false for absolute path', () => {
+            assert.strictEqual(isExternalImageUrl('/images/photo.png'), false);
+        });
+    });
+
+    suite('isDataUrl', () => {
+        test('should detect data URL', () => {
+            assert.strictEqual(isDataUrl('data:image/png;base64,ABC123'), true);
+        });
+
+        test('should handle case insensitivity', () => {
+            assert.strictEqual(isDataUrl('DATA:image/png;base64,ABC'), true);
+        });
+
+        test('should return false for http URL', () => {
+            assert.strictEqual(isDataUrl('https://example.com/image.png'), false);
+        });
+
+        test('should return false for file path', () => {
+            assert.strictEqual(isDataUrl('./image.png'), false);
         });
     });
 

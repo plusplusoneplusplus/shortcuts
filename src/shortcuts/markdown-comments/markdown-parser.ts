@@ -261,11 +261,49 @@ export function detectEmphasis(text: string): {
 }
 
 /**
+ * Parse a table row into cells
+ */
+export function parseTableRow(line: string): string[] {
+    // Remove leading/trailing pipes and split
+    const trimmed = line.replace(/^\|/, '').replace(/\|$/, '');
+    return trimmed.split('|').map(cell => cell.trim());
+}
+
+/**
+ * Parse table alignments from a separator line
+ */
+export function parseTableAlignments(line: string): Array<'left' | 'center' | 'right'> {
+    const cells = parseTableRow(line);
+    return cells.map(cell => {
+        const left = cell.startsWith(':');
+        const right = cell.endsWith(':');
+        if (left && right) return 'center';
+        if (right) return 'right';
+        return 'left';
+    });
+}
+
+/**
+ * Check if a line could be a table separator
+ */
+export function isTableSeparator(line: string): boolean {
+    return /^\|?[\s\-:|]+\|[\s\-:|]*$/.test(line);
+}
+
+/**
+ * Check if a line could be a table row
+ */
+export function isTableRow(line: string): boolean {
+    return line.includes('|');
+}
+
+/**
  * Parse a markdown table and return structured data
  */
 export function parseTable(lines: string[], startIndex: number): {
     headers: string[];
     rows: string[][];
+    alignments: Array<'left' | 'center' | 'right'>;
     endIndex: number;
 } | null {
     if (startIndex >= lines.length) return null;
@@ -274,29 +312,58 @@ export function parseTable(lines: string[], startIndex: number): {
     if (!headerLine.includes('|')) return null;
 
     const separatorLine = lines[startIndex + 1];
-    if (!separatorLine || !/^\|?[\s\-:]+\|/.test(separatorLine)) return null;
+    if (!separatorLine || !isTableSeparator(separatorLine)) return null;
 
-    const parseRow = (line: string): string[] => {
-        return line
-            .split('|')
-            .map(cell => cell.trim())
-            .filter((_, i, arr) => i > 0 && i < arr.length - 1 || arr.length === 1);
-    };
-
-    const headers = parseRow(headerLine);
+    const headers = parseTableRow(headerLine);
+    const alignments = parseTableAlignments(separatorLine);
     const rows: string[][] = [];
 
     let i = startIndex + 2;
     while (i < lines.length && lines[i].includes('|')) {
-        rows.push(parseRow(lines[i]));
+        rows.push(parseTableRow(lines[i]));
         i++;
     }
 
     return {
         headers,
         rows,
+        alignments,
         endIndex: i - 1
     };
+}
+
+/**
+ * Extract image information from markdown image syntax
+ */
+export function extractImages(text: string): Array<{ alt: string; url: string; start: number; end: number }> {
+    const images: Array<{ alt: string; url: string; start: number; end: number }> = [];
+    const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    let match;
+
+    while ((match = regex.exec(text)) !== null) {
+        images.push({
+            alt: match[1],
+            url: match[2],
+            start: match.index,
+            end: match.index + match[0].length
+        });
+    }
+
+    return images;
+}
+
+/**
+ * Check if an image URL is an external URL (http/https)
+ */
+export function isExternalImageUrl(url: string): boolean {
+    return /^https?:\/\//i.test(url);
+}
+
+/**
+ * Check if an image URL is a data URL
+ */
+export function isDataUrl(url: string): boolean {
+    return /^data:/i.test(url);
 }
 
 /**

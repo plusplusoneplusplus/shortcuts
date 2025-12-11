@@ -17,7 +17,7 @@ import { MermaidContext } from './types';
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'resolveAll' | 'requestState';
+    'copyPrompt' | 'resolveAll' | 'requestState' | 'resolveImagePath';
     commentId?: string;
     content?: string;
     selection?: {
@@ -33,6 +33,9 @@ interface WebviewMessage {
         format: 'markdown' | 'json';
     };
     mermaidContext?: MermaidContext;
+    // Image resolution fields
+    path?: string;
+    imgId?: string;
 }
 
 /**
@@ -81,18 +84,30 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         webviewPanel: vscode.WebviewPanel,
         _token: vscode.CancellationToken
     ): Promise<void> {
-        // Setup webview
-        webviewPanel.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [
-                vscode.Uri.joinPath(this.context.extensionUri, 'resources'),
-                vscode.Uri.joinPath(this.context.extensionUri, 'media')
-            ]
-        };
-
         // Get the relative file path for comment lookup
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
         const relativePath = path.relative(workspaceRoot, document.uri.fsPath);
+        const fileDir = path.dirname(document.uri.fsPath);
+
+        // Setup webview with local resource roots including workspace folder for images
+        const localResourceRoots: vscode.Uri[] = [
+            vscode.Uri.joinPath(this.context.extensionUri, 'resources'),
+            vscode.Uri.joinPath(this.context.extensionUri, 'media')
+        ];
+
+        // Add workspace folder to allow loading images from workspace
+        if (workspaceUri) {
+            localResourceRoots.push(workspaceUri);
+        }
+
+        // Add file's directory for relative image paths
+        localResourceRoots.push(vscode.Uri.file(fileDir));
+
+        webviewPanel.webview.options = {
+            enableScripts: true,
+            localResourceRoots
+        };
 
         // Initial state
         const updateWebview = () => {
@@ -104,6 +119,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 content: document.getText(),
                 comments: comments,
                 filePath: relativePath,
+                fileDir: fileDir,
+                workspaceRoot: workspaceRoot,
                 settings: settings
             });
         };
@@ -238,6 +255,87 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             case 'copyPrompt':
                 await this.generateAndCopyPrompt(relativePath, message.promptOptions);
                 break;
+
+            case 'resolveImagePath':
+                if (message.path && message.imgId) {
+                    await this.resolveAndSendImagePath(
+                        message.path,
+                        message.imgId,
+                        document,
+                        webviewPanel
+                    );
+                }
+                break;
+        }
+    }
+
+    /**
+     * Resolve an image path and send the webview URI back to the webview
+     */
+    private async resolveAndSendImagePath(
+        imagePath: string,
+        imgId: string,
+        document: vscode.TextDocument,
+        webviewPanel: vscode.WebviewPanel
+    ): Promise<void> {
+        try {
+            const fileDir = path.dirname(document.uri.fsPath);
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+
+            let resolvedPath: string;
+
+            // Check if it's an absolute path
+            if (path.isAbsolute(imagePath)) {
+                resolvedPath = imagePath;
+            }
+            // Check if it's relative to the file's directory
+            else {
+                resolvedPath = path.resolve(fileDir, imagePath);
+            }
+
+            // Check if file exists
+            const fs = require('fs');
+            if (fs.existsSync(resolvedPath)) {
+                // Convert to webview URI
+                const imageUri = vscode.Uri.file(resolvedPath);
+                const webviewUri = webviewPanel.webview.asWebviewUri(imageUri);
+
+                webviewPanel.webview.postMessage({
+                    type: 'imageResolved',
+                    imgId: imgId,
+                    uri: webviewUri.toString(),
+                    alt: path.basename(imagePath)
+                });
+            } else {
+                // Try workspace-relative path
+                const workspaceRelativePath = path.resolve(workspaceRoot, imagePath);
+                if (fs.existsSync(workspaceRelativePath)) {
+                    const imageUri = vscode.Uri.file(workspaceRelativePath);
+                    const webviewUri = webviewPanel.webview.asWebviewUri(imageUri);
+
+                    webviewPanel.webview.postMessage({
+                        type: 'imageResolved',
+                        imgId: imgId,
+                        uri: webviewUri.toString(),
+                        alt: path.basename(imagePath)
+                    });
+                } else {
+                    // Image not found
+                    webviewPanel.webview.postMessage({
+                        type: 'imageResolved',
+                        imgId: imgId,
+                        uri: null,
+                        error: `Image not found: ${imagePath}`
+                    });
+                }
+            }
+        } catch (error) {
+            webviewPanel.webview.postMessage({
+                type: 'imageResolved',
+                imgId: imgId,
+                uri: null,
+                error: `Error resolving image: ${error}`
+            });
         }
     }
 
