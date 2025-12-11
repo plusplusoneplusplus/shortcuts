@@ -44,9 +44,6 @@ export function getWebviewContent(
             </button>
         </div>
         <div class="toolbar-group">
-            <button id="generatePromptBtn" class="toolbar-btn" title="Generate AI Prompt">
-                <span class="icon">🤖</span> Generate Prompt
-            </button>
             <button id="copyPromptBtn" class="toolbar-btn" title="Copy AI Prompt to Clipboard">
                 <span class="icon">📋</span> Copy Prompt
             </button>
@@ -77,7 +74,7 @@ export function getWebviewContent(
             <button class="floating-panel-close" id="floatingPanelClose">×</button>
         </div>
         <div class="floating-panel-selection" id="floatingPanelSelection"></div>
-        <textarea id="floatingCommentInput" placeholder="What feedback do you have for this section?" rows="3"></textarea>
+        <textarea id="floatingCommentInput" placeholder="What feedback do you have for this section? (Ctrl+Enter to submit)" rows="3"></textarea>
         <div class="floating-panel-footer">
             <button id="floatingCancelBtn" class="btn btn-secondary btn-sm">Cancel</button>
             <button id="floatingSaveBtn" class="btn btn-primary btn-sm">Add Comment</button>
@@ -90,7 +87,7 @@ export function getWebviewContent(
             <span class="inline-edit-title">✏️ Edit Comment</span>
             <button class="inline-edit-close" id="inlineEditClose">×</button>
         </div>
-        <textarea id="inlineEditInput" rows="3"></textarea>
+        <textarea id="inlineEditInput" placeholder="Edit your comment (Ctrl+Enter to save)" rows="3"></textarea>
         <div class="inline-edit-footer">
             <button id="inlineEditCancelBtn" class="btn btn-secondary btn-sm">Cancel</button>
             <button id="inlineEditSaveBtn" class="btn btn-primary btn-sm">Save</button>
@@ -1445,9 +1442,6 @@ function getScript(): string {
                 document.getElementById('resolveAllBtn').addEventListener('click', () => {
                     vscode.postMessage({ type: 'resolveAll' });
                 });
-                document.getElementById('generatePromptBtn').addEventListener('click', () => {
-                    vscode.postMessage({ type: 'generatePrompt', promptOptions: { format: 'markdown' } });
-                });
                 document.getElementById('copyPromptBtn').addEventListener('click', () => {
                     vscode.postMessage({ type: 'copyPrompt', promptOptions: { format: 'markdown' } });
                 });
@@ -1467,6 +1461,20 @@ function getScript(): string {
                 document.getElementById('inlineEditClose').addEventListener('click', closeInlineEditPanel);
                 document.getElementById('inlineEditCancelBtn').addEventListener('click', closeInlineEditPanel);
                 document.getElementById('inlineEditSaveBtn').addEventListener('click', saveEditedComment);
+
+                // Ctrl+Enter to submit comments
+                floatingInput.addEventListener('keydown', (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        saveNewComment();
+                    }
+                });
+                inlineEditInput.addEventListener('keydown', (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        saveEditedComment();
+                    }
+                });
 
                 // Editor input
                 editorContent.addEventListener('input', handleEditorInput);
