@@ -13,7 +13,8 @@ import {
     CommentsSettings,
     DEFAULT_COMMENTS_CONFIG,
     DEFAULT_COMMENTS_SETTINGS,
-    MarkdownComment
+    MarkdownComment,
+    MermaidContext
 } from './types';
 
 /**
@@ -104,7 +105,8 @@ export class CommentsManager implements vscode.Disposable {
         selectedText: string,
         comment: string,
         author?: string,
-        tags?: string[]
+        tags?: string[],
+        mermaidContext?: MermaidContext
     ): Promise<MarkdownComment> {
         const now = new Date().toISOString();
         const relativePath = this.getRelativePath(filePath);
@@ -119,7 +121,8 @@ export class CommentsManager implements vscode.Disposable {
             createdAt: now,
             updatedAt: now,
             author,
-            tags
+            tags,
+            mermaidContext
         };
 
         this.config.comments.push(newComment);

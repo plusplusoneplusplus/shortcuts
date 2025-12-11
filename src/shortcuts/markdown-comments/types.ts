@@ -22,6 +22,20 @@ export interface CommentSelection {
 }
 
 /**
+ * Mermaid diagram context for comments on diagrams
+ */
+export interface MermaidContext {
+    /** The mermaid block identifier */
+    diagramId: string;
+    /** Specific node ID if commenting on a node */
+    nodeId?: string;
+    /** Display label of the node */
+    nodeLabel?: string;
+    /** Type of diagram (flowchart, sequence, etc.) */
+    diagramType?: string;
+}
+
+/**
  * A single markdown comment
  */
 export interface MarkdownComment {
@@ -45,6 +59,8 @@ export interface MarkdownComment {
     author?: string;
     /** Optional tags for categorization */
     tags?: string[];
+    /** Optional mermaid diagram context */
+    mermaidContext?: MermaidContext;
 }
 
 /**

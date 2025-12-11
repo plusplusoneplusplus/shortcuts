@@ -825,4 +825,179 @@ suite('Markdown Comments Feature Tests', () => {
             assert.strictEqual(config.version, 1);
         });
     });
+
+    suite('Mermaid Diagram Comments', () => {
+        test('should add comment with mermaid context', async () => {
+            await commentsManager.initialize();
+
+            const mermaidContext = {
+                diagramId: 'mermaid-10',
+                nodeId: 'node-A',
+                nodeLabel: 'Start',
+                diagramType: 'flowchart'
+            };
+
+            const comment = await commentsManager.addComment(
+                'diagram.md',
+                { startLine: 10, startColumn: 1, endLine: 15, endColumn: 1 },
+                '[Mermaid Node: Start]',
+                'This node needs more description',
+                undefined,
+                undefined,
+                mermaidContext
+            );
+
+            assert.ok(comment);
+            assert.ok(comment.mermaidContext);
+            assert.strictEqual(comment.mermaidContext.diagramId, 'mermaid-10');
+            assert.strictEqual(comment.mermaidContext.nodeId, 'node-A');
+            assert.strictEqual(comment.mermaidContext.nodeLabel, 'Start');
+            assert.strictEqual(comment.mermaidContext.diagramType, 'flowchart');
+        });
+
+        test('should add comment on whole diagram without node context', async () => {
+            await commentsManager.initialize();
+
+            const mermaidContext = {
+                diagramId: 'mermaid-5',
+                diagramType: 'sequence'
+            };
+
+            const comment = await commentsManager.addComment(
+                'sequence.md',
+                { startLine: 5, startColumn: 1, endLine: 20, endColumn: 1 },
+                '[Mermaid Diagram: lines 5-20]',
+                'Consider adding error handling flow',
+                undefined,
+                undefined,
+                mermaidContext
+            );
+
+            assert.ok(comment);
+            assert.ok(comment.mermaidContext);
+            assert.strictEqual(comment.mermaidContext.diagramId, 'mermaid-5');
+            assert.strictEqual(comment.mermaidContext.diagramType, 'sequence');
+            assert.strictEqual(comment.mermaidContext.nodeId, undefined);
+        });
+
+        test('should persist mermaid context across reload', async () => {
+            await commentsManager.initialize();
+
+            const mermaidContext = {
+                diagramId: 'mermaid-1',
+                nodeId: 'B',
+                nodeLabel: 'Process',
+                diagramType: 'flowchart'
+            };
+
+            const original = await commentsManager.addComment(
+                'flow.md',
+                { startLine: 1, startColumn: 1, endLine: 10, endColumn: 1 },
+                '[Mermaid Node: Process]',
+                'Add timeout handling',
+                'Developer',
+                ['diagram', 'review'],
+                mermaidContext
+            );
+
+            // Reload
+            const newManager = new CommentsManager(tempDir);
+            await newManager.initialize();
+
+            const loaded = newManager.getComment(original.id);
+            assert.ok(loaded);
+            assert.ok(loaded.mermaidContext);
+            assert.deepStrictEqual(loaded.mermaidContext, mermaidContext);
+            assert.strictEqual(loaded.author, 'Developer');
+            assert.deepStrictEqual(loaded.tags, ['diagram', 'review']);
+
+            newManager.dispose();
+        });
+
+        test('should include mermaid comments in prompt generation', async () => {
+            await commentsManager.initialize();
+
+            await commentsManager.addComment(
+                'diagram.md',
+                { startLine: 5, startColumn: 1, endLine: 15, endColumn: 1 },
+                '[Mermaid Diagram: lines 5-15]',
+                'Diagram needs better labels',
+                undefined,
+                undefined,
+                { diagramId: 'mermaid-5', diagramType: 'flowchart' }
+            );
+
+            const promptGenerator = new PromptGenerator(commentsManager);
+            const prompt = promptGenerator.generatePrompt();
+
+            assert.ok(prompt.includes('[Mermaid Diagram: lines 5-15]'));
+            assert.ok(prompt.includes('Diagram needs better labels'));
+        });
+
+        test('should filter mermaid comments by file', async () => {
+            await commentsManager.initialize();
+
+            await commentsManager.addComment(
+                'file1.md',
+                { startLine: 1, startColumn: 1, endLine: 5, endColumn: 1 },
+                '[Mermaid Node: A]',
+                'Comment 1',
+                undefined,
+                undefined,
+                { diagramId: 'm1', nodeId: 'A' }
+            );
+
+            await commentsManager.addComment(
+                'file2.md',
+                { startLine: 1, startColumn: 1, endLine: 5, endColumn: 1 },
+                '[Mermaid Node: B]',
+                'Comment 2',
+                undefined,
+                undefined,
+                { diagramId: 'm2', nodeId: 'B' }
+            );
+
+            const file1Comments = commentsManager.getCommentsForFile('file1.md');
+            assert.strictEqual(file1Comments.length, 1);
+            assert.ok(file1Comments[0].mermaidContext);
+            assert.strictEqual(file1Comments[0].mermaidContext.nodeId, 'A');
+
+            const file2Comments = commentsManager.getCommentsForFile('file2.md');
+            assert.strictEqual(file2Comments.length, 1);
+            assert.ok(file2Comments[0].mermaidContext);
+            assert.strictEqual(file2Comments[0].mermaidContext.nodeId, 'B');
+        });
+
+        test('should handle mixed regular and mermaid comments', async () => {
+            await commentsManager.initialize();
+
+            // Regular comment
+            await commentsManager.addComment(
+                'mixed.md',
+                { startLine: 1, startColumn: 1, endLine: 1, endColumn: 20 },
+                'Regular text',
+                'Regular comment'
+            );
+
+            // Mermaid comment
+            await commentsManager.addComment(
+                'mixed.md',
+                { startLine: 10, startColumn: 1, endLine: 20, endColumn: 1 },
+                '[Mermaid Diagram]',
+                'Diagram comment',
+                undefined,
+                undefined,
+                { diagramId: 'm1', diagramType: 'flowchart' }
+            );
+
+            const comments = commentsManager.getCommentsForFile('mixed.md');
+            assert.strictEqual(comments.length, 2);
+
+            const regularComments = comments.filter(c => !c.mermaidContext);
+            const mermaidComments = comments.filter(c => c.mermaidContext);
+
+            assert.strictEqual(regularComments.length, 1);
+            assert.strictEqual(mermaidComments.length, 1);
+        });
+    });
 });

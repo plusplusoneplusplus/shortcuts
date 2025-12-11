@@ -1,6 +1,12 @@
 /**
  * Webview content generator for the Review Editor View
  * Provides inline commenting experience similar to GitHub PR reviews
+ * 
+ * Features:
+ * - Markdown syntax highlighting
+ * - Code block syntax highlighting (via highlight.js)
+ * - Mermaid diagram rendering
+ * - Inline commenting on text and diagrams
  */
 
 import * as vscode from 'vscode';
@@ -20,7 +26,7 @@ export function getWebviewContent(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource};">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' https://cdnjs.cloudflare.com; img-src ${webview.cspSource} data: https:; font-src ${webview.cspSource};">
     <title>Review Editor View</title>
     <style>
         ${getStyles()}
@@ -112,6 +118,9 @@ export function getWebviewContent(
         </div>
     </div>
 
+    <!-- Load highlight.js from CDN for code syntax highlighting -->
+    <script nonce="${nonce}" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    
     <script nonce="${nonce}">
         ${getScript()}
     </script>
@@ -153,6 +162,19 @@ function getStyles(): string {
             --input-border: var(--vscode-input-border);
             --line-number-color: var(--vscode-editorLineNumber-foreground);
             --gutter-icon-color: #FFC107;
+            
+            /* Markdown syntax highlighting colors */
+            --md-heading-color: var(--vscode-textPreformat-foreground, #569cd6);
+            --md-bold-weight: 700;
+            --md-code-bg: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.1));
+            --md-code-color: var(--vscode-textPreformat-foreground, #ce9178);
+            --md-link-color: var(--vscode-textLink-foreground, #3794ff);
+            --md-blockquote-color: var(--vscode-textBlockQuote-foreground, #7a7a7a);
+            --md-blockquote-border: var(--vscode-textBlockQuote-border, #007acc);
+            --md-list-marker-color: var(--vscode-textPreformat-foreground, #b5cea8);
+            --md-hr-color: var(--vscode-panel-border, #444);
+            --md-image-color: #9cdcfe;
+            --md-strikethrough-color: #808080;
         }
 
         * {
@@ -693,6 +715,548 @@ function getStyles(): string {
             background: var(--border-color);
             margin: 4px 8px;
         }
+
+        /* ==============================
+         * Markdown Syntax Highlighting
+         * ============================== */
+        
+        /* Headings */
+        .md-h1 {
+            font-size: 2em;
+            font-weight: 700;
+            color: var(--md-heading-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.3em;
+            margin-top: 0.5em;
+        }
+        
+        .md-h2 {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: var(--md-heading-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.3em;
+            margin-top: 0.5em;
+        }
+        
+        .md-h3 {
+            font-size: 1.25em;
+            font-weight: 700;
+            color: var(--md-heading-color);
+        }
+        
+        .md-h4, .md-h5, .md-h6 {
+            font-size: 1em;
+            font-weight: 700;
+            color: var(--md-heading-color);
+        }
+        
+        .md-hash {
+            color: var(--md-blockquote-color);
+            opacity: 0.6;
+        }
+        
+        /* Bold and Italic */
+        .md-bold {
+            font-weight: var(--md-bold-weight);
+        }
+        
+        .md-italic {
+            font-style: italic;
+        }
+        
+        .md-bold-italic {
+            font-weight: var(--md-bold-weight);
+            font-style: italic;
+        }
+        
+        .md-marker {
+            color: var(--md-blockquote-color);
+            opacity: 0.5;
+        }
+        
+        /* Strikethrough */
+        .md-strike {
+            text-decoration: line-through;
+            color: var(--md-strikethrough-color);
+        }
+        
+        /* Inline Code */
+        .md-inline-code {
+            background: var(--md-code-bg);
+            color: var(--md-code-color);
+            padding: 0.15em 0.4em;
+            border-radius: 3px;
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 0.9em;
+        }
+        
+        /* Links */
+        .md-link {
+            color: var(--md-link-color);
+            text-decoration: none;
+        }
+        
+        .md-link:hover {
+            text-decoration: underline;
+        }
+        
+        .md-link-text {
+            color: var(--md-link-color);
+        }
+        
+        .md-link-url {
+            color: var(--md-blockquote-color);
+            opacity: 0.7;
+        }
+        
+        /* Images */
+        .md-image {
+            color: var(--md-image-color);
+        }
+        
+        .md-image-alt {
+            color: var(--md-link-color);
+        }
+        
+        /* Blockquotes */
+        .md-blockquote {
+            border-left: 3px solid var(--md-blockquote-border);
+            padding-left: 12px;
+            color: var(--md-blockquote-color);
+            font-style: italic;
+        }
+        
+        .md-blockquote-marker {
+            color: var(--md-blockquote-border);
+        }
+        
+        /* Lists */
+        .md-list-item {
+            /* Keep default styling, just mark for identification */
+        }
+        
+        .md-list-marker {
+            color: var(--md-list-marker-color);
+            font-weight: 600;
+        }
+        
+        .md-checkbox {
+            color: var(--md-list-marker-color);
+        }
+        
+        .md-checkbox-checked {
+            color: #4caf50;
+        }
+        
+        /* Horizontal Rule */
+        .md-hr {
+            display: block;
+            height: 2px;
+            background: var(--md-hr-color);
+            border: none;
+            margin: 1em 0;
+        }
+        
+        /* ==============================
+         * Code Block Styles
+         * ============================== */
+        
+        .code-block {
+            margin: 12px 0;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            font-family: var(--vscode-editor-font-family, monospace);
+        }
+        
+        .code-block-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 12px;
+            background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .code-language {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--vscode-descriptionForeground, #888);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .code-block-actions {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .code-action-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            opacity: 0.7;
+            transition: opacity 0.2s, background-color 0.2s;
+            color: var(--text-color);
+        }
+        
+        .code-action-btn:hover {
+            opacity: 1;
+            background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+        }
+        
+        .code-block-content {
+            margin: 0;
+            padding: 12px;
+            overflow-x: auto;
+            background: var(--vscode-editor-background);
+            counter-reset: line;
+        }
+        
+        .code-block-content code {
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: var(--vscode-editor-font-size, 13px);
+            line-height: 1.5;
+            display: block;
+        }
+        
+        .code-line {
+            display: block;
+            min-height: 1.5em;
+        }
+        
+        .code-line:hover {
+            background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
+        }
+        
+        .code-line::selection,
+        .code-line *::selection {
+            background: var(--vscode-editor-selectionBackground);
+        }
+        
+        /* Code fence markers */
+        .md-code-fence {
+            color: var(--md-code-color);
+            opacity: 0.7;
+        }
+        
+        /* ==============================
+         * Highlight.js Theme (VSCode-like)
+         * ============================== */
+        
+        .hljs {
+            background: transparent !important;
+        }
+        
+        /* Dark theme colors (default) */
+        .hljs-keyword,
+        .hljs-selector-tag,
+        .hljs-built_in,
+        .hljs-name,
+        .hljs-tag {
+            color: #569cd6;
+        }
+        
+        .hljs-string,
+        .hljs-title,
+        .hljs-section,
+        .hljs-attribute,
+        .hljs-literal,
+        .hljs-template-tag,
+        .hljs-template-variable,
+        .hljs-type,
+        .hljs-addition {
+            color: #ce9178;
+        }
+        
+        .hljs-number,
+        .hljs-symbol,
+        .hljs-bullet,
+        .hljs-link {
+            color: #b5cea8;
+        }
+        
+        .hljs-comment,
+        .hljs-quote,
+        .hljs-deletion,
+        .hljs-meta {
+            color: #6a9955;
+        }
+        
+        .hljs-function .hljs-keyword {
+            color: #569cd6;
+        }
+        
+        .hljs-class .hljs-title,
+        .hljs-function .hljs-title,
+        .hljs-title.function_ {
+            color: #dcdcaa;
+        }
+        
+        .hljs-variable,
+        .hljs-template-variable {
+            color: #9cdcfe;
+        }
+        
+        .hljs-attr {
+            color: #9cdcfe;
+        }
+        
+        .hljs-regexp,
+        .hljs-selector-attr,
+        .hljs-selector-pseudo {
+            color: #d16969;
+        }
+        
+        .hljs-params {
+            color: #9cdcfe;
+        }
+        
+        .hljs-property {
+            color: #9cdcfe;
+        }
+        
+        /* Type names */
+        .hljs-type,
+        .hljs-title.class_ {
+            color: #4ec9b0;
+        }
+        
+        /* Light theme overrides */
+        @media (prefers-color-scheme: light) {
+            .hljs-keyword,
+            .hljs-selector-tag,
+            .hljs-built_in,
+            .hljs-name,
+            .hljs-tag {
+                color: #0000ff;
+            }
+            
+            .hljs-string,
+            .hljs-title,
+            .hljs-section,
+            .hljs-attribute,
+            .hljs-literal,
+            .hljs-template-tag,
+            .hljs-template-variable {
+                color: #a31515;
+            }
+            
+            .hljs-number,
+            .hljs-symbol,
+            .hljs-bullet,
+            .hljs-link {
+                color: #098658;
+            }
+            
+            .hljs-comment,
+            .hljs-quote,
+            .hljs-deletion,
+            .hljs-meta {
+                color: #008000;
+            }
+            
+            .hljs-class .hljs-title,
+            .hljs-function .hljs-title,
+            .hljs-title.function_ {
+                color: #795e26;
+            }
+            
+            .hljs-variable,
+            .hljs-template-variable,
+            .hljs-attr,
+            .hljs-params,
+            .hljs-property {
+                color: #001080;
+            }
+            
+            .hljs-type,
+            .hljs-title.class_ {
+                color: #267f99;
+            }
+        }
+        
+        /* VSCode theme detection */
+        body.vscode-light .hljs-keyword { color: #0000ff; }
+        body.vscode-light .hljs-string { color: #a31515; }
+        body.vscode-light .hljs-number { color: #098658; }
+        body.vscode-light .hljs-comment { color: #008000; }
+        body.vscode-light .hljs-title.function_ { color: #795e26; }
+        body.vscode-light .hljs-variable { color: #001080; }
+        body.vscode-light .hljs-type { color: #267f99; }
+        
+        /* ==============================
+         * Mermaid Diagram Styles
+         * ============================== */
+        
+        .mermaid-container {
+            margin: 16px 0;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--vscode-editor-background);
+        }
+        
+        .mermaid-container.has-comments {
+            border-left: 4px solid #f9a825;
+        }
+        
+        .mermaid-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .mermaid-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--vscode-descriptionForeground, #888);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .mermaid-actions {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .mermaid-action-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            opacity: 0.7;
+            transition: opacity 0.2s, background-color 0.2s;
+            color: var(--text-color);
+        }
+        
+        .mermaid-action-btn:hover {
+            opacity: 1;
+            background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+        }
+        
+        .mermaid-preview {
+            padding: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100px;
+            overflow-x: auto;
+        }
+        
+        .mermaid-preview svg {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        /* Make mermaid nodes clickable for comments */
+        .mermaid-preview .node,
+        .mermaid-preview .cluster,
+        .mermaid-preview .label {
+            cursor: pointer;
+            transition: filter 0.2s;
+        }
+        
+        .mermaid-preview .node:hover,
+        .mermaid-preview .cluster:hover {
+            filter: brightness(1.15);
+        }
+        
+        .mermaid-preview .node.commented {
+            outline: 2px solid #f9a825;
+            outline-offset: 2px;
+        }
+        
+        .mermaid-preview .node.commented.resolved {
+            outline-color: #4caf50;
+        }
+        
+        .mermaid-source {
+            padding: 12px;
+            background: var(--md-code-bg);
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 13px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        
+        .mermaid-source code {
+            color: var(--md-code-color);
+        }
+        
+        .mermaid-error {
+            border-color: #f44336;
+        }
+        
+        .mermaid-error-header {
+            background: rgba(244, 67, 54, 0.2);
+            color: #f44336;
+            padding: 8px 12px;
+            font-weight: 500;
+        }
+        
+        .mermaid-error-message {
+            padding: 8px 12px;
+            color: #f44336;
+            font-size: 12px;
+            background: rgba(244, 67, 54, 0.1);
+        }
+        
+        .mermaid-loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+            color: var(--vscode-descriptionForeground);
+        }
+        
+        .mermaid-loading::after {
+            content: '';
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--button-bg);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Table styles */
+        .md-table {
+            border-collapse: collapse;
+            margin: 12px 0;
+            width: auto;
+        }
+        
+        .md-table th,
+        .md-table td {
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .md-table th {
+            background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+            font-weight: 600;
+        }
+        
+        .md-table tr:hover {
+            background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
+        }
     `;
 }
 
@@ -713,6 +1277,9 @@ function getScript(): string {
             let editingCommentId = null;
             let activeCommentBubble = null;
             let savedSelectionForContextMenu = null; // Saved selection when context menu opens
+            let mermaidLoaded = false;
+            let mermaidLoading = false;
+            let pendingMermaidBlocks = [];
 
             // DOM elements
             const editorContainer = document.getElementById('editorContainer');
@@ -1042,11 +1609,18 @@ function getScript(): string {
                 }
 
                 if (pendingSelection) {
-                    vscode.postMessage({
+                    const message = {
                         type: 'addComment',
                         selection: pendingSelection,
                         comment: commentText
-                    });
+                    };
+                    
+                    // Include mermaid context if present
+                    if (pendingSelection.mermaidContext) {
+                        message.mermaidContext = pendingSelection.mermaidContext;
+                    }
+                    
+                    vscode.postMessage(message);
                 }
 
                 closeFloatingPanel();
@@ -1100,29 +1674,469 @@ function getScript(): string {
                 closeInlineEditPanel();
             }
 
-            // Render the editor content with comments
+            // ==============================
+            // Markdown Syntax Highlighting
+            // ==============================
+            
+            /**
+             * Apply markdown syntax highlighting to a single line
+             */
+            function applyMarkdownHighlighting(line, lineNum, inCodeBlock, codeBlockLang) {
+                // If we're inside a code block, don't apply markdown highlighting
+                if (inCodeBlock && !line.startsWith('\`\`\`')) {
+                    return { html: escapeHtml(line), inCodeBlock: true, codeBlockLang };
+                }
+                
+                // Check for code fence start/end
+                const codeFenceMatch = line.match(/^\`\`\`(\\w*)/);
+                if (codeFenceMatch) {
+                    if (!inCodeBlock) {
+                        // Starting a code block
+                        const lang = codeFenceMatch[1] || 'plaintext';
+                        return { 
+                            html: '<span class="md-code-fence">' + escapeHtml(line) + '</span>', 
+                            inCodeBlock: true, 
+                            codeBlockLang: lang,
+                            isCodeFenceStart: true
+                        };
+                    } else {
+                        // Ending a code block
+                        return { 
+                            html: '<span class="md-code-fence">' + escapeHtml(line) + '</span>', 
+                            inCodeBlock: false, 
+                            codeBlockLang: null,
+                            isCodeFenceEnd: true
+                        };
+                    }
+                }
+                
+                let html = escapeHtml(line);
+                
+                // Horizontal rule (must check before headings)
+                if (/^(---+|\\*\\*\\*+|___+)\\s*$/.test(line)) {
+                    return { html: '<span class="md-hr">' + html + '</span>', inCodeBlock: false, codeBlockLang: null };
+                }
+                
+                // Headings
+                const headingMatch = line.match(/^(#{1,6})\\s+(.*)$/);
+                if (headingMatch) {
+                    const level = headingMatch[1].length;
+                    const hashes = escapeHtml(headingMatch[1]);
+                    const content = applyInlineMarkdown(headingMatch[2]);
+                    html = '<span class="md-h' + level + '"><span class="md-hash">' + hashes + '</span> ' + content + '</span>';
+                    return { html, inCodeBlock: false, codeBlockLang: null };
+                }
+                
+                // Blockquotes
+                if (/^>\\s*/.test(line)) {
+                    const content = line.replace(/^>\\s*/, '');
+                    html = '<span class="md-blockquote"><span class="md-blockquote-marker">&gt;</span> ' + applyInlineMarkdown(content) + '</span>';
+                    return { html, inCodeBlock: false, codeBlockLang: null };
+                }
+                
+                // Unordered list items
+                const ulMatch = line.match(/^(\\s*)([\\-\\*\\+])\\s+(.*)$/);
+                if (ulMatch) {
+                    const indent = ulMatch[1];
+                    const marker = ulMatch[2];
+                    let content = ulMatch[3];
+                    
+                    // Check for checkbox
+                    const checkboxMatch = content.match(/^\\[([ xX])\\]\\s*(.*)$/);
+                    if (checkboxMatch) {
+                        const checked = checkboxMatch[1].toLowerCase() === 'x';
+                        const checkboxClass = checked ? 'md-checkbox md-checkbox-checked' : 'md-checkbox';
+                        const checkbox = checked ? '[x]' : '[ ]';
+                        content = '<span class="' + checkboxClass + '">' + checkbox + '</span> ' + applyInlineMarkdown(checkboxMatch[2]);
+                    } else {
+                        content = applyInlineMarkdown(content);
+                    }
+                    
+                    html = '<span class="md-list-item">' + indent + '<span class="md-list-marker">' + escapeHtml(marker) + '</span> ' + content + '</span>';
+                    return { html, inCodeBlock: false, codeBlockLang: null };
+                }
+                
+                // Ordered list items
+                const olMatch = line.match(/^(\\s*)(\\d+\\.)\\s+(.*)$/);
+                if (olMatch) {
+                    const indent = olMatch[1];
+                    const marker = olMatch[2];
+                    const content = applyInlineMarkdown(olMatch[3]);
+                    html = '<span class="md-list-item">' + indent + '<span class="md-list-marker">' + escapeHtml(marker) + '</span> ' + content + '</span>';
+                    return { html, inCodeBlock: false, codeBlockLang: null };
+                }
+                
+                // Apply inline markdown (bold, italic, code, links, etc.)
+                html = applyInlineMarkdown(line);
+                
+                return { html, inCodeBlock: false, codeBlockLang: null };
+            }
+            
+            /**
+             * Apply inline markdown formatting (bold, italic, code, links, images)
+             */
+            function applyInlineMarkdown(text) {
+                if (!text) return '';
+                
+                let html = escapeHtml(text);
+                
+                // Order matters - process from most specific to least specific
+                
+                // Inline code (must be before bold/italic to avoid conflicts)
+                html = html.replace(/\`([^\`]+)\`/g, '<span class="md-inline-code">\`$1\`</span>');
+                
+                // Images ![alt](url)
+                html = html.replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, 
+                    '<span class="md-image">!<span class="md-image-alt">[$1]</span>($2)</span>');
+                
+                // Links [text](url)
+                html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, 
+                    '<span class="md-link"><span class="md-link-text">[$1]</span><span class="md-link-url">($2)</span></span>');
+                
+                // Bold + Italic (***text*** or ___text___)
+                html = html.replace(/\\*\\*\\*([^*]+)\\*\\*\\*/g, '<span class="md-bold-italic"><span class="md-marker">***</span>$1<span class="md-marker">***</span></span>');
+                html = html.replace(/___([^_]+)___/g, '<span class="md-bold-italic"><span class="md-marker">___</span>$1<span class="md-marker">___</span></span>');
+                
+                // Bold (**text** or __text__)
+                html = html.replace(/\\*\\*([^*]+)\\*\\*/g, '<span class="md-bold"><span class="md-marker">**</span>$1<span class="md-marker">**</span></span>');
+                html = html.replace(/__([^_]+)__/g, '<span class="md-bold"><span class="md-marker">__</span>$1<span class="md-marker">__</span></span>');
+                
+                // Italic (*text* or _text_) - careful not to match inside bold
+                html = html.replace(/(?<!\\*)\\*([^*]+)\\*(?!\\*)/g, '<span class="md-italic"><span class="md-marker">*</span>$1<span class="md-marker">*</span></span>');
+                html = html.replace(/(?<!_)_([^_]+)_(?!_)/g, '<span class="md-italic"><span class="md-marker">_</span>$1<span class="md-marker">_</span></span>');
+                
+                // Strikethrough ~~text~~
+                html = html.replace(/~~([^~]+)~~/g, '<span class="md-strike"><span class="md-marker">~~</span>$1<span class="md-marker">~~</span></span>');
+                
+                return html;
+            }
+            
+            // ==============================
+            // Code Block Handling
+            // ==============================
+            
+            /**
+             * Parse code blocks from content
+             */
+            function parseCodeBlocks(content) {
+                const lines = content.split('\\n');
+                const blocks = [];
+                let inBlock = false;
+                let currentBlock = null;
+                let codeLines = [];
+                
+                lines.forEach((line, index) => {
+                    const fenceMatch = line.match(/^\`\`\`(\\w*)/);
+                    
+                    if (fenceMatch && !inBlock) {
+                        inBlock = true;
+                        currentBlock = {
+                            language: fenceMatch[1] || 'plaintext',
+                            startLine: index + 1,
+                            code: [],
+                            isMermaid: fenceMatch[1] === 'mermaid'
+                        };
+                        codeLines = [];
+                    } else if (line.startsWith('\`\`\`') && inBlock) {
+                        inBlock = false;
+                        currentBlock.endLine = index + 1;
+                        currentBlock.code = codeLines.join('\\n');
+                        currentBlock.id = 'codeblock-' + currentBlock.startLine;
+                        blocks.push(currentBlock);
+                        currentBlock = null;
+                    } else if (inBlock) {
+                        codeLines.push(line);
+                    }
+                });
+                
+                return blocks;
+            }
+            
+            /**
+             * Highlight code using highlight.js
+             */
+            function highlightCode(code, language) {
+                if (typeof hljs === 'undefined') {
+                    return escapeHtml(code);
+                }
+                
+                try {
+                    if (language && hljs.getLanguage(language)) {
+                        return hljs.highlight(code, { language: language }).value;
+                    } else {
+                        return hljs.highlightAuto(code).value;
+                    }
+                } catch (e) {
+                    return escapeHtml(code);
+                }
+            }
+            
+            /**
+             * Render a code block with syntax highlighting
+             */
+            function renderCodeBlock(block, commentsMap) {
+                const highlightedCode = highlightCode(block.code, block.language);
+                const codeLines = highlightedCode.split('\\n');
+                
+                const hasBlockComments = checkBlockHasComments(block.startLine, block.endLine, commentsMap);
+                const containerClass = 'code-block' + (hasBlockComments ? ' has-comments' : '');
+                
+                let linesHtml = codeLines.map((line, i) => {
+                    const actualLine = block.startLine + 1 + i; // +1 for fence line
+                    return '<span class="code-line" data-line="' + actualLine + '">' + (line || '&nbsp;') + '</span>';
+                }).join('\\n');
+                
+                return '<div class="' + containerClass + '" data-start-line="' + block.startLine + '" data-end-line="' + block.endLine + '" data-block-id="' + block.id + '">' +
+                    '<div class="code-block-header">' +
+                        '<span class="code-language">' + escapeHtml(block.language) + '</span>' +
+                        '<div class="code-block-actions">' +
+                            '<button class="code-action-btn code-copy-btn" title="Copy code" data-code="' + encodeURIComponent(block.code) + '">📋 Copy</button>' +
+                            '<button class="code-action-btn code-comment-btn" title="Add comment to code block">💬</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<pre class="code-block-content"><code class="hljs language-' + block.language + '">' + linesHtml + '</code></pre>' +
+                '</div>';
+            }
+            
+            // ==============================
+            // Mermaid Diagram Handling
+            // ==============================
+            
+            /**
+             * Load mermaid.js lazily
+             */
+            function loadMermaid(callback) {
+                if (mermaidLoaded) {
+                    callback();
+                    return;
+                }
+                
+                if (mermaidLoading) {
+                    pendingMermaidBlocks.push(callback);
+                    return;
+                }
+                
+                mermaidLoading = true;
+                
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+                script.onload = () => {
+                    mermaidLoaded = true;
+                    mermaidLoading = false;
+                    
+                    // Initialize mermaid with theme based on VSCode theme
+                    const isDark = document.body.classList.contains('vscode-dark') || 
+                                   document.body.classList.contains('vscode-high-contrast');
+                    window.mermaid.initialize({
+                        startOnLoad: false,
+                        theme: isDark ? 'dark' : 'default',
+                        securityLevel: 'loose'
+                    });
+                    
+                    callback();
+                    
+                    // Process pending callbacks
+                    pendingMermaidBlocks.forEach(cb => cb());
+                    pendingMermaidBlocks = [];
+                };
+                script.onerror = () => {
+                    mermaidLoading = false;
+                    console.error('Failed to load mermaid.js');
+                };
+                document.head.appendChild(script);
+            }
+            
+            /**
+             * Render a mermaid diagram
+             */
+            async function renderMermaidDiagram(block, container) {
+                try {
+                    const id = 'mermaid-' + block.startLine + '-' + Date.now();
+                    const { svg } = await window.mermaid.render(id, block.code);
+                    
+                    const previewDiv = container.querySelector('.mermaid-preview');
+                    if (previewDiv) {
+                        previewDiv.innerHTML = svg;
+                        previewDiv.classList.remove('mermaid-loading');
+                        
+                        // Setup node click handlers for commenting
+                        setupMermaidNodeHandlers(previewDiv, block);
+                    }
+                } catch (error) {
+                    const previewDiv = container.querySelector('.mermaid-preview');
+                    if (previewDiv) {
+                        previewDiv.classList.remove('mermaid-loading');
+                        previewDiv.innerHTML = '<div class="mermaid-error-message">Diagram Error: ' + escapeHtml(error.message || 'Unknown error') + '</div>';
+                    }
+                    container.classList.add('mermaid-error');
+                }
+            }
+            
+            /**
+             * Setup click handlers for mermaid diagram nodes
+             */
+            function setupMermaidNodeHandlers(previewDiv, block) {
+                const nodes = previewDiv.querySelectorAll('.node, .cluster');
+                nodes.forEach(node => {
+                    node.style.cursor = 'pointer';
+                    node.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const nodeId = node.id || node.getAttribute('data-id') || 'unknown';
+                        const nodeLabel = node.textContent?.trim() || nodeId;
+                        
+                        // Open comment panel for this node
+                        openMermaidNodeComment(block, nodeId, nodeLabel, node);
+                    });
+                });
+            }
+            
+            /**
+             * Open comment panel for a mermaid node
+             */
+            function openMermaidNodeComment(block, nodeId, nodeLabel, element) {
+                pendingSelection = {
+                    startLine: block.startLine,
+                    startColumn: 1,
+                    endLine: block.endLine,
+                    endColumn: 1,
+                    selectedText: '[Mermaid Node: ' + nodeLabel + ']',
+                    mermaidContext: {
+                        diagramId: block.id,
+                        nodeId: nodeId,
+                        nodeLabel: nodeLabel,
+                        diagramType: block.language
+                    }
+                };
+                
+                const rect = element.getBoundingClientRect();
+                showFloatingPanel(rect, 'Mermaid Node: ' + nodeLabel);
+            }
+            
+            /**
+             * Render a mermaid block container
+             */
+            function renderMermaidContainer(block, commentsMap) {
+                const hasBlockComments = checkBlockHasComments(block.startLine, block.endLine, commentsMap);
+                const containerClass = 'mermaid-container' + (hasBlockComments ? ' has-comments' : '');
+                
+                return '<div class="' + containerClass + '" data-start-line="' + block.startLine + '" data-end-line="' + block.endLine + '" data-mermaid-id="' + block.id + '">' +
+                    '<div class="mermaid-header">' +
+                        '<span class="mermaid-label">📊 Mermaid Diagram</span>' +
+                        '<div class="mermaid-actions">' +
+                            '<button class="mermaid-action-btn mermaid-toggle-btn" title="Toggle source/preview">🔄 Toggle</button>' +
+                            '<button class="mermaid-action-btn mermaid-comment-btn" title="Add comment to diagram">💬</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="mermaid-preview mermaid-loading">Loading diagram...</div>' +
+                    '<div class="mermaid-source" style="display: none;"><code>' + escapeHtml(block.code) + '</code></div>' +
+                '</div>';
+            }
+            
+            /**
+             * Check if a block has any comments
+             */
+            function checkBlockHasComments(startLine, endLine, commentsMap) {
+                for (let line = startLine; line <= endLine; line++) {
+                    if (commentsMap.has(line) && commentsMap.get(line).length > 0) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            
+            // ==============================
+            // Main Render Function
+            // ==============================
+            
+            /**
+             * Render the editor content with markdown highlighting, code blocks, and comments
+             */
             function render() {
                 const lines = currentContent.split('\\n');
                 const commentsMap = groupCommentsByLine(comments);
+                const codeBlocks = parseCodeBlocks(currentContent);
+                
+                // Create a map of lines that are part of code blocks
+                const codeBlockLines = new Map();
+                codeBlocks.forEach(block => {
+                    for (let i = block.startLine; i <= block.endLine; i++) {
+                        codeBlockLines.set(i, block);
+                    }
+                });
                 
                 let html = '';
                 let lineNumbersHtml = '';
+                let inCodeBlock = false;
+                let currentCodeBlockLang = null;
+                let skipUntilLine = 0;
                 
                 lines.forEach((line, index) => {
                     const lineNum = index + 1;
+                    
+                    // Skip lines that are part of a rendered code/mermaid block
+                    if (lineNum <= skipUntilLine) {
+                        lineNumbersHtml += '<div class="line-number">' + lineNum + '</div>';
+                        return;
+                    }
+                    
                     const lineComments = commentsMap.get(lineNum) || [];
                     const visibleComments = lineComments.filter(c => 
                         settings.showResolved || c.status !== 'resolved'
                     );
                     
-                    // Check if this line has comments
                     const hasComments = visibleComments.length > 0;
                     const gutterIcon = hasComments 
                         ? '<span class="gutter-icon" title="Click to view comments">💬</span>' 
                         : '';
                     
-                    // Build line with highlighted sections
-                    let lineHtml = escapeHtml(line) || '&nbsp;';
+                    // Check if this line starts a code block
+                    const block = codeBlocks.find(b => b.startLine === lineNum);
+                    if (block) {
+                        if (block.isMermaid) {
+                            // Render mermaid diagram
+                            html += renderMermaidContainer(block, commentsMap);
+                            
+                            // Add line numbers for the block
+                            for (let i = block.startLine; i <= block.endLine; i++) {
+                                const blockLineComments = commentsMap.get(i) || [];
+                                const blockHasComments = blockLineComments.filter(c => 
+                                    settings.showResolved || c.status !== 'resolved'
+                                ).length > 0;
+                                const blockGutterIcon = blockHasComments 
+                                    ? '<span class="gutter-icon" title="Click to view comments">💬</span>' 
+                                    : '';
+                                lineNumbersHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
+                            }
+                            
+                            skipUntilLine = block.endLine;
+                            return;
+                        } else {
+                            // Render code block
+                            html += renderCodeBlock(block, commentsMap);
+                            
+                            // Add line numbers for the block
+                            for (let i = block.startLine; i <= block.endLine; i++) {
+                                const blockLineComments = commentsMap.get(i) || [];
+                                const blockHasComments = blockLineComments.filter(c => 
+                                    settings.showResolved || c.status !== 'resolved'
+                                ).length > 0;
+                                const blockGutterIcon = blockHasComments 
+                                    ? '<span class="gutter-icon" title="Click to view comments">💬</span>' 
+                                    : '';
+                                lineNumbersHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
+                            }
+                            
+                            skipUntilLine = block.endLine;
+                            return;
+                        }
+                    }
+                    
+                    // Apply markdown highlighting
+                    const result = applyMarkdownHighlighting(line, lineNum, inCodeBlock, currentCodeBlockLang);
+                    inCodeBlock = result.inCodeBlock;
+                    currentCodeBlockLang = result.codeBlockLang;
+                    
+                    let lineHtml = result.html || '&nbsp;';
                     
                     // Apply comment highlights
                     visibleComments.forEach(comment => {
@@ -1145,6 +2159,123 @@ function getScript(): string {
                 
                 // Setup click handlers for commented text and gutter icons
                 setupCommentInteractions();
+                
+                // Setup code block handlers
+                setupCodeBlockHandlers();
+                
+                // Render mermaid diagrams
+                renderMermaidDiagrams();
+            }
+            
+            /**
+             * Setup handlers for code block actions
+             */
+            function setupCodeBlockHandlers() {
+                // Copy button handlers
+                document.querySelectorAll('.code-copy-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const code = decodeURIComponent(btn.dataset.code);
+                        navigator.clipboard.writeText(code).then(() => {
+                            const originalText = btn.textContent;
+                            btn.textContent = '✅ Copied!';
+                            setTimeout(() => { btn.textContent = originalText; }, 1500);
+                        });
+                    });
+                });
+                
+                // Comment button handlers for code blocks
+                document.querySelectorAll('.code-comment-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const container = btn.closest('.code-block');
+                        const startLine = parseInt(container.dataset.startLine);
+                        const endLine = parseInt(container.dataset.endLine);
+                        
+                        pendingSelection = {
+                            startLine: startLine,
+                            startColumn: 1,
+                            endLine: endLine,
+                            endColumn: 1,
+                            selectedText: '[Code Block: lines ' + startLine + '-' + endLine + ']'
+                        };
+                        
+                        showFloatingPanel(btn.getBoundingClientRect(), 'Code Block');
+                    });
+                });
+            }
+            
+            /**
+             * Render all mermaid diagrams in the content
+             */
+            function renderMermaidDiagrams() {
+                const mermaidContainers = document.querySelectorAll('.mermaid-container');
+                if (mermaidContainers.length === 0) return;
+                
+                const codeBlocks = parseCodeBlocks(currentContent);
+                const mermaidBlocks = codeBlocks.filter(b => b.isMermaid);
+                
+                loadMermaid(() => {
+                    mermaidContainers.forEach((container, index) => {
+                        const block = mermaidBlocks[index];
+                        if (block) {
+                            renderMermaidDiagram(block, container);
+                        }
+                    });
+                });
+                
+                // Setup mermaid action handlers
+                setupMermaidHandlers();
+            }
+            
+            /**
+             * Setup handlers for mermaid actions
+             */
+            function setupMermaidHandlers() {
+                // Toggle button handlers
+                document.querySelectorAll('.mermaid-toggle-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const container = btn.closest('.mermaid-container');
+                        const preview = container.querySelector('.mermaid-preview');
+                        const source = container.querySelector('.mermaid-source');
+                        
+                        if (preview.style.display === 'none') {
+                            preview.style.display = 'flex';
+                            source.style.display = 'none';
+                            btn.textContent = '🔄 Toggle';
+                        } else {
+                            preview.style.display = 'none';
+                            source.style.display = 'block';
+                            btn.textContent = '👁️ Preview';
+                        }
+                    });
+                });
+                
+                // Comment button handlers for diagrams
+                document.querySelectorAll('.mermaid-comment-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const container = btn.closest('.mermaid-container');
+                        const startLine = parseInt(container.dataset.startLine);
+                        const endLine = parseInt(container.dataset.endLine);
+                        const diagramId = container.dataset.mermaidId;
+                        
+                        pendingSelection = {
+                            startLine: startLine,
+                            startColumn: 1,
+                            endLine: endLine,
+                            endColumn: 1,
+                            selectedText: '[Mermaid Diagram: lines ' + startLine + '-' + endLine + ']',
+                            mermaidContext: {
+                                diagramId: diagramId,
+                                diagramType: 'mermaid'
+                            }
+                        };
+                        
+                        showFloatingPanel(btn.getBoundingClientRect(), 'Mermaid Diagram');
+                    });
+                });
             }
 
             // Group comments by their starting line

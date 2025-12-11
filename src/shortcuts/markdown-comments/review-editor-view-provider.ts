@@ -9,6 +9,8 @@ import { CommentsManager } from './comments-manager';
 import { MarkdownComment } from './types';
 import { getWebviewContent } from './webview-content';
 
+import { MermaidContext } from './types';
+
 /**
  * Message types from webview to extension
  */
@@ -30,6 +32,7 @@ interface WebviewMessage {
         includeFileContent: boolean;
         format: 'markdown' | 'json';
     };
+    mermaidContext?: MermaidContext;
 }
 
 /**
@@ -170,7 +173,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                             endColumn: message.selection.endColumn
                         },
                         message.selection.selectedText,
-                        message.comment
+                        message.comment,
+                        undefined, // author
+                        undefined, // tags
+                        message.mermaidContext // mermaid context for diagram comments
                     );
                 }
                 break;
