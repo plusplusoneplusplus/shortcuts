@@ -9,12 +9,11 @@ import { GlobalNotesTreeDataProvider } from './shortcuts/global-notes-tree-data-
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import {
-    CommentsDecorationManager,
-    CommentsHoverProvider,
     CommentsManager,
     MarkdownCommentsCommands,
     MarkdownCommentsTreeDataProvider,
-    PromptGenerator
+    PromptGenerator,
+    ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
 import { NoteDocumentManager } from './shortcuts/note-document-provider';
 import { NotificationManager } from './shortcuts/notification-manager';
@@ -172,15 +171,15 @@ export async function activate(context: vscode.ExtensionContext) {
         await commentsManager.initialize();
 
         const commentsTreeDataProvider = new MarkdownCommentsTreeDataProvider(commentsManager);
-        const commentsDecorationManager = new CommentsDecorationManager(commentsManager, context);
-        const commentsHoverProvider = new CommentsHoverProvider(commentsManager);
         const promptGenerator = new PromptGenerator(commentsManager);
         const commentsCommands = new MarkdownCommentsCommands(
             commentsManager,
-            commentsDecorationManager,
             commentsTreeDataProvider,
             promptGenerator
         );
+
+        // Register the Review Editor View provider for markdown files with comments
+        const customEditorDisposable = ReviewEditorViewProvider.register(context, commentsManager);
 
         // Register comments tree view
         const commentsTreeView = vscode.window.createTreeView('markdownCommentsView', {
@@ -202,14 +201,25 @@ export async function activate(context: vscode.ExtensionContext) {
         updateCommentsViewDescription();
         commentsManager.onDidChangeComments(updateCommentsViewDescription);
 
-        // Register hover provider for markdown files
-        const hoverProviderDisposable = vscode.languages.registerHoverProvider(
-            { language: 'markdown', scheme: 'file' },
-            commentsHoverProvider
-        );
-
         // Register markdown comments commands
         const commentsCommandDisposables = commentsCommands.registerCommands(context);
+
+        // Register command to open markdown file with Review Editor View
+        const openWithCommentsCommand = vscode.commands.registerCommand(
+            'markdownComments.openWithReviewEditor',
+            async (uri?: vscode.Uri) => {
+                const targetUri = uri || vscode.window.activeTextEditor?.document.uri;
+                if (targetUri && targetUri.fsPath.endsWith('.md')) {
+                    await vscode.commands.executeCommand(
+                        'vscode.openWith',
+                        targetUri,
+                        ReviewEditorViewProvider.viewType
+                    );
+                } else {
+                    vscode.window.showWarningMessage('Please select a markdown file.');
+                }
+            }
+        );
 
         // Collect all disposables for proper cleanup
         const disposables: vscode.Disposable[] = [
@@ -229,8 +239,8 @@ export async function activate(context: vscode.ExtensionContext) {
             commentsTreeView,
             commentsManager,
             commentsTreeDataProvider,
-            commentsDecorationManager,
-            hoverProviderDisposable,
+            customEditorDisposable,
+            openWithCommentsCommand,
             ...commentsCommandDisposables
         ];
 

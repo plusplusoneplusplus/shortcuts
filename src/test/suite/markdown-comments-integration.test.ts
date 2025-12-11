@@ -1,5 +1,5 @@
 /**
- * Integration tests for Markdown Comments feature
+ * Integration tests for Markdown Comments feature with Custom Editor
  * Tests end-to-end workflows and integration with VS Code APIs
  */
 
@@ -20,31 +20,6 @@ suite('Markdown Comments Integration Tests', () => {
     let tempDir: string;
     let commentsManager: CommentsManager;
     let testMarkdownFile: string;
-    let extensionContext: vscode.ExtensionContext;
-
-    suiteSetup(() => {
-        // Create mock extension context
-        extensionContext = {
-            globalState: {
-                keys: () => [],
-                get: () => undefined,
-                update: async () => { },
-                setKeysForSync: () => { }
-            },
-            subscriptions: [],
-            extensionPath: '',
-            extensionUri: vscode.Uri.file(''),
-            storageUri: undefined,
-            globalStorageUri: vscode.Uri.file(''),
-            logUri: vscode.Uri.file(''),
-            extensionMode: vscode.ExtensionMode.Test,
-            environmentVariableCollection: {} as any,
-            secrets: {} as any,
-            asAbsolutePath: (p: string) => p,
-            storagePath: undefined,
-            globalStoragePath: ''
-        } as any;
-    });
 
     setup(() => {
         // Create temporary directory and test markdown file
@@ -566,6 +541,46 @@ Final thoughts and summary of the document.
 
             const totalTime = Date.now() - startTime;
             console.log(`Bulk operations completed in ${totalTime}ms`);
+        });
+    });
+
+    suite('Review Editor View Integration', () => {
+        test('should register Review Editor View for .md files', async () => {
+            // The Review Editor View provider should be registered
+            // We can verify this by checking if the command exists
+            const commands = await vscode.commands.getCommands();
+            assert.ok(
+                commands.includes('markdownComments.openWithReviewEditor'),
+                'Review Editor View open command should be registered'
+            );
+        });
+
+        test('should sync comments with Review Editor View', async () => {
+            await commentsManager.initialize();
+
+            // Add a comment
+            const comment = await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 5, startColumn: 1, endLine: 5, endColumn: 20 },
+                'Test text',
+                'Test comment for Review Editor sync'
+            );
+
+            // Verify the comment is accessible
+            const fileComments = commentsManager.getCommentsForFile(testMarkdownFile);
+            assert.strictEqual(fileComments.length, 1);
+            assert.strictEqual(fileComments[0].id, comment.id);
+
+            // Comments should be available after reload
+            commentsManager.dispose();
+            const newManager = new CommentsManager(tempDir);
+            await newManager.initialize();
+
+            const reloadedComments = newManager.getCommentsForFile(testMarkdownFile);
+            assert.strictEqual(reloadedComments.length, 1);
+            assert.strictEqual(reloadedComments[0].comment, 'Test comment for Review Editor sync');
+
+            newManager.dispose();
         });
     });
 });

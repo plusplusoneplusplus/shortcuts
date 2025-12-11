@@ -34,6 +34,7 @@
     "onView:markdownCommentsView",
     "onCommand:shortcuts.createLogicalGroup",
     "onCommand:markdownComments.addComment",
+    "onCustomEditor:reviewEditorView",
     "onViewContainer:shortcuts"
   ],
   "main": "./dist/extension.js",
@@ -403,6 +404,12 @@
         "title": "Open Comments Configuration",
         "category": "Markdown Comments",
         "icon": "$(gear)"
+      },
+      {
+        "command": "markdownComments.openWithReviewEditor",
+        "title": "Open with Review Editor",
+        "category": "Markdown Comments",
+        "icon": "$(comment-discussion)"
       }
     ],
     "menus": {
@@ -657,6 +664,13 @@
           "group": "comments"
         }
       ],
+      "explorer/context": [
+        {
+          "command": "markdownComments.openWithReviewEditor",
+          "when": "resourceExtname == .md",
+          "group": "navigation@10"
+        }
+      ],
       "view/context": [
         {
           "command": "shortcuts.createLogicalGroup",
@@ -665,6 +679,18 @@
         }
       ]
     },
+    "customEditors": [
+      {
+        "viewType": "reviewEditorView",
+        "displayName": "Review Editor View",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
     "keybindings": [
       {
         "command": "shortcuts.logical.handleEnterKey",

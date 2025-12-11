@@ -474,7 +474,6 @@ suite('Markdown Comments Feature Tests', () => {
         });
 
         test('should return comment items for file', async () => {
-            const absPath = commentsManager.getAbsolutePath('test.md');
             await commentsManager.addComment('test.md', { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'T1', 'C1');
             await commentsManager.addComment('test.md', { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'T2', 'C2');
 
@@ -596,7 +595,7 @@ suite('Markdown Comments Feature Tests', () => {
         });
 
         test('should only include open comments', async () => {
-            const c1 = await commentsManager.addComment('test.md', { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'Open text', 'Open comment');
+            await commentsManager.addComment('test.md', { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'Open text', 'Open comment');
             const c2 = await commentsManager.addComment('test.md', { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'Resolved text', 'Resolved comment');
             await commentsManager.resolveComment(c2.id);
 
@@ -610,7 +609,7 @@ suite('Markdown Comments Feature Tests', () => {
 
         test('should generate prompt for specific comment IDs', async () => {
             const c1 = await commentsManager.addComment('test.md', { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'Text 1', 'Comment 1');
-            const c2 = await commentsManager.addComment('test.md', { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'Text 2', 'Comment 2');
+            await commentsManager.addComment('test.md', { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'Text 2', 'Comment 2');
             const c3 = await commentsManager.addComment('test.md', { startLine: 10, startColumn: 1, endLine: 10, endColumn: 10 }, 'Text 3', 'Comment 3');
 
             const prompt = promptGenerator.generatePromptForComments([c1.id, c3.id]);

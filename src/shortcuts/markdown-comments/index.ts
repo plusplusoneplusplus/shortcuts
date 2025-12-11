@@ -4,10 +4,9 @@
  */
 
 export { MarkdownCommentsCommands } from './comments-commands';
-export { CommentsDecorationManager } from './comments-decoration-manager';
-export { CommentsHoverProvider } from './comments-hover-provider';
 export { CommentsManager } from './comments-manager';
 export { CommentFileItem, CommentItem, MarkdownCommentsTreeDataProvider } from './comments-tree-provider';
 export { PromptGenerator } from './prompt-generator';
+export { ReviewEditorViewProvider } from './review-editor-view-provider';
 export * from './types';
 

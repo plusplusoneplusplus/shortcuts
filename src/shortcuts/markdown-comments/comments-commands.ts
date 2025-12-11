@@ -3,7 +3,6 @@
  */
 
 import * as vscode from 'vscode';
-import { CommentsDecorationManager } from './comments-decoration-manager';
 import { CommentsManager } from './comments-manager';
 import { CommentItem, MarkdownCommentsTreeDataProvider } from './comments-tree-provider';
 import { PromptGenerator } from './prompt-generator';
@@ -13,19 +12,16 @@ import { PromptGenerator } from './prompt-generator';
  */
 export class MarkdownCommentsCommands {
     private commentsManager: CommentsManager;
-    private decorationManager: CommentsDecorationManager;
     private treeDataProvider: MarkdownCommentsTreeDataProvider;
     private promptGenerator: PromptGenerator;
     private treeView?: vscode.TreeView<vscode.TreeItem>;
 
     constructor(
         commentsManager: CommentsManager,
-        decorationManager: CommentsDecorationManager,
         treeDataProvider: MarkdownCommentsTreeDataProvider,
         promptGenerator: PromptGenerator
     ) {
         this.commentsManager = commentsManager;
-        this.decorationManager = decorationManager;
         this.treeDataProvider = treeDataProvider;
         this.promptGenerator = promptGenerator;
     }
@@ -446,7 +442,6 @@ export class MarkdownCommentsCommands {
      */
     private async refreshComments(): Promise<void> {
         await this.commentsManager.loadComments();
-        this.decorationManager.updateAllDecorations();
         vscode.window.showInformationMessage('Comments refreshed');
     }
 
