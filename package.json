@@ -629,14 +629,9 @@
           "group": "comment@1"
         },
         {
-          "command": "markdownComments.editComment",
-          "when": "view == markdownCommentsView && (viewItem == comment_open || viewItem == comment_resolved)",
-          "group": "comment@2"
-        },
-        {
           "command": "markdownComments.deleteComment",
           "when": "view == markdownCommentsView && (viewItem == comment_open || viewItem == comment_resolved)",
-          "group": "comment@3"
+          "group": "comment@2"
         },
         {
           "command": "markdownComments.resolveAll",

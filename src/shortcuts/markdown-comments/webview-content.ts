@@ -30,7 +30,7 @@ export function getWebviewContent(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' https://cdnjs.cloudflare.com; img-src ${webview.cspSource} data: https:; font-src ${webview.cspSource};">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src ${webview.cspSource} data: https:; font-src ${webview.cspSource};">
     <title>Review Editor View</title>
     <style>
         ${getStyles()}
@@ -381,6 +381,17 @@ function getStyles(): string {
             justify-content: space-between;
             align-items: flex-start;
             margin-bottom: 8px;
+            cursor: move;
+            user-select: none;
+        }
+
+        .bubble-header:active {
+            cursor: grabbing;
+        }
+
+        .inline-comment-bubble.dragging {
+            opacity: 0.9;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
 
         .bubble-meta {
@@ -473,6 +484,17 @@ function getStyles(): string {
             align-items: center;
             padding: 12px 16px;
             border-bottom: 1px solid var(--border-color);
+            cursor: move;
+            user-select: none;
+        }
+
+        .floating-panel-header:active {
+            cursor: grabbing;
+        }
+
+        .floating-comment-panel.dragging {
+            opacity: 0.9;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
         }
 
         .floating-panel-title {
@@ -549,6 +571,17 @@ function getStyles(): string {
             align-items: center;
             padding: 10px 14px;
             border-bottom: 1px solid var(--border-color);
+            cursor: move;
+            user-select: none;
+        }
+
+        .inline-edit-header:active {
+            cursor: grabbing;
+        }
+
+        .inline-edit-panel.dragging {
+            opacity: 0.9;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
         }
 
         .inline-edit-title {
@@ -1457,10 +1490,16 @@ function getScript(): string {
                 document.getElementById('floatingCancelBtn').addEventListener('click', closeFloatingPanel);
                 document.getElementById('floatingSaveBtn').addEventListener('click', saveNewComment);
 
+                // Setup drag functionality for floating panel
+                setupPanelDrag(floatingPanel);
+
                 // Inline edit panel buttons
                 document.getElementById('inlineEditClose').addEventListener('click', closeInlineEditPanel);
                 document.getElementById('inlineEditCancelBtn').addEventListener('click', closeInlineEditPanel);
                 document.getElementById('inlineEditSaveBtn').addEventListener('click', saveEditedComment);
+
+                // Setup drag functionality for inline edit panel
+                setupPanelDrag(inlineEditPanel);
 
                 // Ctrl+Enter to submit comments
                 floatingInput.addEventListener('keydown', (e) => {
@@ -2088,15 +2127,15 @@ function getScript(): string {
                     const actualLine = block.startLine + 1 + i; // +1 for fence line
                     const plainLine = plainCodeLines[i] || '';
                     const lineComments = getCommentsForLine(actualLine, commentsMap);
-                    
+
                     let lineContent = line || '&nbsp;';
                     // Apply comment highlights to this code line
                     if (lineComments.length > 0) {
                         lineContent = applyCommentsToBlockContent(lineContent, plainLine, lineComments);
                     }
-                    
+
                     return '<span class="code-line" data-line="' + actualLine + '">' + lineContent + '</span>';
-                }).join('\\n');
+                }).join('');
                 
                 return '<div class="' + containerClass + '" data-start-line="' + block.startLine + '" data-end-line="' + block.endLine + '" data-block-id="' + block.id + '">' +
                     '<div class="code-block-header">' +
@@ -2481,10 +2520,10 @@ function getScript(): string {
                 
                 lines.forEach((line, index) => {
                     const lineNum = index + 1;
-                    
+
                     // Skip lines that are part of a rendered code/mermaid/table block
+                    // Line numbers for these lines are already added by the block handlers
                     if (lineNum <= skipUntilLine) {
-                        lineNumbersHtml += '<div class="line-number">' + lineNum + '</div>';
                         return;
                     }
                     
@@ -2987,7 +3026,7 @@ function getScript(): string {
                     btn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const action = btn.dataset.action;
-                        
+
                         switch (action) {
                             case 'resolve':
                                 vscode.postMessage({ type: 'resolveComment', commentId: comment.id });
@@ -3007,6 +3046,114 @@ function getScript(): string {
                                 break;
                         }
                     });
+                });
+
+                // Setup drag functionality for the bubble header
+                setupBubbleDrag(bubble);
+            }
+
+            // Setup drag functionality for comment bubble
+            function setupBubbleDrag(bubble) {
+                const header = bubble.querySelector('.bubble-header');
+                if (!header) return;
+
+                let isDragging = false;
+                let startX, startY;
+                let initialLeft, initialTop;
+
+                header.addEventListener('mousedown', (e) => {
+                    // Only start drag if clicking on header (not on buttons)
+                    if (e.target.closest('.bubble-action-btn')) return;
+
+                    isDragging = true;
+                    bubble.classList.add('dragging');
+
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    initialLeft = parseInt(bubble.style.left) || 0;
+                    initialTop = parseInt(bubble.style.top) || 0;
+
+                    e.preventDefault();
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (!isDragging) return;
+
+                    const deltaX = e.clientX - startX;
+                    const deltaY = e.clientY - startY;
+
+                    let newLeft = initialLeft + deltaX;
+                    let newTop = initialTop + deltaY;
+
+                    // Keep bubble within viewport bounds
+                    const bubbleWidth = bubble.offsetWidth;
+                    const bubbleHeight = bubble.offsetHeight;
+
+                    newLeft = Math.max(10, Math.min(newLeft, window.innerWidth - bubbleWidth - 10));
+                    newTop = Math.max(10, Math.min(newTop, window.innerHeight - bubbleHeight - 10));
+
+                    bubble.style.left = newLeft + 'px';
+                    bubble.style.top = newTop + 'px';
+                });
+
+                document.addEventListener('mouseup', () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        bubble.classList.remove('dragging');
+                    }
+                });
+            }
+
+            // Setup drag functionality for panels (floating comment panel, inline edit panel)
+            function setupPanelDrag(panel) {
+                // Find the header - could be .floating-panel-header or .inline-edit-header
+                const header = panel.querySelector('.floating-panel-header, .inline-edit-header');
+                if (!header) return;
+
+                let isDragging = false;
+                let startX, startY;
+                let initialLeft, initialTop;
+
+                header.addEventListener('mousedown', (e) => {
+                    // Only start drag if clicking on header (not on close button)
+                    if (e.target.closest('.floating-panel-close, .inline-edit-close')) return;
+
+                    isDragging = true;
+                    panel.classList.add('dragging');
+
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    initialLeft = parseInt(panel.style.left) || 0;
+                    initialTop = parseInt(panel.style.top) || 0;
+
+                    e.preventDefault();
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (!isDragging) return;
+
+                    const deltaX = e.clientX - startX;
+                    const deltaY = e.clientY - startY;
+
+                    let newLeft = initialLeft + deltaX;
+                    let newTop = initialTop + deltaY;
+
+                    // Keep panel within viewport bounds
+                    const panelWidth = panel.offsetWidth;
+                    const panelHeight = panel.offsetHeight;
+
+                    newLeft = Math.max(10, Math.min(newLeft, window.innerWidth - panelWidth - 10));
+                    newTop = Math.max(10, Math.min(newTop, window.innerHeight - panelHeight - 10));
+
+                    panel.style.left = newLeft + 'px';
+                    panel.style.top = newTop + 'px';
+                });
+
+                document.addEventListener('mouseup', () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        panel.classList.remove('dragging');
+                    }
                 });
             }
 
