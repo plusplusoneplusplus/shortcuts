@@ -1,0 +1,461 @@
+/**
+ * Component styles for the Review Editor View
+ * Includes: code blocks, highlight.js theme, mermaid diagrams, tables
+ */
+
+/* ==============================
+ * Code Block Styles
+ * ============================== */
+.code-block {
+    margin: 12px 0;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.code-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+    border-bottom: 1px solid var(--border-color);
+}
+
+.code-language {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--vscode-descriptionForeground, #888);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.code-block-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.code-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    opacity: 0.7;
+    transition: opacity 0.2s, background-color 0.2s;
+    color: var(--text-color);
+}
+
+.code-action-btn:hover {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+.code-block-content {
+    margin: 0;
+    padding: 12px;
+    overflow-x: auto;
+    background: var(--vscode-editor-background);
+    counter-reset: line;
+}
+
+.code-block-content code {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--vscode-editor-font-size, 13px);
+    line-height: 1.5;
+    user-select: text;
+    cursor: text;
+    display: block;
+}
+
+.code-line {
+    display: block;
+    min-height: 1.5em;
+}
+
+.code-line:hover {
+    background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
+}
+
+.code-line::selection,
+.code-line *::selection {
+    background: var(--vscode-editor-selectionBackground);
+}
+
+/* Code fence markers */
+.md-code-fence {
+    color: var(--md-code-color);
+    opacity: 0.7;
+}
+
+/* ==============================
+ * Highlight.js Theme (VSCode-like)
+ * ============================== */
+.hljs {
+    background: transparent !important;
+}
+
+/* Dark theme colors (default) */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-name,
+.hljs-tag {
+    color: #569cd6;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-section,
+.hljs-attribute,
+.hljs-literal,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-addition {
+    color: #ce9178;
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+    color: #b5cea8;
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-deletion,
+.hljs-meta {
+    color: #6a9955;
+}
+
+.hljs-function .hljs-keyword {
+    color: #569cd6;
+}
+
+.hljs-class .hljs-title,
+.hljs-function .hljs-title,
+.hljs-title.function_ {
+    color: #dcdcaa;
+}
+
+.hljs-variable,
+.hljs-template-variable {
+    color: #9cdcfe;
+}
+
+.hljs-attr {
+    color: #9cdcfe;
+}
+
+.hljs-regexp,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+    color: #d16969;
+}
+
+.hljs-params {
+    color: #9cdcfe;
+}
+
+.hljs-property {
+    color: #9cdcfe;
+}
+
+/* Type names */
+.hljs-type,
+.hljs-title.class_ {
+    color: #4ec9b0;
+}
+
+/* Light theme overrides */
+@media (prefers-color-scheme: light) {
+    .hljs-keyword,
+    .hljs-selector-tag,
+    .hljs-built_in,
+    .hljs-name,
+    .hljs-tag {
+        color: #0000ff;
+    }
+    
+    .hljs-string,
+    .hljs-title,
+    .hljs-section,
+    .hljs-attribute,
+    .hljs-literal,
+    .hljs-template-tag,
+    .hljs-template-variable {
+        color: #a31515;
+    }
+    
+    .hljs-number,
+    .hljs-symbol,
+    .hljs-bullet,
+    .hljs-link {
+        color: #098658;
+    }
+    
+    .hljs-comment,
+    .hljs-quote,
+    .hljs-deletion,
+    .hljs-meta {
+        color: #008000;
+    }
+    
+    .hljs-class .hljs-title,
+    .hljs-function .hljs-title,
+    .hljs-title.function_ {
+        color: #795e26;
+    }
+    
+    .hljs-variable,
+    .hljs-template-variable,
+    .hljs-attr,
+    .hljs-params,
+    .hljs-property {
+        color: #001080;
+    }
+    
+    .hljs-type,
+    .hljs-title.class_ {
+        color: #267f99;
+    }
+}
+
+/* VSCode theme detection */
+body.vscode-light .hljs-keyword { color: #0000ff; }
+body.vscode-light .hljs-string { color: #a31515; }
+body.vscode-light .hljs-number { color: #098658; }
+body.vscode-light .hljs-comment { color: #008000; }
+body.vscode-light .hljs-title.function_ { color: #795e26; }
+body.vscode-light .hljs-variable { color: #001080; }
+body.vscode-light .hljs-type { color: #267f99; }
+
+/* ==============================
+ * Mermaid Diagram Styles
+ * ============================== */
+.mermaid-container {
+    margin: 16px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+}
+
+.mermaid-container.has-comments {
+    border-left: 4px solid #f9a825;
+}
+
+.mermaid-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+    border-bottom: 1px solid var(--border-color);
+}
+
+.mermaid-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--vscode-descriptionForeground, #888);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mermaid-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.mermaid-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    opacity: 0.7;
+    transition: opacity 0.2s, background-color 0.2s;
+    color: var(--text-color);
+}
+
+.mermaid-action-btn:hover {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+.mermaid-preview {
+    padding: 16px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100px;
+    overflow-x: auto;
+}
+
+.mermaid-preview svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Make mermaid nodes clickable for comments */
+.mermaid-preview .node,
+.mermaid-preview .cluster,
+.mermaid-preview .label {
+    cursor: pointer;
+    transition: filter 0.2s;
+}
+
+.mermaid-preview .node:hover,
+.mermaid-preview .cluster:hover {
+    filter: brightness(1.15);
+}
+
+.mermaid-preview .node.commented {
+    outline: 2px solid #f9a825;
+    outline-offset: 2px;
+}
+
+.mermaid-preview .node.commented.resolved {
+    outline-color: #4caf50;
+}
+
+.mermaid-source {
+    padding: 12px;
+    background: var(--md-code-bg);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    white-space: pre-wrap;
+    overflow-x: auto;
+}
+
+.mermaid-source code {
+    color: var(--md-code-color);
+}
+
+.mermaid-error {
+    border-color: #f44336;
+}
+
+.mermaid-error-header {
+    background: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+    padding: 8px 12px;
+    font-weight: 500;
+}
+
+.mermaid-error-message {
+    padding: 8px 12px;
+    color: #f44336;
+    font-size: 12px;
+    background: rgba(244, 67, 54, 0.1);
+}
+
+.mermaid-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.mermaid-loading::after {
+    content: '';
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--button-bg);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 8px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ==============================
+ * Table Styles
+ * ============================== */
+.md-table-container {
+    margin: 16px 0;
+    overflow-x: auto;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.md-table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 400px;
+}
+
+.md-table th,
+.md-table td {
+    border: 1px solid var(--border-color);
+    padding: 10px 14px;
+    text-align: left;
+    vertical-align: top;
+    user-select: text;
+    cursor: text;
+}
+
+.md-table th {
+    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.md-table tr:nth-child(even) {
+    background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.02));
+}
+
+.md-table tr:hover {
+    background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.08));
+}
+
+.md-table td.align-center,
+.md-table th.align-center {
+    text-align: center;
+}
+
+.md-table td.align-right,
+.md-table th.align-right {
+    text-align: right;
+}
+
+.md-table-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 6px 10px;
+    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+    border-top: 1px solid var(--border-color);
+}
+
+.md-table-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 12px;
+    opacity: 0.7;
+    color: var(--text-color);
+    border-radius: 4px;
+}
+
+.md-table-action-btn:hover {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+/* Table row being parsed (separator row) */
+.md-table-separator {
+    color: var(--md-blockquote-color);
+    opacity: 0.5;
+}
+

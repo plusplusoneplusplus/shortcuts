@@ -1,0 +1,321 @@
+/**
+ * Comment UI styles
+ * Includes: highlighted text, comment bubbles, floating panel, inline edit panel
+ */
+
+/* ==============================
+ * Highlighted Text with Comment
+ * ============================== */
+.commented-text {
+    background-color: var(--highlight-open);
+    cursor: pointer;
+    border-bottom: 2px solid #f9a825;
+    position: relative;
+    transition: background-color 0.2s;
+}
+
+.commented-text:hover {
+    background-color: var(--highlight-hover);
+}
+
+.commented-text.resolved {
+    background-color: var(--highlight-resolved);
+    border-bottom-color: #4caf50;
+}
+
+.commented-text.resolved:hover {
+    background-color: rgba(76, 175, 80, 0.35);
+}
+
+/* ==============================
+ * Inline Comment Bubble
+ * ============================== */
+.inline-comment-bubble {
+    position: absolute;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    padding: 12px;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 8px;
+    border-left: 4px solid #f9a825;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    animation: bubbleIn 0.15s ease-out;
+}
+
+.inline-comment-bubble.resolved {
+    border-left-color: #4caf50;
+    opacity: 0.85;
+}
+
+@keyframes bubbleIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.bubble-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    cursor: move;
+    user-select: none;
+}
+
+.bubble-header:active {
+    cursor: grabbing;
+}
+
+.inline-comment-bubble.dragging {
+    opacity: 0.9;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.bubble-meta {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.bubble-meta .status {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+    margin-left: 8px;
+}
+
+.bubble-meta .status.open {
+    background: var(--highlight-open);
+    color: #f57f17;
+}
+
+.bubble-meta .status.resolved {
+    background: var(--highlight-resolved);
+    color: #2e7d32;
+}
+
+.bubble-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.bubble-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    opacity: 0.7;
+    transition: opacity 0.2s, background-color 0.2s;
+}
+
+.bubble-action-btn:hover {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.bubble-selected-text {
+    background: var(--vscode-textBlockQuote-background);
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    margin-bottom: 8px;
+    border-left: 3px solid var(--vscode-textBlockQuote-border);
+    max-height: 80px;
+    overflow: auto;
+}
+
+.bubble-comment-text {
+    white-space: pre-wrap;
+    line-height: 1.5;
+}
+
+/* ==============================
+ * Floating Comment Panel
+ * ============================== */
+.floating-comment-panel {
+    position: fixed;
+    width: 380px;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    z-index: 1000;
+    animation: floatIn 0.2s ease-out;
+}
+
+@keyframes floatIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.floating-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: move;
+    user-select: none;
+}
+
+.floating-panel-header:active {
+    cursor: grabbing;
+}
+
+.floating-comment-panel.dragging {
+    opacity: 0.9;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.floating-panel-title {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.floating-panel-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--text-color);
+    opacity: 0.7;
+    padding: 0 4px;
+}
+
+.floating-panel-close:hover {
+    opacity: 1;
+}
+
+.floating-panel-selection {
+    background: var(--vscode-textBlockQuote-background);
+    padding: 10px 16px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    max-height: 100px;
+    overflow: auto;
+    border-left: 4px solid #f9a825;
+    margin: 0;
+}
+
+.floating-comment-panel textarea {
+    width: calc(100% - 32px);
+    margin: 12px 16px;
+    padding: 10px;
+    background: var(--input-bg);
+    color: var(--input-fg);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    resize: vertical;
+    min-height: 80px;
+}
+
+.floating-comment-panel textarea:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.floating-panel-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* ==============================
+ * Inline Edit Panel
+ * ============================== */
+.inline-edit-panel {
+    position: absolute;
+    width: 350px;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    z-index: 150;
+}
+
+.inline-edit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: move;
+    user-select: none;
+}
+
+.inline-edit-header:active {
+    cursor: grabbing;
+}
+
+.inline-edit-panel.dragging {
+    opacity: 0.9;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.inline-edit-title {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.inline-edit-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--text-color);
+    opacity: 0.7;
+}
+
+.inline-edit-close:hover {
+    opacity: 1;
+}
+
+.inline-edit-panel textarea {
+    width: calc(100% - 28px);
+    margin: 10px 14px;
+    padding: 8px;
+    background: var(--input-bg);
+    color: var(--input-fg);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    resize: vertical;
+}
+
+.inline-edit-panel textarea:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.inline-edit-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border-color);
+}
+
