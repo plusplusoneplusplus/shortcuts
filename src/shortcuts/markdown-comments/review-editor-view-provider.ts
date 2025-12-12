@@ -88,6 +88,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
         const relativePath = path.relative(workspaceRoot, document.uri.fsPath);
+
+        // Set the tab title to indicate this is the Review Editor
+        const fileName = path.basename(document.uri.fsPath);
+        webviewPanel.title = `[Review] ${fileName}`;
         const fileDir = path.dirname(document.uri.fsPath);
 
         // Setup webview with local resource roots including workspace folder for images
