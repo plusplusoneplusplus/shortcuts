@@ -61,10 +61,7 @@ export function getWebviewContent(
     </div>
     
     <div class="editor-container" id="editorContainer">
-        <div class="editor-wrapper">
-            <div class="line-numbers" id="lineNumbers"></div>
-            <div class="editor-content" id="editorContent" contenteditable="true" spellcheck="true"></div>
-        </div>
+        <div class="editor-wrapper" id="editorWrapper" contenteditable="true" spellcheck="true"></div>
     </div>
 
     <!-- Floating comment input panel -->
@@ -275,11 +272,18 @@ function getStyles(): string {
 
         .editor-wrapper {
             display: flex;
+            flex-direction: column;
             min-height: 100%;
         }
 
-        .line-numbers {
-            width: 60px;
+        .line-row {
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .line-number {
+            width: 50px;
+            min-width: 50px;
             padding-right: 16px;
             text-align: right;
             color: var(--line-number-color);
@@ -288,15 +292,11 @@ function getStyles(): string {
             line-height: 1.5;
             user-select: none;
             flex-shrink: 0;
-        }
-
-        .line-number {
-            height: auto;
-            min-height: 21px;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: flex-end;
             gap: 4px;
+            padding-top: 0;
         }
 
         .line-number .gutter-icon {
@@ -305,7 +305,7 @@ function getStyles(): string {
             font-size: 12px;
         }
 
-        .editor-content {
+        .line-content {
             flex: 1;
             font-family: var(--vscode-editor-font-family, monospace);
             font-size: var(--vscode-editor-font-size, 14px);
@@ -313,11 +313,41 @@ function getStyles(): string {
             outline: none;
             white-space: pre-wrap;
             word-wrap: break-word;
-            min-height: 100%;
+            min-height: 1.5em;
         }
 
-        .editor-content:focus {
+        .line-content:focus {
             outline: none;
+        }
+
+        /* Support for contenteditable on the wrapper */
+        .editor-wrapper[contenteditable="true"]:focus {
+            outline: none;
+        }
+
+        /* Block rows for code blocks, mermaid, and tables */
+        .block-row {
+            align-items: stretch;
+        }
+
+        .line-number-column {
+            width: 50px;
+            min-width: 50px;
+            padding-right: 16px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .line-number-column .line-number {
+            width: auto;
+            min-width: auto;
+            padding-right: 0;
+        }
+
+        .block-content {
+            flex: 1;
+            overflow-x: auto;
         }
 
         /* Highlighted text with comment */
@@ -1447,8 +1477,7 @@ function getScript(): string {
 
             // DOM elements
             const editorContainer = document.getElementById('editorContainer');
-            const editorContent = document.getElementById('editorContent');
-            const lineNumbers = document.getElementById('lineNumbers');
+            const editorWrapper = document.getElementById('editorWrapper');
             const floatingPanel = document.getElementById('floatingCommentPanel');
             const floatingInput = document.getElementById('floatingCommentInput');
             const floatingSelection = document.getElementById('floatingPanelSelection');
@@ -1516,10 +1545,10 @@ function getScript(): string {
                 });
 
                 // Editor input
-                editorContent.addEventListener('input', handleEditorInput);
-                editorContent.addEventListener('keydown', handleEditorKeydown);
-                editorContent.addEventListener('mouseup', handleSelectionChange);
-                editorContent.addEventListener('keyup', handleSelectionChange);
+                editorWrapper.addEventListener('input', handleEditorInput);
+                editorWrapper.addEventListener('keydown', handleEditorKeydown);
+                editorWrapper.addEventListener('mouseup', handleSelectionChange);
+                editorWrapper.addEventListener('keyup', handleSelectionChange);
 
                 // Close panels on escape
                 document.addEventListener('keydown', (e) => {
@@ -1658,11 +1687,11 @@ function getScript(): string {
             // Handle paste
             function handlePaste() {
                 navigator.clipboard.readText().then(text => {
-                    editorContent.focus();
+                    editorWrapper.focus();
                     document.execCommand('insertText', false, text);
                 }).catch(() => {
                     // Fallback if clipboard API fails
-                    editorContent.focus();
+                    editorWrapper.focus();
                     document.execCommand('paste');
                 });
             }
@@ -2513,10 +2542,25 @@ function getScript(): string {
                 });
                 
                 let html = '';
-                let lineNumbersHtml = '';
                 let inCodeBlock = false;
                 let currentCodeBlockLang = null;
                 let skipUntilLine = 0;
+                
+                // Helper function to generate line numbers HTML for a block
+                function generateBlockLineNumbers(startLine, endLine, commentsMap) {
+                    let lineNumsHtml = '';
+                    for (let i = startLine; i <= endLine; i++) {
+                        const blockLineComments = commentsMap.get(i) || [];
+                        const blockHasComments = blockLineComments.filter(c => 
+                            settings.showResolved || c.status !== 'resolved'
+                        ).length > 0;
+                        const blockGutterIcon = blockHasComments 
+                            ? '<span class="gutter-icon" title="Click to view comments">💬</span>' 
+                            : '';
+                        lineNumsHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
+                    }
+                    return lineNumsHtml;
+                }
                 
                 lines.forEach((line, index) => {
                     const lineNum = index + 1;
@@ -2540,62 +2584,30 @@ function getScript(): string {
                     // Check if this line starts a code block
                     const block = codeBlocks.find(b => b.startLine === lineNum);
                     if (block) {
-                        if (block.isMermaid) {
-                            // Render mermaid diagram
-                            html += renderMermaidContainer(block, commentsMap);
-                            
-                            // Add line numbers for the block
-                            for (let i = block.startLine; i <= block.endLine; i++) {
-                                const blockLineComments = commentsMap.get(i) || [];
-                                const blockHasComments = blockLineComments.filter(c => 
-                                    settings.showResolved || c.status !== 'resolved'
-                                ).length > 0;
-                                const blockGutterIcon = blockHasComments 
-                                    ? '<span class="gutter-icon" title="Click to view comments">💬</span>' 
-                                    : '';
-                                lineNumbersHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
-                            }
-                            
-                            skipUntilLine = block.endLine;
-                            return;
-                        } else {
-                            // Render code block
-                            html += renderCodeBlock(block, commentsMap);
-                            
-                            // Add line numbers for the block
-                            for (let i = block.startLine; i <= block.endLine; i++) {
-                                const blockLineComments = commentsMap.get(i) || [];
-                                const blockHasComments = blockLineComments.filter(c => 
-                                    settings.showResolved || c.status !== 'resolved'
-                                ).length > 0;
-                                const blockGutterIcon = blockHasComments 
-                                    ? '<span class="gutter-icon" title="Click to view comments">💬</span>' 
-                                    : '';
-                                lineNumbersHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
-                            }
-                            
-                            skipUntilLine = block.endLine;
-                            return;
-                        }
+                        const blockLineNums = generateBlockLineNumbers(block.startLine, block.endLine, commentsMap);
+                        const blockContent = block.isMermaid 
+                            ? renderMermaidContainer(block, commentsMap)
+                            : renderCodeBlock(block, commentsMap);
+                        
+                        html += '<div class="line-row block-row">' +
+                            '<div class="line-number-column">' + blockLineNums + '</div>' +
+                            '<div class="line-content block-content">' + blockContent + '</div>' +
+                            '</div>';
+                        
+                        skipUntilLine = block.endLine;
+                        return;
                     }
                     
                     // Check if this line starts a table
                     const table = tables.find(t => t.startLine === lineNum);
                     if (table) {
-                        // Render table
-                        html += renderTable(table, commentsMap);
+                        const tableLineNums = generateBlockLineNumbers(table.startLine, table.endLine - 1, commentsMap);
+                        const tableContent = renderTable(table, commentsMap);
                         
-                        // Add line numbers for the table
-                        for (let i = table.startLine; i < table.endLine; i++) {
-                            const tableLineComments = commentsMap.get(i) || [];
-                            const tableHasComments = tableLineComments.filter(c => 
-                                settings.showResolved || c.status !== 'resolved'
-                            ).length > 0;
-                            const tableGutterIcon = tableHasComments 
-                                ? '<span class="gutter-icon" title="Click to view comments">💬</span>' 
-                                : '';
-                            lineNumbersHtml += '<div class="line-number">' + tableGutterIcon + i + '</div>';
-                        }
+                        html += '<div class="line-row block-row">' +
+                            '<div class="line-number-column">' + tableLineNums + '</div>' +
+                            '<div class="line-content block-content">' + tableContent + '</div>' +
+                            '</div>';
                         
                         skipUntilLine = table.endLine - 1;
                         return;
@@ -2651,12 +2663,14 @@ function getScript(): string {
                         lineHtml = applyCommentHighlightToRange(lineHtml, line, startCol, endCol, comment.id, statusClass);
                     });
                     
-                    html += '<div class="line" data-line="' + lineNum + '">' + lineHtml + '</div>';
-                    lineNumbersHtml += '<div class="line-number">' + gutterIcon + lineNum + '</div>';
+                    // Create row-based layout with line number and content together
+                    html += '<div class="line-row">' +
+                        '<div class="line-number">' + gutterIcon + lineNum + '</div>' +
+                        '<div class="line-content" data-line="' + lineNum + '">' + lineHtml + '</div>' +
+                        '</div>';
                 });
                 
-                editorContent.innerHTML = html;
-                lineNumbers.innerHTML = lineNumbersHtml;
+                editorWrapper.innerHTML = html;
                 
                 // Update stats
                 const open = comments.filter(c => c.status === 'open').length;
@@ -2938,9 +2952,11 @@ function getScript(): string {
                 document.querySelectorAll('.gutter-icon').forEach(icon => {
                     icon.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        const lineNumEl = icon.closest('.line-number');
-                        const index = Array.from(lineNumbers.children).indexOf(lineNumEl);
-                        const lineNum = index + 1;
+                        const lineRow = icon.closest('.line-row');
+                        const lineContentEl = lineRow ? lineRow.querySelector('.line-content[data-line]') : null;
+                        const lineNum = lineContentEl ? parseInt(lineContentEl.getAttribute('data-line'), 10) : null;
+                        
+                        if (!lineNum) return;
                         
                         const lineComments = comments.filter(c => 
                             c.selection.startLine === lineNum && 
@@ -2948,7 +2964,7 @@ function getScript(): string {
                         );
                         
                         if (lineComments.length > 0) {
-                            const lineEl = editorContent.querySelector('[data-line="' + lineNum + '"]');
+                            const lineEl = editorWrapper.querySelector('[data-line="' + lineNum + '"]');
                             if (lineEl) {
                                 showCommentBubble(lineComments[0], lineEl);
                             }
@@ -3292,9 +3308,9 @@ function getScript(): string {
             // Find the parent line element or line context
             function findLineElement(node) {
                 let current = node;
-                while (current && current !== editorContent) {
-                    // Regular markdown line
-                    if (current.classList && current.classList.contains('line')) {
+                while (current && current !== editorWrapper) {
+                    // Regular markdown line - now using line-content class
+                    if (current.classList && (current.classList.contains('line-content') || current.classList.contains('line'))) {
                         return current;
                     }
                     // Code block line
@@ -3309,7 +3325,7 @@ function getScript(): string {
             // Find the block container (code block, table, or mermaid) for a node
             function findBlockContainer(node) {
                 let current = node;
-                while (current && current !== editorContent) {
+                while (current && current !== editorWrapper) {
                     if (current.classList) {
                         if (current.classList.contains('code-block') ||
                             current.classList.contains('md-table-container') ||
@@ -3347,7 +3363,7 @@ ${getWebviewTableCellLineFunction()}
             // Get plain text content from editor
             function getPlainTextContent() {
                 const lines = [];
-                editorContent.querySelectorAll('.line').forEach(lineEl => {
+                editorWrapper.querySelectorAll('.line-content[data-line]').forEach(lineEl => {
                     let text = '';
                     lineEl.childNodes.forEach(node => {
                         if (node.nodeType === Node.TEXT_NODE) {
