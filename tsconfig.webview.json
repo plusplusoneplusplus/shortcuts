@@ -1,10 +1,13 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "ES2020",
     "target": "ES2020",
+    "moduleResolution": "node",
     "outDir": "out",
     "lib": [
-      "ES2020"
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
     ],
     "sourceMap": true,
     "rootDir": "src",
@@ -19,13 +22,13 @@
     "inlineSources": false
   },
   "include": [
-    "src/**/*"
+    "src/shortcuts/markdown-comments/webview-scripts/**/*",
+    "src/shortcuts/markdown-comments/webview-logic/**/*",
+    "src/shortcuts/markdown-comments/types.ts",
+    "src/shortcuts/markdown-comments/webview-utils.ts"
   ],
   "exclude": [
-    "node_modules",
-    ".vscode-test",
-    "src/test/fixtures/**/*",
-    "src/shortcuts/markdown-comments/webview-scripts/**/*",
-    "src/shortcuts/markdown-comments/webview-logic/**/*"
+    "node_modules"
   ]
 }
+

@@ -9,6 +9,7 @@ const path = require('path');
 
 /** @type WebpackConfig */
 const extensionConfig = {
+  name: 'extension',
   target: 'node', // VSCode extensions run in a Node.js-context 📖 -> https://webpack.js.org/configuration/node/
   mode: 'none', // this leaves the source code as close as possible to the original (when packaging we set this to 'production')
 
@@ -31,12 +32,16 @@ const extensionConfig = {
     rules: [
       {
         test: /\.ts$/,
-        exclude: [/node_modules/, /src\/test/],
+        exclude: [/node_modules/, /src\/test/, /webview-scripts/, /webview-logic/],
         use: [
           {
             loader: 'ts-loader',
             options: {
-              configFile: 'tsconfig.webpack.json'
+              configFile: path.resolve(__dirname, 'tsconfig.webpack.json'),
+              // Use separate instance to avoid config mixing
+              instance: 'extension',
+              // Skip type checking - use tsc for that
+              transpileOnly: true
             }
           }
         ]
@@ -48,4 +53,47 @@ const extensionConfig = {
     level: "log", // enables logging required for problem matchers
   },
 };
-module.exports = [extensionConfig];
+
+/** @type WebpackConfig */
+const webviewConfig = {
+  name: 'webview',
+  target: 'web', // Webview runs in a browser-like context
+  mode: 'none',
+
+  entry: './src/shortcuts/markdown-comments/webview-scripts/main.ts',
+  output: {
+    path: path.resolve(__dirname, 'dist'),
+    filename: 'webview.js',
+    // IIFE format - script runs immediately without needing exports
+    iife: true
+  },
+  resolve: {
+    extensions: ['.ts', '.js']
+  },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        exclude: [/node_modules/, /src\/test/],
+        use: [
+          {
+            loader: 'ts-loader',
+            options: {
+              // Use separate tsconfig with DOM types for webview
+              configFile: path.resolve(__dirname, 'tsconfig.webview.json'),
+              // Use separate instance to avoid config mixing
+              instance: 'webview'
+            }
+          }
+        ]
+      }
+    ]
+  },
+  devtool: 'source-map', // Full source maps for webview debugging
+  // Don't split chunks for webview - we want a single file
+  optimization: {
+    splitChunks: false
+  }
+};
+
+module.exports = [extensionConfig, webviewConfig];

@@ -97,7 +97,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         // Setup webview with local resource roots including workspace folder for images
         const localResourceRoots: vscode.Uri[] = [
             vscode.Uri.joinPath(this.context.extensionUri, 'resources'),
-            vscode.Uri.joinPath(this.context.extensionUri, 'media')
+            vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+            vscode.Uri.joinPath(this.context.extensionUri, 'dist') // For webview.js bundle
         ];
 
         // Add workspace folder to allow loading images from workspace
