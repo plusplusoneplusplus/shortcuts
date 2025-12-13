@@ -579,10 +579,15 @@ suite('ConfigurationManager Tests', () => {
             const configPath = path.join(vscodePath, 'shortcuts.yaml');
             fs.writeFileSync(configPath, 'completely invalid: yaml: content: [[[[');
 
+            // Invalidate cache to force re-reading from the corrupted file
+            configManager.invalidateCache();
+
             const config = await configManager.loadConfiguration();
             assert.strictEqual(Array.isArray(config.logicalGroups), true);
-            assert.strictEqual(config.logicalGroups.length, 0);
-            // basePaths is optional and may be undefined
+            // When config is corrupted, it falls back to DEFAULT_SHORTCUTS_CONFIG
+            // which has 1 group (Quick Actions)
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].name, 'Quick Actions');
         });
 
         test('should skip invalid group entries', async () => {
