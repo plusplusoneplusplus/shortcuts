@@ -243,6 +243,24 @@ export class CommentsManager implements vscode.Disposable {
     }
 
     /**
+     * Delete all comments
+     */
+    async deleteAllComments(): Promise<number> {
+        const count = this.config.comments.length;
+
+        if (count > 0) {
+            this.config.comments = [];
+            await this.saveComments();
+            this._onDidChangeComments.fire({
+                type: 'comments-loaded',
+                comments: []
+            });
+        }
+
+        return count;
+    }
+
+    /**
      * Get all comments
      */
     getAllComments(): MarkdownComment[] {

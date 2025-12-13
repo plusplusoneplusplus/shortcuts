@@ -17,7 +17,7 @@ import { MermaidContext } from './types';
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'resolveAll' | 'requestState' | 'resolveImagePath';
+    'copyPrompt' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath';
     commentId?: string;
     content?: string;
     selection?: {
@@ -114,14 +114,21 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             localResourceRoots
         };
 
+        // Track when changes originate from the webview to avoid re-rendering
+        let isWebviewEdit = false;
+
         // Initial state
         const updateWebview = () => {
+            const content = document.getText();
             const comments = this.commentsManager.getCommentsForFile(relativePath);
             const settings = this.commentsManager.getSettings();
 
+            console.log('[Extension] updateWebview called - content length:', content.length);
+            console.log('[Extension] updateWebview - content preview:', content.substring(0, 200));
+
             webviewPanel.webview.postMessage({
                 type: 'update',
-                content: document.getText(),
+                content: content,
                 comments: comments,
                 filePath: relativePath,
                 fileDir: fileDir,
@@ -139,13 +146,21 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         // Handle messages from webview
         const messageDisposable = webviewPanel.webview.onDidReceiveMessage(
             async (message: WebviewMessage) => {
-                await this.handleWebviewMessage(message, document, relativePath, webviewPanel, updateWebview);
+                await this.handleWebviewMessage(message, document, relativePath, webviewPanel, updateWebview, () => isWebviewEdit = true);
             }
         );
 
         // Listen for document changes
         const documentChangeDisposable = vscode.workspace.onDidChangeTextDocument(e => {
             if (e.document.uri.toString() === document.uri.toString()) {
+                console.log('[Extension] onDidChangeTextDocument - isWebviewEdit:', isWebviewEdit);
+                // Skip re-rendering if the change came from the webview itself
+                if (isWebviewEdit) {
+                    console.log('[Extension] Skipping updateWebview (webview-initiated edit)');
+                    isWebviewEdit = false;
+                    return;
+                }
+                console.log('[Extension] Calling updateWebview (external change)');
                 updateWebview();
             }
         });
@@ -176,7 +191,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         document: vscode.TextDocument,
         relativePath: string,
         webviewPanel: vscode.WebviewPanel,
-        updateWebview: () => void
+        updateWebview: () => void,
+        setWebviewEdit: () => void
     ): Promise<void> {
         switch (message.type) {
             case 'ready':
@@ -237,18 +253,38 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 break;
 
             case 'resolveAll':
-                const count = await this.commentsManager.resolveAllComments();
-                vscode.window.showInformationMessage(`Resolved ${count} comment(s).`);
+                const resolveCount = await this.commentsManager.resolveAllComments();
+                vscode.window.showInformationMessage(`Resolved ${resolveCount} comment(s).`);
+                break;
+
+            case 'deleteAll':
+                const totalComments = this.commentsManager.getAllComments().length;
+                if (totalComments === 0) {
+                    vscode.window.showInformationMessage('No comments to delete.');
+                    break;
+                }
+                const confirmed = await vscode.window.showWarningMessage(
+                    `Are you sure you want to delete all ${totalComments} comment(s)? This action cannot be undone.`,
+                    { modal: true },
+                    'Delete All'
+                );
+                if (confirmed === 'Delete All') {
+                    const deleteCount = await this.commentsManager.deleteAllComments();
+                    vscode.window.showInformationMessage(`Deleted ${deleteCount} comment(s).`);
+                }
                 break;
 
             case 'updateContent':
                 if (message.content !== undefined) {
+                    // Mark this as a webview-initiated edit to prevent re-rendering
+                    setWebviewEdit();
                     const edit = new vscode.WorkspaceEdit();
-                    edit.replace(
-                        document.uri,
-                        new vscode.Range(0, 0, document.lineCount, 0),
-                        message.content
+                    // Use full document range to ensure all content is replaced
+                    const fullRange = new vscode.Range(
+                        document.positionAt(0),
+                        document.positionAt(document.getText().length)
                     );
+                    edit.replace(document.uri, fullRange, message.content);
                     await vscode.workspace.applyEdit(edit);
                 }
                 break;

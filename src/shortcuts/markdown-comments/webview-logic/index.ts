@@ -42,6 +42,49 @@ export {
     applyMarkdownHighlighting
 } from './markdown-renderer';
 
+// Cursor management
+export {
+    CursorPosition,
+    MockNode,
+    NODE_TYPES,
+    calculateColumnOffset,
+    findLineElement,
+    getLineNumber,
+    findTextNodeAtColumn,
+    getCursorPositionFromSelection,
+    adjustCursorAfterInsertion,
+    adjustCursorAfterDeletion,
+    validateCursorPosition,
+    compareCursorPositions,
+    isCursorInRange
+} from './cursor-management';
+
+// Content extraction
+export {
+    ContentExtractionResult,
+    ExtractionContext,
+    DEFAULT_SKIP_CLASSES,
+    createExtractionContext,
+    shouldSkipElement,
+    isBlockElement,
+    isLineContentElement,
+    isLineRowElement,
+    isBlockContentElement,
+    isBrElement,
+    processTextNode,
+    addNewLine,
+    extractBlockText,
+    extractTableText,
+    hasMeaningfulContentAfterBr,
+    processNode,
+    extractPlainTextContent,
+    applyInsertion,
+    applyDeletion,
+    getTotalCharacterCount,
+    positionToOffset,
+    offsetToPosition
+} from './content-extraction';
+
 // Re-export line mapping utilities from webview-utils
 export {
     ParsedTable,

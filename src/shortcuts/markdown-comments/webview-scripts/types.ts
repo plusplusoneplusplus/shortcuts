@@ -63,6 +63,7 @@ export interface ActiveCommentBubble {
 export type WebviewMessage =
     | { type: 'ready' }
     | { type: 'resolveAll' }
+    | { type: 'deleteAll' }
     | { type: 'copyPrompt'; promptOptions: { format: string } }
     | { type: 'addComment'; selection: PendingSelection; comment: string; mermaidContext?: MermaidContext }
     | { type: 'editComment'; commentId: string; comment: string }
