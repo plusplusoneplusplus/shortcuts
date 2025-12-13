@@ -10,7 +10,7 @@ import {
     closeActiveCommentBubble,
     showCommentBubble
 } from './panel-manager';
-import { requestResolveAll, requestCopyPrompt, updateContent } from './vscode-bridge';
+import { requestResolveAll, requestDeleteAll, requestCopyPrompt, updateContent } from './vscode-bridge';
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { PendingSelection, SavedSelection } from './types';
@@ -50,11 +50,15 @@ function setupToolbarEventListeners(): void {
     document.getElementById('resolveAllBtn')?.addEventListener('click', () => {
         requestResolveAll();
     });
-    
+
+    document.getElementById('deleteAllBtn')?.addEventListener('click', () => {
+        requestDeleteAll();
+    });
+
     document.getElementById('copyPromptBtn')?.addEventListener('click', () => {
         requestCopyPrompt('markdown');
     });
-    
+
     showResolvedCheckbox.addEventListener('change', (e) => {
         state.setSettings({ showResolved: (e.target as HTMLInputElement).checked });
         render();
@@ -330,27 +334,141 @@ function handleEditorKeydown(e: KeyboardEvent): void {
 
 /**
  * Get plain text content from editor
+ * Handles contenteditable DOM mutations (br tags, div elements, etc.)
  */
 function getPlainTextContent(): string {
     const lines: string[] = [];
-    editorWrapper.querySelectorAll('.line-content[data-line]').forEach(lineEl => {
-        let text = '';
-        lineEl.childNodes.forEach(node => {
-            if (node.nodeType === Node.TEXT_NODE) {
-                text += node.textContent;
-            } else if ((node as HTMLElement).classList?.contains('commented-text')) {
-                text += node.textContent;
-            } else if (node.nodeType === Node.ELEMENT_NODE && 
-                       !(node as HTMLElement).classList.contains('inline-comment-bubble')) {
-                text += node.textContent;
+
+    function processNode(node: Node, isFirstChild: boolean = false): void {
+        if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent || '';
+            if (lines.length === 0) {
+                lines.push(text);
+            } else {
+                lines[lines.length - 1] += text;
+            }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as HTMLElement;
+            const tag = el.tagName.toLowerCase();
+
+            // Skip comment bubbles and gutter icons
+            if (el.classList.contains('inline-comment-bubble') ||
+                el.classList.contains('gutter-icon') ||
+                el.classList.contains('line-number') ||
+                el.classList.contains('line-number-column')) {
+                return;
+            }
+
+            // Handle line breaks
+            if (tag === 'br') {
+                lines.push('');
+                return;
+            }
+
+            // Check if this is a block element that should start a new line
+            const isBlockElement = tag === 'div' || tag === 'p' ||
+                el.classList.contains('line-row') ||
+                el.classList.contains('block-row');
+
+            // For line-content with data-line, handle as a single line
+            if (el.classList.contains('line-content') && el.hasAttribute('data-line')) {
+                // Start a new line for each line-content element
+                if (lines.length === 0 || lines[lines.length - 1] !== '' || !isFirstChild) {
+                    lines.push('');
+                }
+                // Process children
+                let childIndex = 0;
+                el.childNodes.forEach(child => {
+                    processNode(child, childIndex === 0);
+                    childIndex++;
+                });
+                return;
+            }
+
+            // For line-row elements, just process children
+            if (el.classList.contains('line-row') || el.classList.contains('block-row')) {
+                let childIndex = 0;
+                el.childNodes.forEach(child => {
+                    processNode(child, childIndex === 0);
+                    childIndex++;
+                });
+                return;
+            }
+
+            // For block-content (code blocks, tables), extract raw text
+            if (el.classList.contains('block-content')) {
+                // For code blocks and tables, we need to get the original markdown content
+                // This is complex because the content has been transformed
+                // For now, just extract text content preserving some structure
+                const blockText = extractBlockText(el);
+                if (blockText) {
+                    blockText.split('\n').forEach((line, idx) => {
+                        if (idx === 0 && lines.length > 0 && lines[lines.length - 1] === '') {
+                            lines[lines.length - 1] = line;
+                        } else {
+                            lines.push(line);
+                        }
+                    });
+                }
+                return;
+            }
+
+            // For other block elements created by contenteditable
+            if (isBlockElement && lines.length > 0 && lines[lines.length - 1] !== '' && !isFirstChild) {
+                lines.push('');
+            }
+
+            // Process children
+            let childIndex = 0;
+            el.childNodes.forEach(child => {
+                processNode(child, childIndex === 0);
+                childIndex++;
+            });
+        }
+    }
+
+    processNode(editorWrapper, true);
+
+    // Clean up: handle nbsp placeholders for empty lines and normalize
+    return lines.map(line => {
+        if (line === '\u00a0') {
+            return '';
+        }
+        return line;
+    }).join('\n');
+}
+
+/**
+ * Extract text from block content (code blocks, tables)
+ */
+function extractBlockText(el: HTMLElement): string {
+    // For pre/code blocks, get the text content
+    const preElement = el.querySelector('pre');
+    if (preElement) {
+        const codeEl = preElement.querySelector('code') || preElement;
+        return codeEl.textContent || '';
+    }
+
+    // For tables, try to reconstruct markdown table format
+    const tableEl = el.querySelector('table');
+    if (tableEl) {
+        const rows: string[] = [];
+        tableEl.querySelectorAll('tr').forEach((tr, rowIndex) => {
+            const cells: string[] = [];
+            tr.querySelectorAll('th, td').forEach(cell => {
+                cells.push((cell.textContent || '').trim());
+            });
+            rows.push('| ' + cells.join(' | ') + ' |');
+            // Add separator row after header
+            if (rowIndex === 0) {
+                rows.push('| ' + cells.map(() => '---').join(' | ') + ' |');
             }
         });
-        if (text === '\u00a0' || text === '') {
-            text = '';
-        }
-        lines.push(text);
-    });
-    return lines.join('\n');
+        return rows.join('\n');
+    }
+
+    // Fallback: just get text content
+    return el.textContent || '';
 }
 
 /**

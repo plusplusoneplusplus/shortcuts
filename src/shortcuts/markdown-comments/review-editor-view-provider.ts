@@ -17,7 +17,7 @@ import { MermaidContext } from './types';
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'resolveAll' | 'requestState' | 'resolveImagePath';
+    'copyPrompt' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath';
     commentId?: string;
     content?: string;
     selection?: {
@@ -237,18 +237,36 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 break;
 
             case 'resolveAll':
-                const count = await this.commentsManager.resolveAllComments();
-                vscode.window.showInformationMessage(`Resolved ${count} comment(s).`);
+                const resolveCount = await this.commentsManager.resolveAllComments();
+                vscode.window.showInformationMessage(`Resolved ${resolveCount} comment(s).`);
+                break;
+
+            case 'deleteAll':
+                const totalComments = this.commentsManager.getAllComments().length;
+                if (totalComments === 0) {
+                    vscode.window.showInformationMessage('No comments to delete.');
+                    break;
+                }
+                const confirmed = await vscode.window.showWarningMessage(
+                    `Are you sure you want to delete all ${totalComments} comment(s)? This action cannot be undone.`,
+                    { modal: true },
+                    'Delete All'
+                );
+                if (confirmed === 'Delete All') {
+                    const deleteCount = await this.commentsManager.deleteAllComments();
+                    vscode.window.showInformationMessage(`Deleted ${deleteCount} comment(s).`);
+                }
                 break;
 
             case 'updateContent':
                 if (message.content !== undefined) {
                     const edit = new vscode.WorkspaceEdit();
-                    edit.replace(
-                        document.uri,
-                        new vscode.Range(0, 0, document.lineCount, 0),
-                        message.content
+                    // Use full document range to ensure all content is replaced
+                    const fullRange = new vscode.Range(
+                        document.positionAt(0),
+                        document.positionAt(document.getText().length)
                     );
+                    edit.replace(document.uri, fullRange, message.content);
                     await vscode.workspace.applyEdit(edit);
                 }
                 break;

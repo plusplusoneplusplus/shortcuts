@@ -29,6 +29,13 @@ export function requestResolveAll(): void {
 }
 
 /**
+ * Request the extension to delete all comments
+ */
+export function requestDeleteAll(): void {
+    postMessage({ type: 'deleteAll' });
+}
+
+/**
  * Request the extension to copy the AI prompt
  */
 export function requestCopyPrompt(format: string = 'markdown'): void {

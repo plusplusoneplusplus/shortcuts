@@ -548,6 +548,136 @@ Final thoughts and summary of the document.
             const totalTime = Date.now() - startTime;
             console.log(`Bulk operations completed in ${totalTime}ms`);
         });
+
+        test('should delete all comments', async () => {
+            await commentsManager.initialize();
+
+            // Add multiple comments
+            await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                'Text 1',
+                'Comment 1'
+            );
+            await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 },
+                'Text 2',
+                'Comment 2'
+            );
+            await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 10, startColumn: 1, endLine: 10, endColumn: 10 },
+                'Text 3',
+                'Comment 3'
+            );
+
+            assert.strictEqual(commentsManager.getAllComments().length, 3);
+
+            // Delete all
+            const count = await commentsManager.deleteAllComments();
+            assert.strictEqual(count, 3);
+            assert.strictEqual(commentsManager.getAllComments().length, 0);
+        });
+
+        test('should return 0 when deleting all from empty comments', async () => {
+            await commentsManager.initialize();
+
+            // No comments to delete
+            assert.strictEqual(commentsManager.getAllComments().length, 0);
+
+            const count = await commentsManager.deleteAllComments();
+            assert.strictEqual(count, 0);
+            assert.strictEqual(commentsManager.getAllComments().length, 0);
+        });
+
+        test('should delete all comments including resolved ones', async () => {
+            await commentsManager.initialize();
+
+            // Add comments with different statuses
+            const c1 = await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                'Text 1',
+                'Open comment'
+            );
+            const c2 = await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 },
+                'Text 2',
+                'To be resolved'
+            );
+            await commentsManager.resolveComment(c2.id);
+
+            assert.strictEqual(commentsManager.getOpenCommentCount(), 1);
+            assert.strictEqual(commentsManager.getResolvedCommentCount(), 1);
+            assert.strictEqual(commentsManager.getAllComments().length, 2);
+
+            // Delete all should remove both open and resolved comments
+            const count = await commentsManager.deleteAllComments();
+            assert.strictEqual(count, 2);
+            assert.strictEqual(commentsManager.getAllComments().length, 0);
+            assert.strictEqual(commentsManager.getOpenCommentCount(), 0);
+            assert.strictEqual(commentsManager.getResolvedCommentCount(), 0);
+        });
+
+        test('should emit comments-loaded event after delete all', async () => {
+            await commentsManager.initialize();
+
+            // Add a comment
+            await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                'Text',
+                'Comment'
+            );
+
+            let eventFired = false;
+            let eventComments: any[] = [];
+            const disposable = commentsManager.onDidChangeComments((event) => {
+                if (event.type === 'comments-loaded') {
+                    eventFired = true;
+                    eventComments = event.comments || [];
+                }
+            });
+
+            await commentsManager.deleteAllComments();
+
+            assert.strictEqual(eventFired, true, 'Should fire comments-loaded event');
+            assert.strictEqual(eventComments.length, 0, 'Event should have empty comments array');
+
+            disposable.dispose();
+        });
+
+        test('should persist delete all across manager instances', async () => {
+            await commentsManager.initialize();
+
+            // Add comments
+            await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                'Text 1',
+                'Comment 1'
+            );
+            await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 },
+                'Text 2',
+                'Comment 2'
+            );
+
+            // Delete all
+            await commentsManager.deleteAllComments();
+            commentsManager.dispose();
+
+            // Create new manager and verify
+            const newManager = new CommentsManager(tempDir);
+            await newManager.initialize();
+
+            assert.strictEqual(newManager.getAllComments().length, 0, 'Delete all should persist');
+
+            newManager.dispose();
+        });
     });
 
     suite('Review Editor View Integration', () => {
