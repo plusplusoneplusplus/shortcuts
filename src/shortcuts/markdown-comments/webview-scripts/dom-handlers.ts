@@ -391,11 +391,102 @@ function hasMeaningfulContentAfterBr(el: HTMLElement): boolean {
  * Adapted from content-extraction module for browser DOM.
  */
 function extractBlockText(el: HTMLElement): string {
-    // For pre/code blocks, get the text content
+    // Check if this is a code block container
+    const codeBlockEl = el.querySelector('.code-block');
+    if (codeBlockEl) {
+        // Extract language from the code element class (language-{lang}) or code-language span
+        let language = 'text';
+        const codeEl = codeBlockEl.querySelector('code');
+        if (codeEl) {
+            // Try to get language from class like "language-typescript" or "hljs language-typescript"
+            const langMatch = codeEl.className.match(/language-(\w+)/);
+            if (langMatch) {
+                language = langMatch[1];
+            }
+        }
+        // Fallback: try the code-language span
+        if (language === 'text') {
+            const langSpan = codeBlockEl.querySelector('.code-language');
+            if (langSpan && langSpan.textContent) {
+                language = langSpan.textContent.trim().toLowerCase();
+            }
+        }
+
+        // Get the code content - try the data-code attribute first (most reliable)
+        // The copy button stores the original code in a data-code attribute
+        const copyBtn = codeBlockEl.querySelector('.code-copy-btn') as HTMLElement;
+        if (copyBtn && copyBtn.dataset.code) {
+            const codeContent = decodeURIComponent(copyBtn.dataset.code);
+            return '```' + language + '\n' + codeContent + '\n```';
+        }
+
+        // Fallback: extract from code-line spans (preserving line breaks)
+        const codeLines = codeBlockEl.querySelectorAll('.code-line');
+        if (codeLines.length > 0) {
+            const lines: string[] = [];
+            codeLines.forEach(lineEl => {
+                // Get text content, handling &nbsp; placeholder for empty lines
+                let lineText = lineEl.textContent || '';
+                if (lineText === '\u00a0') {
+                    lineText = '';
+                }
+                lines.push(lineText);
+            });
+            return '```' + language + '\n' + lines.join('\n') + '\n```';
+        }
+
+        // Last fallback: just get textContent (may lose line breaks)
+        const codeContent = codeEl?.textContent || '';
+        return '```' + language + '\n' + codeContent + '\n```';
+    }
+
+    // Check for mermaid diagram container
+    const mermaidEl = el.querySelector('.mermaid-container');
+    if (mermaidEl) {
+        // Get mermaid source from the hidden source element
+        const sourceEl = mermaidEl.querySelector('.mermaid-source code');
+        if (sourceEl) {
+            const mermaidContent = sourceEl.textContent || '';
+            return '```mermaid\n' + mermaidContent + '\n```';
+        }
+    }
+
+    // For pre/code blocks (fallback for any other pre elements)
     const preElement = el.querySelector('pre');
     if (preElement) {
         const codeEl = preElement.querySelector('code') || preElement;
-        return codeEl.textContent || '';
+        // Try to extract from code-line spans first
+        const codeLines = preElement.querySelectorAll('.code-line');
+        if (codeLines.length > 0) {
+            const lines: string[] = [];
+            codeLines.forEach(lineEl => {
+                let lineText = lineEl.textContent || '';
+                if (lineText === '\u00a0') {
+                    lineText = '';
+                }
+                lines.push(lineText);
+            });
+            // Try to detect language from code element class
+            let language = 'text';
+            if (codeEl.className) {
+                const langMatch = codeEl.className.match(/language-(\w+)/);
+                if (langMatch) {
+                    language = langMatch[1];
+                }
+            }
+            return '```' + language + '\n' + lines.join('\n') + '\n```';
+        }
+
+        const codeContent = codeEl.textContent || '';
+        // Try to detect language from code element class
+        let language = 'text';
+        if (codeEl.className) {
+            const langMatch = codeEl.className.match(/language-(\w+)/);
+            if (langMatch) {
+                language = langMatch[1];
+            }
+        }
+        return '```' + language + '\n' + codeContent + '\n```';
     }
 
     // For tables, try to reconstruct markdown table format

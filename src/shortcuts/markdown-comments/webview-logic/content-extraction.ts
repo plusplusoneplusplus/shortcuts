@@ -63,7 +63,7 @@ export function createExtractionContext(
 export function shouldSkipElement(node: MockNode, skipClasses: Set<string>): boolean {
     if (node.nodeType !== NODE_TYPES.ELEMENT_NODE) return false;
     if (!node.classList) return false;
-    
+
     for (const cls of skipClasses) {
         if (node.classList.contains(cls)) {
             return true;
@@ -77,12 +77,12 @@ export function shouldSkipElement(node: MockNode, skipClasses: Set<string>): boo
  */
 export function isBlockElement(node: MockNode): boolean {
     if (node.nodeType !== NODE_TYPES.ELEMENT_NODE) return false;
-    
+
     const tag = (node.tagName || '').toLowerCase();
     if (tag === 'div' || tag === 'p') return true;
     if (node.classList?.contains('line-row')) return true;
     if (node.classList?.contains('block-row')) return true;
-    
+
     return false;
 }
 
@@ -91,8 +91,8 @@ export function isBlockElement(node: MockNode): boolean {
  */
 export function isLineContentElement(node: MockNode): boolean {
     if (node.nodeType !== NODE_TYPES.ELEMENT_NODE) return false;
-    return Boolean(node.classList?.contains('line-content')) && 
-           Boolean(node.hasAttribute?.('data-line'));
+    return Boolean(node.classList?.contains('line-content')) &&
+        Boolean(node.hasAttribute?.('data-line'));
 }
 
 /**
@@ -100,8 +100,8 @@ export function isLineContentElement(node: MockNode): boolean {
  */
 export function isLineRowElement(node: MockNode): boolean {
     if (node.nodeType !== NODE_TYPES.ELEMENT_NODE) return false;
-    return Boolean(node.classList?.contains('line-row')) || 
-           Boolean(node.classList?.contains('block-row'));
+    return Boolean(node.classList?.contains('line-row')) ||
+        Boolean(node.classList?.contains('block-row'));
 }
 
 /**
@@ -151,7 +151,7 @@ export function extractBlockText(node: MockNode): string {
     }
 
     // Check for table
-    if (node.classList?.contains('md-table-container') || 
+    if (node.classList?.contains('md-table-container') ||
         node.classList?.contains('md-table')) {
         return extractTableText(node);
     }
@@ -165,7 +165,7 @@ export function extractBlockText(node: MockNode): string {
  */
 export function extractTableText(tableNode: MockNode): string {
     const rows: string[] = [];
-    
+
     // Simple extraction - in real DOM we'd traverse tr/td/th
     // For mock testing, we'll use textContent
     // This is a simplified version; the actual DOM handler would be more complex
@@ -179,17 +179,17 @@ export function hasMeaningfulContentAfterBr(node: MockNode): boolean {
     // Find next sibling
     const parent = node.parentNode;
     if (!parent) return false;
-    
+
     const siblings = parent.childNodes;
     let foundNode = false;
-    
+
     for (const sibling of siblings) {
         if (sibling === node) {
             foundNode = true;
             continue;
         }
         if (!foundNode) continue;
-        
+
         // Check if this sibling has content
         if (sibling.nodeType === NODE_TYPES.TEXT_NODE) {
             const text = sibling.textContent?.trim();
@@ -198,7 +198,7 @@ export function hasMeaningfulContentAfterBr(node: MockNode): boolean {
             return true;
         }
     }
-    
+
     return false;
 }
 
@@ -207,7 +207,7 @@ export function hasMeaningfulContentAfterBr(node: MockNode): boolean {
  * This is the core recursive function that handles all node types
  */
 export function processNode(
-    node: MockNode, 
+    node: MockNode,
     context: ExtractionContext,
     isFirstChild: boolean = false
 ): void {
@@ -242,22 +242,22 @@ export function processNode(
     // Handle line-content elements (our rendered lines)
     if (isLineContentElement(node)) {
         // Start a new line for each line-content element
-        if (context.lines.length === 0 || 
-            context.lines[context.lines.length - 1] !== '' || 
+        if (context.lines.length === 0 ||
+            context.lines[context.lines.length - 1] !== '' ||
             !isFirstChild) {
             addNewLine(context);
         }
-        
+
         // Process children with insideLineContent = true
         const previousInsideLineContent = context.insideLineContent;
         context.insideLineContent = true;
-        
+
         let childIndex = 0;
         for (const child of node.childNodes) {
             processNode(child, context, childIndex === 0);
             childIndex++;
         }
-        
+
         context.insideLineContent = previousInsideLineContent;
         return;
     }
@@ -278,7 +278,7 @@ export function processNode(
         if (blockText) {
             const blockLines = blockText.split('\n');
             blockLines.forEach((line, idx) => {
-                if (idx === 0 && context.lines.length > 0 && 
+                if (idx === 0 && context.lines.length > 0 &&
                     context.lines[context.lines.length - 1] === '') {
                     context.lines[context.lines.length - 1] = line;
                 } else {
@@ -293,13 +293,13 @@ export function processNode(
     if (isBlockElement(node)) {
         if (context.insideLineContent) {
             // Inside line-content, block elements mean user pressed Enter
-            if (context.lines.length > 0 && 
+            if (context.lines.length > 0 &&
                 context.lines[context.lines.length - 1] !== '') {
                 addNewLine(context);
             }
-        } else if (context.lines.length > 0 && 
-                   context.lines[context.lines.length - 1] !== '' && 
-                   !isFirstChild) {
+        } else if (context.lines.length > 0 &&
+            context.lines[context.lines.length - 1] !== '' &&
+            !isFirstChild) {
             addNewLine(context);
         }
     }
@@ -325,9 +325,9 @@ export function extractPlainTextContent(
     skipClasses: Set<string> = DEFAULT_SKIP_CLASSES
 ): ContentExtractionResult {
     const context = createExtractionContext(skipClasses);
-    
+
     processNode(editorWrapper, context, true);
-    
+
     // Post-process: handle nbsp placeholders for empty lines
     const processedLines = context.lines.map(line => {
         if (line === '\u00a0') {
@@ -335,7 +335,7 @@ export function extractPlainTextContent(
         }
         return line;
     });
-    
+
     return {
         content: processedLines.join('\n'),
         lines: processedLines,
@@ -365,17 +365,17 @@ export function applyInsertion(
 
     // Clone the array
     const lines = [...originalLines];
-    
+
     // Validate line number
     const lineIndex = Math.max(0, Math.min(insertLine - 1, lines.length - 1));
     const line = lines[lineIndex] || '';
-    
+
     // Validate column
     const col = Math.max(0, Math.min(insertColumn, line.length));
-    
+
     // Split the insert text into lines
     const insertLines = insertText.split('\n');
-    
+
     if (insertLines.length === 1) {
         // Simple single-line insertion
         lines[lineIndex] = line.slice(0, col) + insertText + line.slice(col);
@@ -383,20 +383,20 @@ export function applyInsertion(
         // Multi-line insertion
         const before = line.slice(0, col);
         const after = line.slice(col);
-        
+
         // First inserted line gets appended to before
         const firstLine = before + insertLines[0];
-        
+
         // Last inserted line gets prepended to after
         const lastLine = insertLines[insertLines.length - 1] + after;
-        
+
         // Middle lines are added as-is
         const middleLines = insertLines.slice(1, -1);
-        
+
         // Replace the original line with all new lines
         lines.splice(lineIndex, 1, firstLine, ...middleLines, lastLine);
     }
-    
+
     return lines;
 }
 
@@ -423,28 +423,28 @@ export function applyDeletion(
 
     // Clone the array
     const lines = [...originalLines];
-    
+
     // Validate positions
     const startLineIndex = Math.max(0, Math.min(startLine - 1, lines.length - 1));
     const endLineIndex = Math.max(0, Math.min(endLine - 1, lines.length - 1));
-    
+
     const startLineContent = lines[startLineIndex] || '';
     const endLineContent = lines[endLineIndex] || '';
-    
+
     const startCol = Math.max(0, Math.min(startColumn, startLineContent.length));
     const endCol = Math.max(0, Math.min(endColumn, endLineContent.length));
-    
+
     if (startLineIndex === endLineIndex) {
         // Single line deletion
-        lines[startLineIndex] = 
-            startLineContent.slice(0, startCol) + 
+        lines[startLineIndex] =
+            startLineContent.slice(0, startCol) +
             endLineContent.slice(endCol);
     } else {
         // Multi-line deletion
         const newLine = startLineContent.slice(0, startCol) + endLineContent.slice(endCol);
         lines.splice(startLineIndex, endLineIndex - startLineIndex + 1, newLine);
     }
-    
+
     return lines;
 }
 
@@ -453,8 +453,8 @@ export function applyDeletion(
  */
 export function getTotalCharacterCount(lines: string[]): number {
     // Characters in lines plus newlines between them
-    return lines.reduce((sum, line) => sum + line.length, 0) + 
-           Math.max(0, lines.length - 1);
+    return lines.reduce((sum, line) => sum + line.length, 0) +
+        Math.max(0, lines.length - 1);
 }
 
 /**
@@ -466,15 +466,15 @@ export function positionToOffset(
     column: number
 ): number {
     let offset = 0;
-    
+
     for (let i = 0; i < line - 1 && i < lines.length; i++) {
         offset += lines[i].length + 1; // +1 for newline
     }
-    
+
     if (line > 0 && line <= lines.length) {
         offset += Math.min(column, lines[line - 1].length);
     }
-    
+
     return offset;
 }
 
@@ -486,22 +486,22 @@ export function offsetToPosition(
     offset: number
 ): { line: number; column: number } {
     let remainingOffset = offset;
-    
+
     for (let i = 0; i < lines.length; i++) {
         const lineLength = lines[i].length;
-        
+
         if (remainingOffset <= lineLength) {
             return { line: i + 1, column: remainingOffset };
         }
-        
+
         remainingOffset -= lineLength + 1; // +1 for newline
     }
-    
+
     // Beyond content - return end position
     if (lines.length === 0) {
         return { line: 1, column: 0 };
     }
-    
+
     return {
         line: lines.length,
         column: lines[lines.length - 1].length
