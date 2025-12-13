@@ -1,5 +1,5 @@
 /**
- * Unit tests for webview-logic module
+ * Comprehensive unit tests for webview-logic module
  * 
  * These tests demonstrate the testability of the extracted business logic.
  * The webview-logic module contains pure functions that can be tested in Node.js
@@ -19,7 +19,8 @@ import {
     updateCommentStatus,
     updateCommentText,
     deleteComment,
-    resolveAllComments
+    resolveAllComments,
+    getSelectionCoverageForLine
 } from '../../shortcuts/markdown-comments/webview-logic/comment-state';
 
 import {
@@ -32,10 +33,11 @@ import {
 import {
     escapeHtml,
     applyInlineMarkdown,
-    applyMarkdownHighlighting
+    applyMarkdownHighlighting,
+    resolveImagePath
 } from '../../shortcuts/markdown-comments/webview-logic/markdown-renderer';
 
-import { MarkdownComment } from '../../shortcuts/markdown-comments/types';
+import { MarkdownComment, CommentStatus } from '../../shortcuts/markdown-comments/types';
 
 suite('Webview Logic Tests', () => {
     // Sample comments for testing
@@ -69,192 +71,855 @@ suite('Webview Logic Tests', () => {
             status: 'open',
             createdAt: '2024-01-01T00:00:00Z',
             updatedAt: '2024-01-01T00:00:00Z'
+        },
+        {
+            id: 'comment-4',
+            filePath: '/test/file.md',
+            selection: { startLine: 15, startColumn: 1, endLine: 15, endColumn: 10 },
+            selectedText: 'Pending text',
+            comment: 'This is comment 4',
+            status: 'pending',
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z'
         }
     ];
 
     suite('Comment State Management', () => {
-        test('filterCommentsByStatus should filter resolved comments when showResolved is false', () => {
-            const filtered = filterCommentsByStatus(sampleComments, false);
-            assert.strictEqual(filtered.length, 2);
-            assert.ok(filtered.every(c => c.status !== 'resolved'));
+        
+        suite('filterCommentsByStatus', () => {
+            test('should filter resolved comments when showResolved is false', () => {
+                const filtered = filterCommentsByStatus(sampleComments, false);
+                assert.strictEqual(filtered.length, 3);
+                assert.ok(filtered.every(c => c.status !== 'resolved'));
+            });
+
+            test('should return all comments when showResolved is true', () => {
+                const filtered = filterCommentsByStatus(sampleComments, true);
+                assert.strictEqual(filtered.length, 4);
+            });
+
+            test('should return empty array for empty input', () => {
+                const filtered = filterCommentsByStatus([], false);
+                assert.strictEqual(filtered.length, 0);
+            });
+
+            test('should return empty array when all are resolved and showResolved is false', () => {
+                const allResolved: MarkdownComment[] = sampleComments.map(c => ({
+                    ...c,
+                    status: 'resolved' as CommentStatus
+                }));
+                const filtered = filterCommentsByStatus(allResolved, false);
+                assert.strictEqual(filtered.length, 0);
+            });
         });
 
-        test('filterCommentsByStatus should return all comments when showResolved is true', () => {
-            const filtered = filterCommentsByStatus(sampleComments, true);
-            assert.strictEqual(filtered.length, 3);
+        suite('sortCommentsByLine', () => {
+            test('should sort comments by line number', () => {
+                const sorted = sortCommentsByLine(sampleComments);
+                assert.strictEqual(sorted[0].id, 'comment-1'); // Line 5
+                assert.strictEqual(sorted[1].id, 'comment-3'); // Line 5 (col 25)
+                assert.strictEqual(sorted[2].id, 'comment-2'); // Line 10
+                assert.strictEqual(sorted[3].id, 'comment-4'); // Line 15
+            });
+
+            test('should sort by column when lines are the same', () => {
+                const sorted = sortCommentsByLine(sampleComments);
+                // Both comment-1 and comment-3 are on line 5
+                // comment-1 has column 1, comment-3 has column 25
+                const line5Comments = sorted.filter(c => c.selection.startLine === 5);
+                assert.strictEqual(line5Comments[0].id, 'comment-1');
+                assert.strictEqual(line5Comments[1].id, 'comment-3');
+            });
+
+            test('should not modify original array', () => {
+                const original = [...sampleComments];
+                sortCommentsByLine(sampleComments);
+                assert.deepStrictEqual(sampleComments, original);
+            });
+
+            test('should handle empty array', () => {
+                const sorted = sortCommentsByLine([]);
+                assert.strictEqual(sorted.length, 0);
+            });
+
+            test('should handle single comment', () => {
+                const sorted = sortCommentsByLine([sampleComments[0]]);
+                assert.strictEqual(sorted.length, 1);
+                assert.strictEqual(sorted[0].id, 'comment-1');
+            });
         });
 
-        test('sortCommentsByLine should sort comments by line number', () => {
-            const sorted = sortCommentsByLine(sampleComments);
-            assert.strictEqual(sorted[0].id, 'comment-1'); // Line 5
-            assert.strictEqual(sorted[2].id, 'comment-2'); // Line 10
+        suite('sortCommentsByColumnDescending', () => {
+            test('should sort comments by column descending', () => {
+                const sorted = sortCommentsByColumnDescending(sampleComments);
+                assert.strictEqual(sorted[0].id, 'comment-3'); // Column 25
+                assert.strictEqual(sorted[1].id, 'comment-2'); // Column 5
+                assert.strictEqual(sorted[2].id, 'comment-1'); // Column 1
+                assert.strictEqual(sorted[3].id, 'comment-4'); // Column 1
+            });
+
+            test('should not modify original array', () => {
+                const original = [...sampleComments];
+                sortCommentsByColumnDescending(sampleComments);
+                assert.deepStrictEqual(sampleComments, original);
+            });
+
+            test('should handle empty array', () => {
+                const sorted = sortCommentsByColumnDescending([]);
+                assert.strictEqual(sorted.length, 0);
+            });
         });
 
-        test('sortCommentsByColumnDescending should sort comments by column descending', () => {
-            const sorted = sortCommentsByColumnDescending(sampleComments);
-            assert.strictEqual(sorted[0].id, 'comment-3'); // Column 25
-            assert.strictEqual(sorted[1].id, 'comment-2'); // Column 5
-            assert.strictEqual(sorted[2].id, 'comment-1'); // Column 1
+        suite('groupCommentsByLine', () => {
+            test('should group comments by starting line', () => {
+                const grouped = groupCommentsByLine(sampleComments);
+                assert.strictEqual(grouped.size, 3); // Lines 5, 10, and 15
+                assert.strictEqual(grouped.get(5)?.length, 2);
+                assert.strictEqual(grouped.get(10)?.length, 1);
+                assert.strictEqual(grouped.get(15)?.length, 1);
+            });
+
+            test('should return empty map for empty input', () => {
+                const grouped = groupCommentsByLine([]);
+                assert.strictEqual(grouped.size, 0);
+            });
+
+            test('should handle all comments on same line', () => {
+                const sameLine: MarkdownComment[] = sampleComments.map(c => ({
+                    ...c,
+                    selection: { ...c.selection, startLine: 1 }
+                }));
+                const grouped = groupCommentsByLine(sameLine);
+                assert.strictEqual(grouped.size, 1);
+                assert.strictEqual(grouped.get(1)?.length, 4);
+            });
         });
 
-        test('groupCommentsByLine should group comments by starting line', () => {
-            const grouped = groupCommentsByLine(sampleComments);
-            assert.strictEqual(grouped.size, 2); // Lines 5 and 10
-            assert.strictEqual(grouped.get(5)?.length, 2);
-            assert.strictEqual(grouped.get(10)?.length, 1);
+        suite('getCommentsForLine', () => {
+            test('should get comments for specific line', () => {
+                const commentsMap = groupCommentsByLine(sampleComments);
+                const line5Comments = getCommentsForLine(5, commentsMap, true);
+                assert.strictEqual(line5Comments.length, 2);
+            });
+
+            test('should filter resolved when showResolved is false', () => {
+                const commentsWithResolved: MarkdownComment[] = [
+                    { ...sampleComments[0], status: 'resolved' as CommentStatus },
+                    sampleComments[2]
+                ];
+                const commentsMap = groupCommentsByLine(commentsWithResolved);
+                const line5Comments = getCommentsForLine(5, commentsMap, false);
+                assert.strictEqual(line5Comments.length, 1);
+            });
+
+            test('should return empty array for line with no comments', () => {
+                const commentsMap = groupCommentsByLine(sampleComments);
+                const line100Comments = getCommentsForLine(100, commentsMap, true);
+                assert.strictEqual(line100Comments.length, 0);
+            });
         });
 
-        test('countCommentsByStatus should count comments correctly', () => {
-            const counts = countCommentsByStatus(sampleComments);
-            assert.strictEqual(counts.open, 2);
-            assert.strictEqual(counts.resolved, 1);
-            assert.strictEqual(counts.pending, 0);
+        suite('blockHasComments', () => {
+            test('should return true if block contains comments', () => {
+                const commentsMap = groupCommentsByLine(sampleComments);
+                assert.strictEqual(blockHasComments(4, 6, commentsMap, true), true);
+            });
+
+            test('should return false if block has no comments', () => {
+                const commentsMap = groupCommentsByLine(sampleComments);
+                assert.strictEqual(blockHasComments(1, 3, commentsMap, true), false);
+            });
+
+            test('should respect showResolved parameter', () => {
+                const onlyResolved: MarkdownComment[] = [
+                    { ...sampleComments[0], status: 'resolved' as CommentStatus }
+                ];
+                const commentsMap = groupCommentsByLine(onlyResolved);
+                assert.strictEqual(blockHasComments(4, 6, commentsMap, true), true);
+                assert.strictEqual(blockHasComments(4, 6, commentsMap, false), false);
+            });
+
+            test('should handle single line block', () => {
+                const commentsMap = groupCommentsByLine(sampleComments);
+                assert.strictEqual(blockHasComments(5, 5, commentsMap, true), true);
+                assert.strictEqual(blockHasComments(6, 6, commentsMap, true), false);
+            });
         });
 
-        test('findCommentById should find the correct comment', () => {
-            const found = findCommentById(sampleComments, 'comment-2');
-            assert.ok(found);
-            assert.strictEqual(found.id, 'comment-2');
+        suite('countCommentsByStatus', () => {
+            test('should count comments correctly', () => {
+                const counts = countCommentsByStatus(sampleComments);
+                assert.strictEqual(counts.open, 2);
+                assert.strictEqual(counts.resolved, 1);
+                assert.strictEqual(counts.pending, 1);
+            });
+
+            test('should return zeros for empty array', () => {
+                const counts = countCommentsByStatus([]);
+                assert.strictEqual(counts.open, 0);
+                assert.strictEqual(counts.resolved, 0);
+                assert.strictEqual(counts.pending, 0);
+            });
+
+            test('should handle all same status', () => {
+                const allOpen = sampleComments.map(c => ({ ...c, status: 'open' as CommentStatus }));
+                const counts = countCommentsByStatus(allOpen);
+                assert.strictEqual(counts.open, 4);
+                assert.strictEqual(counts.resolved, 0);
+                assert.strictEqual(counts.pending, 0);
+            });
         });
 
-        test('findCommentById should return undefined for non-existent id', () => {
-            const found = findCommentById(sampleComments, 'non-existent');
-            assert.strictEqual(found, undefined);
+        suite('findCommentById', () => {
+            test('should find the correct comment', () => {
+                const found = findCommentById(sampleComments, 'comment-2');
+                assert.ok(found);
+                assert.strictEqual(found.id, 'comment-2');
+            });
+
+            test('should return undefined for non-existent id', () => {
+                const found = findCommentById(sampleComments, 'non-existent');
+                assert.strictEqual(found, undefined);
+            });
+
+            test('should return undefined for empty array', () => {
+                const found = findCommentById([], 'comment-1');
+                assert.strictEqual(found, undefined);
+            });
+
+            test('should find first comment', () => {
+                const found = findCommentById(sampleComments, 'comment-1');
+                assert.ok(found);
+                assert.strictEqual(found.id, 'comment-1');
+            });
+
+            test('should find last comment', () => {
+                const found = findCommentById(sampleComments, 'comment-4');
+                assert.ok(found);
+                assert.strictEqual(found.id, 'comment-4');
+            });
         });
 
-        test('updateCommentStatus should update the comment status', () => {
-            const updated = updateCommentStatus(sampleComments, 'comment-1', 'resolved');
-            const comment = findCommentById(updated, 'comment-1');
-            assert.ok(comment);
-            assert.strictEqual(comment.status, 'resolved');
+        suite('updateCommentStatus', () => {
+            test('should update the comment status', () => {
+                const updated = updateCommentStatus(sampleComments, 'comment-1', 'resolved');
+                const comment = findCommentById(updated, 'comment-1');
+                assert.ok(comment);
+                assert.strictEqual(comment.status, 'resolved');
+            });
+
+            test('should update updatedAt timestamp', () => {
+                const before = new Date().toISOString();
+                const updated = updateCommentStatus(sampleComments, 'comment-1', 'resolved');
+                const comment = findCommentById(updated, 'comment-1');
+                assert.ok(comment);
+                assert.ok(comment.updatedAt >= before);
+            });
+
+            test('should not modify original array', () => {
+                const original = sampleComments[0].status;
+                updateCommentStatus(sampleComments, 'comment-1', 'resolved');
+                assert.strictEqual(sampleComments[0].status, original);
+            });
+
+            test('should not change other comments', () => {
+                const updated = updateCommentStatus(sampleComments, 'comment-1', 'resolved');
+                const other = findCommentById(updated, 'comment-2');
+                assert.ok(other);
+                assert.strictEqual(other.status, 'resolved'); // Already was resolved
+            });
+
+            test('should handle non-existent id', () => {
+                const updated = updateCommentStatus(sampleComments, 'non-existent', 'resolved');
+                assert.strictEqual(updated.length, sampleComments.length);
+            });
         });
 
-        test('deleteComment should remove the comment', () => {
-            const remaining = deleteComment(sampleComments, 'comment-1');
-            assert.strictEqual(remaining.length, 2);
-            assert.ok(!findCommentById(remaining, 'comment-1'));
+        suite('updateCommentText', () => {
+            test('should update the comment text', () => {
+                const newText = 'Updated comment text';
+                const updated = updateCommentText(sampleComments, 'comment-1', newText);
+                const comment = findCommentById(updated, 'comment-1');
+                assert.ok(comment);
+                assert.strictEqual(comment.comment, newText);
+            });
+
+            test('should update updatedAt timestamp', () => {
+                const before = new Date().toISOString();
+                const updated = updateCommentText(sampleComments, 'comment-1', 'New text');
+                const comment = findCommentById(updated, 'comment-1');
+                assert.ok(comment);
+                assert.ok(comment.updatedAt >= before);
+            });
+
+            test('should not modify original array', () => {
+                const original = sampleComments[0].comment;
+                updateCommentText(sampleComments, 'comment-1', 'New text');
+                assert.strictEqual(sampleComments[0].comment, original);
+            });
+
+            test('should handle empty string', () => {
+                const updated = updateCommentText(sampleComments, 'comment-1', '');
+                const comment = findCommentById(updated, 'comment-1');
+                assert.ok(comment);
+                assert.strictEqual(comment.comment, '');
+            });
         });
 
-        test('resolveAllComments should mark all open comments as resolved', () => {
-            const resolved = resolveAllComments(sampleComments);
-            assert.ok(resolved.every(c => c.status === 'resolved'));
+        suite('deleteComment', () => {
+            test('should remove the comment', () => {
+                const remaining = deleteComment(sampleComments, 'comment-1');
+                assert.strictEqual(remaining.length, 3);
+                assert.ok(!findCommentById(remaining, 'comment-1'));
+            });
+
+            test('should not modify original array', () => {
+                const originalLength = sampleComments.length;
+                deleteComment(sampleComments, 'comment-1');
+                assert.strictEqual(sampleComments.length, originalLength);
+            });
+
+            test('should handle non-existent id', () => {
+                const remaining = deleteComment(sampleComments, 'non-existent');
+                assert.strictEqual(remaining.length, sampleComments.length);
+            });
+
+            test('should handle empty array', () => {
+                const remaining = deleteComment([], 'comment-1');
+                assert.strictEqual(remaining.length, 0);
+            });
+
+            test('should delete first comment', () => {
+                const remaining = deleteComment(sampleComments, 'comment-1');
+                assert.strictEqual(remaining[0].id, 'comment-2');
+            });
+
+            test('should delete last comment', () => {
+                const remaining = deleteComment(sampleComments, 'comment-4');
+                assert.strictEqual(remaining.length, 3);
+                assert.ok(!findCommentById(remaining, 'comment-4'));
+            });
+        });
+
+        suite('resolveAllComments', () => {
+            test('should mark all open comments as resolved', () => {
+                const resolved = resolveAllComments(sampleComments);
+                // Only open comments are changed to resolved, pending stays pending
+                const openComments = resolved.filter(c => c.status === 'open');
+                assert.strictEqual(openComments.length, 0);
+                // All originally open ones should now be resolved
+                const originallyOpen = sampleComments.filter(c => c.status === 'open');
+                originallyOpen.forEach(orig => {
+                    const updated = resolved.find(c => c.id === orig.id);
+                    assert.ok(updated);
+                    assert.strictEqual(updated?.status, 'resolved');
+                });
+            });
+
+            test('should not change already resolved comments', () => {
+                const original = sampleComments.find(c => c.id === 'comment-2');
+                const resolved = resolveAllComments(sampleComments);
+                const stillResolved = resolved.find(c => c.id === 'comment-2');
+                assert.ok(stillResolved);
+                assert.strictEqual(stillResolved.status, 'resolved');
+            });
+
+            test('should not modify original array', () => {
+                const originalStatuses = sampleComments.map(c => c.status);
+                resolveAllComments(sampleComments);
+                assert.deepStrictEqual(sampleComments.map(c => c.status), originalStatuses);
+            });
+
+            test('should handle empty array', () => {
+                const resolved = resolveAllComments([]);
+                assert.strictEqual(resolved.length, 0);
+            });
+
+            test('should update timestamp for resolved comments', () => {
+                const before = new Date().toISOString();
+                const resolved = resolveAllComments(sampleComments);
+                const openComment = resolved.find(c => c.id === 'comment-1');
+                assert.ok(openComment);
+                assert.ok(openComment.updatedAt >= before);
+            });
+        });
+
+        suite('getSelectionCoverageForLine', () => {
+            test('should handle single-line selection', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 5, endColumn: 10 };
+                const result = getSelectionCoverageForLine(selection, 5);
+                assert.strictEqual(result.isCovered, true);
+                assert.strictEqual(result.startColumn, 3);
+                assert.strictEqual(result.endColumn, 10);
+            });
+
+            test('should return not covered for line before selection', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 10, endColumn: 15 };
+                const result = getSelectionCoverageForLine(selection, 4);
+                assert.strictEqual(result.isCovered, false);
+                assert.strictEqual(result.startColumn, 0);
+                assert.strictEqual(result.endColumn, 0);
+            });
+
+            test('should return not covered for line after selection', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 10, endColumn: 15 };
+                const result = getSelectionCoverageForLine(selection, 11);
+                assert.strictEqual(result.isCovered, false);
+            });
+
+            test('should handle first line of multi-line selection', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 10, endColumn: 15 };
+                const result = getSelectionCoverageForLine(selection, 5);
+                assert.strictEqual(result.isCovered, true);
+                assert.strictEqual(result.startColumn, 3);
+                assert.strictEqual(result.endColumn, Infinity);
+            });
+
+            test('should handle last line of multi-line selection', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 10, endColumn: 15 };
+                const result = getSelectionCoverageForLine(selection, 10);
+                assert.strictEqual(result.isCovered, true);
+                assert.strictEqual(result.startColumn, 1);
+                assert.strictEqual(result.endColumn, 15);
+            });
+
+            test('should handle middle line of multi-line selection', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 10, endColumn: 15 };
+                const result = getSelectionCoverageForLine(selection, 7);
+                assert.strictEqual(result.isCovered, true);
+                assert.strictEqual(result.startColumn, 1);
+                assert.strictEqual(result.endColumn, Infinity);
+            });
         });
     });
 
     suite('Selection Utilities', () => {
-        test('calculateColumnIndices should convert 1-based columns to 0-based indices', () => {
-            const result = calculateColumnIndices('Hello World', 1, 6);
-            assert.strictEqual(result.startIdx, 0);
-            assert.strictEqual(result.endIdx, 5);
-            assert.strictEqual(result.isValid, true);
+        
+        suite('calculateColumnIndices', () => {
+            test('should convert 1-based columns to 0-based indices', () => {
+                const result = calculateColumnIndices('Hello World', 1, 6);
+                assert.strictEqual(result.startIdx, 0);
+                assert.strictEqual(result.endIdx, 5);
+                assert.strictEqual(result.isValid, true);
+            });
+
+            test('should handle out-of-bounds columns', () => {
+                const result = calculateColumnIndices('Hello', 1, 100);
+                assert.strictEqual(result.startIdx, 0);
+                assert.strictEqual(result.endIdx, 5);
+            });
+
+            test('should clamp negative start column', () => {
+                const result = calculateColumnIndices('Hello', -5, 5);
+                assert.strictEqual(result.startIdx, 0);
+            });
+
+            test('should return invalid for start after end', () => {
+                const result = calculateColumnIndices('Hello', 10, 5);
+                assert.strictEqual(result.isValid, false);
+            });
+
+            test('should return invalid for start beyond line length', () => {
+                const result = calculateColumnIndices('Hi', 10, 15);
+                assert.strictEqual(result.isValid, false);
+            });
+
+            test('should handle empty line', () => {
+                const result = calculateColumnIndices('', 1, 5);
+                assert.strictEqual(result.startIdx, 0);
+                assert.strictEqual(result.endIdx, 0);
+                assert.strictEqual(result.isValid, false);
+            });
+
+            test('should handle selection at end of line', () => {
+                const result = calculateColumnIndices('Hello', 5, 6);
+                assert.strictEqual(result.startIdx, 4);
+                assert.strictEqual(result.endIdx, 5);
+                assert.strictEqual(result.isValid, true);
+            });
         });
 
-        test('calculateColumnIndices should handle out-of-bounds columns', () => {
-            const result = calculateColumnIndices('Hello', 1, 100);
-            assert.strictEqual(result.startIdx, 0);
-            assert.strictEqual(result.endIdx, 5);
+        suite('getHighlightColumnsForLine', () => {
+            test('should handle single-line selection', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 5, endColumn: 10 };
+                const result = getHighlightColumnsForLine(selection, 5, 20);
+                assert.strictEqual(result.startCol, 3);
+                assert.strictEqual(result.endCol, 10);
+            });
+
+            test('should handle first line of multi-line selection', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 7, endColumn: 10 };
+                const result = getHighlightColumnsForLine(selection, 5, 20);
+                assert.strictEqual(result.startCol, 3);
+                assert.strictEqual(result.endCol, 21); // lineLength + 1
+            });
+
+            test('should handle middle line of multi-line selection', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 7, endColumn: 10 };
+                const result = getHighlightColumnsForLine(selection, 6, 15);
+                assert.strictEqual(result.startCol, 1);
+                assert.strictEqual(result.endCol, 16); // lineLength + 1
+            });
+
+            test('should handle last line of multi-line selection', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 7, endColumn: 10 };
+                const result = getHighlightColumnsForLine(selection, 7, 20);
+                assert.strictEqual(result.startCol, 1);
+                assert.strictEqual(result.endCol, 10);
+            });
+
+            test('should handle line outside selection (fallback)', () => {
+                const selection = { startLine: 5, startColumn: 3, endLine: 7, endColumn: 10 };
+                const result = getHighlightColumnsForLine(selection, 1, 20);
+                assert.strictEqual(result.startCol, 1);
+                assert.strictEqual(result.endCol, 21);
+            });
+
+            test('should handle zero-length line', () => {
+                const selection = { startLine: 5, startColumn: 1, endLine: 5, endColumn: 1 };
+                const result = getHighlightColumnsForLine(selection, 5, 0);
+                assert.strictEqual(result.startCol, 1);
+                assert.strictEqual(result.endCol, 1);
+            });
         });
 
-        test('getHighlightColumnsForLine should handle single-line selection', () => {
-            const selection = { startLine: 5, startColumn: 3, endLine: 5, endColumn: 10 };
-            const result = getHighlightColumnsForLine(selection, 5, 20);
-            assert.strictEqual(result.startCol, 3);
-            assert.strictEqual(result.endCol, 10);
+        suite('createPlainToHtmlMapping', () => {
+            test('should handle simple text', () => {
+                const { plainLength } = createPlainToHtmlMapping('Hello');
+                assert.strictEqual(plainLength, 5);
+            });
+
+            test('should handle HTML entities', () => {
+                const { plainLength } = createPlainToHtmlMapping('Hello &amp; World');
+                // "Hello & World" = 13 characters
+                assert.strictEqual(plainLength, 13);
+            });
+
+            test('should handle HTML tags', () => {
+                const { plainLength } = createPlainToHtmlMapping('<span>Hello</span>');
+                assert.strictEqual(plainLength, 5);
+            });
+
+            test('should handle mixed HTML', () => {
+                const { plainLength } = createPlainToHtmlMapping('<b>Hello</b> &amp; <i>World</i>');
+                // "Hello & World" = 13 characters
+                assert.strictEqual(plainLength, 13);
+            });
+
+            test('should return mapping arrays', () => {
+                const { plainToHtmlStart, plainToHtmlEnd, plainLength } = createPlainToHtmlMapping('Hi');
+                assert.strictEqual(plainLength, 2);
+                assert.ok(Array.isArray(plainToHtmlStart));
+                assert.ok(Array.isArray(plainToHtmlEnd));
+            });
+
+            test('should handle empty string', () => {
+                const { plainLength } = createPlainToHtmlMapping('');
+                assert.strictEqual(plainLength, 0);
+            });
+
+            test('should handle multiple entities', () => {
+                const { plainLength } = createPlainToHtmlMapping('&lt;&gt;&amp;&quot;');
+                assert.strictEqual(plainLength, 4); // < > & "
+            });
+
+            test('should handle nested tags', () => {
+                const { plainLength } = createPlainToHtmlMapping('<div><span>AB</span></div>');
+                assert.strictEqual(plainLength, 2);
+            });
+
+            test('should handle ampersand not part of entity', () => {
+                const { plainLength } = createPlainToHtmlMapping('A & B');
+                // If not a valid entity, & is treated as regular char
+                assert.strictEqual(plainLength, 5);
+            });
         });
 
-        test('getHighlightColumnsForLine should handle first line of multi-line selection', () => {
-            const selection = { startLine: 5, startColumn: 3, endLine: 7, endColumn: 10 };
-            const result = getHighlightColumnsForLine(selection, 5, 20);
-            assert.strictEqual(result.startCol, 3);
-            assert.strictEqual(result.endCol, 21); // lineLength + 1
-        });
+        suite('applyCommentHighlightToRange', () => {
+            test('should wrap plain text in highlight span', () => {
+                const result = applyCommentHighlightToRange(
+                    'Hello World', 'Hello World', 1, 6, 'c1', 'open'
+                );
+                assert.ok(result.includes('commented-text'));
+                assert.ok(result.includes('data-comment-id="c1"'));
+            });
 
-        test('getHighlightColumnsForLine should handle middle line of multi-line selection', () => {
-            const selection = { startLine: 5, startColumn: 3, endLine: 7, endColumn: 10 };
-            const result = getHighlightColumnsForLine(selection, 6, 15);
-            assert.strictEqual(result.startCol, 1);
-            assert.strictEqual(result.endCol, 16); // lineLength + 1
-        });
+            test('should handle invalid range by wrapping whole content', () => {
+                const result = applyCommentHighlightToRange(
+                    'Hello', 'Hello', 10, 20, 'c1', 'open'
+                );
+                assert.ok(result.includes('commented-text'));
+            });
 
-        test('getHighlightColumnsForLine should handle last line of multi-line selection', () => {
-            const selection = { startLine: 5, startColumn: 3, endLine: 7, endColumn: 10 };
-            const result = getHighlightColumnsForLine(selection, 7, 20);
-            assert.strictEqual(result.startCol, 1);
-            assert.strictEqual(result.endCol, 10);
-        });
+            test('should apply status class', () => {
+                const result = applyCommentHighlightToRange(
+                    'Hello World', 'Hello World', 1, 6, 'c1', 'resolved'
+                );
+                assert.ok(result.includes('resolved'));
+            });
 
-        test('createPlainToHtmlMapping should handle HTML entities', () => {
-            const { plainLength } = createPlainToHtmlMapping('Hello &amp; World');
-            // "Hello & World" = 13 characters
-            assert.strictEqual(plainLength, 13);
+            test('should handle empty status class', () => {
+                const result = applyCommentHighlightToRange(
+                    'Hello World', 'Hello World', 1, 6, 'c1', ''
+                );
+                assert.ok(result.includes('commented-text'));
+            });
+
+            test('should preserve content before highlight', () => {
+                const result = applyCommentHighlightToRange(
+                    'Hello World', 'Hello World', 7, 12, 'c1', 'open'
+                );
+                assert.ok(result.includes('Hello '));
+            });
+
+            test('should handle HTML content', () => {
+                const html = '<span>Hello</span>';
+                const plain = 'Hello';
+                const result = applyCommentHighlightToRange(html, plain, 1, 6, 'c1', 'open');
+                assert.ok(result.includes('commented-text'));
+            });
         });
     });
 
     suite('Markdown Renderer', () => {
-        test('escapeHtml should escape HTML entities', () => {
-            const result = escapeHtml('<script>alert("XSS")</script>');
-            assert.ok(!result.includes('<script>'));
-            assert.ok(result.includes('&lt;script&gt;'));
+        
+        suite('escapeHtml', () => {
+            test('should escape HTML entities', () => {
+                const result = escapeHtml('<script>alert("XSS")</script>');
+                assert.ok(!result.includes('<script>'));
+                assert.ok(result.includes('&lt;script&gt;'));
+            });
+
+            test('should escape ampersand', () => {
+                const result = escapeHtml('A & B');
+                assert.ok(result.includes('&amp;'));
+            });
+
+            test('should escape quotes', () => {
+                const result = escapeHtml('"test"');
+                assert.ok(result.includes('&quot;'));
+            });
+
+            test('should escape single quotes', () => {
+                const result = escapeHtml("'test'");
+                assert.ok(result.includes('&#039;'));
+            });
+
+            test('should escape greater than', () => {
+                const result = escapeHtml('a > b');
+                assert.ok(result.includes('&gt;'));
+            });
+
+            test('should handle empty string', () => {
+                const result = escapeHtml('');
+                assert.strictEqual(result, '');
+            });
+
+            test('should handle text with no special chars', () => {
+                const result = escapeHtml('Hello World');
+                assert.strictEqual(result, 'Hello World');
+            });
+
+            test('should handle multiple special chars', () => {
+                const result = escapeHtml('<div attr="value">text & more</div>');
+                assert.ok(result.includes('&lt;'));
+                assert.ok(result.includes('&gt;'));
+                assert.ok(result.includes('&quot;'));
+                assert.ok(result.includes('&amp;'));
+            });
         });
 
-        test('applyInlineMarkdown should render bold text', () => {
-            const result = applyInlineMarkdown('Hello **world**');
-            assert.ok(result.includes('md-bold'));
+        suite('applyInlineMarkdown', () => {
+            test('should render bold text with double asterisks', () => {
+                const result = applyInlineMarkdown('Hello **world**');
+                assert.ok(result.includes('md-bold'));
+            });
+
+            test('should render bold text with double underscores', () => {
+                const result = applyInlineMarkdown('Hello __world__');
+                assert.ok(result.includes('md-bold'));
+            });
+
+            test('should render italic text with single asterisk', () => {
+                const result = applyInlineMarkdown('Hello *world*');
+                assert.ok(result.includes('md-italic'));
+            });
+
+            test('should render italic text with single underscore', () => {
+                const result = applyInlineMarkdown('Hello _world_');
+                assert.ok(result.includes('md-italic'));
+            });
+
+            test('should render bold+italic with triple asterisks', () => {
+                const result = applyInlineMarkdown('Hello ***world***');
+                assert.ok(result.includes('md-bold-italic'));
+            });
+
+            test('should render inline code', () => {
+                const result = applyInlineMarkdown('Hello `code`');
+                assert.ok(result.includes('md-inline-code'));
+            });
+
+            test('should render links', () => {
+                const result = applyInlineMarkdown('[Link](https://example.com)');
+                assert.ok(result.includes('md-link'));
+            });
+
+            test('should render images', () => {
+                const result = applyInlineMarkdown('![alt](image.png)');
+                assert.ok(result.includes('md-image'));
+            });
+
+            test('should render strikethrough', () => {
+                const result = applyInlineMarkdown('~~strikethrough~~');
+                assert.ok(result.includes('md-strike'));
+            });
+
+            test('should handle empty string', () => {
+                const result = applyInlineMarkdown('');
+                assert.strictEqual(result, '');
+            });
+
+            test('should handle text with no markdown', () => {
+                const result = applyInlineMarkdown('Plain text');
+                assert.ok(result.includes('Plain text'));
+            });
+
+            test('should escape HTML in text', () => {
+                const result = applyInlineMarkdown('<script>alert("xss")</script>');
+                assert.ok(!result.includes('<script>'));
+                assert.ok(result.includes('&lt;script&gt;'));
+            });
+
+            test('should handle mixed markdown', () => {
+                const result = applyInlineMarkdown('**bold** and *italic* and `code`');
+                assert.ok(result.includes('md-bold'));
+                assert.ok(result.includes('md-italic'));
+                assert.ok(result.includes('md-inline-code'));
+            });
         });
 
-        test('applyInlineMarkdown should render italic text', () => {
-            const result = applyInlineMarkdown('Hello *world*');
-            assert.ok(result.includes('md-italic'));
+        suite('resolveImagePath', () => {
+            test('should return http URLs unchanged', () => {
+                const result = resolveImagePath('http://example.com/image.png');
+                assert.strictEqual(result, 'http://example.com/image.png');
+            });
+
+            test('should return https URLs unchanged', () => {
+                const result = resolveImagePath('https://example.com/image.png');
+                assert.strictEqual(result, 'https://example.com/image.png');
+            });
+
+            test('should return data URLs unchanged', () => {
+                const result = resolveImagePath('data:image/png;base64,ABC123');
+                assert.strictEqual(result, 'data:image/png;base64,ABC123');
+            });
+
+            test('should mark relative paths for post-processing', () => {
+                const result = resolveImagePath('./images/photo.png');
+                assert.ok(result.startsWith('IMG_PATH:'));
+            });
+
+            test('should mark absolute paths for post-processing', () => {
+                const result = resolveImagePath('/path/to/image.png');
+                assert.ok(result.startsWith('IMG_PATH:'));
+            });
         });
 
-        test('applyInlineMarkdown should render inline code', () => {
-            const result = applyInlineMarkdown('Hello `code`');
-            assert.ok(result.includes('md-inline-code'));
-        });
+        suite('applyMarkdownHighlighting', () => {
+            test('should render headings h1-h6', () => {
+                for (let level = 1; level <= 6; level++) {
+                    const heading = '#'.repeat(level) + ' Heading';
+                    const result = applyMarkdownHighlighting(heading, 1, false, null);
+                    assert.ok(result.html.includes(`md-h${level}`));
+                }
+            });
 
-        test('applyInlineMarkdown should render links', () => {
-            const result = applyInlineMarkdown('[Link](https://example.com)');
-            assert.ok(result.includes('md-link'));
-        });
+            test('should render unordered lists with dash', () => {
+                const result = applyMarkdownHighlighting('- List item', 1, false, null);
+                assert.ok(result.html.includes('md-list-item'));
+            });
 
-        test('applyMarkdownHighlighting should render headings', () => {
-            const result = applyMarkdownHighlighting('# Heading 1', 1, false, null);
-            assert.ok(result.html.includes('md-h1'));
-        });
+            test('should render unordered lists with asterisk', () => {
+                const result = applyMarkdownHighlighting('* List item', 1, false, null);
+                assert.ok(result.html.includes('md-list-item'));
+            });
 
-        test('applyMarkdownHighlighting should render unordered lists', () => {
-            const result = applyMarkdownHighlighting('- List item', 1, false, null);
-            assert.ok(result.html.includes('md-list-item'));
-        });
+            test('should render unordered lists with plus', () => {
+                const result = applyMarkdownHighlighting('+ List item', 1, false, null);
+                assert.ok(result.html.includes('md-list-item'));
+            });
 
-        test('applyMarkdownHighlighting should render ordered lists', () => {
-            const result = applyMarkdownHighlighting('1. List item', 1, false, null);
-            assert.ok(result.html.includes('md-list-item'));
-        });
+            test('should render ordered lists', () => {
+                const result = applyMarkdownHighlighting('1. List item', 1, false, null);
+                assert.ok(result.html.includes('md-list-item'));
+            });
 
-        test('applyMarkdownHighlighting should render blockquotes', () => {
-            const result = applyMarkdownHighlighting('> Quote', 1, false, null);
-            assert.ok(result.html.includes('md-blockquote'));
-        });
+            test('should render blockquotes', () => {
+                const result = applyMarkdownHighlighting('> Quote', 1, false, null);
+                assert.ok(result.html.includes('md-blockquote'));
+            });
 
-        test('applyMarkdownHighlighting should detect code fence start', () => {
-            const result = applyMarkdownHighlighting('```javascript', 1, false, null);
-            assert.strictEqual(result.inCodeBlock, true);
-            assert.strictEqual(result.codeBlockLang, 'javascript');
-            assert.strictEqual(result.isCodeFenceStart, true);
-        });
+            test('should render horizontal rules with dashes', () => {
+                const result = applyMarkdownHighlighting('---', 1, false, null);
+                assert.ok(result.html.includes('md-hr'));
+            });
 
-        test('applyMarkdownHighlighting should detect code fence end', () => {
-            const result = applyMarkdownHighlighting('```', 5, true, 'javascript');
-            assert.strictEqual(result.inCodeBlock, false);
-            assert.strictEqual(result.codeBlockLang, null);
-            assert.strictEqual(result.isCodeFenceEnd, true);
-        });
+            test('should render horizontal rules with asterisks', () => {
+                const result = applyMarkdownHighlighting('***', 1, false, null);
+                assert.ok(result.html.includes('md-hr'));
+            });
 
-        test('applyMarkdownHighlighting should not apply markdown inside code block', () => {
-            const result = applyMarkdownHighlighting('# Not a heading', 3, true, 'javascript');
-            assert.ok(!result.html.includes('md-h1'));
+            test('should render horizontal rules with underscores', () => {
+                const result = applyMarkdownHighlighting('___', 1, false, null);
+                assert.ok(result.html.includes('md-hr'));
+            });
+
+            test('should detect code fence start', () => {
+                const result = applyMarkdownHighlighting('```javascript', 1, false, null);
+                assert.strictEqual(result.inCodeBlock, true);
+                assert.strictEqual(result.codeBlockLang, 'javascript');
+                assert.strictEqual(result.isCodeFenceStart, true);
+            });
+
+            test('should detect code fence end', () => {
+                const result = applyMarkdownHighlighting('```', 5, true, 'javascript');
+                assert.strictEqual(result.inCodeBlock, false);
+                assert.strictEqual(result.codeBlockLang, null);
+                assert.strictEqual(result.isCodeFenceEnd, true);
+            });
+
+            test('should not apply markdown inside code block', () => {
+                const result = applyMarkdownHighlighting('# Not a heading', 3, true, 'javascript');
+                assert.ok(!result.html.includes('md-h1'));
+            });
+
+            test('should render checkbox unchecked', () => {
+                const result = applyMarkdownHighlighting('- [ ] Todo item', 1, false, null);
+                assert.ok(result.html.includes('md-checkbox'));
+                assert.ok(!result.html.includes('md-checkbox-checked'));
+            });
+
+            test('should render checkbox checked', () => {
+                const result = applyMarkdownHighlighting('- [x] Done item', 1, false, null);
+                assert.ok(result.html.includes('md-checkbox-checked'));
+            });
+
+            test('should handle indented list items', () => {
+                const result = applyMarkdownHighlighting('  - Nested item', 1, false, null);
+                assert.ok(result.html.includes('md-list-item'));
+            });
+
+            test('should return default state when not in code block', () => {
+                const result = applyMarkdownHighlighting('Plain text', 1, false, null);
+                assert.strictEqual(result.inCodeBlock, false);
+                assert.strictEqual(result.codeBlockLang, null);
+            });
+
+            test('should use plaintext as default code language', () => {
+                const result = applyMarkdownHighlighting('```', 1, false, null);
+                assert.strictEqual(result.codeBlockLang, 'plaintext');
+            });
         });
     });
 });
-
