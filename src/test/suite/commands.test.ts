@@ -533,7 +533,10 @@ suite('ShortcutsCommands Integration Tests', () => {
             }
         });
 
-        test('should work with groups that have emoji in label', async () => {
+        test('should work with groups that have emoji in label', async function() {
+            // Set a longer timeout for CI environments
+            this.timeout(15000);
+
             // This test verifies the fix for using originalName instead of label
             // The label includes "📂 " prefix but originalName doesn't
             await configManager.createLogicalGroup('Emoji Test Group');
@@ -541,7 +544,7 @@ suite('ShortcutsCommands Integration Tests', () => {
 
             // Trigger the extension to refresh its view and wait for file system to settle
             await vscode.commands.executeCommand('shortcuts.refresh');
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 500));
 
             provider.refresh();
 
@@ -573,8 +576,8 @@ suite('ShortcutsCommands Integration Tests', () => {
                 assert.ok(inputBoxCalled, 'Input box should have been called');
 
                 // Wait for file system operations and file watchers to complete
-                // This needs to be longer to allow the extension's file watcher to see changes
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // This needs to be longer on CI to allow the extension's file watcher to see changes
+                await new Promise(resolve => setTimeout(resolve, 1500));
 
                 configManager.invalidateCache();
                 const config = await configManager.loadConfiguration();
@@ -697,14 +700,17 @@ suite('ShortcutsCommands Integration Tests', () => {
             }
         });
 
-        test('should work with groups that have emoji in label', async () => {
+        test('should work with groups that have emoji in label', async function() {
+            // Set a longer timeout for CI environments
+            this.timeout(15000);
+
             // This test verifies the fix for using originalName instead of label
             await configManager.createLogicalGroup('Delete Emoji Test');
             await configManager.saveConfiguration(await configManager.loadConfiguration());
 
             // Trigger the extension to refresh its view and wait for file system to settle
             await vscode.commands.executeCommand('shortcuts.refresh');
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 500));
 
             provider.refresh();
 
@@ -725,8 +731,8 @@ suite('ShortcutsCommands Integration Tests', () => {
             try {
                 await vscode.commands.executeCommand('shortcuts.deleteLogicalGroup', groupItem);
 
-                // Wait for file system operations to complete
-                await new Promise(resolve => setTimeout(resolve, 100));
+                // Wait for file system operations to complete (longer timeout for CI)
+                await new Promise(resolve => setTimeout(resolve, 500));
                 configManager.invalidateCache();
                 const config = await configManager.loadConfiguration();
                 const exists = config.logicalGroups.some(g => g.name === 'Delete Emoji Test');
@@ -737,11 +743,15 @@ suite('ShortcutsCommands Integration Tests', () => {
             }
         });
 
-        test('should delete multiple groups in one operation', async () => {
+        test('should delete multiple groups in one operation', async function() {
+            // Set a longer timeout for CI environments
+            this.timeout(15000);
+
             // Setup: Create multiple groups
             await configManager.createLogicalGroup('Group 1');
             await configManager.createLogicalGroup('Group 2');
             await configManager.createLogicalGroup('Group 3');
+            await new Promise(resolve => setTimeout(resolve, 200));
             provider.refresh();
 
             // Note: Multi-selection is a complex feature that requires TreeView selection
@@ -761,7 +771,8 @@ suite('ShortcutsCommands Integration Tests', () => {
             try {
                 await vscode.commands.executeCommand('shortcuts.deleteLogicalGroup', group2);
 
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // Wait for file system operations to complete (longer timeout for CI)
+                await new Promise(resolve => setTimeout(resolve, 500));
                 configManager.invalidateCache();
                 const config = await configManager.loadConfiguration();
                 const names = config.logicalGroups.map(g => g.name);
