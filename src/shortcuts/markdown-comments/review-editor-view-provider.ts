@@ -119,12 +119,16 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
         // Initial state
         const updateWebview = () => {
+            const content = document.getText();
             const comments = this.commentsManager.getCommentsForFile(relativePath);
             const settings = this.commentsManager.getSettings();
 
+            console.log('[Extension] updateWebview called - content length:', content.length);
+            console.log('[Extension] updateWebview - content preview:', content.substring(0, 200));
+
             webviewPanel.webview.postMessage({
                 type: 'update',
-                content: document.getText(),
+                content: content,
                 comments: comments,
                 filePath: relativePath,
                 fileDir: fileDir,
@@ -149,11 +153,14 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         // Listen for document changes
         const documentChangeDisposable = vscode.workspace.onDidChangeTextDocument(e => {
             if (e.document.uri.toString() === document.uri.toString()) {
+                console.log('[Extension] onDidChangeTextDocument - isWebviewEdit:', isWebviewEdit);
                 // Skip re-rendering if the change came from the webview itself
                 if (isWebviewEdit) {
+                    console.log('[Extension] Skipping updateWebview (webview-initiated edit)');
                     isWebviewEdit = false;
                     return;
                 }
+                console.log('[Extension] Calling updateWebview (external change)');
                 updateWebview();
             }
         });

@@ -315,7 +315,13 @@ function handleSelectionChange(): void {
  */
 function handleEditorInput(): void {
     const newContent = getPlainTextContent();
+    console.log('[Webview] handleEditorInput - extracted content length:', newContent.length);
+    console.log('[Webview] handleEditorInput - current state content length:', state.currentContent.length);
+    console.log('[Webview] handleEditorInput - content changed:', newContent !== state.currentContent);
     if (newContent !== state.currentContent) {
+        // Debug: show first 200 chars of old and new content
+        console.log('[Webview] OLD content preview:', state.currentContent.substring(0, 200));
+        console.log('[Webview] NEW content preview:', newContent.substring(0, 200));
         state.setCurrentContent(newContent);
         updateContent(newContent);
     }
@@ -338,7 +344,13 @@ function handleEditorKeydown(e: KeyboardEvent): void {
 function getPlainTextContent(): string {
     const lines: string[] = [];
 
-    function processNode(node: Node, isFirstChild: boolean = false): void {
+    /**
+     * Process a node and extract text content
+     * @param node - The DOM node to process
+     * @param isFirstChild - Whether this is the first child of its parent
+     * @param insideLineContent - Whether we're inside a line-content element
+     */
+    function processNode(node: Node, isFirstChild: boolean = false, insideLineContent: boolean = false): void {
         if (node.nodeType === Node.TEXT_NODE) {
             const text = node.textContent || '';
             if (lines.length === 0) {
@@ -360,7 +372,24 @@ function getPlainTextContent(): string {
 
             // Handle line breaks
             if (tag === 'br') {
-                lines.push('');
+                // Only create a new line if we're NOT inside a line-content element
+                // or if there's actual content after the br
+                if (!insideLineContent) {
+                    lines.push('');
+                }
+                // Inside line-content, br typically means the user pressed Enter
+                // We should create ONE new line, not multiple
+                else {
+                    // Check if this br is followed by meaningful content
+                    const nextSibling = el.nextSibling;
+                    const hasContentAfter = nextSibling && (
+                        (nextSibling.nodeType === Node.TEXT_NODE && nextSibling.textContent?.trim()) ||
+                        (nextSibling.nodeType === Node.ELEMENT_NODE)
+                    );
+                    if (hasContentAfter) {
+                        lines.push('');
+                    }
+                }
                 return;
             }
 
@@ -375,10 +404,10 @@ function getPlainTextContent(): string {
                 if (lines.length === 0 || lines[lines.length - 1] !== '' || !isFirstChild) {
                     lines.push('');
                 }
-                // Process children
+                // Process children - mark that we're inside line-content
                 let childIndex = 0;
                 el.childNodes.forEach(child => {
-                    processNode(child, childIndex === 0);
+                    processNode(child, childIndex === 0, true);
                     childIndex++;
                 });
                 return;
@@ -388,7 +417,7 @@ function getPlainTextContent(): string {
             if (el.classList.contains('line-row') || el.classList.contains('block-row')) {
                 let childIndex = 0;
                 el.childNodes.forEach(child => {
-                    processNode(child, childIndex === 0);
+                    processNode(child, childIndex === 0, insideLineContent);
                     childIndex++;
                 });
                 return;
@@ -413,20 +442,29 @@ function getPlainTextContent(): string {
             }
 
             // For other block elements created by contenteditable
-            if (isBlockElement && lines.length > 0 && lines[lines.length - 1] !== '' && !isFirstChild) {
-                lines.push('');
+            // Inside line-content, nested divs/p elements mean user pressed Enter
+            if (isBlockElement) {
+                if (insideLineContent) {
+                    // Inside line-content, block elements should create a new line
+                    // but only if there's content in the current line
+                    if (lines.length > 0 && lines[lines.length - 1] !== '') {
+                        lines.push('');
+                    }
+                } else if (lines.length > 0 && lines[lines.length - 1] !== '' && !isFirstChild) {
+                    lines.push('');
+                }
             }
 
             // Process children
             let childIndex = 0;
             el.childNodes.forEach(child => {
-                processNode(child, childIndex === 0);
+                processNode(child, childIndex === 0, insideLineContent);
                 childIndex++;
             });
         }
     }
 
-    processNode(editorWrapper, true);
+    processNode(editorWrapper, true, false);
 
     // Clean up: handle nbsp placeholders for empty lines and normalize
     return lines.map(line => {

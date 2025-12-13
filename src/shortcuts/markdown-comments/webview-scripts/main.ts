@@ -54,6 +54,9 @@ function handleMessage(message: ExtensionMessage): void {
     switch (message.type) {
         case 'update':
             console.log('[Webview] Update message - content length:', message.content?.length, 'comments:', message.comments?.length);
+            console.log('[Webview] Update message - content preview:', message.content?.substring(0, 200));
+            console.log('[Webview] Current state content preview:', state.currentContent.substring(0, 200));
+            console.log('[Webview] Content differs:', message.content !== state.currentContent);
             // Update state
             state.setCurrentContent(message.content);
             state.setComments(message.comments || []);
