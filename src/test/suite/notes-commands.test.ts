@@ -19,7 +19,9 @@ suite('Notes Commands Integration Tests', () => {
     let commands: ShortcutsCommands;
     let extensionContext: vscode.ExtensionContext;
 
-    setup(async () => {
+    // Use suiteSetup/suiteTeardown for NoteDocumentManager to avoid
+    // re-registering the file system provider multiple times
+    suiteSetup(async () => {
         // Create temporary directory for testing
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-notes-commands-test-'));
 
@@ -67,16 +69,26 @@ suite('Notes Commands Integration Tests', () => {
         commands.registerCommands(extensionContext);
     });
 
-    teardown(() => {
+    suiteTeardown(() => {
         // Clean up
+        treeProvider?.dispose();
+        configManager?.dispose();
+        themeManager?.dispose();
+        noteDocumentManager?.dispose();
+
         if (fs.existsSync(tempDir)) {
             fs.rmSync(tempDir, { recursive: true, force: true });
         }
+    });
 
-        treeProvider.dispose();
-        configManager.dispose();
-        themeManager.dispose();
-        noteDocumentManager.dispose();
+    setup(async () => {
+        // Reset config for each test
+        const vscodePath = path.join(tempDir, '.vscode');
+        fs.mkdirSync(vscodePath, { recursive: true });
+        fs.writeFileSync(path.join(vscodePath, 'shortcuts.yaml'), 'logicalGroups: []\n');
+        configManager.invalidateCache();
+        // Clear stored notes
+        (extensionContext.globalState as any)._storage = {};
     });
 
     suite('Create Note Command', () => {

@@ -96,6 +96,16 @@ suite('Drag and Drop Tests', () => {
         }
     });
 
+    setup(async () => {
+        // Reset configuration before each test
+        const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, 'logicalGroups: []\n', 'utf8');
+        configManager.invalidateCache();
+        (extensionContext.globalState as any)._storage = {};
+        provider.refresh();
+    });
+
     teardown(async () => {
         // Reset configuration between tests
         const configPath = path.join(tempDir, '.vscode', 'shortcuts.yaml');
@@ -139,17 +149,19 @@ suite('Drag and Drop Tests', () => {
 
         // Verify file was added to group
         const updatedConfig = await configManager.loadConfiguration();
-        assert.strictEqual(updatedConfig.logicalGroups[0].items.length, 1);
-        assert.strictEqual(updatedConfig.logicalGroups[0].items[0].name, 'test-file.txt');
-        assert.strictEqual(updatedConfig.logicalGroups[0].items[0].type, 'file');
+        const group = updatedConfig.logicalGroups.find(g => g.name === 'Test Group');
+        assert.ok(group, 'Test Group should exist');
+        assert.strictEqual(group!.items.length, 1);
+        assert.strictEqual(group!.items[0].name, 'test-file.txt');
+        assert.strictEqual(group!.items[0].type, 'file');
     });
 
     test('should drop external folders onto logical group', async () => {
         // Create a logical group
-        await configManager.createLogicalGroup('Test Group', 'Test description');
+        await configManager.createLogicalGroup('Folder Test Group', 'Test description');
 
         // Create a logical group item
-        const groupItem = new LogicalGroupItem('Test Group', 'Test description');
+        const groupItem = new LogicalGroupItem('Folder Test Group', 'Test description');
 
         // Simulate dropping external folder
         const dataTransfer = new vscode.DataTransfer();
@@ -161,17 +173,19 @@ suite('Drag and Drop Tests', () => {
 
         // Verify folder was added to group
         const updatedConfig = await configManager.loadConfiguration();
-        assert.strictEqual(updatedConfig.logicalGroups[0].items.length, 1);
-        assert.strictEqual(updatedConfig.logicalGroups[0].items[0].name, 'test-folder');
-        assert.strictEqual(updatedConfig.logicalGroups[0].items[0].type, 'folder');
+        const group = updatedConfig.logicalGroups.find(g => g.name === 'Folder Test Group');
+        assert.ok(group, 'Folder Test Group should exist');
+        assert.strictEqual(group!.items.length, 1);
+        assert.strictEqual(group!.items[0].name, 'test-folder');
+        assert.strictEqual(group!.items[0].type, 'folder');
     });
 
     test('should drop multiple files onto logical group', async () => {
         // Create a logical group
-        await configManager.createLogicalGroup('Test Group', 'Test description');
+        await configManager.createLogicalGroup('Multi Files Group', 'Test description');
 
         // Create a logical group item
-        const groupItem = new LogicalGroupItem('Test Group', 'Test description');
+        const groupItem = new LogicalGroupItem('Multi Files Group', 'Test description');
 
         // Create another test file
         const testFile3 = path.join(tempDir, 'test-file-3.txt');
@@ -190,18 +204,20 @@ suite('Drag and Drop Tests', () => {
 
         // Verify both files were added to group
         const updatedConfig = await configManager.loadConfiguration();
-        assert.strictEqual(updatedConfig.logicalGroups[0].items.length, 2);
-        assert.ok(updatedConfig.logicalGroups[0].items.some(i => i.name === 'test-file.txt'));
-        assert.ok(updatedConfig.logicalGroups[0].items.some(i => i.name === 'test-file-3.txt'));
+        const group = updatedConfig.logicalGroups.find(g => g.name === 'Multi Files Group');
+        assert.ok(group, 'Multi Files Group should exist');
+        assert.strictEqual(group!.items.length, 2);
+        assert.ok(group!.items.some(i => i.name === 'test-file.txt'));
+        assert.ok(group!.items.some(i => i.name === 'test-file-3.txt'));
     });
 
     test('should drop files onto nested logical group', async () => {
         // Create parent and nested group
-        await configManager.createLogicalGroup('Parent Group', 'Parent description');
-        await configManager.createNestedLogicalGroup('Parent Group', 'Child Group', 'Child description');
+        await configManager.createLogicalGroup('Nested Drop Parent', 'Parent description');
+        await configManager.createNestedLogicalGroup('Nested Drop Parent', 'Child Group', 'Child description');
 
         // Create a nested logical group item
-        const groupItem = new LogicalGroupItem('Child Group', 'Child description', undefined, vscode.TreeItemCollapsibleState.Collapsed, 'Parent Group');
+        const groupItem = new LogicalGroupItem('Child Group', 'Child description', undefined, vscode.TreeItemCollapsibleState.Collapsed, 'Nested Drop Parent');
 
         // Simulate dropping external file
         const dataTransfer = new vscode.DataTransfer();
@@ -213,10 +229,11 @@ suite('Drag and Drop Tests', () => {
 
         // Verify file was added to nested group
         const updatedConfig = await configManager.loadConfiguration();
-        const parentGroup = updatedConfig.logicalGroups[0];
-        assert.ok(parentGroup.groups);
-        assert.strictEqual(parentGroup.groups!.length, 1);
-        const childGroup = parentGroup.groups![0];
+        const parentGroup = updatedConfig.logicalGroups.find(g => g.name === 'Nested Drop Parent');
+        assert.ok(parentGroup, 'Parent group should exist');
+        assert.ok(parentGroup!.groups);
+        assert.strictEqual(parentGroup!.groups!.length, 1);
+        const childGroup = parentGroup!.groups![0];
         assert.strictEqual(childGroup.items.length, 1);
         assert.strictEqual(childGroup.items[0].name, 'test-file.txt');
     });
@@ -231,8 +248,12 @@ suite('Drag and Drop Tests', () => {
 
         // Verify file is in Group A
         let config = await configManager.loadConfiguration();
-        assert.strictEqual(config.logicalGroups[0].items.length, 1);
-        assert.strictEqual(config.logicalGroups[1].items.length, 0);
+        let groupA = config.logicalGroups.find(g => g.name === 'Group A');
+        let groupB = config.logicalGroups.find(g => g.name === 'Group B');
+        assert.ok(groupA, 'Group A should exist');
+        assert.ok(groupB, 'Group B should exist');
+        assert.strictEqual(groupA!.items.length, 1);
+        assert.strictEqual(groupB!.items.length, 0);
 
         // Create items for drag-drop
         const sourceItem = new LogicalGroupChildItem(
@@ -252,30 +273,36 @@ suite('Drag and Drop Tests', () => {
 
         // Verify file was moved from Group A to Group B
         config = await configManager.loadConfiguration();
-        assert.strictEqual(config.logicalGroups[0].items.length, 0, 'Group A should be empty');
-        assert.strictEqual(config.logicalGroups[1].items.length, 1, 'Group B should have one item');
-        assert.strictEqual(config.logicalGroups[1].items[0].name, 'test-file.txt');
+        groupA = config.logicalGroups.find(g => g.name === 'Group A');
+        groupB = config.logicalGroups.find(g => g.name === 'Group B');
+        assert.ok(groupA, 'Group A should still exist');
+        assert.ok(groupB, 'Group B should still exist');
+        assert.strictEqual(groupA!.items.length, 0, 'Group A should be empty');
+        assert.strictEqual(groupB!.items.length, 1, 'Group B should have one item');
+        assert.strictEqual(groupB!.items[0].name, 'test-file.txt');
     });
 
     test('should not duplicate items when moving within same group', async () => {
         // Create a group
-        await configManager.createLogicalGroup('Test Group', 'Test description');
+        await configManager.createLogicalGroup('Same Group Test', 'Test description');
 
         // Add file to group
-        await configManager.addToLogicalGroup('Test Group', testFile, 'test-file.txt', 'file');
+        await configManager.addToLogicalGroup('Same Group Test', testFile, 'test-file.txt', 'file');
 
         // Verify initial state
         let config = await configManager.loadConfiguration();
-        assert.strictEqual(config.logicalGroups[0].items.length, 1);
+        let group = config.logicalGroups.find(g => g.name === 'Same Group Test');
+        assert.ok(group, 'Same Group Test should exist');
+        assert.strictEqual(group!.items.length, 1);
 
         // Create items for drag-drop
         const sourceItem = new LogicalGroupChildItem(
             'test-file.txt',
             vscode.Uri.file(testFile),
             'file',
-            'Test Group'
+            'Same Group Test'
         );
-        const targetGroup = new LogicalGroupItem('Test Group', 'Test description');
+        const targetGroup = new LogicalGroupItem('Same Group Test', 'Test description');
 
         // Simulate dragging within same group
         const dataTransfer = new vscode.DataTransfer();
@@ -286,7 +313,9 @@ suite('Drag and Drop Tests', () => {
 
         // Verify no duplication occurred
         config = await configManager.loadConfiguration();
-        assert.strictEqual(config.logicalGroups[0].items.length, 1, 'Should still have only one item');
+        group = config.logicalGroups.find(g => g.name === 'Same Group Test');
+        assert.ok(group, 'Same Group Test should still exist');
+        assert.strictEqual(group!.items.length, 1, 'Should still have only one item');
     });
 
     test('should handle physical file moves', async () => {
@@ -375,15 +404,17 @@ suite('Drag and Drop Tests', () => {
 
     test('should skip duplicate items when dropping onto group', async () => {
         // Create a group and add a file
-        await configManager.createLogicalGroup('Test Group', 'Test description');
-        await configManager.addToLogicalGroup('Test Group', testFile, 'test-file.txt', 'file');
+        await configManager.createLogicalGroup('Skip Duplicate Group', 'Test description');
+        await configManager.addToLogicalGroup('Skip Duplicate Group', testFile, 'test-file.txt', 'file');
 
         // Verify initial state
         let config = await configManager.loadConfiguration();
-        assert.strictEqual(config.logicalGroups[0].items.length, 1);
+        let group = config.logicalGroups.find(g => g.name === 'Skip Duplicate Group');
+        assert.ok(group, 'Skip Duplicate Group should exist');
+        assert.strictEqual(group!.items.length, 1);
 
         // Try to add the same file again via drag-drop
-        const groupItem = new LogicalGroupItem('Test Group', 'Test description');
+        const groupItem = new LogicalGroupItem('Skip Duplicate Group', 'Test description');
         const dataTransfer = new vscode.DataTransfer();
         const fileUri = vscode.Uri.file(testFile);
         dataTransfer.set('text/uri-list', new vscode.DataTransferItem([fileUri]));
@@ -393,7 +424,9 @@ suite('Drag and Drop Tests', () => {
 
         // Verify no duplicate was added
         config = await configManager.loadConfiguration();
-        assert.strictEqual(config.logicalGroups[0].items.length, 1, 'Should still have only one item');
+        group = config.logicalGroups.find(g => g.name === 'Skip Duplicate Group');
+        assert.ok(group, 'Skip Duplicate Group should still exist');
+        assert.strictEqual(group!.items.length, 1, 'Should still have only one item');
     });
 
     test('should handle external file drop onto folder', async () => {
@@ -456,8 +489,9 @@ suite('Drag and Drop Tests', () => {
         assert.ok(!fs.existsSync(sourceFile), 'File should not exist in source folder');
 
         const config = await configManager.loadConfiguration();
-        assert.strictEqual(config.logicalGroups[0].items.length, 2, 'Should still have both folders in group');
-        assert.strictEqual(config.logicalGroups[0].name, 'Project Files');
+        const projectGroup = config.logicalGroups.find(g => g.name === 'Project Files');
+        assert.ok(projectGroup, 'Project Files group should exist');
+        assert.strictEqual(projectGroup!.items.length, 2, 'Should still have both folders in group');
     });
 
     test('Scenario 2: should physically move file between folders in different logical groups', async () => {
@@ -467,10 +501,10 @@ suite('Drag and Drop Tests', () => {
         fs.mkdirSync(folderA, { recursive: true });
         fs.mkdirSync(folderB, { recursive: true });
 
-        await configManager.createLogicalGroup('Group 1', 'First group');
-        await configManager.createLogicalGroup('Group 2', 'Second group');
-        await configManager.addToLogicalGroup('Group 1', folderA, 'Folder A', 'folder');
-        await configManager.addToLogicalGroup('Group 2', folderB, 'Folder B', 'folder');
+        await configManager.createLogicalGroup('Scenario2 Group 1', 'First group');
+        await configManager.createLogicalGroup('Scenario2 Group 2', 'Second group');
+        await configManager.addToLogicalGroup('Scenario2 Group 1', folderA, 'Folder A', 'folder');
+        await configManager.addToLogicalGroup('Scenario2 Group 2', folderB, 'Folder B', 'folder');
 
         // Create file in folderA
         const sourceFile = path.join(folderA, 'cross-group.txt');
@@ -478,7 +512,7 @@ suite('Drag and Drop Tests', () => {
 
         // Create tree items
         const fileItem = new FileShortcutItem('cross-group.txt', vscode.Uri.file(sourceFile));
-        const targetFolderItem = new LogicalGroupChildItem('Folder B', vscode.Uri.file(folderB), 'folder', 'Group 2');
+        const targetFolderItem = new LogicalGroupChildItem('Folder B', vscode.Uri.file(folderB), 'folder', 'Scenario2 Group 2');
 
         // Perform drop
         const dataTransfer = new vscode.DataTransfer();
@@ -493,9 +527,12 @@ suite('Drag and Drop Tests', () => {
         assert.ok(!fs.existsSync(sourceFile), 'File should not exist in source folder');
 
         const config = await configManager.loadConfiguration();
-        assert.strictEqual(config.logicalGroups.length, 2, 'Should still have two groups');
-        assert.strictEqual(config.logicalGroups[0].items.length, 1, 'Group 1 should still have one folder');
-        assert.strictEqual(config.logicalGroups[1].items.length, 1, 'Group 2 should still have one folder');
+        const group1 = config.logicalGroups.find(g => g.name === 'Scenario2 Group 1');
+        const group2 = config.logicalGroups.find(g => g.name === 'Scenario2 Group 2');
+        assert.ok(group1, 'Group 1 should exist');
+        assert.ok(group2, 'Group 2 should exist');
+        assert.strictEqual(group1!.items.length, 1, 'Group 1 should still have one folder');
+        assert.strictEqual(group2!.items.length, 1, 'Group 2 should still have one folder');
     });
 
     test('Scenario 3a: should physically move LogicalGroupChildItem to physical folder creating stale config', async () => {
@@ -506,19 +543,21 @@ suite('Drag and Drop Tests', () => {
         const sourceFile = path.join(tempDir, 'scenario3a-important.txt');
         fs.writeFileSync(sourceFile, 'important content');
 
-        await configManager.createLogicalGroup('Project', 'Main project');
-        await configManager.createNestedLogicalGroup('Project', 'Subgroup', 'Important files');
-        await configManager.addToLogicalGroup('Project/Subgroup', sourceFile, 'Important File', 'file');
-        await configManager.addToLogicalGroup('Project', targetFolder, 'Target Folder', 'folder');
+        await configManager.createLogicalGroup('Scenario3a Project', 'Main project');
+        await configManager.createNestedLogicalGroup('Scenario3a Project', 'Subgroup', 'Important files');
+        await configManager.addToLogicalGroup('Scenario3a Project/Subgroup', sourceFile, 'Important File', 'file');
+        await configManager.addToLogicalGroup('Scenario3a Project', targetFolder, 'Target Folder', 'folder');
 
         // Verify initial setup
         let config = await configManager.loadConfiguration();
-        assert.ok(config.logicalGroups[0].groups);
-        assert.strictEqual(config.logicalGroups[0].groups![0].items.length, 1);
+        let projectGroup = config.logicalGroups.find(g => g.name === 'Scenario3a Project');
+        assert.ok(projectGroup, 'Project group should exist');
+        assert.ok(projectGroup!.groups);
+        assert.strictEqual(projectGroup!.groups![0].items.length, 1);
 
         // Drag file from Subgroup (LogicalGroupChildItem), drop on Target Folder
-        const fileItem = new LogicalGroupChildItem('Important File', vscode.Uri.file(sourceFile), 'file', 'Project/Subgroup');
-        const targetFolderItem = new LogicalGroupChildItem('Target Folder', vscode.Uri.file(targetFolder), 'folder', 'Project');
+        const fileItem = new LogicalGroupChildItem('Important File', vscode.Uri.file(sourceFile), 'file', 'Scenario3a Project/Subgroup');
+        const targetFolderItem = new LogicalGroupChildItem('Target Folder', vscode.Uri.file(targetFolder), 'folder', 'Scenario3a Project');
 
         const dataTransfer = new vscode.DataTransfer();
         dataTransfer.set('application/vnd.code.tree.shortcutslogical', new vscode.DataTransferItem([fileItem]));
@@ -533,7 +572,9 @@ suite('Drag and Drop Tests', () => {
 
         // Verify: Config is STALE (still references old path)
         config = await configManager.loadConfiguration();
-        const subgroup = config.logicalGroups[0].groups![0];
+        projectGroup = config.logicalGroups.find(g => g.name === 'Scenario3a Project');
+        assert.ok(projectGroup, 'Project group should still exist');
+        const subgroup = projectGroup!.groups![0];
         assert.strictEqual(subgroup.items.length, 1, 'Subgroup should still have the item');
         assert.strictEqual(subgroup.items[0].path, sourceFile, 'Path in config is now invalid/stale');
     });
@@ -546,18 +587,20 @@ suite('Drag and Drop Tests', () => {
         const fileInFolder = path.join(folderA, 'file-to-add.txt');
         fs.writeFileSync(fileInFolder, 'content to add');
 
-        await configManager.createLogicalGroup('Project', 'Main project');
-        await configManager.addToLogicalGroup('Project', folderA, 'Folder A', 'folder');
-        await configManager.createNestedLogicalGroup('Project', 'Subgroup', 'Important files');
+        await configManager.createLogicalGroup('Scenario3b Project', 'Main project');
+        await configManager.addToLogicalGroup('Scenario3b Project', folderA, 'Folder A', 'folder');
+        await configManager.createNestedLogicalGroup('Scenario3b Project', 'Subgroup', 'Important files');
 
         // Verify subgroup is empty
         let config = await configManager.loadConfiguration();
-        const subgroup = config.logicalGroups[0].groups![0];
+        let projectGroup = config.logicalGroups.find(g => g.name === 'Scenario3b Project');
+        assert.ok(projectGroup, 'Project group should exist');
+        const subgroup = projectGroup!.groups![0];
         assert.strictEqual(subgroup.items.length, 0, 'Subgroup should be empty initially');
 
         // Drag file from inside Folder A (FileShortcutItem), drop on Subgroup (LogicalGroupItem)
         const fileItem = new FileShortcutItem('file-to-add.txt', vscode.Uri.file(fileInFolder));
-        const subgroupItem = new LogicalGroupItem('Subgroup', 'Important files', undefined, vscode.TreeItemCollapsibleState.Collapsed, 'Project');
+        const subgroupItem = new LogicalGroupItem('Subgroup', 'Important files', undefined, vscode.TreeItemCollapsibleState.Collapsed, 'Scenario3b Project');
 
         const dataTransfer = new vscode.DataTransfer();
         dataTransfer.set('application/vnd.code.tree.shortcutsphysical', new vscode.DataTransferItem([fileItem]));
@@ -571,7 +614,9 @@ suite('Drag and Drop Tests', () => {
 
         // Verify: Config ADDED to subgroup
         config = await configManager.loadConfiguration();
-        const updatedSubgroup = config.logicalGroups[0].groups![0];
+        projectGroup = config.logicalGroups.find(g => g.name === 'Scenario3b Project');
+        assert.ok(projectGroup, 'Project group should still exist');
+        const updatedSubgroup = projectGroup!.groups![0];
         assert.strictEqual(updatedSubgroup.items.length, 1, 'Subgroup should have one item');
         assert.strictEqual(updatedSubgroup.items[0].name, 'file-to-add.txt');
         assert.strictEqual(updatedSubgroup.items[0].type, 'file');
@@ -582,19 +627,21 @@ suite('Drag and Drop Tests', () => {
         const testFilePath = path.join(tempDir, 'scenario5-file.txt');
         fs.writeFileSync(testFilePath, 'content in subgroup');
 
-        await configManager.createLogicalGroup('Project', 'Main project');
-        await configManager.createNestedLogicalGroup('Project', 'Subgroup A', 'First subgroup');
-        await configManager.createNestedLogicalGroup('Project', 'Subgroup B', 'Second subgroup');
-        await configManager.addToLogicalGroup('Project/Subgroup A', testFilePath, 'My File', 'file');
+        await configManager.createLogicalGroup('Scenario5 Project', 'Main project');
+        await configManager.createNestedLogicalGroup('Scenario5 Project', 'Subgroup A', 'First subgroup');
+        await configManager.createNestedLogicalGroup('Scenario5 Project', 'Subgroup B', 'Second subgroup');
+        await configManager.addToLogicalGroup('Scenario5 Project/Subgroup A', testFilePath, 'My File', 'file');
 
         // Verify initial state
         let config = await configManager.loadConfiguration();
-        assert.strictEqual(config.logicalGroups[0].groups![0].items.length, 1, 'Subgroup A should have one item');
-        assert.strictEqual(config.logicalGroups[0].groups![1].items.length, 0, 'Subgroup B should be empty');
+        let projectGroup = config.logicalGroups.find(g => g.name === 'Scenario5 Project');
+        assert.ok(projectGroup, 'Project group should exist');
+        assert.strictEqual(projectGroup!.groups![0].items.length, 1, 'Subgroup A should have one item');
+        assert.strictEqual(projectGroup!.groups![1].items.length, 0, 'Subgroup B should be empty');
 
         // Drag from Subgroup A to Subgroup B
-        const sourceItem = new LogicalGroupChildItem('My File', vscode.Uri.file(testFilePath), 'file', 'Project/Subgroup A');
-        const targetGroup = new LogicalGroupItem('Subgroup B', 'Second subgroup', undefined, vscode.TreeItemCollapsibleState.Collapsed, 'Project');
+        const sourceItem = new LogicalGroupChildItem('My File', vscode.Uri.file(testFilePath), 'file', 'Scenario5 Project/Subgroup A');
+        const targetGroup = new LogicalGroupItem('Subgroup B', 'Second subgroup', undefined, vscode.TreeItemCollapsibleState.Collapsed, 'Scenario5 Project');
 
         const dataTransfer = new vscode.DataTransfer();
         dataTransfer.set('application/vnd.code.tree.shortcutslogical', new vscode.DataTransferItem([sourceItem]));
@@ -604,10 +651,11 @@ suite('Drag and Drop Tests', () => {
 
         // Verify: Config move (not copy)
         config = await configManager.loadConfiguration();
-        const parentGroup = config.logicalGroups[0];
-        assert.strictEqual(parentGroup.groups![0].items.length, 0, 'Subgroup A should be empty (removed)');
-        assert.strictEqual(parentGroup.groups![1].items.length, 1, 'Subgroup B should have one item (added)');
-        assert.strictEqual(parentGroup.groups![1].items[0].name, 'My File');
+        projectGroup = config.logicalGroups.find(g => g.name === 'Scenario5 Project');
+        assert.ok(projectGroup, 'Project group should still exist');
+        assert.strictEqual(projectGroup!.groups![0].items.length, 0, 'Subgroup A should be empty (removed)');
+        assert.strictEqual(projectGroup!.groups![1].items.length, 1, 'Subgroup B should have one item (added)');
+        assert.strictEqual(projectGroup!.groups![1].items[0].name, 'My File');
 
         // Verify: No physical move
         assert.ok(fs.existsSync(testFilePath), 'File should still exist at original location');
@@ -615,21 +663,25 @@ suite('Drag and Drop Tests', () => {
 
     test('Scenario 7: should move notes between logical groups', async () => {
         // Setup: Two groups, one with a note
-        await configManager.createLogicalGroup('Group A', 'First group');
-        await configManager.createLogicalGroup('Group B', 'Second group');
-        const noteId = await configManager.createNote('Group A', 'My Note');
+        await configManager.createLogicalGroup('Scenario7 Group A', 'First group');
+        await configManager.createLogicalGroup('Scenario7 Group B', 'Second group');
+        const noteId = await configManager.createNote('Scenario7 Group A', 'My Note');
 
         // Get the note items from Group A
         let config = await configManager.loadConfiguration();
-        const groupANotes = config.logicalGroups[0].items.filter(item => item.type === 'note');
+        let groupA = config.logicalGroups.find(g => g.name === 'Scenario7 Group A');
+        let groupB = config.logicalGroups.find(g => g.name === 'Scenario7 Group B');
+        assert.ok(groupA, 'Group A should exist');
+        assert.ok(groupB, 'Group B should exist');
+        const groupANotes = groupA!.items.filter(item => item.type === 'note');
         assert.strictEqual(groupANotes.length, 1, 'Group A should have one note');
         assert.strictEqual(groupANotes[0].noteId, noteId);
-        const groupBNotes = config.logicalGroups[1].items.filter(item => item.type === 'note');
+        const groupBNotes = groupB!.items.filter(item => item.type === 'note');
         assert.strictEqual(groupBNotes.length, 0, 'Group B should have no notes');
 
         // Create note item and target group
-        const noteItem = new NoteShortcutItem('My Note', noteId, 'Group A');
-        const targetGroup = new LogicalGroupItem('Group B', 'Second group');
+        const noteItem = new NoteShortcutItem('My Note', noteId, 'Scenario7 Group A');
+        const targetGroup = new LogicalGroupItem('Scenario7 Group B', 'Second group');
 
         // Drag note from Group A to Group B
         const dataTransfer = new vscode.DataTransfer();
@@ -640,8 +692,12 @@ suite('Drag and Drop Tests', () => {
 
         // Verify: Note moved in config
         config = await configManager.loadConfiguration();
-        const groupANotesAfter = config.logicalGroups[0].items.filter(item => item.type === 'note');
-        const groupBNotesAfter = config.logicalGroups[1].items.filter(item => item.type === 'note');
+        groupA = config.logicalGroups.find(g => g.name === 'Scenario7 Group A');
+        groupB = config.logicalGroups.find(g => g.name === 'Scenario7 Group B');
+        assert.ok(groupA, 'Group A should still exist');
+        assert.ok(groupB, 'Group B should still exist');
+        const groupANotesAfter = groupA!.items.filter(item => item.type === 'note');
+        const groupBNotesAfter = groupB!.items.filter(item => item.type === 'note');
         assert.strictEqual(groupANotesAfter.length, 0, 'Group A should have no notes (removed)');
         assert.strictEqual(groupBNotesAfter.length, 1, 'Group B should have one note (added)');
         assert.strictEqual(groupBNotesAfter[0].noteId, noteId);

@@ -250,17 +250,9 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
             // Check if moving between groups
             for (const sourceItem of sourceGroupItems) {
                 if (sourceItem.parentGroup !== targetGroupPath) {
-                    // Check if both are subgroups of the same parent
-                    const sourceParent = this.getParentGroupPath(sourceItem.parentGroup);
-                    const targetParent = this.getParentGroupPath(targetGroupPath);
-
-                    if (sourceParent && targetParent && sourceParent === targetParent) {
-                        // Both are subgroups of the same parent - move instead of copy
-                        shouldMove = true;
-                    } else if (sourceParent !== targetParent) {
-                        // Different parent groups - move (remove from source)
-                        shouldMove = true;
-                    }
+                    // Moving to a different group - always move (remove from source)
+                    shouldMove = true;
+                    break;
                 }
             }
         }

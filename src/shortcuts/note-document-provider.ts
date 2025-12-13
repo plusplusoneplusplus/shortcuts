@@ -158,19 +158,34 @@ export class NoteFileSystemProvider implements vscode.FileSystemProvider {
  */
 export class NoteDocumentManager {
     private fileSystemProvider: NoteFileSystemProvider;
+    // Static flag to track if the provider is already registered
+    // This prevents double registration in test environments
+    private static providerRegistered = false;
 
     constructor(
         private configurationManager: ConfigurationManager,
         private context: vscode.ExtensionContext
     ) {
-        // Register the file system provider
+        // Register the file system provider (only once per process)
         this.fileSystemProvider = new NoteFileSystemProvider(configurationManager);
-        const providerDisposable = vscode.workspace.registerFileSystemProvider(
-            'shortcuts-note',
-            this.fileSystemProvider,
-            { isCaseSensitive: true, isReadonly: false }
-        );
-        context.subscriptions.push(providerDisposable);
+        if (!NoteDocumentManager.providerRegistered) {
+            try {
+                const providerDisposable = vscode.workspace.registerFileSystemProvider(
+                    'shortcuts-note',
+                    this.fileSystemProvider,
+                    { isCaseSensitive: true, isReadonly: false }
+                );
+                context.subscriptions.push(providerDisposable);
+                NoteDocumentManager.providerRegistered = true;
+            } catch (error) {
+                // Provider might already be registered (e.g., in tests)
+                if (error instanceof Error && error.message.includes('already registered')) {
+                    console.log('Note file system provider already registered, skipping registration');
+                } else {
+                    throw error;
+                }
+            }
+        }
     }
 
     /**

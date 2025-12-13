@@ -23,6 +23,11 @@ suite('Markdown Comments Feature Tests', () => {
     setup(() => {
         // Create temporary directory for testing
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-comments-test-'));
+        // Ensure .vscode directory exists but has no comments file
+        const vscodePath = path.join(tempDir, '.vscode');
+        fs.mkdirSync(vscodePath, { recursive: true });
+        // Create empty comments file to ensure clean state
+        fs.writeFileSync(path.join(vscodePath, COMMENTS_CONFIG_FILE), JSON.stringify({ version: 1, comments: [] }));
         commentsManager = new CommentsManager(tempDir);
     });
 

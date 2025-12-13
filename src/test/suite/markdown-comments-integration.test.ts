@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import {
     CommentFileItem,
     CommentItem,
+    COMMENTS_CONFIG_FILE,
     CommentsManager,
     MarkdownCommentsTreeDataProvider,
     PromptGenerator
@@ -25,6 +26,11 @@ suite('Markdown Comments Integration Tests', () => {
         // Create temporary directory and test markdown file
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-comments-integration-'));
         testMarkdownFile = path.join(tempDir, 'test-document.md');
+
+        // Ensure .vscode directory exists and has an empty comments file
+        const vscodePath = path.join(tempDir, '.vscode');
+        fs.mkdirSync(vscodePath, { recursive: true });
+        fs.writeFileSync(path.join(vscodePath, COMMENTS_CONFIG_FILE), JSON.stringify({ version: 1, comments: [] }));
 
         // Create a test markdown file with content
         const markdownContent = `# Test Document
