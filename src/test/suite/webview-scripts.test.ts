@@ -1347,5 +1347,278 @@ suite('Webview Scripts Tests', () => {
             });
         });
     });
+
+    suite('Editor Content Sync Flow', () => {
+        /**
+         * This test suite verifies the content synchronization logic between
+         * the webview editor and the VS Code document.
+         * 
+         * Key requirements:
+         * 1. Content changes from webview should update the VS Code document
+         * 2. Webview-initiated changes should NOT trigger re-renders (to preserve cursor)
+         * 3. External document changes SHOULD trigger re-renders
+         * 4. Race conditions should be handled gracefully
+         */
+
+        /**
+         * Mock state manager for testing
+         */
+        class MockState {
+            currentContent: string = '';
+            pendingUpdate: boolean = false;
+
+            setCurrentContent(content: string) {
+                this.currentContent = content;
+            }
+        }
+
+        /**
+         * Simulates the handleEditorInput flow
+         */
+        function handleEditorInput(
+            state: MockState,
+            extractedContent: string,
+            sendToExtension: (content: string) => void
+        ): boolean {
+            // Only send if content changed
+            if (extractedContent !== state.currentContent) {
+                state.setCurrentContent(extractedContent);
+                sendToExtension(extractedContent);
+                return true; // Content was sent
+            }
+            return false; // No change
+        }
+
+        /**
+         * Simulates the extension-side message handling
+         */
+        function handleUpdateContent(
+            isWebviewEdit: { value: boolean },
+            content: string,
+            applyEdit: (content: string) => void,
+            setWebviewEdit: () => void
+        ): void {
+            setWebviewEdit();
+            applyEdit(content);
+        }
+
+        /**
+         * Simulates the document change handler
+         */
+        function handleDocumentChange(
+            isWebviewEdit: { value: boolean },
+            updateWebview: () => void
+        ): boolean {
+            if (isWebviewEdit.value) {
+                isWebviewEdit.value = false;
+                return false; // Skipped update
+            }
+            updateWebview();
+            return true; // Update was called
+        }
+
+        suite('Normal editing flow', () => {
+            test('should send content to extension when content changes', () => {
+                const state = new MockState();
+                state.currentContent = 'Original content';
+                let sentContent = '';
+
+                const result = handleEditorInput(
+                    state,
+                    'Modified content',
+                    (content) => { sentContent = content; }
+                );
+
+                assert.strictEqual(result, true);
+                assert.strictEqual(sentContent, 'Modified content');
+                assert.strictEqual(state.currentContent, 'Modified content');
+            });
+
+            test('should NOT send content when content is unchanged', () => {
+                const state = new MockState();
+                state.currentContent = 'Same content';
+                let sendCalled = false;
+
+                const result = handleEditorInput(
+                    state,
+                    'Same content',
+                    () => { sendCalled = true; }
+                );
+
+                assert.strictEqual(result, false);
+                assert.strictEqual(sendCalled, false);
+            });
+        });
+
+        suite('isWebviewEdit flag behavior', () => {
+            test('should set flag before applying edit', () => {
+                const isWebviewEdit = { value: false };
+                let flagWasSetBeforeEdit = false;
+
+                handleUpdateContent(
+                    isWebviewEdit,
+                    'new content',
+                    () => { flagWasSetBeforeEdit = isWebviewEdit.value; },
+                    () => { isWebviewEdit.value = true; }
+                );
+
+                assert.strictEqual(flagWasSetBeforeEdit, true,
+                    'Flag should be set BEFORE edit is applied');
+            });
+
+            test('should skip updateWebview when flag is set', () => {
+                const isWebviewEdit = { value: true };
+                let updateWebviewCalled = false;
+
+                const result = handleDocumentChange(
+                    isWebviewEdit,
+                    () => { updateWebviewCalled = true; }
+                );
+
+                assert.strictEqual(result, false, 'Should skip update');
+                assert.strictEqual(updateWebviewCalled, false,
+                    'updateWebview should NOT be called');
+                assert.strictEqual(isWebviewEdit.value, false,
+                    'Flag should be reset after skip');
+            });
+
+            test('should call updateWebview when flag is not set', () => {
+                const isWebviewEdit = { value: false };
+                let updateWebviewCalled = false;
+
+                const result = handleDocumentChange(
+                    isWebviewEdit,
+                    () => { updateWebviewCalled = true; }
+                );
+
+                assert.strictEqual(result, true, 'Should call update');
+                assert.strictEqual(updateWebviewCalled, true,
+                    'updateWebview SHOULD be called for external changes');
+            });
+        });
+
+        suite('Complete edit cycle', () => {
+            test('should complete full webview-initiated edit without re-render', () => {
+                const state = new MockState();
+                state.currentContent = 'Line 1\nLine 2';
+                const isWebviewEdit = { value: false };
+                let documentContent = 'Line 1\nLine 2';
+                let updateWebviewCallCount = 0;
+
+                // Step 1: User types in webview
+                const newContent = 'Line 1\nModified Line 2';
+                handleEditorInput(
+                    state,
+                    newContent,
+                    (content) => {
+                        // Step 2: Extension receives message
+                        handleUpdateContent(
+                            isWebviewEdit,
+                            content,
+                            (c) => { documentContent = c; },
+                            () => { isWebviewEdit.value = true; }
+                        );
+                    }
+                );
+
+                // Step 3: Document change event fires
+                handleDocumentChange(
+                    isWebviewEdit,
+                    () => { updateWebviewCallCount++; }
+                );
+
+                // Verify: Document was updated, but updateWebview was NOT called
+                assert.strictEqual(documentContent, 'Line 1\nModified Line 2');
+                assert.strictEqual(updateWebviewCallCount, 0,
+                    'updateWebview should NOT be called for webview-initiated edits');
+            });
+
+            test('should trigger re-render for external document changes', () => {
+                const isWebviewEdit = { value: false };
+                let updateWebviewCallCount = 0;
+
+                // External edit (e.g., another editor)
+                // Document changes without going through webview
+
+                // Document change event fires
+                handleDocumentChange(
+                    isWebviewEdit,
+                    () => { updateWebviewCallCount++; }
+                );
+
+                assert.strictEqual(updateWebviewCallCount, 1,
+                    'updateWebview SHOULD be called for external changes');
+            });
+        });
+
+        suite('Race condition handling', () => {
+            test('should handle rapid successive edits', () => {
+                const state = new MockState();
+                state.currentContent = 'Original';
+                const isWebviewEdit = { value: false };
+                let updateWebviewCallCount = 0;
+
+                // Simulate rapid edits
+                for (let i = 0; i < 5; i++) {
+                    const newContent = `Edit ${i}`;
+                    handleEditorInput(
+                        state,
+                        newContent,
+                        (content) => {
+                            handleUpdateContent(
+                                isWebviewEdit,
+                                content,
+                                () => { /* apply edit */ },
+                                () => { isWebviewEdit.value = true; }
+                            );
+                        }
+                    );
+
+                    // Document change event
+                    handleDocumentChange(
+                        isWebviewEdit,
+                        () => { updateWebviewCallCount++; }
+                    );
+                }
+
+                // All edits should complete without triggering updateWebview
+                assert.strictEqual(updateWebviewCallCount, 0,
+                    'No re-renders should occur during rapid webview edits');
+                assert.strictEqual(state.currentContent, 'Edit 4');
+            });
+
+            test('should handle interleaved webview and external edits', () => {
+                const state = new MockState();
+                state.currentContent = 'Start';
+                const isWebviewEdit = { value: false };
+                const updateWebviewCalls: string[] = [];
+
+                // Webview edit
+                handleEditorInput(
+                    state,
+                    'Webview Edit',
+                    (content) => {
+                        handleUpdateContent(
+                            isWebviewEdit,
+                            content,
+                            () => { /* apply */ },
+                            () => { isWebviewEdit.value = true; }
+                        );
+                    }
+                );
+                handleDocumentChange(isWebviewEdit, () => {
+                    updateWebviewCalls.push('after webview');
+                });
+
+                // External edit (flag should still be false after reset)
+                handleDocumentChange(isWebviewEdit, () => {
+                    updateWebviewCalls.push('external');
+                });
+
+                // Only external edit should trigger updateWebview
+                assert.deepStrictEqual(updateWebviewCalls, ['external']);
+            });
+        });
+    });
 });
 
