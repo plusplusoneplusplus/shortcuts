@@ -728,8 +728,9 @@ Final thoughts and summary of the document.
             // Verify prompt contains both comments
             assert.ok(prompt.includes('Add more context here'));
             assert.ok(prompt.includes('Expand this section'));
-            assert.ok(prompt.includes('Lines 5'));
-            assert.ok(prompt.includes('Lines 10'));
+            // Single line selections use "Line X" format, not "Lines X"
+            assert.ok(prompt.includes('Line 5') || prompt.includes('Lines 5'));
+            assert.ok(prompt.includes('Line 10') || prompt.includes('Lines 10'));
         });
 
         test('should exclude resolved comments from prompt', async () => {
