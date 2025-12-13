@@ -66,6 +66,11 @@ suite('Drag and Drop Tests', () => {
         // Initialize storage
         (extensionContext.globalState as any)._storage = {};
 
+        // Pre-create empty config so tests start with a clean slate
+        const vscodePath = path.join(tempDir, '.vscode');
+        fs.mkdirSync(vscodePath, { recursive: true });
+        fs.writeFileSync(path.join(vscodePath, 'shortcuts.yaml'), 'logicalGroups: []\n');
+
         // Setup providers with mock context
         configManager = new ConfigurationManager(tempDir, extensionContext);
         themeManager = new ThemeManager();

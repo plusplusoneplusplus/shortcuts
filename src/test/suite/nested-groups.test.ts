@@ -37,6 +37,11 @@ suite('Nested Groups Tests', () => {
             await ext.activate();
         }
 
+        // Pre-create empty config so tests start with a clean slate
+        const vscodePath = path.join(tempDir, '.vscode');
+        fs.mkdirSync(vscodePath, { recursive: true });
+        fs.writeFileSync(path.join(vscodePath, 'shortcuts.yaml'), 'logicalGroups: []\n');
+
         // Setup providers
         configManager = new ConfigurationManager(tempDir);
         themeManager = new ThemeManager();

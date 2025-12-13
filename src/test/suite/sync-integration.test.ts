@@ -265,13 +265,15 @@ suite('Sync Integration Tests (Settings-based)', function () {
     suite('Settings Validation', () => {
         test('should handle missing provider setting gracefully', async () => {
             await mockSyncConfig.update('enabled', true);
-            // No provider specified
+            // No provider specified - defaults to 'vscode'
 
             await configManager.initializeSyncManager();
 
             const syncManager = configManager.getSyncManager();
-            // Should not initialize without a provider
-            assert.strictEqual(syncManager, undefined, 'Sync manager should not exist without provider');
+            // Provider defaults to 'vscode' when not specified, so sync manager will exist
+            // with the default VSCode provider
+            assert.ok(syncManager, 'Sync manager should exist with default vscode provider');
+            assert.ok(syncManager.getProviders().has('vscode'), 'Should have VSCode provider as default');
         });
 
         test('should handle incomplete Azure configuration', async () => {
@@ -283,8 +285,10 @@ suite('Sync Integration Tests (Settings-based)', function () {
             await configManager.initializeSyncManager();
 
             const syncManager = configManager.getSyncManager();
-            // Should not initialize with incomplete Azure config
-            assert.strictEqual(syncManager, undefined, 'Sync manager should not exist with incomplete Azure config');
+            // Sync manager is created but Azure provider is not added due to incomplete config
+            // The manager still exists but has no providers
+            assert.ok(syncManager, 'Sync manager should exist');
+            assert.strictEqual(syncManager.getProviders().size, 0, 'Should have no providers with incomplete Azure config');
         });
 
         test('should separate sync settings from shortcuts data', async () => {

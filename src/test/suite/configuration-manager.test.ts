@@ -22,6 +22,13 @@ suite('ConfigurationManager Tests', () => {
     setup(() => {
         // Create temporary directory for testing
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-test-'));
+        
+        // Pre-create empty config so tests start with a clean slate
+        // (except for tests that specifically test default config behavior)
+        const vscodePath = path.join(tempDir, '.vscode');
+        fs.mkdirSync(vscodePath, { recursive: true });
+        fs.writeFileSync(path.join(vscodePath, 'shortcuts.yaml'), 'logicalGroups: []\n');
+        
         configManager = new ConfigurationManager(tempDir);
 
         // Mock vscode.window methods to capture messages
@@ -64,10 +71,19 @@ suite('ConfigurationManager Tests', () => {
 
     suite('loadConfiguration', () => {
         test('should create default configuration when file does not exist', async () => {
+            // Delete the pre-created config to test default behavior
+            const configPath = configManager.getConfigPath();
+            if (fs.existsSync(configPath)) {
+                fs.unlinkSync(configPath);
+            }
+            configManager.invalidateCache();
+            
             const config = await configManager.loadConfiguration();
 
             assert.strictEqual(Array.isArray(config.logicalGroups), true);
-            assert.strictEqual(config.logicalGroups.length, 0);
+            // Default config includes Quick Actions group
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].name, 'Quick Actions');
             // basePaths is optional and may be undefined
 
             // Verify config can be saved subsequently
@@ -142,19 +158,17 @@ suite('ConfigurationManager Tests', () => {
         });
 
         test('should handle invalid YAML syntax gracefully', async () => {
-            // Create .vscode directory
-            const vscodePath = path.join(tempDir, '.vscode');
-            fs.mkdirSync(vscodePath, { recursive: true });
-
-            // Write invalid YAML
-            const configPath = path.join(vscodePath, 'shortcuts.yaml');
+            // Write invalid YAML over the existing config
+            const configPath = configManager.getConfigPath();
             fs.writeFileSync(configPath, `logicalGroups: [[[invalid`);
+            configManager.invalidateCache();
 
             const config = await configManager.loadConfiguration();
 
-            // Should return default configuration
+            // Should return default configuration (includes Quick Actions group)
             assert.strictEqual(Array.isArray(config.logicalGroups), true);
-            assert.strictEqual(config.logicalGroups.length, 0);
+            assert.strictEqual(config.logicalGroups.length, 1);
+            assert.strictEqual(config.logicalGroups[0].name, 'Quick Actions');
             // basePaths is optional and may be undefined
         });
 

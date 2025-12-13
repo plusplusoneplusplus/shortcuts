@@ -34,6 +34,12 @@ suite('Integration Tests - Group Operations', () => {
     setup(() => {
         // Create temporary directory for each test
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-integration-'));
+        
+        // Pre-create empty config so tests start with a clean slate
+        const vscodePath = path.join(tempDir, '.vscode');
+        fs.mkdirSync(vscodePath, { recursive: true });
+        fs.writeFileSync(path.join(vscodePath, 'shortcuts.yaml'), 'logicalGroups: []\n');
+        
         configManager = new ConfigurationManager(tempDir);
         themeManager = new ThemeManager();
         provider = new LogicalTreeDataProvider(tempDir, configManager, themeManager);

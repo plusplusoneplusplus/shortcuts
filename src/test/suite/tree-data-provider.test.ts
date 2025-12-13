@@ -44,6 +44,11 @@ suite('LogicalTreeDataProvider Test Suite', () => {
     });
 
     setup(() => {
+        // Pre-create empty config so tests start with a clean slate
+        const vscodePath = path.join(tempDir, '.vscode');
+        fs.mkdirSync(vscodePath, { recursive: true });
+        fs.writeFileSync(path.join(vscodePath, 'shortcuts.yaml'), 'logicalGroups: []\n');
+        
         configManager = new ConfigurationManager(tempDir);
         themeManager = new ThemeManager();
         provider = new LogicalTreeDataProvider(tempDir, configManager, themeManager);

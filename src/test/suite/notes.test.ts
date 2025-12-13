@@ -17,6 +17,11 @@ suite('Notes Feature Tests', () => {
     setup(() => {
         // Create temporary directory for testing
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-notes-test-'));
+        
+        // Pre-create empty config so tests start with a clean slate
+        const vscodePath = path.join(tempDir, '.vscode');
+        fs.mkdirSync(vscodePath, { recursive: true });
+        fs.writeFileSync(path.join(vscodePath, 'shortcuts.yaml'), 'logicalGroups: []\n');
 
         // Create a mock extension context
         extensionContext = {
