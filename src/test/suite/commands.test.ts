@@ -745,13 +745,16 @@ suite('ShortcutsCommands Integration Tests', () => {
 
         test('should delete multiple groups in one operation', async function() {
             // Set a longer timeout for CI environments
-            this.timeout(15000);
+            this.timeout(30000);
 
             // Setup: Create multiple groups
             await configManager.createLogicalGroup('Group 1');
             await configManager.createLogicalGroup('Group 2');
             await configManager.createLogicalGroup('Group 3');
-            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // Wait for file system to settle
+            await new Promise(resolve => setTimeout(resolve, 500));
+            configManager.invalidateCache();
             provider.refresh();
 
             // Note: Multi-selection is a complex feature that requires TreeView selection
@@ -763,7 +766,7 @@ suite('ShortcutsCommands Integration Tests', () => {
             const group2 = rootItems.find((item): item is LogicalGroupItem =>
                 item instanceof LogicalGroupItem && item.originalName === 'Group 2'
             );
-            assert.ok(group2);
+            assert.ok(group2, 'Group 2 should exist in tree');
 
             const originalShowWarningMessage = vscode.window.showWarningMessage;
             vscode.window.showWarningMessage = async () => 'Delete' as any;
@@ -772,13 +775,13 @@ suite('ShortcutsCommands Integration Tests', () => {
                 await vscode.commands.executeCommand('shortcuts.deleteLogicalGroup', group2);
 
                 // Wait for file system operations to complete (longer timeout for CI)
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 2000));
                 configManager.invalidateCache();
                 const config = await configManager.loadConfiguration();
                 const names = config.logicalGroups.map(g => g.name);
-                assert.ok(names.includes('Group 1'));
-                assert.ok(!names.includes('Group 2'));
-                assert.ok(names.includes('Group 3'));
+                assert.ok(names.includes('Group 1'), 'Group 1 should still exist');
+                assert.ok(!names.includes('Group 2'), 'Group 2 should be deleted');
+                assert.ok(names.includes('Group 3'), 'Group 3 should still exist');
 
             } finally {
                 vscode.window.showWarningMessage = originalShowWarningMessage;
