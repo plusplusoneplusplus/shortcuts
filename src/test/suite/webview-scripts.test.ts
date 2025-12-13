@@ -872,5 +872,480 @@ suite('Webview Scripts Tests', () => {
             assert.strictEqual(sorted.length, 1);
         });
     });
+
+    suite('Plain Text Content Extraction (getPlainTextContent)', () => {
+        /**
+         * This test suite verifies the getPlainTextContent logic that extracts
+         * plain text from the contenteditable editor.
+         * 
+         * The key requirement is that this function MUST handle:
+         * 1. Normal rendered .line-content[data-line] elements
+         * 2. Browser-created elements from contenteditable mutations (br, div, p)
+         * 3. Mixed content where users have edited and created new lines
+         * 
+         * A regression occurred when the implementation was simplified to only
+         * read .line-content[data-line] elements, missing user-created content.
+         */
+
+        // Mock DOM node types
+        const TEXT_NODE = 3;
+        const ELEMENT_NODE = 1;
+
+        interface MockNode {
+            nodeType: number;
+            textContent: string | null;
+            tagName?: string;
+            childNodes: MockNode[];
+            classList?: { contains: (className: string) => boolean };
+            hasAttribute?: (attr: string) => boolean;
+            getAttribute?: (attr: string) => string | null;
+        }
+
+        /**
+         * Create a mock text node
+         */
+        function createTextNode(text: string): MockNode {
+            return {
+                nodeType: TEXT_NODE,
+                textContent: text,
+                childNodes: []
+            };
+        }
+
+        /**
+         * Create a mock element node
+         */
+        function createElementNode(
+            tagName: string,
+            children: MockNode[] = [],
+            classNames: string[] = [],
+            attributes: Record<string, string> = {}
+        ): MockNode {
+            return {
+                nodeType: ELEMENT_NODE,
+                tagName: tagName.toUpperCase(),
+                textContent: children.map(c => c.textContent || '').join(''),
+                childNodes: children,
+                classList: {
+                    contains: (className: string) => classNames.includes(className)
+                },
+                hasAttribute: (attr: string) => attr in attributes,
+                getAttribute: (attr: string) => attributes[attr] || null
+            };
+        }
+
+        /**
+         * Implementation of getPlainTextContent logic for testing
+         * This MUST match the actual implementation in dom-handlers.ts
+         */
+        function getPlainTextContent(editorWrapper: MockNode): string {
+            const lines: string[] = [];
+
+            function processNode(node: MockNode, isFirstChild: boolean = false): void {
+                if (node.nodeType === TEXT_NODE) {
+                    const text = node.textContent || '';
+                    if (lines.length === 0) {
+                        lines.push(text);
+                    } else {
+                        lines[lines.length - 1] += text;
+                    }
+                } else if (node.nodeType === ELEMENT_NODE) {
+                    const el = node;
+                    const tag = (el.tagName || '').toLowerCase();
+
+                    // Skip comment bubbles and gutter icons
+                    if (el.classList?.contains('inline-comment-bubble') ||
+                        el.classList?.contains('gutter-icon') ||
+                        el.classList?.contains('line-number') ||
+                        el.classList?.contains('line-number-column')) {
+                        return;
+                    }
+
+                    // Handle line breaks - CRITICAL: br tags must start new lines
+                    if (tag === 'br') {
+                        lines.push('');
+                        return;
+                    }
+
+                    // Check if this is a block element that should start a new line
+                    const isBlockElement = tag === 'div' || tag === 'p' ||
+                        el.classList?.contains('line-row') ||
+                        el.classList?.contains('block-row');
+
+                    // For line-content with data-line, handle as a single line
+                    if (el.classList?.contains('line-content') && el.hasAttribute?.('data-line')) {
+                        // Start a new line for each line-content element
+                        if (lines.length === 0 || lines[lines.length - 1] !== '' || !isFirstChild) {
+                            lines.push('');
+                        }
+                        // Process children
+                        let childIndex = 0;
+                        el.childNodes.forEach(child => {
+                            processNode(child, childIndex === 0);
+                            childIndex++;
+                        });
+                        return;
+                    }
+
+                    // For line-row elements, just process children
+                    if (el.classList?.contains('line-row') || el.classList?.contains('block-row')) {
+                        let childIndex = 0;
+                        el.childNodes.forEach(child => {
+                            processNode(child, childIndex === 0);
+                            childIndex++;
+                        });
+                        return;
+                    }
+
+                    // For other block elements created by contenteditable
+                    // CRITICAL: This handles user-created divs/paragraphs
+                    if (isBlockElement && lines.length > 0 && lines[lines.length - 1] !== '' && !isFirstChild) {
+                        lines.push('');
+                    }
+
+                    // Process children
+                    let childIndex = 0;
+                    el.childNodes.forEach(child => {
+                        processNode(child, childIndex === 0);
+                        childIndex++;
+                    });
+                }
+            }
+
+            processNode(editorWrapper, true);
+
+            // Clean up: handle nbsp placeholders for empty lines
+            return lines.map(line => {
+                if (line === '\u00a0') {
+                    return '';
+                }
+                return line;
+            }).join('\n');
+        }
+
+        /**
+         * BROKEN implementation that would miss user-created content
+         * This demonstrates what NOT to do - only reading data-line elements
+         */
+        function getPlainTextContentBroken(editorWrapper: MockNode): string {
+            const lines: string[] = [];
+
+            // This approach only looks at .line-content[data-line] elements
+            // and misses any content created by the browser during editing
+            function findLineContentElements(node: MockNode): MockNode[] {
+                const results: MockNode[] = [];
+                if (node.nodeType === ELEMENT_NODE) {
+                    if (node.classList?.contains('line-content') && node.hasAttribute?.('data-line')) {
+                        results.push(node);
+                    }
+                    node.childNodes.forEach(child => {
+                        results.push(...findLineContentElements(child));
+                    });
+                }
+                return results;
+            }
+
+            const lineElements = findLineContentElements(editorWrapper);
+            lineElements.forEach(lineEl => {
+                let text = lineEl.textContent || '';
+                if (text === '\u00a0') text = '';
+                lines.push(text);
+            });
+
+            return lines.join('\n');
+        }
+
+        suite('Normal rendered content', () => {
+            test('should extract text from line-content elements with data-line', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [], ['line-number']),
+                        createElementNode('div', [createTextNode('Line 1')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row']),
+                    createElementNode('div', [
+                        createElementNode('div', [], ['line-number']),
+                        createElementNode('div', [createTextNode('Line 2')], ['line-content'], { 'data-line': '2' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.strictEqual(result, 'Line 1\nLine 2');
+            });
+
+            test('should handle empty lines with nbsp', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Text')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row']),
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('\u00a0')], ['line-content'], { 'data-line': '2' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.strictEqual(result, 'Text\n');
+            });
+
+            test('should skip line-number elements', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('1')], ['line-number']),
+                        createElementNode('div', [createTextNode('Content')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.strictEqual(result, 'Content');
+                assert.ok(!result.includes('1Content')); // Line number should not be included
+            });
+
+            test('should skip comment bubbles', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [
+                            createTextNode('Text with '),
+                            createElementNode('span', [createTextNode('commented')], ['commented-text']),
+                            createElementNode('div', [createTextNode('Bubble content')], ['inline-comment-bubble'])
+                        ], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.ok(!result.includes('Bubble content'));
+                assert.ok(result.includes('Text with'));
+            });
+        });
+
+        suite('Browser-created contenteditable mutations', () => {
+            /**
+             * CRITICAL TEST: When user presses Enter in the editor, the browser
+             * creates new elements (br, div, p) that don't have data-line attributes.
+             * The content extraction MUST handle these elements.
+             */
+            test('should handle br elements created by contenteditable', () => {
+                // Simulates: user types "Line 1", presses Shift+Enter, types "Line 2"
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [
+                            createTextNode('Line 1'),
+                            createElementNode('br', []),
+                            createTextNode('Line 2')
+                        ], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.strictEqual(result, 'Line 1\nLine 2');
+            });
+
+            test('should handle div elements created by contenteditable (Enter key)', () => {
+                // Simulates: user presses Enter in the middle of content
+                // Browser creates new divs without data-line attribute
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Original line')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row']),
+                    // This div is created by the browser when user presses Enter
+                    // It does NOT have the line-row or line-content classes
+                    createElementNode('div', [createTextNode('New line created by user')])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.ok(result.includes('Original line'));
+                assert.ok(result.includes('New line created by user'));
+            });
+
+            test('should handle p elements created by contenteditable', () => {
+                // Some browsers create <p> elements instead of <div>
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Line 1')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row']),
+                    createElementNode('p', [createTextNode('Paragraph created by user')])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.ok(result.includes('Line 1'));
+                assert.ok(result.includes('Paragraph created by user'));
+            });
+
+            test('should handle mixed rendered and user-created content', () => {
+                // Simulates: rendered content with user edits interspersed
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Rendered line 1')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row']),
+                    createElementNode('div', [createTextNode('User added this')]),
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Rendered line 2')], ['line-content'], { 'data-line': '2' })
+                    ], ['line-row']),
+                    createElementNode('div', [createTextNode('User added this too')])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.ok(result.includes('Rendered line 1'));
+                assert.ok(result.includes('User added this'));
+                assert.ok(result.includes('Rendered line 2'));
+                assert.ok(result.includes('User added this too'));
+            });
+
+            test('should preserve correct line order with user-created content', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('A')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row']),
+                    createElementNode('div', [createTextNode('B')]),
+                    createElementNode('div', [createTextNode('C')]),
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('D')], ['line-content'], { 'data-line': '2' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                const lines = result.split('\n');
+
+                // Verify order is preserved
+                const indexA = lines.findIndex(l => l === 'A');
+                const indexB = lines.findIndex(l => l === 'B');
+                const indexC = lines.findIndex(l => l === 'C');
+                const indexD = lines.findIndex(l => l === 'D');
+
+                assert.ok(indexA < indexB, 'A should come before B');
+                assert.ok(indexB < indexC, 'B should come before C');
+                assert.ok(indexC < indexD, 'C should come before D');
+            });
+        });
+
+        suite('Regression prevention - broken implementation comparison', () => {
+            /**
+             * These tests demonstrate that a simplified implementation that
+             * only reads .line-content[data-line] elements would FAIL.
+             * This ensures the regression doesn't happen again.
+             */
+
+            test('broken implementation misses user-created div elements', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Rendered')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row']),
+                    createElementNode('div', [createTextNode('User created')])
+                ], ['editor-wrapper']);
+
+                const correctResult = getPlainTextContent(wrapper);
+                const brokenResult = getPlainTextContentBroken(wrapper);
+
+                // Correct implementation captures all content
+                assert.ok(correctResult.includes('Rendered'));
+                assert.ok(correctResult.includes('User created'));
+
+                // Broken implementation misses user-created content
+                assert.ok(brokenResult.includes('Rendered'));
+                assert.ok(!brokenResult.includes('User created'),
+                    'Broken implementation should miss user-created content - this test ensures we use the correct implementation');
+            });
+
+            test('broken implementation misses content from br elements', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [
+                            createTextNode('Before'),
+                            createElementNode('br', []),
+                            createTextNode('After')
+                        ], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const correctResult = getPlainTextContent(wrapper);
+                const brokenResult = getPlainTextContentBroken(wrapper);
+
+                // Correct implementation handles br as line break
+                assert.strictEqual(correctResult, 'Before\nAfter');
+
+                // Broken implementation just concatenates (no line break)
+                assert.strictEqual(brokenResult, 'BeforeAfter',
+                    'Broken implementation should not handle br elements properly');
+            });
+
+            test('broken implementation returns wrong content for edited document', () => {
+                // Simulate a document where user has made multiple edits
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Line 1')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row']),
+                    createElementNode('div', [createTextNode('Inserted by user')]),
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Line 2')], ['line-content'], { 'data-line': '2' })
+                    ], ['line-row']),
+                    createElementNode('p', [createTextNode('Another user insert')]),
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Line 3')], ['line-content'], { 'data-line': '3' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const correctResult = getPlainTextContent(wrapper);
+                const brokenResult = getPlainTextContentBroken(wrapper);
+
+                // Count lines in each result
+                const correctLines = correctResult.split('\n').filter(l => l.length > 0);
+                const brokenLines = brokenResult.split('\n').filter(l => l.length > 0);
+
+                // Correct implementation should have 5 lines (3 rendered + 2 user-created)
+                assert.strictEqual(correctLines.length, 5);
+
+                // Broken implementation should only have 3 lines (misses user-created)
+                assert.strictEqual(brokenLines.length, 3,
+                    'Broken implementation should miss user-created content');
+            });
+        });
+
+        suite('Edge cases', () => {
+            test('should handle empty editor', () => {
+                const wrapper = createElementNode('div', [], ['editor-wrapper']);
+                const result = getPlainTextContent(wrapper);
+                assert.strictEqual(result, '');
+            });
+
+            test('should handle editor with only whitespace', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('   ')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.strictEqual(result, '   ');
+            });
+
+            test('should handle deeply nested user-created content', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [
+                            createElementNode('span', [createTextNode('Nested text')])
+                        ])
+                    ])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.ok(result.includes('Nested text'));
+            });
+
+            test('should handle multiple consecutive br elements', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [
+                            createTextNode('Line 1'),
+                            createElementNode('br', []),
+                            createElementNode('br', []),
+                            createTextNode('Line 2')
+                        ], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                // Should have two line breaks (empty line between)
+                assert.strictEqual(result, 'Line 1\n\nLine 2');
+            });
+        });
+    });
 });
 

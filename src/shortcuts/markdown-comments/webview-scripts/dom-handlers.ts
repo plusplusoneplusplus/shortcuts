@@ -2,18 +2,17 @@
  * DOM event handlers for the webview
  */
 
-import { state } from './state';
-import { 
-    showFloatingPanel, 
-    closeFloatingPanel, 
-    closeInlineEditPanel,
+import {
     closeActiveCommentBubble,
-    showCommentBubble
+    closeFloatingPanel,
+    closeInlineEditPanel,
+    showCommentBubble,
+    showFloatingPanel
 } from './panel-manager';
-import { requestResolveAll, requestDeleteAll, requestCopyPrompt, updateContent } from './vscode-bridge';
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
-import { PendingSelection, SavedSelection } from './types';
+import { state } from './state';
+import { requestCopyPrompt, requestDeleteAll, requestResolveAll, updateContent } from './vscode-bridge';
 
 // DOM element references
 let editorWrapper: HTMLElement;
@@ -35,7 +34,7 @@ export function initDomHandlers(): void {
     contextMenuCopy = document.getElementById('contextMenuCopy')!;
     contextMenuPaste = document.getElementById('contextMenuPaste')!;
     contextMenuAddComment = document.getElementById('contextMenuAddComment')!;
-    
+
     setupToolbarEventListeners();
     setupEditorEventListeners();
     setupContextMenuEventListeners();
@@ -84,27 +83,27 @@ function setupContextMenuEventListeners(): void {
             handleContextMenu(e);
         }
     });
-    
+
     contextMenuCut.addEventListener('click', () => {
         hideContextMenu();
         handleCut();
     });
-    
+
     contextMenuCopy.addEventListener('click', () => {
         hideContextMenu();
         handleCopy();
     });
-    
+
     contextMenuPaste.addEventListener('click', () => {
         hideContextMenu();
         handlePaste();
     });
-    
+
     contextMenuAddComment.addEventListener('click', () => {
         hideContextMenu();
         handleAddCommentFromContextMenu();
     });
-    
+
     // Hide context menu on click outside
     document.addEventListener('click', (e) => {
         if (!(e.target as HTMLElement).closest('.context-menu')) {
@@ -125,7 +124,7 @@ function setupKeyboardEventListeners(): void {
             closeActiveCommentBubble();
             hideContextMenu();
         }
-        
+
         // Ctrl+Shift+M to add comment
         if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'm') {
             e.preventDefault();
@@ -141,9 +140,9 @@ function setupGlobalEventListeners(): void {
     // Close bubble when clicking outside
     document.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
-        if (state.activeCommentBubble && 
-            !target.closest('.inline-comment-bubble') && 
-            !target.closest('.commented-text') && 
+        if (state.activeCommentBubble &&
+            !target.closest('.inline-comment-bubble') &&
+            !target.closest('.commented-text') &&
             !target.closest('.gutter-icon')) {
             closeActiveCommentBubble();
         }
@@ -156,7 +155,7 @@ function setupGlobalEventListeners(): void {
 function handleContextMenu(e: MouseEvent): void {
     const selection = window.getSelection();
     const hasSelection = selection && !selection.isCollapsed && selection.toString().trim().length > 0;
-    
+
     // Save selection info for later use
     if (hasSelection) {
         const range = selection!.getRangeAt(0);
@@ -172,7 +171,7 @@ function handleContextMenu(e: MouseEvent): void {
     } else {
         state.setSavedSelectionForContextMenu(null);
     }
-    
+
     // Update menu item states based on selection
     if (hasSelection) {
         contextMenuCut.classList.remove('disabled');
@@ -185,7 +184,7 @@ function handleContextMenu(e: MouseEvent): void {
     }
     // Paste is always enabled
     contextMenuPaste.classList.remove('disabled');
-    
+
     // Position and show context menu
     e.preventDefault();
     const x = Math.min(e.clientX, window.innerWidth - 220);
@@ -252,26 +251,26 @@ export function handleAddComment(): void {
         alert('Please select some text first to add a comment.');
         return;
     }
-    
+
     const selectedText = selection.toString().trim();
     if (!selectedText) {
         alert('Please select some text first to add a comment.');
         return;
     }
-    
+
     const range = selection.getRangeAt(0);
     const selectionInfo = getSelectionPosition(range);
-    
+
     if (!selectionInfo) {
         alert('Could not determine selection position.');
         return;
     }
-    
+
     state.setPendingSelection({
         ...selectionInfo,
         selectedText
     });
-    
+
     const rect = range.getBoundingClientRect();
     showFloatingPanel(rect, selectedText);
 }
@@ -285,7 +284,7 @@ function handleAddCommentFromContextMenu(): void {
         alert('Please select some text first to add a comment.');
         return;
     }
-    
+
     state.setPendingSelection({
         startLine: saved.startLine,
         startColumn: saved.startColumn,
@@ -293,7 +292,7 @@ function handleAddCommentFromContextMenu(): void {
         endColumn: saved.endColumn,
         selectedText: saved.selectedText
     });
-    
+
     showFloatingPanel(saved.rect, saved.selectedText);
     state.setSavedSelectionForContextMenu(null);
 }
@@ -486,7 +485,7 @@ export function setupCommentInteractions(): void {
             }
         });
     });
-    
+
     // Click on gutter icon
     document.querySelectorAll('.gutter-icon').forEach(icon => {
         icon.addEventListener('click', (e) => {
@@ -494,14 +493,14 @@ export function setupCommentInteractions(): void {
             const lineRow = (icon as HTMLElement).closest('.line-row');
             const lineContentEl = lineRow?.querySelector('.line-content[data-line]') as HTMLElement;
             const lineNum = lineContentEl ? parseInt(lineContentEl.getAttribute('data-line') || '', 10) : null;
-            
+
             if (!lineNum) return;
-            
-            const lineComments = state.comments.filter(c => 
-                c.selection.startLine === lineNum && 
+
+            const lineComments = state.comments.filter(c =>
+                c.selection.startLine === lineNum &&
                 (state.settings.showResolved || c.status !== 'resolved')
             );
-            
+
             if (lineComments.length > 0) {
                 const lineEl = editorWrapper.querySelector('[data-line="' + lineNum + '"]') as HTMLElement;
                 if (lineEl) {

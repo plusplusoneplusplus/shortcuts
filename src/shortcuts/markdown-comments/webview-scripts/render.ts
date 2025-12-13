@@ -90,30 +90,32 @@ export function render(): void {
         const block = codeBlocks.find(b => b.startLine === lineNum);
         if (block) {
             const blockLineNums = generateBlockLineNumbers(block.startLine, block.endLine, commentsMap);
-            const blockContent = block.isMermaid 
+            const blockContent = block.isMermaid
                 ? renderMermaidContainer(block, commentsMap)
                 : renderCodeBlock(block, commentsMap);
-            
+
+            // Line numbers are not editable
             html += '<div class="line-row block-row">' +
-                '<div class="line-number-column">' + blockLineNums + '</div>' +
+                '<div class="line-number-column" contenteditable="false">' + blockLineNums + '</div>' +
                 '<div class="line-content block-content">' + blockContent + '</div>' +
                 '</div>';
-            
+
             skipUntilLine = block.endLine;
             return;
         }
-        
+
         // Check if this line starts a table
         const table = tables.find(t => t.startLine === lineNum);
         if (table) {
             const tableLineNums = generateBlockLineNumbers(table.startLine, table.endLine - 1, commentsMap);
             const tableContent = renderTable(table, commentsMap);
-            
+
+            // Line numbers are not editable
             html += '<div class="line-row block-row">' +
-                '<div class="line-number-column">' + tableLineNums + '</div>' +
+                '<div class="line-number-column" contenteditable="false">' + tableLineNums + '</div>' +
                 '<div class="line-content block-content">' + tableContent + '</div>' +
                 '</div>';
-            
+
             skipUntilLine = table.endLine - 1;
             return;
         }
@@ -152,8 +154,9 @@ export function render(): void {
         });
         
         // Create row-based layout with line number and content together
+        // Line numbers are not editable
         html += '<div class="line-row">' +
-            '<div class="line-number">' + gutterIcon + lineNum + '</div>' +
+            '<div class="line-number" contenteditable="false">' + gutterIcon + lineNum + '</div>' +
             '<div class="line-content" data-line="' + lineNum + '">' + lineHtml + '</div>' +
             '</div>';
     });
