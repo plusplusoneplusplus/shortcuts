@@ -1,9 +1,15 @@
 /**
  * Main render function for the webview
+ * 
+ * Uses cursor-management module for cursor position preservation during re-renders.
  */
 
 import { MarkdownComment } from '../types';
 import { groupCommentsByLine } from '../webview-logic/comment-state';
+import {
+    CursorPosition,
+    NODE_TYPES
+} from '../webview-logic/cursor-management';
 import { applyMarkdownHighlighting } from '../webview-logic/markdown-renderer';
 import { applyCommentHighlightToRange, getHighlightColumnsForLine } from '../webview-logic/selection-utils';
 import { parseCodeBlocks, renderCodeBlock, setupCodeBlockHandlers } from './code-block-handlers';
@@ -13,17 +19,79 @@ import { renderMermaidContainer, renderMermaidDiagrams } from './mermaid-handler
 import { state } from './state';
 import { parseTables, renderTable, setupTableHandlers } from './table-handlers';
 
+/** Classes to skip when calculating cursor positions */
+const SKIP_CLASSES = ['inline-comment-bubble', 'gutter-icon'];
+
 /**
- * Cursor position information for preservation during re-renders
+ * Find the line element containing a node.
+ * Adapted from cursor-management module for browser DOM.
  */
-interface CursorPosition {
-    line: number;
-    column: number;
+function findLineElement(node: Node, editorElement: HTMLElement): HTMLElement | null {
+    let current: Node | null = node;
+
+    while (current && current !== editorElement) {
+        if (current.nodeType === NODE_TYPES.ELEMENT_NODE) {
+            const el = current as HTMLElement;
+            if (el.classList?.contains('line-content') && el.hasAttribute('data-line')) {
+                return el;
+            }
+        }
+        current = current.parentNode;
+    }
+
+    return null;
 }
 
 /**
- * Get the current cursor position in the editor
- * Returns line (1-based) and column (0-based) within that line
+ * Get line number from a line element.
+ * Adapted from cursor-management module for browser DOM.
+ */
+function getLineNumber(lineElement: HTMLElement): number | null {
+    const lineAttr = lineElement.getAttribute('data-line');
+    if (!lineAttr) return null;
+    const lineNum = parseInt(lineAttr, 10);
+    return isNaN(lineNum) ? null : lineNum;
+}
+
+/**
+ * Calculate the column offset from the start of a line element to a target position.
+ * Adapted from cursor-management module for browser DOM using TreeWalker.
+ */
+function calculateColumnOffset(
+    lineElement: HTMLElement,
+    targetNode: Node,
+    targetOffset: number
+): number {
+    let offset = 0;
+    let found = false;
+    const walker = document.createTreeWalker(lineElement, NodeFilter.SHOW_TEXT, null);
+
+    let currentNode: Text | null;
+    while ((currentNode = walker.nextNode() as Text | null)) {
+        // Check if we should skip this node
+        const parent = currentNode.parentElement;
+        if (parent && SKIP_CLASSES.some(cls => parent.closest(`.${cls}`))) {
+            continue;
+        }
+
+        if (currentNode === targetNode) {
+            found = true;
+            return offset + targetOffset;
+        }
+        offset += currentNode.length;
+    }
+
+    // If target is an element node, count all text before it
+    if (!found && targetNode.nodeType === NODE_TYPES.ELEMENT_NODE) {
+        return offset;
+    }
+
+    return offset;
+}
+
+/**
+ * Get the current cursor position in the editor.
+ * Uses cursor-management logic adapted for browser DOM.
  */
 function getCursorPosition(editorWrapper: HTMLElement): CursorPosition | null {
     const selection = window.getSelection();
@@ -37,62 +105,73 @@ function getCursorPosition(editorWrapper: HTMLElement): CursorPosition | null {
     }
 
     // Find the line element containing the cursor
-    let node: Node | null = range.startContainer;
-    let lineElement: HTMLElement | null = null;
-
-    while (node && node !== editorWrapper) {
-        if (node instanceof HTMLElement) {
-            if (node.classList.contains('line-content') && node.hasAttribute('data-line')) {
-                lineElement = node;
-                break;
-            }
-        }
-        node = node.parentNode;
-    }
-
+    const lineElement = findLineElement(range.startContainer, editorWrapper);
     if (!lineElement) {
         return null;
     }
 
-    const line = parseInt(lineElement.getAttribute('data-line') || '1', 10);
+    // Get line number
+    const line = getLineNumber(lineElement);
+    if (line === null) {
+        return null;
+    }
 
     // Calculate column offset within the line
-    // We need to count characters from the start of the line-content to the cursor
-    const column = getColumnOffset(lineElement, range.startContainer, range.startOffset);
+    const column = calculateColumnOffset(lineElement, range.startContainer, range.startOffset);
 
     return { line, column };
 }
 
 /**
- * Calculate the column offset from the start of a line element to a specific position
+ * Find the text node and offset for a target column position.
+ * Adapted from cursor-management module for browser DOM.
  */
-function getColumnOffset(lineElement: HTMLElement, targetNode: Node, targetOffset: number): number {
-    let offset = 0;
-    const walker = document.createTreeWalker(lineElement, NodeFilter.SHOW_TEXT, null);
+function findTextNodeAtColumn(
+    lineElement: Element,
+    targetColumn: number
+): { node: Text; offset: number } | null {
+    let currentOffset = 0;
+    let result: { node: Text; offset: number } | null = null;
+    let lastValidNode: Text | null = null;
+    let lastValidNodeLength = 0;
 
+    const walker = document.createTreeWalker(lineElement, NodeFilter.SHOW_TEXT, null);
     let currentNode: Text | null;
+
     while ((currentNode = walker.nextNode() as Text | null)) {
-        if (currentNode === targetNode) {
-            return offset + targetOffset;
-        }
-        // Skip nodes in comment bubbles
+        // Skip nodes in elements we should ignore
         const parent = currentNode.parentElement;
-        if (parent && parent.closest('.inline-comment-bubble')) {
+        if (parent && SKIP_CLASSES.some(cls => parent.closest(`.${cls}`))) {
             continue;
         }
-        offset += currentNode.length;
+
+        lastValidNode = currentNode;
+        lastValidNodeLength = currentNode.length;
+
+        if (currentOffset + currentNode.length >= targetColumn) {
+            result = {
+                node: currentNode,
+                offset: Math.min(targetColumn - currentOffset, currentNode.length)
+            };
+            break;
+        }
+        currentOffset += currentNode.length;
     }
 
-    // If target is an element node, count all text before it
-    if (targetNode.nodeType === Node.ELEMENT_NODE) {
-        return offset;
+    // If target column is beyond content, return last text node at its end
+    if (!result && lastValidNode) {
+        result = {
+            node: lastValidNode,
+            offset: lastValidNodeLength
+        };
     }
 
-    return offset;
+    return result;
 }
 
 /**
- * Restore cursor position after re-render
+ * Restore cursor position after re-render.
+ * Uses cursor-management logic adapted for browser DOM.
  */
 function restoreCursorPosition(editorWrapper: HTMLElement, position: CursorPosition): void {
     const lineElement = editorWrapper.querySelector(`.line-content[data-line="${position.line}"]`);
@@ -100,45 +179,24 @@ function restoreCursorPosition(editorWrapper: HTMLElement, position: CursorPosit
         return;
     }
 
-    // Find the text node and offset for the target column
-    let offset = 0;
-    const walker = document.createTreeWalker(lineElement, NodeFilter.SHOW_TEXT, null);
-
-    let currentNode: Text | null;
-    let targetNode: Text | null = null;
-    let targetOffset = 0;
-
-    while ((currentNode = walker.nextNode() as Text | null)) {
-        // Skip nodes in comment bubbles
-        const parent = currentNode.parentElement;
-        if (parent && parent.closest('.inline-comment-bubble')) {
-            continue;
-        }
-
-        const nodeLength = currentNode.length;
-        if (offset + nodeLength >= position.column) {
-            targetNode = currentNode;
-            targetOffset = position.column - offset;
-            break;
-        }
-        offset += nodeLength;
+    const target = findTextNodeAtColumn(lineElement, position.column);
+    if (!target) {
+        return;
     }
 
-    if (targetNode) {
-        try {
-            const range = document.createRange();
-            range.setStart(targetNode, Math.min(targetOffset, targetNode.length));
-            range.collapse(true);
+    try {
+        const range = document.createRange();
+        range.setStart(target.node, target.offset);
+        range.collapse(true);
 
-            const selection = window.getSelection();
-            if (selection) {
-                selection.removeAllRanges();
-                selection.addRange(range);
-            }
-        } catch (e) {
-            // Ignore errors in setting cursor position
-            console.warn('[Webview] Could not restore cursor position:', e);
+        const selection = window.getSelection();
+        if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
         }
+    } catch (e) {
+        // Ignore errors in setting cursor position
+        console.warn('[Webview] Could not restore cursor position:', e);
     }
 }
 

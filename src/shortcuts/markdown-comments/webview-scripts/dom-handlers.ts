@@ -1,7 +1,13 @@
 /**
  * DOM event handlers for the webview
+ * 
+ * Uses content-extraction module for extracting plain text from the contenteditable editor.
  */
 
+import {
+    DEFAULT_SKIP_CLASSES,
+    ExtractionContext
+} from '../webview-logic/content-extraction';
 import {
     closeActiveCommentBubble,
     closeFloatingPanel,
@@ -338,145 +344,51 @@ function handleEditorKeydown(e: KeyboardEvent): void {
 }
 
 /**
- * Get plain text content from editor
- * Handles contenteditable DOM mutations (br tags, div elements, etc.)
+ * Check if an element should be skipped during content extraction.
+ * Adapted from content-extraction module for browser DOM.
  */
-function getPlainTextContent(): string {
-    const lines: string[] = [];
-
-    /**
-     * Process a node and extract text content
-     * @param node - The DOM node to process
-     * @param isFirstChild - Whether this is the first child of its parent
-     * @param insideLineContent - Whether we're inside a line-content element
-     */
-    function processNode(node: Node, isFirstChild: boolean = false, insideLineContent: boolean = false): void {
-        if (node.nodeType === Node.TEXT_NODE) {
-            const text = node.textContent || '';
-            if (lines.length === 0) {
-                lines.push(text);
-            } else {
-                lines[lines.length - 1] += text;
-            }
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-            const el = node as HTMLElement;
-            const tag = el.tagName.toLowerCase();
-
-            // Skip comment bubbles and gutter icons
-            if (el.classList.contains('inline-comment-bubble') ||
-                el.classList.contains('gutter-icon') ||
-                el.classList.contains('line-number') ||
-                el.classList.contains('line-number-column')) {
-                return;
-            }
-
-            // Handle line breaks
-            if (tag === 'br') {
-                // Only create a new line if we're NOT inside a line-content element
-                // or if there's actual content after the br
-                if (!insideLineContent) {
-                    lines.push('');
-                }
-                // Inside line-content, br typically means the user pressed Enter
-                // We should create ONE new line, not multiple
-                else {
-                    // Check if this br is followed by meaningful content
-                    const nextSibling = el.nextSibling;
-                    const hasContentAfter = nextSibling && (
-                        (nextSibling.nodeType === Node.TEXT_NODE && nextSibling.textContent?.trim()) ||
-                        (nextSibling.nodeType === Node.ELEMENT_NODE)
-                    );
-                    if (hasContentAfter) {
-                        lines.push('');
-                    }
-                }
-                return;
-            }
-
-            // Check if this is a block element that should start a new line
-            const isBlockElement = tag === 'div' || tag === 'p' ||
-                el.classList.contains('line-row') ||
-                el.classList.contains('block-row');
-
-            // For line-content with data-line, handle as a single line
-            if (el.classList.contains('line-content') && el.hasAttribute('data-line')) {
-                // Start a new line for each line-content element
-                if (lines.length === 0 || lines[lines.length - 1] !== '' || !isFirstChild) {
-                    lines.push('');
-                }
-                // Process children - mark that we're inside line-content
-                let childIndex = 0;
-                el.childNodes.forEach(child => {
-                    processNode(child, childIndex === 0, true);
-                    childIndex++;
-                });
-                return;
-            }
-
-            // For line-row elements, just process children
-            if (el.classList.contains('line-row') || el.classList.contains('block-row')) {
-                let childIndex = 0;
-                el.childNodes.forEach(child => {
-                    processNode(child, childIndex === 0, insideLineContent);
-                    childIndex++;
-                });
-                return;
-            }
-
-            // For block-content (code blocks, tables), extract raw text
-            if (el.classList.contains('block-content')) {
-                // For code blocks and tables, we need to get the original markdown content
-                // This is complex because the content has been transformed
-                // For now, just extract text content preserving some structure
-                const blockText = extractBlockText(el);
-                if (blockText) {
-                    blockText.split('\n').forEach((line, idx) => {
-                        if (idx === 0 && lines.length > 0 && lines[lines.length - 1] === '') {
-                            lines[lines.length - 1] = line;
-                        } else {
-                            lines.push(line);
-                        }
-                    });
-                }
-                return;
-            }
-
-            // For other block elements created by contenteditable
-            // Inside line-content, nested divs/p elements mean user pressed Enter
-            if (isBlockElement) {
-                if (insideLineContent) {
-                    // Inside line-content, block elements should create a new line
-                    // but only if there's content in the current line
-                    if (lines.length > 0 && lines[lines.length - 1] !== '') {
-                        lines.push('');
-                    }
-                } else if (lines.length > 0 && lines[lines.length - 1] !== '' && !isFirstChild) {
-                    lines.push('');
-                }
-            }
-
-            // Process children
-            let childIndex = 0;
-            el.childNodes.forEach(child => {
-                processNode(child, childIndex === 0, insideLineContent);
-                childIndex++;
-            });
+function shouldSkipElement(el: HTMLElement): boolean {
+    for (const cls of DEFAULT_SKIP_CLASSES) {
+        if (el.classList.contains(cls)) {
+            return true;
         }
     }
-
-    processNode(editorWrapper, true, false);
-
-    // Clean up: handle nbsp placeholders for empty lines and normalize
-    return lines.map(line => {
-        if (line === '\u00a0') {
-            return '';
-        }
-        return line;
-    }).join('\n');
+    return false;
 }
 
 /**
- * Extract text from block content (code blocks, tables)
+ * Check if an element is a block element.
+ * Adapted from content-extraction module for browser DOM.
+ */
+function isBlockElement(el: HTMLElement): boolean {
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'div' || tag === 'p') return true;
+    if (el.classList.contains('line-row')) return true;
+    if (el.classList.contains('block-row')) return true;
+    return false;
+}
+
+/**
+ * Check if BR is followed by meaningful content.
+ * Adapted from content-extraction module for browser DOM.
+ */
+function hasMeaningfulContentAfterBr(el: HTMLElement): boolean {
+    const nextSibling = el.nextSibling;
+    if (!nextSibling) return false;
+
+    if (nextSibling.nodeType === Node.TEXT_NODE) {
+        const text = nextSibling.textContent?.trim();
+        return Boolean(text && text.length > 0);
+    }
+    if (nextSibling.nodeType === Node.ELEMENT_NODE) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Extract text from block content (code blocks, tables).
+ * Adapted from content-extraction module for browser DOM.
  */
 function extractBlockText(el: HTMLElement): string {
     // For pre/code blocks, get the text content
@@ -506,6 +418,138 @@ function extractBlockText(el: HTMLElement): string {
 
     // Fallback: just get text content
     return el.textContent || '';
+}
+
+/**
+ * Get plain text content from editor.
+ * Uses content-extraction module logic adapted for browser DOM.
+ * Handles contenteditable DOM mutations (br tags, div elements, etc.)
+ */
+function getPlainTextContent(): string {
+    const context: ExtractionContext = {
+        lines: [],
+        insideLineContent: false,
+        skipClasses: DEFAULT_SKIP_CLASSES
+    };
+
+    /**
+     * Process a node and extract text content.
+     * Adapted from content-extraction module for browser DOM.
+     */
+    function processNode(node: Node, isFirstChild: boolean = false): void {
+        // Handle text nodes
+        if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent || '';
+            if (context.lines.length === 0) {
+                context.lines.push(text);
+            } else {
+                context.lines[context.lines.length - 1] += text;
+            }
+            return;
+        }
+
+        // Handle element nodes
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+            return;
+        }
+
+        const el = node as HTMLElement;
+        const tag = el.tagName.toLowerCase();
+
+        // Skip elements that should be ignored
+        if (shouldSkipElement(el)) {
+            return;
+        }
+
+        // Handle BR elements
+        if (tag === 'br') {
+            if (!context.insideLineContent) {
+                context.lines.push('');
+            } else if (hasMeaningfulContentAfterBr(el)) {
+                context.lines.push('');
+            }
+            return;
+        }
+
+        // Handle line-content elements (our rendered lines)
+        if (el.classList.contains('line-content') && el.hasAttribute('data-line')) {
+            if (context.lines.length === 0 ||
+                context.lines[context.lines.length - 1] !== '' ||
+                !isFirstChild) {
+                context.lines.push('');
+            }
+
+            const wasInsideLineContent = context.insideLineContent;
+            context.insideLineContent = true;
+
+            let childIndex = 0;
+            el.childNodes.forEach(child => {
+                processNode(child, childIndex === 0);
+                childIndex++;
+            });
+
+            context.insideLineContent = wasInsideLineContent;
+            return;
+        }
+
+        // Handle line-row elements (just process children)
+        if (el.classList.contains('line-row') || el.classList.contains('block-row')) {
+            let childIndex = 0;
+            el.childNodes.forEach(child => {
+                processNode(child, childIndex === 0);
+                childIndex++;
+            });
+            return;
+        }
+
+        // Handle block-content elements (code blocks, tables)
+        if (el.classList.contains('block-content')) {
+            const blockText = extractBlockText(el);
+            if (blockText) {
+                const blockLines = blockText.split('\n');
+                blockLines.forEach((line, idx) => {
+                    if (idx === 0 && context.lines.length > 0 &&
+                        context.lines[context.lines.length - 1] === '') {
+                        context.lines[context.lines.length - 1] = line;
+                    } else {
+                        context.lines.push(line);
+                    }
+                });
+            }
+            return;
+        }
+
+        // Handle other block elements (div, p created by contenteditable)
+        if (isBlockElement(el)) {
+            if (context.insideLineContent) {
+                if (context.lines.length > 0 &&
+                    context.lines[context.lines.length - 1] !== '') {
+                    context.lines.push('');
+                }
+            } else if (context.lines.length > 0 &&
+                context.lines[context.lines.length - 1] !== '' &&
+                !isFirstChild) {
+                context.lines.push('');
+            }
+        }
+
+        // Process children for all other elements
+        let childIndex = 0;
+        el.childNodes.forEach(child => {
+            processNode(child, childIndex === 0);
+            childIndex++;
+        });
+    }
+
+    processNode(editorWrapper, true);
+
+    // Post-process: handle nbsp placeholders for empty lines
+    return context.lines.map(line => {
+        if (line === '\u00a0') {
+            return '';
+        }
+        return line;
+    }).join('\n');
 }
 
 /**
