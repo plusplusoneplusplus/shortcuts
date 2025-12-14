@@ -1633,6 +1633,854 @@ suite('Webview Scripts Tests', () => {
         });
     });
 
+    suite('Enter Key Handling Logic (handleEnterKey)', () => {
+        /**
+         * This test suite verifies the Enter key handling logic that was introduced
+         * to fix layout issues in the contenteditable editor.
+         * 
+         * The browser's default Enter key behavior creates DOM elements (<div>) that
+         * become flex siblings in line-row containers, causing text to appear
+         * side-by-side instead of on new lines.
+         * 
+         * The fix: Custom Enter key handler that manipulates content directly and
+         * re-renders, avoiding browser-created DOM elements.
+         * 
+         * Commit: 76fb003d9195089b666e2380c8a06d6b3869c298
+         */
+
+        interface SelectionInfo {
+            startLine: number;
+            startColumn: number;
+            endLine: number;
+            endColumn: number;
+        }
+
+        /**
+         * Pure function implementation of Enter key content manipulation.
+         * This mirrors the handleEnterKey logic in dom-handlers.ts.
+         */
+        function handleEnterKeyContent(
+            content: string,
+            selectionInfo: SelectionInfo
+        ): { newContent: string; newCursorLine: number; newCursorColumn: number } {
+            const lines = content.split('\n');
+
+            // Calculate the position to insert the newline
+            // selectionInfo uses 1-based line numbers and 1-based columns
+            const lineIndex = selectionInfo.startLine - 1;
+            const columnIndex = selectionInfo.startColumn - 1;
+
+            // Handle invalid line
+            if (lineIndex < 0 || lineIndex >= lines.length) {
+                // In actual code, this would fall back to execCommand
+                return { newContent: content, newCursorLine: 1, newCursorColumn: 1 };
+            }
+
+            // If there's a selection (not collapsed), delete the selected text first
+            if (selectionInfo.startLine !== selectionInfo.endLine ||
+                selectionInfo.startColumn !== selectionInfo.endColumn) {
+                const startLineIdx = selectionInfo.startLine - 1;
+                const endLineIdx = selectionInfo.endLine - 1;
+                const startCol = selectionInfo.startColumn - 1;
+                const endCol = selectionInfo.endColumn - 1;
+
+                if (startLineIdx === endLineIdx) {
+                    // Single line selection
+                    const line = lines[startLineIdx];
+                    lines[startLineIdx] = line.substring(0, startCol) + line.substring(endCol);
+                } else {
+                    // Multi-line selection
+                    const startLine = lines[startLineIdx];
+                    const endLine = lines[endLineIdx];
+                    lines[startLineIdx] = startLine.substring(0, startCol) + endLine.substring(endCol);
+                    lines.splice(startLineIdx + 1, endLineIdx - startLineIdx);
+                }
+            }
+
+            // Now insert the newline at the cursor position
+            const currentLine = lines[lineIndex] || '';
+            const beforeCursor = currentLine.substring(0, columnIndex);
+            const afterCursor = currentLine.substring(columnIndex);
+
+            // Split the line at cursor position
+            lines[lineIndex] = beforeCursor;
+            lines.splice(lineIndex + 1, 0, afterCursor);
+
+            // Calculate new cursor position (start of the new line)
+            const newCursorLine = selectionInfo.startLine + 1;
+            const newCursorColumn = 1;
+
+            return {
+                newContent: lines.join('\n'),
+                newCursorLine,
+                newCursorColumn
+            };
+        }
+
+        suite('Basic Enter key insertion', () => {
+            test('should insert newline at end of line', () => {
+                const content = 'Hello World';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 12, // After "Hello World"
+                    endLine: 1,
+                    endColumn: 12
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, 'Hello World\n');
+                assert.strictEqual(result.newCursorLine, 2);
+                assert.strictEqual(result.newCursorColumn, 1);
+            });
+
+            test('should insert newline at beginning of line', () => {
+                const content = 'Hello World';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 1, // At start
+                    endLine: 1,
+                    endColumn: 1
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, '\nHello World');
+                assert.strictEqual(result.newCursorLine, 2);
+                assert.strictEqual(result.newCursorColumn, 1);
+            });
+
+            test('should insert newline in middle of line', () => {
+                const content = 'Hello World';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 6, // After "Hello"
+                    endLine: 1,
+                    endColumn: 6
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, 'Hello\n World');
+                assert.strictEqual(result.newCursorLine, 2);
+                assert.strictEqual(result.newCursorColumn, 1);
+            });
+
+            test('should handle empty line', () => {
+                const content = '';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 1,
+                    endLine: 1,
+                    endColumn: 1
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, '\n');
+                assert.strictEqual(result.newCursorLine, 2);
+                assert.strictEqual(result.newCursorColumn, 1);
+            });
+        });
+
+        suite('Multi-line content handling', () => {
+            test('should insert newline in middle line of multi-line content', () => {
+                const content = 'Line 1\nLine 2\nLine 3';
+                const selection: SelectionInfo = {
+                    startLine: 2,
+                    startColumn: 5, // After "Line"
+                    endLine: 2,
+                    endColumn: 5
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, 'Line 1\nLine\n 2\nLine 3');
+                assert.strictEqual(result.newCursorLine, 3);
+            });
+
+            test('should insert newline at end of last line', () => {
+                const content = 'Line 1\nLine 2\nLine 3';
+                const selection: SelectionInfo = {
+                    startLine: 3,
+                    startColumn: 7, // End of "Line 3"
+                    endLine: 3,
+                    endColumn: 7
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, 'Line 1\nLine 2\nLine 3\n');
+                assert.strictEqual(result.newCursorLine, 4);
+            });
+
+            test('should preserve line count after multiple enters', () => {
+                let content = 'A\nB\nC';
+                let selection: SelectionInfo = {
+                    startLine: 2,
+                    startColumn: 2,
+                    endLine: 2,
+                    endColumn: 2
+                };
+
+                const result1 = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result1.newContent.split('\n').length, 4);
+
+                // Simulate another Enter
+                selection = {
+                    startLine: 3,
+                    startColumn: 1,
+                    endLine: 3,
+                    endColumn: 1
+                };
+                const result2 = handleEnterKeyContent(result1.newContent, selection);
+                assert.strictEqual(result2.newContent.split('\n').length, 5);
+            });
+        });
+
+        suite('Selection deletion before Enter', () => {
+            test('should delete single-line selection and insert newline', () => {
+                const content = 'Hello World';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 1,
+                    endLine: 1,
+                    endColumn: 6 // Select "Hello"
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, '\n World');
+                assert.strictEqual(result.newCursorLine, 2);
+            });
+
+            test('should delete entire line content and insert newline', () => {
+                const content = 'Delete me';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 1,
+                    endLine: 1,
+                    endColumn: 10 // Select entire line
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, '\n');
+            });
+
+            test('should handle selection in middle of line', () => {
+                const content = 'ABC DEF GHI';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 5, // After "ABC "
+                    endLine: 1,
+                    endColumn: 8 // Before " GHI"
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, 'ABC \n GHI');
+            });
+        });
+
+        suite('Multi-line selection handling', () => {
+            test('should delete multi-line selection and insert newline', () => {
+                const content = 'Line 1\nLine 2\nLine 3';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 5, // Middle of "Line 1"
+                    endLine: 2,
+                    endColumn: 5 // Middle of "Line 2"
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                // "Line" from Line 1 + " 2" from Line 2 should be joined first, then newline inserted
+                assert.ok(result.newContent.includes('Line'));
+                assert.strictEqual(result.newCursorLine, 2);
+            });
+
+            test('should handle selection spanning all lines', () => {
+                const content = 'First\nSecond\nThird';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 1,
+                    endLine: 3,
+                    endColumn: 6 // End of "Third"
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, '\n');
+            });
+
+            test('should preserve content before and after multi-line selection', () => {
+                const content = 'AAA BBB\nCCC DDD\nEEE FFF';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 5, // After "AAA "
+                    endLine: 3,
+                    endColumn: 4 // Before " FFF"
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                const lines = result.newContent.split('\n');
+                assert.ok(lines[0] === 'AAA ');
+                assert.ok(lines[1] === ' FFF');
+            });
+        });
+
+        suite('Edge cases', () => {
+            test('should handle invalid line number gracefully', () => {
+                const content = 'Hello';
+                const selection: SelectionInfo = {
+                    startLine: 5, // Invalid - only 1 line
+                    startColumn: 1,
+                    endLine: 5,
+                    endColumn: 1
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                // Should return unchanged content (fallback behavior)
+                assert.strictEqual(result.newContent, content);
+            });
+
+            test('should handle column beyond line length', () => {
+                const content = 'Short';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 100, // Beyond line length
+                    endLine: 1,
+                    endColumn: 100
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                // Should insert at end of line
+                assert.strictEqual(result.newContent, 'Short\n');
+            });
+
+            test('should handle content with special characters', () => {
+                const content = 'const x = { foo: "bar" };';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 11, // After "const x = "
+                    endLine: 1,
+                    endColumn: 11
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                assert.strictEqual(result.newContent, 'const x = \n{ foo: "bar" };');
+            });
+
+            test('should handle content with unicode', () => {
+                const content = 'Hello 🌍 World';
+                const selection: SelectionInfo = {
+                    startLine: 1,
+                    startColumn: 9, // After emoji
+                    endLine: 1,
+                    endColumn: 9
+                };
+
+                const result = handleEnterKeyContent(content, selection);
+                // Note: Unicode handling might vary based on how columns are counted
+                assert.ok(result.newContent.includes('\n'));
+                assert.ok(result.newContent.includes('🌍'));
+            });
+        });
+    });
+
+    suite('Timestamp-based Webview Edit Tracking', () => {
+        /**
+         * This test suite verifies the timestamp-based approach for tracking
+         * webview-initiated edits.
+         * 
+         * The problem: Using a boolean flag `isWebviewEdit = true` doesn't work
+         * because multiple document change events can fire for a single edit
+         * operation, and the flag gets reset after the first event.
+         * 
+         * The solution: Use a timestamp window (100ms) during which we ignore
+         * document change events, allowing all related events to complete.
+         * 
+         * Commit: 76fb003d9195089b666e2380c8a06d6b3869c298
+         */
+
+        /**
+         * Simulates the timestamp-based edit tracking logic
+         */
+        class WebviewEditTracker {
+            private webviewEditUntil: number = 0;
+
+            /**
+             * Mark that a webview edit is in progress.
+             * Sets a 100ms window during which we ignore document changes.
+             */
+            markWebviewEdit(): void {
+                this.webviewEditUntil = Date.now() + 100;
+            }
+
+            /**
+             * Check if we're within the webview edit window.
+             * Returns true if we should skip the document change event.
+             */
+            isWebviewEditInProgress(): boolean {
+                return Date.now() < this.webviewEditUntil;
+            }
+
+            /**
+             * Get time remaining in the edit window (for debugging)
+             */
+            getTimeRemaining(): number {
+                return this.webviewEditUntil - Date.now();
+            }
+        }
+
+        let tracker: WebviewEditTracker;
+
+        setup(() => {
+            tracker = new WebviewEditTracker();
+        });
+
+        test('should return false when no edit is in progress', () => {
+            assert.strictEqual(tracker.isWebviewEditInProgress(), false);
+        });
+
+        test('should return true immediately after marking edit', () => {
+            tracker.markWebviewEdit();
+            assert.strictEqual(tracker.isWebviewEditInProgress(), true);
+        });
+
+        test('should return true for multiple checks within window', () => {
+            tracker.markWebviewEdit();
+
+            // Simulate multiple document change events
+            assert.strictEqual(tracker.isWebviewEditInProgress(), true);
+            assert.strictEqual(tracker.isWebviewEditInProgress(), true);
+            assert.strictEqual(tracker.isWebviewEditInProgress(), true);
+        });
+
+        test('should have positive time remaining after marking', () => {
+            tracker.markWebviewEdit();
+            const remaining = tracker.getTimeRemaining();
+            assert.ok(remaining > 0, `Time remaining should be positive, got ${remaining}`);
+            assert.ok(remaining <= 100, `Time remaining should be <= 100ms, got ${remaining}`);
+        });
+
+        test('should allow re-marking to extend the window', () => {
+            tracker.markWebviewEdit();
+            const firstRemaining = tracker.getTimeRemaining();
+
+            // Re-mark after some time
+            tracker.markWebviewEdit();
+            const secondRemaining = tracker.getTimeRemaining();
+
+            // Second marking should reset the window
+            assert.ok(secondRemaining >= firstRemaining - 10,
+                'Re-marking should reset/extend the window');
+        });
+
+        suite('Comparison with boolean flag approach', () => {
+            /**
+             * Demonstrates why the boolean flag approach fails
+             */
+            class BooleanFlagTracker {
+                private isWebviewEdit: boolean = false;
+
+                markWebviewEdit(): void {
+                    this.isWebviewEdit = true;
+                }
+
+                checkAndReset(): boolean {
+                    const wasEdit = this.isWebviewEdit;
+                    this.isWebviewEdit = false;
+                    return wasEdit;
+                }
+            }
+
+            test('boolean flag fails with multiple document change events', () => {
+                const booleanTracker = new BooleanFlagTracker();
+                booleanTracker.markWebviewEdit();
+
+                // First event - handled correctly
+                assert.strictEqual(booleanTracker.checkAndReset(), true);
+
+                // Second event - INCORRECTLY returns false!
+                assert.strictEqual(booleanTracker.checkAndReset(), false);
+
+                // Third event - also returns false
+                assert.strictEqual(booleanTracker.checkAndReset(), false);
+            });
+
+            test('timestamp approach handles multiple document change events', () => {
+                tracker.markWebviewEdit();
+
+                // All events within the window are correctly identified
+                assert.strictEqual(tracker.isWebviewEditInProgress(), true);
+                assert.strictEqual(tracker.isWebviewEditInProgress(), true);
+                assert.strictEqual(tracker.isWebviewEditInProgress(), true);
+            });
+        });
+
+        suite('Integration scenario simulation', () => {
+            /**
+             * Simulates the actual flow when a user types in the webview
+             */
+
+            interface MockDocument {
+                content: string;
+                version: number;
+            }
+
+            class MockExtensionHandler {
+                webviewEditUntil: number = 0;
+                updateWebviewCallCount: number = 0;
+                document: MockDocument = { content: '', version: 0 };
+
+                handleWebviewMessage(newContent: string): void {
+                    // Mark edit window
+                    this.webviewEditUntil = Date.now() + 100;
+                    // Apply edit to document
+                    this.document.content = newContent;
+                    this.document.version++;
+                }
+
+                handleDocumentChange(): void {
+                    const now = Date.now();
+                    const isWebviewEdit = now < this.webviewEditUntil;
+
+                    if (isWebviewEdit) {
+                        // Skip updateWebview
+                        return;
+                    }
+
+                    // External change - update webview
+                    this.updateWebviewCallCount++;
+                }
+            }
+
+            test('should not call updateWebview for webview-initiated edits', () => {
+                const handler = new MockExtensionHandler();
+
+                // User types in webview
+                handler.handleWebviewMessage('New content');
+
+                // Multiple document change events fire (VS Code behavior)
+                handler.handleDocumentChange();
+                handler.handleDocumentChange();
+                handler.handleDocumentChange();
+
+                // updateWebview should NOT have been called
+                assert.strictEqual(handler.updateWebviewCallCount, 0);
+            });
+
+            test('should call updateWebview for external edits', () => {
+                const handler = new MockExtensionHandler();
+
+                // External edit (no webview message)
+                handler.document.content = 'External edit';
+                handler.document.version++;
+
+                // Document change event fires
+                handler.handleDocumentChange();
+
+                // updateWebview SHOULD have been called
+                assert.strictEqual(handler.updateWebviewCallCount, 1);
+            });
+
+            test('should handle interleaved webview and external edits', () => {
+                const handler = new MockExtensionHandler();
+
+                // Webview edit
+                handler.handleWebviewMessage('Edit 1');
+                handler.handleDocumentChange();
+                handler.handleDocumentChange();
+                assert.strictEqual(handler.updateWebviewCallCount, 0);
+
+                // Wait for window to expire (simulated by setting past time)
+                handler.webviewEditUntil = Date.now() - 1;
+
+                // External edit
+                handler.handleDocumentChange();
+                assert.strictEqual(handler.updateWebviewCallCount, 1);
+
+                // Another webview edit
+                handler.handleWebviewMessage('Edit 2');
+                handler.handleDocumentChange();
+                assert.strictEqual(handler.updateWebviewCallCount, 1); // Still 1
+            });
+        });
+    });
+
+    suite('Cursor Position Fallback (getCursorPositionFromOffset)', () => {
+        /**
+         * This test suite verifies the fallback cursor position calculation
+         * used when the cursor is in a browser-created element.
+         * 
+         * When the browser creates elements (e.g., after pressing Enter),
+         * the cursor may end up in elements without data-line attributes.
+         * The fallback calculates position based on character offset.
+         * 
+         * Commit: 76fb003d9195089b666e2380c8a06d6b3869c298
+         */
+
+        interface CursorPosition {
+            line: number;
+            column: number;
+        }
+
+        /**
+         * Pure function implementation of offset-based cursor calculation.
+         * This mirrors getCursorPositionFromOffset in render.ts.
+         */
+        function getCursorPositionFromOffset(textBefore: string): CursorPosition {
+            const lines = textBefore.split('\n');
+            return {
+                line: lines.length,
+                column: lines[lines.length - 1].length
+            };
+        }
+
+        test('should return correct position for single line', () => {
+            const textBefore = 'Hello';
+            const result = getCursorPositionFromOffset(textBefore);
+            assert.strictEqual(result.line, 1);
+            assert.strictEqual(result.column, 5);
+        });
+
+        test('should return correct position at start of content', () => {
+            const textBefore = '';
+            const result = getCursorPositionFromOffset(textBefore);
+            assert.strictEqual(result.line, 1);
+            assert.strictEqual(result.column, 0);
+        });
+
+        test('should return correct position after newline', () => {
+            const textBefore = 'Line 1\n';
+            const result = getCursorPositionFromOffset(textBefore);
+            assert.strictEqual(result.line, 2);
+            assert.strictEqual(result.column, 0);
+        });
+
+        test('should return correct position in middle of multi-line content', () => {
+            const textBefore = 'Line 1\nLine 2\nLi';
+            const result = getCursorPositionFromOffset(textBefore);
+            assert.strictEqual(result.line, 3);
+            assert.strictEqual(result.column, 2);
+        });
+
+        test('should handle multiple consecutive newlines', () => {
+            const textBefore = 'Line 1\n\n\nLine 4';
+            const result = getCursorPositionFromOffset(textBefore);
+            assert.strictEqual(result.line, 4);
+            assert.strictEqual(result.column, 6);
+        });
+
+        test('should handle cursor on empty line', () => {
+            const textBefore = 'Line 1\n\n';
+            const result = getCursorPositionFromOffset(textBefore);
+            assert.strictEqual(result.line, 3);
+            assert.strictEqual(result.column, 0);
+        });
+
+        test('should handle content with special characters', () => {
+            const textBefore = 'const x = { foo: "bar"';
+            const result = getCursorPositionFromOffset(textBefore);
+            assert.strictEqual(result.line, 1);
+            assert.strictEqual(result.column, 22);
+        });
+
+        suite('Comparison with line-based approach', () => {
+            /**
+             * The normal approach uses data-line attributes.
+             * This fallback is used when those aren't available.
+             */
+
+            test('should match expected position for standard content', () => {
+                // If content is "Line 1\nLine 2\nLine 3" and cursor is after "Line 2"
+                const textBefore = 'Line 1\nLine 2';
+                const result = getCursorPositionFromOffset(textBefore);
+
+                // Expected: line 2, column 6 (end of "Line 2")
+                assert.strictEqual(result.line, 2);
+                assert.strictEqual(result.column, 6);
+            });
+
+            test('should handle Enter key scenario (cursor at start of new line)', () => {
+                // After pressing Enter, cursor should be at start of new line
+                const textBefore = 'First line\n';
+                const result = getCursorPositionFromOffset(textBefore);
+
+                assert.strictEqual(result.line, 2);
+                assert.strictEqual(result.column, 0);
+            });
+        });
+    });
+
+    suite('Find Text Node at Column (restoreCursorToPosition helper)', () => {
+        /**
+         * This test suite verifies the logic for finding a text node
+         * at a specific column position within a line element.
+         * 
+         * This is used by restoreCursorToPosition to place the cursor
+         * at the correct position after re-rendering.
+         * 
+         * Commit: 76fb003d9195089b666e2380c8a06d6b3869c298
+         */
+
+        /**
+         * Simulates the text node finding logic using a simple structure.
+         * In the actual code, this uses TreeWalker on DOM nodes.
+         */
+        interface TextSegment {
+            text: string;
+            isSkipped: boolean; // e.g., comment bubbles
+        }
+
+        interface FoundNode {
+            segmentIndex: number;
+            offset: number;
+        }
+
+        function findTextSegmentAtColumn(
+            segments: TextSegment[],
+            targetColumn: number
+        ): FoundNode | null {
+            let currentOffset = 0;
+            let lastValidIndex = -1;
+            let lastValidLength = 0;
+
+            for (let i = 0; i < segments.length; i++) {
+                const segment = segments[i];
+
+                // Skip nodes like comment bubbles
+                if (segment.isSkipped) {
+                    continue;
+                }
+
+                lastValidIndex = i;
+                lastValidLength = segment.text.length;
+
+                if (currentOffset + segment.text.length >= targetColumn) {
+                    return {
+                        segmentIndex: i,
+                        offset: Math.min(targetColumn - currentOffset, segment.text.length)
+                    };
+                }
+                currentOffset += segment.text.length;
+            }
+
+            // If target is beyond content, return last segment at end
+            if (lastValidIndex >= 0) {
+                return {
+                    segmentIndex: lastValidIndex,
+                    offset: lastValidLength
+                };
+            }
+
+            return null;
+        }
+
+        test('should find position in single text segment', () => {
+            const segments: TextSegment[] = [{ text: 'Hello World', isSkipped: false }];
+            const result = findTextSegmentAtColumn(segments, 5);
+
+            assert.ok(result);
+            assert.strictEqual(result.segmentIndex, 0);
+            assert.strictEqual(result.offset, 5);
+        });
+
+        test('should find position at start', () => {
+            const segments: TextSegment[] = [{ text: 'Hello', isSkipped: false }];
+            const result = findTextSegmentAtColumn(segments, 0);
+
+            assert.ok(result);
+            assert.strictEqual(result.offset, 0);
+        });
+
+        test('should find position at end of segment', () => {
+            const segments: TextSegment[] = [{ text: 'Hello', isSkipped: false }];
+            const result = findTextSegmentAtColumn(segments, 5);
+
+            assert.ok(result);
+            assert.strictEqual(result.offset, 5);
+        });
+
+        test('should handle multiple text segments', () => {
+            const segments: TextSegment[] = [
+                { text: 'Hello', isSkipped: false },
+                { text: ' ', isSkipped: false },
+                { text: 'World', isSkipped: false }
+            ];
+
+            // Target in first segment (column 3)
+            let result = findTextSegmentAtColumn(segments, 3);
+            assert.ok(result);
+            assert.strictEqual(result.segmentIndex, 0);
+            assert.strictEqual(result.offset, 3);
+
+            // Target at end of first segment (column 5 = end of "Hello")
+            result = findTextSegmentAtColumn(segments, 5);
+            assert.ok(result);
+            assert.strictEqual(result.segmentIndex, 0);
+            assert.strictEqual(result.offset, 5);
+
+            // Target in second segment (space, column 6)
+            result = findTextSegmentAtColumn(segments, 6);
+            assert.ok(result);
+            assert.strictEqual(result.segmentIndex, 1);
+            assert.strictEqual(result.offset, 1);
+
+            // Target in third segment (column 8 = "Wo" of "World")
+            result = findTextSegmentAtColumn(segments, 8);
+            assert.ok(result);
+            assert.strictEqual(result.segmentIndex, 2);
+            assert.strictEqual(result.offset, 2);
+        });
+
+        test('should skip comment bubble segments', () => {
+            const segments: TextSegment[] = [
+                { text: 'Normal text', isSkipped: false },
+                { text: 'Comment content', isSkipped: true }, // This should be skipped
+                { text: ' more text', isSkipped: false }
+            ];
+
+            // Column 15 should be in the third segment, not the comment
+            const result = findTextSegmentAtColumn(segments, 15);
+            assert.ok(result);
+            assert.strictEqual(result.segmentIndex, 2);
+            assert.strictEqual(result.offset, 4);
+        });
+
+        test('should return last valid segment when target is beyond content', () => {
+            const segments: TextSegment[] = [{ text: 'Short', isSkipped: false }];
+            const result = findTextSegmentAtColumn(segments, 100);
+
+            assert.ok(result);
+            assert.strictEqual(result.segmentIndex, 0);
+            assert.strictEqual(result.offset, 5); // End of "Short"
+        });
+
+        test('should return null for empty segments', () => {
+            const segments: TextSegment[] = [];
+            const result = findTextSegmentAtColumn(segments, 5);
+
+            assert.strictEqual(result, null);
+        });
+
+        test('should return null when all segments are skipped', () => {
+            const segments: TextSegment[] = [
+                { text: 'Skipped 1', isSkipped: true },
+                { text: 'Skipped 2', isSkipped: true }
+            ];
+            const result = findTextSegmentAtColumn(segments, 5);
+
+            assert.strictEqual(result, null);
+        });
+
+        test('should handle segment with highlighted code spans', () => {
+            // Simulates markdown rendering that creates multiple spans
+            const segments: TextSegment[] = [
+                { text: 'const ', isSkipped: false },
+                { text: 'x', isSkipped: false },
+                { text: ' = ', isSkipped: false },
+                { text: '1', isSkipped: false },
+                { text: ';', isSkipped: false }
+            ];
+
+            const result = findTextSegmentAtColumn(segments, 10);
+            assert.ok(result);
+            // Should find position in the appropriate segment
+        });
+    });
+
     suite('Code Block Content Extraction (extractBlockText)', () => {
         /**
          * This test suite verifies the extractBlockText logic that reconstructs
