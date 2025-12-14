@@ -3,6 +3,7 @@
  * Exports all components for the markdown comments functionality
  */
 
+export * from './comment-anchor';
 export { MarkdownCommentsCommands } from './comments-commands';
 export { CommentsManager } from './comments-manager';
 export { CommentFileItem, CommentItem, MarkdownCommentsTreeDataProvider } from './comments-tree-provider';

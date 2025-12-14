@@ -1050,4 +1050,164 @@ suite('Cursor and Content Integration Tests', () => {
             }
         });
     });
+
+    suite('Undo/Redo Cursor Position Tests', () => {
+        test('should clamp cursor to valid position when content is shortened (undo scenario)', () => {
+            // Before undo: 5 lines, cursor at line 5, column 10
+            const cursorBeforeUndo: CursorPosition = { line: 5, column: 10 };
+
+            // After undo: only 3 lines
+            const linesAfterUndo = ['Line 1', 'Line 2', 'Line 3'];
+
+            // Validate cursor should be clamped to valid position
+            const validatedCursor = validateCursorPosition(cursorBeforeUndo, linesAfterUndo);
+
+            // Line should be clamped to max available line (3)
+            assert.strictEqual(validatedCursor.line, 3);
+            // Column should be clamped to line 3's length (6)
+            assert.strictEqual(validatedCursor.column, 6);
+        });
+
+        test('should clamp column when cursor column exceeds new line length', () => {
+            // Cursor at line 2, column 20
+            const cursor: CursorPosition = { line: 2, column: 20 };
+
+            // Content where line 2 is now shorter
+            const lines = ['First line', 'Short', 'Third line'];
+
+            const validatedCursor = validateCursorPosition(cursor, lines);
+
+            assert.strictEqual(validatedCursor.line, 2);
+            // Column clamped to 'Short'.length = 5
+            assert.strictEqual(validatedCursor.column, 5);
+        });
+
+        test('should preserve cursor when position is still valid after undo', () => {
+            // Cursor at line 2, column 5
+            const cursor: CursorPosition = { line: 2, column: 5 };
+
+            // Content is still valid for this position
+            const lines = ['Line 1', 'Line 2 with content', 'Line 3'];
+
+            const validatedCursor = validateCursorPosition(cursor, lines);
+
+            // Position should be unchanged
+            assert.strictEqual(validatedCursor.line, 2);
+            assert.strictEqual(validatedCursor.column, 5);
+        });
+
+        test('should handle empty content after undo', () => {
+            const cursor: CursorPosition = { line: 3, column: 10 };
+            const lines: string[] = [];
+
+            const validatedCursor = validateCursorPosition(cursor, lines);
+
+            // Should default to start position
+            assert.strictEqual(validatedCursor.line, 1);
+            assert.strictEqual(validatedCursor.column, 0);
+        });
+
+        test('should handle undo that restores more content than before', () => {
+            // Original cursor at line 2, column 3
+            const cursor: CursorPosition = { line: 2, column: 3 };
+
+            // After undo (redo of an add), there are now 5 lines
+            const lines = [
+                'Line 1',
+                'Line 2 with more content',
+                'Line 3',
+                'Line 4',
+                'Line 5'
+            ];
+
+            const validatedCursor = validateCursorPosition(cursor, lines);
+
+            // Position should be unchanged since it's still valid
+            assert.strictEqual(validatedCursor.line, 2);
+            assert.strictEqual(validatedCursor.column, 3);
+        });
+
+        test('should handle cursor at exact line boundary', () => {
+            const cursor: CursorPosition = { line: 3, column: 0 };
+
+            // After undo, only 2 lines
+            const lines = ['Line 1', 'Line 2'];
+
+            const validatedCursor = validateCursorPosition(cursor, lines);
+
+            // Line should be clamped to 2
+            assert.strictEqual(validatedCursor.line, 2);
+            // Column should be within line 2's bounds
+            assert.ok(validatedCursor.column <= lines[1].length);
+        });
+
+        test('should handle cursor at end of last line after truncation', () => {
+            // Cursor was at end of long line 5
+            const cursor: CursorPosition = { line: 5, column: 50 };
+
+            // After undo, only 3 short lines
+            const lines = ['A', 'BB', 'CCC'];
+
+            const validatedCursor = validateCursorPosition(cursor, lines);
+
+            // Line clamped to 3, column clamped to 3 (length of 'CCC')
+            assert.strictEqual(validatedCursor.line, 3);
+            assert.strictEqual(validatedCursor.column, 3);
+        });
+
+        test('should simulate complete undo cycle', () => {
+            // Step 1: Original content
+            let lines = ['Hello', 'World'];
+            let cursor: CursorPosition = { line: 2, column: 3 }; // 'Wor|ld'
+
+            // Step 2: User adds new lines
+            lines = ['Hello', 'World', 'New Line 1', 'New Line 2', 'New Line 3'];
+            cursor = { line: 5, column: 10 }; // Cursor moved to new content
+
+            // Step 3: User undoes (content reverts)
+            lines = ['Hello', 'World'];
+
+            // Validate cursor after undo
+            cursor = validateCursorPosition(cursor, lines);
+
+            assert.strictEqual(cursor.line, 2);
+            assert.strictEqual(cursor.column, 5); // Clamped to 'World'.length
+        });
+
+        test('should simulate redo cycle', () => {
+            // Step 1: Short content
+            let lines = ['A', 'B'];
+            let cursor: CursorPosition = { line: 2, column: 1 };
+
+            // Step 2: User redoes (restores more content)
+            lines = ['A', 'B', 'C', 'D', 'E'];
+
+            // Validate cursor (should remain valid)
+            cursor = validateCursorPosition(cursor, lines);
+
+            // Position should be unchanged
+            assert.strictEqual(cursor.line, 2);
+            assert.strictEqual(cursor.column, 1);
+        });
+
+        test('should handle negative column edge case', () => {
+            const cursor: CursorPosition = { line: 1, column: -5 };
+            const lines = ['Content'];
+
+            const validatedCursor = validateCursorPosition(cursor, lines);
+
+            // Column should be clamped to 0
+            assert.strictEqual(validatedCursor.column, 0);
+        });
+
+        test('should handle zero line edge case', () => {
+            const cursor: CursorPosition = { line: 0, column: 5 };
+            const lines = ['Content'];
+
+            const validatedCursor = validateCursorPosition(cursor, lines);
+
+            // Line should be clamped to 1
+            assert.strictEqual(validatedCursor.line, 1);
+        });
+    });
 });

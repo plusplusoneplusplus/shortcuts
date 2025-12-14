@@ -2,7 +2,7 @@
  * Browser-specific types for the webview
  */
 
-import { MarkdownComment, CommentsSettings, CommentSelection, MermaidContext } from '../types';
+import { CommentSelection, MarkdownComment, MermaidContext } from '../types';
 
 /**
  * VS Code API interface (provided by acquireVsCodeApi)
@@ -77,14 +77,16 @@ export type WebviewMessage =
  * Messages sent from extension to webview
  */
 export type ExtensionMessage =
-    | { 
-        type: 'update'; 
-        content: string; 
-        comments: MarkdownComment[]; 
+    | {
+        type: 'update';
+        content: string;
+        comments: MarkdownComment[];
         filePath: string;
         fileDir?: string;
         workspaceRoot?: string;
         settings?: WebviewSettings;
+        /** True if this update is from an external change (undo/redo, external editor) */
+        isExternalChange?: boolean;
     }
     | { type: 'imageResolved'; imgId: string; uri?: string; alt?: string; error?: string };
 
@@ -122,7 +124,7 @@ declare global {
             render(id: string, code: string): Promise<{ svg: string }>;
         };
     }
-    
+
     const hljs: {
         highlight(code: string, options: { language: string }): { value: string };
         highlightAuto(code: string): { value: string };

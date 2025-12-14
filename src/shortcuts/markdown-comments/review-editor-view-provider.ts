@@ -119,7 +119,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         // that can fire for a single edit operation
         let webviewEditUntil = 0;
 
-        // Initial state
+        // Track previous content for change detection
+        let previousContent = document.getText();
+
+        // Initial state - simple update without relocation
         const updateWebview = () => {
             const content = document.getText();
             const comments = this.commentsManager.getCommentsForFile(relativePath);
@@ -137,6 +140,45 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 workspaceRoot: workspaceRoot,
                 settings: settings
             });
+
+            previousContent = content;
+        };
+
+        // Update webview with comment relocation for external changes (undo/redo, external edits)
+        const updateWebviewWithRelocation = async () => {
+            const content = document.getText();
+            const contentChanged = content !== previousContent;
+
+            // Check if any comments need relocation based on anchors
+            const needsRelocationIds = this.commentsManager.checkNeedsRelocation(relativePath, content);
+
+            if (needsRelocationIds.length > 0) {
+                console.log('[Extension] Relocating', needsRelocationIds.length, 'comments due to content change');
+                // Relocate comments using anchor-based tracking
+                const results = await this.commentsManager.relocateCommentsForFile(relativePath, content);
+
+                // Log relocation results for debugging
+                for (const [commentId, result] of results) {
+                    console.log(`[Extension] Comment ${commentId}: ${result.reason} (confidence: ${result.confidence})`);
+                }
+            }
+
+            // Now update the webview with relocated comments
+            const comments = this.commentsManager.getCommentsForFile(relativePath);
+            const settings = this.commentsManager.getSettings();
+
+            webviewPanel.webview.postMessage({
+                type: 'update',
+                content: content,
+                comments: comments,
+                filePath: relativePath,
+                fileDir: fileDir,
+                workspaceRoot: workspaceRoot,
+                settings: settings,
+                isExternalChange: contentChanged
+            });
+
+            previousContent = content;
         };
 
         // Set HTML content
@@ -167,8 +209,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                     console.log('[Extension] Skipping updateWebview (webview-initiated edit)');
                     return;
                 }
-                console.log('[Extension] Calling updateWebview (external change)');
-                updateWebview();
+                // For external changes (undo/redo, external edits), use relocation
+                console.log('[Extension] Calling updateWebviewWithRelocation (external change)');
+                updateWebviewWithRelocation();
             }
         });
 

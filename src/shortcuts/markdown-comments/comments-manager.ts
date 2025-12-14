@@ -6,10 +6,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
+    AnchorConfig,
+    createAnchor,
+    DEFAULT_ANCHOR_CONFIG,
+    needsRelocation,
+    relocateAnchor,
+    updateAnchor
+} from './comment-anchor';
+import {
+    AnchorRelocationResult,
+    CommentAnchor,
     CommentEvent,
     CommentEventType,
     COMMENTS_CONFIG_FILE,
     CommentsConfig,
+    CommentSelection,
     CommentsSettings,
     DEFAULT_COMMENTS_CONFIG,
     DEFAULT_COMMENTS_SETTINGS,
@@ -111,6 +122,18 @@ export class CommentsManager implements vscode.Disposable {
         const now = new Date().toISOString();
         const relativePath = this.getRelativePath(filePath);
 
+        // Try to create anchor from file content
+        let anchor: CommentAnchor | undefined;
+        try {
+            const absolutePath = this.getAbsolutePath(relativePath);
+            if (fs.existsSync(absolutePath)) {
+                const content = fs.readFileSync(absolutePath, 'utf8');
+                anchor = createAnchor(content, selection);
+            }
+        } catch (error) {
+            console.warn('Failed to create anchor for comment:', error);
+        }
+
         const newComment: MarkdownComment = {
             id: this.generateId(),
             filePath: relativePath,
@@ -122,7 +145,8 @@ export class CommentsManager implements vscode.Disposable {
             updatedAt: now,
             author,
             tags,
-            mermaidContext
+            mermaidContext,
+            anchor
         };
 
         this.config.comments.push(newComment);
@@ -470,6 +494,192 @@ export class CommentsManager implements vscode.Disposable {
      */
     getConfigPath(): string {
         return this.configPath;
+    }
+
+    /**
+     * Relocate a single comment's position based on its anchor
+     * Call this when document content has changed
+     */
+    async relocateComment(
+        commentId: string,
+        newContent: string,
+        config: AnchorConfig = DEFAULT_ANCHOR_CONFIG
+    ): Promise<AnchorRelocationResult | undefined> {
+        const comment = this.config.comments.find(c => c.id === commentId);
+        if (!comment || !comment.anchor) {
+            return undefined;
+        }
+
+        const result = relocateAnchor(newContent, comment.anchor, config);
+
+        if (result.found && result.selection) {
+            // Update the comment's selection
+            comment.selection = result.selection;
+
+            // Update the anchor with new content
+            comment.anchor = updateAnchor(newContent, result.selection, comment.anchor, config);
+            comment.updatedAt = new Date().toISOString();
+
+            await this.saveComments();
+
+            this._onDidChangeComments.fire({
+                type: 'comment-updated',
+                comment,
+                filePath: comment.filePath
+            });
+        }
+
+        return result;
+    }
+
+    /**
+     * Relocate all comments for a specific file
+     * Call this when a document is opened or content changes significantly
+     */
+    async relocateCommentsForFile(
+        filePath: string,
+        newContent: string,
+        config: AnchorConfig = DEFAULT_ANCHOR_CONFIG
+    ): Promise<Map<string, AnchorRelocationResult>> {
+        const relativePath = this.getRelativePath(filePath);
+        const comments = this.config.comments.filter(c => c.filePath === relativePath);
+
+        const results = new Map<string, AnchorRelocationResult>();
+        let hasChanges = false;
+
+        for (const comment of comments) {
+            if (!comment.anchor) {
+                // Create anchor if missing
+                try {
+                    comment.anchor = createAnchor(newContent, comment.selection);
+                    hasChanges = true;
+                    results.set(comment.id, {
+                        found: true,
+                        selection: comment.selection,
+                        confidence: 1.0,
+                        reason: 'exact_match'
+                    });
+                } catch {
+                    results.set(comment.id, {
+                        found: false,
+                        confidence: 0,
+                        reason: 'not_found'
+                    });
+                }
+                continue;
+            }
+
+            // Check if relocation is needed
+            if (!needsRelocation(newContent, comment.anchor, comment.selection)) {
+                results.set(comment.id, {
+                    found: true,
+                    selection: comment.selection,
+                    confidence: 1.0,
+                    reason: 'exact_match'
+                });
+                continue;
+            }
+
+            // Relocate the anchor
+            const result = relocateAnchor(newContent, comment.anchor, config);
+            results.set(comment.id, result);
+
+            if (result.found && result.selection) {
+                comment.selection = result.selection;
+                comment.anchor = updateAnchor(newContent, result.selection, comment.anchor, config);
+                comment.updatedAt = new Date().toISOString();
+                hasChanges = true;
+            }
+        }
+
+        if (hasChanges) {
+            await this.saveComments();
+            this._onDidChangeComments.fire({
+                type: 'comments-loaded',
+                comments: this.config.comments,
+                filePath: relativePath
+            });
+        }
+
+        return results;
+    }
+
+    /**
+     * Update the anchor for an existing comment
+     * Call this when the user manually corrects a comment's position
+     */
+    async updateCommentAnchor(
+        commentId: string,
+        newContent: string,
+        newSelection: CommentSelection,
+        config: AnchorConfig = DEFAULT_ANCHOR_CONFIG
+    ): Promise<boolean> {
+        const comment = this.config.comments.find(c => c.id === commentId);
+        if (!comment) {
+            return false;
+        }
+
+        // Update selection and anchor
+        comment.selection = newSelection;
+        comment.anchor = updateAnchor(newContent, newSelection, comment.anchor, config);
+        comment.updatedAt = new Date().toISOString();
+
+        await this.saveComments();
+
+        this._onDidChangeComments.fire({
+            type: 'comment-updated',
+            comment,
+            filePath: comment.filePath
+        });
+
+        return true;
+    }
+
+    /**
+     * Check if any comments for a file need relocation
+     */
+    checkNeedsRelocation(filePath: string, content: string): string[] {
+        const relativePath = this.getRelativePath(filePath);
+        const comments = this.config.comments.filter(c => c.filePath === relativePath);
+
+        const needsRelocationIds: string[] = [];
+
+        for (const comment of comments) {
+            if (comment.anchor && needsRelocation(content, comment.anchor, comment.selection)) {
+                needsRelocationIds.push(comment.id);
+            }
+        }
+
+        return needsRelocationIds;
+    }
+
+    /**
+     * Create anchors for all comments that don't have them
+     * Useful for migrating existing comments to anchor-based tracking
+     */
+    async createMissingAnchors(): Promise<number> {
+        let count = 0;
+
+        for (const comment of this.config.comments) {
+            if (!comment.anchor) {
+                try {
+                    const absolutePath = this.getAbsolutePath(comment.filePath);
+                    if (fs.existsSync(absolutePath)) {
+                        const content = fs.readFileSync(absolutePath, 'utf8');
+                        comment.anchor = createAnchor(content, comment.selection);
+                        count++;
+                    }
+                } catch (error) {
+                    console.warn(`Failed to create anchor for comment ${comment.id}:`, error);
+                }
+            }
+        }
+
+        if (count > 0) {
+            await this.saveComments();
+        }
+
+        return count;
     }
 
     /**

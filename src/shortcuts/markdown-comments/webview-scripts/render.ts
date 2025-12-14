@@ -195,14 +195,56 @@ function findTextNodeAtColumn(
 /**
  * Restore cursor position after re-render.
  * Uses cursor-management logic adapted for browser DOM.
+ * Handles cases where content has changed and original position may be invalid.
  */
-function restoreCursorPosition(editorWrapper: HTMLElement, position: CursorPosition): void {
-    const lineElement = editorWrapper.querySelector(`.line-content[data-line="${position.line}"]`);
+function restoreCursorPosition(editorWrapper: HTMLElement, position: CursorPosition, totalLines: number): void {
+    // Validate and adjust position if content has changed
+    let targetLine = position.line;
+    let targetColumn = position.column;
+
+    // If the original line doesn't exist, clamp to the last line
+    if (targetLine > totalLines) {
+        targetLine = totalLines;
+        // When clamping to a different line, put cursor at end of that line
+        const lastLineElement = editorWrapper.querySelector(`.line-content[data-line="${targetLine}"]`);
+        if (lastLineElement) {
+            targetColumn = (lastLineElement.textContent || '').length;
+        } else {
+            targetColumn = 0;
+        }
+    }
+
+    const lineElement = editorWrapper.querySelector(`.line-content[data-line="${targetLine}"]`);
     if (!lineElement) {
+        // Fallback: try to set cursor at the beginning of the editor
+        const firstLine = editorWrapper.querySelector('.line-content[data-line="1"]');
+        if (firstLine) {
+            const target = findTextNodeAtColumn(firstLine, 0);
+            if (target) {
+                try {
+                    const range = document.createRange();
+                    range.setStart(target.node, target.offset);
+                    range.collapse(true);
+                    const selection = window.getSelection();
+                    if (selection) {
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                    }
+                } catch (e) {
+                    console.warn('[Webview] Could not restore cursor position to fallback:', e);
+                }
+            }
+        }
         return;
     }
 
-    const target = findTextNodeAtColumn(lineElement, position.column);
+    // Validate column - clamp to line length if necessary
+    const lineContent = lineElement.textContent || '';
+    if (targetColumn > lineContent.length) {
+        targetColumn = lineContent.length;
+    }
+
+    const target = findTextNodeAtColumn(lineElement, targetColumn);
     if (!target) {
         return;
     }
@@ -226,14 +268,23 @@ function restoreCursorPosition(editorWrapper: HTMLElement, position: CursorPosit
 /**
  * Main render function - renders the editor content with markdown highlighting,
  * code blocks, tables, and comments
+ * 
+ * @param isExternalChange - True if this render is triggered by an external change (undo/redo)
  */
-export function render(): void {
+export function render(isExternalChange: boolean = false): void {
     const editorWrapper = document.getElementById('editorWrapper')!;
 
     // Save cursor position before re-render
-    const cursorPosition = getCursorPosition(editorWrapper);
+    // For external changes (undo/redo), don't save/restore cursor position since
+    // the old position is relative to content that's being replaced
+    const cursorPosition = isExternalChange ? null : getCursorPosition(editorWrapper);
     const openCount = document.getElementById('openCount')!;
     const resolvedCount = document.getElementById('resolvedCount')!;
+
+    // Log for debugging
+    if (isExternalChange) {
+        console.log('[Webview] External change detected, skipping cursor save/restore');
+    }
 
     const lines = state.currentContent.split('\n');
     const commentsMap = groupCommentsByLine(state.comments);
@@ -401,10 +452,13 @@ export function render(): void {
     resolveImagePaths();
 
     // Restore cursor position after re-render
+    // Note: For external changes (undo/redo), cursorPosition is null,
+    // so the browser/contenteditable will handle cursor placement naturally
     if (cursorPosition) {
         // Use setTimeout to ensure DOM is fully updated before restoring cursor
+        const totalLines = lines.length;
         setTimeout(() => {
-            restoreCursorPosition(editorWrapper, cursorPosition);
+            restoreCursorPosition(editorWrapper, cursorPosition, totalLines);
         }, 0);
     }
 }

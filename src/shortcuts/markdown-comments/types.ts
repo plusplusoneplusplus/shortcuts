@@ -22,6 +22,37 @@ export interface CommentSelection {
 }
 
 /**
+ * Anchor context for robust comment location tracking
+ * Stores surrounding context to enable fuzzy matching after content changes
+ */
+export interface CommentAnchor {
+    /** The exact selected/commented text */
+    selectedText: string;
+    /** Text appearing before the selection (up to N lines/characters) */
+    contextBefore: string;
+    /** Text appearing after the selection (up to N lines/characters) */
+    contextAfter: string;
+    /** Original line number when the comment was created (for fallback) */
+    originalLine: number;
+    /** Hash/fingerprint of the selected text for quick comparison */
+    textHash: string;
+}
+
+/**
+ * Result of anchor relocation attempt
+ */
+export interface AnchorRelocationResult {
+    /** Whether the anchor was successfully relocated */
+    found: boolean;
+    /** The new selection if found */
+    selection?: CommentSelection;
+    /** Confidence score of the match (0-1) */
+    confidence: number;
+    /** Reason for the result */
+    reason: 'exact_match' | 'fuzzy_match' | 'context_match' | 'line_fallback' | 'not_found';
+}
+
+/**
  * Mermaid diagram context for comments on diagrams
  */
 export interface MermaidContext {
@@ -61,6 +92,8 @@ export interface MarkdownComment {
     tags?: string[];
     /** Optional mermaid diagram context */
     mermaidContext?: MermaidContext;
+    /** Optional anchor for robust location tracking after content changes */
+    anchor?: CommentAnchor;
 }
 
 /**
