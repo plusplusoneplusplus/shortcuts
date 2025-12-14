@@ -8,36 +8,36 @@
 
 import * as assert from 'assert';
 import {
-    filterCommentsByStatus,
-    sortCommentsByLine,
-    sortCommentsByColumnDescending,
-    groupCommentsByLine,
-    getCommentsForLine,
     blockHasComments,
     countCommentsByStatus,
-    findCommentById,
-    updateCommentStatus,
-    updateCommentText,
     deleteComment,
+    filterCommentsByStatus,
+    findCommentById,
+    getCommentsForLine,
+    getSelectionCoverageForLine,
+    groupCommentsByLine,
     resolveAllComments,
-    getSelectionCoverageForLine
+    sortCommentsByColumnDescending,
+    sortCommentsByLine,
+    updateCommentStatus,
+    updateCommentText
 } from '../../shortcuts/markdown-comments/webview-logic/comment-state';
 
 import {
+    applyCommentHighlightToRange,
     calculateColumnIndices,
-    getHighlightColumnsForLine,
     createPlainToHtmlMapping,
-    applyCommentHighlightToRange
+    getHighlightColumnsForLine
 } from '../../shortcuts/markdown-comments/webview-logic/selection-utils';
 
 import {
-    escapeHtml,
     applyInlineMarkdown,
     applyMarkdownHighlighting,
+    escapeHtml,
     resolveImagePath
 } from '../../shortcuts/markdown-comments/webview-logic/markdown-renderer';
 
-import { MarkdownComment, CommentStatus } from '../../shortcuts/markdown-comments/types';
+import { CommentStatus, MarkdownComment } from '../../shortcuts/markdown-comments/types';
 
 suite('Webview Logic Tests', () => {
     // Sample comments for testing
@@ -85,7 +85,7 @@ suite('Webview Logic Tests', () => {
     ];
 
     suite('Comment State Management', () => {
-        
+
         suite('filterCommentsByStatus', () => {
             test('should filter resolved comments when showResolved is false', () => {
                 const filtered = filterCommentsByStatus(sampleComments, false);
@@ -494,7 +494,7 @@ suite('Webview Logic Tests', () => {
     });
 
     suite('Selection Utilities', () => {
-        
+
         suite('calculateColumnIndices', () => {
             test('should convert 1-based columns to 0-based indices', () => {
                 const result = calculateColumnIndices('Hello World', 1, 6);
@@ -682,7 +682,7 @@ suite('Webview Logic Tests', () => {
     });
 
     suite('Markdown Renderer', () => {
-        
+
         suite('escapeHtml', () => {
             test('should escape HTML entities', () => {
                 const result = escapeHtml('<script>alert("XSS")</script>');

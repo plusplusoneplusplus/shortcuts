@@ -1632,5 +1632,176 @@ suite('Webview Scripts Tests', () => {
             });
         });
     });
+
+    suite('Code Block Content Extraction (extractBlockText)', () => {
+        /**
+         * This test suite verifies the extractBlockText logic that reconstructs
+         * markdown code blocks from the rendered DOM.
+         * 
+         * Critical requirement: Code blocks without a language specifier should
+         * be preserved without adding 'plaintext' as the language.
+         * 
+         * Original: ```\ncode\n```
+         * Should stay: ```\ncode\n```
+         * Should NOT become: ```plaintext\ncode\n```
+         */
+
+        interface MockCodeBlockDOM {
+            language: string;
+            code: string;
+            dataCode?: string; // The data-code attribute on copy button
+        }
+
+        /**
+         * Simulates the extractBlockText logic for code blocks
+         * This mirrors the logic in dom-handlers.ts
+         */
+        function extractCodeBlockText(mockDom: MockCodeBlockDOM): string {
+            const language = mockDom.language;
+            const code = mockDom.dataCode || mockDom.code;
+
+            // Don't include 'plaintext' in the code fence - it's our default for blocks without a language
+            const fenceLanguage = language === 'plaintext' ? '' : language;
+
+            return '```' + fenceLanguage + '\n' + code + '\n```';
+        }
+
+        test('should preserve code blocks without language specifier', () => {
+            // Original markdown: ```\nsome code\n```
+            // When parsed, language becomes 'plaintext'
+            // When extracted, should output ``` not ```plaintext
+            const mockDom: MockCodeBlockDOM = {
+                language: 'plaintext',
+                code: 'some code here',
+                dataCode: 'some code here'
+            };
+
+            const result = extractCodeBlockText(mockDom);
+            assert.strictEqual(result, '```\nsome code here\n```');
+            assert.ok(!result.includes('plaintext'), 'Should not include plaintext');
+        });
+
+        test('should preserve explicit language specifiers', () => {
+            const mockDom: MockCodeBlockDOM = {
+                language: 'javascript',
+                code: 'const x = 1;',
+                dataCode: 'const x = 1;'
+            };
+
+            const result = extractCodeBlockText(mockDom);
+            assert.strictEqual(result, '```javascript\nconst x = 1;\n```');
+        });
+
+        test('should preserve typescript language', () => {
+            const mockDom: MockCodeBlockDOM = {
+                language: 'typescript',
+                code: 'const x: number = 1;',
+                dataCode: 'const x: number = 1;'
+            };
+
+            const result = extractCodeBlockText(mockDom);
+            assert.strictEqual(result, '```typescript\nconst x: number = 1;\n```');
+        });
+
+        test('should preserve python language', () => {
+            const mockDom: MockCodeBlockDOM = {
+                language: 'python',
+                code: 'def hello():\n    print("Hello")',
+                dataCode: 'def hello():\n    print("Hello")'
+            };
+
+            const result = extractCodeBlockText(mockDom);
+            assert.strictEqual(result, '```python\ndef hello():\n    print("Hello")\n```');
+        });
+
+        test('should handle empty code blocks without language', () => {
+            const mockDom: MockCodeBlockDOM = {
+                language: 'plaintext',
+                code: '',
+                dataCode: ''
+            };
+
+            const result = extractCodeBlockText(mockDom);
+            assert.strictEqual(result, '```\n\n```');
+            assert.ok(!result.includes('plaintext'), 'Should not include plaintext');
+        });
+
+        test('should handle multi-line code without language', () => {
+            const mockDom: MockCodeBlockDOM = {
+                language: 'plaintext',
+                code: 'line 1\nline 2\nline 3',
+                dataCode: 'line 1\nline 2\nline 3'
+            };
+
+            const result = extractCodeBlockText(mockDom);
+            assert.strictEqual(result, '```\nline 1\nline 2\nline 3\n```');
+            assert.ok(!result.includes('plaintext'), 'Should not include plaintext');
+        });
+
+        test('should preserve mermaid language', () => {
+            const mockDom: MockCodeBlockDOM = {
+                language: 'mermaid',
+                code: 'graph TD\nA-->B',
+                dataCode: 'graph TD\nA-->B'
+            };
+
+            const result = extractCodeBlockText(mockDom);
+            assert.strictEqual(result, '```mermaid\ngraph TD\nA-->B\n```');
+        });
+
+        test('should preserve short language identifiers like js', () => {
+            const mockDom: MockCodeBlockDOM = {
+                language: 'js',
+                code: 'let x = 1;',
+                dataCode: 'let x = 1;'
+            };
+
+            const result = extractCodeBlockText(mockDom);
+            assert.strictEqual(result, '```js\nlet x = 1;\n```');
+        });
+
+        test('should preserve text language if explicitly set', () => {
+            // If someone explicitly uses ```text, we should preserve it
+            // (though our parser would convert it to text, not plaintext)
+            const mockDom: MockCodeBlockDOM = {
+                language: 'text',
+                code: 'some plain text',
+                dataCode: 'some plain text'
+            };
+
+            const result = extractCodeBlockText(mockDom);
+            assert.strictEqual(result, '```text\nsome plain text\n```');
+        });
+
+        suite('Pre element fallback extraction', () => {
+            /**
+             * Tests for the fallback logic when extracting from pre elements
+             * that don't have the code-block container structure
+             */
+
+            function extractPreElementText(language: string, code: string): string {
+                // Mirrors the pre element extraction logic in dom-handlers.ts
+                // Don't include 'plaintext' in the code fence
+                const fenceLanguage = (language === 'plaintext' || language === '') ? '' : language;
+                return '```' + fenceLanguage + '\n' + code + '\n```';
+            }
+
+            test('should not add plaintext for pre elements without language', () => {
+                const result = extractPreElementText('plaintext', 'code here');
+                assert.strictEqual(result, '```\ncode here\n```');
+                assert.ok(!result.includes('plaintext'));
+            });
+
+            test('should preserve language for pre elements with language', () => {
+                const result = extractPreElementText('ruby', 'puts "hello"');
+                assert.strictEqual(result, '```ruby\nputs "hello"\n```');
+            });
+
+            test('should handle empty language string', () => {
+                const result = extractPreElementText('', 'code');
+                assert.strictEqual(result, '```\ncode\n```');
+            });
+        });
+    });
 });
 

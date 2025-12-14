@@ -97,10 +97,10 @@ export function createPlainToHtmlMapping(
     let plainPos = 0;
     let htmlPos = 0;
     let inTag = false;
-    
+
     while (htmlPos < htmlContent.length) {
         const char = htmlContent[htmlPos];
-        
+
         if (char === '<') {
             inTag = true;
             htmlPos++;
@@ -139,7 +139,7 @@ export function createPlainToHtmlMapping(
             htmlPos++;
         }
     }
-    
+
     return { plainToHtmlStart, plainToHtmlEnd, plainLength: plainPos };
 }
 
@@ -166,39 +166,39 @@ export function applyCommentHighlightToRange(
     // Convert 1-based columns to 0-based indices
     const startIdx = Math.max(0, startCol - 1);
     const endIdx = Math.min(plainText.length, endCol - 1);
-    
+
     // If the range is invalid or empty, wrap the entire line
     if (startIdx >= endIdx || startIdx >= plainText.length) {
         return wrapWithCommentSpan(htmlContent, commentId, statusClass);
     }
-    
+
     const { plainToHtmlStart, plainToHtmlEnd, plainLength } = createPlainToHtmlMapping(htmlContent);
-    
+
     // Handle edge case where plain text is shorter than expected
     if (plainToHtmlStart[startIdx] === undefined) {
         return wrapWithCommentSpan(htmlContent, commentId, statusClass);
     }
-    
+
     // Get HTML positions
     const htmlStartPos = plainToHtmlStart[startIdx];
     // For end position, we need the position AFTER the last character
     const lastCharIdx = Math.min(endIdx - 1, plainLength - 1);
-    let htmlEndPos = plainToHtmlEnd[lastCharIdx] !== undefined 
-        ? plainToHtmlEnd[lastCharIdx] 
+    let htmlEndPos = plainToHtmlEnd[lastCharIdx] !== undefined
+        ? plainToHtmlEnd[lastCharIdx]
         : htmlContent.length;
-    
+
     // Find tag boundaries - we need to be careful not to split HTML tags
     const { adjustedStart, adjustedEnd } = adjustTagBoundaries(
-        htmlContent, 
-        htmlStartPos, 
+        htmlContent,
+        htmlStartPos,
         htmlEndPos
     );
-    
+
     // Build the result
     const before = htmlContent.substring(0, adjustedStart);
     const highlighted = htmlContent.substring(adjustedStart, adjustedEnd);
     const after = htmlContent.substring(adjustedEnd);
-    
+
     return before + wrapWithCommentSpan(highlighted, commentId, statusClass) + after;
 }
 
@@ -219,7 +219,7 @@ function adjustTagBoundaries(
 ): { adjustedStart: number; adjustedEnd: number } {
     let adjustedStart = htmlStartPos;
     let adjustedEnd = htmlEndPos;
-    
+
     // Check if we're inside a tag and adjust
     // Look backwards from start to see if we need to include opening tag
     let depth = 0;
@@ -238,7 +238,7 @@ function adjustTagBoundaries(
             break;
         }
     }
-    
+
     // Look forward from end to include closing tags
     for (let i = htmlEndPos; i < htmlContent.length && depth > 0; i++) {
         if (htmlContent[i] === '<' && htmlContent[i + 1] === '/') {
@@ -253,7 +253,7 @@ function adjustTagBoundaries(
             depth++;
         }
     }
-    
+
     return { adjustedStart, adjustedEnd };
 }
 
