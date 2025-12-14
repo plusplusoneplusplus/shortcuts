@@ -115,7 +115,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         };
 
         // Track when changes originate from the webview to avoid re-rendering
-        let isWebviewEdit = false;
+        // Using a timestamp instead of boolean to handle multiple document change events
+        // that can fire for a single edit operation
+        let webviewEditUntil = 0;
 
         // Initial state
         const updateWebview = () => {
@@ -146,18 +148,23 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         // Handle messages from webview
         const messageDisposable = webviewPanel.webview.onDidReceiveMessage(
             async (message: WebviewMessage) => {
-                await this.handleWebviewMessage(message, document, relativePath, webviewPanel, updateWebview, () => isWebviewEdit = true);
+                // Set a timestamp window (100ms) during which we ignore document changes
+                // This handles multiple document change events that can fire for a single edit
+                await this.handleWebviewMessage(message, document, relativePath, webviewPanel, updateWebview, () => {
+                    webviewEditUntil = Date.now() + 100;
+                });
             }
         );
 
         // Listen for document changes
         const documentChangeDisposable = vscode.workspace.onDidChangeTextDocument(e => {
             if (e.document.uri.toString() === document.uri.toString()) {
-                console.log('[Extension] onDidChangeTextDocument - isWebviewEdit:', isWebviewEdit);
+                const now = Date.now();
+                const isWebviewEdit = now < webviewEditUntil;
+                console.log('[Extension] onDidChangeTextDocument - isWebviewEdit:', isWebviewEdit, 'timeRemaining:', webviewEditUntil - now);
                 // Skip re-rendering if the change came from the webview itself
                 if (isWebviewEdit) {
                     console.log('[Extension] Skipping updateWebview (webview-initiated edit)');
-                    isWebviewEdit = false;
                     return;
                 }
                 console.log('[Extension] Calling updateWebview (external change)');
