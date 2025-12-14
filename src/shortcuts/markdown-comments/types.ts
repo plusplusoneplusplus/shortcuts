@@ -62,8 +62,18 @@ export interface MermaidContext {
     nodeId?: string;
     /** Display label of the node */
     nodeLabel?: string;
+    /** Edge ID if commenting on an edge/link */
+    edgeId?: string;
+    /** Display label of the edge */
+    edgeLabel?: string;
+    /** Source node ID for the edge */
+    edgeSourceNode?: string;
+    /** Target node ID for the edge */
+    edgeTargetNode?: string;
     /** Type of diagram (flowchart, sequence, etc.) */
     diagramType?: string;
+    /** Element type discriminator */
+    elementType?: 'node' | 'edge';
 }
 
 /**

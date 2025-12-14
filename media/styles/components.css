@@ -486,6 +486,66 @@ body.vscode-light .hljs-type {
     outline-color: #4caf50;
 }
 
+/* Edge/Link interaction styles */
+.mermaid-edge-clickable {
+    cursor: pointer !important;
+    transition: stroke 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease;
+}
+
+.mermaid-edge-hover {
+    stroke: var(--vscode-focusBorder, #007acc) !important;
+    stroke-width: 3px !important;
+    filter: drop-shadow(0 0 3px var(--vscode-focusBorder, #007acc));
+}
+
+/* Edges with comments */
+.mermaid-preview path.commented,
+.mermaid-preview line.commented,
+.mermaid-preview polyline.commented {
+    stroke: #f9a825 !important;
+    stroke-width: 3px !important;
+}
+
+.mermaid-preview path.commented.resolved,
+.mermaid-preview line.commented.resolved,
+.mermaid-preview polyline.commented.resolved {
+    stroke: #4caf50 !important;
+}
+
+/* Edge labels - make them also hoverable */
+.mermaid-preview .edgeLabel {
+    cursor: pointer;
+    transition: filter 0.2s ease;
+}
+
+.mermaid-preview .edgeLabel:hover {
+    filter: brightness(1.15);
+}
+
+/* Sequence diagram message lines */
+.mermaid-preview .messageLine0,
+.mermaid-preview .messageLine1 {
+    cursor: pointer !important;
+    transition: stroke 0.2s ease, stroke-width 0.2s ease;
+}
+
+.mermaid-preview .messageLine0:hover,
+.mermaid-preview .messageLine1:hover {
+    stroke: var(--vscode-focusBorder, #007acc) !important;
+    stroke-width: 3px !important;
+}
+
+/* ER diagram relationship lines */
+.mermaid-preview .er.relationshipLine {
+    cursor: pointer !important;
+    transition: stroke 0.2s ease;
+}
+
+.mermaid-preview .er.relationshipLine:hover {
+    stroke: var(--vscode-focusBorder, #007acc) !important;
+    stroke-width: 2.5px !important;
+}
+
 .mermaid-source {
     padding: 12px;
     background: var(--md-code-bg);

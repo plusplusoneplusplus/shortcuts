@@ -1049,5 +1049,184 @@ suite('Markdown Comments Feature Tests', () => {
             assert.strictEqual(regularComments.length, 1);
             assert.strictEqual(mermaidComments.length, 1);
         });
+
+        test('should add comment with mermaid edge context', async () => {
+            await commentsManager.initialize();
+
+            const mermaidContext = {
+                diagramId: 'mermaid-10',
+                edgeId: 'edge-A-B',
+                edgeLabel: 'A → B',
+                edgeSourceNode: 'A',
+                edgeTargetNode: 'B',
+                diagramType: 'flowchart',
+                elementType: 'edge' as const
+            };
+
+            const comment = await commentsManager.addComment(
+                'flowchart.md',
+                { startLine: 10, startColumn: 1, endLine: 15, endColumn: 1 },
+                '[Mermaid Edge: A → B]',
+                'This edge represents the main flow',
+                undefined,
+                undefined,
+                mermaidContext
+            );
+
+            assert.ok(comment);
+            assert.ok(comment.mermaidContext);
+            assert.strictEqual(comment.mermaidContext.diagramId, 'mermaid-10');
+            assert.strictEqual(comment.mermaidContext.edgeId, 'edge-A-B');
+            assert.strictEqual(comment.mermaidContext.edgeLabel, 'A → B');
+            assert.strictEqual(comment.mermaidContext.edgeSourceNode, 'A');
+            assert.strictEqual(comment.mermaidContext.edgeTargetNode, 'B');
+            assert.strictEqual(comment.mermaidContext.elementType, 'edge');
+        });
+
+        test('should add edge comment with labeled edge', async () => {
+            await commentsManager.initialize();
+
+            const mermaidContext = {
+                diagramId: 'mermaid-5',
+                edgeId: 'edge-start-process',
+                edgeLabel: 'Yes',
+                edgeSourceNode: 'start',
+                edgeTargetNode: 'process',
+                diagramType: 'flowchart',
+                elementType: 'edge' as const
+            };
+
+            const comment = await commentsManager.addComment(
+                'decision.md',
+                { startLine: 5, startColumn: 1, endLine: 20, endColumn: 1 },
+                '[Mermaid Edge: Yes]',
+                'This path is taken when condition is true',
+                undefined,
+                undefined,
+                mermaidContext
+            );
+
+            assert.ok(comment);
+            assert.ok(comment.mermaidContext);
+            assert.strictEqual(comment.mermaidContext.edgeLabel, 'Yes');
+            assert.strictEqual(comment.mermaidContext.elementType, 'edge');
+        });
+
+        test('should persist edge context across reload', async () => {
+            await commentsManager.initialize();
+
+            const mermaidContext = {
+                diagramId: 'mermaid-1',
+                edgeId: 'L-X-Y',
+                edgeLabel: 'connects',
+                edgeSourceNode: 'X',
+                edgeTargetNode: 'Y',
+                diagramType: 'flowchart',
+                elementType: 'edge' as const
+            };
+
+            const original = await commentsManager.addComment(
+                'persist.md',
+                { startLine: 1, startColumn: 1, endLine: 10, endColumn: 1 },
+                '[Mermaid Edge: connects]',
+                'Edge comment',
+                'Developer',
+                ['edge', 'review'],
+                mermaidContext
+            );
+
+            // Reload
+            const newManager = new CommentsManager(tempDir);
+            await newManager.initialize();
+
+            const loaded = newManager.getComment(original.id);
+            assert.ok(loaded);
+            assert.ok(loaded.mermaidContext);
+            assert.strictEqual(loaded.mermaidContext.edgeId, 'L-X-Y');
+            assert.strictEqual(loaded.mermaidContext.edgeSourceNode, 'X');
+            assert.strictEqual(loaded.mermaidContext.edgeTargetNode, 'Y');
+            assert.strictEqual(loaded.mermaidContext.elementType, 'edge');
+
+            newManager.dispose();
+        });
+
+        test('should distinguish between node and edge comments', async () => {
+            await commentsManager.initialize();
+
+            // Node comment
+            await commentsManager.addComment(
+                'mixed-elements.md',
+                { startLine: 5, startColumn: 1, endLine: 15, endColumn: 1 },
+                '[Mermaid Node: Start]',
+                'Node comment',
+                undefined,
+                undefined,
+                {
+                    diagramId: 'm1',
+                    nodeId: 'start',
+                    nodeLabel: 'Start',
+                    diagramType: 'flowchart',
+                    elementType: 'node'
+                }
+            );
+
+            // Edge comment
+            await commentsManager.addComment(
+                'mixed-elements.md',
+                { startLine: 5, startColumn: 1, endLine: 15, endColumn: 1 },
+                '[Mermaid Edge: Start → End]',
+                'Edge comment',
+                undefined,
+                undefined,
+                {
+                    diagramId: 'm1',
+                    edgeId: 'edge-start-end',
+                    edgeLabel: 'Start → End',
+                    edgeSourceNode: 'start',
+                    edgeTargetNode: 'end',
+                    diagramType: 'flowchart',
+                    elementType: 'edge'
+                }
+            );
+
+            const comments = commentsManager.getCommentsForFile('mixed-elements.md');
+            assert.strictEqual(comments.length, 2);
+
+            const nodeComments = comments.filter(c => c.mermaidContext?.elementType === 'node');
+            const edgeComments = comments.filter(c => c.mermaidContext?.elementType === 'edge');
+
+            assert.strictEqual(nodeComments.length, 1);
+            assert.strictEqual(edgeComments.length, 1);
+            assert.strictEqual(nodeComments[0].mermaidContext?.nodeId, 'start');
+            assert.strictEqual(edgeComments[0].mermaidContext?.edgeId, 'edge-start-end');
+        });
+
+        test('should handle sequence diagram edge comments', async () => {
+            await commentsManager.initialize();
+
+            const mermaidContext = {
+                diagramId: 'seq-1',
+                edgeId: 'msg-0',
+                edgeLabel: 'Alice → Bob',
+                edgeSourceNode: 'Alice',
+                edgeTargetNode: 'Bob',
+                diagramType: 'sequence',
+                elementType: 'edge' as const
+            };
+
+            const comment = await commentsManager.addComment(
+                'sequence.md',
+                { startLine: 1, startColumn: 1, endLine: 10, endColumn: 1 },
+                '[Mermaid Edge: Alice → Bob]',
+                'This message initiates the request',
+                undefined,
+                undefined,
+                mermaidContext
+            );
+
+            assert.ok(comment);
+            assert.strictEqual(comment.mermaidContext?.diagramType, 'sequence');
+            assert.strictEqual(comment.mermaidContext?.elementType, 'edge');
+        });
     });
 });

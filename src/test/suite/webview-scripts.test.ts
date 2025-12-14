@@ -2932,5 +2932,215 @@ suite('Webview Scripts Tests', () => {
             assert.ok(html.includes('Mermaid Diagram'), 'Should include Mermaid Diagram label');
         });
     });
+
+    suite('Mermaid Edge Selector and Metadata Extraction', () => {
+        /**
+         * Edge selector mapping for different diagram types
+         * Mirrors EDGE_SELECTORS_BY_DIAGRAM_TYPE from mermaid-handlers.ts
+         */
+        const EDGE_SELECTORS_BY_DIAGRAM_TYPE: Record<string, string[]> = {
+            flowchart: ['.edge', '.flowchart-link', 'path.edge-pattern'],
+            sequence: ['.messageLine0', '.messageLine1', '.loopLine'],
+            state: ['.transition'],
+            er: ['.er.relationshipLine'],
+            class: ['.relation'],
+            default: ['.edge', 'path[class*="link"]', 'path[class*="edge"]']
+        };
+
+        /**
+         * Get edge selectors for a diagram type
+         */
+        function getEdgeSelectorsForDiagram(diagramType: string): string[] {
+            const normalizedType = diagramType?.toLowerCase() || 'default';
+            return EDGE_SELECTORS_BY_DIAGRAM_TYPE[normalizedType] ||
+                   EDGE_SELECTORS_BY_DIAGRAM_TYPE.default;
+        }
+
+        /**
+         * Edge metadata interface
+         */
+        interface EdgeMetadata {
+            edgeId: string;
+            edgeLabel: string;
+            sourceNode?: string;
+            targetNode?: string;
+        }
+
+        /**
+         * Extract edge metadata from class names (simplified version for testing)
+         */
+        function extractEdgeMetadataFromClassName(
+            className: string,
+            edgeId: string,
+            labelText?: string
+        ): EdgeMetadata {
+            let sourceNode: string | undefined;
+            let targetNode: string | undefined;
+            let edgeLabel = labelText || '';
+
+            // Match patterns like "L-A-B" or "LS-A-B" or "LE-A-B"
+            const classMatch = className.match(/L[ES]?-(\w+)-(\w+)/);
+            if (classMatch) {
+                sourceNode = classMatch[1];
+                targetNode = classMatch[2];
+            }
+
+            // Generate friendly label if none found
+            if (!edgeLabel) {
+                if (sourceNode && targetNode) {
+                    edgeLabel = sourceNode + ' → ' + targetNode;
+                } else {
+                    edgeLabel = 'Edge';
+                }
+            }
+
+            return {
+                edgeId,
+                edgeLabel,
+                sourceNode,
+                targetNode
+            };
+        }
+
+        suite('getEdgeSelectorsForDiagram', () => {
+            test('should return flowchart selectors for flowchart type', () => {
+                const selectors = getEdgeSelectorsForDiagram('flowchart');
+                assert.ok(selectors.includes('.edge'));
+                assert.ok(selectors.includes('.flowchart-link'));
+            });
+
+            test('should return sequence diagram selectors', () => {
+                const selectors = getEdgeSelectorsForDiagram('sequence');
+                assert.ok(selectors.includes('.messageLine0'));
+                assert.ok(selectors.includes('.messageLine1'));
+            });
+
+            test('should return state diagram selectors', () => {
+                const selectors = getEdgeSelectorsForDiagram('state');
+                assert.ok(selectors.includes('.transition'));
+            });
+
+            test('should return ER diagram selectors', () => {
+                const selectors = getEdgeSelectorsForDiagram('er');
+                assert.ok(selectors.includes('.er.relationshipLine'));
+            });
+
+            test('should return class diagram selectors', () => {
+                const selectors = getEdgeSelectorsForDiagram('class');
+                assert.ok(selectors.includes('.relation'));
+            });
+
+            test('should return default selectors for unknown diagram type', () => {
+                const selectors = getEdgeSelectorsForDiagram('unknown');
+                assert.deepStrictEqual(selectors, EDGE_SELECTORS_BY_DIAGRAM_TYPE.default);
+            });
+
+            test('should handle case-insensitive diagram types', () => {
+                const selectors1 = getEdgeSelectorsForDiagram('FLOWCHART');
+                const selectors2 = getEdgeSelectorsForDiagram('flowchart');
+                assert.deepStrictEqual(selectors1, selectors2);
+            });
+
+            test('should return default selectors for empty string', () => {
+                const selectors = getEdgeSelectorsForDiagram('');
+                assert.deepStrictEqual(selectors, EDGE_SELECTORS_BY_DIAGRAM_TYPE.default);
+            });
+
+            test('should return default selectors for null/undefined', () => {
+                const selectors = getEdgeSelectorsForDiagram(null as unknown as string);
+                assert.deepStrictEqual(selectors, EDGE_SELECTORS_BY_DIAGRAM_TYPE.default);
+            });
+        });
+
+        suite('extractEdgeMetadataFromClassName', () => {
+            test('should extract source and target from L-A-B pattern', () => {
+                const metadata = extractEdgeMetadataFromClassName('flowchart-link L-nodeA-nodeB', 'edge-1');
+                assert.strictEqual(metadata.sourceNode, 'nodeA');
+                assert.strictEqual(metadata.targetNode, 'nodeB');
+                assert.strictEqual(metadata.edgeLabel, 'nodeA → nodeB');
+            });
+
+            test('should extract source and target from LS-A-B pattern', () => {
+                const metadata = extractEdgeMetadataFromClassName('edge LS-start-end', 'edge-2');
+                assert.strictEqual(metadata.sourceNode, 'start');
+                assert.strictEqual(metadata.targetNode, 'end');
+            });
+
+            test('should extract source and target from LE-A-B pattern', () => {
+                const metadata = extractEdgeMetadataFromClassName('edge LE-process-decision', 'edge-3');
+                assert.strictEqual(metadata.sourceNode, 'process');
+                assert.strictEqual(metadata.targetNode, 'decision');
+            });
+
+            test('should use provided label text over generated label', () => {
+                const metadata = extractEdgeMetadataFromClassName('L-A-B', 'edge-4', 'Yes');
+                assert.strictEqual(metadata.edgeLabel, 'Yes');
+                assert.strictEqual(metadata.sourceNode, 'A');
+                assert.strictEqual(metadata.targetNode, 'B');
+            });
+
+            test('should generate "Edge" label when no pattern matches', () => {
+                const metadata = extractEdgeMetadataFromClassName('some-random-class', 'edge-5');
+                assert.strictEqual(metadata.edgeLabel, 'Edge');
+                assert.strictEqual(metadata.sourceNode, undefined);
+                assert.strictEqual(metadata.targetNode, undefined);
+            });
+
+            test('should preserve edgeId', () => {
+                const metadata = extractEdgeMetadataFromClassName('L-X-Y', 'my-custom-edge-id');
+                assert.strictEqual(metadata.edgeId, 'my-custom-edge-id');
+            });
+
+            test('should handle empty class name', () => {
+                const metadata = extractEdgeMetadataFromClassName('', 'edge-6');
+                assert.strictEqual(metadata.edgeLabel, 'Edge');
+                assert.strictEqual(metadata.edgeId, 'edge-6');
+            });
+
+            test('should handle class names with multiple patterns', () => {
+                // Only the first match should be used
+                const metadata = extractEdgeMetadataFromClassName('L-first-second L-third-fourth', 'edge-7');
+                assert.strictEqual(metadata.sourceNode, 'first');
+                assert.strictEqual(metadata.targetNode, 'second');
+            });
+        });
+
+        suite('Edge Comment Integration', () => {
+            test('should create valid edge metadata structure', () => {
+                const metadata = extractEdgeMetadataFromClassName('flowchart-link L-A-B', 'edge-1', 'connects');
+
+                // Simulate creating mermaidContext for edge comment
+                const mermaidContext = {
+                    diagramId: 'mermaid-1',
+                    edgeId: metadata.edgeId,
+                    edgeLabel: metadata.edgeLabel,
+                    edgeSourceNode: metadata.sourceNode,
+                    edgeTargetNode: metadata.targetNode,
+                    diagramType: 'flowchart',
+                    elementType: 'edge' as const
+                };
+
+                assert.strictEqual(mermaidContext.elementType, 'edge');
+                assert.strictEqual(mermaidContext.edgeId, 'edge-1');
+                assert.strictEqual(mermaidContext.edgeLabel, 'connects');
+                assert.strictEqual(mermaidContext.edgeSourceNode, 'A');
+                assert.strictEqual(mermaidContext.edgeTargetNode, 'B');
+            });
+
+            test('should generate selected text for edge comment', () => {
+                const metadata = extractEdgeMetadataFromClassName('L-start-end', 'edge-2');
+                const selectedText = '[Mermaid Edge: ' + metadata.edgeLabel + ']';
+
+                assert.strictEqual(selectedText, '[Mermaid Edge: start → end]');
+            });
+
+            test('should handle edge without source/target nodes', () => {
+                const metadata = extractEdgeMetadataFromClassName('generic-edge', 'edge-3');
+                const selectedText = '[Mermaid Edge: ' + metadata.edgeLabel + ']';
+
+                assert.strictEqual(selectedText, '[Mermaid Edge: Edge]');
+            });
+        });
+    });
 });
 

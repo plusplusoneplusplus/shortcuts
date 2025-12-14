@@ -30,6 +30,29 @@ const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
 
 /**
+ * Edge selector mapping for different diagram types
+ * Maps diagram types to their edge/link CSS selectors
+ */
+const EDGE_SELECTORS_BY_DIAGRAM_TYPE: Record<string, string[]> = {
+    flowchart: ['.edge', '.flowchart-link', 'path.edge-pattern'],
+    sequence: ['.messageLine0', '.messageLine1', '.loopLine'],
+    state: ['.transition'],
+    er: ['.er.relationshipLine'],
+    class: ['.relation'],
+    // Fallback for unknown types
+    default: ['.edge', 'path[class*="link"]', 'path[class*="edge"]']
+};
+
+/**
+ * Get edge selectors for a diagram type
+ */
+function getEdgeSelectorsForDiagram(diagramType: string): string[] {
+    const normalizedType = diagramType?.toLowerCase() || 'default';
+    return EDGE_SELECTORS_BY_DIAGRAM_TYPE[normalizedType] ||
+           EDGE_SELECTORS_BY_DIAGRAM_TYPE.default;
+}
+
+/**
  * Get or create view state for a mermaid diagram
  */
 function getViewState(diagramId: string): MermaidViewState {
@@ -122,8 +145,8 @@ async function renderMermaidDiagram(block: CodeBlock, container: HTMLElement): P
             previewDiv.innerHTML = '<div class="mermaid-svg-wrapper">' + svg + '</div>';
             previewDiv.classList.remove('mermaid-loading');
 
-            // Setup node click handlers for commenting
-            setupMermaidNodeHandlers(previewDiv as HTMLElement, block);
+            // Setup node and edge click handlers for commenting
+            setupMermaidElementHandlers(previewDiv as HTMLElement, block);
 
             // Setup zoom/pan handlers for this diagram
             const diagramId = container.dataset.mermaidId || block.id;
@@ -141,9 +164,10 @@ async function renderMermaidDiagram(block: CodeBlock, container: HTMLElement): P
 }
 
 /**
- * Setup click handlers for mermaid diagram nodes
+ * Setup click handlers for mermaid diagram nodes and edges
  */
-function setupMermaidNodeHandlers(previewDiv: HTMLElement, block: CodeBlock): void {
+function setupMermaidElementHandlers(previewDiv: HTMLElement, block: CodeBlock): void {
+    // Setup node handlers
     const nodes = previewDiv.querySelectorAll('.node, .cluster');
     nodes.forEach(node => {
         (node as HTMLElement).style.cursor = 'pointer';
@@ -155,6 +179,41 @@ function setupMermaidNodeHandlers(previewDiv: HTMLElement, block: CodeBlock): vo
 
             // Open comment panel for this node
             openMermaidNodeComment(block, nodeId, nodeLabel, nodeEl);
+        });
+    });
+
+    // Setup edge handlers
+    const diagramType = block.language || 'flowchart';
+    const edgeSelectors = getEdgeSelectorsForDiagram(diagramType);
+    const edgeSelectorString = edgeSelectors.join(', ');
+    const edges = previewDiv.querySelectorAll(edgeSelectorString);
+
+    edges.forEach(edge => {
+        const edgeEl = edge as SVGElement;
+
+        // Skip if this is inside a node (some edges might be nested)
+        if (edgeEl.closest('.node, .cluster')) {
+            return;
+        }
+
+        // Add clickable styling
+        edgeEl.style.cursor = 'pointer';
+        edgeEl.classList.add('mermaid-edge-clickable');
+
+        // Click handler
+        edgeEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const metadata = extractEdgeMetadata(edgeEl, diagramType);
+            openMermaidEdgeComment(block, metadata, edgeEl);
+        });
+
+        // Hover effects
+        edgeEl.addEventListener('mouseenter', () => {
+            edgeEl.classList.add('mermaid-edge-hover');
+        });
+
+        edgeEl.addEventListener('mouseleave', () => {
+            edgeEl.classList.remove('mermaid-edge-hover');
         });
     });
 }
@@ -178,12 +237,120 @@ function openMermaidNodeComment(
             diagramId: block.id,
             nodeId: nodeId,
             nodeLabel: nodeLabel,
-            diagramType: block.language
+            diagramType: block.language,
+            elementType: 'node'
         }
     });
 
     const rect = element.getBoundingClientRect();
     showFloatingPanel(rect, 'Mermaid Node: ' + nodeLabel);
+}
+
+/**
+ * Edge metadata extracted from SVG element
+ */
+interface EdgeMetadata {
+    edgeId: string;
+    edgeLabel: string;
+    sourceNode?: string;
+    targetNode?: string;
+}
+
+/**
+ * Extract edge metadata from SVG element
+ * Handles various diagram types and edge representations
+ */
+function extractEdgeMetadata(
+    edgeElement: SVGElement,
+    diagramType: string
+): EdgeMetadata {
+    const edgeId = edgeElement.id ||
+                   edgeElement.getAttribute('data-id') ||
+                   'edge-' + Date.now();
+
+    // Try to find edge label
+    let edgeLabel = '';
+
+    // Method 1: Look for associated label element (common in flowcharts)
+    const parentGroup = edgeElement.closest('g');
+    const labelElement = parentGroup?.querySelector('.edgeLabel, .label, text');
+    if (labelElement) {
+        edgeLabel = labelElement.textContent?.trim() || '';
+    }
+
+    // Method 2: Check for title or aria-label attributes
+    if (!edgeLabel) {
+        edgeLabel = edgeElement.getAttribute('title') ||
+                   edgeElement.getAttribute('aria-label') || '';
+    }
+
+    // Method 3: Check for data attributes
+    if (!edgeLabel) {
+        edgeLabel = edgeElement.getAttribute('data-label') || '';
+    }
+
+    // Extract source and target nodes from class names or data attributes
+    let sourceNode: string | undefined;
+    let targetNode: string | undefined;
+
+    const classNames = edgeElement.className?.baseVal || '';
+    // Match patterns like "L-A-B" or "LS-A-B" (flowchart edge classes)
+    const classMatch = classNames.match(/L[ES]?-(\w+)-(\w+)/);
+    if (classMatch) {
+        sourceNode = classMatch[1];
+        targetNode = classMatch[2];
+    }
+
+    // Fallback: Look for data-from and data-to attributes
+    if (!sourceNode) {
+        sourceNode = edgeElement.getAttribute('data-from') || undefined;
+        targetNode = edgeElement.getAttribute('data-to') || undefined;
+    }
+
+    // Generate friendly label if none found
+    if (!edgeLabel) {
+        if (sourceNode && targetNode) {
+            edgeLabel = sourceNode + ' → ' + targetNode;
+        } else {
+            edgeLabel = 'Edge';
+        }
+    }
+
+    return {
+        edgeId,
+        edgeLabel,
+        sourceNode,
+        targetNode
+    };
+}
+
+/**
+ * Open comment panel for a mermaid edge
+ */
+function openMermaidEdgeComment(
+    block: CodeBlock,
+    edgeMetadata: EdgeMetadata,
+    element: SVGElement
+): void {
+    state.setPendingSelection({
+        startLine: block.startLine,
+        startColumn: 1,
+        endLine: block.endLine,
+        endColumn: 1,
+        selectedText: '[Mermaid Edge: ' + edgeMetadata.edgeLabel + ']',
+        mermaidContext: {
+            diagramId: block.id,
+            edgeId: edgeMetadata.edgeId,
+            edgeLabel: edgeMetadata.edgeLabel,
+            edgeSourceNode: edgeMetadata.sourceNode,
+            edgeTargetNode: edgeMetadata.targetNode,
+            diagramType: block.language,
+            elementType: 'edge'
+        }
+    });
+
+    const rect = element.getBoundingClientRect();
+    showFloatingPanel(rect, 'Mermaid Edge: ' + edgeMetadata.edgeLabel);
 }
 
 /**
