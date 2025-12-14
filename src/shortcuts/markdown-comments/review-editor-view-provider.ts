@@ -273,9 +273,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 const confirmed = await vscode.window.showWarningMessage(
                     `Are you sure you want to delete all ${totalComments} comment(s)? This action cannot be undone.`,
                     { modal: true },
-                    'Delete All'
+                    'Sign Off'
                 );
-                if (confirmed === 'Delete All') {
+                if (confirmed === 'Sign Off') {
                     const deleteCount = await this.commentsManager.deleteAllComments();
                     vscode.window.showInformationMessage(`Deleted ${deleteCount} comment(s).`);
                 }

@@ -73,8 +73,8 @@ export function getWebviewContent(
             <button id="resolveAllBtn" class="toolbar-btn" title="Resolve All Comments">
                 <span class="icon">✅</span> Resolve All
             </button>
-            <button id="deleteAllBtn" class="toolbar-btn toolbar-btn-danger" title="Delete All Comments">
-                <span class="icon">🗑️</span> Delete All
+            <button id="deleteAllBtn" class="toolbar-btn toolbar-btn-danger" title="Sign Off - Delete All Comments">
+                <span class="icon">🗑️</span> Sign Off
             </button>
         </div>
         <div class="toolbar-group">
