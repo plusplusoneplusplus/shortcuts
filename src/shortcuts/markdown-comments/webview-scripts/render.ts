@@ -8,7 +8,8 @@ import { MarkdownComment } from '../types';
 import { groupCommentsByLine } from '../webview-logic/comment-state';
 import {
     CursorPosition,
-    NODE_TYPES
+    NODE_TYPES,
+    restoreCursorAfterContentChange
 } from '../webview-logic/cursor-management';
 import { applyMarkdownHighlighting } from '../webview-logic/markdown-renderer';
 import { applyCommentHighlightToRange, getHighlightColumnsForLine } from '../webview-logic/selection-utils';
@@ -193,26 +194,48 @@ function findTextNodeAtColumn(
 }
 
 /**
+ * Calculate the text length of a line element, skipping non-content elements
+ * like comment bubbles and gutter icons.
+ */
+function getLineContentLength(lineElement: Element): number {
+    let length = 0;
+    const walker = document.createTreeWalker(lineElement, NodeFilter.SHOW_TEXT, null);
+    let currentNode: Text | null;
+
+    while ((currentNode = walker.nextNode() as Text | null)) {
+        const parent = currentNode.parentElement;
+        if (parent && SKIP_CLASSES.some(cls => parent.closest(`.${cls}`))) {
+            continue;
+        }
+        length += currentNode.length;
+    }
+    return length;
+}
+
+/**
  * Restore cursor position after re-render.
  * Uses cursor-management logic adapted for browser DOM.
  * Handles cases where content has changed and original position may be invalid.
  */
-function restoreCursorPosition(editorWrapper: HTMLElement, position: CursorPosition, totalLines: number): void {
+function restoreCursorPosition(
+    editorWrapper: HTMLElement,
+    position: CursorPosition,
+    totalLines: number,
+    contentLines: string[],
+    prevLineLength: number = 0,
+    currentLineLength: number = 0
+): void {
     // Validate and adjust position if content has changed
-    let targetLine = position.line;
-    let targetColumn = position.column;
+    // Use the smart restoration logic from cursor-management
+    const adjustedPosition = restoreCursorAfterContentChange(
+        position,
+        contentLines,
+        prevLineLength,
+        currentLineLength
+    );
 
-    // If the original line doesn't exist, clamp to the last line
-    if (targetLine > totalLines) {
-        targetLine = totalLines;
-        // When clamping to a different line, put cursor at end of that line
-        const lastLineElement = editorWrapper.querySelector(`.line-content[data-line="${targetLine}"]`);
-        if (lastLineElement) {
-            targetColumn = (lastLineElement.textContent || '').length;
-        } else {
-            targetColumn = 0;
-        }
-    }
+    const targetLine = adjustedPosition.line;
+    let targetColumn = adjustedPosition.column;
 
     const lineElement = editorWrapper.querySelector(`.line-content[data-line="${targetLine}"]`);
     if (!lineElement) {
@@ -274,10 +297,26 @@ function restoreCursorPosition(editorWrapper: HTMLElement, position: CursorPosit
 export function render(isExternalChange: boolean = false): void {
     const editorWrapper = document.getElementById('editorWrapper')!;
 
-    // Save cursor position before re-render
-    // For external changes (undo/redo), don't save/restore cursor position since
-    // the old position is relative to content that's being replaced
-    const cursorPosition = isExternalChange ? null : getCursorPosition(editorWrapper);
+    // For external changes, try to restore cursor position by clamping to valid bounds
+    const cursorPosition = getCursorPosition(editorWrapper);
+
+    // Capture lengths of current and previous lines to help with smart restoration
+    let currentLineLength = 0;
+    let prevLineLength = 0;
+
+    if (cursorPosition) {
+        const currentLineEl = editorWrapper.querySelector(`.line-content[data-line="${cursorPosition.line}"]`);
+        if (currentLineEl) {
+            currentLineLength = getLineContentLength(currentLineEl);
+        }
+
+        if (cursorPosition.line > 1) {
+            const prevLineEl = editorWrapper.querySelector(`.line-content[data-line="${cursorPosition.line - 1}"]`);
+            if (prevLineEl) {
+                prevLineLength = getLineContentLength(prevLineEl);
+            }
+        }
+    }
     const openCount = document.getElementById('openCount')!;
     const resolvedCount = document.getElementById('resolvedCount')!;
 
@@ -458,7 +497,14 @@ export function render(isExternalChange: boolean = false): void {
         // Use setTimeout to ensure DOM is fully updated before restoring cursor
         const totalLines = lines.length;
         setTimeout(() => {
-            restoreCursorPosition(editorWrapper, cursorPosition, totalLines);
+            restoreCursorPosition(
+                editorWrapper,
+                cursorPosition,
+                totalLines,
+                lines,
+                prevLineLength,
+                currentLineLength
+            );
         }, 0);
     }
 }

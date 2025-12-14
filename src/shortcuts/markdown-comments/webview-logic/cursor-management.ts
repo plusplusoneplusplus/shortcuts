@@ -164,7 +164,7 @@ export function findTextNodeAtColumn(
             const length = node.textContent?.length || 0;
             lastTextNode = node;
             lastTextNodeLength = length;
-            
+
             if (currentOffset + length >= targetColumn) {
                 // The target column is within this text node
                 result = {
@@ -188,7 +188,7 @@ export function findTextNodeAtColumn(
     }
 
     traverse(lineElement);
-    
+
     // If target column is beyond content, return last text node at its end
     if (!result && lastTextNode) {
         result = {
@@ -196,7 +196,7 @@ export function findTextNodeAtColumn(
             offset: lastTextNodeLength
         };
     }
-    
+
     return result;
 }
 
@@ -309,16 +309,16 @@ export function adjustCursorAfterDeletion(
     deleteEndColumn: number
 ): CursorPosition {
     // If cursor is before deletion range, no adjustment needed
-    if (cursor.line < deleteStartLine || 
+    if (cursor.line < deleteStartLine ||
         (cursor.line === deleteStartLine && cursor.column < deleteStartColumn)) {
         return cursor;
     }
 
     // If cursor is within deletion range, move to start of deletion
-    if ((cursor.line > deleteStartLine || 
-         (cursor.line === deleteStartLine && cursor.column >= deleteStartColumn)) &&
-        (cursor.line < deleteEndLine || 
-         (cursor.line === deleteEndLine && cursor.column <= deleteEndColumn))) {
+    if ((cursor.line > deleteStartLine ||
+        (cursor.line === deleteStartLine && cursor.column >= deleteStartColumn)) &&
+        (cursor.line < deleteEndLine ||
+            (cursor.line === deleteEndLine && cursor.column <= deleteEndColumn))) {
         return {
             line: deleteStartLine,
             column: deleteStartColumn
@@ -327,7 +327,7 @@ export function adjustCursorAfterDeletion(
 
     // Cursor is after deletion range
     const deletedLines = deleteEndLine - deleteStartLine;
-    
+
     if (cursor.line === deleteEndLine) {
         // Cursor is on the same line as deletion end
         // Column needs adjustment: move left by the deleted portion
@@ -401,7 +401,59 @@ export function isCursorInRange(
 ): boolean {
     const start: CursorPosition = { line: startLine, column: startColumn };
     const end: CursorPosition = { line: endLine, column: endColumn };
-    
-    return compareCursorPositions(cursor, start) >= 0 && 
-           compareCursorPositions(cursor, end) <= 0;
+
+    return compareCursorPositions(cursor, start) >= 0 &&
+        compareCursorPositions(cursor, end) <= 0;
+}
+
+/**
+ * Restore cursor position after content change (e.g. Undo/Redo).
+ * Provides smarter clamping than simple validation:
+ * - If line was removed, clamps to end of the last available line.
+ * 
+ * @param cursor - The previous cursor position
+ * @param lines - The new content lines
+ * @returns The adjusted cursor position
+ */
+export function restoreCursorAfterContentChange(
+    cursor: CursorPosition,
+    lines: string[],
+    prevLineLength: number = 0,
+    currentLineLength: number = 0
+): CursorPosition {
+    if (lines.length === 0) {
+        return { line: 1, column: 0 };
+    }
+
+    let targetLine = cursor.line;
+    let targetColumn = cursor.column;
+
+    // If the original line doesn't exist, clamp to the last line
+    // AND move to the end of that line (simulate "undoing a newline")
+    if (targetLine > lines.length) {
+        targetLine = lines.length;
+
+        // If we have previous line length, we can calculate the exact position
+        // This handles "Undo Newline" correctly:
+        // "A|B" -> "A\nB". Cursor at Line 2, Col 0.
+        // Undo -> "AB". Line 1.
+        // We want cursor at Line 1, Col 1 (after "A").
+        // prevLineLength = "A".length = 1.
+        // cursor.column = 0.
+        // New column = 1 + 0 = 1.
+        targetColumn = prevLineLength + cursor.column;
+
+        // Ensure valid bounds
+        const lineContent = lines[targetLine - 1] || '';
+        targetColumn = Math.min(targetColumn, lineContent.length);
+    } else {
+        // Line exists, validate column
+        // Ensure column is at least 0
+        targetColumn = Math.max(0, targetColumn);
+
+        const lineContent = lines[targetLine - 1] || '';
+        targetColumn = Math.min(targetColumn, lineContent.length);
+    }
+
+    return { line: targetLine, column: targetColumn };
 }

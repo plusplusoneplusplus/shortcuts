@@ -19,6 +19,7 @@ import {
     findTextNodeAtColumn,
     getLineNumber,
     isCursorInRange,
+    restoreCursorAfterContentChange,
     validateCursorPosition
 } from '../../shortcuts/markdown-comments/webview-logic/cursor-management';
 
@@ -1048,6 +1049,70 @@ suite('Cursor and Content Integration Tests', () => {
                 assert.ok(cursor.column >= 0, `Column ${cursor.column} should be >= 0`);
                 assert.ok(cursor.column <= lineLen, `Column ${cursor.column} should be <= ${lineLen}`);
             }
+        });
+    });
+
+    suite('restoreCursorAfterContentChange', () => {
+        test('should use smart clamping when line removed (Undo Newline)', () => {
+            // Scenario: Undo newline.
+            // Old: Line 2, Col 0.
+            // New: Line 1 (content "Hello")
+
+            const oldCursor: CursorPosition = { line: 2, column: 0 };
+            const newLines = ['Hello'];
+
+            // Assume Line 1 (before undo) was "Hello" (length 5)
+            // Wait, before undo it was "Hello\n" or "Hello\nWorld"?
+            // If "Hello|World" -> "Hello\nWorld".
+            // Line 1 "Hello". Line 2 "World".
+            // Cursor at Line 2, Col 0.
+            // prevLineLength (of Line 1) = 5.
+
+            const result = restoreCursorAfterContentChange(oldCursor, newLines, 5);
+
+            // Should be Line 1, Col 5 (after "Hello")
+            assert.strictEqual(result.line, 1);
+            assert.strictEqual(result.column, 5);
+        });
+
+        test('should handle simple merge at start of line', () => {
+            // "A|B" -> Enter -> "A\nB". 
+            // Undo. "AB".
+            // Cursor was Line 2, Col 0.
+            // Line 1 was "A" (len 1).
+
+            const oldCursor: CursorPosition = { line: 2, column: 0 };
+            const newLines = ['AB'];
+
+            const result = restoreCursorAfterContentChange(oldCursor, newLines, 1);
+
+            assert.strictEqual(result.line, 1);
+            assert.strictEqual(result.column, 1); // "A|". 
+        });
+
+        test('should behave like validateCursorPosition when line exists', () => {
+            // Scenario: Undo some typing on same line
+            // Old: Line 1, Col 10.
+            // New: Line 1 "Hello" (length 5)
+
+            const oldCursor: CursorPosition = { line: 1, column: 10 };
+            const newLines = ['Hello'];
+
+            const result = restoreCursorAfterContentChange(oldCursor, newLines);
+
+            // Should clamp to end of line
+            assert.strictEqual(result.line, 1);
+            assert.strictEqual(result.column, 5);
+        });
+
+        test('should handle completely empty content', () => {
+            const oldCursor: CursorPosition = { line: 5, column: 5 };
+            const newLines: string[] = [];
+
+            const result = restoreCursorAfterContentChange(oldCursor, newLines);
+
+            assert.strictEqual(result.line, 1);
+            assert.strictEqual(result.column, 0);
         });
     });
 
