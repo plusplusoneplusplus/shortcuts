@@ -415,9 +415,13 @@ function extractBlockText(el: HTMLElement): string {
         // Get the code content - try the data-code attribute first (most reliable)
         // The copy button stores the original code in a data-code attribute
         const copyBtn = codeBlockEl.querySelector('.code-copy-btn') as HTMLElement;
+
+        // Don't include 'plaintext' in the code fence - it's our default for blocks without a language
+        const fenceLanguage = language === 'plaintext' ? '' : language;
+
         if (copyBtn && copyBtn.dataset.code) {
             const codeContent = decodeURIComponent(copyBtn.dataset.code);
-            return '```' + language + '\n' + codeContent + '\n```';
+            return '```' + fenceLanguage + '\n' + codeContent + '\n```';
         }
 
         // Fallback: extract from code-line spans (preserving line breaks)
@@ -432,12 +436,12 @@ function extractBlockText(el: HTMLElement): string {
                 }
                 lines.push(lineText);
             });
-            return '```' + language + '\n' + lines.join('\n') + '\n```';
+            return '```' + fenceLanguage + '\n' + lines.join('\n') + '\n```';
         }
 
         // Last fallback: just get textContent (may lose line breaks)
         const codeContent = codeEl?.textContent || '';
-        return '```' + language + '\n' + codeContent + '\n```';
+        return '```' + fenceLanguage + '\n' + codeContent + '\n```';
     }
 
     // Check for mermaid diagram container
@@ -467,10 +471,10 @@ function extractBlockText(el: HTMLElement): string {
                 lines.push(lineText);
             });
             // Try to detect language from code element class
-            let language = 'text';
+            let language = '';
             if (codeEl.className) {
                 const langMatch = codeEl.className.match(/language-(\w+)/);
-                if (langMatch) {
+                if (langMatch && langMatch[1] !== 'plaintext') {
                     language = langMatch[1];
                 }
             }
@@ -479,10 +483,10 @@ function extractBlockText(el: HTMLElement): string {
 
         const codeContent = codeEl.textContent || '';
         // Try to detect language from code element class
-        let language = 'text';
+        let language = '';
         if (codeEl.className) {
             const langMatch = codeEl.className.match(/language-(\w+)/);
-            if (langMatch) {
+            if (langMatch && langMatch[1] !== 'plaintext') {
                 language = langMatch[1];
             }
         }
