@@ -19,7 +19,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 6px 12px;
-    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0, 0, 0, 0.2));
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -50,7 +50,7 @@
 
 .code-action-btn:hover {
     opacity: 1;
-    background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
 }
 
 .code-block-content {
@@ -76,7 +76,7 @@
 }
 
 .code-line:hover {
-    background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
+    background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
 }
 
 .code-line::selection,
@@ -173,6 +173,7 @@
 
 /* Light theme overrides */
 @media (prefers-color-scheme: light) {
+
     .hljs-keyword,
     .hljs-selector-tag,
     .hljs-built_in,
@@ -180,7 +181,7 @@
     .hljs-tag {
         color: #0000ff;
     }
-    
+
     .hljs-string,
     .hljs-title,
     .hljs-section,
@@ -190,27 +191,27 @@
     .hljs-template-variable {
         color: #a31515;
     }
-    
+
     .hljs-number,
     .hljs-symbol,
     .hljs-bullet,
     .hljs-link {
         color: #098658;
     }
-    
+
     .hljs-comment,
     .hljs-quote,
     .hljs-deletion,
     .hljs-meta {
         color: #008000;
     }
-    
+
     .hljs-class .hljs-title,
     .hljs-function .hljs-title,
     .hljs-title.function_ {
         color: #795e26;
     }
-    
+
     .hljs-variable,
     .hljs-template-variable,
     .hljs-attr,
@@ -218,7 +219,7 @@
     .hljs-property {
         color: #001080;
     }
-    
+
     .hljs-type,
     .hljs-title.class_ {
         color: #267f99;
@@ -226,13 +227,33 @@
 }
 
 /* VSCode theme detection */
-body.vscode-light .hljs-keyword { color: #0000ff; }
-body.vscode-light .hljs-string { color: #a31515; }
-body.vscode-light .hljs-number { color: #098658; }
-body.vscode-light .hljs-comment { color: #008000; }
-body.vscode-light .hljs-title.function_ { color: #795e26; }
-body.vscode-light .hljs-variable { color: #001080; }
-body.vscode-light .hljs-type { color: #267f99; }
+body.vscode-light .hljs-keyword {
+    color: #0000ff;
+}
+
+body.vscode-light .hljs-string {
+    color: #a31515;
+}
+
+body.vscode-light .hljs-number {
+    color: #098658;
+}
+
+body.vscode-light .hljs-comment {
+    color: #008000;
+}
+
+body.vscode-light .hljs-title.function_ {
+    color: #795e26;
+}
+
+body.vscode-light .hljs-variable {
+    color: #001080;
+}
+
+body.vscode-light .hljs-type {
+    color: #267f99;
+}
 
 /* ==============================
  * Mermaid Diagram Styles
@@ -254,8 +275,9 @@ body.vscode-light .hljs-type { color: #267f99; }
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0, 0, 0, 0.2));
     border-bottom: 1px solid var(--border-color);
+    gap: 8px;
 }
 
 .mermaid-label {
@@ -272,6 +294,51 @@ body.vscode-light .hljs-type { color: #267f99; }
     gap: 4px;
 }
 
+/* Zoom Controls */
+.mermaid-zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.mermaid-zoom-btn {
+    background: var(--vscode-button-secondaryBackground, rgba(255, 255, 255, 0.1));
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.2;
+    transition: background-color 0.2s, border-color 0.2s;
+    color: var(--text-color);
+    min-width: 28px;
+}
+
+.mermaid-zoom-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.2));
+    border-color: var(--vscode-focusBorder, #007acc);
+}
+
+.mermaid-zoom-btn:active {
+    transform: scale(0.95);
+}
+
+.mermaid-zoom-level {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--vscode-descriptionForeground, #888);
+    min-width: 42px;
+    text-align: center;
+    padding: 0 4px;
+}
+
+.mermaid-zoom-reset {
+    font-size: 12px;
+}
+
 .mermaid-action-btn {
     background: none;
     border: none;
@@ -286,7 +353,7 @@ body.vscode-light .hljs-type { color: #267f99; }
 
 .mermaid-action-btn:hover {
     opacity: 1;
-    background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
 }
 
 .mermaid-preview {
@@ -295,11 +362,29 @@ body.vscode-light .hljs-type { color: #267f99; }
     justify-content: center;
     align-items: center;
     min-height: 100px;
-    overflow-x: auto;
+    overflow: hidden;
+    position: relative;
+    cursor: grab;
+}
+
+.mermaid-preview.mermaid-dragging {
+    cursor: grabbing;
+}
+
+.mermaid-svg-wrapper {
+    transform-origin: center center;
+    transition: transform 0.1s ease-out;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.mermaid-preview.mermaid-dragging .mermaid-svg-wrapper {
+    transition: none;
 }
 
 .mermaid-preview svg {
-    max-width: 100%;
+    max-width: none;
     height: auto;
 }
 
@@ -376,7 +461,9 @@ body.vscode-light .hljs-type { color: #267f99; }
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* ==============================
@@ -406,17 +493,17 @@ body.vscode-light .hljs-type { color: #267f99; }
 }
 
 .md-table th {
-    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0, 0, 0, 0.2));
     font-weight: 600;
     white-space: nowrap;
 }
 
 .md-table tr:nth-child(even) {
-    background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.02));
+    background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.02));
 }
 
 .md-table tr:hover {
-    background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.08));
+    background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
 }
 
 .md-table td.align-center,
@@ -433,7 +520,7 @@ body.vscode-light .hljs-type { color: #267f99; }
     display: flex;
     justify-content: flex-end;
     padding: 6px 10px;
-    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0,0,0,0.2));
+    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0, 0, 0, 0.2));
     border-top: 1px solid var(--border-color);
 }
 
@@ -450,7 +537,7 @@ body.vscode-light .hljs-type { color: #267f99; }
 
 .md-table-action-btn:hover {
     opacity: 1;
-    background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
 }
 
 /* Table row being parsed (separator row) */
@@ -458,4 +545,3 @@ body.vscode-light .hljs-type { color: #267f99; }
     color: var(--md-blockquote-color);
     opacity: 0.5;
 }
-
