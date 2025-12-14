@@ -90,8 +90,28 @@ function calculateColumnOffset(
 }
 
 /**
+ * Calculate cursor position based on character offset in the entire editor.
+ * This is a fallback when the cursor is in a browser-created element (e.g., after Enter key).
+ */
+function getCursorPositionFromOffset(editorWrapper: HTMLElement, range: Range): CursorPosition | null {
+    // Get all text content before the cursor
+    const preRange = document.createRange();
+    preRange.setStart(editorWrapper, 0);
+    preRange.setEnd(range.startContainer, range.startOffset);
+
+    const textBefore = preRange.toString();
+    const lines = textBefore.split('\n');
+
+    return {
+        line: lines.length,
+        column: lines[lines.length - 1].length
+    };
+}
+
+/**
  * Get the current cursor position in the editor.
  * Uses cursor-management logic adapted for browser DOM.
+ * Falls back to offset-based calculation for browser-created elements.
  */
 function getCursorPosition(editorWrapper: HTMLElement): CursorPosition | null {
     const selection = window.getSelection();
@@ -107,13 +127,16 @@ function getCursorPosition(editorWrapper: HTMLElement): CursorPosition | null {
     // Find the line element containing the cursor
     const lineElement = findLineElement(range.startContainer, editorWrapper);
     if (!lineElement) {
-        return null;
+        // Fallback: cursor is in a browser-created element (e.g., after Enter key)
+        // Calculate position based on character offset
+        console.log('[Webview] Cursor in browser-created element, using offset-based calculation');
+        return getCursorPositionFromOffset(editorWrapper, range);
     }
 
     // Get line number
     const line = getLineNumber(lineElement);
     if (line === null) {
-        return null;
+        return getCursorPositionFromOffset(editorWrapper, range);
     }
 
     // Calculate column offset within the line

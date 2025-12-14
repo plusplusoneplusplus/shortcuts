@@ -340,7 +340,170 @@ function handleEditorKeydown(e: KeyboardEvent): void {
     if (e.key === 'Tab') {
         e.preventDefault();
         document.execCommand('insertText', false, '    ');
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+        // Handle Enter key explicitly to prevent browser from creating
+        // DOM elements that break the flex layout in line-row containers.
+        // The browser's default behavior creates <div> elements that become
+        // flex siblings, causing text to appear side-by-side instead of on new lines.
+        e.preventDefault();
+        handleEnterKey();
     }
+}
+
+/**
+ * Handle Enter key by inserting a newline into the content and re-rendering.
+ * This prevents the browser from creating DOM elements that break the layout.
+ */
+function handleEnterKey(): void {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const selectionInfo = getSelectionPosition(range);
+
+    if (!selectionInfo) {
+        // Fallback: try using execCommand if we can't determine position
+        document.execCommand('insertText', false, '\n');
+        return;
+    }
+
+    // Get current content and split into lines
+    const lines = state.currentContent.split('\n');
+
+    // Calculate the position to insert the newline
+    // selectionInfo uses 1-based line numbers and 1-based columns
+    const lineIndex = selectionInfo.startLine - 1;
+    const columnIndex = selectionInfo.startColumn - 1;
+
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+        // Invalid line, use fallback
+        document.execCommand('insertText', false, '\n');
+        return;
+    }
+
+    // If there's a selection (not collapsed), delete the selected text first
+    if (selectionInfo.startLine !== selectionInfo.endLine ||
+        selectionInfo.startColumn !== selectionInfo.endColumn) {
+        // Handle selection deletion - for now, just delete and insert at start
+        const startLineIdx = selectionInfo.startLine - 1;
+        const endLineIdx = selectionInfo.endLine - 1;
+        const startCol = selectionInfo.startColumn - 1;
+        const endCol = selectionInfo.endColumn - 1;
+
+        if (startLineIdx === endLineIdx) {
+            // Single line selection
+            const line = lines[startLineIdx];
+            lines[startLineIdx] = line.substring(0, startCol) + line.substring(endCol);
+        } else {
+            // Multi-line selection
+            const startLine = lines[startLineIdx];
+            const endLine = lines[endLineIdx];
+            lines[startLineIdx] = startLine.substring(0, startCol) + endLine.substring(endCol);
+            lines.splice(startLineIdx + 1, endLineIdx - startLineIdx);
+        }
+    }
+
+    // Now insert the newline at the cursor position
+    const currentLine = lines[lineIndex] || '';
+    const beforeCursor = currentLine.substring(0, columnIndex);
+    const afterCursor = currentLine.substring(columnIndex);
+
+    // Split the line at cursor position
+    lines[lineIndex] = beforeCursor;
+    lines.splice(lineIndex + 1, 0, afterCursor);
+
+    // Calculate new cursor position (start of the new line)
+    const newCursorLine = selectionInfo.startLine + 1;
+    const newCursorColumn = 1;
+
+    // Update content
+    const newContent = lines.join('\n');
+    state.setCurrentContent(newContent);
+    updateContent(newContent);
+
+    // Re-render and restore cursor
+    render();
+
+    // Restore cursor position to the new line
+    setTimeout(() => {
+        restoreCursorToPosition(newCursorLine, newCursorColumn - 1);
+    }, 0);
+}
+
+/**
+ * Restore cursor to a specific line and column position after re-render.
+ */
+function restoreCursorToPosition(line: number, column: number): void {
+    const lineElement = editorWrapper.querySelector(`.line-content[data-line="${line}"]`);
+    if (!lineElement) return;
+
+    const target = findTextNodeAtColumn(lineElement as HTMLElement, column);
+    if (!target) {
+        // If no text node found, try to place cursor at start of line
+        const range = document.createRange();
+        range.selectNodeContents(lineElement);
+        range.collapse(true);
+        const selection = window.getSelection();
+        if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+        return;
+    }
+
+    try {
+        const range = document.createRange();
+        range.setStart(target.node, target.offset);
+        range.collapse(true);
+
+        const selection = window.getSelection();
+        if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+    } catch (e) {
+        console.warn('[Webview] Could not restore cursor position:', e);
+    }
+}
+
+/**
+ * Find text node at a specific column position within a line element.
+ */
+function findTextNodeAtColumn(lineElement: HTMLElement, targetColumn: number): { node: Text; offset: number } | null {
+    let currentOffset = 0;
+    const walker = document.createTreeWalker(lineElement, NodeFilter.SHOW_TEXT, null);
+    let currentNode: Text | null;
+    let lastValidNode: Text | null = null;
+    let lastValidNodeLength = 0;
+
+    while ((currentNode = walker.nextNode() as Text | null)) {
+        // Skip nodes in comment bubbles
+        const parent = currentNode.parentElement;
+        if (parent && parent.closest('.inline-comment-bubble, .gutter-icon')) {
+            continue;
+        }
+
+        lastValidNode = currentNode;
+        lastValidNodeLength = currentNode.length;
+
+        if (currentOffset + currentNode.length >= targetColumn) {
+            return {
+                node: currentNode,
+                offset: Math.min(targetColumn - currentOffset, currentNode.length)
+            };
+        }
+        currentOffset += currentNode.length;
+    }
+
+    // If target is beyond content, return last node at end
+    if (lastValidNode) {
+        return {
+            node: lastValidNode,
+            offset: lastValidNodeLength
+        };
+    }
+
+    return null;
 }
 
 /**
