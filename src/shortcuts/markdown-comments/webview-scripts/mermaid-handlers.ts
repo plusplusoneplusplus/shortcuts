@@ -195,11 +195,16 @@ export function renderMermaidContainer(
 ): string {
     const hasBlockComments = checkBlockHasComments(block.startLine, block.endLine, commentsMap);
     const containerClass = 'mermaid-container' + (hasBlockComments ? ' has-comments' : '');
+    const lineCount = block.code.split('\n').length;
 
     return '<div class="' + containerClass + '" data-start-line="' + block.startLine +
         '" data-end-line="' + block.endLine + '" data-mermaid-id="' + block.id + '">' +
         '<div class="mermaid-header">' +
-        '<span class="mermaid-label">📊 Mermaid Diagram</span>' +
+        '<div class="mermaid-header-left">' +
+        '<button class="mermaid-action-btn mermaid-collapse-btn" title="Collapse diagram">▼</button>' +
+        '<span class="mermaid-label">Mermaid Diagram</span>' +
+        '<span class="mermaid-line-count">(' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</span>' +
+        '</div>' +
         '<div class="mermaid-zoom-controls">' +
         '<button class="mermaid-zoom-btn mermaid-zoom-out" title="Zoom out (−)">−</button>' +
         '<span class="mermaid-zoom-level">100%</span>' +
@@ -211,8 +216,10 @@ export function renderMermaidContainer(
         '<button class="mermaid-action-btn mermaid-comment-btn" title="Add comment to diagram">💬</button>' +
         '</div>' +
         '</div>' +
+        '<div class="mermaid-content">' +
         '<div class="mermaid-preview mermaid-loading">Loading diagram...</div>' +
         '<div class="mermaid-source" style="display: none;"><code>' + escapeHtml(block.code) + '</code></div>' +
+        '</div>' +
         '</div>';
 }
 
@@ -359,6 +366,39 @@ function setupMermaidZoomPan(container: HTMLElement, diagramId: string): void {
  * Setup handlers for mermaid actions
  */
 export function setupMermaidHandlers(): void {
+    // Collapse/expand button handlers
+    document.querySelectorAll('.mermaid-collapse-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const button = btn as HTMLButtonElement;
+            const container = button.closest('.mermaid-container') as HTMLElement;
+            const content = container.querySelector('.mermaid-content') as HTMLElement;
+            const zoomControls = container.querySelector('.mermaid-zoom-controls') as HTMLElement;
+            const actions = container.querySelector('.mermaid-actions') as HTMLElement;
+            // Find the parent block-row to access the line number column
+            const blockRow = container.closest('.block-row') as HTMLElement;
+            const lineNumberColumn = blockRow?.querySelector('.line-number-column') as HTMLElement;
+
+            if (container.classList.contains('collapsed')) {
+                container.classList.remove('collapsed');
+                content.style.display = 'block';
+                if (zoomControls) zoomControls.style.display = 'flex';
+                if (actions) actions.style.display = 'flex';
+                if (lineNumberColumn) lineNumberColumn.style.display = 'block';
+                button.textContent = '▼';
+                button.title = 'Collapse diagram';
+            } else {
+                container.classList.add('collapsed');
+                content.style.display = 'none';
+                if (zoomControls) zoomControls.style.display = 'none';
+                if (actions) actions.style.display = 'none';
+                if (lineNumberColumn) lineNumberColumn.style.display = 'none';
+                button.textContent = '▶';
+                button.title = 'Expand diagram';
+            }
+        });
+    });
+
     // Toggle button handlers
     document.querySelectorAll('.mermaid-toggle-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {

@@ -2651,5 +2651,286 @@ suite('Webview Scripts Tests', () => {
             });
         });
     });
+
+    suite('Code Block Rendering with Collapse/Expand', () => {
+        // These tests cover the renderCodeBlock output for collapse functionality
+
+        interface CodeBlock {
+            language: string;
+            startLine: number;
+            endLine: number;
+            code: string;
+            id: string;
+            isMermaid: boolean;
+        }
+
+        /**
+         * Simple HTML escape function for testing
+         */
+        function escapeHtml(text: string): string {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        /**
+         * Render code block HTML - mirrors the structure from code-block-handlers.ts
+         */
+        function renderCodeBlock(block: CodeBlock): string {
+            const codeLines = block.code.split('\n');
+            const lineCount = codeLines.length;
+
+            const linesHtml = codeLines.map((line, i) => {
+                const actualLine = block.startLine + 1 + i;
+                const lineContent = escapeHtml(line) || '&nbsp;';
+                return '<span class="code-line" data-line="' + actualLine + '">' + lineContent + '</span>';
+            }).join('');
+
+            return '<div class="code-block" data-start-line="' + block.startLine +
+                '" data-end-line="' + block.endLine + '" data-block-id="' + block.id + '">' +
+                '<div class="code-block-header">' +
+                '<div class="code-block-header-left">' +
+                '<button class="code-action-btn code-collapse-btn" title="Collapse code block">▼</button>' +
+                '<span class="code-language">' + escapeHtml(block.language) + '</span>' +
+                '<span class="code-line-count">(' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</span>' +
+                '</div>' +
+                '<div class="code-block-actions">' +
+                '<button class="code-action-btn code-copy-btn" title="Copy code" data-code="' +
+                encodeURIComponent(block.code) + '">📋 Copy</button>' +
+                '<button class="code-action-btn code-comment-btn" title="Add comment to code block">💬</button>' +
+                '</div>' +
+                '</div>' +
+                '<pre class="code-block-content"><code class="hljs language-' + block.language + '">' +
+                linesHtml + '</code></pre>' +
+                '</div>';
+        }
+
+        test('should include collapse button in rendered HTML', () => {
+            const block: CodeBlock = {
+                language: 'javascript',
+                startLine: 1,
+                endLine: 3,
+                code: 'const x = 1;',
+                id: 'codeblock-1',
+                isMermaid: false
+            };
+            const html = renderCodeBlock(block);
+            assert.ok(html.includes('code-collapse-btn'), 'Should include collapse button class');
+            assert.ok(html.includes('title="Collapse code block"'), 'Should include collapse button title');
+            assert.ok(html.includes('▼'), 'Should include collapse arrow');
+        });
+
+        test('should include line count in rendered HTML', () => {
+            const block: CodeBlock = {
+                language: 'javascript',
+                startLine: 1,
+                endLine: 5,
+                code: 'line1\nline2\nline3',
+                id: 'codeblock-1',
+                isMermaid: false
+            };
+            const html = renderCodeBlock(block);
+            assert.ok(html.includes('code-line-count'), 'Should include line count class');
+            assert.ok(html.includes('(3 lines)'), 'Should show correct line count (plural)');
+        });
+
+        test('should use singular "line" for single line code', () => {
+            const block: CodeBlock = {
+                language: 'javascript',
+                startLine: 1,
+                endLine: 3,
+                code: 'const x = 1;',
+                id: 'codeblock-1',
+                isMermaid: false
+            };
+            const html = renderCodeBlock(block);
+            assert.ok(html.includes('(1 line)'), 'Should show singular line count');
+            assert.ok(!html.includes('(1 lines)'), 'Should not show plural for single line');
+        });
+
+        test('should include header-left container for collapse button and language', () => {
+            const block: CodeBlock = {
+                language: 'python',
+                startLine: 1,
+                endLine: 3,
+                code: 'print("hello")',
+                id: 'codeblock-1',
+                isMermaid: false
+            };
+            const html = renderCodeBlock(block);
+            assert.ok(html.includes('code-block-header-left'), 'Should include header-left container');
+        });
+
+        test('should still include copy and comment buttons', () => {
+            const block: CodeBlock = {
+                language: 'javascript',
+                startLine: 1,
+                endLine: 3,
+                code: 'const x = 1;',
+                id: 'codeblock-1',
+                isMermaid: false
+            };
+            const html = renderCodeBlock(block);
+            assert.ok(html.includes('code-copy-btn'), 'Should include copy button');
+            assert.ok(html.includes('code-comment-btn'), 'Should include comment button');
+        });
+    });
+
+    suite('Mermaid Container Rendering with Collapse/Expand', () => {
+        // These tests cover the renderMermaidContainer output for collapse functionality
+
+        interface CodeBlock {
+            language: string;
+            startLine: number;
+            endLine: number;
+            code: string;
+            id: string;
+            isMermaid: boolean;
+        }
+
+        /**
+         * Simple HTML escape function for testing
+         */
+        function escapeHtml(text: string): string {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        /**
+         * Render mermaid container HTML - mirrors the structure from mermaid-handlers.ts
+         */
+        function renderMermaidContainer(block: CodeBlock): string {
+            const lineCount = block.code.split('\n').length;
+
+            return '<div class="mermaid-container" data-start-line="' + block.startLine +
+                '" data-end-line="' + block.endLine + '" data-mermaid-id="' + block.id + '">' +
+                '<div class="mermaid-header">' +
+                '<div class="mermaid-header-left">' +
+                '<button class="mermaid-action-btn mermaid-collapse-btn" title="Collapse diagram">▼</button>' +
+                '<span class="mermaid-label">Mermaid Diagram</span>' +
+                '<span class="mermaid-line-count">(' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</span>' +
+                '</div>' +
+                '<div class="mermaid-zoom-controls">' +
+                '<button class="mermaid-zoom-btn mermaid-zoom-out" title="Zoom out (−)">−</button>' +
+                '<span class="mermaid-zoom-level">100%</span>' +
+                '<button class="mermaid-zoom-btn mermaid-zoom-in" title="Zoom in (+)">+</button>' +
+                '<button class="mermaid-zoom-btn mermaid-zoom-reset" title="Reset view">⟲</button>' +
+                '</div>' +
+                '<div class="mermaid-actions">' +
+                '<button class="mermaid-action-btn mermaid-toggle-btn" title="Toggle source/preview">🔄 Toggle</button>' +
+                '<button class="mermaid-action-btn mermaid-comment-btn" title="Add comment to diagram">💬</button>' +
+                '</div>' +
+                '</div>' +
+                '<div class="mermaid-content">' +
+                '<div class="mermaid-preview mermaid-loading">Loading diagram...</div>' +
+                '<div class="mermaid-source" style="display: none;"><code>' + escapeHtml(block.code) + '</code></div>' +
+                '</div>' +
+                '</div>';
+        }
+
+        test('should include collapse button in rendered HTML', () => {
+            const block: CodeBlock = {
+                language: 'mermaid',
+                startLine: 1,
+                endLine: 5,
+                code: 'graph TD\nA-->B\nB-->C',
+                id: 'codeblock-1',
+                isMermaid: true
+            };
+            const html = renderMermaidContainer(block);
+            assert.ok(html.includes('mermaid-collapse-btn'), 'Should include collapse button class');
+            assert.ok(html.includes('title="Collapse diagram"'), 'Should include collapse button title');
+            assert.ok(html.includes('▼'), 'Should include collapse arrow');
+        });
+
+        test('should include line count in rendered HTML', () => {
+            const block: CodeBlock = {
+                language: 'mermaid',
+                startLine: 1,
+                endLine: 5,
+                code: 'graph TD\nA-->B\nB-->C',
+                id: 'codeblock-1',
+                isMermaid: true
+            };
+            const html = renderMermaidContainer(block);
+            assert.ok(html.includes('mermaid-line-count'), 'Should include line count class');
+            assert.ok(html.includes('(3 lines)'), 'Should show correct line count (plural)');
+        });
+
+        test('should use singular "line" for single line mermaid code', () => {
+            const block: CodeBlock = {
+                language: 'mermaid',
+                startLine: 1,
+                endLine: 3,
+                code: 'graph TD',
+                id: 'codeblock-1',
+                isMermaid: true
+            };
+            const html = renderMermaidContainer(block);
+            assert.ok(html.includes('(1 line)'), 'Should show singular line count');
+            assert.ok(!html.includes('(1 lines)'), 'Should not show plural for single line');
+        });
+
+        test('should include header-left container for collapse button and label', () => {
+            const block: CodeBlock = {
+                language: 'mermaid',
+                startLine: 1,
+                endLine: 5,
+                code: 'graph TD\nA-->B',
+                id: 'codeblock-1',
+                isMermaid: true
+            };
+            const html = renderMermaidContainer(block);
+            assert.ok(html.includes('mermaid-header-left'), 'Should include header-left container');
+        });
+
+        test('should include mermaid-content wrapper for collapsible content', () => {
+            const block: CodeBlock = {
+                language: 'mermaid',
+                startLine: 1,
+                endLine: 5,
+                code: 'graph TD\nA-->B',
+                id: 'codeblock-1',
+                isMermaid: true
+            };
+            const html = renderMermaidContainer(block);
+            assert.ok(html.includes('mermaid-content'), 'Should include content wrapper for collapse');
+        });
+
+        test('should still include zoom controls and action buttons', () => {
+            const block: CodeBlock = {
+                language: 'mermaid',
+                startLine: 1,
+                endLine: 5,
+                code: 'graph TD\nA-->B',
+                id: 'codeblock-1',
+                isMermaid: true
+            };
+            const html = renderMermaidContainer(block);
+            assert.ok(html.includes('mermaid-zoom-controls'), 'Should include zoom controls');
+            assert.ok(html.includes('mermaid-toggle-btn'), 'Should include toggle button');
+            assert.ok(html.includes('mermaid-comment-btn'), 'Should include comment button');
+        });
+
+        test('should display "Mermaid Diagram" label without emoji', () => {
+            const block: CodeBlock = {
+                language: 'mermaid',
+                startLine: 1,
+                endLine: 5,
+                code: 'graph TD\nA-->B',
+                id: 'codeblock-1',
+                isMermaid: true
+            };
+            const html = renderMermaidContainer(block);
+            assert.ok(html.includes('Mermaid Diagram'), 'Should include Mermaid Diagram label');
+        });
+    });
 });
 

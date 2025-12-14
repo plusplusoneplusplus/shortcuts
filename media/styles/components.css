@@ -23,6 +23,40 @@
     border-bottom: 1px solid var(--border-color);
 }
 
+.code-block-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.code-line-count {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #888);
+    opacity: 0.8;
+}
+
+.code-collapse-btn {
+    font-size: 10px;
+    padding: 2px 4px;
+    min-width: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* Collapsed code block state */
+.code-block.collapsed {
+    border-radius: 6px;
+}
+
+.code-block.collapsed .code-block-header {
+    border-bottom: none;
+    border-radius: 6px;
+}
+
+.code-block.collapsed .code-block-content {
+    display: none;
+}
+
 .code-language {
     font-size: 11px;
     font-weight: 500;
@@ -278,6 +312,48 @@ body.vscode-light .hljs-type {
     background: var(--vscode-editorGroupHeader-tabsBackground, rgba(0, 0, 0, 0.2));
     border-bottom: 1px solid var(--border-color);
     gap: 8px;
+}
+
+.mermaid-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mermaid-line-count {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #888);
+    opacity: 0.8;
+}
+
+.mermaid-collapse-btn {
+    font-size: 10px;
+    padding: 2px 4px;
+    min-width: 20px;
+    line-height: 1;
+}
+
+/* Collapsed mermaid state */
+.mermaid-container.collapsed {
+    border-radius: 8px;
+}
+
+.mermaid-container.collapsed .mermaid-header {
+    border-bottom: none;
+    border-radius: 8px;
+}
+
+.mermaid-container.collapsed .mermaid-content {
+    display: none;
+}
+
+.mermaid-container.collapsed .mermaid-zoom-controls,
+.mermaid-container.collapsed .mermaid-actions {
+    display: none;
+}
+
+.mermaid-content {
+    /* Container for preview and source */
 }
 
 .mermaid-label {

@@ -94,17 +94,23 @@ export function renderCodeBlock(
         return '<span class="code-line" data-line="' + actualLine + '">' + lineContent + '</span>';
     }).join('');
     
-    return '<div class="' + containerClass + '" data-start-line="' + block.startLine + 
+    const lineCount = codeLines.length;
+
+    return '<div class="' + containerClass + '" data-start-line="' + block.startLine +
            '" data-end-line="' + block.endLine + '" data-block-id="' + block.id + '">' +
         '<div class="code-block-header">' +
-            '<span class="code-language">' + escapeHtml(block.language) + '</span>' +
+            '<div class="code-block-header-left">' +
+                '<button class="code-action-btn code-collapse-btn" title="Collapse code block">▼</button>' +
+                '<span class="code-language">' + escapeHtml(block.language) + '</span>' +
+                '<span class="code-line-count">(' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</span>' +
+            '</div>' +
             '<div class="code-block-actions">' +
-                '<button class="code-action-btn code-copy-btn" title="Copy code" data-code="' + 
+                '<button class="code-action-btn code-copy-btn" title="Copy code" data-code="' +
                     encodeURIComponent(block.code) + '">📋 Copy</button>' +
                 '<button class="code-action-btn code-comment-btn" title="Add comment to code block">💬</button>' +
             '</div>' +
         '</div>' +
-        '<pre class="code-block-content"><code class="hljs language-' + block.language + '">' + 
+        '<pre class="code-block-content"><code class="hljs language-' + block.language + '">' +
             linesHtml + '</code></pre>' +
     '</div>';
 }
@@ -113,6 +119,37 @@ export function renderCodeBlock(
  * Setup handlers for code block actions
  */
 export function setupCodeBlockHandlers(): void {
+    // Collapse/expand button handlers
+    document.querySelectorAll('.code-collapse-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const button = btn as HTMLButtonElement;
+            const container = button.closest('.code-block') as HTMLElement;
+            const content = container.querySelector('.code-block-content') as HTMLElement;
+            // Find the parent block-row to access the line number column
+            const blockRow = container.closest('.block-row') as HTMLElement;
+            const lineNumberColumn = blockRow?.querySelector('.line-number-column') as HTMLElement;
+
+            if (container.classList.contains('collapsed')) {
+                container.classList.remove('collapsed');
+                content.style.display = 'block';
+                if (lineNumberColumn) {
+                    lineNumberColumn.style.display = 'block';
+                }
+                button.textContent = '▼';
+                button.title = 'Collapse code block';
+            } else {
+                container.classList.add('collapsed');
+                content.style.display = 'none';
+                if (lineNumberColumn) {
+                    lineNumberColumn.style.display = 'none';
+                }
+                button.textContent = '▶';
+                button.title = 'Expand code block';
+            }
+        });
+    });
+
     // Copy button handlers
     document.querySelectorAll('.code-copy-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -125,7 +162,7 @@ export function setupCodeBlockHandlers(): void {
             });
         });
     });
-    
+
     // Comment button handlers for code blocks
     document.querySelectorAll('.code-comment-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -133,7 +170,7 @@ export function setupCodeBlockHandlers(): void {
             const container = (btn as HTMLElement).closest('.code-block') as HTMLElement;
             const startLine = parseInt(container.dataset.startLine || '');
             const endLine = parseInt(container.dataset.endLine || '');
-            
+
             state.setPendingSelection({
                 startLine,
                 startColumn: 1,
@@ -141,7 +178,7 @@ export function setupCodeBlockHandlers(): void {
                 endColumn: 1,
                 selectedText: '[Code Block: lines ' + startLine + '-' + endLine + ']'
             });
-            
+
             showFloatingPanel(btn.getBoundingClientRect(), 'Code Block');
         });
     });
