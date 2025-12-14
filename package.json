@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Workspace Shortcuts",
   "description": "Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.",
-  "version": "2.8.3",
+  "version": "2.8.4",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
