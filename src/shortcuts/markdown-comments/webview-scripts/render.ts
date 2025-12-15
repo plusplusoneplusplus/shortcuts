@@ -5,7 +5,7 @@
  */
 
 import { MarkdownComment } from '../types';
-import { groupCommentsByLine } from '../webview-logic/comment-state';
+import { groupCommentsByAllCoveredLines } from '../webview-logic/comment-state';
 import {
     CursorPosition,
     NODE_TYPES,
@@ -326,7 +326,7 @@ export function render(isExternalChange: boolean = false): void {
     }
 
     const lines = state.currentContent.split('\n');
-    const commentsMap = groupCommentsByLine(state.comments);
+    const commentsMap = groupCommentsByAllCoveredLines(state.comments);
     const codeBlocks = parseCodeBlocks(state.currentContent);
     const tables = parseTables(state.currentContent);
 

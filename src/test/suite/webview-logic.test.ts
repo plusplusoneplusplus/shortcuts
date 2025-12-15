@@ -15,6 +15,7 @@ import {
     findCommentById,
     getCommentsForLine,
     getSelectionCoverageForLine,
+    groupCommentsByAllCoveredLines,
     groupCommentsByLine,
     resolveAllComments,
     sortCommentsByColumnDescending,
@@ -192,6 +193,154 @@ suite('Webview Logic Tests', () => {
                 const grouped = groupCommentsByLine(sameLine);
                 assert.strictEqual(grouped.size, 1);
                 assert.strictEqual(grouped.get(1)?.length, 4);
+            });
+        });
+
+        suite('groupCommentsByAllCoveredLines', () => {
+            test('should include single-line comments on their line', () => {
+                const singleLineComment: MarkdownComment[] = [{
+                    id: 'single-1',
+                    filePath: '/test/file.md',
+                    selection: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 20 },
+                    selectedText: 'Hello World',
+                    comment: 'Single line comment',
+                    status: 'open',
+                    createdAt: '2024-01-01T00:00:00Z',
+                    updatedAt: '2024-01-01T00:00:00Z'
+                }];
+                const grouped = groupCommentsByAllCoveredLines(singleLineComment);
+                assert.strictEqual(grouped.size, 1);
+                assert.strictEqual(grouped.get(5)?.length, 1);
+                assert.strictEqual(grouped.get(5)?.[0].id, 'single-1');
+            });
+
+            test('should include multi-line comments on ALL lines they span', () => {
+                const multiLineComment: MarkdownComment[] = [{
+                    id: 'multi-1',
+                    filePath: '/test/file.md',
+                    selection: { startLine: 10, startColumn: 5, endLine: 14, endColumn: 15 },
+                    selectedText: 'Multi-line text spanning 5 lines',
+                    comment: 'This spans lines 10-14',
+                    status: 'open',
+                    createdAt: '2024-01-01T00:00:00Z',
+                    updatedAt: '2024-01-01T00:00:00Z'
+                }];
+                const grouped = groupCommentsByAllCoveredLines(multiLineComment);
+
+                // Should have entries for lines 10, 11, 12, 13, 14
+                assert.strictEqual(grouped.size, 5);
+                assert.strictEqual(grouped.get(10)?.length, 1);
+                assert.strictEqual(grouped.get(11)?.length, 1);
+                assert.strictEqual(grouped.get(12)?.length, 1);
+                assert.strictEqual(grouped.get(13)?.length, 1);
+                assert.strictEqual(grouped.get(14)?.length, 1);
+
+                // All entries should reference the same comment
+                assert.strictEqual(grouped.get(10)?.[0].id, 'multi-1');
+                assert.strictEqual(grouped.get(14)?.[0].id, 'multi-1');
+            });
+
+            test('should handle overlapping multi-line comments', () => {
+                const overlappingComments: MarkdownComment[] = [
+                    {
+                        id: 'overlap-1',
+                        filePath: '/test/file.md',
+                        selection: { startLine: 5, startColumn: 1, endLine: 8, endColumn: 10 },
+                        selectedText: 'First comment',
+                        comment: 'Spans 5-8',
+                        status: 'open',
+                        createdAt: '2024-01-01T00:00:00Z',
+                        updatedAt: '2024-01-01T00:00:00Z'
+                    },
+                    {
+                        id: 'overlap-2',
+                        filePath: '/test/file.md',
+                        selection: { startLine: 7, startColumn: 1, endLine: 10, endColumn: 10 },
+                        selectedText: 'Second comment',
+                        comment: 'Spans 7-10',
+                        status: 'open',
+                        createdAt: '2024-01-01T00:00:00Z',
+                        updatedAt: '2024-01-01T00:00:00Z'
+                    }
+                ];
+                const grouped = groupCommentsByAllCoveredLines(overlappingComments);
+
+                // Lines 5, 6 should have 1 comment
+                assert.strictEqual(grouped.get(5)?.length, 1);
+                assert.strictEqual(grouped.get(6)?.length, 1);
+
+                // Lines 7, 8 should have 2 comments (overlapping)
+                assert.strictEqual(grouped.get(7)?.length, 2);
+                assert.strictEqual(grouped.get(8)?.length, 2);
+
+                // Lines 9, 10 should have 1 comment
+                assert.strictEqual(grouped.get(9)?.length, 1);
+                assert.strictEqual(grouped.get(10)?.length, 1);
+            });
+
+            test('should return empty map for empty input', () => {
+                const grouped = groupCommentsByAllCoveredLines([]);
+                assert.strictEqual(grouped.size, 0);
+            });
+
+            test('should handle sample comments with multi-line comment', () => {
+                // sampleComments[1] spans lines 10-12
+                const grouped = groupCommentsByAllCoveredLines(sampleComments);
+
+                // Line 5 should have 2 comments (both single-line)
+                assert.strictEqual(grouped.get(5)?.length, 2);
+
+                // Lines 10, 11, 12 should all have the multi-line comment
+                assert.strictEqual(grouped.get(10)?.length, 1);
+                assert.strictEqual(grouped.get(11)?.length, 1);
+                assert.strictEqual(grouped.get(12)?.length, 1);
+
+                // All should reference comment-2
+                assert.strictEqual(grouped.get(10)?.[0].id, 'comment-2');
+                assert.strictEqual(grouped.get(11)?.[0].id, 'comment-2');
+                assert.strictEqual(grouped.get(12)?.[0].id, 'comment-2');
+
+                // Line 15 should have 1 comment
+                assert.strictEqual(grouped.get(15)?.length, 1);
+            });
+
+            test('should handle comment spanning exactly 2 lines', () => {
+                const twoLineComment: MarkdownComment[] = [{
+                    id: 'two-line',
+                    filePath: '/test/file.md',
+                    selection: { startLine: 3, startColumn: 5, endLine: 4, endColumn: 10 },
+                    selectedText: 'Two line text',
+                    comment: 'Spans exactly 2 lines',
+                    status: 'open',
+                    createdAt: '2024-01-01T00:00:00Z',
+                    updatedAt: '2024-01-01T00:00:00Z'
+                }];
+                const grouped = groupCommentsByAllCoveredLines(twoLineComment);
+
+                assert.strictEqual(grouped.size, 2);
+                assert.strictEqual(grouped.get(3)?.length, 1);
+                assert.strictEqual(grouped.get(4)?.length, 1);
+                assert.strictEqual(grouped.get(3)?.[0].id, 'two-line');
+                assert.strictEqual(grouped.get(4)?.[0].id, 'two-line');
+            });
+
+            test('should correctly identify lines NOT covered by comments', () => {
+                const multiLineComment: MarkdownComment[] = [{
+                    id: 'multi-1',
+                    filePath: '/test/file.md',
+                    selection: { startLine: 10, startColumn: 5, endLine: 12, endColumn: 15 },
+                    selectedText: 'Multi-line text',
+                    comment: 'Spans 10-12',
+                    status: 'open',
+                    createdAt: '2024-01-01T00:00:00Z',
+                    updatedAt: '2024-01-01T00:00:00Z'
+                }];
+                const grouped = groupCommentsByAllCoveredLines(multiLineComment);
+
+                // Lines before and after should not be in the map
+                assert.strictEqual(grouped.get(9), undefined);
+                assert.strictEqual(grouped.get(13), undefined);
+                assert.strictEqual(grouped.get(1), undefined);
             });
         });
 

@@ -7,7 +7,7 @@
  * 2. In the webview (browser) by importing into the bundled script
  */
 
-import { MarkdownComment, CommentStatus, CommentSelection } from '../types';
+import { CommentSelection, CommentStatus, MarkdownComment } from '../types';
 
 /**
  * Filter comments by status
@@ -59,14 +59,41 @@ export function sortCommentsByColumnDescending(comments: MarkdownComment[]): Mar
  */
 export function groupCommentsByLine(comments: MarkdownComment[]): Map<number, MarkdownComment[]> {
     const map = new Map<number, MarkdownComment[]>();
-    
+
     for (const comment of comments) {
         const line = comment.selection.startLine;
         const existing = map.get(line) || [];
         existing.push(comment);
         map.set(line, existing);
     }
-    
+
+    return map;
+}
+
+/**
+ * Group comments by all lines they cover (not just starting line)
+ * 
+ * This is essential for multi-line comments where highlighting needs to appear
+ * on every line the comment spans, not just the first line.
+ * 
+ * @param comments - Array of comments to group
+ * @returns Map from line number to array of comments covering that line
+ */
+export function groupCommentsByAllCoveredLines(comments: MarkdownComment[]): Map<number, MarkdownComment[]> {
+    const map = new Map<number, MarkdownComment[]>();
+
+    for (const comment of comments) {
+        const startLine = comment.selection.startLine;
+        const endLine = comment.selection.endLine;
+
+        // Add the comment to every line it covers
+        for (let line = startLine; line <= endLine; line++) {
+            const existing = map.get(line) || [];
+            existing.push(comment);
+            map.set(line, existing);
+        }
+    }
+
     return map;
 }
 
@@ -123,7 +150,7 @@ export function countCommentsByStatus(
     let open = 0;
     let resolved = 0;
     let pending = 0;
-    
+
     for (const comment of comments) {
         switch (comment.status) {
             case 'open':
@@ -137,7 +164,7 @@ export function countCommentsByStatus(
                 break;
         }
     }
-    
+
     return { open, resolved, pending };
 }
 

@@ -9,99 +9,39 @@
 
 // Comment state management
 export {
-    filterCommentsByStatus,
-    sortCommentsByLine,
-    sortCommentsByColumnDescending,
-    groupCommentsByLine,
-    getCommentsForLine,
     blockHasComments,
-    countCommentsByStatus,
-    findCommentById,
-    updateCommentStatus,
-    updateCommentText,
-    deleteComment,
-    resolveAllComments,
-    getSelectionCoverageForLine
+    countCommentsByStatus, deleteComment, filterCommentsByStatus, findCommentById, getCommentsForLine, getSelectionCoverageForLine, groupCommentsByAllCoveredLines, groupCommentsByLine, resolveAllComments, sortCommentsByColumnDescending, sortCommentsByLine, updateCommentStatus,
+    updateCommentText
 } from './comment-state';
 
 // Selection utilities
 export {
-    SelectionPositionWithText,
-    calculateColumnIndices,
-    getHighlightColumnsForLine,
-    createPlainToHtmlMapping,
-    applyCommentHighlightToRange
+    SelectionPositionWithText, applyCommentHighlightToRange, calculateColumnIndices, createPlainToHtmlMapping, getHighlightColumnsForLine
 } from './selection-utils';
 
 // Markdown rendering
 export {
-    MarkdownLineResult,
-    escapeHtml,
-    applyInlineMarkdown,
-    resolveImagePath,
-    applyMarkdownHighlighting
+    MarkdownLineResult, applyInlineMarkdown, applyMarkdownHighlighting, escapeHtml, resolveImagePath
 } from './markdown-renderer';
 
 // Cursor management
 export {
     CursorPosition,
     MockNode,
-    NODE_TYPES,
-    calculateColumnOffset,
-    findLineElement,
-    getLineNumber,
-    findTextNodeAtColumn,
-    getCursorPositionFromSelection,
-    adjustCursorAfterInsertion,
-    adjustCursorAfterDeletion,
-    validateCursorPosition,
-    compareCursorPositions,
-    isCursorInRange
+    NODE_TYPES, adjustCursorAfterDeletion, adjustCursorAfterInsertion, calculateColumnOffset, compareCursorPositions, findLineElement, findTextNodeAtColumn,
+    getCursorPositionFromSelection, getLineNumber, isCursorInRange, validateCursorPosition
 } from './cursor-management';
 
 // Content extraction
 export {
-    ContentExtractionResult,
-    ExtractionContext,
-    DEFAULT_SKIP_CLASSES,
-    createExtractionContext,
-    shouldSkipElement,
-    isBlockElement,
-    isLineContentElement,
-    isLineRowElement,
-    isBlockContentElement,
-    isBrElement,
-    processTextNode,
-    addNewLine,
-    extractBlockText,
-    extractTableText,
-    hasMeaningfulContentAfterBr,
-    processNode,
-    extractPlainTextContent,
-    applyInsertion,
-    applyDeletion,
-    getTotalCharacterCount,
-    positionToOffset,
-    offsetToPosition
+    ContentExtractionResult, DEFAULT_SKIP_CLASSES, ExtractionContext, addNewLine, applyDeletion, applyInsertion, createExtractionContext, extractBlockText, extractPlainTextContent, extractTableText, getTotalCharacterCount, hasMeaningfulContentAfterBr, isBlockContentElement, isBlockElement, isBrElement, isLineContentElement,
+    isLineRowElement, offsetToPosition, positionToOffset, processNode, processTextNode, shouldSkipElement
 } from './content-extraction';
 
 // Re-export line mapping utilities from webview-utils
 export {
-    ParsedTable,
-    SelectionPosition,
-    calculateTableCellLineNumber,
-    calculateCodeBlockLineNumber,
-    parseTableWithLineNumbers,
-    parseTableRowCells,
-    isTableSeparatorLine,
-    parseTableAlignmentsFromSeparator,
-    getTableRowLineNumbers,
-    findTableRowAtLine,
-    calculateColumnIndices as calculateColumnIndicesForLine,
-    getSelectionCoverageForLine as getSelectionCoverageForLineFromUtils,
-    MockTableRow,
-    getLineFromTableCellLogic,
-    getWebviewTableCellLineFunction,
-    getWebviewCodeBlockLineFunction
+    MockTableRow, ParsedTable,
+    SelectionPosition, calculateCodeBlockLineNumber, calculateColumnIndices as calculateColumnIndicesForLine, calculateTableCellLineNumber, findTableRowAtLine, getLineFromTableCellLogic, getSelectionCoverageForLine as getSelectionCoverageForLineFromUtils, getTableRowLineNumbers, getWebviewCodeBlockLineFunction, getWebviewTableCellLineFunction, isTableSeparatorLine,
+    parseTableAlignmentsFromSeparator, parseTableRowCells, parseTableWithLineNumbers
 } from '../webview-utils';
 
