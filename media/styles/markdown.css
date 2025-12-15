@@ -7,6 +7,7 @@
  * Headings
  * ============================== */
 .md-h1 {
+    display: block;
     font-size: 2em;
     font-weight: 700;
     color: var(--md-heading-color);
@@ -16,6 +17,7 @@
 }
 
 .md-h2 {
+    display: block;
     font-size: 1.5em;
     font-weight: 700;
     color: var(--md-heading-color);
@@ -25,12 +27,16 @@
 }
 
 .md-h3 {
+    display: block;
     font-size: 1.25em;
     font-weight: 700;
     color: var(--md-heading-color);
 }
 
-.md-h4, .md-h5, .md-h6 {
+.md-h4,
+.md-h5,
+.md-h6 {
+    display: block;
     font-size: 1em;
     font-weight: 700;
     color: var(--md-heading-color);
