@@ -78,6 +78,7 @@ function setupEditorEventListeners(): void {
     editorWrapper.addEventListener('keydown', handleEditorKeydown);
     editorWrapper.addEventListener('mouseup', handleSelectionChange);
     editorWrapper.addEventListener('keyup', handleSelectionChange);
+    editorWrapper.addEventListener('click', handleTripleClick);
 }
 
 /**
@@ -314,6 +315,86 @@ function handleSelectionChange(): void {
             // Could show a hint for adding comment (optional enhancement)
         }
     }
+}
+
+/**
+ * Handle triple-click to select the full logical line.
+ * This ensures that even with word wrap, the entire line is selected.
+ */
+function handleTripleClick(e: MouseEvent): void {
+    // detail === 3 indicates triple-click
+    if (e.detail !== 3) return;
+
+    const target = e.target as HTMLElement;
+
+    // Find the line-content element that contains the click
+    const lineContent = target.closest('.line-content') as HTMLElement;
+    if (!lineContent) {
+        // Also check for code block lines
+        const codeLine = target.closest('.code-line') as HTMLElement;
+        if (codeLine) {
+            selectFullLine(codeLine);
+            e.preventDefault();
+        }
+        return;
+    }
+
+    selectFullLine(lineContent);
+    e.preventDefault();
+}
+
+/**
+ * Select the full text content of a line element.
+ * Excludes UI elements like comment bubbles and gutter icons.
+ */
+function selectFullLine(lineElement: HTMLElement): void {
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    // Create a range that spans the entire line content
+    const range = document.createRange();
+
+    // Find the first and last text nodes in the line, excluding UI elements
+    let firstTextNode: Text | null = null;
+    let lastTextNode: Text | null = null;
+
+    const walker = document.createTreeWalker(
+        lineElement,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode: (node) => {
+                const parent = node.parentElement;
+                // Skip nodes inside comment bubbles, gutter icons, etc.
+                if (parent && parent.closest('.inline-comment-bubble, .gutter-icon')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                // Skip empty text nodes
+                if (!node.textContent || node.textContent.length === 0) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        }
+    );
+
+    let node: Text | null;
+    while ((node = walker.nextNode() as Text | null)) {
+        if (!firstTextNode) {
+            firstTextNode = node;
+        }
+        lastTextNode = node;
+    }
+
+    if (firstTextNode && lastTextNode) {
+        range.setStart(firstTextNode, 0);
+        range.setEnd(lastTextNode, lastTextNode.length);
+    } else {
+        // Fallback: select the entire element content
+        range.selectNodeContents(lineElement);
+    }
+
+    selection.removeAllRanges();
+    selection.addRange(range);
 }
 
 /**
