@@ -18,7 +18,7 @@ import {
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
-import { requestCopyPrompt, requestDeleteAll, requestResolveAll, updateContent } from './vscode-bridge';
+import { openFile, requestCopyPrompt, requestDeleteAll, requestResolveAll, updateContent } from './vscode-bridge';
 
 // DOM element references
 let editorWrapper: HTMLElement;
@@ -848,6 +848,35 @@ export function setupCommentInteractions(): void {
                 }
             }
         });
+    });
+
+    // Ctrl+Click on markdown links to open workspace files
+    document.querySelectorAll('.md-link').forEach(linkEl => {
+        linkEl.addEventListener('click', (e) => {
+            const mouseEvent = e as MouseEvent;
+            // Check for Ctrl (Windows/Linux) or Meta/Cmd (Mac)
+            if (mouseEvent.ctrlKey || mouseEvent.metaKey) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Extract the URL from the link
+                const urlSpan = linkEl.querySelector('.md-link-url');
+                if (urlSpan) {
+                    // The URL is wrapped in parentheses, e.g., "(path/to/file.md)"
+                    const urlText = urlSpan.textContent || '';
+                    // Remove the surrounding parentheses
+                    const url = urlText.replace(/^\(|\)$/g, '');
+
+                    if (url) {
+                        // Send message to extension to open the file
+                        openFile(url);
+                    }
+                }
+            }
+        });
+
+        // Add visual hint that links are ctrl+clickable
+        (linkEl as HTMLElement).title = 'Ctrl+Click to open file';
     });
 }
 

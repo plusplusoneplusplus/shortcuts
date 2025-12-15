@@ -71,7 +71,8 @@ export type WebviewMessage =
     | { type: 'reopenComment'; commentId: string }
     | { type: 'deleteComment'; commentId: string }
     | { type: 'updateContent'; content: string }
-    | { type: 'resolveImagePath'; path: string; imgId: string };
+    | { type: 'resolveImagePath'; path: string; imgId: string }
+    | { type: 'openFile'; path: string };
 
 /**
  * Messages sent from extension to webview
