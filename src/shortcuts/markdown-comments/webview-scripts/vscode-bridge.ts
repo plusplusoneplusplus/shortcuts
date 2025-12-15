@@ -111,6 +111,13 @@ export function resolveImagePath(path: string, imgId: string): void {
 }
 
 /**
+ * Request to open a file in VS Code
+ */
+export function openFile(path: string): void {
+    postMessage({ type: 'openFile', path });
+}
+
+/**
  * Message handler type
  */
 export type MessageHandler = (message: ExtensionMessage) => void;

@@ -17,7 +17,7 @@ import { MermaidContext } from './types';
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath';
+    'copyPrompt' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile';
     commentId?: string;
     content?: string;
     selection?: {
@@ -357,6 +357,12 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                     );
                 }
                 break;
+
+            case 'openFile':
+                if (message.path) {
+                    await this.openFileFromPath(message.path, document);
+                }
+                break;
         }
     }
 
@@ -427,6 +433,60 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 uri: null,
                 error: `Error resolving image: ${error}`
             });
+        }
+    }
+
+    /**
+     * Open a file from a path in the markdown link
+     * Supports absolute paths, paths relative to the file, and paths relative to workspace
+     */
+    private async openFileFromPath(
+        filePath: string,
+        document: vscode.TextDocument
+    ): Promise<void> {
+        try {
+            const fileDir = path.dirname(document.uri.fsPath);
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+
+            // Skip external URLs (http, https, mailto, etc.)
+            if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(filePath)) {
+                // Open external URLs in browser
+                await vscode.env.openExternal(vscode.Uri.parse(filePath));
+                return;
+            }
+
+            let resolvedPath: string;
+
+            // Check if it's an absolute path
+            if (path.isAbsolute(filePath)) {
+                resolvedPath = filePath;
+            } else {
+                // Try relative to the file's directory first
+                resolvedPath = path.resolve(fileDir, filePath);
+            }
+
+            // Check if file exists
+            const fs = require('fs');
+            if (fs.existsSync(resolvedPath)) {
+                const fileUri = vscode.Uri.file(resolvedPath);
+                await vscode.window.showTextDocument(fileUri);
+                return;
+            }
+
+            // Try workspace-relative path
+            if (workspaceRoot) {
+                const workspaceRelativePath = path.resolve(workspaceRoot, filePath);
+                if (fs.existsSync(workspaceRelativePath)) {
+                    const fileUri = vscode.Uri.file(workspaceRelativePath);
+                    await vscode.window.showTextDocument(fileUri);
+                    return;
+                }
+            }
+
+            // File not found
+            vscode.window.showWarningMessage(`File not found: ${filePath}`);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Error opening file: ${error}`);
         }
     }
 
