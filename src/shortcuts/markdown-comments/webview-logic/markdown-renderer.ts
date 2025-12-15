@@ -115,51 +115,55 @@ export function applyMarkdownHighlighting(
     inCodeBlock: boolean,
     codeBlockLang: string | null
 ): MarkdownLineResult {
+    // Strip trailing \r from Windows line endings (CRLF)
+    // When content is split by \n, the \r remains at the end of each line
+    const cleanLine = line.replace(/\r$/, '');
+
     // If we're inside a code block, don't apply markdown highlighting
-    if (inCodeBlock && !line.startsWith('```')) {
-        return { 
-            html: escapeHtml(line), 
-            inCodeBlock: true, 
-            codeBlockLang 
+    if (inCodeBlock && !cleanLine.startsWith('```')) {
+        return {
+            html: escapeHtml(cleanLine),
+            inCodeBlock: true,
+            codeBlockLang
         };
     }
-    
+
     // Check for code fence start/end
-    const codeFenceMatch = line.match(/^```(\w*)/);
+    const codeFenceMatch = cleanLine.match(/^```(\w*)/);
     if (codeFenceMatch) {
         if (!inCodeBlock) {
             // Starting a code block
             const lang = codeFenceMatch[1] || 'plaintext';
-            return { 
-                html: '<span class="md-code-fence">' + escapeHtml(line) + '</span>', 
-                inCodeBlock: true, 
+            return {
+                html: '<span class="md-code-fence">' + escapeHtml(cleanLine) + '</span>',
+                inCodeBlock: true,
                 codeBlockLang: lang,
                 isCodeFenceStart: true
             };
         } else {
             // Ending a code block
-            return { 
-                html: '<span class="md-code-fence">' + escapeHtml(line) + '</span>', 
-                inCodeBlock: false, 
+            return {
+                html: '<span class="md-code-fence">' + escapeHtml(cleanLine) + '</span>',
+                inCodeBlock: false,
                 codeBlockLang: null,
                 isCodeFenceEnd: true
             };
         }
     }
-    
-    let html = escapeHtml(line);
-    
+
+    let html = escapeHtml(cleanLine);
+
     // Horizontal rule (must check before headings)
-    if (/^(---+|\*\*\*+|___+)\s*$/.test(line)) {
-        return { 
-            html: '<span class="md-hr">' + html + '</span>', 
-            inCodeBlock: false, 
-            codeBlockLang: null 
+    if (/^(---+|\*\*\*+|___+)\s*$/.test(cleanLine)) {
+        return {
+            html: '<span class="md-hr">' + html + '</span>',
+            inCodeBlock: false,
+            codeBlockLang: null
         };
     }
     
     // Headings
-    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    const headingMatch = cleanLine.match(/^(#{1,6})\s+(.*)$/);
     if (headingMatch) {
         const level = headingMatch[1].length;
         const hashes = escapeHtml(headingMatch[1]);
@@ -167,22 +171,22 @@ export function applyMarkdownHighlighting(
         html = `<span class="md-h${level}"><span class="md-hash">${hashes}</span> ${content}</span>`;
         return { html, inCodeBlock: false, codeBlockLang: null };
     }
-    
+
     // Blockquotes
-    if (/^>\s*/.test(line)) {
-        const content = line.replace(/^>\s*/, '');
-        html = '<span class="md-blockquote"><span class="md-blockquote-marker">&gt;</span> ' + 
-               applyInlineMarkdown(content) + '</span>';
+    if (/^>\s*/.test(cleanLine)) {
+        const content = cleanLine.replace(/^>\s*/, '');
+        html = '<span class="md-blockquote"><span class="md-blockquote-marker">&gt;</span> ' +
+            applyInlineMarkdown(content) + '</span>';
         return { html, inCodeBlock: false, codeBlockLang: null };
     }
-    
+
     // Unordered list items
-    const ulMatch = line.match(/^(\s*)([-*+])\s+(.*)$/);
+    const ulMatch = cleanLine.match(/^(\s*)([-*+])\s+(.*)$/);
     if (ulMatch) {
         const indent = ulMatch[1];
         const marker = ulMatch[2];
         let content = ulMatch[3];
-        
+
         // Check for checkbox
         const checkboxMatch = content.match(/^\[([ xX])\]\s*(.*)$/);
         if (checkboxMatch) {
@@ -193,13 +197,13 @@ export function applyMarkdownHighlighting(
         } else {
             content = applyInlineMarkdown(content);
         }
-        
+
         html = `<span class="md-list-item">${indent}<span class="md-list-marker">${escapeHtml(marker)}</span> ${content}</span>`;
         return { html, inCodeBlock: false, codeBlockLang: null };
     }
-    
+
     // Ordered list items
-    const olMatch = line.match(/^(\s*)(\d+\.)\s+(.*)$/);
+    const olMatch = cleanLine.match(/^(\s*)(\d+\.)\s+(.*)$/);
     if (olMatch) {
         const indent = olMatch[1];
         const marker = olMatch[2];
@@ -207,10 +211,10 @@ export function applyMarkdownHighlighting(
         html = `<span class="md-list-item">${indent}<span class="md-list-marker">${escapeHtml(marker)}</span> ${content}</span>`;
         return { html, inCodeBlock: false, codeBlockLang: null };
     }
-    
+
     // Apply inline markdown (bold, italic, code, links, etc.)
-    html = applyInlineMarkdown(line);
-    
+    html = applyInlineMarkdown(cleanLine);
+
     return { html, inCodeBlock: false, codeBlockLang: null };
 }
 

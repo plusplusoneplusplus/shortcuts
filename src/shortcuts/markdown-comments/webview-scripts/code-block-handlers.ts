@@ -2,11 +2,11 @@
  * Code block handling for the webview
  */
 
-import { state } from './state';
-import { showFloatingPanel } from './panel-manager';
+import { MarkdownComment } from '../types';
 import { escapeHtml } from '../webview-logic/markdown-renderer';
 import { applyCommentHighlightToRange } from '../webview-logic/selection-utils';
-import { MarkdownComment } from '../types';
+import { showFloatingPanel } from './panel-manager';
+import { state } from './state';
 import { CodeBlock } from './types';
 
 /**
@@ -244,5 +244,5 @@ function applyCommentsToBlockContent(
 }
 
 // Export for use in render.ts
-export { checkBlockHasComments, getVisibleCommentsForLine, applyCommentsToBlockContent };
+export { applyCommentsToBlockContent, checkBlockHasComments, getVisibleCommentsForLine };
 
