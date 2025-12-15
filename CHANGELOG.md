@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.6] - 2025-12-14
+
+### Fixed
+- Handle Windows CRLF line endings in markdown renderer
+- Fix heading display issues in review editor
+
+### Changed
+- Update README to reflect current project features (Global Notes, Markdown Review Editor, nested groups)
+- Condense README documentation for better readability
+
 ## [2.8.0] - 2025-12-11
 
 ### Added
