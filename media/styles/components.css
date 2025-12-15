@@ -137,7 +137,7 @@
 .hljs-built_in,
 .hljs-name,
 .hljs-tag {
-    color: #569cd6;
+    color: #7dcfff;
 }
 
 .hljs-string,
@@ -167,7 +167,7 @@
 }
 
 .hljs-function .hljs-keyword {
-    color: #569cd6;
+    color: #7dcfff;
 }
 
 .hljs-class .hljs-title,
