@@ -5,19 +5,30 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { handleAIClarification } from './ai-clarification-handler';
 import { CommentsManager } from './comments-manager';
-import { MarkdownComment } from './types';
+import { ClarificationContext, MarkdownComment, MermaidContext } from './types';
 import { getWebviewContent } from './webview-content';
-
-import { MermaidContext } from './types';
 
 /**
  * Message types from webview to extension
  */
+/**
+ * Context data for AI clarification requests from the webview
+ */
+interface AskAIContext {
+    selectedText: string;
+    startLine: number;
+    endLine: number;
+    surroundingLines: string;
+    nearestHeading: string | null;
+    allHeadings: string[];
+}
+
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile';
+    'copyPrompt' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI';
     commentId?: string;
     content?: string;
     selection?: {
@@ -36,6 +47,8 @@ interface WebviewMessage {
     // Image resolution fields
     path?: string;
     imgId?: string;
+    // AI clarification context
+    context?: AskAIContext;
 }
 
 /**
@@ -126,7 +139,11 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         const updateWebview = () => {
             const content = document.getText();
             const comments = this.commentsManager.getCommentsForFile(relativePath);
-            const settings = this.commentsManager.getSettings();
+            const baseSettings = this.commentsManager.getSettings();
+
+            // Add Ask AI enabled setting from VS Code configuration
+            const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiClarification').get<boolean>('enabled', false);
+            const settings = { ...baseSettings, askAIEnabled };
 
             console.log('[Extension] updateWebview called - content length:', content.length);
             console.log('[Extension] updateWebview - content preview:', content.substring(0, 200));
@@ -165,7 +182,11 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
             // Now update the webview with relocated comments
             const comments = this.commentsManager.getCommentsForFile(relativePath);
-            const settings = this.commentsManager.getSettings();
+            const baseSettings = this.commentsManager.getSettings();
+
+            // Add Ask AI enabled setting from VS Code configuration
+            const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiClarification').get<boolean>('enabled', false);
+            const settings = { ...baseSettings, askAIEnabled };
 
             webviewPanel.webview.postMessage({
                 type: 'update',
@@ -363,6 +384,65 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                     await this.openFileFromPath(message.path, document);
                 }
                 break;
+
+            case 'askAI':
+                if (message.context) {
+                    await this.handleAskAI(message.context, relativePath);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Handle AI clarification request from the webview
+     */
+    private async handleAskAI(context: AskAIContext, filePath: string): Promise<void> {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+
+        // Convert webview context to ClarificationContext
+        const clarificationContext: ClarificationContext = {
+            selectedText: context.selectedText,
+            selectionRange: {
+                startLine: context.startLine,
+                endLine: context.endLine
+            },
+            filePath: filePath,
+            surroundingContent: context.surroundingLines,
+            nearestHeading: context.nearestHeading,
+            headings: context.allHeadings
+        };
+
+        // Delegate to the AI clarification handler
+        const result = await handleAIClarification(clarificationContext, workspaceRoot);
+
+        // If successful, offer to add clarification as a comment
+        if (result.success && result.clarification) {
+            const action = await vscode.window.showInformationMessage(
+                'AI clarification received!',
+                'Add as Comment',
+                'Copy to Clipboard',
+                'Dismiss'
+            );
+
+            if (action === 'Add as Comment') {
+                // Add the clarification as a comment on the selected text
+                await this.commentsManager.addComment(
+                    filePath,
+                    {
+                        startLine: context.startLine,
+                        startColumn: 1,
+                        endLine: context.endLine,
+                        endColumn: context.selectedText.length + 1
+                    },
+                    context.selectedText,
+                    `🤖 **AI Clarification:**\n\n${result.clarification}`,
+                    'AI Assistant'
+                );
+                vscode.window.showInformationMessage('Clarification added as comment.');
+            } else if (action === 'Copy to Clipboard') {
+                await vscode.env.clipboard.writeText(result.clarification);
+                vscode.window.showInformationMessage('Clarification copied to clipboard.');
+            }
         }
     }
 

@@ -153,6 +153,24 @@
           "type": "string",
           "default": "rgba(76, 175, 80, 0.2)",
           "description": "Background highlight color for resolved comments (CSS color)"
+        },
+        "workspaceShortcuts.aiClarification.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**[Preview]** Enable the 'Ask AI' feature in the review editor context menu. This feature allows you to get AI clarification for selected text using Copilot CLI."
+        },
+        "workspaceShortcuts.aiClarification.tool": {
+          "type": "string",
+          "enum": [
+            "copilot-cli",
+            "clipboard"
+          ],
+          "enumDescriptions": [
+            "Send to GitHub Copilot CLI in terminal",
+            "Copy prompt to clipboard"
+          ],
+          "default": "copilot-cli",
+          "description": "Target AI tool for clarification requests from the review editor"
         }
       }
     },
