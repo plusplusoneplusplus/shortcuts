@@ -81,6 +81,54 @@ function setupEditorEventListeners(): void {
     editorWrapper.addEventListener('mouseup', handleSelectionChange);
     editorWrapper.addEventListener('keyup', handleSelectionChange);
     editorWrapper.addEventListener('click', handleTripleClick);
+    editorWrapper.addEventListener('paste', handleKeyboardPaste);
+}
+
+/**
+ * Handle keyboard paste (Ctrl+V / Cmd+V) in the editor
+ * Intercepts paste to ensure plain text is inserted and properly rendered
+ */
+function handleKeyboardPaste(e: ClipboardEvent): void {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    // Get plain text from clipboard to avoid HTML/RTF formatting issues
+    const text = clipboardData.getData('text/plain');
+    if (!text) return;
+
+    // Prevent default only if we have text to insert
+    e.preventDefault();
+
+    // Insert text at current selection using Range API
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+        // Fallback: focus editor and try execCommand
+        editorWrapper.focus();
+        document.execCommand('insertText', false, text);
+    } else {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        
+        // Create text node and insert
+        const textNode = document.createTextNode(text);
+        range.insertNode(textNode);
+        
+        // Move cursor to end of inserted text
+        range.setStartAfter(textNode);
+        range.setEndAfter(textNode);
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
+
+    // After paste, extract the new content and update state/render
+    setTimeout(() => {
+        const newContent = getPlainTextContent();
+        if (newContent !== state.currentContent) {
+            state.setCurrentContent(newContent);
+            updateContent(newContent);
+            render();
+        }
+    }, 0);
 }
 
 /**
@@ -268,15 +316,39 @@ function handleCopy(): void {
 
 /**
  * Handle paste operation
+ * After pasting, trigger content update and re-render for proper markdown rendering
  */
 function handlePaste(): void {
     navigator.clipboard.readText().then(text => {
         editorWrapper.focus();
+
+        // Use insertText command to paste the plain text
         document.execCommand('insertText', false, text);
+
+        // After paste, extract the new content and update state/render
+        // Use setTimeout to ensure DOM updates are complete
+        setTimeout(() => {
+            const newContent = getPlainTextContent();
+            if (newContent !== state.currentContent) {
+                state.setCurrentContent(newContent);
+                updateContent(newContent);
+                render();
+            }
+        }, 0);
     }).catch(() => {
         // Fallback if clipboard API fails
         editorWrapper.focus();
         document.execCommand('paste');
+
+        // Still try to update after fallback paste
+        setTimeout(() => {
+            const newContent = getPlainTextContent();
+            if (newContent !== state.currentContent) {
+                state.setCurrentContent(newContent);
+                updateContent(newContent);
+                render();
+            }
+        }, 0);
     });
 }
 

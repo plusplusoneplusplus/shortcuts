@@ -291,7 +291,12 @@ function renderCommentBubbleContent(comment: MarkdownComment): string {
         '<button class="bubble-action-btn" data-action="delete" title="Delete">🗑️</button>' +
         '</div></div>' +
         '<div class="bubble-selected-text">' + escapeHtml(comment.selectedText) + '</div>' +
-        '<div class="bubble-comment-text">' + escapeHtml(comment.comment) + '</div>';
+        '<div class="bubble-comment-text">' + escapeHtml(comment.comment) + '</div>' +
+        // Add resize handles for the bubble
+        '<div class="resize-handle resize-handle-se" data-resize="se"></div>' +
+        '<div class="resize-handle resize-handle-e" data-resize="e"></div>' +
+        '<div class="resize-handle resize-handle-s" data-resize="s"></div>' +
+        '<div class="resize-grip"></div>';
 }
 
 /**
@@ -326,6 +331,9 @@ function setupBubbleActions(bubble: HTMLElement, comment: MarkdownComment): void
 
     // Setup drag functionality for the bubble header
     setupBubbleDrag(bubble);
+
+    // Setup resize functionality for the bubble
+    setupBubbleResize(bubble);
 }
 
 /**
@@ -379,6 +387,129 @@ function setupBubbleDrag(bubble: HTMLElement): void {
         if (isDragging) {
             isDragging = false;
             bubble.classList.remove('dragging');
+        }
+    });
+}
+
+/**
+ * Setup resize functionality for comment bubble
+ */
+function setupBubbleResize(bubble: HTMLElement): void {
+    const handles = bubble.querySelectorAll('.resize-handle');
+    if (handles.length === 0) return;
+
+    let isResizing = false;
+    let currentHandle: string | null = null;
+    let startX: number, startY: number;
+    let initialWidth: number, initialHeight: number;
+    let initialLeft: number, initialTop: number;
+
+    // Min/max constraints
+    const minWidth = 280;
+    const minHeight = 120;
+    const maxWidth = window.innerWidth - 40;
+    const maxHeight = window.innerHeight - 40;
+
+    handles.forEach(handle => {
+        handle.addEventListener('mousedown', (e) => {
+            const event = e as MouseEvent;
+            event.preventDefault();
+            event.stopPropagation();
+
+            isResizing = true;
+            currentHandle = (handle as HTMLElement).dataset.resize || null;
+            bubble.classList.add('resizing');
+            (handle as HTMLElement).classList.add('active');
+
+            startX = event.clientX;
+            startY = event.clientY;
+            initialWidth = bubble.offsetWidth;
+            initialHeight = bubble.offsetHeight;
+            initialLeft = parseInt(bubble.style.left) || 0;
+            initialTop = parseInt(bubble.style.top) || 0;
+        });
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing || !currentHandle) return;
+
+        const deltaX = e.clientX - startX;
+        const deltaY = e.clientY - startY;
+
+        let newWidth = initialWidth;
+        let newHeight = initialHeight;
+        let newLeft = initialLeft;
+        let newTop = initialTop;
+
+        // Calculate new dimensions based on which handle is being dragged
+        switch (currentHandle) {
+            case 'e': // East (right edge)
+                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth + deltaX));
+                break;
+            case 's': // South (bottom edge)
+                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight + deltaY));
+                break;
+            case 'se': // Southeast (bottom-right corner)
+                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth + deltaX));
+                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight + deltaY));
+                break;
+            case 'w': // West (left edge)
+                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth - deltaX));
+                newLeft = initialLeft + (initialWidth - newWidth);
+                break;
+            case 'n': // North (top edge)
+                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight - deltaY));
+                newTop = initialTop + (initialHeight - newHeight);
+                break;
+            case 'sw': // Southwest (bottom-left corner)
+                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth - deltaX));
+                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight + deltaY));
+                newLeft = initialLeft + (initialWidth - newWidth);
+                break;
+            case 'ne': // Northeast (top-right corner)
+                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth + deltaX));
+                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight - deltaY));
+                newTop = initialTop + (initialHeight - newHeight);
+                break;
+            case 'nw': // Northwest (top-left corner)
+                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth - deltaX));
+                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight - deltaY));
+                newLeft = initialLeft + (initialWidth - newWidth);
+                newTop = initialTop + (initialHeight - newHeight);
+                break;
+        }
+
+        // Keep within viewport bounds
+        if (newLeft < 10) {
+            newWidth = newWidth - (10 - newLeft);
+            newLeft = 10;
+        }
+        if (newTop < 10) {
+            newHeight = newHeight - (10 - newTop);
+            newTop = 10;
+        }
+        if (newLeft + newWidth > window.innerWidth - 10) {
+            newWidth = window.innerWidth - newLeft - 10;
+        }
+        if (newTop + newHeight > window.innerHeight - 10) {
+            newHeight = window.innerHeight - newTop - 10;
+        }
+
+        // Apply new dimensions
+        bubble.style.width = newWidth + 'px';
+        bubble.style.height = newHeight + 'px';
+        bubble.style.left = newLeft + 'px';
+        bubble.style.top = newTop + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            currentHandle = null;
+            bubble.classList.remove('resizing');
+            bubble.querySelectorAll('.resize-handle').forEach(h => {
+                h.classList.remove('active');
+            });
         }
     });
 }

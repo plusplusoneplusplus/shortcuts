@@ -45,6 +45,12 @@
     font-family: var(--vscode-font-family);
     font-size: 13px;
     animation: bubbleIn 0.15s ease-out;
+    max-height: 400px;
+    min-width: 280px;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .inline-comment-bubble.resolved {
@@ -57,6 +63,7 @@
         opacity: 0;
         transform: translateY(-5px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -140,6 +147,28 @@
 .bubble-comment-text {
     white-space: pre-wrap;
     line-height: 1.5;
+    max-height: 200px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+}
+
+/* Scrollbar styling for comment bubble */
+.bubble-comment-text::-webkit-scrollbar {
+    width: 6px;
+}
+
+.bubble-comment-text::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.bubble-comment-text::-webkit-scrollbar-thumb {
+    background-color: var(--vscode-scrollbarSlider-background, rgba(100, 100, 100, 0.4));
+    border-radius: 3px;
+}
+
+.bubble-comment-text::-webkit-scrollbar-thumb:hover {
+    background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.6));
 }
 
 /* ==============================
@@ -162,6 +191,7 @@
         opacity: 0;
         transform: scale(0.95);
     }
+
     to {
         opacity: 1;
         transform: scale(1);
@@ -321,3 +351,135 @@
     border-top: 1px solid var(--border-color);
 }
 
+/* ==============================
+ * Resize Handles for Panels
+ * ============================== */
+
+/* Common resize handle styles */
+.resize-handle {
+    position: absolute;
+    background: transparent;
+    z-index: 10;
+}
+
+.resize-handle:hover {
+    background: var(--vscode-focusBorder, #007acc);
+    opacity: 0.5;
+}
+
+.resize-handle.active {
+    background: var(--vscode-focusBorder, #007acc);
+    opacity: 0.7;
+}
+
+/* Corner resize handles */
+.resize-handle-se {
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: se-resize;
+    border-bottom-right-radius: 8px;
+}
+
+.resize-handle-sw {
+    left: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: sw-resize;
+    border-bottom-left-radius: 8px;
+}
+
+.resize-handle-ne {
+    right: 0;
+    top: 0;
+    width: 16px;
+    height: 16px;
+    cursor: ne-resize;
+    border-top-right-radius: 8px;
+}
+
+.resize-handle-nw {
+    left: 0;
+    top: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nw-resize;
+    border-top-left-radius: 8px;
+}
+
+/* Edge resize handles */
+.resize-handle-e {
+    right: 0;
+    top: 16px;
+    bottom: 16px;
+    width: 4px;
+    cursor: e-resize;
+}
+
+.resize-handle-w {
+    left: 0;
+    top: 16px;
+    bottom: 16px;
+    width: 4px;
+    cursor: w-resize;
+}
+
+.resize-handle-n {
+    top: 0;
+    left: 16px;
+    right: 16px;
+    height: 4px;
+    cursor: n-resize;
+}
+
+.resize-handle-s {
+    bottom: 0;
+    left: 16px;
+    right: 16px;
+    height: 4px;
+    cursor: s-resize;
+}
+
+/* Visual resize indicator (corner grip) */
+.resize-grip {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+    opacity: 0.4;
+}
+
+.resize-grip::before,
+.resize-grip::after {
+    content: '';
+    position: absolute;
+    background: var(--vscode-descriptionForeground, #666);
+}
+
+.resize-grip::before {
+    right: 0;
+    bottom: 0;
+    width: 8px;
+    height: 2px;
+    border-radius: 1px;
+}
+
+.resize-grip::after {
+    right: 0;
+    bottom: 0;
+    width: 2px;
+    height: 8px;
+    border-radius: 1px;
+}
+
+/* Resizing state for panels */
+.inline-comment-bubble.resizing,
+.floating-comment-panel.resizing,
+.inline-edit-panel.resizing {
+    user-select: none;
+    transition: none;
+}
