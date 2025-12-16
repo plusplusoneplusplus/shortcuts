@@ -3,6 +3,12 @@
  * Exports all components for the markdown comments functionality
  */
 
+export {
+    buildClarificationPrompt,
+    escapeShellArg,
+    parseCopilotOutput,
+    validateAndTruncatePrompt
+} from './ai-clarification-handler';
 export * from './comment-anchor';
 export { MarkdownCommentsCommands } from './comments-commands';
 export { CommentsManager } from './comments-manager';

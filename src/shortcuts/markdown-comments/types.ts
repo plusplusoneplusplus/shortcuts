@@ -213,3 +213,37 @@ export interface CommentTreeItemData {
     comment?: MarkdownComment;
     commentCount?: number;
 }
+
+/**
+ * AI tool types for clarification requests
+ */
+export type AIToolType = 'copilot-cli' | 'clipboard';
+
+/**
+ * Document context for AI clarification requests
+ */
+export interface ClarificationContext {
+    /** The selected text to clarify */
+    selectedText: string;
+    /** Selection line range */
+    selectionRange: {
+        startLine: number;
+        endLine: number;
+    };
+    /** File being reviewed */
+    filePath: string;
+    /** Surrounding lines for context */
+    surroundingContent: string;
+    /** Nearest heading above selection */
+    nearestHeading: string | null;
+    /** All document headings for structure */
+    headings: string[];
+}
+
+/**
+ * Configuration for AI clarification feature
+ */
+export interface AIClarificationConfig {
+    /** Which AI tool to use */
+    tool: AIToolType;
+}

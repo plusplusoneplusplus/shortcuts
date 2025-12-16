@@ -148,6 +148,12 @@ export function getWebviewContent(
             <span class="context-menu-label">Add Comment</span>
             <span class="context-menu-shortcut">Ctrl+Shift+M</span>
         </div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" id="contextMenuAskAI">
+            <span class="context-menu-icon">🤖</span>
+            <span class="context-menu-label">Ask AI</span>
+            <span class="context-menu-shortcut"></span>
+        </div>
     </div>
 
     <!-- Load highlight.js from CDN for code syntax highlighting -->

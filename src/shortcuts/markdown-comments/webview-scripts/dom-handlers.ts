@@ -18,7 +18,7 @@ import {
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
-import { openFile, requestCopyPrompt, requestDeleteAll, requestResolveAll, updateContent } from './vscode-bridge';
+import { openFile, requestAskAI, requestCopyPrompt, requestDeleteAll, requestResolveAll, updateContent } from './vscode-bridge';
 
 // DOM element references
 let editorWrapper: HTMLElement;
@@ -28,6 +28,7 @@ let contextMenuCut: HTMLElement;
 let contextMenuCopy: HTMLElement;
 let contextMenuPaste: HTMLElement;
 let contextMenuAddComment: HTMLElement;
+let contextMenuAskAI: HTMLElement;
 
 /**
  * Initialize DOM handlers
@@ -40,6 +41,7 @@ export function initDomHandlers(): void {
     contextMenuCopy = document.getElementById('contextMenuCopy')!;
     contextMenuPaste = document.getElementById('contextMenuPaste')!;
     contextMenuAddComment = document.getElementById('contextMenuAddComment')!;
+    contextMenuAskAI = document.getElementById('contextMenuAskAI')!;
 
     setupToolbarEventListeners();
     setupEditorEventListeners();
@@ -109,6 +111,11 @@ function setupContextMenuEventListeners(): void {
     contextMenuAddComment.addEventListener('click', () => {
         hideContextMenu();
         handleAddCommentFromContextMenu();
+    });
+
+    contextMenuAskAI.addEventListener('click', () => {
+        hideContextMenu();
+        handleAskAIFromContextMenu();
     });
 
     // Hide context menu on click outside
@@ -184,13 +191,37 @@ function handleContextMenu(e: MouseEvent): void {
         contextMenuCut.classList.remove('disabled');
         contextMenuCopy.classList.remove('disabled');
         contextMenuAddComment.classList.remove('disabled');
+        // Only enable Ask AI if the feature is enabled in settings
+        if (state.settings.askAIEnabled) {
+            contextMenuAskAI.classList.remove('disabled');
+        } else {
+            contextMenuAskAI.classList.add('disabled');
+        }
     } else {
         contextMenuCut.classList.add('disabled');
         contextMenuCopy.classList.add('disabled');
         contextMenuAddComment.classList.add('disabled');
+        contextMenuAskAI.classList.add('disabled');
     }
     // Paste is always enabled
     contextMenuPaste.classList.remove('disabled');
+
+    // Show/hide Ask AI menu item based on feature flag
+    if (state.settings.askAIEnabled) {
+        contextMenuAskAI.style.display = '';
+        // Also show the separator before Ask AI
+        const separator = contextMenuAskAI.previousElementSibling;
+        if (separator?.classList.contains('context-menu-separator')) {
+            (separator as HTMLElement).style.display = '';
+        }
+    } else {
+        contextMenuAskAI.style.display = 'none';
+        // Also hide the separator before Ask AI
+        const separator = contextMenuAskAI.previousElementSibling;
+        if (separator?.classList.contains('context-menu-separator')) {
+            (separator as HTMLElement).style.display = 'none';
+        }
+    }
 
     // Position and show context menu
     e.preventDefault();
@@ -302,6 +333,92 @@ function handleAddCommentFromContextMenu(): void {
 
     showFloatingPanel(saved.rect, saved.selectedText);
     state.setSavedSelectionForContextMenu(null);
+}
+
+/**
+ * Handle "Ask AI" from context menu
+ * Extracts document context and sends to extension for AI clarification
+ */
+function handleAskAIFromContextMenu(): void {
+    const saved = state.savedSelectionForContextMenu;
+    if (!saved || !saved.selectedText) {
+        alert('Please select some text first to ask AI.');
+        return;
+    }
+
+    // Extract document context for the AI
+    const context = extractDocumentContext(saved.startLine, saved.endLine, saved.selectedText);
+
+    // Send to extension
+    requestAskAI(context);
+
+    // Clear saved selection
+    state.setSavedSelectionForContextMenu(null);
+}
+
+/**
+ * Extract document context for AI clarification
+ * Gathers headings, surrounding content, and selection info
+ * 
+ * @param startLine - Selection start line (1-based)
+ * @param endLine - Selection end line (1-based)
+ * @param selectedText - The selected text
+ * @returns Context object for AI clarification
+ */
+function extractDocumentContext(startLine: number, endLine: number, selectedText: string): {
+    selectedText: string;
+    startLine: number;
+    endLine: number;
+    surroundingLines: string;
+    nearestHeading: string | null;
+    allHeadings: string[];
+} {
+    const content = state.currentContent;
+    const lines = content.split('\n');
+
+    // Extract all markdown headings from the document
+    const allHeadings: string[] = [];
+    let nearestHeading: string | null = null;
+    let nearestHeadingLine = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        // Match markdown headings (# Heading, ## Heading, etc.)
+        const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+        if (headingMatch) {
+            const headingText = headingMatch[2].trim();
+            allHeadings.push(headingText);
+
+            // Track nearest heading above selection
+            if (i + 1 <= startLine && i + 1 > nearestHeadingLine) {
+                nearestHeading = headingText;
+                nearestHeadingLine = i + 1;
+            }
+        }
+    }
+
+    // Extract surrounding lines (5 lines before and after the selection)
+    const contextRadius = 5;
+    const contextStartLine = Math.max(0, startLine - 1 - contextRadius);
+    const contextEndLine = Math.min(lines.length, endLine + contextRadius);
+
+    const surroundingLines: string[] = [];
+    for (let i = contextStartLine; i < contextEndLine; i++) {
+        // Skip the selected lines themselves to avoid duplication
+        if (i >= startLine - 1 && i < endLine) {
+            continue;
+        }
+        surroundingLines.push(lines[i]);
+    }
+
+    return {
+        selectedText,
+        startLine,
+        endLine,
+        surroundingLines: surroundingLines.join('\n'),
+        nearestHeading,
+        allHeadings
+    };
 }
 
 /**

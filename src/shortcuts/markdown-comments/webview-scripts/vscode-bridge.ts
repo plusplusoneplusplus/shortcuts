@@ -118,6 +118,20 @@ export function openFile(path: string): void {
 }
 
 /**
+ * Request AI clarification for selected text
+ */
+export function requestAskAI(context: {
+    selectedText: string;
+    startLine: number;
+    endLine: number;
+    surroundingLines: string;
+    nearestHeading: string | null;
+    allHeadings: string[];
+}): void {
+    postMessage({ type: 'askAI', context });
+}
+
+/**
  * Message handler type
  */
 export type MessageHandler = (message: ExtensionMessage) => void;

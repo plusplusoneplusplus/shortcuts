@@ -30,6 +30,8 @@ export interface WebviewState {
  */
 export interface WebviewSettings {
     showResolved: boolean;
+    /** Whether the Ask AI feature is enabled (preview) */
+    askAIEnabled?: boolean;
 }
 
 /**
@@ -46,6 +48,24 @@ export interface PendingSelection extends CommentSelection {
 export interface SavedSelection extends PendingSelection {
     range: Range;
     rect: DOMRect;
+}
+
+/**
+ * Context data sent from webview to extension when "Ask AI" is triggered
+ */
+export interface AskAIContext {
+    /** The selected text to clarify */
+    selectedText: string;
+    /** Selection start line (1-based) */
+    startLine: number;
+    /** Selection end line (1-based) */
+    endLine: number;
+    /** Context lines around selection */
+    surroundingLines: string;
+    /** Heading above selection */
+    nearestHeading: string | null;
+    /** Document structure - all headings */
+    allHeadings: string[];
 }
 
 /**
@@ -72,7 +92,8 @@ export type WebviewMessage =
     | { type: 'deleteComment'; commentId: string }
     | { type: 'updateContent'; content: string }
     | { type: 'resolveImagePath'; path: string; imgId: string }
-    | { type: 'openFile'; path: string };
+    | { type: 'openFile'; path: string }
+    | { type: 'askAI'; context: AskAIContext };
 
 /**
  * Messages sent from extension to webview
