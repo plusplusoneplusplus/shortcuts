@@ -22,6 +22,7 @@ import {
     CommentsConfig,
     CommentSelection,
     CommentsSettings,
+    CommentType,
     DEFAULT_COMMENTS_CONFIG,
     DEFAULT_COMMENTS_SETTINGS,
     MarkdownComment,
@@ -117,7 +118,8 @@ export class CommentsManager implements vscode.Disposable {
         comment: string,
         author?: string,
         tags?: string[],
-        mermaidContext?: MermaidContext
+        mermaidContext?: MermaidContext,
+        type?: CommentType
     ): Promise<MarkdownComment> {
         const now = new Date().toISOString();
         const relativePath = this.getRelativePath(filePath);
@@ -141,6 +143,7 @@ export class CommentsManager implements vscode.Disposable {
             selectedText,
             comment,
             status: 'open',
+            type: type || 'user',
             createdAt: now,
             updatedAt: now,
             author,

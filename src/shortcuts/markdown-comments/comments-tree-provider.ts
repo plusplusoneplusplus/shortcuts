@@ -88,10 +88,19 @@ export class CommentItem extends vscode.TreeItem {
         );
         this.tooltip.supportHtml = true;
 
-        // Icon based on status
+        // Icon based on status and type
         if (comment.status === 'resolved') {
             this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
+        } else if (comment.type === 'ai-suggestion') {
+            this.iconPath = new vscode.ThemeIcon('sparkle', new vscode.ThemeColor('charts.blue'));
+        } else if (comment.type === 'ai-clarification') {
+            this.iconPath = new vscode.ThemeIcon('lightbulb', new vscode.ThemeColor('charts.purple'));
+        } else if (comment.type === 'ai-critique') {
+            this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('charts.orange'));
+        } else if (comment.type === 'ai-question') {
+            this.iconPath = new vscode.ThemeIcon('question', new vscode.ThemeColor('charts.cyan'));
         } else {
+            // Default: user comment
             this.iconPath = new vscode.ThemeIcon('comment', new vscode.ThemeColor('charts.yellow'));
         }
 

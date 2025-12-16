@@ -8,6 +8,11 @@
 export type CommentStatus = 'open' | 'resolved' | 'pending';
 
 /**
+ * Comment type - distinguishes between user comments and different AI response types
+ */
+export type CommentType = 'user' | 'ai-suggestion' | 'ai-clarification' | 'ai-critique' | 'ai-question';
+
+/**
  * Selection range within a markdown file
  */
 export interface CommentSelection {
@@ -92,6 +97,8 @@ export interface MarkdownComment {
     comment: string;
     /** Current status of the comment */
     status: CommentStatus;
+    /** Type of the comment (user or ai) - defaults to 'user' */
+    type?: CommentType;
     /** ISO timestamp when created */
     createdAt: string;
     /** ISO timestamp when last updated */
@@ -112,10 +119,18 @@ export interface MarkdownComment {
 export interface CommentsSettings {
     /** Whether to show resolved comments */
     showResolved: boolean;
-    /** Highlight color for comments (CSS color) */
+    /** Highlight color for user comments (CSS color) */
     highlightColor: string;
     /** Highlight color for resolved comments (CSS color) */
     resolvedHighlightColor: string;
+    /** Highlight color for AI suggestion comments (CSS color) */
+    aiSuggestionHighlightColor: string;
+    /** Highlight color for AI clarification comments (CSS color) */
+    aiClarificationHighlightColor: string;
+    /** Highlight color for AI critique comments (CSS color) */
+    aiCritiqueHighlightColor: string;
+    /** Highlight color for AI question comments (CSS color) */
+    aiQuestionHighlightColor: string;
 }
 
 /**
@@ -135,8 +150,12 @@ export interface CommentsConfig {
  */
 export const DEFAULT_COMMENTS_SETTINGS: CommentsSettings = {
     showResolved: true,
-    highlightColor: 'rgba(255, 235, 59, 0.3)',
-    resolvedHighlightColor: 'rgba(76, 175, 80, 0.2)'
+    highlightColor: 'rgba(255, 235, 59, 0.3)',           // Yellow for user comments
+    resolvedHighlightColor: 'rgba(76, 175, 80, 0.2)',   // Green for resolved
+    aiSuggestionHighlightColor: 'rgba(33, 150, 243, 0.3)',    // Blue for AI suggestions
+    aiClarificationHighlightColor: 'rgba(156, 39, 176, 0.3)', // Purple for AI clarifications
+    aiCritiqueHighlightColor: 'rgba(255, 152, 0, 0.3)',       // Orange for AI critiques
+    aiQuestionHighlightColor: 'rgba(0, 188, 212, 0.3)'        // Cyan for AI questions
 };
 
 /**

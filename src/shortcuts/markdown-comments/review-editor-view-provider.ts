@@ -426,6 +426,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
             if (action === 'Add as Comment') {
                 // Add the clarification as a comment on the selected text
+                // Use 'ai-clarification' type for distinct visual styling
                 await this.commentsManager.addComment(
                     filePath,
                     {
@@ -436,7 +437,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                     },
                     context.selectedText,
                     `🤖 **AI Clarification:**\n\n${result.clarification}`,
-                    'AI Assistant'
+                    'AI Assistant',
+                    undefined,  // tags
+                    undefined,  // mermaidContext
+                    'ai-clarification'  // type
                 );
                 vscode.window.showInformationMessage('Clarification added as comment.');
             } else if (action === 'Copy to Clipboard') {

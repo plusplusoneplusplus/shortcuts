@@ -9,7 +9,7 @@
 .commented-text {
     background-color: var(--highlight-open);
     cursor: pointer;
-    border-bottom: 2px solid #f9a825;
+    border-bottom: 2px solid var(--comment-border-user);
     position: relative;
     transition: background-color 0.2s;
 }
@@ -18,13 +18,54 @@
     background-color: var(--highlight-hover);
 }
 
+/* Resolved comments (takes precedence over type) */
 .commented-text.resolved {
     background-color: var(--highlight-resolved);
-    border-bottom-color: #4caf50;
+    border-bottom-color: var(--comment-border-resolved);
 }
 
 .commented-text.resolved:hover {
     background-color: rgba(76, 175, 80, 0.35);
+}
+
+/* AI Suggestion comments - Blue */
+.commented-text.ai-suggestion {
+    background-color: var(--highlight-ai-suggestion);
+    border-bottom-color: var(--comment-border-ai-suggestion);
+}
+
+.commented-text.ai-suggestion:hover {
+    background-color: var(--highlight-ai-suggestion-hover);
+}
+
+/* AI Clarification comments - Purple */
+.commented-text.ai-clarification {
+    background-color: var(--highlight-ai-clarification);
+    border-bottom-color: var(--comment-border-ai-clarification);
+}
+
+.commented-text.ai-clarification:hover {
+    background-color: var(--highlight-ai-clarification-hover);
+}
+
+/* AI Critique comments - Orange */
+.commented-text.ai-critique {
+    background-color: var(--highlight-ai-critique);
+    border-bottom-color: var(--comment-border-ai-critique);
+}
+
+.commented-text.ai-critique:hover {
+    background-color: var(--highlight-ai-critique-hover);
+}
+
+/* AI Question comments - Cyan */
+.commented-text.ai-question {
+    background-color: var(--highlight-ai-question);
+    border-bottom-color: var(--comment-border-ai-question);
+}
+
+.commented-text.ai-question:hover {
+    background-color: var(--highlight-ai-question-hover);
 }
 
 /* ==============================
@@ -39,7 +80,7 @@
     background: var(--comment-bg);
     border: 1px solid var(--comment-border);
     border-radius: 8px;
-    border-left: 4px solid #f9a825;
+    border-left: 4px solid var(--comment-border-user);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     z-index: 100;
     font-family: var(--vscode-font-family);
@@ -54,8 +95,25 @@
 }
 
 .inline-comment-bubble.resolved {
-    border-left-color: #4caf50;
+    border-left-color: var(--comment-border-resolved);
     opacity: 0.85;
+}
+
+/* AI type-specific bubble borders */
+.inline-comment-bubble.ai-suggestion {
+    border-left-color: var(--comment-border-ai-suggestion);
+}
+
+.inline-comment-bubble.ai-clarification {
+    border-left-color: var(--comment-border-ai-clarification);
+}
+
+.inline-comment-bubble.ai-critique {
+    border-left-color: var(--comment-border-ai-critique);
+}
+
+.inline-comment-bubble.ai-question {
+    border-left-color: var(--comment-border-ai-question);
 }
 
 @keyframes bubbleIn {
@@ -109,6 +167,27 @@
 .bubble-meta .status.resolved {
     background: var(--highlight-resolved);
     color: #2e7d32;
+}
+
+/* AI type-specific status badges */
+.bubble-meta .status.ai-suggestion {
+    background: var(--highlight-ai-suggestion);
+    color: #1565c0;
+}
+
+.bubble-meta .status.ai-clarification {
+    background: var(--highlight-ai-clarification);
+    color: #7b1fa2;
+}
+
+.bubble-meta .status.ai-critique {
+    background: var(--highlight-ai-critique);
+    color: #e65100;
+}
+
+.bubble-meta .status.ai-question {
+    background: var(--highlight-ai-question);
+    color: #00838f;
 }
 
 .bubble-actions {

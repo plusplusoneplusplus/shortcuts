@@ -235,7 +235,10 @@ export function showCommentBubble(comment: MarkdownComment, anchorEl: HTMLElemen
     closeActiveCommentBubble();
 
     const bubble = document.createElement('div');
-    bubble.className = 'inline-comment-bubble' + (comment.status === 'resolved' ? ' resolved' : '');
+    // Build class list: base class + status class + type class
+    const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
+    const statusClass = comment.status === 'resolved' ? 'resolved' : '';
+    bubble.className = ['inline-comment-bubble', statusClass, typeClass].filter(c => c).join(' ');
     bubble.innerHTML = renderCommentBubbleContent(comment);
 
     // Always use fixed positioning
@@ -269,6 +272,19 @@ export function showCommentBubble(comment: MarkdownComment, anchorEl: HTMLElemen
 }
 
 /**
+ * Get display label for comment type
+ */
+function getTypeLabel(type?: string): string {
+    switch (type) {
+        case 'ai-suggestion': return '💡 AI Suggestion';
+        case 'ai-clarification': return '🔮 AI Clarification';
+        case 'ai-critique': return '⚠️ AI Critique';
+        case 'ai-question': return '❓ AI Question';
+        default: return '';
+    }
+}
+
+/**
  * Render comment bubble content
  */
 function renderCommentBubbleContent(comment: MarkdownComment): string {
@@ -282,9 +298,17 @@ function renderCommentBubbleContent(comment: MarkdownComment): string {
         ? 'Line ' + comment.selection.startLine
         : 'Lines ' + comment.selection.startLine + '-' + comment.selection.endLine;
 
+    // Get type label and class for AI comments
+    const typeLabel = getTypeLabel(comment.type);
+    const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
+
+    // Build type badge HTML if this is an AI comment
+    const typeBadge = typeLabel ? '<span class="status ' + typeClass + '">' + typeLabel + '</span>' : '';
+
     return '<div class="bubble-header">' +
         '<div class="bubble-meta">' + lineRange +
-        '<span class="status ' + statusClass + '">' + statusLabel + '</span></div>' +
+        '<span class="status ' + statusClass + '">' + statusLabel + '</span>' +
+        typeBadge + '</div>' +
         '<div class="bubble-actions">' +
         resolveBtn +
         '<button class="bubble-action-btn" data-action="edit" title="Edit">✏️</button>' +

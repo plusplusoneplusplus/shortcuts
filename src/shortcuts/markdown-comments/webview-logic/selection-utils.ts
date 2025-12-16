@@ -152,7 +152,8 @@ export function createPlainToHtmlMapping(
  * @param startCol - 1-based start column
  * @param endCol - 1-based end column
  * @param commentId - The comment ID for data attribute
- * @param statusClass - CSS class for comment status
+ * @param statusClass - CSS class for comment status (e.g., 'resolved')
+ * @param typeClass - CSS class for comment type (e.g., 'ai-suggestion', 'ai-clarification')
  * @returns HTML with highlight span applied
  */
 export function applyCommentHighlightToRange(
@@ -161,7 +162,8 @@ export function applyCommentHighlightToRange(
     startCol: number,
     endCol: number,
     commentId: string,
-    statusClass: string
+    statusClass: string,
+    typeClass: string = ''
 ): string {
     // Convert 1-based columns to 0-based indices
     const startIdx = Math.max(0, startCol - 1);
@@ -169,14 +171,14 @@ export function applyCommentHighlightToRange(
 
     // If the range is invalid or empty, wrap the entire line
     if (startIdx >= endIdx || startIdx >= plainText.length) {
-        return wrapWithCommentSpan(htmlContent, commentId, statusClass);
+        return wrapWithCommentSpan(htmlContent, commentId, statusClass, typeClass);
     }
 
     const { plainToHtmlStart, plainToHtmlEnd, plainLength } = createPlainToHtmlMapping(htmlContent);
 
     // Handle edge case where plain text is shorter than expected
     if (plainToHtmlStart[startIdx] === undefined) {
-        return wrapWithCommentSpan(htmlContent, commentId, statusClass);
+        return wrapWithCommentSpan(htmlContent, commentId, statusClass, typeClass);
     }
 
     // Get HTML positions
@@ -199,14 +201,15 @@ export function applyCommentHighlightToRange(
     const highlighted = htmlContent.substring(adjustedStart, adjustedEnd);
     const after = htmlContent.substring(adjustedEnd);
 
-    return before + wrapWithCommentSpan(highlighted, commentId, statusClass) + after;
+    return before + wrapWithCommentSpan(highlighted, commentId, statusClass, typeClass) + after;
 }
 
 /**
  * Wrap content with a comment highlight span
  */
-function wrapWithCommentSpan(content: string, commentId: string, statusClass: string): string {
-    return `<span class="commented-text ${statusClass}" data-comment-id="${commentId}">${content}</span>`;
+function wrapWithCommentSpan(content: string, commentId: string, statusClass: string, typeClass: string = ''): string {
+    const classes = ['commented-text', statusClass, typeClass].filter(c => c).join(' ');
+    return `<span class="${classes}" data-comment-id="${commentId}">${content}</span>`;
 }
 
 /**

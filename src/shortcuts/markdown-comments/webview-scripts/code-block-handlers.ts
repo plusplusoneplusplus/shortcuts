@@ -230,13 +230,16 @@ function applyCommentsToBlockContent(
     let result = htmlContent;
     sortedComments.forEach(comment => {
         const statusClass = comment.status === 'resolved' ? 'resolved' : '';
+        // Get the comment type class (e.g., 'ai-suggestion', 'ai-clarification')
+        const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
         result = applyCommentHighlightToRange(
             result, 
             plainText,
             comment.selection.startColumn, 
             comment.selection.endColumn,
             comment.id, 
-            statusClass
+            statusClass,
+            typeClass
         );
     });
     

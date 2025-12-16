@@ -440,6 +440,8 @@ export function render(isExternalChange: boolean = false): void {
 
         sortedComments.forEach(comment => {
             const statusClass = comment.status === 'resolved' ? 'resolved' : '';
+            // Get the comment type class (e.g., 'ai-suggestion', 'ai-clarification')
+            const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
             const { startCol, endCol } = getHighlightColumnsForLine(
                 comment.selection,
                 lineNum,
@@ -452,7 +454,8 @@ export function render(isExternalChange: boolean = false): void {
                 startCol,
                 endCol,
                 comment.id,
-                statusClass
+                statusClass,
+                typeClass
             );
         });
 
