@@ -12,6 +12,8 @@ import {
     COMMENTS_CONFIG_FILE,
     CommentsConfig,
     CommentsManager,
+    isUserComment,
+    MarkdownComment,
     MarkdownCommentsTreeDataProvider,
     PromptGenerator
 } from '../../shortcuts/markdown-comments';
@@ -476,6 +478,143 @@ suite('Markdown Comments Feature Tests', () => {
             assert.strictEqual(settings?.showResolved, false);
             assert.strictEqual(settings?.highlightColor, 'rgba(255, 0, 0, 0.5)');
         });
+
+        test('should add comment with type', async () => {
+            await commentsManager.initialize();
+
+            // Add user comment (default)
+            const userComment = await commentsManager.addComment(
+                'test.md',
+                { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                'User text',
+                'User comment'
+            );
+            assert.strictEqual(userComment.type, 'user');
+
+            // Add AI suggestion comment
+            const aiComment = await commentsManager.addComment(
+                'test.md',
+                { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 },
+                'AI text',
+                'AI suggestion',
+                undefined,
+                undefined,
+                undefined,
+                'ai-suggestion'
+            );
+            assert.strictEqual(aiComment.type, 'ai-suggestion');
+        });
+
+        test('should count only user comments with getOpenUserCommentCount', async () => {
+            await commentsManager.initialize();
+
+            // Add user comments
+            await commentsManager.addComment('test.md', { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'T1', 'C1');
+            await commentsManager.addComment('test.md', { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'T2', 'C2', undefined, undefined, undefined, 'user');
+
+            // Add AI comments
+            await commentsManager.addComment('test.md', { startLine: 10, startColumn: 1, endLine: 10, endColumn: 10 }, 'AI1', 'AIC1', undefined, undefined, undefined, 'ai-suggestion');
+            await commentsManager.addComment('test.md', { startLine: 15, startColumn: 1, endLine: 15, endColumn: 10 }, 'AI2', 'AIC2', undefined, undefined, undefined, 'ai-clarification');
+            await commentsManager.addComment('test.md', { startLine: 20, startColumn: 1, endLine: 20, endColumn: 10 }, 'AI3', 'AIC3', undefined, undefined, undefined, 'ai-critique');
+            await commentsManager.addComment('test.md', { startLine: 25, startColumn: 1, endLine: 25, endColumn: 10 }, 'AI4', 'AIC4', undefined, undefined, undefined, 'ai-question');
+
+            // getOpenCommentCount should count all
+            assert.strictEqual(commentsManager.getOpenCommentCount(), 6);
+
+            // getOpenUserCommentCount should only count user comments
+            assert.strictEqual(commentsManager.getOpenUserCommentCount(), 2);
+        });
+    });
+
+    suite('isUserComment helper', () => {
+        test('should return true for user comments', () => {
+            const userComment: MarkdownComment = {
+                id: 'test1',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                selectedText: 'Test',
+                comment: 'Comment',
+                status: 'open',
+                type: 'user',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            assert.strictEqual(isUserComment(userComment), true);
+        });
+
+        test('should return true for comments without type (defaults to user)', () => {
+            const defaultComment: MarkdownComment = {
+                id: 'test2',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                selectedText: 'Test',
+                comment: 'Comment',
+                status: 'open',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            assert.strictEqual(isUserComment(defaultComment), true);
+        });
+
+        test('should return false for AI suggestion comments', () => {
+            const aiComment: MarkdownComment = {
+                id: 'test3',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                selectedText: 'Test',
+                comment: 'Comment',
+                status: 'open',
+                type: 'ai-suggestion',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            assert.strictEqual(isUserComment(aiComment), false);
+        });
+
+        test('should return false for AI clarification comments', () => {
+            const aiComment: MarkdownComment = {
+                id: 'test4',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                selectedText: 'Test',
+                comment: 'Comment',
+                status: 'open',
+                type: 'ai-clarification',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            assert.strictEqual(isUserComment(aiComment), false);
+        });
+
+        test('should return false for AI critique comments', () => {
+            const aiComment: MarkdownComment = {
+                id: 'test5',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                selectedText: 'Test',
+                comment: 'Comment',
+                status: 'open',
+                type: 'ai-critique',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            assert.strictEqual(isUserComment(aiComment), false);
+        });
+
+        test('should return false for AI question comments', () => {
+            const aiComment: MarkdownComment = {
+                id: 'test6',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                selectedText: 'Test',
+                comment: 'Comment',
+                status: 'open',
+                type: 'ai-question',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            assert.strictEqual(isUserComment(aiComment), false);
+        });
     });
 
     suite('MarkdownCommentsTreeDataProvider', () => {
@@ -704,6 +843,96 @@ suite('Markdown Comments Feature Tests', () => {
             assert.strictEqual(prompts.length, 4); // 10 comments / 3 per prompt = 4 prompts
             assert.ok(prompts[0].includes('Part 1 of 4'));
             assert.ok(prompts[3].includes('Part 4 of 4'));
+        });
+
+        test('should exclude AI-generated comments from prompt', async () => {
+            // Add a user comment (default type)
+            await commentsManager.addComment('test.md', { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'User selected text', 'User comment');
+            
+            // Add an AI suggestion comment
+            await commentsManager.addComment('test.md', { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'AI suggestion text', 'AI suggestion comment', undefined, undefined, undefined, 'ai-suggestion');
+            
+            // Add an AI clarification comment
+            await commentsManager.addComment('test.md', { startLine: 10, startColumn: 1, endLine: 10, endColumn: 10 }, 'AI clarification text', 'AI clarification comment', undefined, undefined, undefined, 'ai-clarification');
+
+            const prompt = promptGenerator.generatePrompt();
+
+            // User comment should be included
+            assert.ok(prompt.includes('User selected text'));
+            assert.ok(prompt.includes('User comment'));
+            
+            // AI comments should be excluded
+            assert.ok(!prompt.includes('AI suggestion text'), 'AI suggestion text should not be in prompt');
+            assert.ok(!prompt.includes('AI suggestion comment'), 'AI suggestion comment should not be in prompt');
+            assert.ok(!prompt.includes('AI clarification text'), 'AI clarification text should not be in prompt');
+            assert.ok(!prompt.includes('AI clarification comment'), 'AI clarification comment should not be in prompt');
+        });
+
+        test('should exclude all AI comment types from prompt', async () => {
+            // Add a user comment with explicit type
+            await commentsManager.addComment('test.md', { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'Explicit user text', 'Explicit user comment', undefined, undefined, undefined, 'user');
+            
+            // Add all AI comment types
+            await commentsManager.addComment('test.md', { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'AI critique text', 'AI critique comment', undefined, undefined, undefined, 'ai-critique');
+            await commentsManager.addComment('test.md', { startLine: 10, startColumn: 1, endLine: 10, endColumn: 10 }, 'AI question text', 'AI question comment', undefined, undefined, undefined, 'ai-question');
+
+            const prompt = promptGenerator.generatePrompt();
+
+            // User comment should be included
+            assert.ok(prompt.includes('Explicit user text'));
+            assert.ok(prompt.includes('Explicit user comment'));
+            
+            // AI comments should be excluded
+            assert.ok(!prompt.includes('AI critique text'), 'AI critique should not be in prompt');
+            assert.ok(!prompt.includes('AI question text'), 'AI question should not be in prompt');
+        });
+
+        test('should return no comments message when only AI comments exist', async () => {
+            // Add only AI comments
+            await commentsManager.addComment('test.md', { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'AI only text', 'AI only comment', undefined, undefined, undefined, 'ai-suggestion');
+
+            const prompt = promptGenerator.generatePrompt();
+
+            assert.ok(prompt.includes('No open comments'));
+        });
+
+        test('should exclude AI comments from summary', async () => {
+            // Add user and AI comments
+            await commentsManager.addComment('file1.md', { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'T1', 'C1');
+            await commentsManager.addComment('file1.md', { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 }, 'T2', 'C2', undefined, undefined, undefined, 'ai-suggestion');
+            await commentsManager.addComment('file2.md', { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 }, 'T3', 'C3');
+
+            const summary = promptGenerator.getCommentsSummary();
+
+            // Should only count user comments (2 total: 1 in file1.md, 1 in file2.md)
+            assert.ok(summary.includes('Open Comments: 2'), 'Should only count 2 user comments');
+            assert.ok(summary.includes('file1.md: 1'), 'file1.md should have 1 user comment');
+            assert.ok(summary.includes('file2.md: 1'), 'file2.md should have 1 comment');
+        });
+
+        test('should exclude AI comments from generatePrompts (chunked)', async () => {
+            // Add 6 user comments and 4 AI comments
+            for (let i = 0; i < 6; i++) {
+                await commentsManager.addComment('test.md', { startLine: i + 1, startColumn: 1, endLine: i + 1, endColumn: 10 }, `User${i}`, `UC${i}`);
+            }
+            for (let i = 0; i < 4; i++) {
+                await commentsManager.addComment('test.md', { startLine: i + 10, startColumn: 1, endLine: i + 10, endColumn: 10 }, `AI${i}`, `AIC${i}`, undefined, undefined, undefined, 'ai-clarification');
+            }
+
+            const prompts = promptGenerator.generatePrompts({ maxCommentsPerPrompt: 3 });
+
+            // Should only have 2 chunks (6 user comments / 3 per prompt = 2 prompts)
+            assert.strictEqual(prompts.length, 2, 'Should have 2 chunks for 6 user comments');
+            assert.ok(prompts[0].includes('Part 1 of 2'));
+            assert.ok(prompts[1].includes('Part 2 of 2'));
+            
+            // Verify AI comments are not in any prompt
+            for (const prompt of prompts) {
+                for (let i = 0; i < 4; i++) {
+                    assert.ok(!prompt.includes(`AI${i}`), `AI${i} should not be in prompt`);
+                    assert.ok(!prompt.includes(`AIC${i}`), `AIC${i} should not be in prompt`);
+                }
+            }
         });
     });
 

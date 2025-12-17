@@ -206,12 +206,13 @@ export class MarkdownCommentsCommands {
     }
 
     /**
-     * Generate AI prompt and show in preview
+     * Generate AI prompt and show in preview.
+     * Only includes user comments, excluding AI-generated comments.
      */
     private async generateAIPrompt(): Promise<void> {
-        const openCount = this.commentsManager.getOpenCommentCount();
+        const openCount = this.commentsManager.getOpenUserCommentCount();
         if (openCount === 0) {
-            vscode.window.showInformationMessage('No open comments to generate prompt from');
+            vscode.window.showInformationMessage('No open user comments to generate prompt from');
             return;
         }
 
@@ -253,12 +254,13 @@ export class MarkdownCommentsCommands {
     }
 
     /**
-     * Generate prompt and copy directly to clipboard
+     * Generate prompt and copy directly to clipboard.
+     * Only includes user comments, excluding AI-generated comments.
      */
     private async generateAndCopyPrompt(): Promise<void> {
-        const openCount = this.commentsManager.getOpenCommentCount();
+        const openCount = this.commentsManager.getOpenUserCommentCount();
         if (openCount === 0) {
-            vscode.window.showInformationMessage('No open comments to generate prompt from');
+            vscode.window.showInformationMessage('No open user comments to generate prompt from');
             return;
         }
 

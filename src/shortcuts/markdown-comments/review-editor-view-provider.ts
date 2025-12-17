@@ -7,7 +7,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { handleAIClarification } from './ai-clarification-handler';
 import { CommentsManager } from './comments-manager';
-import { ClarificationContext, MarkdownComment, MermaidContext } from './types';
+import { ClarificationContext, isUserComment, MarkdownComment, MermaidContext } from './types';
 import { getWebviewContent } from './webview-content';
 
 /**
@@ -584,17 +584,19 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     }
 
     /**
-     * Generate AI prompt and show in new document
+     * Generate AI prompt and show in new document.
+     * Only includes user comments, excluding AI-generated comments.
      */
     private async generateAndShowPrompt(
         filePath: string,
         options?: { includeFileContent: boolean; format: 'markdown' | 'json' }
     ): Promise<void> {
         const comments = this.commentsManager.getCommentsForFile(filePath)
-            .filter(c => c.status === 'open');
+            .filter(c => c.status === 'open')
+            .filter(c => isUserComment(c));
 
         if (comments.length === 0) {
-            vscode.window.showInformationMessage('No open comments to generate prompt from.');
+            vscode.window.showInformationMessage('No open user comments to generate prompt from.');
             return;
         }
 
@@ -608,17 +610,19 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     }
 
     /**
-     * Generate AI prompt and copy to clipboard
+     * Generate AI prompt and copy to clipboard.
+     * Only includes user comments, excluding AI-generated comments.
      */
     private async generateAndCopyPrompt(
         filePath: string,
         options?: { includeFileContent: boolean; format: 'markdown' | 'json' }
     ): Promise<void> {
         const comments = this.commentsManager.getCommentsForFile(filePath)
-            .filter(c => c.status === 'open');
+            .filter(c => c.status === 'open')
+            .filter(c => isUserComment(c));
 
         if (comments.length === 0) {
-            vscode.window.showInformationMessage('No open comments to generate prompt from.');
+            vscode.window.showInformationMessage('No open user comments to generate prompt from.');
             return;
         }
 

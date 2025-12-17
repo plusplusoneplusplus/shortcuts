@@ -25,6 +25,7 @@ import {
     CommentType,
     DEFAULT_COMMENTS_CONFIG,
     DEFAULT_COMMENTS_SETTINGS,
+    isUserComment,
     MarkdownComment,
     MermaidContext
 } from './types';
@@ -697,6 +698,13 @@ export class CommentsManager implements vscode.Disposable {
      */
     getOpenCommentCount(): number {
         return this.config.comments.filter(c => c.status === 'open').length;
+    }
+
+    /**
+     * Get the count of open user comments (excluding AI comments)
+     */
+    getOpenUserCommentCount(): number {
+        return this.config.comments.filter(c => c.status === 'open' && isUserComment(c)).length;
     }
 
     /**

@@ -114,6 +114,17 @@ export interface MarkdownComment {
 }
 
 /**
+ * Check if a comment is a user comment (not an AI-generated comment).
+ * Used for filtering prompts to only include human-added comments.
+ * 
+ * @param comment - The comment to check
+ * @returns true if the comment is a user comment (type is undefined or 'user')
+ */
+export function isUserComment(comment: MarkdownComment): boolean {
+    return !comment.type || comment.type === 'user';
+}
+
+/**
  * Settings for comments display
  */
 export interface CommentsSettings {

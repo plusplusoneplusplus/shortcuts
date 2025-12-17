@@ -8,6 +8,7 @@ import * as path from 'path';
 import { CommentsManager } from './comments-manager';
 import {
     DEFAULT_PROMPT_OPTIONS,
+    isUserComment,
     MarkdownComment,
     PromptGenerationOptions
 } from './types';
@@ -23,7 +24,8 @@ export class PromptGenerator {
     }
 
     /**
-     * Generate a prompt from all open comments
+     * Generate a prompt from all open user comments.
+     * AI-generated comments are excluded from the prompt.
      */
     generatePrompt(options: Partial<PromptGenerationOptions> = {}): string {
         const opts: PromptGenerationOptions = {
@@ -31,7 +33,9 @@ export class PromptGenerator {
             ...options
         };
 
-        const openComments = this.commentsManager.getOpenComments();
+        // Filter to only include user comments, excluding AI-generated comments
+        const openComments = this.commentsManager.getOpenComments()
+            .filter(c => isUserComment(c));
 
         if (openComments.length === 0) {
             return 'No open comments to process.';
@@ -311,10 +315,12 @@ export class PromptGenerator {
     }
 
     /**
-     * Get a summary of open comments
+     * Get a summary of open user comments.
+     * AI-generated comments are excluded from the summary.
      */
     getCommentsSummary(): string {
-        const openComments = this.commentsManager.getOpenComments();
+        const openComments = this.commentsManager.getOpenComments()
+            .filter(c => isUserComment(c));
         const grouped = this.groupCommentsByFile(openComments);
 
         const lines: string[] = [
@@ -354,7 +360,8 @@ export class PromptGenerator {
     }
 
     /**
-     * Generate multiple prompts if comments exceed the limit
+     * Generate multiple prompts if comments exceed the limit.
+     * AI-generated comments are excluded from the prompts.
      */
     generatePrompts(options: Partial<PromptGenerationOptions> = {}): string[] {
         const opts: PromptGenerationOptions = {
@@ -362,7 +369,9 @@ export class PromptGenerator {
             ...options
         };
 
-        const openComments = this.commentsManager.getOpenComments();
+        // Filter to only include user comments, excluding AI-generated comments
+        const openComments = this.commentsManager.getOpenComments()
+            .filter(c => isUserComment(c));
 
         if (openComments.length === 0) {
             return ['No open comments to process.'];
