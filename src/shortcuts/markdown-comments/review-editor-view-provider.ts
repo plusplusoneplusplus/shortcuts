@@ -23,6 +23,8 @@ interface AskAIContext {
     surroundingLines: string;
     nearestHeading: string | null;
     allHeadings: string[];
+    instructionType: 'clarify' | 'go-deeper' | 'custom';
+    customInstruction?: string;
 }
 
 interface WebviewMessage {
@@ -409,44 +411,51 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             filePath: filePath,
             surroundingContent: context.surroundingLines,
             nearestHeading: context.nearestHeading,
-            headings: context.allHeadings
+            headings: context.allHeadings,
+            instructionType: context.instructionType,
+            customInstruction: context.customInstruction
         };
 
         // Delegate to the AI clarification handler
         const result = await handleAIClarification(clarificationContext, workspaceRoot);
 
-        // If successful, offer to add clarification as a comment
+        // If successful, automatically add clarification as a comment
         if (result.success && result.clarification) {
-            const action = await vscode.window.showInformationMessage(
-                'AI clarification received!',
-                'Add as Comment',
-                'Copy to Clipboard',
-                'Dismiss'
+            // Determine the label based on instruction type
+            const labelMap: Record<string, string> = {
+                'clarify': '🤖 **AI Clarification:**',
+                'go-deeper': '🔍 **AI Deep Analysis:**',
+                'custom': '🤖 **AI Response:**'
+            };
+            const label = labelMap[context.instructionType] || '🤖 **AI Clarification:**';
+
+            // Add the clarification as a comment on the selected text
+            // Use 'ai-clarification' type for distinct visual styling
+            await this.commentsManager.addComment(
+                filePath,
+                {
+                    startLine: context.startLine,
+                    startColumn: 1,
+                    endLine: context.endLine,
+                    endColumn: context.selectedText.length + 1
+                },
+                context.selectedText,
+                `${label}\n\n${result.clarification}`,
+                'AI Assistant',
+                undefined,  // tags
+                undefined,  // mermaidContext
+                'ai-clarification'  // type
             );
 
-            if (action === 'Add as Comment') {
-                // Add the clarification as a comment on the selected text
-                // Use 'ai-clarification' type for distinct visual styling
-                await this.commentsManager.addComment(
-                    filePath,
-                    {
-                        startLine: context.startLine,
-                        startColumn: 1,
-                        endLine: context.endLine,
-                        endColumn: context.selectedText.length + 1
-                    },
-                    context.selectedText,
-                    `🤖 **AI Clarification:**\n\n${result.clarification}`,
-                    'AI Assistant',
-                    undefined,  // tags
-                    undefined,  // mermaidContext
-                    'ai-clarification'  // type
-                );
-                vscode.window.showInformationMessage('Clarification added as comment.');
-            } else if (action === 'Copy to Clipboard') {
-                await vscode.env.clipboard.writeText(result.clarification);
-                vscode.window.showInformationMessage('Clarification copied to clipboard.');
-            }
+            // Show a brief notification with option to copy
+            vscode.window.showInformationMessage(
+                'AI response added as comment.',
+                'Copy to Clipboard'
+            ).then(action => {
+                if (action === 'Copy to Clipboard') {
+                    vscode.env.clipboard.writeText(result.clarification!);
+                }
+            });
         }
     }
 

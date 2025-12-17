@@ -127,6 +127,8 @@ export function requestAskAI(context: {
     surroundingLines: string;
     nearestHeading: string | null;
     allHeadings: string[];
+    instructionType: 'clarify' | 'go-deeper' | 'custom';
+    customInstruction?: string;
 }): void {
     postMessage({ type: 'askAI', context });
 }

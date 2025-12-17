@@ -149,10 +149,39 @@ export function getWebviewContent(
             <span class="context-menu-shortcut">Ctrl+Shift+M</span>
         </div>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" id="contextMenuAskAI">
+        <div class="context-menu-item context-menu-parent" id="contextMenuAskAI">
             <span class="context-menu-icon">🤖</span>
             <span class="context-menu-label">Ask AI</span>
-            <span class="context-menu-shortcut"></span>
+            <span class="context-menu-arrow">▶</span>
+            <div class="context-submenu" id="askAISubmenu">
+                <div class="context-menu-item" id="askAIClarify">
+                    <span class="context-menu-icon">💡</span>
+                    <span class="context-menu-label">Clarify</span>
+                </div>
+                <div class="context-menu-item" id="askAIGoDeeper">
+                    <span class="context-menu-icon">🔍</span>
+                    <span class="context-menu-label">Go Deeper</span>
+                </div>
+                <div class="context-menu-separator"></div>
+                <div class="context-menu-item" id="askAICustom">
+                    <span class="context-menu-icon">✏️</span>
+                    <span class="context-menu-label">Custom Instruction...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom AI instruction input dialog -->
+    <div class="custom-instruction-dialog" id="customInstructionDialog" style="display: none;">
+        <div class="custom-instruction-header">
+            <span class="custom-instruction-title">🤖 Custom AI Instruction</span>
+            <button class="custom-instruction-close" id="customInstructionClose">×</button>
+        </div>
+        <div class="custom-instruction-selection" id="customInstructionSelection"></div>
+        <textarea id="customInstructionInput" placeholder="Enter your instruction for the AI (e.g., 'Explain the security implications')" rows="3"></textarea>
+        <div class="custom-instruction-footer">
+            <button id="customInstructionCancelBtn" class="btn btn-secondary btn-sm">Cancel</button>
+            <button id="customInstructionSubmitBtn" class="btn btn-primary btn-sm">Ask AI</button>
         </div>
     </div>
 

@@ -75,19 +75,74 @@ export function getAIToolSetting(): AIToolType {
 }
 
 /**
+ * Default prompt templates for each instruction type.
+ * These are used as fallbacks if settings are not configured.
+ */
+export const DEFAULT_PROMPTS = {
+    clarify: 'Please clarify',
+    goDeeper: 'Please provide an in-depth explanation and analysis of',
+    customDefault: 'Please explain'
+} as const;
+
+/**
+ * Get the configured prompt template from VS Code settings.
+ * Falls back to default prompts if not configured.
+ * 
+ * @param promptType - The type of prompt to retrieve
+ * @returns The configured or default prompt template
+ */
+export function getPromptTemplate(promptType: 'clarify' | 'goDeeper' | 'customDefault'): string {
+    const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiClarification.prompts');
+    const prompt = config.get<string>(promptType);
+
+    // Return configured prompt or fall back to default
+    if (prompt && prompt.trim().length > 0) {
+        return prompt.trim();
+    }
+
+    return DEFAULT_PROMPTS[promptType];
+}
+
+/**
+ * Build prompt instructions based on the instruction type.
+ * Uses configurable prompt templates from VS Code settings.
+ * 
+ * @param context - The clarification context from the webview
+ * @returns The instruction-specific prompt prefix
+ */
+function getInstructionPrefix(context: ClarificationContext): string {
+    switch (context.instructionType) {
+        case 'clarify':
+            return getPromptTemplate('clarify');
+        case 'go-deeper':
+            return getPromptTemplate('goDeeper');
+        case 'custom':
+            // For custom instructions, the user's instruction is the prefix
+            // Fall back to the configurable default if no custom instruction provided
+            return context.customInstruction || getPromptTemplate('customDefault');
+        default:
+            return getPromptTemplate('clarify');
+    }
+}
+
+/**
  * Build a clarification prompt from the context.
- * Keeps the prompt simple: file path and selected text only.
+ * Uses different prompt templates based on the instruction type.
  * The AI tool can read the file directly for additional context.
  * 
  * @param context - The clarification context from the webview
  * @returns The formatted prompt string
  */
 export function buildClarificationPrompt(context: ClarificationContext): string {
-    // Keep it simple - just file path and selected text
-    // The AI (Copilot) can read the file directly for context
     const selectedText = context.selectedText.trim();
+    const instructionPrefix = getInstructionPrefix(context);
 
-    return `Please clarify "${selectedText}" in the file ${context.filePath}`;
+    // For custom instructions, format slightly differently
+    if (context.instructionType === 'custom') {
+        return `${instructionPrefix}: "${selectedText}" in the file ${context.filePath}`;
+    }
+
+    return `${instructionPrefix} "${selectedText}" in the file ${context.filePath}`;
 }
 
 /**
@@ -104,10 +159,14 @@ export function validateAndTruncatePrompt(context: ClarificationContext): { prom
         return { prompt, truncated: false };
     }
 
-    // If selected text is too long, truncate it
-    const maxSelectedLength = MAX_PROMPT_SIZE - 100; // Leave room for the wrapper text
+    // If selected text is too long, truncate it and rebuild the prompt
+    const maxSelectedLength = MAX_PROMPT_SIZE - 200; // Leave more room for instruction text
     const truncatedText = context.selectedText.substring(0, maxSelectedLength) + '...';
-    const truncatedPrompt = `Please clarify "${truncatedText}" in the file ${context.filePath}`;
+    const truncatedContext: ClarificationContext = {
+        ...context,
+        selectedText: truncatedText
+    };
+    const truncatedPrompt = buildClarificationPrompt(truncatedContext);
 
     return { prompt: truncatedPrompt, truncated: true };
 }

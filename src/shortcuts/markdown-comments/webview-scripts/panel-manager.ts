@@ -378,6 +378,7 @@ function setupBubbleDrag(bubble: HTMLElement): void {
 
         isDragging = true;
         bubble.classList.add('dragging');
+        state.startInteraction();
 
         startX = event.clientX;
         startY = event.clientY;
@@ -411,6 +412,7 @@ function setupBubbleDrag(bubble: HTMLElement): void {
         if (isDragging) {
             isDragging = false;
             bubble.classList.remove('dragging');
+            state.endInteraction();
         }
     });
 }
@@ -444,6 +446,7 @@ function setupBubbleResize(bubble: HTMLElement): void {
             currentHandle = (handle as HTMLElement).dataset.resize || null;
             bubble.classList.add('resizing');
             (handle as HTMLElement).classList.add('active');
+            state.startInteraction();
 
             startX = event.clientX;
             startY = event.clientY;
@@ -534,6 +537,7 @@ function setupBubbleResize(bubble: HTMLElement): void {
             bubble.querySelectorAll('.resize-handle').forEach(h => {
                 h.classList.remove('active');
             });
+            state.endInteraction();
         }
     });
 }

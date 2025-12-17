@@ -239,6 +239,11 @@ export interface CommentTreeItemData {
 export type AIToolType = 'copilot-cli' | 'clipboard';
 
 /**
+ * AI instruction types for different kinds of queries
+ */
+export type AIInstructionType = 'clarify' | 'go-deeper' | 'custom';
+
+/**
  * Document context for AI clarification requests
  */
 export interface ClarificationContext {
@@ -257,6 +262,10 @@ export interface ClarificationContext {
     nearestHeading: string | null;
     /** All document headings for structure */
     headings: string[];
+    /** Type of AI instruction */
+    instructionType: AIInstructionType;
+    /** Custom instruction text (only used when instructionType is 'custom') */
+    customInstruction?: string;
 }
 
 /**

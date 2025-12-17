@@ -41,6 +41,10 @@ class WebviewStateManager {
     private _mermaidLoading: boolean = false;
     private _pendingMermaidBlocks: Array<() => void> = [];
     
+    // Interaction state (for preventing click-to-close during resize/drag)
+    private _isInteracting: boolean = false;
+    private _interactionEndTimeout: ReturnType<typeof setTimeout> | null = null;
+    
     // Getters
     get vscode(): VsCodeApi {
         if (!this._vscode) {
@@ -99,6 +103,10 @@ class WebviewStateManager {
     
     get pendingMermaidBlocks(): Array<() => void> {
         return this._pendingMermaidBlocks;
+    }
+    
+    get isInteracting(): boolean {
+        return this._isInteracting;
     }
     
     // Setters
@@ -160,6 +168,28 @@ class WebviewStateManager {
     
     clearPendingMermaidBlocks(): void {
         this._pendingMermaidBlocks = [];
+    }
+    
+    /**
+     * Mark the start of a user interaction (resize/drag) that should prevent click-to-close
+     */
+    startInteraction(): void {
+        if (this._interactionEndTimeout) {
+            clearTimeout(this._interactionEndTimeout);
+            this._interactionEndTimeout = null;
+        }
+        this._isInteracting = true;
+    }
+    
+    /**
+     * Mark the end of a user interaction, with a small delay to prevent click events
+     */
+    endInteraction(): void {
+        // Delay clearing the interaction flag to allow click events to be ignored
+        this._interactionEndTimeout = setTimeout(() => {
+            this._isInteracting = false;
+            this._interactionEndTimeout = null;
+        }, 100);
     }
     
     // Utility methods

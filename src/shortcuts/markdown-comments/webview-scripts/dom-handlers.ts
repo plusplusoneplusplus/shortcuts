@@ -29,6 +29,18 @@ let contextMenuCopy: HTMLElement;
 let contextMenuPaste: HTMLElement;
 let contextMenuAddComment: HTMLElement;
 let contextMenuAskAI: HTMLElement;
+// Ask AI submenu elements
+let askAIClarify: HTMLElement;
+let askAIGoDeeper: HTMLElement;
+let askAICustom: HTMLElement;
+// Custom instruction dialog elements
+let customInstructionDialog: HTMLElement;
+let customInstructionClose: HTMLElement;
+let customInstructionSelection: HTMLElement;
+let customInstructionInput: HTMLTextAreaElement;
+let customInstructionCancelBtn: HTMLElement;
+let customInstructionSubmitBtn: HTMLElement;
+let customInstructionOverlay: HTMLElement | null = null;
 
 /**
  * Initialize DOM handlers
@@ -42,12 +54,24 @@ export function initDomHandlers(): void {
     contextMenuPaste = document.getElementById('contextMenuPaste')!;
     contextMenuAddComment = document.getElementById('contextMenuAddComment')!;
     contextMenuAskAI = document.getElementById('contextMenuAskAI')!;
+    // Ask AI submenu elements
+    askAIClarify = document.getElementById('askAIClarify')!;
+    askAIGoDeeper = document.getElementById('askAIGoDeeper')!;
+    askAICustom = document.getElementById('askAICustom')!;
+    // Custom instruction dialog elements
+    customInstructionDialog = document.getElementById('customInstructionDialog')!;
+    customInstructionClose = document.getElementById('customInstructionClose')!;
+    customInstructionSelection = document.getElementById('customInstructionSelection')!;
+    customInstructionInput = document.getElementById('customInstructionInput') as HTMLTextAreaElement;
+    customInstructionCancelBtn = document.getElementById('customInstructionCancelBtn')!;
+    customInstructionSubmitBtn = document.getElementById('customInstructionSubmitBtn')!;
 
     setupToolbarEventListeners();
     setupEditorEventListeners();
     setupContextMenuEventListeners();
     setupKeyboardEventListeners();
     setupGlobalEventListeners();
+    setupCustomInstructionDialogEventListeners();
 }
 
 /**
@@ -161,9 +185,28 @@ function setupContextMenuEventListeners(): void {
         handleAddCommentFromContextMenu();
     });
 
-    contextMenuAskAI.addEventListener('click', () => {
+    // Ask AI parent - reposition submenu on hover
+    contextMenuAskAI.addEventListener('mouseenter', () => {
+        positionSubmenu();
+    });
+
+    // Ask AI submenu items
+    askAIClarify.addEventListener('click', (e) => {
+        e.stopPropagation();
         hideContextMenu();
-        handleAskAIFromContextMenu();
+        handleAskAIFromContextMenu('clarify');
+    });
+
+    askAIGoDeeper.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideContextMenu();
+        handleAskAIFromContextMenu('go-deeper');
+    });
+
+    askAICustom.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideContextMenu();
+        showCustomInstructionDialog();
     });
 
     // Hide context menu on click outside
@@ -206,6 +249,10 @@ function setupGlobalEventListeners(): void {
             !target.closest('.inline-comment-bubble') &&
             !target.closest('.commented-text') &&
             !target.closest('.gutter-icon')) {
+            // Don't close if currently resizing or dragging (or just finished)
+            if (state.isInteracting) {
+                return;
+            }
             closeActiveCommentBubble();
         }
     });
@@ -273,11 +320,37 @@ function handleContextMenu(e: MouseEvent): void {
 
     // Position and show context menu
     e.preventDefault();
-    const x = Math.min(e.clientX, window.innerWidth - 220);
-    const y = Math.min(e.clientY, window.innerHeight - 150);
+    
+    // Get menu dimensions
+    contextMenu.style.display = 'block';
+    contextMenu.style.visibility = 'hidden';
+    const menuRect = contextMenu.getBoundingClientRect();
+    contextMenu.style.visibility = '';
+    
+    // Calculate position with edge detection
+    // Account for submenu width (180px + margin) when calculating right edge
+    const submenuWidth = 200;
+    const menuWidth = menuRect.width;
+    const menuHeight = menuRect.height;
+    
+    let x = e.clientX;
+    let y = e.clientY;
+    
+    // Check right edge - need room for both menu and potential submenu
+    if (x + menuWidth + submenuWidth > window.innerWidth) {
+        x = Math.max(0, window.innerWidth - menuWidth - submenuWidth);
+    }
+    
+    // Check bottom edge
+    if (y + menuHeight > window.innerHeight) {
+        y = Math.max(0, window.innerHeight - menuHeight);
+    }
+    
     contextMenu.style.left = x + 'px';
     contextMenu.style.top = y + 'px';
-    contextMenu.style.display = 'block';
+    
+    // Position submenu based on available space
+    positionSubmenu();
 }
 
 /**
@@ -285,6 +358,67 @@ function handleContextMenu(e: MouseEvent): void {
  */
 function hideContextMenu(): void {
     contextMenu.style.display = 'none';
+    // Reset submenu positioning
+    const submenu = document.getElementById('askAISubmenu');
+    if (submenu) {
+        submenu.style.left = '';
+        submenu.style.right = '';
+        submenu.style.top = '';
+        submenu.style.bottom = '';
+    }
+}
+
+/**
+ * Position submenu based on available viewport space
+ * Adjusts left/right and top/bottom positioning to keep submenu visible
+ */
+function positionSubmenu(): void {
+    const submenu = document.getElementById('askAISubmenu');
+    const parentItem = contextMenuAskAI;
+    
+    if (!submenu || !parentItem) return;
+    
+    // Get parent item position
+    const parentRect = parentItem.getBoundingClientRect();
+    const menuRect = contextMenu.getBoundingClientRect();
+    
+    // Temporarily show submenu to get its dimensions
+    const originalDisplay = submenu.style.display;
+    submenu.style.display = 'block';
+    submenu.style.visibility = 'hidden';
+    const submenuRect = submenu.getBoundingClientRect();
+    submenu.style.visibility = '';
+    submenu.style.display = originalDisplay;
+    
+    // Check horizontal space - can we show submenu on the right?
+    const spaceOnRight = window.innerWidth - menuRect.right;
+    const spaceOnLeft = menuRect.left;
+    
+    if (spaceOnRight < submenuRect.width && spaceOnLeft > submenuRect.width) {
+        // Not enough space on right, but enough on left - flip to left side
+        submenu.style.left = 'auto';
+        submenu.style.right = '100%';
+        submenu.style.marginLeft = '0';
+        submenu.style.marginRight = '2px';
+    } else {
+        // Default: show on right
+        submenu.style.left = '100%';
+        submenu.style.right = 'auto';
+        submenu.style.marginLeft = '2px';
+        submenu.style.marginRight = '0';
+    }
+    
+    // Check vertical space - position submenu so it doesn't go off-screen
+    const parentTopRelativeToMenu = parentRect.top - menuRect.top;
+    const submenuBottomIfAlignedToTop = parentRect.top + submenuRect.height;
+    
+    if (submenuBottomIfAlignedToTop > window.innerHeight) {
+        // Submenu would go below viewport - align to bottom instead
+        const overflow = submenuBottomIfAlignedToTop - window.innerHeight;
+        submenu.style.top = `${-overflow - 5}px`;  // Extra 5px margin from bottom
+    } else {
+        submenu.style.top = '-1px';
+    }
 }
 
 /**
@@ -408,10 +542,15 @@ function handleAddCommentFromContextMenu(): void {
 }
 
 /**
- * Handle "Ask AI" from context menu
+ * Handle "Ask AI" from context menu with a specific instruction type
  * Extracts document context and sends to extension for AI clarification
+ * @param instructionType - The type of AI instruction: 'clarify', 'go-deeper', or 'custom'
+ * @param customInstruction - Optional custom instruction text (only for 'custom' type)
  */
-function handleAskAIFromContextMenu(): void {
+function handleAskAIFromContextMenu(
+    instructionType: 'clarify' | 'go-deeper' | 'custom',
+    customInstruction?: string
+): void {
     const saved = state.savedSelectionForContextMenu;
     if (!saved || !saved.selectedText) {
         alert('Please select some text first to ask AI.');
@@ -419,7 +558,14 @@ function handleAskAIFromContextMenu(): void {
     }
 
     // Extract document context for the AI
-    const context = extractDocumentContext(saved.startLine, saved.endLine, saved.selectedText);
+    const baseContext = extractDocumentContext(saved.startLine, saved.endLine, saved.selectedText);
+    
+    // Add instruction type and optional custom instruction
+    const context = {
+        ...baseContext,
+        instructionType,
+        customInstruction
+    };
 
     // Send to extension
     requestAskAI(context);
@@ -491,6 +637,79 @@ function extractDocumentContext(startLine: number, endLine: number, selectedText
         nearestHeading,
         allHeadings
     };
+}
+
+/**
+ * Setup event listeners for the custom instruction dialog
+ */
+function setupCustomInstructionDialogEventListeners(): void {
+    customInstructionClose.addEventListener('click', hideCustomInstructionDialog);
+    customInstructionCancelBtn.addEventListener('click', hideCustomInstructionDialog);
+    
+    customInstructionSubmitBtn.addEventListener('click', () => {
+        const instruction = customInstructionInput.value.trim();
+        if (!instruction) {
+            customInstructionInput.focus();
+            return;
+        }
+        hideCustomInstructionDialog();
+        handleAskAIFromContextMenu('custom', instruction);
+    });
+    
+    // Submit on Ctrl+Enter
+    customInstructionInput.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            customInstructionSubmitBtn.click();
+        }
+        // Close on Escape
+        if (e.key === 'Escape') {
+            hideCustomInstructionDialog();
+        }
+    });
+}
+
+/**
+ * Show the custom instruction dialog
+ */
+function showCustomInstructionDialog(): void {
+    const saved = state.savedSelectionForContextMenu;
+    if (!saved || !saved.selectedText) {
+        alert('Please select some text first to ask AI.');
+        return;
+    }
+    
+    // Create and show overlay
+    customInstructionOverlay = document.createElement('div');
+    customInstructionOverlay.className = 'custom-instruction-overlay';
+    customInstructionOverlay.addEventListener('click', hideCustomInstructionDialog);
+    document.body.appendChild(customInstructionOverlay);
+    
+    // Show selected text preview (truncated if needed)
+    const truncatedText = saved.selectedText.length > 100 
+        ? saved.selectedText.substring(0, 100) + '...' 
+        : saved.selectedText;
+    customInstructionSelection.textContent = truncatedText;
+    
+    // Clear previous input and show dialog
+    customInstructionInput.value = '';
+    customInstructionDialog.style.display = 'block';
+    
+    // Focus the input
+    setTimeout(() => customInstructionInput.focus(), 50);
+}
+
+/**
+ * Hide the custom instruction dialog
+ */
+function hideCustomInstructionDialog(): void {
+    customInstructionDialog.style.display = 'none';
+    
+    // Remove overlay if exists
+    if (customInstructionOverlay) {
+        customInstructionOverlay.remove();
+        customInstructionOverlay = null;
+    }
 }
 
 /**

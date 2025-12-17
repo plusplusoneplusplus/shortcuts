@@ -299,7 +299,7 @@ body {
     border-radius: 6px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
     z-index: 2000;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .context-menu-item {
@@ -343,6 +343,137 @@ body {
     height: 1px;
     background: var(--border-color);
     margin: 4px 8px;
+}
+
+/* Context Menu Parent (with submenu) */
+.context-menu-parent {
+    position: relative;
+}
+
+.context-menu-arrow {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-left: 8px;
+}
+
+/* Context Submenu */
+.context-submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -1px;
+    min-width: 180px;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    z-index: 2001;
+    overflow: hidden;
+    margin-left: 2px;
+    /* Allow JS to override positioning */
+    margin-right: 0;
+}
+
+.context-menu-parent:hover > .context-submenu,
+.context-menu-parent.submenu-open > .context-submenu {
+    display: block;
+}
+
+/* Submenu items styling */
+.context-submenu .context-menu-item {
+    padding: 8px 12px;
+}
+
+.context-submenu .context-menu-separator {
+    margin: 4px 8px;
+}
+
+/* Custom Instruction Dialog */
+.custom-instruction-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 400px;
+    max-width: 500px;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    z-index: 3000;
+    padding: 16px;
+}
+
+.custom-instruction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.custom-instruction-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.custom-instruction-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--text-color);
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+
+.custom-instruction-close:hover {
+    opacity: 1;
+}
+
+.custom-instruction-selection {
+    background: var(--vscode-textCodeBlock-background);
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    max-height: 80px;
+    overflow-y: auto;
+    border-left: 3px solid var(--button-bg);
+}
+
+.custom-instruction-dialog textarea {
+    width: 100%;
+    padding: 10px;
+    background: var(--input-bg);
+    color: var(--input-fg);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.custom-instruction-dialog textarea:focus {
+    outline: none;
+    border-color: var(--button-bg);
+}
+
+.custom-instruction-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* Custom instruction dialog overlay */
+.custom-instruction-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 2999;
 }
 
 /* ==============================

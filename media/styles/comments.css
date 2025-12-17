@@ -226,7 +226,8 @@
 .bubble-comment-text {
     white-space: pre-wrap;
     line-height: 1.5;
-    max-height: 200px;
+    min-height: 40px;
+    flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 4px;

@@ -51,6 +51,11 @@ export interface SavedSelection extends PendingSelection {
 }
 
 /**
+ * AI instruction type for different kinds of AI queries
+ */
+export type AIInstructionType = 'clarify' | 'go-deeper' | 'custom';
+
+/**
  * Context data sent from webview to extension when "Ask AI" is triggered
  */
 export interface AskAIContext {
@@ -66,6 +71,10 @@ export interface AskAIContext {
     nearestHeading: string | null;
     /** Document structure - all headings */
     allHeadings: string[];
+    /** Type of AI instruction to use */
+    instructionType: AIInstructionType;
+    /** Custom instruction text (only used when instructionType is 'custom') */
+    customInstruction?: string;
 }
 
 /**

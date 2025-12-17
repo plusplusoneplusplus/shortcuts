@@ -171,6 +171,21 @@
           ],
           "default": "copilot-cli",
           "description": "Target AI tool for clarification requests from the review editor"
+        },
+        "workspaceShortcuts.aiClarification.prompts.clarify": {
+          "type": "string",
+          "default": "Please clarify",
+          "markdownDescription": "Prompt template for the **Clarify** action. The selected text and file path will be appended automatically."
+        },
+        "workspaceShortcuts.aiClarification.prompts.goDeeper": {
+          "type": "string",
+          "default": "Please provide an in-depth explanation and analysis of",
+          "markdownDescription": "Prompt template for the **Go Deeper** action. The selected text and file path will be appended automatically."
+        },
+        "workspaceShortcuts.aiClarification.prompts.customDefault": {
+          "type": "string",
+          "default": "Please explain",
+          "markdownDescription": "Default prompt template for **Custom Instruction** when user doesn't provide one. The selected text and file path will be appended automatically."
         }
       }
     },
