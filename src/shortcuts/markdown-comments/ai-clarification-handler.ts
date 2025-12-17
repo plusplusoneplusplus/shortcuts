@@ -74,6 +74,34 @@ export function getAIToolSetting(): AIToolType {
     return 'copilot-cli';
 }
 
+/** Valid AI model options for Copilot CLI */
+export const VALID_MODELS = [
+    'claude-sonnet-4.5',
+    'claude-haiku-4.5',
+    'claude-opus-4.5',
+    'gpt-5.1-codex-max',
+    'gemini-3-pro-preview'
+] as const;
+
+export type AIModel = typeof VALID_MODELS[number];
+
+/**
+ * Get the configured AI model from VS Code settings.
+ * 
+ * @returns The configured AI model, or undefined if using default
+ */
+export function getAIModelSetting(): AIModel | undefined {
+    const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiClarification');
+    const model = config.get<string>('model', '');
+
+    // Return undefined if empty (use default) or invalid
+    if (!model || !VALID_MODELS.includes(model as AIModel)) {
+        return undefined;
+    }
+
+    return model as AIModel;
+}
+
 /**
  * Default prompt templates for each instruction type.
  * These are used as fallbacks if settings are not configured.
@@ -181,6 +209,23 @@ export async function copyToClipboard(prompt: string): Promise<void> {
 }
 
 /**
+ * Build the Copilot CLI command with the given prompt and optional model.
+ * 
+ * @param prompt - The prompt to send to Copilot CLI
+ * @returns The complete command string
+ */
+function buildCopilotCommand(prompt: string): string {
+    const escapedPrompt = escapeShellArg(prompt);
+    const model = getAIModelSetting();
+
+    if (model) {
+        return `copilot --allow-all-tools --model ${model} -p ${escapedPrompt}`;
+    }
+
+    return `copilot --allow-all-tools -p ${escapedPrompt}`;
+}
+
+/**
  * Invoke the Copilot CLI with the clarification prompt in a terminal.
  * This is the fallback method that doesn't capture output.
  * 
@@ -195,9 +240,8 @@ export async function invokeCopilotCLITerminal(prompt: string): Promise<boolean>
             hideFromUser: false
         });
 
-        // Build the copilot command with escaped prompt
-        const escapedPrompt = escapeShellArg(prompt);
-        const command = `copilot --allow-all-tools -p ${escapedPrompt}`;
+        // Build the copilot command with escaped prompt and optional model
+        const command = buildCopilotCommand(prompt);
 
         // Show the terminal and send the command
         terminal.show(true);
@@ -284,9 +328,8 @@ export function parseCopilotOutput(output: string): string {
  */
 export async function invokeCopilotCLI(prompt: string, workspaceRoot: string): Promise<ClarificationResult> {
     try {
-        // Build the copilot command with escaped prompt
-        const escapedPrompt = escapeShellArg(prompt);
-        const command = `copilot --allow-all-tools -p ${escapedPrompt}`;
+        // Build the copilot command with escaped prompt and optional model
+        const command = buildCopilotCommand(prompt);
 
         // Show progress notification
         return await vscode.window.withProgress({

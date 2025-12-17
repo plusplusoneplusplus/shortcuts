@@ -172,6 +172,27 @@
           "default": "copilot-cli",
           "description": "Target AI tool for clarification requests from the review editor"
         },
+        "workspaceShortcuts.aiClarification.model": {
+          "type": "string",
+          "enum": [
+            "",
+            "claude-sonnet-4.5",
+            "claude-haiku-4.5",
+            "claude-opus-4.5",
+            "gpt-5.1-codex-max",
+            "gemini-3-pro-preview"
+          ],
+          "enumDescriptions": [
+            "Use default model (no --model flag)",
+            "Claude Sonnet 4.5 - Balanced performance",
+            "Claude Haiku 4.5 - Fast and efficient",
+            "Claude Opus 4.5 - Most capable",
+            "GPT 5.1 Codex Max - OpenAI coding model",
+            "Gemini 3 Pro Preview - Google's latest model"
+          ],
+          "default": "",
+          "description": "AI model to use with Copilot CLI. Leave empty to use the default model."
+        },
         "workspaceShortcuts.aiClarification.prompts.clarify": {
           "type": "string",
           "default": "Please clarify",

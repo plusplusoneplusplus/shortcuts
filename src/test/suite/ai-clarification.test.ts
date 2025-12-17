@@ -8,8 +8,10 @@ import {
     buildClarificationPrompt,
     DEFAULT_PROMPTS,
     escapeShellArg,
+    getAIModelSetting,
     getPromptTemplate,
     parseCopilotOutput,
+    VALID_MODELS,
     validateAndTruncatePrompt
 } from '../../shortcuts/markdown-comments/ai-clarification-handler';
 import { AIInstructionType, ClarificationContext } from '../../shortcuts/markdown-comments/types';
@@ -876,6 +878,27 @@ Total usage est:       1 Premium request`;
             assert.ok(result.includes('undefined behavior'));
             assert.ok(result.includes('unsafe { ptr::read'));
             assert.ok(result.includes('bindings.rs'));
+        });
+    });
+
+    suite('AI Model Configuration', () => {
+
+        test('VALID_MODELS should contain expected model options', () => {
+            assert.ok(VALID_MODELS.includes('claude-sonnet-4.5'));
+            assert.ok(VALID_MODELS.includes('claude-haiku-4.5'));
+            assert.ok(VALID_MODELS.includes('claude-opus-4.5'));
+            assert.ok(VALID_MODELS.includes('gpt-5.1-codex-max'));
+            assert.ok(VALID_MODELS.includes('gemini-3-pro-preview'));
+        });
+
+        test('VALID_MODELS should have exactly 5 models', () => {
+            assert.strictEqual(VALID_MODELS.length, 5);
+        });
+
+        test('getAIModelSetting should return undefined when no model configured', () => {
+            // Default config has empty string which should return undefined
+            const result = getAIModelSetting();
+            assert.strictEqual(result, undefined);
         });
     });
 });
