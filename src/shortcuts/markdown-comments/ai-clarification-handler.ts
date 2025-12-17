@@ -17,7 +17,7 @@ const execAsync = promisify(exec);
 const MAX_PROMPT_SIZE = 8000;
 
 /** Timeout for copilot CLI execution in milliseconds */
-const COPILOT_TIMEOUT_MS = 120000; // 2 minutes
+const COPILOT_TIMEOUT_MS = 1200000; // 20 minutes
 
 /**
  * Result of AI clarification request
@@ -348,7 +348,7 @@ export async function invokeCopilotCLI(prompt: string, workspaceRoot: string): P
                         if (error.killed) {
                             resolve({
                                 success: false,
-                                error: 'Copilot CLI timed out. The request took too long.'
+                                error: 'Copilot CLI timed out after 20 minutes. The process was force killed.'
                             });
                             return;
                         }
