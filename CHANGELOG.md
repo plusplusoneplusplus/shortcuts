@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.2] - 2025-12-18
+
+### Changed
+- Mermaid diagrams now render responsively with better space utilization
+- Line numbers for large code blocks (>20 lines) are truncated to prevent overflow
+
 ## [2.9.1] - 2025-12-18
 
 ### Fixed
