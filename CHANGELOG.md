@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.1] - 2025-12-18
+
+### Fixed
+- Mermaid diagrams now scale to 80% width for better fit in review editor
+
 ## [2.9.0] - 2025-12-18
 
 ### Added
