@@ -460,7 +460,7 @@ body.vscode-light .hljs-type {
 }
 
 .mermaid-preview svg {
-    max-width: none;
+    width: 80%;
     height: auto;
 }
 
