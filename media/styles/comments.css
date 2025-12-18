@@ -86,12 +86,15 @@
     font-family: var(--vscode-font-family);
     font-size: 13px;
     animation: bubbleIn 0.15s ease-out;
-    max-height: 400px;
+    /* Dynamic sizing - width and max-height are set via JS based on content */
     min-width: 280px;
+    max-width: 600px;
     min-height: 120px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    /* Smooth transition when repositioning */
+    transition: left 0.15s ease-out, top 0.15s ease-out;
 }
 
 .inline-comment-bubble.resolved {

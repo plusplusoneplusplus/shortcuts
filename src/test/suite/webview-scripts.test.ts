@@ -3142,5 +3142,199 @@ suite('Webview Scripts Tests', () => {
             });
         });
     });
+
+    suite('Comment Bubble Dimensions Calculation', () => {
+        // Test the calculateBubbleDimensions logic - mirrors panel-manager.ts implementation
+
+        interface MockComment {
+            comment: string;
+            selectedText: string;
+        }
+
+        /**
+         * Pure function implementation for testing - mirrors calculateBubbleDimensions
+         */
+        function calculateBubbleDimensions(comment: MockComment): { width: number; height: number } {
+            const minWidth = 280;
+            const maxWidth = 600;
+            const minHeight = 120;
+            const maxHeight = 500;
+            
+            // Estimate content length
+            const commentLength = comment.comment.length;
+            const selectedTextLength = comment.selectedText.length;
+            const totalLength = commentLength + selectedTextLength;
+            
+            // Check for code blocks or long lines which need more width
+            const hasCodeBlocks = comment.comment.includes('```');
+            const hasLongLines = comment.comment.split('\n').some(line => line.length > 60);
+            const lines = comment.comment.split('\n').length;
+            
+            // Calculate width based on content characteristics
+            let width: number;
+            if (hasCodeBlocks || hasLongLines) {
+                // Code blocks and long lines need more width
+                width = Math.min(maxWidth, Math.max(450, minWidth));
+            } else if (totalLength < 100) {
+                // Short comments can be narrower
+                width = minWidth;
+            } else if (totalLength < 300) {
+                // Medium comments
+                width = Math.min(380, minWidth + (totalLength - 100) * 0.5);
+            } else {
+                // Longer comments get wider
+                width = Math.min(maxWidth, 380 + (totalLength - 300) * 0.3);
+            }
+            
+            // Calculate height based on content
+            // Approximate: ~50px for header, ~80px for selected text, rest for comment
+            const baseHeight = 130; // header + selected text area + padding
+            const lineHeight = 20; // approximate line height for comment text
+            const estimatedCommentLines = Math.max(lines, Math.ceil(commentLength / (width / 8)));
+            let height = baseHeight + (estimatedCommentLines * lineHeight);
+            
+            // Clamp height
+            height = Math.max(minHeight, Math.min(maxHeight, height));
+            
+            return { width, height };
+        }
+
+        test('should return minimum width for short comments', () => {
+            const comment: MockComment = {
+                comment: 'Short note',
+                selectedText: 'text'
+            };
+            const { width } = calculateBubbleDimensions(comment);
+            assert.strictEqual(width, 280);
+        });
+
+        test('should return minimum dimensions for very short comments', () => {
+            const comment: MockComment = {
+                comment: 'OK',
+                selectedText: 'x'
+            };
+            const { width, height } = calculateBubbleDimensions(comment);
+            assert.strictEqual(width, 280);
+            assert.ok(height >= 120, 'Height should be at least minimum');
+        });
+
+        test('should increase width for medium-length comments', () => {
+            // Use multi-line comment to avoid triggering long-line detection (>60 chars)
+            const comment: MockComment = {
+                comment: 'This is a medium length comment.\nIt provides context about the text.\nIt explains the reasoning behind it.',
+                selectedText: 'some selected text'
+            };
+            const { width } = calculateBubbleDimensions(comment);
+            assert.ok(width > 280, 'Width should be greater than minimum for medium comments');
+            assert.ok(width <= 380, 'Width should not exceed 380 for medium comments');
+        });
+
+        test('should increase width for long comments', () => {
+            const comment: MockComment = {
+                comment: 'This is a very long comment that goes into great detail about the selected text. It provides extensive context and explanation about why this particular piece of content is important. The comment continues to elaborate on various aspects and considerations that should be taken into account when reviewing this section of the document.',
+                selectedText: 'important section'
+            };
+            const { width } = calculateBubbleDimensions(comment);
+            assert.ok(width > 380, 'Width should be greater than 380 for long comments');
+            assert.ok(width <= 600, 'Width should not exceed maximum');
+        });
+
+        test('should use wider width for comments with code blocks', () => {
+            const comment: MockComment = {
+                comment: '```javascript\nconst x = 1;\n```',
+                selectedText: 'code'
+            };
+            const { width } = calculateBubbleDimensions(comment);
+            assert.ok(width >= 450, 'Width should be at least 450 for code blocks');
+        });
+
+        test('should use wider width for comments with long lines', () => {
+            const comment: MockComment = {
+                comment: 'This is a single line that is quite long and exceeds sixty characters in total length to trigger wider width.',
+                selectedText: 'text'
+            };
+            const { width } = calculateBubbleDimensions(comment);
+            assert.ok(width >= 450, 'Width should be at least 450 for long lines');
+        });
+
+        test('should increase height for multi-line comments', () => {
+            const singleLine: MockComment = {
+                comment: 'Single line',
+                selectedText: 'text'
+            };
+            const multiLine: MockComment = {
+                comment: 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5',
+                selectedText: 'text'
+            };
+            const singleDims = calculateBubbleDimensions(singleLine);
+            const multiDims = calculateBubbleDimensions(multiLine);
+            assert.ok(multiDims.height > singleDims.height, 'Multi-line should have greater height');
+        });
+
+        test('should cap height at maximum', () => {
+            const veryLongComment: MockComment = {
+                comment: Array(100).fill('This is a very long line of text.').join('\n'),
+                selectedText: 'text'
+            };
+            const { height } = calculateBubbleDimensions(veryLongComment);
+            assert.strictEqual(height, 500, 'Height should be capped at maximum');
+        });
+
+        test('should cap width at maximum', () => {
+            // Use many short lines to get very long total without triggering long-line detection
+            const veryLongComment: MockComment = {
+                comment: Array(200).fill('Short text here.').join('\n'),
+                selectedText: 'text'
+            };
+            const { width } = calculateBubbleDimensions(veryLongComment);
+            assert.strictEqual(width, 600, 'Width should be capped at maximum');
+        });
+
+        test('should handle empty comment', () => {
+            const comment: MockComment = {
+                comment: '',
+                selectedText: 'text'
+            };
+            const { width, height } = calculateBubbleDimensions(comment);
+            assert.strictEqual(width, 280, 'Empty comment should use minimum width');
+            assert.ok(height >= 120, 'Empty comment should use at least minimum height');
+        });
+
+        test('should consider selected text length in total', () => {
+            const shortSelected: MockComment = {
+                comment: 'Comment',
+                selectedText: 'x'
+            };
+            const longSelected: MockComment = {
+                comment: 'Comment',
+                selectedText: 'This is a much longer piece of selected text that adds to the total length consideration'
+            };
+            const shortDims = calculateBubbleDimensions(shortSelected);
+            const longDims = calculateBubbleDimensions(longSelected);
+            // Both should be minimum since total is still under 100
+            // But with long selected text pushing over 100, width may increase
+            assert.ok(longDims.width >= shortDims.width, 'Longer selected text should not reduce width');
+        });
+
+        test('should handle markdown formatting in comments', () => {
+            const comment: MockComment = {
+                comment: '**Bold** and *italic* text with `inline code`',
+                selectedText: 'formatted'
+            };
+            const { width, height } = calculateBubbleDimensions(comment);
+            assert.ok(width >= 280, 'Should handle markdown formatting');
+            assert.ok(height >= 120, 'Should have valid height');
+        });
+
+        test('should handle bullet lists', () => {
+            const comment: MockComment = {
+                comment: '- Item 1\n- Item 2\n- Item 3\n- Item 4',
+                selectedText: 'list'
+            };
+            const { width, height } = calculateBubbleDimensions(comment);
+            assert.strictEqual(width, 280, 'Short bullet lists should use minimum width');
+            assert.ok(height > 120, 'Bullet lists should increase height');
+        });
+    });
 });
 

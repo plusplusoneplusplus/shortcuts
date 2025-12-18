@@ -382,6 +382,54 @@ function saveEditedComment(): void {
 }
 
 /**
+ * Calculate optimal bubble dimensions based on content
+ */
+function calculateBubbleDimensions(comment: MarkdownComment): { width: number; height: number } {
+    const minWidth = 280;
+    const maxWidth = 600;
+    const minHeight = 120;
+    const maxHeight = 500;
+    
+    // Estimate content length
+    const commentLength = comment.comment.length;
+    const selectedTextLength = comment.selectedText.length;
+    const totalLength = commentLength + selectedTextLength;
+    
+    // Check for code blocks or long lines which need more width
+    const hasCodeBlocks = comment.comment.includes('```');
+    const hasLongLines = comment.comment.split('\n').some(line => line.length > 60);
+    const lines = comment.comment.split('\n').length;
+    
+    // Calculate width based on content characteristics
+    let width: number;
+    if (hasCodeBlocks || hasLongLines) {
+        // Code blocks and long lines need more width
+        width = Math.min(maxWidth, Math.max(450, minWidth));
+    } else if (totalLength < 100) {
+        // Short comments can be narrower
+        width = minWidth;
+    } else if (totalLength < 300) {
+        // Medium comments
+        width = Math.min(380, minWidth + (totalLength - 100) * 0.5);
+    } else {
+        // Longer comments get wider
+        width = Math.min(maxWidth, 380 + (totalLength - 300) * 0.3);
+    }
+    
+    // Calculate height based on content
+    // Approximate: ~50px for header, ~80px for selected text, rest for comment
+    const baseHeight = 130; // header + selected text area + padding
+    const lineHeight = 20; // approximate line height for comment text
+    const estimatedCommentLines = Math.max(lines, Math.ceil(commentLength / (width / 8)));
+    let height = baseHeight + (estimatedCommentLines * lineHeight);
+    
+    // Clamp height
+    height = Math.max(minHeight, Math.min(maxHeight, height));
+    
+    return { width, height };
+}
+
+/**
  * Show comment bubble for viewing/interacting with a comment
  */
 export function showCommentBubble(comment: MarkdownComment, anchorEl: HTMLElement): void {
@@ -398,30 +446,81 @@ export function showCommentBubble(comment: MarkdownComment, anchorEl: HTMLElemen
     bubble.style.position = 'fixed';
     bubble.style.zIndex = '200';
 
+    // Calculate optimal dimensions based on content
+    const { width: bubbleWidth, height: bubbleHeight } = calculateBubbleDimensions(comment);
+    
     const rect = anchorEl.getBoundingClientRect();
+    const padding = 20;
+    
+    // Calculate initial position (prefer below and aligned with anchor)
     let left = rect.left;
     let top = rect.bottom + 5;
-
-    // Adjust if bubble would go off screen
-    if (left + 350 > window.innerWidth - 20) {
-        left = window.innerWidth - 370;
+    
+    // Horizontal positioning: try to center on anchor, then adjust for screen bounds
+    const anchorCenterX = rect.left + (rect.width / 2);
+    left = anchorCenterX - (bubbleWidth / 2);
+    
+    // Adjust if bubble would go off screen horizontally
+    if (left + bubbleWidth > window.innerWidth - padding) {
+        left = window.innerWidth - bubbleWidth - padding;
     }
-    if (left < 20) {
-        left = 20;
+    if (left < padding) {
+        left = padding;
     }
-    if (top + 200 > window.innerHeight) {
-        top = rect.top - 210;
+    
+    // Vertical positioning: prefer below, but flip above if not enough space
+    const spaceBelow = window.innerHeight - rect.bottom - padding;
+    const spaceAbove = rect.top - padding;
+    
+    if (spaceBelow < bubbleHeight && spaceAbove > spaceBelow) {
+        // Not enough space below and more space above - position above
+        top = rect.top - bubbleHeight - 5;
+        if (top < padding) {
+            top = padding;
+        }
+    } else {
+        // Position below
+        if (top + bubbleHeight > window.innerHeight - padding) {
+            top = window.innerHeight - bubbleHeight - padding;
+        }
     }
 
     bubble.style.left = left + 'px';
     bubble.style.top = top + 'px';
-    bubble.style.width = '350px';
+    bubble.style.width = bubbleWidth + 'px';
+    // Set max-height but let content determine actual height up to that limit
+    bubble.style.maxHeight = bubbleHeight + 'px';
 
     document.body.appendChild(bubble);
     state.setActiveCommentBubble({ element: bubble, anchor: anchorEl, isFixed: true });
 
     // Setup bubble action handlers
     setupBubbleActions(bubble, comment);
+    
+    // After rendering, adjust position if actual height is different
+    requestAnimationFrame(() => {
+        const actualHeight = bubble.offsetHeight;
+        const actualWidth = bubble.offsetWidth;
+        
+        // Re-check vertical positioning with actual dimensions
+        const currentTop = parseInt(bubble.style.top);
+        if (currentTop + actualHeight > window.innerHeight - padding) {
+            // Try to position above if there's more space
+            const newSpaceAbove = rect.top - padding;
+            if (newSpaceAbove > actualHeight) {
+                bubble.style.top = (rect.top - actualHeight - 5) + 'px';
+            } else {
+                // Just constrain to viewport
+                bubble.style.top = Math.max(padding, window.innerHeight - actualHeight - padding) + 'px';
+            }
+        }
+        
+        // Re-check horizontal positioning
+        const currentLeft = parseInt(bubble.style.left);
+        if (currentLeft + actualWidth > window.innerWidth - padding) {
+            bubble.style.left = Math.max(padding, window.innerWidth - actualWidth - padding) + 'px';
+        }
+    });
 }
 
 /**
