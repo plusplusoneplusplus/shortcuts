@@ -15,6 +15,8 @@ import {
     PromptGenerator,
     ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
+import { ClarificationProcessManager } from './shortcuts/markdown-comments/clarification-process-manager';
+import { ClarificationProcessTreeDataProvider } from './shortcuts/markdown-comments/clarification-process-tree-provider';
 import { NoteDocumentManager } from './shortcuts/note-document-provider';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { ThemeManager } from './shortcuts/theme-manager';
@@ -170,6 +172,9 @@ export async function activate(context: vscode.ExtensionContext) {
         const commentsManager = new CommentsManager(workspaceRoot);
         await commentsManager.initialize();
 
+        // Initialize Clarification Process Manager (must be before ReviewEditorViewProvider)
+        const clarificationProcessManager = new ClarificationProcessManager();
+
         const commentsTreeDataProvider = new MarkdownCommentsTreeDataProvider(commentsManager);
         const promptGenerator = new PromptGenerator(commentsManager);
         const commentsCommands = new MarkdownCommentsCommands(
@@ -179,7 +184,7 @@ export async function activate(context: vscode.ExtensionContext) {
         );
 
         // Register the Review Editor View provider for markdown files with comments
-        const customEditorDisposable = ReviewEditorViewProvider.register(context, commentsManager);
+        const customEditorDisposable = ReviewEditorViewProvider.register(context, commentsManager, clarificationProcessManager);
 
         // Register comments tree view
         const commentsTreeView = vscode.window.createTreeView('markdownCommentsView', {
@@ -187,6 +192,55 @@ export async function activate(context: vscode.ExtensionContext) {
             showCollapseAll: true
         });
         commentsCommands.setTreeView(commentsTreeView);
+
+        // Initialize Clarification Process tree data provider
+        const clarificationProcessTreeDataProvider = new ClarificationProcessTreeDataProvider(clarificationProcessManager);
+
+        // Register clarification processes tree view
+        const clarificationProcessesTreeView = vscode.window.createTreeView('clarificationProcessesView', {
+            treeDataProvider: clarificationProcessTreeDataProvider,
+            showCollapseAll: false
+        });
+
+        // Update clarification processes view description with counts
+        const updateProcessesViewDescription = () => {
+            const counts = clarificationProcessManager.getProcessCounts();
+            if (counts.running > 0 || counts.completed > 0 || counts.failed > 0) {
+                const parts: string[] = [];
+                if (counts.running > 0) parts.push(`${counts.running} running`);
+                if (counts.completed > 0) parts.push(`${counts.completed} done`);
+                if (counts.failed > 0) parts.push(`${counts.failed} failed`);
+                clarificationProcessesTreeView.description = parts.join(', ');
+            } else {
+                clarificationProcessesTreeView.description = undefined;
+            }
+        };
+        updateProcessesViewDescription();
+        clarificationProcessManager.onDidChangeProcesses(updateProcessesViewDescription);
+
+        // Register clarification process commands
+        const cancelProcessCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.cancel',
+            (item: { process?: { id: string } }) => {
+                if (item?.process?.id) {
+                    clarificationProcessManager.cancelProcess(item.process.id);
+                }
+            }
+        );
+
+        const clearCompletedCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.clearCompleted',
+            () => {
+                clarificationProcessManager.clearCompletedProcesses();
+            }
+        );
+
+        const refreshProcessesCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.refresh',
+            () => {
+                clarificationProcessTreeDataProvider.refresh();
+            }
+        );
 
         // Update comments view description with count
         const updateCommentsViewDescription = () => {
@@ -241,7 +295,14 @@ export async function activate(context: vscode.ExtensionContext) {
             commentsTreeDataProvider,
             customEditorDisposable,
             openWithCommentsCommand,
-            ...commentsCommandDisposables
+            ...commentsCommandDisposables,
+            // Clarification Process disposables
+            clarificationProcessesTreeView,
+            clarificationProcessManager,
+            clarificationProcessTreeDataProvider,
+            cancelProcessCommand,
+            clearCompletedCommand,
+            refreshProcessesCommand
         ];
 
         // Add all disposables to context subscriptions

@@ -286,3 +286,30 @@ export interface AIClarificationConfig {
     /** Which AI tool to use */
     tool: AIToolType;
 }
+
+/**
+ * Status of a clarification process
+ */
+export type ClarificationProcessStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+
+/**
+ * A tracked clarification process
+ */
+export interface ClarificationProcess {
+    /** Unique identifier */
+    id: string;
+    /** Preview of the prompt (first ~50 chars) */
+    promptPreview: string;
+    /** Full prompt text */
+    fullPrompt: string;
+    /** Current status */
+    status: ClarificationProcessStatus;
+    /** When the process started */
+    startTime: Date;
+    /** When the process ended (if finished) */
+    endTime?: Date;
+    /** Error message if failed */
+    error?: string;
+    /** The clarification result if completed */
+    result?: string;
+}

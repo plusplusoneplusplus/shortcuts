@@ -6,9 +6,10 @@
  * Can capture Copilot CLI output and return it for adding as a comment.
  */
 
-import { exec } from 'child_process';
+import { ChildProcess, exec } from 'child_process';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
+import { ClarificationProcessManager } from './clarification-process-manager';
 import { AIToolType, ClarificationContext } from './types';
 
 const execAsync = promisify(exec);
@@ -321,12 +322,19 @@ export function parseCopilotOutput(output: string): string {
 /**
  * Invoke the Copilot CLI and capture its output.
  * Runs copilot as a child process in the workspace directory.
- * 
+ *
  * @param prompt - The prompt to send to Copilot CLI
  * @param workspaceRoot - The workspace root directory
+ * @param processManager - Optional process manager for tracking
  * @returns The clarification result with the AI response
  */
-export async function invokeCopilotCLI(prompt: string, workspaceRoot: string): Promise<ClarificationResult> {
+export async function invokeCopilotCLI(
+    prompt: string,
+    workspaceRoot: string,
+    processManager?: ClarificationProcessManager
+): Promise<ClarificationResult> {
+    let processId: string | undefined;
+
     try {
         // Build the copilot command with escaped prompt and optional model
         const command = buildCopilotCommand(prompt);
@@ -346,9 +354,13 @@ export async function invokeCopilotCLI(prompt: string, workspaceRoot: string): P
                     if (error) {
                         // Check if it's a timeout
                         if (error.killed) {
+                            const errorMsg = 'Copilot CLI timed out after 20 minutes. The process was force killed.';
+                            if (processManager && processId) {
+                                processManager.failProcess(processId, errorMsg);
+                            }
                             resolve({
                                 success: false,
-                                error: 'Copilot CLI timed out after 20 minutes. The process was force killed.'
+                                error: errorMsg
                             });
                             return;
                         }
@@ -356,16 +368,24 @@ export async function invokeCopilotCLI(prompt: string, workspaceRoot: string): P
                         // Check if copilot is not installed
                         if (error.message.includes('command not found') ||
                             error.message.includes('not recognized')) {
+                            const errorMsg = 'Copilot CLI is not installed. Please install it with: npm install -g @anthropic-ai/claude-code';
+                            if (processManager && processId) {
+                                processManager.failProcess(processId, errorMsg);
+                            }
                             resolve({
                                 success: false,
-                                error: 'Copilot CLI is not installed. Please install it with: npm install -g @anthropic-ai/claude-code'
+                                error: errorMsg
                             });
                             return;
                         }
 
+                        const errorMsg = `Copilot CLI error: ${error.message}`;
+                        if (processManager && processId) {
+                            processManager.failProcess(processId, errorMsg);
+                        }
                         resolve({
                             success: false,
-                            error: `Copilot CLI error: ${error.message}`
+                            error: errorMsg
                         });
                         return;
                     }
@@ -374,11 +394,20 @@ export async function invokeCopilotCLI(prompt: string, workspaceRoot: string): P
                     const clarification = parseCopilotOutput(stdout);
 
                     if (!clarification) {
+                        const errorMsg = 'No clarification received from Copilot CLI';
+                        if (processManager && processId) {
+                            processManager.failProcess(processId, errorMsg);
+                        }
                         resolve({
                             success: false,
-                            error: 'No clarification received from Copilot CLI'
+                            error: errorMsg
                         });
                         return;
+                    }
+
+                    // Mark as completed
+                    if (processManager && processId) {
+                        processManager.completeProcess(processId, clarification);
                     }
 
                     resolve({
@@ -387,9 +416,17 @@ export async function invokeCopilotCLI(prompt: string, workspaceRoot: string): P
                     });
                 });
 
+                // Register the process with the manager
+                if (processManager) {
+                    processId = processManager.registerProcess(prompt, childProcess);
+                }
+
                 // Handle cancellation
                 token.onCancellationRequested(() => {
                     childProcess.kill();
+                    if (processManager && processId) {
+                        processManager.updateProcess(processId, 'cancelled', undefined, 'Cancelled by user');
+                    }
                     resolve({
                         success: false,
                         error: 'Clarification request was cancelled'
@@ -399,9 +436,13 @@ export async function invokeCopilotCLI(prompt: string, workspaceRoot: string): P
         });
     } catch (error) {
         console.error('[AI Clarification] Failed to invoke Copilot CLI:', error);
+        const errorMsg = `Failed to run Copilot CLI: ${error}`;
+        if (processManager && processId) {
+            processManager.failProcess(processId, errorMsg);
+        }
         return {
             success: false,
-            error: `Failed to run Copilot CLI: ${error}`
+            error: errorMsg
         };
     }
 }
@@ -410,14 +451,16 @@ export async function invokeCopilotCLI(prompt: string, workspaceRoot: string): P
  * Handle an AI clarification request.
  * Routes to the configured AI tool (Copilot CLI or clipboard).
  * Falls back to clipboard if Copilot CLI fails.
- * 
+ *
  * @param context - The clarification context from the webview
  * @param workspaceRoot - The workspace root directory (needed for copilot CLI)
+ * @param processManager - Optional process manager for tracking running processes
  * @returns The clarification result if successful
  */
 export async function handleAIClarification(
     context: ClarificationContext,
-    workspaceRoot: string
+    workspaceRoot: string,
+    processManager?: ClarificationProcessManager
 ): Promise<ClarificationResult> {
     // Validate and build the prompt
     const { prompt, truncated } = validateAndTruncatePrompt(context);
@@ -432,7 +475,7 @@ export async function handleAIClarification(
 
     if (tool === 'copilot-cli') {
         // Try to invoke Copilot CLI and capture output
-        const result = await invokeCopilotCLI(prompt, workspaceRoot);
+        const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager);
 
         if (!result.success) {
             // Fall back to clipboard

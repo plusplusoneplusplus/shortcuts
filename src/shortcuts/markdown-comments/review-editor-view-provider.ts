@@ -6,6 +6,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { handleAIClarification } from './ai-clarification-handler';
+import { ClarificationProcessManager } from './clarification-process-manager';
 import { CommentsManager } from './comments-manager';
 import { ClarificationContext, isUserComment, MarkdownComment, MermaidContext } from './types';
 import { getWebviewContent } from './webview-content';
@@ -64,7 +65,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
     constructor(
         private readonly context: vscode.ExtensionContext,
-        private readonly commentsManager: CommentsManager
+        private readonly commentsManager: CommentsManager,
+        private readonly clarificationProcessManager?: ClarificationProcessManager
     ) { }
 
     /**
@@ -72,9 +74,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
      */
     public static register(
         context: vscode.ExtensionContext,
-        commentsManager: CommentsManager
+        commentsManager: CommentsManager,
+        clarificationProcessManager?: ClarificationProcessManager
     ): vscode.Disposable {
-        const provider = new ReviewEditorViewProvider(context, commentsManager);
+        const provider = new ReviewEditorViewProvider(context, commentsManager, clarificationProcessManager);
 
         const providerRegistration = vscode.window.registerCustomEditorProvider(
             ReviewEditorViewProvider.viewType,
@@ -417,7 +420,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         };
 
         // Delegate to the AI clarification handler
-        const result = await handleAIClarification(clarificationContext, workspaceRoot);
+        const result = await handleAIClarification(clarificationContext, workspaceRoot, this.clarificationProcessManager);
 
         // If successful, automatically add clarification as a comment
         if (result.success && result.clarification) {

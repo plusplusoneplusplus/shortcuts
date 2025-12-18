@@ -63,6 +63,11 @@
           "id": "markdownCommentsView",
           "name": "Markdown Comments",
           "when": "true"
+        },
+        {
+          "id": "clarificationProcessesView",
+          "name": "AI Processes",
+          "when": "true"
         }
       ]
     },
@@ -78,6 +83,10 @@
       {
         "view": "markdownCommentsView",
         "contents": "💬 **Markdown Comments**\n\nNo comments yet.\n\n**To add a comment:**\n1. Right-click any .md file → 'Open with Review Editor'\n2. Select text in the editor\n3. Press `Ctrl+Shift+M` (or `Cmd+Shift+M`)\n4. Enter your comment in the floating panel\n\n**Features:**\n• Inline comments with visual highlighting\n• Comment bubbles on click\n• Generate AI prompts from comments"
+      },
+      {
+        "view": "clarificationProcessesView",
+        "contents": "🤖 **AI Processes**\n\nNo AI clarification requests running.\n\n**To start an AI clarification:**\n1. Open a markdown file with Review Editor\n2. Select text and use 'Ask AI' submenu\n3. Running processes will appear here\n\n**Features:**\n• Track running AI requests\n• Cancel long-running processes\n• View process history"
       }
     ],
     "configuration": {
@@ -451,6 +460,24 @@
         "title": "Open with Review Editor",
         "category": "Markdown Comments",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "clarificationProcesses.cancel",
+        "title": "Cancel Process",
+        "category": "AI Processes",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "clarificationProcesses.clearCompleted",
+        "title": "Clear Completed",
+        "category": "AI Processes",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "clarificationProcesses.refresh",
+        "title": "Refresh",
+        "category": "AI Processes",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -498,6 +525,16 @@
         {
           "command": "markdownComments.refresh",
           "when": "view == markdownCommentsView",
+          "group": "navigation"
+        },
+        {
+          "command": "clarificationProcesses.clearCompleted",
+          "when": "view == clarificationProcessesView",
+          "group": "navigation"
+        },
+        {
+          "command": "clarificationProcesses.refresh",
+          "when": "view == clarificationProcessesView",
           "group": "navigation"
         }
       ],
@@ -691,6 +728,11 @@
           "command": "markdownComments.resolveAll",
           "when": "view == markdownCommentsView && viewItem == commentFile",
           "group": "commentFile@1"
+        },
+        {
+          "command": "clarificationProcesses.cancel",
+          "when": "view == clarificationProcessesView && viewItem == clarificationProcess_running",
+          "group": "process@1"
         }
       ],
       "explorer/context": [
