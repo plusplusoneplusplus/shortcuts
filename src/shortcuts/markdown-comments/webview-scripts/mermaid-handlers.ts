@@ -115,7 +115,25 @@ export function loadMermaid(callback: () => void): void {
         window.mermaid.initialize({
             startOnLoad: false,
             theme: isDark ? 'dark' : 'default',
-            securityLevel: 'loose'
+            securityLevel: 'loose',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis',
+                padding: 15
+            },
+            sequence: {
+                useMaxWidth: true
+            },
+            gantt: {
+                useMaxWidth: true
+            },
+            er: {
+                useMaxWidth: true
+            },
+            pie: {
+                useMaxWidth: true
+            }
         });
 
         callback();
@@ -144,6 +162,24 @@ async function renderMermaidDiagram(block: CodeBlock, container: HTMLElement): P
             // Wrap SVG in a wrapper for zoom/pan transformations
             previewDiv.innerHTML = '<div class="mermaid-svg-wrapper">' + svg + '</div>';
             previewDiv.classList.remove('mermaid-loading');
+
+            // Adjust SVG to better use available space
+            const svgElement = previewDiv.querySelector('svg');
+            if (svgElement) {
+                // Remove fixed dimensions to allow CSS to control sizing
+                svgElement.removeAttribute('style');
+                // Set viewBox if not present to enable proper scaling
+                if (!svgElement.getAttribute('viewBox')) {
+                    const width = svgElement.getAttribute('width') || '100%';
+                    const height = svgElement.getAttribute('height') || '100%';
+                    const numWidth = parseFloat(width) || 800;
+                    const numHeight = parseFloat(height) || 600;
+                    svgElement.setAttribute('viewBox', `0 0 ${numWidth} ${numHeight}`);
+                }
+                // Remove fixed width/height to let CSS handle sizing
+                svgElement.removeAttribute('width');
+                svgElement.removeAttribute('height');
+            }
 
             // Setup node and edge click handlers for commenting
             setupMermaidElementHandlers(previewDiv as HTMLElement, block);

@@ -351,25 +351,87 @@ export function render(isExternalChange: boolean = false): void {
     let currentCodeBlockLang: string | null = null;
     let skipUntilLine = 0;
 
+    // Threshold for truncating line numbers in blocks (show first N and last N)
+    const BLOCK_LINE_TRUNCATE_THRESHOLD = 20;
+    const BLOCK_LINE_SHOW_COUNT = 5; // Show first 5 and last 5 lines
+
     // Helper function to generate line numbers HTML for a block
+    // Truncates middle lines for large blocks to save vertical space
     function generateBlockLineNumbers(
         startLine: number,
         endLine: number,
-        commentsMap: Map<number, MarkdownComment[]>
+        commentsMap: Map<number, MarkdownComment[]>,
+        isMermaid: boolean = false
     ): string {
         let lineNumsHtml = '';
-        for (let i = startLine; i <= endLine; i++) {
-            const blockLineComments = commentsMap.get(i) || [];
-            const blockHasComments = blockLineComments.filter(c =>
-                state.settings.showResolved || c.status !== 'resolved'
-            ).length > 0;
-            const blockGutterIcon = blockHasComments
-                ? '<span class="gutter-icon" title="Click to view comments">💬</span>'
-                : '';
-            lineNumsHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
+        const totalLines = endLine - startLine + 1;
+        
+        // For mermaid blocks with many lines, truncate the middle
+        if (isMermaid && totalLines > BLOCK_LINE_TRUNCATE_THRESHOLD) {
+            // Show first few lines
+            for (let i = startLine; i < startLine + BLOCK_LINE_SHOW_COUNT; i++) {
+                const blockLineComments = commentsMap.get(i) || [];
+                const blockHasComments = blockLineComments.filter(c =>
+                    state.settings.showResolved || c.status !== 'resolved'
+                ).length > 0;
+                const blockGutterIcon = blockHasComments
+                    ? '<span class="gutter-icon" title="Click to view comments">💬</span>'
+                    : '';
+                lineNumsHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
+            }
+            
+            // Show truncation indicator
+            const hiddenCount = totalLines - (BLOCK_LINE_SHOW_COUNT * 2);
+            lineNumsHtml += '<div class="line-number line-number-truncated" title="' + hiddenCount + ' lines hidden">' +
+                '<span class="truncated-indicator">⋮' + hiddenCount + '</span></div>';
+            
+            // Show last few lines
+            for (let i = endLine - BLOCK_LINE_SHOW_COUNT + 1; i <= endLine; i++) {
+                const blockLineComments = commentsMap.get(i) || [];
+                const blockHasComments = blockLineComments.filter(c =>
+                    state.settings.showResolved || c.status !== 'resolved'
+                ).length > 0;
+                const blockGutterIcon = blockHasComments
+                    ? '<span class="gutter-icon" title="Click to view comments">💬</span>'
+                    : '';
+                lineNumsHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
+            }
+        } else {
+            // Show all line numbers for small blocks
+            for (let i = startLine; i <= endLine; i++) {
+                const blockLineComments = commentsMap.get(i) || [];
+                const blockHasComments = blockLineComments.filter(c =>
+                    state.settings.showResolved || c.status !== 'resolved'
+                ).length > 0;
+                const blockGutterIcon = blockHasComments
+                    ? '<span class="gutter-icon" title="Click to view comments">💬</span>'
+                    : '';
+                lineNumsHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
+            }
         }
         return lineNumsHtml;
     }
+
+    // Helper function to check if a line is empty (whitespace only)
+    function isEmptyLine(line: string): boolean {
+        return line.trim() === '';
+    }
+
+    // Helper function to find consecutive empty lines starting from an index
+    function findEmptyLineRun(startIndex: number): number {
+        let count = 0;
+        for (let i = startIndex; i < lines.length; i++) {
+            if (isEmptyLine(lines[i])) {
+                count++;
+            } else {
+                break;
+            }
+        }
+        return count;
+    }
+
+    // Threshold for collapsing empty lines (collapse if more than this many)
+    const EMPTY_LINE_COLLAPSE_THRESHOLD = 3;
 
     lines.forEach((line, index) => {
         const lineNum = index + 1;
@@ -392,7 +454,7 @@ export function render(isExternalChange: boolean = false): void {
         // Check if this line starts a code block
         const block = codeBlocks.find(b => b.startLine === lineNum);
         if (block) {
-            const blockLineNums = generateBlockLineNumbers(block.startLine, block.endLine, commentsMap);
+            const blockLineNums = generateBlockLineNumbers(block.startLine, block.endLine, commentsMap, block.isMermaid);
             const blockContent = block.isMermaid
                 ? renderMermaidContainer(block, commentsMap)
                 : renderCodeBlock(block, commentsMap);
@@ -421,6 +483,53 @@ export function render(isExternalChange: boolean = false): void {
 
             skipUntilLine = table.endLine - 1;
             return;
+        }
+
+        // Check for consecutive empty lines and collapse them
+        if (isEmptyLine(line)) {
+            const emptyCount = findEmptyLineRun(index);
+            if (emptyCount > EMPTY_LINE_COLLAPSE_THRESHOLD) {
+                // Check if any of the empty lines have comments
+                let hasCommentsInRange = false;
+                for (let i = lineNum; i < lineNum + emptyCount; i++) {
+                    const emptyLineComments = commentsMap.get(i) || [];
+                    const visibleEmptyComments = emptyLineComments.filter(c =>
+                        state.settings.showResolved || c.status !== 'resolved'
+                    );
+                    if (visibleEmptyComments.length > 0) {
+                        hasCommentsInRange = true;
+                        break;
+                    }
+                }
+
+                // Render first empty line normally
+                html += '<div class="line-row">' +
+                    '<div class="line-number" contenteditable="false">' + lineNum + '</div>' +
+                    '<div class="line-content" data-line="' + lineNum + '">&nbsp;</div>' +
+                    '</div>';
+
+                // Render collapsed empty lines indicator
+                const collapsedCount = emptyCount - 2; // Show first and last, collapse middle
+                const endLineNum = lineNum + emptyCount - 1;
+                const gutterIconCollapsed = hasCommentsInRange
+                    ? '<span class="gutter-icon" title="Some lines have comments">💬</span>'
+                    : '';
+                html += '<div class="line-row empty-lines-collapsed" data-start="' + (lineNum + 1) + '" data-end="' + (endLineNum - 1) + '">' +
+                    '<div class="line-number collapsed-indicator" contenteditable="false">' + gutterIconCollapsed + 
+                    '<span class="collapsed-range" title="Click to expand ' + collapsedCount + ' empty lines">⋮ ' + collapsedCount + '</span></div>' +
+                    '<div class="line-content collapsed-content" data-line="' + (lineNum + 1) + '">' +
+                    '<span class="collapsed-hint">(' + collapsedCount + ' empty lines)</span></div>' +
+                    '</div>';
+
+                // Render last empty line normally
+                html += '<div class="line-row">' +
+                    '<div class="line-number" contenteditable="false">' + endLineNum + '</div>' +
+                    '<div class="line-content" data-line="' + endLineNum + '">&nbsp;</div>' +
+                    '</div>';
+
+                skipUntilLine = endLineNum;
+                return;
+            }
         }
 
         // Apply markdown highlighting

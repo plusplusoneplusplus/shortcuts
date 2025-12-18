@@ -199,6 +199,55 @@ body {
     font-size: 12px;
 }
 
+/* Collapsed empty lines indicator */
+.empty-lines-collapsed {
+    opacity: 0.6;
+    background: var(--vscode-editor-lineHighlightBackground, rgba(255, 255, 255, 0.03));
+}
+
+.empty-lines-collapsed:hover {
+    opacity: 0.9;
+    cursor: pointer;
+}
+
+.collapsed-indicator {
+    color: var(--vscode-editorLineNumber-foreground);
+}
+
+.collapsed-range {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #888);
+    cursor: pointer;
+}
+
+.collapsed-range:hover {
+    color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.collapsed-content {
+    font-style: italic;
+}
+
+.collapsed-hint {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #888);
+    user-select: none;
+}
+
+/* Truncated line numbers in blocks (mermaid) */
+.line-number-truncated {
+    padding: 4px 0;
+    text-align: right;
+}
+
+.truncated-indicator {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground, #888);
+    opacity: 0.8;
+    display: inline-block;
+    line-height: 1.2;
+}
+
 .line-content {
     flex: 1;
     font-family: var(--vscode-editor-font-family, monospace);
