@@ -233,6 +233,139 @@
     padding-right: 4px;
 }
 
+/* Markdown content in comment bubbles */
+.bubble-markdown-content {
+    white-space: normal;
+}
+
+/* Reset paragraph margins in comments */
+.bubble-markdown-content .comment-paragraph {
+    margin: 0 0 0.5em 0;
+}
+
+.bubble-markdown-content .comment-paragraph:last-child {
+    margin-bottom: 0;
+}
+
+/* Headings in comments */
+.bubble-markdown-content .comment-heading {
+    margin: 0.8em 0 0.4em 0;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--vscode-editor-foreground);
+}
+
+.bubble-markdown-content .comment-heading:first-child {
+    margin-top: 0;
+}
+
+.bubble-markdown-content .comment-h1 {
+    font-size: 1.4em;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.3em;
+}
+
+.bubble-markdown-content .comment-h2 {
+    font-size: 1.25em;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.2em;
+}
+
+.bubble-markdown-content .comment-h3 {
+    font-size: 1.15em;
+}
+
+.bubble-markdown-content .comment-h4 {
+    font-size: 1.05em;
+}
+
+.bubble-markdown-content .comment-h5 {
+    font-size: 1em;
+}
+
+.bubble-markdown-content .comment-h6 {
+    font-size: 0.95em;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Inline code in comments */
+.bubble-markdown-content .comment-inline-code {
+    background: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.2));
+    padding: 0.15em 0.4em;
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.9em;
+}
+
+/* Code blocks in comments */
+.bubble-markdown-content .comment-code-block {
+    background: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.2));
+    padding: 0.8em 1em;
+    border-radius: 6px;
+    margin: 0.5em 0;
+    overflow-x: auto;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.9em;
+    line-height: 1.4;
+    white-space: pre;
+}
+
+.bubble-markdown-content .comment-code-block code {
+    background: none;
+    padding: 0;
+}
+
+/* Blockquotes in comments */
+.bubble-markdown-content .comment-blockquote {
+    margin: 0.5em 0;
+    padding: 0.5em 1em;
+    border-left: 4px solid var(--vscode-textBlockQuote-border, #007acc);
+    background: var(--vscode-textBlockQuote-background, rgba(0, 0, 0, 0.1));
+    color: var(--vscode-textBlockQuote-foreground, inherit);
+}
+
+/* Lists in comments */
+.bubble-markdown-content .comment-list {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+}
+
+.bubble-markdown-content .comment-list li {
+    margin: 0.25em 0;
+}
+
+/* Horizontal rule in comments */
+.bubble-markdown-content .comment-hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 1em 0;
+}
+
+/* Links in comments */
+.bubble-markdown-content .comment-link {
+    color: var(--vscode-textLink-foreground, #3794ff);
+    text-decoration: none;
+}
+
+.bubble-markdown-content .comment-link:hover {
+    text-decoration: underline;
+    color: var(--vscode-textLink-activeForeground, #3794ff);
+}
+
+/* Strong and emphasis */
+.bubble-markdown-content strong {
+    font-weight: 600;
+}
+
+.bubble-markdown-content em {
+    font-style: italic;
+}
+
+.bubble-markdown-content del {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
 /* Scrollbar styling for comment bubble */
 .bubble-comment-text::-webkit-scrollbar {
     width: 6px;
