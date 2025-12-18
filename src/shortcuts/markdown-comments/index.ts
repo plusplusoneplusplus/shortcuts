@@ -18,4 +18,3 @@ export { PromptGenerator } from './prompt-generator';
 export { ReviewEditorViewProvider } from './review-editor-view-provider';
 export * from './types';
 export * from './webview-utils';
-

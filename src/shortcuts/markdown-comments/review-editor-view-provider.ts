@@ -5,8 +5,8 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { AIProcessManager } from '../ai-service';
 import { handleAIClarification } from './ai-clarification-handler';
-import { ClarificationProcessManager } from './clarification-process-manager';
 import { CommentsManager } from './comments-manager';
 import { ClarificationContext, isUserComment, MarkdownComment, MermaidContext } from './types';
 import { getWebviewContent } from './webview-content';
@@ -66,7 +66,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly commentsManager: CommentsManager,
-        private readonly clarificationProcessManager?: ClarificationProcessManager
+        private readonly aiProcessManager?: AIProcessManager
     ) { }
 
     /**
@@ -75,9 +75,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     public static register(
         context: vscode.ExtensionContext,
         commentsManager: CommentsManager,
-        clarificationProcessManager?: ClarificationProcessManager
+        aiProcessManager?: AIProcessManager
     ): vscode.Disposable {
-        const provider = new ReviewEditorViewProvider(context, commentsManager, clarificationProcessManager);
+        const provider = new ReviewEditorViewProvider(context, commentsManager, aiProcessManager);
 
         const providerRegistration = vscode.window.registerCustomEditorProvider(
             ReviewEditorViewProvider.viewType,
@@ -147,7 +147,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             const baseSettings = this.commentsManager.getSettings();
 
             // Add Ask AI enabled setting from VS Code configuration
-            const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiClarification').get<boolean>('enabled', false);
+            const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiService').get<boolean>('enabled', false);
             const settings = { ...baseSettings, askAIEnabled };
 
             console.log('[Extension] updateWebview called - content length:', content.length);
@@ -190,7 +190,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             const baseSettings = this.commentsManager.getSettings();
 
             // Add Ask AI enabled setting from VS Code configuration
-            const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiClarification').get<boolean>('enabled', false);
+            const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiService').get<boolean>('enabled', false);
             const settings = { ...baseSettings, askAIEnabled };
 
             webviewPanel.webview.postMessage({
@@ -248,11 +248,19 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             }
         });
 
+        // Listen for configuration changes (especially AI service settings)
+        const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(event => {
+            if (event.affectsConfiguration('workspaceShortcuts.aiService')) {
+                updateWebview();
+            }
+        });
+
         // Clean up when editor is closed
         webviewPanel.onDidDispose(() => {
             messageDisposable.dispose();
             documentChangeDisposable.dispose();
             commentsChangeDisposable.dispose();
+            configChangeDisposable.dispose();
         });
 
         // Initial update after webview is ready
@@ -420,7 +428,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         };
 
         // Delegate to the AI clarification handler
-        const result = await handleAIClarification(clarificationContext, workspaceRoot, this.clarificationProcessManager);
+        const result = await handleAIClarification(clarificationContext, workspaceRoot, this.aiProcessManager);
 
         // If successful, automatically add clarification as a comment
         if (result.success && result.clarification) {

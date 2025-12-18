@@ -163,12 +163,12 @@
           "default": "rgba(76, 175, 80, 0.2)",
           "description": "Background highlight color for resolved comments (CSS color)"
         },
-        "workspaceShortcuts.aiClarification.enabled": {
+        "workspaceShortcuts.aiService.enabled": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "**[Preview]** Enable the 'Ask AI' feature in the review editor context menu. This feature allows you to get AI clarification for selected text using Copilot CLI."
         },
-        "workspaceShortcuts.aiClarification.tool": {
+        "workspaceShortcuts.aiService.tool": {
           "type": "string",
           "enum": [
             "copilot-cli",
@@ -179,9 +179,9 @@
             "Copy prompt to clipboard"
           ],
           "default": "copilot-cli",
-          "description": "Target AI tool for clarification requests from the review editor"
+          "description": "Target AI tool for requests"
         },
-        "workspaceShortcuts.aiClarification.model": {
+        "workspaceShortcuts.aiService.model": {
           "type": "string",
           "enum": [
             "",
@@ -202,17 +202,17 @@
           "default": "",
           "description": "AI model to use with Copilot CLI. Leave empty to use the default model."
         },
-        "workspaceShortcuts.aiClarification.prompts.clarify": {
+        "workspaceShortcuts.aiService.prompts.clarify": {
           "type": "string",
           "default": "Please clarify",
           "markdownDescription": "Prompt template for the **Clarify** action. The selected text and file path will be appended automatically."
         },
-        "workspaceShortcuts.aiClarification.prompts.goDeeper": {
+        "workspaceShortcuts.aiService.prompts.goDeeper": {
           "type": "string",
           "default": "Please provide an in-depth explanation and analysis of",
           "markdownDescription": "Prompt template for the **Go Deeper** action. The selected text and file path will be appended automatically."
         },
-        "workspaceShortcuts.aiClarification.prompts.customDefault": {
+        "workspaceShortcuts.aiService.prompts.customDefault": {
           "type": "string",
           "default": "Please explain",
           "markdownDescription": "Default prompt template for **Custom Instruction** when user doesn't provide one. The selected text and file path will be appended automatically."

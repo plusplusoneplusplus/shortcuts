@@ -1,35 +1,25 @@
 /**
- * ClarificationProcessManager - Tracks running AI clarification processes
+ * AIProcessManager - Tracks running AI processes
+ * 
+ * Generic process manager for tracking AI CLI invocations.
+ * Provides events for process lifecycle and methods for managing processes.
  */
 
 import { ChildProcess } from 'child_process';
 import * as vscode from 'vscode';
-import { ClarificationProcess, ClarificationProcessStatus } from './types';
-
-/**
- * Event types for process changes
- */
-export type ProcessEventType = 'process-added' | 'process-updated' | 'process-removed' | 'processes-cleared';
-
-/**
- * Process change event
- */
-export interface ProcessEvent {
-    type: ProcessEventType;
-    process?: ClarificationProcess;
-}
+import { AIProcess, AIProcessStatus, ProcessEvent, ProcessEventType } from './types';
 
 /**
  * Internal process tracking with child process reference
  */
-interface TrackedProcess extends ClarificationProcess {
+interface TrackedProcess extends AIProcess {
     childProcess?: ChildProcess;
 }
 
 /**
- * Manages clarification process tracking
+ * Manages AI process tracking
  */
-export class ClarificationProcessManager implements vscode.Disposable {
+export class AIProcessManager implements vscode.Disposable {
     private processes: Map<string, TrackedProcess> = new Map();
     private processCounter = 0;
 
@@ -64,7 +54,7 @@ export class ClarificationProcessManager implements vscode.Disposable {
     /**
      * Update process status
      */
-    updateProcess(id: string, status: ClarificationProcessStatus, result?: string, error?: string): void {
+    updateProcess(id: string, status: AIProcessStatus, result?: string, error?: string): void {
         const process = this.processes.get(id);
         if (!process) {
             return;
@@ -153,7 +143,7 @@ export class ClarificationProcessManager implements vscode.Disposable {
     /**
      * Get all processes
      */
-    getProcesses(): ClarificationProcess[] {
+    getProcesses(): AIProcess[] {
         return Array.from(this.processes.values()).map(p => ({
             id: p.id,
             promptPreview: p.promptPreview,
@@ -169,14 +159,14 @@ export class ClarificationProcessManager implements vscode.Disposable {
     /**
      * Get running processes only
      */
-    getRunningProcesses(): ClarificationProcess[] {
+    getRunningProcesses(): AIProcess[] {
         return this.getProcesses().filter(p => p.status === 'running');
     }
 
     /**
      * Get a specific process by ID
      */
-    getProcess(id: string): ClarificationProcess | undefined {
+    getProcess(id: string): AIProcess | undefined {
         const process = this.processes.get(id);
         if (!process) {
             return undefined;
@@ -241,3 +231,4 @@ export class ClarificationProcessManager implements vscode.Disposable {
         this._onDidChangeProcesses.dispose();
     }
 }
+

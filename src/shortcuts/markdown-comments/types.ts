@@ -2,6 +2,12 @@
  * Types and interfaces for the Markdown Comments feature
  */
 
+// Import generic AI types from ai-service
+import { AIProcessStatus, AIToolType } from '../ai-service';
+
+// Re-export for backward compatibility
+export type { AIProcessStatus, AIToolType };
+
 /**
  * Comment status
  */
@@ -245,11 +251,6 @@ export interface CommentTreeItemData {
 }
 
 /**
- * AI tool types for clarification requests
- */
-export type AIToolType = 'copilot-cli' | 'clipboard';
-
-/**
  * AI instruction types for different kinds of queries
  */
 export type AIInstructionType = 'clarify' | 'go-deeper' | 'custom';
@@ -288,12 +289,14 @@ export interface AIClarificationConfig {
 }
 
 /**
- * Status of a clarification process
+ * Legacy type alias for backward compatibility
+ * @deprecated Use AIProcessStatus from ai-service instead
  */
-export type ClarificationProcessStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+export type ClarificationProcessStatus = AIProcessStatus;
 
 /**
- * A tracked clarification process
+ * Legacy interface for backward compatibility
+ * @deprecated Use AIProcess from ai-service instead
  */
 export interface ClarificationProcess {
     /** Unique identifier */

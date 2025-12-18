@@ -1,13 +1,10 @@
 /**
- * Unit tests for Clarification Process Manager and Tree Data Provider
+ * Unit tests for AI Process Manager and Tree Data Provider
  * Tests process tracking, lifecycle management, and UI representation
  */
 
 import * as assert from 'assert';
-import { EventEmitter } from 'events';
-import { ClarificationProcessManager, ProcessEvent } from '../../shortcuts/markdown-comments/clarification-process-manager';
-import { ClarificationProcessTreeDataProvider, ClarificationProcessItem } from '../../shortcuts/markdown-comments/clarification-process-tree-provider';
-import { ClarificationProcess, ClarificationProcessStatus } from '../../shortcuts/markdown-comments/types';
+import { AIProcessManager, AIProcessTreeDataProvider, AIProcessItem, AIProcess, AIProcessStatus, ProcessEvent } from '../../shortcuts/ai-service';
 
 /**
  * Mock ChildProcess for testing cancellation
@@ -19,12 +16,12 @@ class MockChildProcess {
     }
 }
 
-suite('ClarificationProcessManager Tests', () => {
+suite('AIProcessManager Tests', () => {
 
     suite('Process Registration', () => {
 
         test('should register a new process and return ID', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             assert.ok(processId, 'Process ID should be returned');
@@ -32,7 +29,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should assign unique IDs to each process', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const id1 = manager.registerProcess('Prompt 1');
             const id2 = manager.registerProcess('Prompt 2');
             const id3 = manager.registerProcess('Prompt 3');
@@ -43,7 +40,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should create process with running status', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
             const process = manager.getProcess(processId);
 
@@ -52,7 +49,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should set startTime on registration', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const beforeTime = new Date();
             const processId = manager.registerProcess('Test prompt');
             const afterTime = new Date();
@@ -64,7 +61,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should store full prompt', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const fullPrompt = 'This is a very long prompt that explains everything in detail';
             const processId = manager.registerProcess(fullPrompt);
             const process = manager.getProcess(processId);
@@ -74,7 +71,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should create prompt preview for short prompts', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const shortPrompt = 'Short prompt';
             const processId = manager.registerProcess(shortPrompt);
             const process = manager.getProcess(processId);
@@ -84,7 +81,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should truncate prompt preview for long prompts', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const longPrompt = 'This is a very long prompt that should be truncated because it exceeds fifty characters';
             const processId = manager.registerProcess(longPrompt);
             const process = manager.getProcess(processId);
@@ -95,7 +92,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should normalize whitespace in prompt preview', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const messyPrompt = '  Multiple   spaces\nand\nnewlines  ';
             const processId = manager.registerProcess(messyPrompt);
             const process = manager.getProcess(processId);
@@ -105,9 +102,9 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should fire process-added event on registration', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             let eventFired = false;
-            let eventProcess: ClarificationProcess | undefined;
+            let eventProcess: AIProcess | undefined;
 
             manager.onDidChangeProcesses((event: ProcessEvent) => {
                 if (event.type === 'process-added') {
@@ -127,7 +124,7 @@ suite('ClarificationProcessManager Tests', () => {
     suite('Process Updates', () => {
 
         test('should update process status', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             manager.updateProcess(processId, 'completed');
@@ -138,7 +135,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should set endTime on status update', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             manager.updateProcess(processId, 'completed');
@@ -150,7 +147,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should store result on completion', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
             const resultText = 'This is the AI response';
 
@@ -162,7 +159,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should store error on failure', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
             const errorMessage = 'Connection timeout';
 
@@ -174,7 +171,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should fire process-updated event on update', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
             let eventFired = false;
 
@@ -190,7 +187,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should ignore update for non-existent process', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
 
             // Should not throw
             manager.updateProcess('non-existent-id', 'completed');
@@ -203,7 +200,7 @@ suite('ClarificationProcessManager Tests', () => {
     suite('completeProcess Shorthand', () => {
 
         test('should mark process as completed', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             manager.completeProcess(processId, 'Result text');
@@ -215,7 +212,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should set endTime on completion', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             manager.completeProcess(processId);
@@ -229,7 +226,7 @@ suite('ClarificationProcessManager Tests', () => {
     suite('failProcess Shorthand', () => {
 
         test('should mark process as failed', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             manager.failProcess(processId, 'Error message');
@@ -241,7 +238,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should set endTime on failure', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             manager.failProcess(processId, 'Error');
@@ -255,7 +252,7 @@ suite('ClarificationProcessManager Tests', () => {
     suite('Process Cancellation', () => {
 
         test('should cancel running process', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const mockProcess = new MockChildProcess();
             const processId = manager.registerProcess('Test prompt', mockProcess as any);
 
@@ -270,7 +267,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should not cancel already completed process', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             manager.completeProcess(processId);
@@ -280,7 +277,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should not cancel already failed process', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             manager.failProcess(processId, 'Error');
@@ -290,7 +287,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should return false for non-existent process', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
 
             const result = manager.cancelProcess('non-existent-id');
 
@@ -298,7 +295,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should handle cancellation without child process', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             // No child process provided
@@ -314,7 +311,7 @@ suite('ClarificationProcessManager Tests', () => {
     suite('Process Removal', () => {
 
         test('should remove process from tracking', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
 
             manager.removeProcess(processId);
@@ -324,7 +321,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should fire process-removed event', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
             let eventFired = false;
 
@@ -340,7 +337,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should ignore removal of non-existent process', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
 
             // Should not throw
             manager.removeProcess('non-existent-id');
@@ -350,7 +347,7 @@ suite('ClarificationProcessManager Tests', () => {
     suite('Clear Completed Processes', () => {
 
         test('should clear completed processes', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const id1 = manager.registerProcess('Prompt 1');
             const id2 = manager.registerProcess('Prompt 2');
             manager.completeProcess(id1);
@@ -362,7 +359,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should clear failed processes', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const id1 = manager.registerProcess('Prompt 1');
             const id2 = manager.registerProcess('Prompt 2');
             manager.failProcess(id1, 'Error');
@@ -374,7 +371,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should clear cancelled processes', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const id1 = manager.registerProcess('Prompt 1');
             const id2 = manager.registerProcess('Prompt 2');
             manager.cancelProcess(id1);
@@ -386,7 +383,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should keep running processes', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const id1 = manager.registerProcess('Running 1');
             const id2 = manager.registerProcess('Running 2');
             const id3 = manager.registerProcess('Completed');
@@ -400,7 +397,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should fire processes-cleared event', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
             manager.completeProcess(processId);
             let eventFired = false;
@@ -417,7 +414,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should not fire event when nothing to clear', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             manager.registerProcess('Running process');
             let eventFired = false;
 
@@ -436,7 +433,7 @@ suite('ClarificationProcessManager Tests', () => {
     suite('Get Processes', () => {
 
         test('should return all processes', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             manager.registerProcess('Prompt 1');
             manager.registerProcess('Prompt 2');
             manager.registerProcess('Prompt 3');
@@ -447,7 +444,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should return empty array when no processes', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
 
             const processes = manager.getProcesses();
 
@@ -455,7 +452,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should return copies without childProcess reference', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const mockProcess = new MockChildProcess();
             manager.registerProcess('Test prompt', mockProcess as any);
 
@@ -470,7 +467,7 @@ suite('ClarificationProcessManager Tests', () => {
     suite('Get Running Processes', () => {
 
         test('should return only running processes', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const id1 = manager.registerProcess('Running 1');
             const id2 = manager.registerProcess('Running 2');
             const id3 = manager.registerProcess('Completed');
@@ -481,12 +478,12 @@ suite('ClarificationProcessManager Tests', () => {
             const running = manager.getRunningProcesses();
 
             assert.strictEqual(running.length, 2);
-            assert.ok(running.some(p => p.id === id1));
-            assert.ok(running.some(p => p.id === id2));
+            assert.ok(running.some((p: AIProcess) => p.id === id1));
+            assert.ok(running.some((p: AIProcess) => p.id === id2));
         });
 
         test('should return empty when no running processes', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
             manager.completeProcess(processId);
 
@@ -499,14 +496,14 @@ suite('ClarificationProcessManager Tests', () => {
     suite('Has Running Processes', () => {
 
         test('should return true when running processes exist', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             manager.registerProcess('Test prompt');
 
             assert.strictEqual(manager.hasRunningProcesses(), true);
         });
 
         test('should return false when no running processes', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
             manager.completeProcess(processId);
 
@@ -514,7 +511,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should return false when empty', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
 
             assert.strictEqual(manager.hasRunningProcesses(), false);
         });
@@ -523,7 +520,7 @@ suite('ClarificationProcessManager Tests', () => {
     suite('Process Counts', () => {
 
         test('should count processes by status', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const id1 = manager.registerProcess('Running 1');
             const id2 = manager.registerProcess('Running 2');
             const id3 = manager.registerProcess('Completed');
@@ -542,7 +539,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should return zeros when empty', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
 
             const counts = manager.getProcessCounts();
 
@@ -556,7 +553,7 @@ suite('ClarificationProcessManager Tests', () => {
     suite('Dispose', () => {
 
         test('should kill all running processes on dispose', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const mock1 = new MockChildProcess();
             const mock2 = new MockChildProcess();
             manager.registerProcess('Prompt 1', mock1 as any);
@@ -569,7 +566,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should clear all processes on dispose', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             manager.registerProcess('Prompt 1');
             manager.registerProcess('Prompt 2');
 
@@ -579,7 +576,7 @@ suite('ClarificationProcessManager Tests', () => {
         });
 
         test('should not kill already completed processes on dispose', () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const mockProcess = new MockChildProcess();
             const processId = manager.registerProcess('Test prompt', mockProcess as any);
             manager.completeProcess(processId);
@@ -593,24 +590,24 @@ suite('ClarificationProcessManager Tests', () => {
     });
 });
 
-suite('ClarificationProcessTreeDataProvider Tests', () => {
+suite('AIProcessTreeDataProvider Tests', () => {
 
     suite('Tree Item Creation', () => {
 
         test('should create tree items for all processes', async () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             manager.registerProcess('Prompt 1');
             manager.registerProcess('Prompt 2');
 
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const provider = new AIProcessTreeDataProvider(manager);
             const items = await provider.getChildren();
 
             assert.strictEqual(items.length, 2);
         });
 
         test('should return empty array when no processes', async () => {
-            const manager = new ClarificationProcessManager();
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const manager = new AIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
 
             const items = await provider.getChildren();
 
@@ -618,9 +615,9 @@ suite('ClarificationProcessTreeDataProvider Tests', () => {
         });
 
         test('should return empty array for child items', async () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             manager.registerProcess('Test prompt');
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const provider = new AIProcessTreeDataProvider(manager);
 
             const items = await provider.getChildren();
             const childItems = await provider.getChildren(items[0]);
@@ -632,38 +629,38 @@ suite('ClarificationProcessTreeDataProvider Tests', () => {
     suite('Process Item Properties', () => {
 
         test('should set label from prompt preview', async () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             manager.registerProcess('Short prompt');
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const provider = new AIProcessTreeDataProvider(manager);
 
             const items = await provider.getChildren();
-            const item = items[0] as ClarificationProcessItem;
+            const item = items[0] as AIProcessItem;
 
             assert.strictEqual(item.label, 'Short prompt');
         });
 
         test('should set contextValue based on status', async () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const id = manager.registerProcess('Test prompt');
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const provider = new AIProcessTreeDataProvider(manager);
 
             let items = await provider.getChildren();
-            let item = items[0] as ClarificationProcessItem;
-            assert.strictEqual(item.contextValue, 'clarificationProcess_running');
+            let item = items[0] as AIProcessItem;
+            assert.strictEqual(item.contextValue, 'aiProcess_running');
 
             manager.completeProcess(id);
             items = await provider.getChildren();
-            item = items[0] as ClarificationProcessItem;
-            assert.strictEqual(item.contextValue, 'clarificationProcess_completed');
+            item = items[0] as AIProcessItem;
+            assert.strictEqual(item.contextValue, 'aiProcess_completed');
         });
 
         test('should store process reference in item', async () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const processId = manager.registerProcess('Test prompt');
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const provider = new AIProcessTreeDataProvider(manager);
 
             const items = await provider.getChildren();
-            const item = items[0] as ClarificationProcessItem;
+            const item = items[0] as AIProcessItem;
 
             assert.ok(item.process);
             assert.strictEqual(item.process.id, processId);
@@ -673,26 +670,26 @@ suite('ClarificationProcessTreeDataProvider Tests', () => {
     suite('Sorting', () => {
 
         test('should sort running processes first', async () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const id1 = manager.registerProcess('Completed');
             manager.completeProcess(id1);
             const id2 = manager.registerProcess('Running');
 
-            const provider = new ClarificationProcessTreeDataProvider(manager);
-            const items = await provider.getChildren() as ClarificationProcessItem[];
+            const provider = new AIProcessTreeDataProvider(manager);
+            const items = await provider.getChildren() as AIProcessItem[];
 
             assert.strictEqual(items[0].process.id, id2); // Running first
             assert.strictEqual(items[1].process.id, id1); // Completed second
         });
 
         test('should include all processes with same status in results', async () => {
-            const manager = new ClarificationProcessManager();
+            const manager = new AIProcessManager();
             const id1 = manager.registerProcess('First');
             const id2 = manager.registerProcess('Second');
             const id3 = manager.registerProcess('Third');
 
-            const provider = new ClarificationProcessTreeDataProvider(manager);
-            const items = await provider.getChildren() as ClarificationProcessItem[];
+            const provider = new AIProcessTreeDataProvider(manager);
+            const items = await provider.getChildren() as AIProcessItem[];
 
             // All 3 processes should be present
             assert.strictEqual(items.length, 3);
@@ -711,8 +708,8 @@ suite('ClarificationProcessTreeDataProvider Tests', () => {
     suite('Refresh', () => {
 
         test('should refresh when process changes', async () => {
-            const manager = new ClarificationProcessManager();
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const manager = new AIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
 
             let refreshCount = 0;
             provider.onDidChangeTreeData(() => {
@@ -727,8 +724,8 @@ suite('ClarificationProcessTreeDataProvider Tests', () => {
         });
 
         test('should fire tree change event on manual refresh', () => {
-            const manager = new ClarificationProcessManager();
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const manager = new AIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
 
             let eventFired = false;
             provider.onDidChangeTreeData(() => {
@@ -744,8 +741,8 @@ suite('ClarificationProcessTreeDataProvider Tests', () => {
     suite('Dispose', () => {
 
         test('should clean up on dispose', () => {
-            const manager = new ClarificationProcessManager();
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const manager = new AIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
 
             // Should not throw
             provider.dispose();
@@ -753,12 +750,12 @@ suite('ClarificationProcessTreeDataProvider Tests', () => {
     });
 });
 
-suite('ClarificationProcessItem Tests', () => {
+suite('AIProcessItem Tests', () => {
 
     suite('Status Icons', () => {
 
         test('running status should have sync~spin icon', () => {
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -766,14 +763,14 @@ suite('ClarificationProcessItem Tests', () => {
                 startTime: new Date()
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             assert.ok(item.iconPath);
             assert.strictEqual((item.iconPath as any).id, 'sync~spin');
         });
 
         test('completed status should have pass icon', () => {
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -782,14 +779,14 @@ suite('ClarificationProcessItem Tests', () => {
                 endTime: new Date()
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             assert.ok(item.iconPath);
             assert.strictEqual((item.iconPath as any).id, 'pass');
         });
 
         test('failed status should have error icon', () => {
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -799,14 +796,14 @@ suite('ClarificationProcessItem Tests', () => {
                 error: 'Test error'
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             assert.ok(item.iconPath);
             assert.strictEqual((item.iconPath as any).id, 'error');
         });
 
         test('cancelled status should have circle-slash icon', () => {
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -816,7 +813,7 @@ suite('ClarificationProcessItem Tests', () => {
                 error: 'Cancelled by user'
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             assert.ok(item.iconPath);
             assert.strictEqual((item.iconPath as any).id, 'circle-slash');
@@ -827,7 +824,7 @@ suite('ClarificationProcessItem Tests', () => {
 
         test('running process should show elapsed time', () => {
             const startTime = new Date(Date.now() - 65000); // 65 seconds ago
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -835,7 +832,7 @@ suite('ClarificationProcessItem Tests', () => {
                 startTime
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             assert.ok(item.description);
             assert.ok((item.description as string).includes('running'));
@@ -846,7 +843,7 @@ suite('ClarificationProcessItem Tests', () => {
         test('completed process should show duration', () => {
             const startTime = new Date(Date.now() - 120000);
             const endTime = new Date();
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -855,7 +852,7 @@ suite('ClarificationProcessItem Tests', () => {
                 endTime
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             assert.ok(item.description);
             assert.ok((item.description as string).includes('completed'));
@@ -864,7 +861,7 @@ suite('ClarificationProcessItem Tests', () => {
         test('failed process should show duration', () => {
             const startTime = new Date(Date.now() - 30000);
             const endTime = new Date();
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -874,7 +871,7 @@ suite('ClarificationProcessItem Tests', () => {
                 error: 'Connection timeout'
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             assert.ok(item.description);
             assert.ok((item.description as string).includes('failed'));
@@ -884,7 +881,7 @@ suite('ClarificationProcessItem Tests', () => {
     suite('Tooltip', () => {
 
         test('should include status in tooltip', () => {
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -892,7 +889,7 @@ suite('ClarificationProcessItem Tests', () => {
                 startTime: new Date()
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             assert.ok(item.tooltip);
             const tooltipText = (item.tooltip as any).value;
@@ -900,7 +897,7 @@ suite('ClarificationProcessItem Tests', () => {
         });
 
         test('should include error in tooltip for failed process', () => {
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -910,7 +907,7 @@ suite('ClarificationProcessItem Tests', () => {
                 error: 'Connection timeout error'
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             assert.ok(item.tooltip);
             const tooltipText = (item.tooltip as any).value;
@@ -918,7 +915,7 @@ suite('ClarificationProcessItem Tests', () => {
         });
 
         test('should include prompt preview in tooltip', () => {
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Explain the authentication flow',
                 fullPrompt: 'Explain the authentication flow in detail',
@@ -926,7 +923,7 @@ suite('ClarificationProcessItem Tests', () => {
                 startTime: new Date()
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             assert.ok(item.tooltip);
             const tooltipText = (item.tooltip as any).value;
@@ -937,7 +934,7 @@ suite('ClarificationProcessItem Tests', () => {
     suite('Collapsible State', () => {
 
         test('should not be collapsible', () => {
-            const process: ClarificationProcess = {
+            const process: AIProcess = {
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -945,7 +942,7 @@ suite('ClarificationProcessItem Tests', () => {
                 startTime: new Date()
             };
 
-            const item = new ClarificationProcessItem(process);
+            const item = new AIProcessItem(process);
 
             // TreeItemCollapsibleState.None = 0
             assert.strictEqual(item.collapsibleState, 0);
@@ -958,24 +955,24 @@ suite('Integration Tests', () => {
     suite('Full Lifecycle', () => {
 
         test('should handle complete process lifecycle', async () => {
-            const manager = new ClarificationProcessManager();
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const manager = new AIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
 
             // Register process
             const processId = manager.registerProcess('Test prompt');
-            let items = await provider.getChildren() as ClarificationProcessItem[];
+            let items = await provider.getChildren() as AIProcessItem[];
             assert.strictEqual(items.length, 1);
             assert.strictEqual(items[0].process.status, 'running');
 
             // Complete process
             manager.completeProcess(processId, 'Result');
-            items = await provider.getChildren() as ClarificationProcessItem[];
+            items = await provider.getChildren() as AIProcessItem[];
             assert.strictEqual(items[0].process.status, 'completed');
             assert.strictEqual(items[0].process.result, 'Result');
 
             // Clear completed
             manager.clearCompletedProcesses();
-            items = await provider.getChildren() as ClarificationProcessItem[];
+            items = await provider.getChildren() as AIProcessItem[];
             assert.strictEqual(items.length, 0);
 
             // Clean up
@@ -984,22 +981,22 @@ suite('Integration Tests', () => {
         });
 
         test('should handle multiple concurrent processes', async () => {
-            const manager = new ClarificationProcessManager();
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const manager = new AIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
 
             // Start multiple processes
             const id1 = manager.registerProcess('Prompt 1');
             const id2 = manager.registerProcess('Prompt 2');
             const id3 = manager.registerProcess('Prompt 3');
 
-            let items = await provider.getChildren() as ClarificationProcessItem[];
+            let items = await provider.getChildren() as AIProcessItem[];
             assert.strictEqual(items.length, 3);
 
             // Complete one, fail another
             manager.completeProcess(id1, 'Result 1');
             manager.failProcess(id2, 'Error 2');
 
-            items = await provider.getChildren() as ClarificationProcessItem[];
+            items = await provider.getChildren() as AIProcessItem[];
             const counts = manager.getProcessCounts();
             assert.strictEqual(counts.running, 1);
             assert.strictEqual(counts.completed, 1);
@@ -1007,7 +1004,7 @@ suite('Integration Tests', () => {
 
             // Cancel the last one
             manager.cancelProcess(id3);
-            items = await provider.getChildren() as ClarificationProcessItem[];
+            items = await provider.getChildren() as AIProcessItem[];
             assert.strictEqual(items.every(i => i.process.status !== 'running'), true);
 
             // Clean up
@@ -1016,8 +1013,8 @@ suite('Integration Tests', () => {
         });
 
         test('should handle rapid process creation and completion', async () => {
-            const manager = new ClarificationProcessManager();
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const manager = new AIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
 
             // Rapidly create and complete processes
             for (let i = 0; i < 10; i++) {
@@ -1025,12 +1022,12 @@ suite('Integration Tests', () => {
                 manager.completeProcess(id, `Result ${i}`);
             }
 
-            const items = await provider.getChildren() as ClarificationProcessItem[];
+            const items = await provider.getChildren() as AIProcessItem[];
             assert.strictEqual(items.length, 10);
             assert.ok(items.every(i => i.process.status === 'completed'));
 
             manager.clearCompletedProcesses();
-            const afterClear = await provider.getChildren() as ClarificationProcessItem[];
+            const afterClear = await provider.getChildren() as AIProcessItem[];
             assert.strictEqual(afterClear.length, 0);
 
             // Clean up
@@ -1042,8 +1039,8 @@ suite('Integration Tests', () => {
     suite('Event Coordination', () => {
 
         test('should update view when process status changes', async () => {
-            const manager = new ClarificationProcessManager();
-            const provider = new ClarificationProcessTreeDataProvider(manager);
+            const manager = new AIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
 
             let changeCount = 0;
             provider.onDidChangeTreeData(() => {

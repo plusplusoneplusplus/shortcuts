@@ -1,24 +1,26 @@
 /**
- * Tree data provider for the Clarification Processes panel
+ * Tree data provider for the AI Processes panel
+ * 
+ * Provides a tree view of running and completed AI processes.
  */
 
 import * as vscode from 'vscode';
-import { ClarificationProcessManager } from './clarification-process-manager';
-import { ClarificationProcess } from './types';
+import { AIProcessManager } from './ai-process-manager';
+import { AIProcess } from './types';
 
 /**
- * Tree item representing a clarification process
+ * Tree item representing an AI process
  */
-export class ClarificationProcessItem extends vscode.TreeItem {
+export class AIProcessItem extends vscode.TreeItem {
     public readonly contextValue: string;
-    public readonly process: ClarificationProcess;
+    public readonly process: AIProcess;
 
-    constructor(process: ClarificationProcess) {
+    constructor(process: AIProcess) {
         const label = process.promptPreview;
         super(label, vscode.TreeItemCollapsibleState.None);
 
         this.process = process;
-        this.contextValue = `clarificationProcess_${process.status}`;
+        this.contextValue = `aiProcess_${process.status}`;
 
         // Set description based on status
         this.description = this.getStatusDescription(process);
@@ -35,7 +37,7 @@ export class ClarificationProcessItem extends vscode.TreeItem {
     /**
      * Get status description (elapsed time for running, duration for completed)
      */
-    private getStatusDescription(process: ClarificationProcess): string {
+    private getStatusDescription(process: AIProcess): string {
         if (process.status === 'running') {
             const elapsed = this.formatDuration(Date.now() - process.startTime.getTime());
             return `running (${elapsed})`;
@@ -70,7 +72,7 @@ export class ClarificationProcessItem extends vscode.TreeItem {
     /**
      * Create detailed tooltip
      */
-    private createTooltip(process: ClarificationProcess): vscode.MarkdownString {
+    private createTooltip(process: AIProcess): vscode.MarkdownString {
         const lines: string[] = [];
 
         // Status
@@ -137,17 +139,17 @@ export class ClarificationProcessItem extends vscode.TreeItem {
 }
 
 /**
- * Tree data provider for clarification processes
+ * Tree data provider for AI processes
  */
-export class ClarificationProcessTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.Disposable {
+export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.Disposable {
     private readonly _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
-    private processManager: ClarificationProcessManager;
+    private processManager: AIProcessManager;
     private disposables: vscode.Disposable[] = [];
     private refreshInterval?: NodeJS.Timeout;
 
-    constructor(processManager: ClarificationProcessManager) {
+    constructor(processManager: AIProcessManager) {
         this.processManager = processManager;
 
         // Listen for process changes
@@ -192,12 +194,16 @@ export class ClarificationProcessTreeDataProvider implements vscode.TreeDataProv
 
         // Sort: running first, then by start time (newest first)
         processes.sort((a, b) => {
-            if (a.status === 'running' && b.status !== 'running') return -1;
-            if (a.status !== 'running' && b.status === 'running') return 1;
+            if (a.status === 'running' && b.status !== 'running') {
+                return -1;
+            }
+            if (a.status !== 'running' && b.status === 'running') {
+                return 1;
+            }
             return b.startTime.getTime() - a.startTime.getTime();
         });
 
-        return processes.map(p => new ClarificationProcessItem(p));
+        return processes.map(p => new AIProcessItem(p));
     }
 
     /**
@@ -211,3 +217,4 @@ export class ClarificationProcessTreeDataProvider implements vscode.TreeDataProv
         this.disposables.forEach(d => d.dispose());
     }
 }
+

@@ -1,6 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { AIProcessManager, AIProcessTreeDataProvider } from './shortcuts/ai-service';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
@@ -15,8 +16,6 @@ import {
     PromptGenerator,
     ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
-import { ClarificationProcessManager } from './shortcuts/markdown-comments/clarification-process-manager';
-import { ClarificationProcessTreeDataProvider } from './shortcuts/markdown-comments/clarification-process-tree-provider';
 import { NoteDocumentManager } from './shortcuts/note-document-provider';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { ThemeManager } from './shortcuts/theme-manager';
@@ -172,8 +171,8 @@ export async function activate(context: vscode.ExtensionContext) {
         const commentsManager = new CommentsManager(workspaceRoot);
         await commentsManager.initialize();
 
-        // Initialize Clarification Process Manager (must be before ReviewEditorViewProvider)
-        const clarificationProcessManager = new ClarificationProcessManager();
+        // Initialize AI Process Manager (must be before ReviewEditorViewProvider)
+        const aiProcessManager = new AIProcessManager();
 
         const commentsTreeDataProvider = new MarkdownCommentsTreeDataProvider(commentsManager);
         const promptGenerator = new PromptGenerator(commentsManager);
@@ -184,7 +183,7 @@ export async function activate(context: vscode.ExtensionContext) {
         );
 
         // Register the Review Editor View provider for markdown files with comments
-        const customEditorDisposable = ReviewEditorViewProvider.register(context, commentsManager, clarificationProcessManager);
+        const customEditorDisposable = ReviewEditorViewProvider.register(context, commentsManager, aiProcessManager);
 
         // Register comments tree view
         const commentsTreeView = vscode.window.createTreeView('markdownCommentsView', {
@@ -193,37 +192,37 @@ export async function activate(context: vscode.ExtensionContext) {
         });
         commentsCommands.setTreeView(commentsTreeView);
 
-        // Initialize Clarification Process tree data provider
-        const clarificationProcessTreeDataProvider = new ClarificationProcessTreeDataProvider(clarificationProcessManager);
+        // Initialize AI Process tree data provider
+        const aiProcessTreeDataProvider = new AIProcessTreeDataProvider(aiProcessManager);
 
-        // Register clarification processes tree view
-        const clarificationProcessesTreeView = vscode.window.createTreeView('clarificationProcessesView', {
-            treeDataProvider: clarificationProcessTreeDataProvider,
+        // Register AI processes tree view
+        const aiProcessesTreeView = vscode.window.createTreeView('clarificationProcessesView', {
+            treeDataProvider: aiProcessTreeDataProvider,
             showCollapseAll: false
         });
 
-        // Update clarification processes view description with counts
+        // Update AI processes view description with counts
         const updateProcessesViewDescription = () => {
-            const counts = clarificationProcessManager.getProcessCounts();
+            const counts = aiProcessManager.getProcessCounts();
             if (counts.running > 0 || counts.completed > 0 || counts.failed > 0) {
                 const parts: string[] = [];
                 if (counts.running > 0) parts.push(`${counts.running} running`);
                 if (counts.completed > 0) parts.push(`${counts.completed} done`);
                 if (counts.failed > 0) parts.push(`${counts.failed} failed`);
-                clarificationProcessesTreeView.description = parts.join(', ');
+                aiProcessesTreeView.description = parts.join(', ');
             } else {
-                clarificationProcessesTreeView.description = undefined;
+                aiProcessesTreeView.description = undefined;
             }
         };
         updateProcessesViewDescription();
-        clarificationProcessManager.onDidChangeProcesses(updateProcessesViewDescription);
+        aiProcessManager.onDidChangeProcesses(updateProcessesViewDescription);
 
-        // Register clarification process commands
+        // Register AI process commands
         const cancelProcessCommand = vscode.commands.registerCommand(
             'clarificationProcesses.cancel',
             (item: { process?: { id: string } }) => {
                 if (item?.process?.id) {
-                    clarificationProcessManager.cancelProcess(item.process.id);
+                    aiProcessManager.cancelProcess(item.process.id);
                 }
             }
         );
@@ -231,14 +230,14 @@ export async function activate(context: vscode.ExtensionContext) {
         const clearCompletedCommand = vscode.commands.registerCommand(
             'clarificationProcesses.clearCompleted',
             () => {
-                clarificationProcessManager.clearCompletedProcesses();
+                aiProcessManager.clearCompletedProcesses();
             }
         );
 
         const refreshProcessesCommand = vscode.commands.registerCommand(
             'clarificationProcesses.refresh',
             () => {
-                clarificationProcessTreeDataProvider.refresh();
+                aiProcessTreeDataProvider.refresh();
             }
         );
 
@@ -296,10 +295,10 @@ export async function activate(context: vscode.ExtensionContext) {
             customEditorDisposable,
             openWithCommentsCommand,
             ...commentsCommandDisposables,
-            // Clarification Process disposables
-            clarificationProcessesTreeView,
-            clarificationProcessManager,
-            clarificationProcessTreeDataProvider,
+            // AI Process disposables
+            aiProcessesTreeView,
+            aiProcessManager,
+            aiProcessTreeDataProvider,
             cancelProcessCommand,
             clearCompletedCommand,
             refreshProcessesCommand
