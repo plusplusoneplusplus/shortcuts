@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2025-12-18
+
+### Added
+- **AI Comment Types**: Support for different AI comment types (clarification, suggestion, question) with distinct colors
+- **Ask AI Submenu**: Multiple AI instruction types for context-aware clarification requests
+- **AI Processes Panel**: Sidebar panel to track ongoing AI clarification processes
+- **Markdown in Comment Bubbles**: Rich markdown rendering within comment popup bubbles
+- **Smart Bubble Positioning**: Auto-adjust comment bubble position and width based on content
+
+### Changed
+- AI comments now excluded from copy prompt to keep prompts clean
+- Increased Copilot CLI timeout to 20 minutes for longer operations
+- Enhanced AI model configuration and command building options
+
 ## [2.8.6] - 2025-12-14
 
 ### Fixed
