@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ConfigurationManager } from './configuration-manager';
+import { ConfigurationManager } from '../configuration-manager';
 
 /**
  * Provides a virtual file system for notes
@@ -218,3 +218,4 @@ export class NoteDocumentManager {
         this.fileSystemProvider.dispose();
     }
 }
+

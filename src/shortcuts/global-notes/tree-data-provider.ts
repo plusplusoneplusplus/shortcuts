@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { ConfigurationManager } from './configuration-manager';
-import { NotificationManager } from './notification-manager';
-import { GlobalNoteItem } from './tree-items';
+import { ConfigurationManager } from '../configuration-manager';
+import { NotificationManager } from '../notification-manager';
+import { GlobalNoteItem } from '../tree-items';
 
 /**
  * Tree data provider for the Global Notes view
@@ -87,3 +87,4 @@ export class GlobalNotesTreeDataProvider implements vscode.TreeDataProvider<vsco
         return items;
     }
 }
+

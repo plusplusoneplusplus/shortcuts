@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { GlobalNotesTreeDataProvider } from './global-notes-tree-data-provider';
+import { GlobalNotesTreeDataProvider } from './global-notes';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
 import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, GlobalNotesSectionItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';

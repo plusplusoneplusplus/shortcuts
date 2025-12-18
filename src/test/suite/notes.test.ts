@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from '../../shortcuts/configuration-manager';
 import { LogicalTreeDataProvider } from '../../shortcuts/logical-tree-data-provider';
-import { NoteDocumentManager, NoteFileSystemProvider } from '../../shortcuts/note-document-provider';
+import { NoteDocumentManager, NoteFileSystemProvider } from '../../shortcuts/global-notes';
 import { ThemeManager } from '../../shortcuts/theme-manager';
 import { NoteShortcutItem } from '../../shortcuts/tree-items';
 

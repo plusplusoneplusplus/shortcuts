@@ -6,7 +6,7 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GlobalNotesTreeDataProvider } from './shortcuts/global-notes-tree-data-provider';
+import { GlobalNotesTreeDataProvider } from './shortcuts/global-notes';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import {
@@ -16,7 +16,7 @@ import {
     PromptGenerator,
     ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
-import { NoteDocumentManager } from './shortcuts/note-document-provider';
+import { NoteDocumentManager } from './shortcuts/global-notes';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { ThemeManager } from './shortcuts/theme-manager';
 
