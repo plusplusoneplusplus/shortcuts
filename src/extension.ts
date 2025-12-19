@@ -6,6 +6,7 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
+import { GitChangesTreeDataProvider } from './shortcuts/git-changes';
 import { GlobalNotesTreeDataProvider } from './shortcuts/global-notes';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
@@ -93,6 +94,50 @@ export async function activate(context: vscode.ExtensionContext) {
             treeDataProvider: globalNotesTreeDataProvider,
             showCollapseAll: false
         });
+
+        // Initialize Git Changes tree data provider
+        const gitChangesTreeDataProvider = new GitChangesTreeDataProvider();
+        const gitInitialized = await gitChangesTreeDataProvider.initialize();
+
+        let gitChangesTreeView: vscode.TreeView<vscode.TreeItem> | undefined;
+        let gitRefreshCommand: vscode.Disposable | undefined;
+        let gitOpenScmCommand: vscode.Disposable | undefined;
+
+        if (gitInitialized) {
+            gitChangesTreeView = vscode.window.createTreeView('gitChangesView', {
+                treeDataProvider: gitChangesTreeDataProvider,
+                showCollapseAll: false
+            });
+
+            // Update view description with change counts
+            const updateGitViewDescription = () => {
+                const counts = gitChangesTreeDataProvider.getChangeCounts();
+                if (counts.total > 0) {
+                    const parts: string[] = [];
+                    if (counts.staged > 0) parts.push(`${counts.staged} staged`);
+                    if (counts.unstaged > 0) parts.push(`${counts.unstaged} modified`);
+                    if (counts.untracked > 0) parts.push(`${counts.untracked} untracked`);
+                    gitChangesTreeView!.description = parts.join(', ');
+                } else {
+                    gitChangesTreeView!.description = undefined;
+                }
+            };
+            updateGitViewDescription();
+            gitChangesTreeDataProvider.onDidChangeTreeData(updateGitViewDescription);
+
+            // Register git changes commands
+            gitRefreshCommand = vscode.commands.registerCommand('gitChanges.refresh', () => {
+                gitChangesTreeDataProvider.refresh();
+            });
+
+            gitOpenScmCommand = vscode.commands.registerCommand('gitChanges.openInScm', () => {
+                vscode.commands.executeCommand('workbench.view.scm');
+            });
+
+            console.log('Git Changes view initialized successfully');
+        } else {
+            console.log('Git extension not available, Git Changes view disabled');
+        }
 
         // Connect refresh callback and configuration manager to drag-drop controller
         dragDropController.setRefreshCallback(() => {
@@ -301,8 +346,15 @@ export async function activate(context: vscode.ExtensionContext) {
             aiProcessTreeDataProvider,
             cancelProcessCommand,
             clearCompletedCommand,
-            refreshProcessesCommand
+            refreshProcessesCommand,
+            // Git Changes disposables
+            gitChangesTreeDataProvider
         ];
+
+        // Add optional git disposables if git extension is available
+        if (gitChangesTreeView) disposables.push(gitChangesTreeView);
+        if (gitRefreshCommand) disposables.push(gitRefreshCommand);
+        if (gitOpenScmCommand) disposables.push(gitOpenScmCommand);
 
         // Add all disposables to context subscriptions
         context.subscriptions.push(...disposables);

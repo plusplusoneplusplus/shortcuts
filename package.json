@@ -32,6 +32,7 @@
   "activationEvents": [
     "onView:shortcutsView",
     "onView:markdownCommentsView",
+    "onView:gitChangesView",
     "onCommand:shortcuts.createLogicalGroup",
     "onCustomEditor:reviewEditorView",
     "onViewContainer:shortcuts"
@@ -49,6 +50,11 @@
     },
     "views": {
       "shortcuts": [
+        {
+          "id": "gitChangesView",
+          "name": "Git Changes",
+          "when": "true"
+        },
         {
           "id": "globalNotesView",
           "name": "Global Notes",
@@ -72,6 +78,10 @@
       ]
     },
     "viewsWelcome": [
+      {
+        "view": "gitChangesView",
+        "contents": "No git changes detected.\n\nThis panel shows modified, staged, and untracked files.\n\n[Open Source Control](command:workbench.view.scm)"
+      },
       {
         "view": "globalNotesView",
         "contents": "📝 **Global Notes**\n\n[Create First Note](command:shortcuts.createGlobalNote)\n\nQuick access notes available everywhere.\n\n**Features:**\n• Create notes accessible from any workspace\n• No group assignment needed\n• Perfect for quick ideas and reminders\n• Automatically saved"
@@ -478,6 +488,18 @@
         "title": "Refresh",
         "category": "AI Processes",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "gitChanges.refresh",
+        "title": "Refresh Git Changes",
+        "category": "Git Changes",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gitChanges.openInScm",
+        "title": "Open in Source Control",
+        "category": "Git Changes",
+        "icon": "$(source-control)"
       }
     ],
     "menus": {
@@ -535,6 +557,16 @@
         {
           "command": "clarificationProcesses.refresh",
           "when": "view == clarificationProcessesView",
+          "group": "navigation"
+        },
+        {
+          "command": "gitChanges.refresh",
+          "when": "view == gitChangesView",
+          "group": "navigation"
+        },
+        {
+          "command": "gitChanges.openInScm",
+          "when": "view == gitChangesView",
           "group": "navigation"
         }
       ],
