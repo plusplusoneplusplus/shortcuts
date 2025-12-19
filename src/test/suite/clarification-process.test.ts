@@ -646,12 +646,12 @@ suite('AIProcessTreeDataProvider Tests', () => {
 
             let items = await provider.getChildren();
             let item = items[0] as AIProcessItem;
-            assert.strictEqual(item.contextValue, 'aiProcess_running');
+            assert.strictEqual(item.contextValue, 'clarificationProcess_running');
 
             manager.completeProcess(id);
             items = await provider.getChildren();
             item = items[0] as AIProcessItem;
-            assert.strictEqual(item.contextValue, 'aiProcess_completed');
+            assert.strictEqual(item.contextValue, 'clarificationProcess_completed');
         });
 
         test('should store process reference in item', async () => {
