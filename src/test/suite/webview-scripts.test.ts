@@ -37,7 +37,8 @@ suite('Webview Scripts Tests', () => {
          * Pure function implementation for testing - mirrors parseCodeBlocks
          */
         function parseCodeBlocks(content: string): CodeBlock[] {
-            const lines = content.split('\n');
+            const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const lines = normalized.split('\n');
             const blocks: CodeBlock[] = [];
             let inBlock = false;
             let currentBlock: Partial<CodeBlock> | null = null;
@@ -163,6 +164,14 @@ suite('Webview Scripts Tests', () => {
             const blocks = parseCodeBlocks(content);
             assert.ok(blocks[0].code.includes('<value>'));
         });
+
+        test('should handle CRLF line endings without leaving carriage returns in extracted code', () => {
+            const content = '```cpp\r\nline1\r\nline2\r\n```';
+            const blocks = parseCodeBlocks(content);
+            assert.strictEqual(blocks.length, 1);
+            assert.strictEqual(blocks[0].code, 'line1\nline2');
+            assert.ok(!blocks[0].code.includes('\r'));
+        });
     });
 
     suite('Table Parsing Logic', () => {
@@ -203,7 +212,8 @@ suite('Webview Scripts Tests', () => {
          * Parse tables from content - mirrors webview-scripts implementation
          */
         function parseTables(content: string): ParsedTable[] {
-            const lines = content.split('\n');
+            const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const lines = normalized.split('\n');
             const tables: ParsedTable[] = [];
             let i = 0;
 
@@ -373,6 +383,14 @@ suite('Webview Scripts Tests', () => {
             test('should return empty array for empty content', () => {
                 const tables = parseTables('');
                 assert.strictEqual(tables.length, 0);
+            });
+
+            test('should parse tables with CRLF line endings', () => {
+                const content = '| A | B |\r\n|---|---|\r\n| 1 | 2 |';
+                const tables = parseTables(content);
+                assert.strictEqual(tables.length, 1);
+                assert.deepStrictEqual(tables[0].headers, ['A', 'B']);
+                assert.strictEqual(tables[0].rows.length, 1);
             });
 
             test('should not parse invalid tables (no separator)', () => {

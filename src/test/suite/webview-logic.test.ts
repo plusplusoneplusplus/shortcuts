@@ -38,6 +38,8 @@ import {
     resolveImagePath
 } from '../../shortcuts/markdown-comments/webview-logic/markdown-renderer';
 
+import { splitHighlightedHtmlIntoLines } from '../../shortcuts/markdown-comments/webview-logic/highlighted-html-lines';
+
 import { CommentStatus, MarkdownComment } from '../../shortcuts/markdown-comments/types';
 
 suite('Webview Logic Tests', () => {
@@ -642,6 +644,33 @@ suite('Webview Logic Tests', () => {
         });
     });
 
+    suite('Highlighted HTML Line Splitting', () => {
+        test('should keep per-line HTML balanced when spans cross newline boundaries', () => {
+            // Simulate highlight.js emitting a <span> that spans across a newline boundary
+            const highlighted = '<span class="hljs-function">HRESULT ClassA::MethodA(const std::string&amp; str)\n{</span>';
+            const lines = splitHighlightedHtmlIntoLines(highlighted);
+
+            assert.strictEqual(lines.length, 2);
+            // Each line should be independently balanced (no unclosed <span>)
+            assert.ok(lines[0].includes('</span>'), 'First line should end with a closing span');
+            assert.ok(lines[1].includes('<span class="hljs-function">'), 'Second line should reopen the span');
+        });
+
+        test('should prevent nested code-line wrappers when wrapping split lines', () => {
+            // This mirrors the kind of mis-nesting you pasted: if tags are unbalanced,
+            // wrapping each line in `<span class="code-line">` can nest subsequent wrappers.
+            const highlighted = '<span class="hljs-function">HRESULT <span class="hljs-title">ClassA::MethodA</span>(...)\n{</span>';
+            const lines = splitHighlightedHtmlIntoLines(highlighted);
+
+            const wrapped = lines
+                .map((l, idx) => `<span class="code-line" data-line="${497 + idx}">${l || ''}</span>`)
+                .join('');
+
+            assert.ok(!wrapped.includes('<span class="code-line" data-line="497"><span class="code-line"'),
+                'Should not nest a code-line span inside another code-line span');
+        });
+    });
+
     suite('Selection Utilities', () => {
 
         suite('calculateColumnIndices', () => {
@@ -1069,6 +1098,164 @@ suite('Webview Logic Tests', () => {
                 const result = applyMarkdownHighlighting('```', 1, false, null);
                 assert.strictEqual(result.codeBlockLang, 'plaintext');
             });
+        });
+    });
+
+    suite('splitHighlightedHtmlIntoLines - CPP snippet regression', () => {
+        /**
+         * This is a dedicated regression test for the exact C++ code snippet:
+         *
+         * ```cpp
+         * HRESULT ClassA::MethodA(const std::string& str)
+         * {
+         *     // todo
+         * }
+         * ```
+         *
+         * highlight.js typically wraps the function signature in a <span class="hljs-function">
+         * that spans across the first two lines (the signature and the opening brace).
+         * Without proper HTML-aware splitting, we get nested .code-line elements.
+         */
+
+        // Simulate the kind of HTML that highlight.js produces for this C++ snippet.
+        // The key issue: <span class="hljs-function"> starts on line 1 and closes after '{' on line 2.
+        const simulatedHighlightJsOutput =
+            '<span class="hljs-function">HRESULT <span class="hljs-title">ClassA::MethodA</span><span class="hljs-params">(<span class="hljs-type">const</span> std::string&amp; str)</span>\n' +
+            '{</span>\n' +
+            '    <span class="hljs-comment">// todo</span>\n' +
+            '}';
+
+        test('should produce exactly 4 lines for the 4-line CPP snippet', () => {
+            const lines = splitHighlightedHtmlIntoLines(simulatedHighlightJsOutput);
+            assert.strictEqual(lines.length, 4, `Expected 4 lines but got ${lines.length}`);
+        });
+
+        test('each line should be tag-balanced (no unclosed spans)', () => {
+            const lines = splitHighlightedHtmlIntoLines(simulatedHighlightJsOutput);
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const openCount = (line.match(/<span\b/gi) || []).length;
+                const closeCount = (line.match(/<\/span>/gi) || []).length;
+                assert.strictEqual(
+                    openCount,
+                    closeCount,
+                    `Line ${i + 1} has unbalanced spans: ${openCount} opens vs ${closeCount} closes. Line: "${line}"`
+                );
+            }
+        });
+
+        test('line 1 should contain the function signature', () => {
+            const lines = splitHighlightedHtmlIntoLines(simulatedHighlightJsOutput);
+            assert.ok(
+                lines[0].includes('ClassA::MethodA'),
+                `Line 1 should contain "ClassA::MethodA". Got: "${lines[0]}"`
+            );
+            assert.ok(
+                lines[0].includes('std::string'),
+                `Line 1 should contain "std::string". Got: "${lines[0]}"`
+            );
+        });
+
+        test('line 2 should contain only the opening brace', () => {
+            const lines = splitHighlightedHtmlIntoLines(simulatedHighlightJsOutput);
+            // Strip tags to check text content
+            const textContent = lines[1].replace(/<[^>]*>/g, '').trim();
+            assert.strictEqual(
+                textContent,
+                '{',
+                `Line 2 text should be "{". Got: "${textContent}"`
+            );
+        });
+
+        test('line 3 should contain the comment', () => {
+            const lines = splitHighlightedHtmlIntoLines(simulatedHighlightJsOutput);
+            assert.ok(
+                lines[2].includes('// todo'),
+                `Line 3 should contain "// todo". Got: "${lines[2]}"`
+            );
+            assert.ok(
+                lines[2].includes('hljs-comment'),
+                `Line 3 should have hljs-comment class. Got: "${lines[2]}"`
+            );
+        });
+
+        test('line 4 should contain only the closing brace', () => {
+            const lines = splitHighlightedHtmlIntoLines(simulatedHighlightJsOutput);
+            const textContent = lines[3].replace(/<[^>]*>/g, '').trim();
+            assert.strictEqual(
+                textContent,
+                '}',
+                `Line 4 text should be "}". Got: "${textContent}"`
+            );
+        });
+
+        test('wrapping each line in .code-line should not produce nested .code-line elements', () => {
+            const lines = splitHighlightedHtmlIntoLines(simulatedHighlightJsOutput);
+
+            // Simulate what renderCodeBlock does: wrap each line in <span class="code-line">
+            const wrappedLines = lines.map(
+                (line, i) => `<span class="code-line" data-line="${i + 1}">${line}</span>`
+            );
+            const fullHtml = wrappedLines.join('');
+
+            // Check that we don't have nested .code-line spans
+            // A nested pattern would be: <span class="code-line"...>...<span class="code-line"...>
+            const nestedPattern = /<span class="code-line"[^>]*>(?:(?!<\/span>).)*<span class="code-line"/;
+            assert.ok(
+                !nestedPattern.test(fullHtml),
+                `Should not have nested .code-line spans. HTML: "${fullHtml}"`
+            );
+        });
+
+        test('full rendering should produce valid structure for CPP snippet', () => {
+            const lines = splitHighlightedHtmlIntoLines(simulatedHighlightJsOutput);
+
+            // Build the full <pre><code>...</code></pre> structure like renderCodeBlock does
+            const linesHtml = lines.map(
+                (line, i) => `<span class="code-line" data-line="${497 + i}">${line || '&nbsp;'}</span>`
+            ).join('');
+
+            const fullHtml =
+                '<pre class="code-block-content"><code class="hljs language-cpp">' +
+                linesHtml +
+                '</code></pre>';
+
+            // Verify structure:
+            // 1. Should have exactly 4 .code-line spans
+            const codeLineMatches = fullHtml.match(/<span class="code-line"/g) || [];
+            assert.strictEqual(
+                codeLineMatches.length,
+                4,
+                `Should have exactly 4 .code-line spans. Got ${codeLineMatches.length}`
+            );
+
+            // 2. Each .code-line should close before the next one opens
+            // Split by .code-line and verify each segment is balanced
+            const segments = fullHtml.split(/<span class="code-line"[^>]*>/);
+            // segments[0] is before first code-line, segments[1..4] are the line contents
+
+            for (let i = 1; i < segments.length; i++) {
+                const segment = segments[i];
+                // Find where this code-line ends (first </span> that closes it)
+                // The segment should end with </span> for the code-line wrapper
+                assert.ok(
+                    segment.includes('</span>'),
+                    `Segment ${i} should contain closing </span>`
+                );
+            }
+
+            // 3. The problematic HTML from the bug report had data-line="498" nested inside data-line="497"
+            // Verify this doesn't happen
+            const line497Start = fullHtml.indexOf('data-line="497"');
+            const line498Start = fullHtml.indexOf('data-line="498"');
+            const line497End = fullHtml.indexOf('</span>', line497Start);
+
+            // line498 should start AFTER line497 ends
+            assert.ok(
+                line498Start > line497End,
+                `data-line="498" (at ${line498Start}) should come after line 497 closes (at ${line497End})`
+            );
         });
     });
 });

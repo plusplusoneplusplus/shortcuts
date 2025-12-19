@@ -3,6 +3,7 @@
  */
 
 import { MarkdownComment } from '../types';
+import { splitHighlightedHtmlIntoLines } from '../webview-logic/highlighted-html-lines';
 import { escapeHtml } from '../webview-logic/markdown-renderer';
 import { applyCommentHighlightToRange } from '../webview-logic/selection-utils';
 import { showFloatingPanel } from './panel-manager';
@@ -13,15 +14,18 @@ import { CodeBlock } from './types';
  * Parse code blocks from content
  */
 export function parseCodeBlocks(content: string): CodeBlock[] {
-    const lines = content.split('\n');
+    // Normalize line endings for robust parsing/rendering across LF/CRLF/CR.
+    // Important: this is ONLY for parsing; we don't want stray '\r' to render as extra blank lines in <pre>.
+    const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalized.split('\n');
     const blocks: CodeBlock[] = [];
     let inBlock = false;
     let currentBlock: Partial<CodeBlock> | null = null;
     let codeLines: string[] = [];
-    
+
     lines.forEach((line, index) => {
         const fenceMatch = line.match(/^```(\w*)/);
-        
+
         if (fenceMatch && !inBlock) {
             inBlock = true;
             currentBlock = {
@@ -43,7 +47,7 @@ export function parseCodeBlocks(content: string): CodeBlock[] {
             codeLines.push(line);
         }
     });
-    
+
     return blocks;
 }
 
@@ -54,7 +58,7 @@ export function highlightCode(code: string, language: string): string {
     if (typeof hljs === 'undefined') {
         return escapeHtml(code);
     }
-    
+
     try {
         if (language && hljs.getLanguage(language)) {
             return hljs.highlight(code, { language }).value;
@@ -70,49 +74,64 @@ export function highlightCode(code: string, language: string): string {
  * Render a code block with syntax highlighting and comment highlights
  */
 export function renderCodeBlock(
-    block: CodeBlock, 
+    block: CodeBlock,
     commentsMap: Map<number, MarkdownComment[]>
 ): string {
-    const highlightedCode = highlightCode(block.code, block.language);
-    const codeLines = highlightedCode.split('\n');
-    const plainCodeLines = block.code.split('\n');
-    
+    // Normalize line endings for display to avoid stray '\r' being rendered as extra blank lines.
+    const normalizedCode = block.code.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    const highlightedCode = highlightCode(normalizedCode, block.language);
+    const plainCodeLines = normalizedCode.split('\n');
+    let codeLines = splitHighlightedHtmlIntoLines(highlightedCode);
+
+    // Align highlighted lines to real code lines.
+    // highlight.js can sometimes emit trailing newlines; also, some grammars may cause unusual
+    // newline handling. We keep the displayed row count equal to the real code row count.
+    while (codeLines.length > plainCodeLines.length && codeLines[codeLines.length - 1].trim() === '') {
+        codeLines.pop();
+    }
+    if (codeLines.length > plainCodeLines.length) {
+        codeLines = codeLines.slice(0, plainCodeLines.length);
+    } else if (codeLines.length < plainCodeLines.length) {
+        codeLines = codeLines.concat(Array.from({ length: plainCodeLines.length - codeLines.length }, () => ''));
+    }
+
     const hasBlockComments = checkBlockHasComments(block.startLine, block.endLine, commentsMap);
     const containerClass = 'code-block' + (hasBlockComments ? ' has-comments' : '');
-    
+
     const linesHtml = codeLines.map((line, i) => {
         const actualLine = block.startLine + 1 + i; // +1 for fence line
         const plainLine = plainCodeLines[i] || '';
         const lineComments = getVisibleCommentsForLine(actualLine, commentsMap);
-        
+
         let lineContent = line || '&nbsp;';
         // Apply comment highlights to this code line
         if (lineComments.length > 0) {
             lineContent = applyCommentsToBlockContent(lineContent, plainLine, lineComments);
         }
-        
+
         return '<span class="code-line" data-line="' + actualLine + '">' + lineContent + '</span>';
     }).join('');
-    
-    const lineCount = codeLines.length;
+
+    const lineCount = plainCodeLines.length;
 
     return '<div class="' + containerClass + '" data-start-line="' + block.startLine +
-           '" data-end-line="' + block.endLine + '" data-block-id="' + block.id + '">' +
+        '" data-end-line="' + block.endLine + '" data-block-id="' + block.id + '">' +
         '<div class="code-block-header">' +
-            '<div class="code-block-header-left">' +
-                '<button class="code-action-btn code-collapse-btn" title="Collapse code block">▼</button>' +
-                '<span class="code-language">' + escapeHtml(block.language) + '</span>' +
-                '<span class="code-line-count">(' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</span>' +
-            '</div>' +
-            '<div class="code-block-actions">' +
-                '<button class="code-action-btn code-copy-btn" title="Copy code" data-code="' +
-                    encodeURIComponent(block.code) + '">📋 Copy</button>' +
-                '<button class="code-action-btn code-comment-btn" title="Add comment to code block">💬</button>' +
-            '</div>' +
+        '<div class="code-block-header-left">' +
+        '<button class="code-action-btn code-collapse-btn" title="Collapse code block">▼</button>' +
+        '<span class="code-language">' + escapeHtml(block.language) + '</span>' +
+        '<span class="code-line-count">(' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</span>' +
+        '</div>' +
+        '<div class="code-block-actions">' +
+        '<button class="code-action-btn code-copy-btn" title="Copy code" data-code="' +
+        encodeURIComponent(normalizedCode) + '">📋 Copy</button>' +
+        '<button class="code-action-btn code-comment-btn" title="Add comment to code block">💬</button>' +
+        '</div>' +
         '</div>' +
         '<pre class="code-block-content"><code class="hljs language-' + block.language + '">' +
-            linesHtml + '</code></pre>' +
-    '</div>';
+        linesHtml + '</code></pre>' +
+        '</div>';
 }
 
 /**
@@ -188,7 +207,7 @@ export function setupCodeBlockHandlers(): void {
  * Get visible comments for a specific line
  */
 function getVisibleCommentsForLine(
-    lineNum: number, 
+    lineNum: number,
     commentsMap: Map<number, MarkdownComment[]>
 ): MarkdownComment[] {
     const lineComments = commentsMap.get(lineNum) || [];
@@ -199,8 +218,8 @@ function getVisibleCommentsForLine(
  * Check if a block has any comments
  */
 function checkBlockHasComments(
-    startLine: number, 
-    endLine: number, 
+    startLine: number,
+    endLine: number,
     commentsMap: Map<number, MarkdownComment[]>
 ): boolean {
     for (let line = startLine; line <= endLine; line++) {
@@ -216,33 +235,33 @@ function checkBlockHasComments(
  * Apply comment highlights to block content (tables, code blocks)
  */
 function applyCommentsToBlockContent(
-    htmlContent: string, 
-    plainText: string, 
+    htmlContent: string,
+    plainText: string,
     lineComments: MarkdownComment[]
 ): string {
     if (lineComments.length === 0) return htmlContent;
-    
+
     // Sort comments by column descending to apply from right to left
     const sortedComments = [...lineComments].sort((a, b) => {
         return b.selection.startColumn - a.selection.startColumn;
     });
-    
+
     let result = htmlContent;
     sortedComments.forEach(comment => {
         const statusClass = comment.status === 'resolved' ? 'resolved' : '';
         // Get the comment type class (e.g., 'ai-suggestion', 'ai-clarification')
         const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
         result = applyCommentHighlightToRange(
-            result, 
+            result,
             plainText,
-            comment.selection.startColumn, 
+            comment.selection.startColumn,
             comment.selection.endColumn,
-            comment.id, 
+            comment.id,
             statusClass,
             typeClass
         );
     });
-    
+
     return result;
 }
 

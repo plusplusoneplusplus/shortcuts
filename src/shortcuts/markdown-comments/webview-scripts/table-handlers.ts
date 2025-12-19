@@ -13,7 +13,9 @@ import { ParsedTable } from './types';
  * Parse tables from content
  */
 export function parseTables(content: string): ParsedTable[] {
-    const lines = content.split('\n');
+    // Normalize line endings for consistent parsing across LF/CRLF/CR.
+    const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalized.split('\n');
     const tables: ParsedTable[] = [];
     let i = 0;
     

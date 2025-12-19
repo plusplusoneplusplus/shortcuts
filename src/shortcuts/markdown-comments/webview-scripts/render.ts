@@ -325,10 +325,14 @@ export function render(isExternalChange: boolean = false): void {
         console.log('[Webview] External change detected, skipping cursor save/restore');
     }
 
-    const lines = state.currentContent.split('\n');
+    // Normalize line endings for rendering/parsing to avoid stray '\r' producing visual artifacts
+    // (e.g., an "extra blank line" inside code blocks when the source text uses CRLF).
+    const normalizedContent = state.currentContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    const lines = normalizedContent.split('\n');
     const commentsMap = groupCommentsByAllCoveredLines(state.comments);
-    const codeBlocks = parseCodeBlocks(state.currentContent);
-    const tables = parseTables(state.currentContent);
+    const codeBlocks = parseCodeBlocks(normalizedContent);
+    const tables = parseTables(normalizedContent);
 
     // Create a map of lines that are part of code blocks
     const codeBlockLines = new Map<number, typeof codeBlocks[0]>();
