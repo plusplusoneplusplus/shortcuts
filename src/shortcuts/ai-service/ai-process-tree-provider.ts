@@ -20,7 +20,7 @@ export class AIProcessItem extends vscode.TreeItem {
         super(label, vscode.TreeItemCollapsibleState.None);
 
         this.process = process;
-        this.contextValue = `aiProcess_${process.status}`;
+        this.contextValue = `clarificationProcess_${process.status}`;
 
         // Set description based on status
         this.description = this.getStatusDescription(process);
