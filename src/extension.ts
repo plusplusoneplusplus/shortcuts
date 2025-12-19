@@ -6,7 +6,7 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GitChangesTreeDataProvider } from './shortcuts/git-changes';
+import { GitTreeDataProvider, GitCommitItem } from './shortcuts/git';
 import { GlobalNotesTreeDataProvider } from './shortcuts/global-notes';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
@@ -95,48 +95,67 @@ export async function activate(context: vscode.ExtensionContext) {
             showCollapseAll: false
         });
 
-        // Initialize Git Changes tree data provider
-        const gitChangesTreeDataProvider = new GitChangesTreeDataProvider();
-        const gitInitialized = await gitChangesTreeDataProvider.initialize();
+        // Initialize Git tree data provider (unified Changes + Commits view)
+        const gitTreeDataProvider = new GitTreeDataProvider();
+        const gitInitialized = await gitTreeDataProvider.initialize();
 
-        let gitChangesTreeView: vscode.TreeView<vscode.TreeItem> | undefined;
+        let gitTreeView: vscode.TreeView<vscode.TreeItem> | undefined;
         let gitRefreshCommand: vscode.Disposable | undefined;
         let gitOpenScmCommand: vscode.Disposable | undefined;
+        let gitLoadMoreCommand: vscode.Disposable | undefined;
+        let gitCopyHashCommand: vscode.Disposable | undefined;
 
         if (gitInitialized) {
-            gitChangesTreeView = vscode.window.createTreeView('gitChangesView', {
-                treeDataProvider: gitChangesTreeDataProvider,
-                showCollapseAll: false
+            gitTreeView = vscode.window.createTreeView('gitView', {
+                treeDataProvider: gitTreeDataProvider,
+                showCollapseAll: true
             });
 
-            // Update view description with change counts
+            // Update view description with combined counts
             const updateGitViewDescription = () => {
-                const counts = gitChangesTreeDataProvider.getChangeCounts();
-                if (counts.total > 0) {
-                    const parts: string[] = [];
-                    if (counts.staged > 0) parts.push(`${counts.staged} staged`);
-                    if (counts.unstaged > 0) parts.push(`${counts.unstaged} modified`);
-                    if (counts.untracked > 0) parts.push(`${counts.untracked} untracked`);
-                    gitChangesTreeView!.description = parts.join(', ');
-                } else {
-                    gitChangesTreeView!.description = undefined;
+                const counts = gitTreeDataProvider.getViewCounts();
+                const parts: string[] = [];
+                
+                // Changes summary
+                if (counts.changes.total > 0) {
+                    parts.push(`${counts.changes.total} change${counts.changes.total === 1 ? '' : 's'}`);
                 }
+                
+                // Commits summary
+                if (counts.commitCount > 0) {
+                    const commitText = counts.hasMoreCommits 
+                        ? `${counts.commitCount}+ commits` 
+                        : `${counts.commitCount} commit${counts.commitCount === 1 ? '' : 's'}`;
+                    parts.push(commitText);
+                }
+                
+                gitTreeView!.description = parts.length > 0 ? parts.join(', ') : undefined;
             };
             updateGitViewDescription();
-            gitChangesTreeDataProvider.onDidChangeTreeData(updateGitViewDescription);
+            gitTreeDataProvider.onDidChangeTreeData(updateGitViewDescription);
 
-            // Register git changes commands
-            gitRefreshCommand = vscode.commands.registerCommand('gitChanges.refresh', () => {
-                gitChangesTreeDataProvider.refresh();
+            // Register git view commands
+            gitRefreshCommand = vscode.commands.registerCommand('gitView.refresh', () => {
+                gitTreeDataProvider.refresh();
             });
 
-            gitOpenScmCommand = vscode.commands.registerCommand('gitChanges.openInScm', () => {
+            gitOpenScmCommand = vscode.commands.registerCommand('gitView.openInScm', () => {
                 vscode.commands.executeCommand('workbench.view.scm');
             });
 
-            console.log('Git Changes view initialized successfully');
+            gitLoadMoreCommand = vscode.commands.registerCommand('gitView.loadMoreCommits', async (count?: number) => {
+                await gitTreeDataProvider.loadMoreCommits(count);
+            });
+
+            gitCopyHashCommand = vscode.commands.registerCommand('gitView.copyCommitHash', async (item?: GitCommitItem) => {
+                if (item?.commit?.hash) {
+                    await gitTreeDataProvider.copyCommitHash(item.commit.hash);
+                }
+            });
+
+            console.log('Git view initialized successfully');
         } else {
-            console.log('Git extension not available, Git Changes view disabled');
+            console.log('Git extension not available, Git view disabled');
         }
 
         // Connect refresh callback and configuration manager to drag-drop controller
@@ -347,14 +366,16 @@ export async function activate(context: vscode.ExtensionContext) {
             cancelProcessCommand,
             clearCompletedCommand,
             refreshProcessesCommand,
-            // Git Changes disposables
-            gitChangesTreeDataProvider
+            // Git view disposables
+            gitTreeDataProvider
         ];
 
         // Add optional git disposables if git extension is available
-        if (gitChangesTreeView) disposables.push(gitChangesTreeView);
+        if (gitTreeView) disposables.push(gitTreeView);
         if (gitRefreshCommand) disposables.push(gitRefreshCommand);
         if (gitOpenScmCommand) disposables.push(gitOpenScmCommand);
+        if (gitLoadMoreCommand) disposables.push(gitLoadMoreCommand);
+        if (gitCopyHashCommand) disposables.push(gitCopyHashCommand);
 
         // Add all disposables to context subscriptions
         context.subscriptions.push(...disposables);

@@ -118,6 +118,14 @@ export class GitService implements vscode.Disposable {
     }
 
     /**
+     * Get the first repository root path (for single-repo scenarios)
+     */
+    getFirstRepositoryRoot(): string | undefined {
+        const repos = this.getRepositories();
+        return repos.length > 0 ? repos[0].rootUri.fsPath : undefined;
+    }
+
+    /**
      * Get all changes from all repositories
      */
     getAllChanges(): GitChange[] {
@@ -250,3 +258,4 @@ export class GitService implements vscode.Disposable {
         this.disposables = [];
     }
 }
+

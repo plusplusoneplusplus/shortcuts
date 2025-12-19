@@ -32,7 +32,7 @@
   "activationEvents": [
     "onView:shortcutsView",
     "onView:markdownCommentsView",
-    "onView:gitChangesView",
+    "onView:gitView",
     "onCommand:shortcuts.createLogicalGroup",
     "onCustomEditor:reviewEditorView",
     "onViewContainer:shortcuts"
@@ -51,8 +51,8 @@
     "views": {
       "shortcuts": [
         {
-          "id": "gitChangesView",
-          "name": "Git Changes",
+          "id": "gitView",
+          "name": "Git",
           "when": "true"
         },
         {
@@ -79,8 +79,8 @@
     },
     "viewsWelcome": [
       {
-        "view": "gitChangesView",
-        "contents": "No git changes detected.\n\nThis panel shows modified, staged, and untracked files.\n\n[Open Source Control](command:workbench.view.scm)"
+        "view": "gitView",
+        "contents": "No git repository detected.\n\nThis panel shows git changes and commit history.\n\n[Open Source Control](command:workbench.view.scm)"
       },
       {
         "view": "globalNotesView",
@@ -490,16 +490,28 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "gitChanges.refresh",
-        "title": "Refresh Git Changes",
-        "category": "Git Changes",
+        "command": "gitView.refresh",
+        "title": "Refresh Git View",
+        "category": "Git",
         "icon": "$(refresh)"
       },
       {
-        "command": "gitChanges.openInScm",
+        "command": "gitView.openInScm",
         "title": "Open in Source Control",
-        "category": "Git Changes",
+        "category": "Git",
         "icon": "$(source-control)"
+      },
+      {
+        "command": "gitView.loadMoreCommits",
+        "title": "Load More Commits",
+        "category": "Git",
+        "icon": "$(ellipsis)"
+      },
+      {
+        "command": "gitView.copyCommitHash",
+        "title": "Copy Commit Hash",
+        "category": "Git",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
@@ -560,13 +572,13 @@
           "group": "navigation"
         },
         {
-          "command": "gitChanges.refresh",
-          "when": "view == gitChangesView",
+          "command": "gitView.refresh",
+          "when": "view == gitView",
           "group": "navigation"
         },
         {
-          "command": "gitChanges.openInScm",
-          "when": "view == gitChangesView",
+          "command": "gitView.openInScm",
+          "when": "view == gitView",
           "group": "navigation"
         }
       ],
@@ -765,6 +777,11 @@
           "command": "clarificationProcesses.cancel",
           "when": "view == clarificationProcessesView && viewItem == clarificationProcess_running",
           "group": "process@1"
+        },
+        {
+          "command": "gitView.copyCommitHash",
+          "when": "view == gitView && viewItem == gitCommit",
+          "group": "gitCommit@1"
         }
       ],
       "explorer/context": [

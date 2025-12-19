@@ -161,3 +161,4 @@ export class GitChangeItem extends vscode.TreeItem {
         return md;
     }
 }
+
