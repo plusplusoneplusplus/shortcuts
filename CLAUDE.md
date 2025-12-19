@@ -24,6 +24,19 @@ This is the "Workspace Shortcuts" VSCode extension that provides customizable gr
 - `npm run test` - Run all tests (depends on pretest)
 - `npm run compile-tests` - Compile test files only
 
+### Running Individual Tests
+After running `npm run compile-tests`, you can run specific test files:
+```bash
+# Run a single test file
+node ./out/test/runTest.js --grep "test description pattern"
+```
+Test files are in `src/test/suite/` and include:
+- `config-migrations.test.ts` - Configuration migration tests (38 tests)
+- `markdown-comments.test.ts` - Comments functionality
+- `sync.test.ts` - Cloud sync tests
+- `nested-groups.test.ts` - Nested group behavior
+- `drag-drop.test.ts` - Drag and drop functionality
+
 ### Publishing
 - `npm run vsce:package` - Create .vsix package for distribution
 - `npm run vsce:publish` - Publish extension to marketplace
@@ -61,6 +74,22 @@ This is the "Workspace Shortcuts" VSCode extension that provides customizable gr
 - Create new files and folders directly in logical groups
 - Search management commands
 
+**Global Notes (`src/shortcuts/global-notes/`)**
+- `GlobalNotesTreeDataProvider` - Manages global notes view separate from shortcuts groups
+- `NoteDocumentProvider` - Virtual document provider for note content
+- Notes stored in `globalNotes` array in config, accessible from any workspace
+
+**Markdown Comments (`src/shortcuts/markdown-comments/`)**
+- `ReviewEditorViewProvider` - Custom editor for markdown files with inline commenting
+- `CommentsManager` - Stores and manages comment state per file
+- `MarkdownCommentsTreeDataProvider` - Shows all comments in tree view
+- `PromptGenerator` - Generates AI prompts from comments
+
+**AI Service (`src/shortcuts/ai-service/`)**
+- `AIProcessManager` - Manages running AI clarification requests
+- `AIProcessTreeDataProvider` - Shows running/completed AI processes
+- `CopilotCLIInvoker` - Invokes GitHub Copilot CLI or copies to clipboard
+
 ### Data Flow
 
 1. **Configuration Loading**: Extension reads `.vscode/shortcuts.yaml` or creates default config
@@ -76,24 +105,39 @@ This is the "Workspace Shortcuts" VSCode extension that provides customizable gr
 interface BasePath {
     alias: string;     // Alias name (e.g., @myrepo)
     path: string;      // Actual filesystem path
+    type?: BasePathType;  // 'git' | 'workspace' | 'docs' | 'build' | 'config' | 'custom'
+    description?: string;
 }
 
 interface LogicalGroup {
     name: string;           // Group identifier
     description?: string;   // Optional description
-    items: LogicalGroupItem[];  // Folder/file items
+    items: LogicalGroupItem[];  // Folder/file/command/task/note items
+    groups?: LogicalGroup[];   // Nested subgroups
     icon?: string;         // Optional group icon
 }
 
 interface LogicalGroupItem {
-    path: string;      // Relative, absolute, or alias path (e.g., @myrepo/src)
+    path?: string;     // Relative, absolute, or alias path (for file/folder items)
     name: string;      // Display name
-    type: 'folder' | 'file';  // Item type
+    type: 'folder' | 'file' | 'command' | 'task' | 'note';  // Item type
+    command?: string;  // Command ID (for command items)
+    task?: string;     // Task name (for task items)
+    noteId?: string;   // Note storage reference (for note items)
+    args?: any[];      // Optional command arguments
+    icon?: string;     // Optional icon override
+}
+
+interface GlobalNote {
+    name: string;      // Display name
+    noteId: string;    // Storage reference
+    icon?: string;     // Optional icon
 }
 
 interface ShortcutsConfig {
     basePaths?: BasePath[];         // Optional base path aliases
     logicalGroups: LogicalGroup[];  // All groups
+    globalNotes?: GlobalNote[];     // Global notes (not tied to groups)
 }
 ```
 
@@ -374,6 +418,50 @@ The migration system has 38 tests covering:
 - **Validation** (3 tests): Migration validation and supported versions
 - **Edge Cases** (4 tests): Empty configs, absolute paths, base paths
 - **Verbose Mode** (1 test): Logging functionality
+
+## Global Notes
+
+The extension provides a separate "Global Notes" view for quick-access notes not tied to any group.
+
+**Architecture:**
+- Stored in `globalNotes` array in `shortcuts.yaml`
+- Notes use virtual document provider (`shortcuts-note:` URI scheme)
+- Content stored via VSCode's Memento storage API
+- Available from any workspace (stored globally)
+
+**Commands:**
+- `shortcuts.createGlobalNote` - Create a new global note
+- `shortcuts.editGlobalNote` - Edit note content
+- `shortcuts.renameGlobalNote` - Rename note
+- `shortcuts.deleteGlobalNote` - Delete note
+
+## Markdown Review Editor
+
+A custom editor for adding inline comments to markdown files.
+
+**How to use:**
+1. Right-click any `.md` file → "Open with Review Editor"
+2. Select text and press `Ctrl+Shift+M` (or `Cmd+Shift+M`)
+3. Enter your comment in the floating panel
+4. Comments appear in the "Markdown Comments" tree view
+
+**Architecture:**
+- Uses VSCode's Custom Editor API (`CustomTextEditorProvider`)
+- Comments stored in file-specific JSON files (`.vscode/comments/<hash>.json`)
+- Webview renders markdown with highlight.js and mermaid.js support
+- Comment anchoring uses content fingerprinting for resilience to file edits
+
+**Key Components:**
+- `ReviewEditorViewProvider` - Custom editor provider
+- `CommentsManager` - CRUD operations for comments
+- `CommentAnchor` - Locates comment positions after file changes
+- `PromptGenerator` - Creates AI prompts from comment text
+
+**AI Integration (Preview):**
+- Enable via `workspaceShortcuts.aiService.enabled` setting
+- "Ask AI" submenu in review editor context menu
+- Supports Copilot CLI or clipboard modes
+- Processes tracked in "AI Processes" tree view
 
 ## Create File and Folder Support
 
