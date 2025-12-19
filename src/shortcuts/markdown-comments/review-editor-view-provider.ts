@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import { AIProcessManager } from '../ai-service';
 import { handleAIClarification } from './ai-clarification-handler';
 import { CommentsManager } from './comments-manager';
+import { isExternalUrl, isMarkdownFile, resolveFilePath } from './file-path-utils';
 import { ClarificationContext, isUserComment, MarkdownComment, MermaidContext } from './types';
 import { getWebviewContent } from './webview-content';
 
@@ -543,6 +544,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     /**
      * Open a file from a path in the markdown link
      * Supports absolute paths, paths relative to the file, and paths relative to workspace
+     * For .md files, opens in Review Editor View; for other files, opens in text editor
      */
     private async openFileFromPath(
         filePath: string,
@@ -553,44 +555,41 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
 
             // Skip external URLs (http, https, mailto, etc.)
-            if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(filePath)) {
+            if (isExternalUrl(filePath)) {
                 // Open external URLs in browser
                 await vscode.env.openExternal(vscode.Uri.parse(filePath));
                 return;
             }
 
-            let resolvedPath: string;
+            // Resolve the file path
+            const resolved = resolveFilePath(filePath, fileDir, workspaceRoot);
 
-            // Check if it's an absolute path
-            if (path.isAbsolute(filePath)) {
-                resolvedPath = filePath;
+            if (resolved.exists) {
+                const fileUri = vscode.Uri.file(resolved.resolvedPath);
+                await this.openFileUri(fileUri);
             } else {
-                // Try relative to the file's directory first
-                resolvedPath = path.resolve(fileDir, filePath);
+                // File not found
+                vscode.window.showWarningMessage(`File not found: ${filePath}`);
             }
-
-            // Check if file exists
-            const fs = require('fs');
-            if (fs.existsSync(resolvedPath)) {
-                const fileUri = vscode.Uri.file(resolvedPath);
-                await vscode.window.showTextDocument(fileUri);
-                return;
-            }
-
-            // Try workspace-relative path
-            if (workspaceRoot) {
-                const workspaceRelativePath = path.resolve(workspaceRoot, filePath);
-                if (fs.existsSync(workspaceRelativePath)) {
-                    const fileUri = vscode.Uri.file(workspaceRelativePath);
-                    await vscode.window.showTextDocument(fileUri);
-                    return;
-                }
-            }
-
-            // File not found
-            vscode.window.showWarningMessage(`File not found: ${filePath}`);
         } catch (error) {
             vscode.window.showErrorMessage(`Error opening file: ${error}`);
+        }
+    }
+
+    /**
+     * Open a file URI, using Review Editor View for markdown files
+     */
+    private async openFileUri(fileUri: vscode.Uri): Promise<void> {
+        if (isMarkdownFile(fileUri.fsPath)) {
+            // Open markdown files in Review Editor View
+            await vscode.commands.executeCommand(
+                'vscode.openWith',
+                fileUri,
+                ReviewEditorViewProvider.viewType
+            );
+        } else {
+            // Open other files in regular text editor
+            await vscode.window.showTextDocument(fileUri);
         }
     }
 

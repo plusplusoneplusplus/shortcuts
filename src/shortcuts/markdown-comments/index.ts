@@ -13,6 +13,7 @@ export * from './comment-anchor';
 export { MarkdownCommentsCommands } from './comments-commands';
 export { CommentsManager } from './comments-manager';
 export { CommentFileItem, CommentItem, MarkdownCommentsTreeDataProvider } from './comments-tree-provider';
+export * from './file-path-utils';
 export * from './markdown-parser';
 export { PromptGenerator } from './prompt-generator';
 export { ReviewEditorViewProvider } from './review-editor-view-provider';

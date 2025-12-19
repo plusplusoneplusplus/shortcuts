@@ -883,4 +883,92 @@ Final thoughts and summary of the document.
             assert.ok(!prompt.includes('Resolved comment'));
         });
     });
+
+    suite('Review Editor View File Link Opening', () => {
+        test('should have file path utilities exported for link handling', async () => {
+            // Import the utilities to verify they're available
+            const { isExternalUrl, isMarkdownFile, resolveFilePath } = await import('../../shortcuts/markdown-comments');
+
+            // Verify the functions exist
+            assert.ok(typeof isExternalUrl === 'function', 'isExternalUrl should be exported');
+            assert.ok(typeof isMarkdownFile === 'function', 'isMarkdownFile should be exported');
+            assert.ok(typeof resolveFilePath === 'function', 'resolveFilePath should be exported');
+        });
+
+        test('should correctly identify markdown files for Review Editor View', async () => {
+            const { isMarkdownFile } = await import('../../shortcuts/markdown-comments');
+
+            // Markdown files should open in Review Editor View
+            assert.strictEqual(isMarkdownFile('test.md'), true);
+            assert.strictEqual(isMarkdownFile('README.MD'), true);
+            assert.strictEqual(isMarkdownFile('docs/guide.markdown'), true);
+
+            // Non-markdown files should open in regular editor
+            assert.strictEqual(isMarkdownFile('script.js'), false);
+            assert.strictEqual(isMarkdownFile('style.css'), false);
+            assert.strictEqual(isMarkdownFile('data.json'), false);
+        });
+
+        test('should correctly identify external URLs', async () => {
+            const { isExternalUrl } = await import('../../shortcuts/markdown-comments');
+
+            // External URLs should open in browser
+            assert.strictEqual(isExternalUrl('https://example.com'), true);
+            assert.strictEqual(isExternalUrl('http://example.com'), true);
+            assert.strictEqual(isExternalUrl('mailto:user@example.com'), true);
+
+            // Local paths should not be treated as external URLs
+            assert.strictEqual(isExternalUrl('./relative/path.md'), false);
+            assert.strictEqual(isExternalUrl('../parent/file.md'), false);
+            assert.strictEqual(isExternalUrl('/absolute/path.md'), false);
+        });
+
+        test('should resolve file paths with multiple strategies', async () => {
+            const { resolveFilePath } = await import('../../shortcuts/markdown-comments');
+
+            // Create a mock exists check for testing
+            const mockExists = (p: string) => p.includes('exists');
+
+            const fileDir = '/project/docs';
+            const workspaceRoot = '/project';
+
+            // Test absolute path resolution
+            const absoluteResult = resolveFilePath('/path/exists.md', fileDir, workspaceRoot, mockExists);
+            assert.strictEqual(absoluteResult.exists, true);
+            assert.strictEqual(absoluteResult.resolution, 'absolute');
+
+            // Test relative path resolution (file not found)
+            const notFoundResult = resolveFilePath('nonexistent.md', fileDir, workspaceRoot, mockExists);
+            assert.strictEqual(notFoundResult.exists, false);
+            assert.strictEqual(notFoundResult.resolution, 'not-found');
+        });
+
+        test('should handle linked markdown files for Review Editor navigation', async () => {
+            await commentsManager.initialize();
+
+            // Create a linked markdown file
+            const linkedFile = path.join(tempDir, 'linked-doc.md');
+            fs.writeFileSync(linkedFile, '# Linked Document\n\nThis is a linked document.');
+
+            // Add a comment to the main file that references the linked file
+            await commentsManager.addComment(
+                testMarkdownFile,
+                { startLine: 5, startColumn: 1, endLine: 5, endColumn: 50 },
+                'Check [linked doc](linked-doc.md) for more info',
+                'Reference to another markdown file'
+            );
+
+            // Verify the comment was added
+            const comments = commentsManager.getCommentsForFile(testMarkdownFile);
+            assert.strictEqual(comments.length, 1);
+            assert.ok(comments[0].selectedText.includes('linked-doc.md'));
+
+            // Verify the linked file exists
+            assert.ok(fs.existsSync(linkedFile), 'Linked markdown file should exist');
+
+            // Verify it would be opened in Review Editor View
+            const { isMarkdownFile } = await import('../../shortcuts/markdown-comments');
+            assert.strictEqual(isMarkdownFile(linkedFile), true);
+        });
+    });
 });
