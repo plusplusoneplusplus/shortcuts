@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { GitCommit, CommitLoadOptions, CommitLoadResult } from './types';
+import { GitCommit, GitCommitFile, GitChangeStatus, CommitLoadOptions, CommitLoadResult } from './types';
 
 /**
  * Git Extension API types (from vscode.git extension)
@@ -217,6 +217,138 @@ export class GitLogService implements vscode.Disposable {
         } catch (error) {
             console.error(`Failed to get commit ${hash} from ${repoRoot}:`, error);
             return undefined;
+        }
+    }
+
+    /**
+     * Empty tree hash for initial commits with no parent
+     */
+    private static readonly EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+    /**
+     * Get files changed in a specific commit
+     * @param repoRoot Repository root path
+     * @param commitHash Commit hash
+     * @returns Array of files changed in the commit
+     */
+    getCommitFiles(repoRoot: string, commitHash: string): GitCommitFile[] {
+        try {
+            // Get the parent hash for diff comparison
+            const parentHash = this.getParentHash(repoRoot, commitHash);
+
+            // Use git diff-tree to get files changed
+            // --no-commit-id: don't show the commit id
+            // --name-status: show status (M/A/D/R/C) and file names
+            // -r: recurse into subdirectories
+            // -M: detect renames
+            // -C: detect copies
+            const command = `git diff-tree --no-commit-id --name-status -r -M -C ${commitHash}`;
+            
+            const output = execSync(command, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                timeout: 10000
+            });
+
+            if (!output.trim()) {
+                return [];
+            }
+
+            const files: GitCommitFile[] = [];
+            const lines = output.trim().split('\n');
+
+            for (const line of lines) {
+                const file = this.parseFileLine(line, commitHash, parentHash, repoRoot);
+                if (file) {
+                    files.push(file);
+                }
+            }
+
+            return files;
+        } catch (error) {
+            console.error(`Failed to get commit files for ${commitHash} from ${repoRoot}:`, error);
+            return [];
+        }
+    }
+
+    /**
+     * Get the parent hash for a commit
+     * For merge commits, uses the first parent
+     * For initial commits, uses the empty tree hash
+     */
+    private getParentHash(repoRoot: string, commitHash: string): string {
+        try {
+            const command = `git rev-parse ${commitHash}^`;
+            const output = execSync(command, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                timeout: 5000
+            });
+            return output.trim();
+        } catch {
+            // Initial commit has no parent, use empty tree hash
+            return GitLogService.EMPTY_TREE_HASH;
+        }
+    }
+
+    /**
+     * Parse a file line from git diff-tree output
+     * Format: STATUS\tPATH or STATUS\tOLD_PATH\tNEW_PATH (for renames/copies)
+     */
+    private parseFileLine(
+        line: string,
+        commitHash: string,
+        parentHash: string,
+        repoRoot: string
+    ): GitCommitFile | null {
+        if (!line.trim()) {
+            return null;
+        }
+
+        const parts = line.split('\t');
+        if (parts.length < 2) {
+            return null;
+        }
+
+        const statusCode = parts[0];
+        const status = this.parseStatusCode(statusCode);
+
+        // Handle renames and copies (have two paths)
+        if (statusCode.startsWith('R') || statusCode.startsWith('C')) {
+            if (parts.length >= 3) {
+                return {
+                    path: parts[2],
+                    originalPath: parts[1],
+                    status,
+                    commitHash,
+                    parentHash,
+                    repositoryRoot: repoRoot
+                };
+            }
+        }
+
+        return {
+            path: parts[1],
+            status,
+            commitHash,
+            parentHash,
+            repositoryRoot: repoRoot
+        };
+    }
+
+    /**
+     * Parse git status code to GitChangeStatus
+     */
+    private parseStatusCode(code: string): GitChangeStatus {
+        const firstChar = code.charAt(0).toUpperCase();
+        switch (firstChar) {
+            case 'M': return 'modified';
+            case 'A': return 'added';
+            case 'D': return 'deleted';
+            case 'R': return 'renamed';
+            case 'C': return 'copied';
+            case 'U': return 'conflict';
+            default: return 'modified';
         }
     }
 

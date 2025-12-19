@@ -6,7 +6,7 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GitTreeDataProvider, GitCommitItem } from './shortcuts/git';
+import { GitTreeDataProvider, GitCommitItem, GitCommitFile } from './shortcuts/git';
 import { GlobalNotesTreeDataProvider } from './shortcuts/global-notes';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
@@ -27,6 +27,36 @@ import { ThemeManager } from './shortcuts/theme-manager';
 function getGlobalConfigPath(): string {
     // Use VS Code's global storage path or fallback to home directory
     return path.join(os.homedir(), '.vscode-shortcuts');
+}
+
+/**
+ * Empty tree hash for git - represents an empty directory/file
+ * Used for diffing newly added files (no parent content) or deleted files
+ */
+const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+/**
+ * Create a Git URI for accessing file content at a specific commit
+ * Uses VSCode's Git extension URI scheme
+ * @param filePath Relative file path within the repository
+ * @param ref Git reference (commit hash)
+ * @param repoRoot Repository root path
+ * @returns VSCode Uri for the file at the specified commit
+ */
+function toGitUri(filePath: string, ref: string, repoRoot: string): vscode.Uri {
+    // Construct the absolute path
+    const absolutePath = path.isAbsolute(filePath)
+        ? filePath
+        : path.join(repoRoot, filePath);
+
+    // Create the query parameters for the git URI
+    const params = {
+        path: absolutePath,
+        ref: ref
+    };
+
+    // Return the git URI
+    return vscode.Uri.parse(`git:${absolutePath}?${JSON.stringify(params)}`);
 }
 
 /**
@@ -104,6 +134,7 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitOpenScmCommand: vscode.Disposable | undefined;
         let gitLoadMoreCommand: vscode.Disposable | undefined;
         let gitCopyHashCommand: vscode.Disposable | undefined;
+        let gitOpenFileDiffCommand: vscode.Disposable | undefined;
 
         if (gitInitialized) {
             gitTreeView = vscode.window.createTreeView('gitView', {
@@ -152,6 +183,71 @@ export async function activate(context: vscode.ExtensionContext) {
                     await gitTreeDataProvider.copyCommitHash(item.commit.hash);
                 }
             });
+
+            // Register command to open commit file diff
+            gitOpenFileDiffCommand = vscode.commands.registerCommand(
+                'gitView.openCommitFileDiff',
+                async (file: GitCommitFile) => {
+                    if (!file) {
+                        return;
+                    }
+
+                    try {
+                        const fileName = file.path.split('/').pop() || file.path;
+                        const shortHash = file.commitHash.slice(0, 7);
+
+                        // Handle different file statuses
+                        if (file.status === 'added') {
+                            // For newly added files, show the file content at the commit
+                            // Left side is empty (file didn't exist), right side is the new file
+                            const rightUri = toGitUri(
+                                file.path,
+                                file.commitHash,
+                                file.repositoryRoot
+                            );
+                            const emptyUri = toGitUri(
+                                file.path,
+                                EMPTY_TREE_HASH,
+                                file.repositoryRoot
+                            );
+                            const title = `${fileName} (${shortHash}) [Added]`;
+                            await vscode.commands.executeCommand('vscode.diff', emptyUri, rightUri, title);
+                        } else if (file.status === 'deleted') {
+                            // For deleted files, show the file content at the parent
+                            // Left side is the old file, right side is empty (file was deleted)
+                            const leftUri = toGitUri(
+                                file.path,
+                                file.parentHash,
+                                file.repositoryRoot
+                            );
+                            const emptyUri = toGitUri(
+                                file.path,
+                                file.commitHash,
+                                file.repositoryRoot
+                            );
+                            const title = `${fileName} (${shortHash}) [Deleted]`;
+                            await vscode.commands.executeCommand('vscode.diff', leftUri, emptyUri, title);
+                        } else {
+                            // For modified, renamed, copied files - standard diff
+                            const leftUri = toGitUri(
+                                file.originalPath || file.path,
+                                file.parentHash,
+                                file.repositoryRoot
+                            );
+                            const rightUri = toGitUri(
+                                file.path,
+                                file.commitHash,
+                                file.repositoryRoot
+                            );
+                            const title = `${fileName} (${shortHash})`;
+                            await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
+                        }
+                    } catch (error) {
+                        console.error('Failed to open commit file diff:', error);
+                        vscode.window.showErrorMessage('Failed to open diff view');
+                    }
+                }
+            );
 
             console.log('Git view initialized successfully');
         } else {
@@ -376,6 +472,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitOpenScmCommand) disposables.push(gitOpenScmCommand);
         if (gitLoadMoreCommand) disposables.push(gitLoadMoreCommand);
         if (gitCopyHashCommand) disposables.push(gitCopyHashCommand);
+        if (gitOpenFileDiffCommand) disposables.push(gitOpenFileDiffCommand);
 
         // Add all disposables to context subscriptions
         context.subscriptions.push(...disposables);

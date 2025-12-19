@@ -97,6 +97,24 @@ export interface CommitLoadResult {
 }
 
 /**
+ * Represents a file changed in a commit
+ */
+export interface GitCommitFile {
+    /** Relative path to the file within the repository */
+    path: string;
+    /** Original path for renames/copies */
+    originalPath?: string;
+    /** Type of change */
+    status: GitChangeStatus;
+    /** Commit hash this file change belongs to */
+    commitHash: string;
+    /** Parent commit hash for diff comparison */
+    parentHash: string;
+    /** Repository root path */
+    repositoryRoot: string;
+}
+
+/**
  * Section types in the Git view
  */
 export type GitSectionType = 'changes' | 'commits';

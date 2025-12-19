@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { GitChangeItem } from './git-change-item';
+import { GitCommitFileItem } from './git-commit-file-item';
 import { GitCommitItem } from './git-commit-item';
 import { GitLogService } from './git-log-service';
 import { GitService } from './git-service';
@@ -170,6 +171,11 @@ export class GitTreeDataProvider
                 }
             }
 
+            // Commit item - return files changed in this commit
+            if (element instanceof GitCommitItem) {
+                return this.getCommitFileItems(element.commit);
+            }
+
             // All other items have no children
             return [];
         } catch (error) {
@@ -214,6 +220,19 @@ export class GitTreeDataProvider
         }
 
         return items;
+    }
+
+    /**
+     * Get file items for a commit
+     * @param commit The commit to get files for
+     * @returns Array of file tree items
+     */
+    private getCommitFileItems(commit: GitCommit): vscode.TreeItem[] {
+        const files = this.gitLogService.getCommitFiles(
+            commit.repositoryRoot,
+            commit.hash
+        );
+        return files.map(file => new GitCommitFileItem(file));
     }
 
     /**

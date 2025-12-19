@@ -6,6 +6,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { GitChangeItem } from '../../shortcuts/git/git-change-item';
+import { GitCommitFileItem } from '../../shortcuts/git/git-commit-file-item';
 import { GitCommitItem } from '../../shortcuts/git/git-commit-item';
 import { LoadMoreItem } from '../../shortcuts/git/load-more-item';
 import { SectionHeaderItem } from '../../shortcuts/git/section-header-item';
@@ -15,6 +16,7 @@ import {
     GitChangeStage,
     GitChangeCounts,
     GitCommit,
+    GitCommitFile,
     CommitLoadOptions,
     CommitLoadResult,
     GitSectionType,
@@ -101,6 +103,57 @@ suite('Git View Tests', () => {
             assert.strictEqual(counts.changes.total, 3);
             assert.strictEqual(counts.commitCount, 20);
             assert.strictEqual(counts.hasMoreCommits, true);
+        });
+
+        test('should have correct GitCommitFile structure', () => {
+            const file: GitCommitFile = {
+                path: 'src/file.ts',
+                status: 'modified',
+                commitHash: 'abc123def456789',
+                parentHash: 'parent123456789',
+                repositoryRoot: '/repo'
+            };
+            assert.strictEqual(file.path, 'src/file.ts');
+            assert.strictEqual(file.status, 'modified');
+            assert.strictEqual(file.commitHash, 'abc123def456789');
+            assert.strictEqual(file.parentHash, 'parent123456789');
+        });
+
+        test('should have correct GitCommitFile structure with originalPath', () => {
+            const file: GitCommitFile = {
+                path: 'src/new-name.ts',
+                originalPath: 'src/old-name.ts',
+                status: 'renamed',
+                commitHash: 'abc123def456789',
+                parentHash: 'parent123456789',
+                repositoryRoot: '/repo'
+            };
+            assert.strictEqual(file.originalPath, 'src/old-name.ts');
+            assert.strictEqual(file.status, 'renamed');
+        });
+
+        test('should have correct GitCommitFile structure for added file', () => {
+            const file: GitCommitFile = {
+                path: 'src/new-feature.ts',
+                status: 'added',
+                commitHash: 'abc123def456789',
+                parentHash: 'parent123456789',
+                repositoryRoot: '/repo'
+            };
+            assert.strictEqual(file.status, 'added');
+            assert.strictEqual(file.originalPath, undefined);
+        });
+
+        test('should have correct GitCommitFile structure for deleted file', () => {
+            const file: GitCommitFile = {
+                path: 'src/removed-file.ts',
+                status: 'deleted',
+                commitHash: 'abc123def456789',
+                parentHash: 'parent123456789',
+                repositoryRoot: '/repo'
+            };
+            assert.strictEqual(file.status, 'deleted');
+            assert.strictEqual(file.originalPath, undefined);
         });
     });
 
@@ -391,10 +444,10 @@ suite('Git View Tests', () => {
                 assert.strictEqual(item.contextValue, 'gitCommit');
             });
 
-            test('should not be collapsible', () => {
+            test('should be expandable (collapsed by default)', () => {
                 const commit = createMockCommit();
                 const item = new GitCommitItem(commit);
-                assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.None);
+                assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
             });
 
             test('should have git-commit icon', () => {
@@ -502,6 +555,201 @@ suite('Git View Tests', () => {
                 const tooltip = item.tooltip as vscode.MarkdownString;
                 assert.ok(tooltip.value.includes('repo'));
             });
+        });
+    });
+
+    // ============================================
+    // GitCommitFileItem Tests
+    // ============================================
+    suite('GitCommitFileItem', () => {
+        const createMockCommitFile = (
+            status: GitChangeStatus = 'modified',
+            filePath: string = 'src/file.ts',
+            originalPath?: string
+        ): GitCommitFile => ({
+            path: filePath,
+            originalPath,
+            status,
+            commitHash: 'abc123def456789012345678901234567890abcd',
+            parentHash: 'parent123456789012345678901234567890abcd',
+            repositoryRoot: '/repo'
+        });
+
+        suite('Basic Properties', () => {
+            test('should set label to filename', () => {
+                const file = createMockCommitFile('modified', 'src/components/Button.tsx');
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual(item.label, 'Button.tsx');
+            });
+
+            test('should set contextValue to gitCommitFile', () => {
+                const file = createMockCommitFile();
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual(item.contextValue, 'gitCommitFile');
+            });
+
+            test('should not be collapsible', () => {
+                const file = createMockCommitFile();
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.None);
+            });
+
+            test('should set command to open diff', () => {
+                const file = createMockCommitFile();
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
+                assert.strictEqual(item.command?.title, 'Open Diff');
+                assert.deepStrictEqual(item.command?.arguments, [file]);
+            });
+
+            test('should store the file object', () => {
+                const file = createMockCommitFile();
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual(item.file, file);
+            });
+        });
+
+        suite('Description Format', () => {
+            test('should show status indicator M for modified', () => {
+                const file = createMockCommitFile('modified', 'file.ts');
+                const item = new GitCommitFileItem(file);
+                assert.ok(item.description?.toString().includes('M'));
+            });
+
+            test('should show status indicator A for added', () => {
+                const file = createMockCommitFile('added', 'file.ts');
+                const item = new GitCommitFileItem(file);
+                assert.ok(item.description?.toString().includes('A'));
+            });
+
+            test('should show status indicator D for deleted', () => {
+                const file = createMockCommitFile('deleted', 'file.ts');
+                const item = new GitCommitFileItem(file);
+                assert.ok(item.description?.toString().includes('D'));
+            });
+
+            test('should show status indicator R for renamed', () => {
+                const file = createMockCommitFile('renamed', 'new-file.ts', 'old-file.ts');
+                const item = new GitCommitFileItem(file);
+                assert.ok(item.description?.toString().includes('R'));
+            });
+
+            test('should include directory path for nested files', () => {
+                const file = createMockCommitFile('modified', 'src/components/Button.tsx');
+                const item = new GitCommitFileItem(file);
+                assert.ok(item.description?.toString().includes('src/components') ||
+                          item.description?.toString().includes('src\\components'));
+            });
+
+            test('should show original filename for renames', () => {
+                const file = createMockCommitFile('renamed', 'new-name.ts', 'old-name.ts');
+                const item = new GitCommitFileItem(file);
+                assert.ok(item.description?.toString().includes('old-name.ts'));
+            });
+
+            test('should not show directory for root level files', () => {
+                const file = createMockCommitFile('modified', 'file.ts');
+                const item = new GitCommitFileItem(file);
+                // Should just have status, no bullet point for directory
+                const desc = item.description?.toString() || '';
+                assert.ok(!desc.includes('\u2022') || desc.indexOf('\u2022') > desc.indexOf('M'));
+            });
+        });
+
+        suite('Icon Types by Status', () => {
+            test('modified should use diff-modified icon', () => {
+                const file = createMockCommitFile('modified');
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-modified');
+            });
+
+            test('added should use diff-added icon', () => {
+                const file = createMockCommitFile('added');
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-added');
+            });
+
+            test('deleted should use diff-removed icon', () => {
+                const file = createMockCommitFile('deleted');
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-removed');
+            });
+
+            test('renamed should use diff-renamed icon', () => {
+                const file = createMockCommitFile('renamed', 'new.ts', 'old.ts');
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-renamed');
+            });
+
+            test('copied should use diff-added icon', () => {
+                const file = createMockCommitFile('copied');
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-added');
+            });
+
+            test('conflict should use warning icon', () => {
+                const file = createMockCommitFile('conflict');
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'warning');
+            });
+        });
+
+        suite('Tooltip', () => {
+            test('should create markdown tooltip', () => {
+                const file = createMockCommitFile();
+                const item = new GitCommitFileItem(file);
+                assert.ok(item.tooltip instanceof vscode.MarkdownString);
+            });
+
+            test('should include file name in tooltip', () => {
+                const file = createMockCommitFile('modified', 'src/file.ts');
+                const item = new GitCommitFileItem(file);
+                const tooltip = item.tooltip as vscode.MarkdownString;
+                assert.ok(tooltip.value.includes('file.ts'));
+            });
+
+            test('should include status in tooltip', () => {
+                const file = createMockCommitFile('modified');
+                const item = new GitCommitFileItem(file);
+                const tooltip = item.tooltip as vscode.MarkdownString;
+                assert.ok(tooltip.value.includes('modified'));
+            });
+
+            test('should include path in tooltip', () => {
+                const file = createMockCommitFile('modified', 'src/components/Button.tsx');
+                const item = new GitCommitFileItem(file);
+                const tooltip = item.tooltip as vscode.MarkdownString;
+                assert.ok(tooltip.value.includes('src/components/Button.tsx'));
+            });
+
+            test('should include original path for renames', () => {
+                const file = createMockCommitFile('renamed', 'new-name.ts', 'old-name.ts');
+                const item = new GitCommitFileItem(file);
+                const tooltip = item.tooltip as vscode.MarkdownString;
+                assert.ok(tooltip.value.includes('old-name.ts'));
+            });
+
+            test('should include short commit hash in tooltip', () => {
+                const file = createMockCommitFile();
+                const item = new GitCommitFileItem(file);
+                const tooltip = item.tooltip as vscode.MarkdownString;
+                assert.ok(tooltip.value.includes('abc123d'));
+            });
+        });
+
+        suite('All Statuses Have Icons', () => {
+            const allStatuses: GitChangeStatus[] = [
+                'modified', 'added', 'deleted', 'renamed',
+                'copied', 'untracked', 'ignored', 'conflict'
+            ];
+
+            for (const status of allStatuses) {
+                test(`should have icon for ${status} status`, () => {
+                    const file = createMockCommitFile(status, 'file.ts', status === 'renamed' ? 'old.ts' : undefined);
+                    const item = new GitCommitFileItem(file);
+                    assert.ok(item.iconPath instanceof vscode.ThemeIcon);
+                });
+            }
         });
     });
 
@@ -717,6 +965,36 @@ suite('Git View Tests', () => {
             const item = new LoadMoreItem();
             assert.ok(item instanceof vscode.TreeItem);
         });
+
+        test('GitCommitFileItem should be instance of TreeItem', () => {
+            const file: GitCommitFile = {
+                path: 'src/file.ts',
+                status: 'modified',
+                commitHash: 'abc123',
+                parentHash: 'parent123',
+                repositoryRoot: '/repo'
+            };
+            const item = new GitCommitFileItem(file);
+            assert.ok(item instanceof vscode.TreeItem);
+        });
+
+        test('GitCommitItem should be expandable to show files', () => {
+            const commit: GitCommit = {
+                hash: 'abc123',
+                shortHash: 'abc',
+                subject: 'Fix',
+                authorName: 'John',
+                authorEmail: 'john@test.com',
+                date: '2024-01-15T10:30:00Z',
+                relativeDate: '2h ago',
+                parentHashes: 'parent123',
+                refs: [],
+                repositoryRoot: '/repo',
+                repositoryName: 'repo'
+            };
+            const item = new GitCommitItem(commit);
+            assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
+        });
     });
 
     // ============================================
@@ -803,6 +1081,15 @@ suite('Git View Tests', () => {
             assert.ok(typeof provider.copyCommitHash === 'function');
 
             provider.dispose();
+        });
+
+        test('GitLogService should have getCommitFiles method', async () => {
+            const { GitLogService } = await import('../../shortcuts/git/git-log-service');
+            const service = new GitLogService();
+
+            assert.ok(typeof service.getCommitFiles === 'function');
+
+            service.dispose();
         });
     });
 
@@ -911,6 +1198,129 @@ suite('Git View Tests', () => {
             const item = new LoadMoreItem(0);
             assert.strictEqual(item.loadCount, 0);
         });
+
+        test('should handle commit file with deep nested path', () => {
+            const file: GitCommitFile = {
+                path: 'src/components/ui/buttons/PrimaryButton.tsx',
+                status: 'modified',
+                commitHash: 'abc123',
+                parentHash: 'parent123',
+                repositoryRoot: '/repo'
+            };
+            const item = new GitCommitFileItem(file);
+            assert.strictEqual(item.label, 'PrimaryButton.tsx');
+            assert.ok(item.description?.toString().includes('src/components/ui/buttons') ||
+                      item.description?.toString().includes('src\\components\\ui\\buttons'));
+        });
+
+        test('should handle commit file with copy status', () => {
+            const file: GitCommitFile = {
+                path: 'new-file.ts',
+                originalPath: 'original-file.ts',
+                status: 'copied',
+                commitHash: 'abc123',
+                parentHash: 'parent123',
+                repositoryRoot: '/repo'
+            };
+            const item = new GitCommitFileItem(file);
+            assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-added');
+        });
+
+        test('should handle commit file at root level', () => {
+            const file: GitCommitFile = {
+                path: 'README.md',
+                status: 'modified',
+                commitHash: 'abc123',
+                parentHash: 'parent123',
+                repositoryRoot: '/repo'
+            };
+            const item = new GitCommitFileItem(file);
+            assert.strictEqual(item.label, 'README.md');
+        });
+
+        test('should handle newly added file (status: added)', () => {
+            const file: GitCommitFile = {
+                path: 'src/new-feature.ts',
+                status: 'added',
+                commitHash: 'abc123',
+                parentHash: 'parent123',
+                repositoryRoot: '/repo'
+            };
+            const item = new GitCommitFileItem(file);
+            assert.strictEqual(item.label, 'new-feature.ts');
+            assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-added');
+            assert.ok(item.description?.toString().includes('A'));
+        });
+
+        test('should handle deleted file (status: deleted)', () => {
+            const file: GitCommitFile = {
+                path: 'src/removed-file.ts',
+                status: 'deleted',
+                commitHash: 'abc123',
+                parentHash: 'parent123',
+                repositoryRoot: '/repo'
+            };
+            const item = new GitCommitFileItem(file);
+            assert.strictEqual(item.label, 'removed-file.ts');
+            assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-removed');
+            assert.ok(item.description?.toString().includes('D'));
+        });
+
+        test('should pass file object to command for added files', () => {
+            const file: GitCommitFile = {
+                path: 'src/new-file.ts',
+                status: 'added',
+                commitHash: 'abc123',
+                parentHash: 'parent123',
+                repositoryRoot: '/repo'
+            };
+            const item = new GitCommitFileItem(file);
+            assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
+            assert.deepStrictEqual(item.command?.arguments, [file]);
+            // Verify the file object contains the status for proper handling
+            assert.strictEqual((item.command?.arguments?.[0] as GitCommitFile).status, 'added');
+        });
+
+        test('should pass file object to command for deleted files', () => {
+            const file: GitCommitFile = {
+                path: 'src/deleted-file.ts',
+                status: 'deleted',
+                commitHash: 'abc123',
+                parentHash: 'parent123',
+                repositoryRoot: '/repo'
+            };
+            const item = new GitCommitFileItem(file);
+            assert.strictEqual(item.command?.command, 'gitView.openCommitFileDiff');
+            assert.deepStrictEqual(item.command?.arguments, [file]);
+            // Verify the file object contains the status for proper handling
+            assert.strictEqual((item.command?.arguments?.[0] as GitCommitFile).status, 'deleted');
+        });
+
+        test('should include status in tooltip for added files', () => {
+            const file: GitCommitFile = {
+                path: 'src/new-file.ts',
+                status: 'added',
+                commitHash: 'abc123',
+                parentHash: 'parent123',
+                repositoryRoot: '/repo'
+            };
+            const item = new GitCommitFileItem(file);
+            const tooltip = item.tooltip as vscode.MarkdownString;
+            assert.ok(tooltip.value.includes('added'));
+        });
+
+        test('should include status in tooltip for deleted files', () => {
+            const file: GitCommitFile = {
+                path: 'src/deleted-file.ts',
+                status: 'deleted',
+                commitHash: 'abc123',
+                parentHash: 'parent123',
+                repositoryRoot: '/repo'
+            };
+            const item = new GitCommitFileItem(file);
+            const tooltip = item.tooltip as vscode.MarkdownString;
+            assert.ok(tooltip.value.includes('deleted'));
+        });
     });
 
     // ============================================
@@ -942,6 +1352,11 @@ suite('Git View Tests', () => {
         test('should export GitCommitItem', async () => {
             const { GitCommitItem } = await import('../../shortcuts/git');
             assert.ok(GitCommitItem);
+        });
+
+        test('should export GitCommitFileItem', async () => {
+            const { GitCommitFileItem } = await import('../../shortcuts/git');
+            assert.ok(GitCommitFileItem);
         });
 
         test('should export SectionHeaderItem', async () => {

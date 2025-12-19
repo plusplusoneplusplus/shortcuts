@@ -31,7 +31,7 @@ export class GitCommitItem extends vscode.TreeItem {
             : commit.subject;
         const label = `${commit.shortHash} ${truncatedSubject}`;
 
-        super(label, vscode.TreeItemCollapsibleState.None);
+        super(label, vscode.TreeItemCollapsibleState.Collapsed);
 
         this.commit = commit;
 
