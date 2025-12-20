@@ -262,11 +262,11 @@ suite('Git View Tests', () => {
                 assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.None);
             });
 
-            test('should set command to open diff', () => {
+            test('should set command to open diff review', () => {
                 const change = createMockChange('modified', 'unstaged');
                 const item = new GitChangeItem(change);
-                assert.strictEqual(item.command?.command, 'git.openChange');
-                assert.strictEqual(item.command?.title, 'Open Changes');
+                assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
+                assert.strictEqual(item.command?.title, 'Open Diff Review');
             });
 
             test('should set resourceUri', () => {

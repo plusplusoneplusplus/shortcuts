@@ -85,11 +85,11 @@ export class GitChangeItem extends vscode.TreeItem {
         // Status-specific icon with color
         this.iconPath = this.getStatusIcon();
 
-        // Command to open diff view
+        // Command to open diff review view with inline commenting
         this.command = {
-            command: 'git.openChange',
-            title: 'Open Changes',
-            arguments: [change.uri]
+            command: 'gitDiffComments.openWithReview',
+            title: 'Open Diff Review',
+            arguments: [this]
         };
 
         // Resource URI for file decorations
@@ -156,7 +156,7 @@ export class GitChangeItem extends vscode.TreeItem {
         }
 
         md.appendMarkdown('---\n\n');
-        md.appendMarkdown('*Click to open diff view*');
+        md.appendMarkdown('*Click to open diff review*');
 
         return md;
     }
