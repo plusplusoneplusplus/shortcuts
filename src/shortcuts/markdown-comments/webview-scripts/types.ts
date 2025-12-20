@@ -119,7 +119,8 @@ export type ExtensionMessage =
         /** True if this update is from an external change (undo/redo, external editor) */
         isExternalChange?: boolean;
     }
-    | { type: 'imageResolved'; imgId: string; uri?: string; alt?: string; error?: string };
+    | { type: 'imageResolved'; imgId: string; uri?: string; alt?: string; error?: string }
+    | { type: 'scrollToComment'; commentId: string };
 
 /**
  * Parsed code block structure

@@ -138,7 +138,8 @@ function setupCommentIndicatorHandlers(): void {
                 const lineNum = parseInt(lineEl.dataset.lineNumber);
                 const comments = getCommentsForLine(side, lineNum);
                 if (comments.length > 0) {
-                    showCommentsForLine(comments);
+                    // Pass the clicked indicator element for positioning
+                    showCommentsForLine(comments, target);
                 }
             }
         }

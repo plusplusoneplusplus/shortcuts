@@ -8,7 +8,7 @@
 
 import { initDomHandlers } from './dom-handlers';
 import { updateResolvedImage } from './image-handlers';
-import { initPanelManager } from './panel-manager';
+import { initPanelManager, scrollToComment } from './panel-manager';
 import { render } from './render';
 import { state } from './state';
 import { ExtensionMessage, VsCodeApi } from './types';
@@ -86,6 +86,11 @@ function handleMessage(message: ExtensionMessage): void {
 
         case 'imageResolved':
             updateResolvedImage(message.imgId, message.uri, message.alt, message.error);
+            break;
+
+        case 'scrollToComment':
+            // Scroll to and highlight the specified comment
+            scrollToComment(message.commentId);
             break;
     }
 }

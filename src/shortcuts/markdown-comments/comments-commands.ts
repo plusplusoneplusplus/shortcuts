@@ -278,7 +278,7 @@ export class MarkdownCommentsCommands {
     }
 
     /**
-     * Navigate to a comment's location - opens file in ReviewEditorView
+     * Navigate to a comment's location - opens file in ReviewEditorView and scrolls to comment
      */
     private async goToComment(item: CommentItem): Promise<void> {
         if (!item || !item.comment) {
@@ -286,9 +286,13 @@ export class MarkdownCommentsCommands {
         }
 
         const filePath = item.absoluteFilePath;
+        const commentId = item.comment.id;
 
         try {
             const uri = vscode.Uri.file(filePath);
+
+            // Request scroll to comment (will be processed when webview is ready)
+            ReviewEditorViewProvider.requestScrollToComment(filePath, commentId);
 
             // Open the file in ReviewEditorView
             await vscode.commands.executeCommand(

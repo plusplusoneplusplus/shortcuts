@@ -699,3 +699,39 @@
     user-select: none;
     transition: none;
 }
+
+/* ==============================
+ * Comment Highlight Flash Animation
+ * Used when navigating to a comment from tree view
+ * ============================== */
+@keyframes commentHighlightFlash {
+    0% {
+        background-color: rgba(255, 215, 0, 0.6);
+        box-shadow: 0 0 8px rgba(255, 215, 0, 0.8);
+    }
+    25% {
+        background-color: rgba(255, 215, 0, 0.3);
+        box-shadow: 0 0 4px rgba(255, 215, 0, 0.4);
+    }
+    50% {
+        background-color: rgba(255, 215, 0, 0.6);
+        box-shadow: 0 0 8px rgba(255, 215, 0, 0.8);
+    }
+    75% {
+        background-color: rgba(255, 215, 0, 0.3);
+        box-shadow: 0 0 4px rgba(255, 215, 0, 0.4);
+    }
+    100% {
+        background-color: transparent;
+        box-shadow: none;
+    }
+}
+
+.comment-highlight-flash {
+    animation: commentHighlightFlash 2s ease-out forwards;
+}
+
+/* Highlight flash for line rows (when commented text element not found) */
+.line-row.comment-highlight-flash {
+    animation: commentHighlightFlash 2s ease-out forwards;
+}

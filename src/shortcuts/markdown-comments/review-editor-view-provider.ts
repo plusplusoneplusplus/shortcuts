@@ -64,11 +64,40 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     private readonly _onDidChangeCustomDocument = new vscode.EventEmitter<vscode.CustomDocumentContentChangeEvent<vscode.CustomDocument>>();
     public readonly onDidChangeCustomDocument = this._onDidChangeCustomDocument.event;
 
+    // Track active webview panels by file path for external communication
+    private static activeWebviews = new Map<string, vscode.WebviewPanel>();
+    
+    // Pending scroll requests (commentId to scroll to after file opens)
+    private static pendingScrollRequests = new Map<string, string>();
+
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly commentsManager: CommentsManager,
         private readonly aiProcessManager?: AIProcessManager
     ) { }
+
+    /**
+     * Request to scroll to a comment when the file is opened
+     * @param filePath The file path (can be absolute or relative)
+     * @param commentId The comment ID to scroll to
+     */
+    public static requestScrollToComment(filePath: string, commentId: string): void {
+        // Normalize the file path
+        const normalizedPath = filePath.replace(/\\/g, '/');
+        
+        // Check if webview is already open for this file
+        const existingWebview = this.activeWebviews.get(normalizedPath);
+        if (existingWebview) {
+            // Send scroll message immediately
+            existingWebview.webview.postMessage({
+                type: 'scrollToComment',
+                commentId: commentId
+            });
+        } else {
+            // Store as pending request - will be processed when file opens
+            this.pendingScrollRequests.set(normalizedPath, commentId);
+        }
+    }
 
     /**
      * Register the Review Editor View provider
@@ -107,6 +136,12 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
         const relativePath = path.relative(workspaceRoot, document.uri.fsPath);
+
+        // Normalize file path for tracking (use forward slashes)
+        const normalizedFilePath = document.uri.fsPath.replace(/\\/g, '/');
+        
+        // Track this webview panel for external communication
+        ReviewEditorViewProvider.activeWebviews.set(normalizedFilePath, webviewPanel);
 
         // Set the tab title to indicate this is the Review Editor
         const fileName = path.basename(document.uri.fsPath);
@@ -262,6 +297,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             documentChangeDisposable.dispose();
             commentsChangeDisposable.dispose();
             configChangeDisposable.dispose();
+            
+            // Remove from active webviews tracking
+            ReviewEditorViewProvider.activeWebviews.delete(normalizedFilePath);
         });
 
         // Initial update after webview is ready
@@ -279,10 +317,27 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         updateWebview: () => void,
         setWebviewEdit: () => void
     ): Promise<void> {
+        // Normalize file path for pending scroll lookup
+        const normalizedFilePath = document.uri.fsPath.replace(/\\/g, '/');
+        
         switch (message.type) {
             case 'ready':
             case 'requestState':
                 updateWebview();
+                
+                // Check for pending scroll request after webview is ready
+                // Use a small delay to ensure the webview has rendered the content
+                const pendingCommentId = ReviewEditorViewProvider.pendingScrollRequests.get(normalizedFilePath);
+                if (pendingCommentId) {
+                    ReviewEditorViewProvider.pendingScrollRequests.delete(normalizedFilePath);
+                    // Delay the scroll to ensure content is fully rendered
+                    setTimeout(() => {
+                        webviewPanel.webview.postMessage({
+                            type: 'scrollToComment',
+                            commentId: pendingCommentId
+                        });
+                    }, 100);
+                }
                 break;
 
             case 'addComment':

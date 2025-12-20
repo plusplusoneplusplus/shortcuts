@@ -225,8 +225,10 @@ function positionPanelNearSelection(): void {
 
 /**
  * Show comments list for a specific line
+ * @param comments - The comments to display
+ * @param anchorElement - Optional element to position the panel near
  */
-export function showCommentsForLine(comments: DiffComment[]): void {
+export function showCommentsForLine(comments: DiffComment[], anchorElement?: HTMLElement): void {
     const listPanel = commentsListPanel;
     const listBody = commentsListBody;
     
@@ -246,6 +248,56 @@ export function showCommentsForLine(comments: DiffComment[]): void {
 
     // Show panel
     listPanel.classList.remove('hidden');
+
+    // Position panel near the anchor element if provided
+    if (anchorElement) {
+        positionCommentsListNearElement(anchorElement);
+    }
+}
+
+/**
+ * Position the comments list panel near a given element
+ */
+function positionCommentsListNearElement(element: HTMLElement): void {
+    if (!commentsListPanel) return;
+
+    const rect = element.getBoundingClientRect();
+    const panelWidth = 350; // from CSS
+    const panelMaxHeight = window.innerHeight * 0.7; // 70vh from CSS
+    const padding = 20;
+
+    // Calculate position - prefer to the right of the element, below it
+    let left = rect.right + 10;
+    let top = rect.top;
+
+    // If panel would go off the right edge, position to the left of the element
+    if (left + panelWidth > window.innerWidth - padding) {
+        left = rect.left - panelWidth - 10;
+        // If still off screen, just align to right edge
+        if (left < padding) {
+            left = window.innerWidth - panelWidth - padding;
+        }
+    }
+
+    // Ensure panel doesn't go off the left edge
+    if (left < padding) {
+        left = padding;
+    }
+
+    // Ensure panel doesn't go off the bottom
+    const estimatedHeight = Math.min(panelMaxHeight, 300); // Estimate panel height
+    if (top + estimatedHeight > window.innerHeight - padding) {
+        top = window.innerHeight - estimatedHeight - padding;
+    }
+
+    // Ensure panel doesn't go off the top
+    if (top < padding) {
+        top = padding;
+    }
+
+    commentsListPanel.style.right = 'auto';
+    commentsListPanel.style.left = `${left}px`;
+    commentsListPanel.style.top = `${top}px`;
 }
 
 /**

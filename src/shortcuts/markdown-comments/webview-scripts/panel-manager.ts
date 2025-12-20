@@ -860,3 +860,57 @@ export function closeActiveCommentBubble(): void {
     }
 }
 
+/**
+ * Scroll to a comment and show its bubble
+ * Called when user clicks on a comment in the tree view
+ */
+export function scrollToComment(commentId: string): void {
+    // Find the comment
+    const comment = state.findCommentById(commentId);
+    if (!comment) {
+        console.warn('[Webview] Comment not found:', commentId);
+        return;
+    }
+
+    // Find the commented text element
+    const commentedTextEl = document.querySelector(`.commented-text[data-comment-id="${commentId}"]`) as HTMLElement;
+    
+    if (commentedTextEl) {
+        // Scroll the element into view with some padding
+        commentedTextEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Add a highlight animation
+        commentedTextEl.classList.add('comment-highlight-flash');
+        setTimeout(() => {
+            commentedTextEl.classList.remove('comment-highlight-flash');
+        }, 2000);
+        
+        // Show the comment bubble after scrolling completes
+        setTimeout(() => {
+            showCommentBubble(comment, commentedTextEl);
+        }, 300);
+    } else {
+        // If the commented text element is not found, try to scroll to the line
+        const lineEl = document.querySelector(`.line-content[data-line="${comment.selection.startLine}"]`) as HTMLElement;
+        if (lineEl) {
+            lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Add a highlight animation to the line
+            const lineRow = lineEl.closest('.line-row') as HTMLElement;
+            if (lineRow) {
+                lineRow.classList.add('comment-highlight-flash');
+                setTimeout(() => {
+                    lineRow.classList.remove('comment-highlight-flash');
+                }, 2000);
+            }
+            
+            // Show the comment bubble
+            setTimeout(() => {
+                showCommentBubble(comment, lineEl);
+            }, 300);
+        } else {
+            console.warn('[Webview] Could not find element to scroll to for comment:', commentId);
+        }
+    }
+}
+
