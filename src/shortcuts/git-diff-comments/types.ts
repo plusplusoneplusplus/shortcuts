@@ -1,7 +1,23 @@
 /**
  * Types and interfaces for the Git Diff Comments feature
  * Provides inline commenting capability for Git diffs
+ * Extends base types from markdown-comments for consistency
  */
+
+import {
+    BaseAnchor,
+    BaseAnchorRelocationResult,
+    BaseComment,
+    BaseCommentEvent,
+    BaseCommentEventType,
+    BaseCommentsConfig,
+    BaseCommentsSettings,
+    BaseCommentStatus,
+    BaseSelection
+} from '../markdown-comments/base-types';
+
+// Re-export base types for convenience
+export type { BaseCommentEventType, BaseCommentStatus };
 
 /**
  * Which side of the diff the selection/comment is on
@@ -9,15 +25,15 @@
 export type DiffSide = 'old' | 'new' | 'both';
 
 /**
- * Comment status - same as markdown comments for consistency
+ * Comment status - uses base type for consistency
  */
-export type DiffCommentStatus = 'open' | 'resolved' | 'pending';
+export type DiffCommentStatus = BaseCommentStatus;
 
 /**
  * Selection range within a diff view
- * Tracks positions on both old and new sides
+ * Extends BaseSelection with diff-specific line tracking
  */
-export interface DiffSelection {
+export interface DiffSelection extends BaseSelection {
     /** Side of the diff where selection was made */
     side: DiffSide;
     /** 1-based line number in the OLD file (null if selection is only in new) */
@@ -26,26 +42,13 @@ export interface DiffSelection {
     /** 1-based line number in the NEW file (null if selection is only in old) */
     newStartLine: number | null;
     newEndLine: number | null;
-    /** Column positions (1-based) */
-    startColumn: number;
-    endColumn: number;
 }
 
 /**
  * Anchor context for robust comment location tracking
- * Stores surrounding context to enable fuzzy matching after content changes
+ * Extends BaseAnchor with diff-specific side tracking
  */
-export interface DiffAnchor {
-    /** The exact selected/commented text */
-    selectedText: string;
-    /** Text appearing before the selection (up to N characters) */
-    contextBefore: string;
-    /** Text appearing after the selection (up to N characters) */
-    contextAfter: string;
-    /** Original line number when the comment was created (for fallback) */
-    originalLine: number;
-    /** Hash/fingerprint of the selected text for quick comparison */
-    textHash: string;
+export interface DiffAnchor extends BaseAnchor {
     /** Which side this anchor is for */
     side: DiffSide;
 }
@@ -71,47 +74,18 @@ export interface DiffGitContext {
 
 /**
  * A single diff comment
+ * Extends BaseComment with diff-specific git context
  */
-export interface DiffComment {
-    /** Unique identifier (UUID) */
-    id: string;
-    /** Relative path to the file */
-    filePath: string;
-    /** Selection range in the diff */
-    selection: DiffSelection;
-    /** The actual selected text (for reference) */
-    selectedText: string;
-    /** User's comment content */
-    comment: string;
-    /** Current status of the comment */
-    status: DiffCommentStatus;
-    /** ISO timestamp when created */
-    createdAt: string;
-    /** ISO timestamp when last updated */
-    updatedAt: string;
-    /** Optional author name */
-    author?: string;
-    /** Optional tags for categorization */
-    tags?: string[];
+export interface DiffComment extends BaseComment<DiffSelection, DiffAnchor> {
     /** Git context when comment was created */
     gitContext: DiffGitContext;
-    /** Optional anchor for robust location tracking */
-    anchor?: DiffAnchor;
 }
 
 /**
  * Result of anchor relocation attempt
+ * Uses base type with DiffSelection
  */
-export interface DiffAnchorRelocationResult {
-    /** Whether the anchor was successfully relocated */
-    found: boolean;
-    /** The new selection if found */
-    selection?: DiffSelection;
-    /** Confidence score of the match (0-1) */
-    confidence: number;
-    /** Reason for the result */
-    reason: 'exact_match' | 'fuzzy_match' | 'context_match' | 'line_fallback' | 'not_found';
-}
+export type DiffAnchorRelocationResult = BaseAnchorRelocationResult<DiffSelection>;
 
 /**
  * Configuration for anchor creation and matching
@@ -139,15 +113,9 @@ export const DEFAULT_DIFF_ANCHOR_CONFIG: DiffAnchorConfig = {
 
 /**
  * Settings for diff comments display
+ * Uses base settings interface
  */
-export interface DiffCommentsSettings {
-    /** Whether to show resolved comments */
-    showResolved: boolean;
-    /** Highlight color for open comments (CSS color) */
-    highlightColor: string;
-    /** Highlight color for resolved comments (CSS color) */
-    resolvedHighlightColor: string;
-}
+export type DiffCommentsSettings = BaseCommentsSettings;
 
 /**
  * Default settings for diff comments
@@ -160,15 +128,9 @@ export const DEFAULT_DIFF_COMMENTS_SETTINGS: DiffCommentsSettings = {
 
 /**
  * Configuration structure for diff comments storage
+ * Uses base config interface
  */
-export interface DiffCommentsConfig {
-    /** Configuration version number */
-    version: number;
-    /** Array of all diff comments */
-    comments: DiffComment[];
-    /** Display settings */
-    settings?: DiffCommentsSettings;
-}
+export type DiffCommentsConfig = BaseCommentsConfig<DiffComment, DiffCommentsSettings>;
 
 /**
  * Default empty configuration
@@ -186,24 +148,15 @@ export const DIFF_COMMENTS_CONFIG_FILE = 'git-diff-comments.json';
 
 /**
  * Comment event types for the event emitter
+ * Uses base event type
  */
-export type DiffCommentEventType =
-    | 'comment-added'
-    | 'comment-updated'
-    | 'comment-deleted'
-    | 'comment-resolved'
-    | 'comment-reopened'
-    | 'comments-loaded';
+export type DiffCommentEventType = BaseCommentEventType;
 
 /**
  * Comment event data
+ * Uses base event interface
  */
-export interface DiffCommentEvent {
-    type: DiffCommentEventType;
-    comment?: DiffComment;
-    comments?: DiffComment[];
-    filePath?: string;
-}
+export type DiffCommentEvent = BaseCommentEvent<DiffComment>;
 
 /**
  * Parsed diff line information
