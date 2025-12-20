@@ -3,7 +3,8 @@
  *
  * highlight.js can emit tags (typically <span>) that span across newline boundaries.
  * If we naively split the HTML string by '\n' and wrap each line in its own element,
- * we can end up with unbalanced tags per line which causes DOM nesting issues.
+ * we can end up with unbalanced tags per line which causes DOM nesting issues
+ * (e.g., nested `.code-line` spans and visually "extra" blank lines).
  *
  * This helper splits highlighted HTML into per-line fragments while keeping each
  * fragment tag-balanced by temporarily closing and reopening open <span> tags.
@@ -224,34 +225,9 @@ export function getLanguageFromFilePath(filePath: string): string {
 }
 
 /**
- * Highlight code using highlight.js (must be loaded globally as hljs)
- */
-export function highlightCode(code: string, language: string): string {
-    // Check if hljs is available globally
-    if (typeof hljs === 'undefined') {
-        return escapeHtml(code);
-    }
-
-    try {
-        // Check if the language is supported
-        if (language && language !== 'plaintext' && hljs.getLanguage(language)) {
-            return hljs.highlight(code, { language }).value;
-        } else if (language === 'plaintext') {
-            return escapeHtml(code);
-        } else {
-            // Auto-detect language
-            return hljs.highlightAuto(code).value;
-        }
-    } catch (e) {
-        console.warn('[Diff Webview] Highlight error:', e);
-        return escapeHtml(code);
-    }
-}
-
-/**
  * Escape HTML special characters
  */
-function escapeHtml(text: string): string {
+export function escapeHtmlChars(text: string): string {
     return text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -260,9 +236,36 @@ function escapeHtml(text: string): string {
         .replace(/'/g, '&#039;');
 }
 
-// Declare hljs as a global (loaded from CDN)
+/**
+ * Highlight code using highlight.js (must be loaded globally as hljs)
+ * Note: This function is designed for webview/browser context where hljs is loaded via CDN
+ */
+export function highlightCode(code: string, language: string): string {
+    // Check if hljs is available globally
+    if (typeof hljs === 'undefined') {
+        return escapeHtmlChars(code);
+    }
+
+    try {
+        // Check if the language is supported
+        if (language && language !== 'plaintext' && hljs.getLanguage(language)) {
+            return hljs.highlight(code, { language }).value;
+        } else if (language === 'plaintext') {
+            return escapeHtmlChars(code);
+        } else {
+            // Auto-detect language
+            return hljs.highlightAuto(code).value;
+        }
+    } catch (e) {
+        console.warn('[Webview] Highlight error:', e);
+        return escapeHtmlChars(code);
+    }
+}
+
+// Declare hljs as a global (loaded from CDN in webview context)
 declare const hljs: {
     highlight: (code: string, options: { language: string }) => { value: string };
     highlightAuto: (code: string) => { value: string };
     getLanguage: (name: string) => unknown;
 };
+

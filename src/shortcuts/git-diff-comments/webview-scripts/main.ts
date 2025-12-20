@@ -316,7 +316,7 @@ function setupCommentIndicatorHandlers(): void {
         commentHandlersAbortController.abort();
     }
     commentHandlersAbortController = new AbortController();
-    const signal = commentHandlersAbortController.signal;
+    const signal = commentHandlersAbortController!.signal;
     
     const viewMode = getViewMode();
     

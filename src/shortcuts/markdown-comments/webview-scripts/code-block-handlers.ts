@@ -3,7 +3,7 @@
  */
 
 import { MarkdownComment } from '../types';
-import { splitHighlightedHtmlIntoLines } from '../webview-logic/highlighted-html-lines';
+import { splitHighlightedHtmlIntoLines } from '../../shared/highlighted-html-lines';
 import { escapeHtml } from '../webview-logic/markdown-renderer';
 import { applyCommentHighlightToRange } from '../webview-logic/selection-utils';
 import { showFloatingPanel } from './panel-manager';

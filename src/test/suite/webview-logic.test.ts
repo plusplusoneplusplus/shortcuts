@@ -38,7 +38,7 @@ import {
     resolveImagePath
 } from '../../shortcuts/markdown-comments/webview-logic/markdown-renderer';
 
-import { splitHighlightedHtmlIntoLines } from '../../shortcuts/markdown-comments/webview-logic/highlighted-html-lines';
+import { splitHighlightedHtmlIntoLines } from '../../shortcuts/shared/highlighted-html-lines';
 
 import { CommentStatus, MarkdownComment } from '../../shortcuts/markdown-comments/types';
 

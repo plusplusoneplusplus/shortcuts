@@ -4,7 +4,7 @@
 
 import { DiffComment, DiffLine, DiffLineType } from './types';
 import { getCommentsForLine, getState, getViewMode, ViewMode } from './state';
-import { getLanguageFromFilePath, highlightCode, splitHighlightedHtmlIntoLines } from './highlighted-html-lines';
+import { getLanguageFromFilePath, highlightCode, splitHighlightedHtmlIntoLines } from '../../shared/highlighted-html-lines';
 
 /**
  * Parse content into lines
