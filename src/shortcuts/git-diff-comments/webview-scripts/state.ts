@@ -1,0 +1,154 @@
+/**
+ * Webview state management
+ */
+
+import {
+    DiffComment,
+    DiffCommentsSettings,
+    DiffGitContext,
+    SelectionState
+} from './types';
+
+/**
+ * Application state
+ */
+export interface AppState {
+    filePath: string;
+    oldContent: string;
+    newContent: string;
+    gitContext: DiffGitContext;
+    comments: DiffComment[];
+    settings: DiffCommentsSettings;
+    currentSelection: SelectionState | null;
+    isCommentPanelOpen: boolean;
+    editingCommentId: string | null;
+}
+
+/**
+ * Default settings
+ */
+const DEFAULT_SETTINGS: DiffCommentsSettings = {
+    showResolved: true,
+    highlightColor: 'rgba(255, 235, 59, 0.3)',
+    resolvedHighlightColor: 'rgba(76, 175, 80, 0.2)'
+};
+
+/**
+ * Create initial state from window data
+ */
+export function createInitialState(): AppState {
+    const initialData = window.initialData || {
+        filePath: '',
+        oldContent: '',
+        newContent: '',
+        gitContext: {
+            repositoryRoot: '',
+            repositoryName: '',
+            oldRef: '',
+            newRef: '',
+            wasStaged: false
+        }
+    };
+
+    return {
+        filePath: initialData.filePath,
+        oldContent: initialData.oldContent,
+        newContent: initialData.newContent,
+        gitContext: initialData.gitContext,
+        comments: [],
+        settings: DEFAULT_SETTINGS,
+        currentSelection: null,
+        isCommentPanelOpen: false,
+        editingCommentId: null
+    };
+}
+
+/**
+ * Global state instance
+ */
+let state: AppState = createInitialState();
+
+/**
+ * Get current state
+ */
+export function getState(): AppState {
+    return state;
+}
+
+/**
+ * Update state
+ */
+export function updateState(updates: Partial<AppState>): void {
+    state = { ...state, ...updates };
+}
+
+/**
+ * Set comments
+ */
+export function setComments(comments: DiffComment[]): void {
+    state.comments = comments;
+}
+
+/**
+ * Set settings
+ */
+export function setSettings(settings: DiffCommentsSettings): void {
+    state.settings = settings;
+}
+
+/**
+ * Set current selection
+ */
+export function setCurrentSelection(selection: SelectionState | null): void {
+    state.currentSelection = selection;
+}
+
+/**
+ * Set comment panel state
+ */
+export function setCommentPanelOpen(isOpen: boolean): void {
+    state.isCommentPanelOpen = isOpen;
+}
+
+/**
+ * Set editing comment ID
+ */
+export function setEditingCommentId(id: string | null): void {
+    state.editingCommentId = id;
+}
+
+/**
+ * Get comments for a specific line
+ */
+export function getCommentsForLine(
+    side: 'old' | 'new',
+    lineNumber: number
+): DiffComment[] {
+    return state.comments.filter(comment => {
+        if (side === 'old') {
+            const startLine = comment.selection.oldStartLine;
+            const endLine = comment.selection.oldEndLine;
+            if (startLine !== null && endLine !== null) {
+                return lineNumber >= startLine && lineNumber <= endLine;
+            }
+        } else {
+            const startLine = comment.selection.newStartLine;
+            const endLine = comment.selection.newEndLine;
+            if (startLine !== null && endLine !== null) {
+                return lineNumber >= startLine && lineNumber <= endLine;
+            }
+        }
+        return false;
+    });
+}
+
+/**
+ * Get visible comments (respecting showResolved setting)
+ */
+export function getVisibleComments(): DiffComment[] {
+    if (state.settings.showResolved) {
+        return state.comments;
+    }
+    return state.comments.filter(c => c.status !== 'resolved');
+}
+

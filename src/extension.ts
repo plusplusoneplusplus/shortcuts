@@ -17,6 +17,7 @@ import {
     PromptGenerator,
     ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
+import { DiffCommentsManager, DiffReviewEditorProvider } from './shortcuts/git-diff-comments';
 import { NoteDocumentManager } from './shortcuts/global-notes';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { ThemeManager } from './shortcuts/theme-manager';
@@ -331,6 +332,11 @@ export async function activate(context: vscode.ExtensionContext) {
         const commentsManager = new CommentsManager(workspaceRoot);
         await commentsManager.initialize();
 
+        // Initialize Git Diff Comments feature
+        const diffCommentsManager = new DiffCommentsManager(workspaceRoot);
+        await diffCommentsManager.initialize();
+        const diffReviewCommands = DiffReviewEditorProvider.registerCommands(context, diffCommentsManager);
+
         // Initialize AI Process Manager (must be before ReviewEditorViewProvider)
         const aiProcessManager = new AIProcessManager();
 
@@ -463,7 +469,10 @@ export async function activate(context: vscode.ExtensionContext) {
             clearCompletedCommand,
             refreshProcessesCommand,
             // Git view disposables
-            gitTreeDataProvider
+            gitTreeDataProvider,
+            // Git Diff Comments disposables
+            diffCommentsManager,
+            ...diffReviewCommands
         ];
 
         // Add optional git disposables if git extension is available

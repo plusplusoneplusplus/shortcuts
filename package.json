@@ -35,6 +35,7 @@
     "onView:gitView",
     "onCommand:shortcuts.createLogicalGroup",
     "onCustomEditor:reviewEditorView",
+    "onCustomEditor:gitDiffReviewEditor",
     "onViewContainer:shortcuts"
   ],
   "main": "./dist/extension.js",
@@ -512,6 +513,18 @@
         "title": "Copy Commit Hash",
         "category": "Git",
         "icon": "$(copy)"
+      },
+      {
+        "command": "gitDiffComments.openWithReview",
+        "title": "Open with Diff Review",
+        "category": "Git Diff Comments",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gitDiffComments.addComment",
+        "title": "Add Comment",
+        "category": "Git Diff Comments",
+        "icon": "$(comment)"
       }
     ],
     "menus": {
@@ -782,6 +795,11 @@
           "command": "gitView.copyCommitHash",
           "when": "view == gitView && viewItem == gitCommit",
           "group": "gitCommit@1"
+        },
+        {
+          "command": "gitDiffComments.openWithReview",
+          "when": "view == gitView && viewItem =~ /^gitChange_/",
+          "group": "navigation@10"
         }
       ],
       "explorer/context": [
@@ -809,6 +827,16 @@
           }
         ],
         "priority": "option"
+      },
+      {
+        "viewType": "gitDiffReviewEditor",
+        "displayName": "Git Diff Review Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.git-diff-review"
+          }
+        ],
+        "priority": "default"
       }
     ],
     "keybindings": [
@@ -857,6 +885,12 @@
         "key": "ctrl+z",
         "mac": "cmd+z",
         "when": "focusedView == shortcutsView"
+      },
+      {
+        "command": "gitDiffComments.addComment",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "activeCustomEditorId == gitDiffReviewEditor"
       }
     ]
   },

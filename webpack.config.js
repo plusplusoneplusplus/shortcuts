@@ -96,4 +96,46 @@ const webviewConfig = {
   }
 };
 
-module.exports = [extensionConfig, webviewConfig];
+/** @type WebpackConfig */
+const diffWebviewConfig = {
+  name: 'diff-webview',
+  target: 'web', // Webview runs in a browser-like context
+  mode: 'none',
+
+  entry: './src/shortcuts/git-diff-comments/webview-scripts/main.ts',
+  output: {
+    path: path.resolve(__dirname, 'dist'),
+    filename: 'diff-webview.js',
+    // IIFE format - script runs immediately without needing exports
+    iife: true
+  },
+  resolve: {
+    extensions: ['.ts', '.js']
+  },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        exclude: [/node_modules/, /src\/test/],
+        use: [
+          {
+            loader: 'ts-loader',
+            options: {
+              // Use separate tsconfig with DOM types for webview
+              configFile: path.resolve(__dirname, 'tsconfig.webview.json'),
+              // Use separate instance to avoid config mixing
+              instance: 'diff-webview'
+            }
+          }
+        ]
+      }
+    ]
+  },
+  devtool: 'source-map', // Full source maps for webview debugging
+  // Don't split chunks for webview - we want a single file
+  optimization: {
+    splitChunks: false
+  }
+};
+
+module.exports = [extensionConfig, webviewConfig, diffWebviewConfig];
