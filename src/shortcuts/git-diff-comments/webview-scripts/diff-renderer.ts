@@ -4,6 +4,7 @@
 
 import { DiffComment, DiffLine, DiffLineType } from './types';
 import { getCommentsForLine, getState, getViewMode, ViewMode } from './state';
+import { getLanguageFromFilePath, highlightCode, splitHighlightedHtmlIntoLines } from './highlighted-html-lines';
 
 /**
  * Parse content into lines
@@ -22,18 +23,72 @@ function escapeHtml(text: string): string {
 }
 
 /**
+ * Cache for highlighted lines
+ */
+interface HighlightedLinesCache {
+    oldLines: string[];
+    newLines: string[];
+    language: string;
+}
+
+let highlightedCache: HighlightedLinesCache | null = null;
+
+/**
+ * Get highlighted lines for old and new content
+ * Uses caching to avoid re-highlighting on every render
+ */
+function getHighlightedLines(): { oldHighlighted: string[]; newHighlighted: string[] } {
+    const state = getState();
+    const language = getLanguageFromFilePath(state.filePath);
+
+    // Check if we can use cached result
+    if (highlightedCache && highlightedCache.language === language) {
+        return {
+            oldHighlighted: highlightedCache.oldLines,
+            newHighlighted: highlightedCache.newLines
+        };
+    }
+
+    // Highlight full content
+    const oldHighlightedHtml = highlightCode(state.oldContent, language);
+    const newHighlightedHtml = highlightCode(state.newContent, language);
+
+    // Split into lines with balanced tags
+    const oldHighlighted = splitHighlightedHtmlIntoLines(oldHighlightedHtml);
+    const newHighlighted = splitHighlightedHtmlIntoLines(newHighlightedHtml);
+
+    // Cache the result
+    highlightedCache = {
+        oldLines: oldHighlighted,
+        newLines: newHighlighted,
+        language
+    };
+
+    return { oldHighlighted, newHighlighted };
+}
+
+/**
+ * Invalidate the highlight cache (call when content changes)
+ */
+export function invalidateHighlightCache(): void {
+    highlightedCache = null;
+}
+
+/**
  * Create a line element
+ * @param highlightedContent - Pre-highlighted HTML content (if available)
  */
 function createLineElement(
     lineNumber: number | null,
     content: string,
     type: DiffLineType,
     side: 'old' | 'new',
-    comments: DiffComment[]
+    comments: DiffComment[],
+    highlightedContent?: string
 ): HTMLElement {
     const lineDiv = document.createElement('div');
     lineDiv.className = `diff-line diff-line-${type}`;
-    
+
     if (lineNumber !== null) {
         lineDiv.dataset.lineNumber = String(lineNumber);
         lineDiv.dataset.side = side;
@@ -42,11 +97,11 @@ function createLineElement(
     // Line number gutter
     const gutterDiv = document.createElement('div');
     gutterDiv.className = 'line-gutter';
-    
+
     if (lineNumber !== null) {
         gutterDiv.textContent = String(lineNumber);
     }
-    
+
     // Comment indicator
     if (comments.length > 0) {
         const indicator = document.createElement('span');
@@ -55,13 +110,13 @@ function createLineElement(
         indicator.title = `${comments.length} comment${comments.length > 1 ? 's' : ''}`;
         gutterDiv.appendChild(indicator);
     }
-    
+
     lineDiv.appendChild(gutterDiv);
 
     // Line content
     const contentDiv = document.createElement('div');
     contentDiv.className = 'line-content';
-    
+
     // Add prefix for diff type
     let prefix = '';
     if (type === 'addition') {
@@ -73,15 +128,16 @@ function createLineElement(
     } else if (type === 'context') {
         prefix = ' ';
     }
-    
+
     const prefixSpan = document.createElement('span');
     prefixSpan.className = 'line-prefix';
     prefixSpan.textContent = prefix;
     contentDiv.appendChild(prefixSpan);
 
     const textSpan = document.createElement('span');
-    textSpan.className = 'line-text';
-    textSpan.innerHTML = escapeHtml(content) || '&nbsp;';
+    textSpan.className = 'line-text hljs';
+    // Use pre-highlighted content if available, otherwise escape plain text
+    textSpan.innerHTML = (highlightedContent !== undefined ? highlightedContent : escapeHtml(content)) || '&nbsp;';
     contentDiv.appendChild(textSpan);
 
     lineDiv.appendChild(contentDiv);
@@ -90,8 +146,8 @@ function createLineElement(
     if (comments.length > 0) {
         const state = getState();
         const hasOpenComment = comments.some(c => c.status === 'open');
-        const color = hasOpenComment 
-            ? state.settings.highlightColor 
+        const color = hasOpenComment
+            ? state.settings.highlightColor
             : state.settings.resolvedHighlightColor;
         contentDiv.style.backgroundColor = color;
     }
@@ -230,6 +286,9 @@ export function renderSplitDiff(): void {
     const oldLines = parseLines(state.oldContent);
     const newLines = parseLines(state.newContent);
 
+    // Get highlighted lines
+    const { oldHighlighted, newHighlighted } = getHighlightedLines();
+
     // Compute LCS for alignment
     const dp = computeLCS(oldLines, newLines);
     const aligned = backtrackLCS(oldLines, newLines, dp);
@@ -240,12 +299,15 @@ export function renderSplitDiff(): void {
         if (line.oldLine !== null && line.oldLineNum !== null) {
             const comments = getCommentsForLine('old', line.oldLineNum);
             const type: DiffLineType = line.type === 'context' ? 'context' : 'deletion';
+            // Get highlighted content for this line (0-indexed)
+            const highlightedContent = oldHighlighted[line.oldLineNum - 1];
             const lineEl = createLineElement(
                 line.oldLineNum,
                 line.oldLine,
                 type,
                 'old',
-                comments
+                comments,
+                highlightedContent
             );
             oldContainer.appendChild(lineEl);
         } else {
@@ -257,12 +319,15 @@ export function renderSplitDiff(): void {
         if (line.newLine !== null && line.newLineNum !== null) {
             const comments = getCommentsForLine('new', line.newLineNum);
             const type: DiffLineType = line.type === 'context' ? 'context' : 'addition';
+            // Get highlighted content for this line (0-indexed)
+            const highlightedContent = newHighlighted[line.newLineNum - 1];
             const lineEl = createLineElement(
                 line.newLineNum,
                 line.newLine,
                 type,
                 'new',
-                comments
+                comments,
+                highlightedContent
             );
             newContainer.appendChild(lineEl);
         } else {
@@ -277,6 +342,7 @@ export function renderSplitDiff(): void {
 
 /**
  * Create an inline line element (unified diff style)
+ * @param highlightedContent - Pre-highlighted HTML content (if available)
  */
 function createInlineLineElement(
     oldLineNum: number | null,
@@ -284,11 +350,12 @@ function createInlineLineElement(
     content: string,
     type: DiffLineType,
     side: 'old' | 'new' | 'context',
-    comments: DiffComment[]
+    comments: DiffComment[],
+    highlightedContent?: string
 ): HTMLElement {
     const lineDiv = document.createElement('div');
     lineDiv.className = `inline-diff-line inline-diff-line-${type}`;
-    
+
     // Store data attributes for selection/comments
     if (side === 'old' && oldLineNum !== null) {
         lineDiv.dataset.oldLineNumber = String(oldLineNum);
@@ -305,17 +372,17 @@ function createInlineLineElement(
     // Line number gutter (shows both old and new line numbers)
     const gutterDiv = document.createElement('div');
     gutterDiv.className = 'inline-line-gutter';
-    
+
     const oldNumSpan = document.createElement('span');
     oldNumSpan.className = 'old-line-num';
     oldNumSpan.textContent = oldLineNum !== null ? String(oldLineNum) : '';
     gutterDiv.appendChild(oldNumSpan);
-    
+
     const newNumSpan = document.createElement('span');
     newNumSpan.className = 'new-line-num';
     newNumSpan.textContent = newLineNum !== null ? String(newLineNum) : '';
     gutterDiv.appendChild(newNumSpan);
-    
+
     // Comment indicator
     if (comments.length > 0) {
         const indicator = document.createElement('span');
@@ -324,13 +391,13 @@ function createInlineLineElement(
         indicator.title = `${comments.length} comment${comments.length > 1 ? 's' : ''}`;
         gutterDiv.appendChild(indicator);
     }
-    
+
     lineDiv.appendChild(gutterDiv);
 
     // Line content
     const contentDiv = document.createElement('div');
     contentDiv.className = 'inline-line-content';
-    
+
     // Add prefix for diff type
     let prefix = '';
     if (type === 'addition') {
@@ -340,15 +407,16 @@ function createInlineLineElement(
     } else if (type === 'context') {
         prefix = ' ';
     }
-    
+
     const prefixSpan = document.createElement('span');
     prefixSpan.className = 'line-prefix';
     prefixSpan.textContent = prefix;
     contentDiv.appendChild(prefixSpan);
 
     const textSpan = document.createElement('span');
-    textSpan.className = 'line-text';
-    textSpan.innerHTML = escapeHtml(content) || '&nbsp;';
+    textSpan.className = 'line-text hljs';
+    // Use pre-highlighted content if available, otherwise escape plain text
+    textSpan.innerHTML = (highlightedContent !== undefined ? highlightedContent : escapeHtml(content)) || '&nbsp;';
     contentDiv.appendChild(textSpan);
 
     lineDiv.appendChild(contentDiv);
@@ -357,8 +425,8 @@ function createInlineLineElement(
     if (comments.length > 0) {
         const state = getState();
         const hasOpenComment = comments.some(c => c.status === 'open');
-        const color = hasOpenComment 
-            ? state.settings.highlightColor 
+        const color = hasOpenComment
+            ? state.settings.highlightColor
             : state.settings.resolvedHighlightColor;
         contentDiv.style.backgroundColor = color;
     }
@@ -385,6 +453,9 @@ export function renderInlineDiff(): void {
     const oldLines = parseLines(state.oldContent);
     const newLines = parseLines(state.newContent);
 
+    // Get highlighted lines
+    const { oldHighlighted, newHighlighted } = getHighlightedLines();
+
     // Compute LCS for alignment
     const dp = computeLCS(oldLines, newLines);
     const aligned = backtrackLCS(oldLines, newLines, dp);
@@ -394,37 +465,44 @@ export function renderInlineDiff(): void {
         if (line.type === 'context') {
             // Context line - show with both line numbers
             const comments = getCommentsForLine('new', line.newLineNum!);
+            // For context, use the new version's highlighted content
+            const highlightedContent = newHighlighted[line.newLineNum! - 1];
             const lineEl = createInlineLineElement(
                 line.oldLineNum,
                 line.newLineNum,
                 line.newLine || line.oldLine || '',
                 'context',
                 'context',
-                comments
+                comments,
+                highlightedContent
             );
             inlineContainer.appendChild(lineEl);
         } else if (line.type === 'deletion') {
             // Deletion - show old line
             const comments = getCommentsForLine('old', line.oldLineNum!);
+            const highlightedContent = oldHighlighted[line.oldLineNum! - 1];
             const lineEl = createInlineLineElement(
                 line.oldLineNum,
                 null,
                 line.oldLine || '',
                 'deletion',
                 'old',
-                comments
+                comments,
+                highlightedContent
             );
             inlineContainer.appendChild(lineEl);
         } else if (line.type === 'addition') {
             // Addition - show new line
             const comments = getCommentsForLine('new', line.newLineNum!);
+            const highlightedContent = newHighlighted[line.newLineNum! - 1];
             const lineEl = createInlineLineElement(
                 null,
                 line.newLineNum,
                 line.newLine || '',
                 'addition',
                 'new',
-                comments
+                comments,
+                highlightedContent
             );
             inlineContainer.appendChild(lineEl);
         }

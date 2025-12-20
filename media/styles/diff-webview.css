@@ -34,11 +34,68 @@ html, body {
     flex-shrink: 0;
 }
 
+.diff-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
 .diff-title {
-    margin: 0 0 4px 0;
+    margin: 0;
     font-size: 14px;
     font-weight: 600;
     color: var(--vscode-foreground);
+}
+
+/* Clickable file path */
+.diff-title.clickable-file {
+    cursor: pointer;
+    transition: color 0.15s, text-decoration 0.15s;
+}
+
+.diff-title.clickable-file:hover {
+    color: var(--vscode-textLink-foreground, #3794ff);
+    text-decoration: underline;
+}
+
+/* Copy path button */
+.copy-path-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background-color: transparent;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s, background-color 0.15s;
+}
+
+.copy-path-btn:hover {
+    opacity: 1;
+    background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.copy-path-btn:active {
+    background-color: var(--vscode-toolbar-activeBackground);
+}
+
+.copy-path-btn .copy-icon {
+    font-size: 14px;
+}
+
+.copy-path-btn.copied {
+    opacity: 1;
+}
+
+.copy-path-btn.copied .copy-icon::after {
+    content: ' ✓';
+    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
 }
 
 .diff-info {
@@ -409,5 +466,152 @@ html, body {
 
 .inline-diff-line-deletion .line-prefix {
     color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
+}
+
+/* ================================== */
+/* Highlight.js Theme (VSCode-like)   */
+/* ================================== */
+
+/* Base styles for highlighted code */
+.hljs {
+    color: var(--vscode-editor-foreground);
+}
+
+/* Comments */
+.hljs-comment,
+.hljs-quote {
+    color: var(--vscode-editorLineNumber-foreground, #6a9955);
+    font-style: italic;
+}
+
+/* Keywords */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-addition {
+    color: var(--vscode-symbolIcon-keywordForeground, #569cd6);
+}
+
+/* Strings */
+.hljs-string,
+.hljs-meta .hljs-string,
+.hljs-doctag {
+    color: var(--vscode-debugTokenExpression-string, #ce9178);
+}
+
+/* Numbers */
+.hljs-number,
+.hljs-literal {
+    color: var(--vscode-debugTokenExpression-number, #b5cea8);
+}
+
+/* Built-in types and constants */
+.hljs-built_in,
+.hljs-type,
+.hljs-params {
+    color: var(--vscode-symbolIcon-typeParameterForeground, #4ec9b0);
+}
+
+/* Classes and types */
+.hljs-class .hljs-title,
+.hljs-title.class_,
+.hljs-title.class_.inherited__ {
+    color: var(--vscode-symbolIcon-classForeground, #4ec9b0);
+}
+
+/* Functions */
+.hljs-function .hljs-title,
+.hljs-title.function_,
+.hljs-title.function_.invoke__ {
+    color: var(--vscode-symbolIcon-functionForeground, #dcdcaa);
+}
+
+/* Variables and properties */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-attr,
+.hljs-property {
+    color: var(--vscode-symbolIcon-variableForeground, #9cdcfe);
+}
+
+/* Attributes in markup */
+.hljs-attribute {
+    color: var(--vscode-symbolIcon-propertyForeground, #9cdcfe);
+}
+
+/* Tags (HTML/XML) */
+.hljs-tag {
+    color: var(--vscode-symbolIcon-keywordForeground, #569cd6);
+}
+
+.hljs-name {
+    color: var(--vscode-symbolIcon-keywordForeground, #569cd6);
+}
+
+/* Regex and special patterns */
+.hljs-regexp,
+.hljs-link {
+    color: var(--vscode-textLink-foreground, #d16969);
+}
+
+/* Symbols and bullets */
+.hljs-symbol,
+.hljs-bullet {
+    color: var(--vscode-symbolIcon-constantForeground, #4fc1ff);
+}
+
+/* Meta information */
+.hljs-meta {
+    color: var(--vscode-symbolIcon-keywordForeground, #569cd6);
+}
+
+.hljs-meta .hljs-keyword {
+    color: var(--vscode-symbolIcon-keywordForeground, #569cd6);
+}
+
+/* Deletion styling (for diff) */
+.hljs-deletion {
+    color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
+}
+
+/* Section headers */
+.hljs-section,
+.hljs-selector-id {
+    color: var(--vscode-symbolIcon-functionForeground, #dcdcaa);
+    font-weight: bold;
+}
+
+/* Selector class (CSS) */
+.hljs-selector-class {
+    color: var(--vscode-symbolIcon-classForeground, #d7ba7d);
+}
+
+/* Selector pseudo (CSS) */
+.hljs-selector-pseudo {
+    color: var(--vscode-symbolIcon-keywordForeground, #d7ba7d);
+}
+
+/* Template tags */
+.hljs-template-tag {
+    color: var(--vscode-symbolIcon-keywordForeground, #569cd6);
+}
+
+/* Emphasis and strong */
+.hljs-emphasis {
+    font-style: italic;
+}
+
+.hljs-strong {
+    font-weight: bold;
+}
+
+/* Subst (template interpolation) */
+.hljs-subst {
+    color: var(--vscode-editor-foreground);
+}
+
+/* Operators and punctuation (using default foreground) */
+.hljs-operator,
+.hljs-punctuation {
+    color: var(--vscode-editor-foreground);
 }
 

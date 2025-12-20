@@ -3,11 +3,11 @@
  */
 
 import { ExtensionMessage } from './types';
-import { initializeScrollSync, renderDiff, updateCommentIndicators } from './diff-renderer';
+import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
 import { hideCommentPanel, hideCommentsList, initPanelElements, showCommentPanel, showCommentsForLine } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getState, getViewMode, setComments, setSettings, toggleViewMode, updateState, ViewMode } from './state';
-import { initVSCodeAPI, sendReady } from './vscode-bridge';
+import { initVSCodeAPI, sendCopyPath, sendOpenFile, sendReady } from './vscode-bridge';
 
 // AbortController for managing event listeners
 let commentHandlersAbortController: AbortController | null = null;
@@ -43,6 +43,9 @@ function initialize(): void {
     // Setup view mode toggle
     setupViewModeToggle();
 
+    // Setup file path click handler
+    setupFilePathClickHandler();
+
     // Setup message listener
     window.addEventListener('message', handleMessage);
 
@@ -69,6 +72,8 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
                     oldContent: message.oldContent,
                     newContent: message.newContent
                 });
+                // Invalidate highlight cache when content changes
+                invalidateHighlightCache();
                 renderDiff();
             }
             if (message.comments) {
@@ -120,6 +125,43 @@ function handleAddCommentShortcut(): void {
     const selection = getCurrentSelection();
     if (selection) {
         showCommentPanel(selection);
+    }
+}
+
+/**
+ * Setup file path click handler to open the file in the editor
+ */
+function setupFilePathClickHandler(): void {
+    const filePathLink = document.getElementById('file-path-link');
+    const copyPathBtn = document.getElementById('copy-path-btn');
+    
+    if (!filePathLink) {
+        console.error('[Diff Webview] File path link element not found');
+        return;
+    }
+
+    // Click to open file
+    filePathLink.addEventListener('click', () => {
+        const state = getState();
+        if (state.filePath) {
+            sendOpenFile(state.filePath);
+        }
+    });
+
+    // Copy path button
+    if (copyPathBtn) {
+        copyPathBtn.addEventListener('click', () => {
+            const state = getState();
+            if (state.filePath) {
+                sendCopyPath(state.filePath);
+                
+                // Visual feedback
+                copyPathBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyPathBtn.classList.remove('copied');
+                }, 2000);
+            }
+        });
     }
 }
 

@@ -106,3 +106,23 @@ export function sendReopenComment(commentId: string): void {
     });
 }
 
+/**
+ * Send open file request
+ */
+export function sendOpenFile(filePath: string): void {
+    postMessage({
+        type: 'openFile',
+        fileToOpen: filePath
+    });
+}
+
+/**
+ * Send copy path request
+ */
+export function sendCopyPath(filePath: string): void {
+    postMessage({
+        type: 'copyPath',
+        pathToCopy: filePath
+    });
+}
+

@@ -91,11 +91,15 @@ export interface ExtensionMessage {
  */
 export interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;
     comment?: string;
+    /** File path to open (for openFile message) */
+    fileToOpen?: string;
+    /** File path to copy (for copyPath message) */
+    pathToCopy?: string;
 }
 
 /**

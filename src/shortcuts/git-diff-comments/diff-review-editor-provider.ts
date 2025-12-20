@@ -245,6 +245,33 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     await this.commentsManager.reopenComment(message.commentId);
                 }
                 break;
+
+            case 'openFile':
+                if (message.fileToOpen) {
+                    // Construct full file path
+                    const fullPath = path.isAbsolute(message.fileToOpen)
+                        ? message.fileToOpen
+                        : path.join(gitContext.repositoryRoot, message.fileToOpen);
+                    
+                    try {
+                        const uri = vscode.Uri.file(fullPath);
+                        await vscode.commands.executeCommand('vscode.open', uri);
+                    } catch (error) {
+                        vscode.window.showErrorMessage(`Could not open file: ${message.fileToOpen}`);
+                    }
+                }
+                break;
+
+            case 'copyPath':
+                if (message.pathToCopy) {
+                    try {
+                        await vscode.env.clipboard.writeText(message.pathToCopy);
+                        vscode.window.showInformationMessage(`Copied: ${message.pathToCopy}`);
+                    } catch (error) {
+                        vscode.window.showErrorMessage(`Could not copy path: ${message.pathToCopy}`);
+                    }
+                }
+                break;
         }
     }
 
@@ -332,7 +359,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https://cdnjs.cloudflare.com; script-src 'nonce-${nonce}' https://cdnjs.cloudflare.com;">
     <link href="${styleUri}" rel="stylesheet">
     <link href="${commentsStyleUri}" rel="stylesheet">
     <title>Diff Review: ${escapeHtml(filePath)}</title>
@@ -340,7 +367,12 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 <body>
     <div id="diff-container">
         <div class="diff-header">
-            <h2 class="diff-title">${escapeHtml(filePath)}</h2>
+            <div class="diff-title-row">
+                <h2 class="diff-title clickable-file" id="file-path-link" title="Click to open file">${escapeHtml(filePath)}</h2>
+                <button class="copy-path-btn" id="copy-path-btn" title="Copy file path">
+                    <span class="copy-icon">📋</span>
+                </button>
+            </div>
             <div class="diff-info">
                 <span class="diff-repo">${escapeHtml(gitContext.repositoryName)}</span>
                 <span class="diff-refs">${escapeHtml(gitContext.oldRef)} → ${escapeHtml(gitContext.newRef)}</span>
@@ -400,6 +432,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             gitContext: ${JSON.stringify(gitContext)}
         };
     </script>
+    <!-- Load highlight.js from CDN for syntax highlighting -->
+    <script nonce="${nonce}" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
