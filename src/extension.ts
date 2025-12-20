@@ -287,19 +287,15 @@ export async function activate(context: vscode.ExtensionContext) {
                 async (item: DiffCommentItem) => {
                     if (item?.comment) {
                         // Open the diff review for this file and navigate to the comment
-                        const gitService = gitTreeDataProvider['gitService'];
-                        const repoRoot = gitService?.getFirstRepositoryRoot();
-                        if (repoRoot) {
-                            // Create a synthetic git change item to open the diff review
-                            await vscode.commands.executeCommand('gitDiffComments.openWithReview', {
-                                change: {
-                                    path: item.absoluteFilePath,
-                                    stage: item.comment.gitContext.wasStaged ? 'staged' : 'unstaged',
-                                    repositoryRoot: item.comment.gitContext.repositoryRoot,
-                                    repositoryName: item.comment.gitContext.repositoryName
-                                }
-                            });
-                        }
+                        // Create a synthetic git change item to open the diff review with scroll to comment
+                        await vscode.commands.executeCommand('gitDiffComments.openWithReview', {
+                            change: {
+                                path: item.absoluteFilePath,
+                                stage: item.comment.gitContext.wasStaged ? 'staged' : 'unstaged',
+                                repositoryRoot: item.comment.gitContext.repositoryRoot,
+                                repositoryName: item.comment.gitContext.repositoryName
+                            }
+                        }, item.comment.id);  // Pass comment ID to scroll to
                     }
                 }
             );

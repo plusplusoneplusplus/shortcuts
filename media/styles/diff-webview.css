@@ -615,3 +615,26 @@ html, body {
     color: var(--vscode-editor-foreground);
 }
 
+/* Highlight flash animation for scrolling to comments */
+@keyframes highlight-flash {
+    0% {
+        background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 235, 59, 0.4));
+    }
+    50% {
+        background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 235, 59, 0.6));
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+.highlight-flash {
+    animation: highlight-flash 2s ease-out;
+}
+
+/* Ensure the flash is visible on both split and inline views */
+.diff-line.highlight-flash,
+.inline-diff-line.highlight-flash {
+    animation: highlight-flash 2s ease-out;
+}
+

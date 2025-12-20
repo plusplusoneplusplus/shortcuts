@@ -91,6 +91,106 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
         case 'commentDeleted':
             // Refresh comments - the extension will send an update message
             break;
+
+        case 'scrollToComment':
+            if (message.scrollToCommentId) {
+                scrollToComment(message.scrollToCommentId);
+            }
+            break;
+    }
+}
+
+/**
+ * Scroll to a specific comment in the diff view
+ */
+function scrollToComment(commentId: string): void {
+    console.log('[Diff Webview] Scrolling to comment:', commentId);
+    
+    // Find the comment in our state
+    const state = getState();
+    const comment = state.comments.find(c => c.id === commentId);
+    
+    if (!comment) {
+        console.log('[Diff Webview] Comment not found:', commentId);
+        return;
+    }
+
+    // Determine which line to scroll to based on the comment's selection
+    const side = comment.selection.side;
+    const lineNumber = side === 'old' 
+        ? comment.selection.oldStartLine 
+        : comment.selection.newStartLine;
+
+    if (lineNumber === null) {
+        console.log('[Diff Webview] No line number for comment');
+        return;
+    }
+
+    const viewMode = getViewMode();
+    let lineElement: HTMLElement | null = null;
+
+    if (viewMode === 'inline') {
+        // In inline view, find the line element with the matching line number and side
+        const inlineContainer = document.getElementById('inline-content');
+        if (inlineContainer) {
+            const lines = inlineContainer.querySelectorAll('.inline-diff-line');
+            for (const line of lines) {
+                const el = line as HTMLElement;
+                const lineSide = el.dataset.side;
+                
+                if (side === 'old' && lineSide === 'old' && el.dataset.oldLineNumber === String(lineNumber)) {
+                    lineElement = el;
+                    break;
+                } else if (side === 'new' && (lineSide === 'new' || lineSide === 'context') && el.dataset.newLineNumber === String(lineNumber)) {
+                    lineElement = el;
+                    break;
+                }
+            }
+        }
+    } else {
+        // In split view, find the line element in the appropriate container
+        const containerId = side === 'old' ? 'old-content' : 'new-content';
+        const container = document.getElementById(containerId);
+        if (container) {
+            lineElement = container.querySelector(`.diff-line[data-line-number="${lineNumber}"]`);
+        }
+    }
+
+    if (lineElement) {
+        // Add a highlight effect to draw attention
+        lineElement.classList.add('highlight-flash');
+        setTimeout(() => {
+            lineElement?.classList.remove('highlight-flash');
+        }, 3000);
+
+        // FIRST: Scroll to the line so it's visible
+        // Position it near the top with some context
+        lineElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+        // THEN: After scroll completes, show the comments panel
+        // The panel will position correctly since the element is now visible
+        setTimeout(() => {
+            if (!lineElement) return;
+            
+            // Adjust scroll to add some top padding (context above the line)
+            const container = lineElement.closest('.diff-pane, #inline-content') as HTMLElement;
+            if (container) {
+                container.scrollTop = Math.max(0, container.scrollTop - 80);
+            }
+
+            // Now show the comments for this line (convert 'both' to 'new' for lookup)
+            const lookupSide: 'old' | 'new' = side === 'both' ? 'new' : side;
+            const comments = getCommentsForLine(lookupSide, lineNumber);
+            if (comments.length > 0) {
+                // Find the comment indicator on this line
+                const indicator = lineElement.querySelector('.comment-indicator');
+                if (indicator) {
+                    showCommentsForLine(comments, indicator as HTMLElement);
+                }
+            }
+        }, 400); // Wait for smooth scroll to complete
+    } else {
+        console.log('[Diff Webview] Line element not found for line:', lineNumber);
     }
 }
 

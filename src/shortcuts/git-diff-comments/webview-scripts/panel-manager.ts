@@ -67,6 +67,14 @@ export function initPanelElements(): void {
             }
         });
     }
+
+    // Setup drag functionality for panels
+    if (commentPanel) {
+        setupPanelDrag(commentPanel);
+    }
+    if (commentsListPanel) {
+        setupPanelDrag(commentsListPanel);
+    }
 }
 
 /**
@@ -257,6 +265,8 @@ export function showCommentsForLine(comments: DiffComment[], anchorElement?: HTM
 
 /**
  * Position the comments list panel near a given element
+ * Positions BELOW the element so it doesn't overlap with the highlighted line
+ * Offset to the right to avoid overlapping with line numbers
  */
 function positionCommentsListNearElement(element: HTMLElement): void {
     if (!commentsListPanel) return;
@@ -265,29 +275,34 @@ function positionCommentsListNearElement(element: HTMLElement): void {
     const panelWidth = 350; // from CSS
     const panelMaxHeight = window.innerHeight * 0.7; // 70vh from CSS
     const padding = 20;
+    const lineHeight = 24; // Approximate line height
+    const linesBelow = 3; // Show panel 3 lines below the highlighted line
+    const leftOffset = 120; // Offset to the right to avoid line numbers
 
-    // Calculate position - prefer to the right of the element, below it
-    let left = rect.right + 10;
-    let top = rect.top;
+    // Calculate position - position BELOW the element (a few lines down)
+    // Add leftOffset to move panel to the right of line numbers
+    let left = rect.left + leftOffset;
+    let top = rect.bottom + (lineHeight * linesBelow); // Position a few lines below
 
-    // If panel would go off the right edge, position to the left of the element
+    // If panel would go off the right edge, adjust left position
     if (left + panelWidth > window.innerWidth - padding) {
-        left = rect.left - panelWidth - 10;
-        // If still off screen, just align to right edge
-        if (left < padding) {
-            left = window.innerWidth - panelWidth - padding;
-        }
+        left = window.innerWidth - panelWidth - padding;
     }
 
-    // Ensure panel doesn't go off the left edge
-    if (left < padding) {
-        left = padding;
+    // Ensure panel doesn't go off the left edge (but allow some overlap with line numbers area)
+    if (left < padding + 60) {
+        left = padding + 60;
     }
 
-    // Ensure panel doesn't go off the bottom
+    // Ensure panel doesn't go off the bottom - if so, show above the element instead
     const estimatedHeight = Math.min(panelMaxHeight, 300); // Estimate panel height
     if (top + estimatedHeight > window.innerHeight - padding) {
-        top = window.innerHeight - estimatedHeight - padding;
+        // Position above the element instead
+        top = rect.top - estimatedHeight - lineHeight;
+        // If that would go off the top, just position at the bottom of viewport
+        if (top < padding) {
+            top = window.innerHeight - estimatedHeight - padding;
+        }
     }
 
     // Ensure panel doesn't go off the top
@@ -431,5 +446,71 @@ export function isCommentPanelVisible(): boolean {
  */
 export function isCommentsListVisible(): boolean {
     return commentsListPanel ? !commentsListPanel.classList.contains('hidden') : false;
+}
+
+/**
+ * Setup drag functionality for panels
+ * Makes the panel draggable by its header
+ */
+function setupPanelDrag(panel: HTMLElement): void {
+    const header = panel.querySelector('.comments-list-header, .comment-panel-header');
+    if (!header) return;
+
+    let isDragging = false;
+    let startX: number, startY: number;
+    let initialLeft: number, initialTop: number;
+
+    header.addEventListener('mousedown', (e) => {
+        const event = e as MouseEvent;
+        // Only start drag if clicking on header (not on close button)
+        if ((event.target as HTMLElement).closest('.close-btn, button')) return;
+
+        isDragging = true;
+        panel.classList.add('dragging');
+
+        startX = event.clientX;
+        startY = event.clientY;
+        
+        // Get current position
+        const rect = panel.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+
+        // Ensure we're using fixed positioning for dragging
+        panel.style.position = 'fixed';
+
+        event.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+
+        const deltaX = e.clientX - startX;
+        const deltaY = e.clientY - startY;
+
+        let newLeft = initialLeft + deltaX;
+        let newTop = initialTop + deltaY;
+
+        // Keep panel within viewport bounds
+        const panelWidth = panel.offsetWidth;
+        const panelHeight = panel.offsetHeight;
+
+        newLeft = Math.max(10, Math.min(newLeft, window.innerWidth - panelWidth - 10));
+        newTop = Math.max(10, Math.min(newTop, window.innerHeight - panelHeight - 10));
+
+        panel.style.left = newLeft + 'px';
+        panel.style.top = newTop + 'px';
+        panel.style.right = 'auto'; // Clear right positioning
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            panel.classList.remove('dragging');
+        }
+    });
+
+    // Add cursor style to indicate draggable header
+    (header as HTMLElement).style.cursor = 'move';
 }
 

@@ -77,13 +77,15 @@ export interface InitialData {
  * Message from extension to webview
  */
 export interface ExtensionMessage {
-    type: 'update' | 'commentAdded' | 'commentUpdated' | 'commentDeleted';
+    type: 'update' | 'commentAdded' | 'commentUpdated' | 'commentDeleted' | 'scrollToComment';
     oldContent?: string;
     newContent?: string;
     comments?: DiffComment[];
     filePath?: string;
     settings?: DiffCommentsSettings;
     comment?: DiffComment;
+    /** Comment ID to scroll to (for scrollToComment message) */
+    scrollToCommentId?: string;
 }
 
 /**

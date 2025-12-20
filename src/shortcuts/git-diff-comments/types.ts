@@ -244,13 +244,15 @@ export interface DiffWebviewMessage {
  * Message types from extension to webview
  */
 export interface DiffExtensionMessage {
-    type: 'update' | 'commentAdded' | 'commentUpdated' | 'commentDeleted';
+    type: 'update' | 'commentAdded' | 'commentUpdated' | 'commentDeleted' | 'scrollToComment';
     oldContent?: string;
     newContent?: string;
     comments?: DiffComment[];
     filePath?: string;
     settings?: DiffCommentsSettings;
     comment?: DiffComment;
+    /** Comment ID to scroll to (for scrollToComment message) */
+    scrollToCommentId?: string;
 }
 
 /**

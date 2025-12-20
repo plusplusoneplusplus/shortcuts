@@ -58,8 +58,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         
         const openCommand = vscode.commands.registerCommand(
             'gitDiffComments.openWithReview',
-            async (item?: any) => {
-                await provider.openDiffReview(item);
+            async (item?: any, scrollToCommentId?: string) => {
+                await provider.openDiffReview(item, scrollToCommentId);
             }
         );
 
@@ -142,8 +142,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
     /**
      * Open a diff review for a git change item
+     * @param item The git change item or comment item
+     * @param scrollToCommentId Optional comment ID to scroll to after opening
      */
-    async openDiffReview(item?: any): Promise<void> {
+    async openDiffReview(item?: any, scrollToCommentId?: string): Promise<void> {
         if (!item) {
             vscode.window.showWarningMessage('Please select a git change to review.');
             return;
@@ -190,6 +192,17 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         if (existingPanel) {
             // Reveal the existing panel instead of creating a new one
             existingPanel.reveal(vscode.ViewColumn.One);
+            
+            // If we need to scroll to a specific comment, send the message
+            if (scrollToCommentId) {
+                // Small delay to ensure webview is ready
+                setTimeout(() => {
+                    existingPanel.webview.postMessage({
+                        type: 'scrollToComment',
+                        scrollToCommentId
+                    });
+                }, 100);
+            }
             return;
         }
 
@@ -251,7 +264,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     gitContext,
                     diffResult.oldContent,
                     diffResult.newContent,
-                    panel
+                    panel,
+                    scrollToCommentId
                 );
             },
             undefined,
@@ -274,12 +288,22 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         gitContext: DiffGitContext,
         oldContent: string,
         newContent: string,
-        panel: vscode.WebviewPanel
+        panel: vscode.WebviewPanel,
+        scrollToCommentId?: string
     ): Promise<void> {
         switch (message.type) {
             case 'ready':
             case 'requestState':
                 this.sendStateToWebview(panel, filePath, oldContent, newContent);
+                // If we need to scroll to a specific comment, send the message after state is sent
+                if (scrollToCommentId) {
+                    setTimeout(() => {
+                        panel.webview.postMessage({
+                            type: 'scrollToComment',
+                            scrollToCommentId
+                        });
+                    }, 100);
+                }
                 break;
 
             case 'addComment':
