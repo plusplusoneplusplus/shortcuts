@@ -147,6 +147,15 @@ export function relocateDiffAnchor(
     side: DiffSide,
     config: DiffAnchorConfig = DEFAULT_DIFF_ANCHOR_CONFIG
 ): DiffAnchorRelocationResult {
+    // Handle empty content
+    if (!content || content.trim().length === 0) {
+        return {
+            found: false,
+            confidence: 0,
+            reason: 'not_found'
+        };
+    }
+
     // Strategy 1: Try exact text match first
     const exactMatches = findAllOccurrences(content, anchor.selectedText);
 

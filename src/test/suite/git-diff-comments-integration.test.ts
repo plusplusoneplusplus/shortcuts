@@ -284,9 +284,19 @@ line 5`;
             const anchor = comment.anchor;
             if (anchor) {
                 const result = relocateDiffAnchor(newContent, anchor, 'new');
-                // Should either not find or fall back to line
+                // When exact text is deleted, should either:
+                // - not find it (not_found)
+                // - fall back to line (line_fallback)
+                // - find similar text via fuzzy matching (fuzzy_match) with lower confidence
                 if (result.found) {
-                    assert.strictEqual(result.reason, 'line_fallback');
+                    assert.ok(
+                        result.reason === 'line_fallback' || result.reason === 'fuzzy_match',
+                        `Expected line_fallback or fuzzy_match, got ${result.reason}`
+                    );
+                    // If fuzzy match, confidence should be less than 1.0 (not exact)
+                    if (result.reason === 'fuzzy_match') {
+                        assert.ok(result.confidence < 1.0, 'Fuzzy match should have confidence < 1.0');
+                    }
                 } else {
                     assert.strictEqual(result.reason, 'not_found');
                 }

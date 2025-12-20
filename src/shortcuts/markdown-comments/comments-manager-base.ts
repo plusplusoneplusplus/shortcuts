@@ -44,7 +44,8 @@ export abstract class CommentsManagerBase<
     ) {
         this.workspaceRoot = workspaceRoot;
         this.configPath = path.join(workspaceRoot, '.vscode', configFileName);
-        this.config = { ...defaultConfig };
+        // Deep copy to ensure each instance has its own config
+        this.config = JSON.parse(JSON.stringify(defaultConfig));
     }
 
     /**

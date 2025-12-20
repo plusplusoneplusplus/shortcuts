@@ -40,14 +40,22 @@ export class DiffCommentsManager extends CommentsManagerBase<
     DiffCommentEvent
 > {
     constructor(workspaceRoot: string) {
-        super(workspaceRoot, DIFF_COMMENTS_CONFIG_FILE, { ...DEFAULT_DIFF_COMMENTS_CONFIG });
+        super(workspaceRoot, DIFF_COMMENTS_CONFIG_FILE, {
+            ...DEFAULT_DIFF_COMMENTS_CONFIG,
+            comments: [],
+            settings: { ...DEFAULT_DIFF_COMMENTS_SETTINGS }
+        });
     }
 
     /**
      * Get the default configuration
      */
     protected getDefaultConfig(): DiffCommentsConfig {
-        return { ...DEFAULT_DIFF_COMMENTS_CONFIG };
+        return {
+            ...DEFAULT_DIFF_COMMENTS_CONFIG,
+            comments: [],
+            settings: { ...DEFAULT_DIFF_COMMENTS_SETTINGS }
+        };
     }
 
     /**
