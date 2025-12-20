@@ -17,7 +17,8 @@ import {
     DiffExtensionMessage,
     DiffGitContext,
     DiffSelection,
-    DiffWebviewMessage
+    DiffWebviewMessage,
+    DiffWebviewState
 } from './types';
 
 /**
@@ -30,6 +31,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     public readonly onDidChangeCustomDocument = this._onDidChangeCustomDocument.event;
 
     private activeWebviews: Map<string, vscode.WebviewPanel> = new Map();
+    /** Store state for each webview for restoration */
+    private webviewStates: Map<string, DiffWebviewState> = new Map();
     private disposables: vscode.Disposable[] = [];
 
     constructor(
@@ -68,9 +71,73 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             }
         );
 
+        // Register webview panel serializer for restoring panels after restart
+        const serializerDisposable = vscode.window.registerWebviewPanelSerializer(
+            DiffReviewEditorProvider.viewType,
+            {
+                async deserializeWebviewPanel(panel: vscode.WebviewPanel, state: DiffWebviewState) {
+                    await provider.restoreWebviewPanel(panel, state);
+                }
+            }
+        );
+
         context.subscriptions.push(provider);
 
-        return [openCommand, addCommentCommand, provider];
+        return [openCommand, addCommentCommand, serializerDisposable, provider];
+    }
+
+    /**
+     * Restore a webview panel from serialized state
+     */
+    async restoreWebviewPanel(panel: vscode.WebviewPanel, state: DiffWebviewState): Promise<void> {
+        if (!state || !state.filePath || !state.gitContext) {
+            // Cannot restore without valid state, close the panel
+            panel.dispose();
+            return;
+        }
+
+        try {
+            // Store the panel reference
+            const fullPath = path.isAbsolute(state.filePath)
+                ? state.filePath
+                : path.join(state.gitContext.repositoryRoot, state.filePath);
+            this.activeWebviews.set(fullPath, panel);
+            this.webviewStates.set(fullPath, state);
+
+            // Set webview content
+            panel.webview.html = this.getWebviewContent(
+                panel.webview,
+                state.filePath,
+                state.oldContent,
+                state.newContent,
+                state.gitContext
+            );
+
+            // Handle messages from webview
+            panel.webview.onDidReceiveMessage(
+                async (message: DiffWebviewMessage) => {
+                    await this.handleWebviewMessage(
+                        message,
+                        state.filePath,
+                        state.gitContext,
+                        state.oldContent,
+                        state.newContent,
+                        panel
+                    );
+                },
+                undefined,
+                this.disposables
+            );
+
+            // Clean up when panel is closed
+            panel.onDidDispose(() => {
+                this.activeWebviews.delete(fullPath);
+                this.webviewStates.delete(fullPath);
+            });
+        } catch (error) {
+            console.error('Failed to restore diff review panel:', error);
+            panel.dispose();
+        }
     }
 
     /**
@@ -118,6 +185,14 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             return;
         }
 
+        // Check if a webview panel already exists for this file
+        const existingPanel = this.activeWebviews.get(filePath);
+        if (existingPanel) {
+            // Reveal the existing panel instead of creating a new one
+            existingPanel.reveal(vscode.ViewColumn.One);
+            return;
+        }
+
         // Get diff content
         const relativePath = path.relative(gitContext.repositoryRoot, filePath);
         const diffResult = getDiffContent(relativePath, gitContext);
@@ -148,8 +223,15 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             }
         );
 
-        // Store reference
+        // Store reference and state for serialization
         this.activeWebviews.set(filePath, panel);
+        const webviewState: DiffWebviewState = {
+            filePath: relativePath,
+            gitContext,
+            oldContent: diffResult.oldContent,
+            newContent: diffResult.newContent
+        };
+        this.webviewStates.set(filePath, webviewState);
 
         // Set webview content
         panel.webview.html = this.getWebviewContent(
@@ -179,6 +261,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         // Clean up when panel is closed
         panel.onDidDispose(() => {
             this.activeWebviews.delete(filePath);
+            this.webviewStates.delete(filePath);
         });
     }
 
@@ -423,7 +506,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         <div class="comments-list-body" id="comments-list-body"></div>
     </div>
 
-    <!-- Initial data -->
+    <!-- Initial data for webview initialization -->
     <script nonce="${nonce}">
         window.initialData = {
             filePath: ${JSON.stringify(filePath)},

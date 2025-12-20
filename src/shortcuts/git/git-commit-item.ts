@@ -41,15 +41,16 @@ export class GitCommitItem extends vscode.TreeItem {
         // Tooltip with full details
         this.tooltip = this.createTooltip();
 
-        // Icon for commit
-        this.iconPath = new vscode.ThemeIcon('git-commit');
+        // Icon for commit - use different color for unpushed commits
+        if (commit.isAheadOfRemote) {
+            // Green color for unpushed commits (ahead of remote)
+            this.iconPath = new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('terminal.ansiGreen'));
+        } else {
+            this.iconPath = new vscode.ThemeIcon('git-commit');
+        }
 
-        // Command to show commit diff
-        this.command = {
-            command: 'git.viewCommit',
-            title: 'View Commit',
-            arguments: [commit.hash]
-        };
+        // No command - clicking should expand/collapse the commit to show files
+        // The expand/collapse is handled automatically by VSCode TreeView
     }
 
     /**
@@ -88,19 +89,29 @@ export class GitCommitItem extends vscode.TreeItem {
 
     /**
      * Create detailed tooltip with markdown
+     * The tooltip is interactive - hovering over it keeps it visible
      */
     private createTooltip(): vscode.MarkdownString {
         const md = new vscode.MarkdownString();
         md.supportHtml = true;
+        // Enable trusted mode to allow command links for copying
+        md.isTrusted = true;
 
-        // Commit hash
-        md.appendMarkdown(`**Commit:** \`${this.commit.hash}\`\n\n`);
+        // Commit hash with copy link
+        const copyHashArgs = encodeURIComponent(JSON.stringify([this.commit.hash]));
+        md.appendMarkdown(`**Commit:** \`${this.commit.hash}\` `);
+        md.appendMarkdown(`[📋 Copy](command:gitView.copyCommitHash?${copyHashArgs} "Copy commit hash")\n\n`);
 
-        // Full subject
-        md.appendMarkdown(`**Message:** ${this.commit.subject}\n\n`);
+        // Full subject with copy link
+        const copyMsgArgs = encodeURIComponent(JSON.stringify([this.commit.subject]));
+        md.appendMarkdown(`**Message:** ${this.commit.subject} `);
+        md.appendMarkdown(`[📋](command:gitView.copyToClipboard?${copyMsgArgs} "Copy message")\n\n`);
 
-        // Author
-        md.appendMarkdown(`**Author:** ${this.commit.authorName} <${this.commit.authorEmail}>\n\n`);
+        // Author with copy link
+        const authorInfo = `${this.commit.authorName} <${this.commit.authorEmail}>`;
+        const copyAuthorArgs = encodeURIComponent(JSON.stringify([authorInfo]));
+        md.appendMarkdown(`**Author:** ${authorInfo} `);
+        md.appendMarkdown(`[📋](command:gitView.copyToClipboard?${copyAuthorArgs} "Copy author")\n\n`);
 
         // Date
         md.appendMarkdown(`**Date:** ${this.commit.relativeDate} (${this.formatDate(this.commit.date)})\n\n`);
@@ -118,11 +129,13 @@ export class GitCommitItem extends vscode.TreeItem {
             }
         }
 
-        // Repository
-        md.appendMarkdown(`**Repository:** ${this.commit.repositoryName}\n\n`);
+        // Unpushed indicator
+        if (this.commit.isAheadOfRemote) {
+            md.appendMarkdown(`**Status:** 🟢 Unpushed (ahead of remote)\n\n`);
+        }
 
         md.appendMarkdown('---\n\n');
-        md.appendMarkdown('*Click to view commit details*');
+        md.appendMarkdown('*Click to expand and view changed files*');
 
         return md;
     }

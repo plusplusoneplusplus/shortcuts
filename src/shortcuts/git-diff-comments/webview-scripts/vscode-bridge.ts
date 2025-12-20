@@ -10,11 +10,15 @@ import { DiffSelection, VSCodeAPI, WebviewMessage } from './types';
 let vscode: VSCodeAPI | null = null;
 
 /**
- * Initialize the VSCode API
+ * Initialize the VSCode API and save state for restoration
  */
 export function initVSCodeAPI(): VSCodeAPI {
     if (!vscode) {
         vscode = window.acquireVsCodeApi();
+        // Save initial data for webview state restoration after VSCode restart
+        if (window.initialData) {
+            vscode.setState(window.initialData);
+        }
     }
     return vscode;
 }

@@ -74,6 +74,8 @@ export interface GitCommit {
     repositoryRoot: string;
     /** Repository display name */
     repositoryName: string;
+    /** Whether this commit is ahead of the remote tracking branch (unpushed) */
+    isAheadOfRemote?: boolean;
 }
 
 /**

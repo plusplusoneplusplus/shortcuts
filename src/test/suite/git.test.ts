@@ -406,7 +406,8 @@ suite('Git View Tests', () => {
     suite('GitCommitItem', () => {
         const createMockCommit = (
             subject: string = 'Fix bug in parser',
-            refs: string[] = []
+            refs: string[] = [],
+            isAheadOfRemote: boolean = false
         ): GitCommit => ({
             hash: 'abc123def456789012345678901234567890abcd',
             shortHash: 'abc123d',
@@ -418,7 +419,8 @@ suite('Git View Tests', () => {
             parentHashes: 'parent123',
             refs,
             repositoryRoot: '/repo',
-            repositoryName: 'repo'
+            repositoryName: 'repo',
+            isAheadOfRemote
         });
 
         suite('Basic Properties', () => {
@@ -463,11 +465,36 @@ suite('Git View Tests', () => {
                 assert.strictEqual(item.commit, commit);
             });
 
-            test('should set command to view commit', () => {
+            test('should not have command (clicking expands/collapses)', () => {
                 const commit = createMockCommit();
                 const item = new GitCommitItem(commit);
-                assert.strictEqual(item.command?.command, 'git.viewCommit');
-                assert.deepStrictEqual(item.command?.arguments, [commit.hash]);
+                assert.strictEqual(item.command, undefined);
+            });
+        });
+
+        suite('Ahead of Remote Indicator', () => {
+            test('should use green icon for unpushed commits', () => {
+                const commit = createMockCommit('Unpushed commit', [], true);
+                const item = new GitCommitItem(commit);
+                const icon = item.iconPath as vscode.ThemeIcon;
+                assert.strictEqual(icon.id, 'git-commit');
+                assert.ok(icon.color, 'Icon should have a color');
+            });
+
+            test('should use default icon for pushed commits', () => {
+                const commit = createMockCommit('Pushed commit', [], false);
+                const item = new GitCommitItem(commit);
+                const icon = item.iconPath as vscode.ThemeIcon;
+                assert.strictEqual(icon.id, 'git-commit');
+                // Default icon has no color
+                assert.strictEqual(icon.color, undefined);
+            });
+
+            test('should indicate unpushed status in tooltip', () => {
+                const commit = createMockCommit('Unpushed', [], true);
+                const item = new GitCommitItem(commit);
+                const tooltip = item.tooltip as vscode.MarkdownString;
+                assert.ok(tooltip.value.includes('Unpushed'));
             });
         });
 
@@ -549,11 +576,35 @@ suite('Git View Tests', () => {
                 assert.ok(tooltip.value.includes('develop'));
             });
 
-            test('should include repository name in tooltip', () => {
+            test('should not include repository name in tooltip', () => {
                 const commit = createMockCommit();
                 const item = new GitCommitItem(commit);
                 const tooltip = item.tooltip as vscode.MarkdownString;
-                assert.ok(tooltip.value.includes('repo'));
+                // Repository name should not be in the tooltip anymore
+                assert.ok(!tooltip.value.includes('Repository:'));
+            });
+
+            test('should include instruction to expand in tooltip', () => {
+                const commit = createMockCommit();
+                const item = new GitCommitItem(commit);
+                const tooltip = item.tooltip as vscode.MarkdownString;
+                assert.ok(tooltip.value.includes('expand'));
+            });
+
+            test('should have isTrusted enabled for command links', () => {
+                const commit = createMockCommit();
+                const item = new GitCommitItem(commit);
+                const tooltip = item.tooltip as vscode.MarkdownString;
+                assert.strictEqual(tooltip.isTrusted, true);
+            });
+
+            test('should include copy links in tooltip', () => {
+                const commit = createMockCommit();
+                const item = new GitCommitItem(commit);
+                const tooltip = item.tooltip as vscode.MarkdownString;
+                // Should have copy command links
+                assert.ok(tooltip.value.includes('command:gitView.copyCommitHash'));
+                assert.ok(tooltip.value.includes('command:gitView.copyToClipboard'));
             });
         });
     });

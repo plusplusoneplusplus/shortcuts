@@ -101,12 +101,59 @@ export class GitLogService implements vscode.Disposable {
             // Only take maxCount commits
             const commitLines = hasMore ? lines.slice(0, maxCount) : lines;
             
-            const commits = commitLines.map(line => this.parseCommitLine(line, repoRoot, repoName));
+            // Get the set of commits that are ahead of remote
+            const aheadCommits = this.getAheadOfRemoteCommits(repoRoot);
+            
+            const commits = commitLines.map(line => {
+                const commit = this.parseCommitLine(line, repoRoot, repoName);
+                commit.isAheadOfRemote = aheadCommits.has(commit.hash);
+                return commit;
+            });
 
             return { commits, hasMore };
         } catch (error) {
             console.error(`Failed to get commits for ${repoRoot}:`, error);
             return { commits: [], hasMore: false };
+        }
+    }
+
+    /**
+     * Get the set of commit hashes that are ahead of the remote tracking branch
+     * @param repoRoot Repository root path
+     * @returns Set of commit hashes that haven't been pushed
+     */
+    private getAheadOfRemoteCommits(repoRoot: string): Set<string> {
+        try {
+            // Get the upstream branch for the current branch
+            const upstreamCommand = 'git rev-parse --abbrev-ref @{upstream}';
+            let upstream: string;
+            try {
+                upstream = execSync(upstreamCommand, {
+                    cwd: repoRoot,
+                    encoding: 'utf-8',
+                    timeout: 5000
+                }).trim();
+            } catch {
+                // No upstream configured, return empty set
+                return new Set();
+            }
+
+            // Get commits that are in HEAD but not in upstream
+            const aheadCommand = `git log ${upstream}..HEAD --pretty=format:"%H"`;
+            const output = execSync(aheadCommand, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                timeout: 5000
+            });
+
+            if (!output.trim()) {
+                return new Set();
+            }
+
+            return new Set(output.trim().split('\n').filter(h => h));
+        } catch (error) {
+            // If anything fails, return empty set (don't break the main functionality)
+            return new Set();
         }
     }
 

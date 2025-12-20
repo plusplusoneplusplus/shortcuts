@@ -253,3 +253,17 @@ export interface DiffExtensionMessage {
     comment?: DiffComment;
 }
 
+/**
+ * Serializable state for webview panel restoration
+ */
+export interface DiffWebviewState {
+    /** Relative file path within the repository */
+    filePath: string;
+    /** Git context for the diff */
+    gitContext: DiffGitContext;
+    /** Old file content */
+    oldContent: string;
+    /** New file content */
+    newContent: string;
+}
+

@@ -18,7 +18,12 @@ const STAGE_PRIORITY: Record<GitChangeStage, number> = {
 };
 
 /**
- * Default number of commits to load initially and per "load more" action
+ * Default number of commits to display in the view
+ */
+const DEFAULT_COMMIT_DISPLAY_COUNT = 5;
+
+/**
+ * Number of commits to load per "load more" action
  */
 const DEFAULT_COMMIT_LOAD_COUNT = 20;
 
@@ -94,7 +99,7 @@ export class GitTreeDataProvider
         }
 
         const result = this.gitLogService.getCommits(repoRoot, {
-            maxCount: DEFAULT_COMMIT_LOAD_COUNT,
+            maxCount: DEFAULT_COMMIT_DISPLAY_COUNT,
             skip: 0
         });
 

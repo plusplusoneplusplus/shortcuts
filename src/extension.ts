@@ -135,6 +135,7 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitOpenScmCommand: vscode.Disposable | undefined;
         let gitLoadMoreCommand: vscode.Disposable | undefined;
         let gitCopyHashCommand: vscode.Disposable | undefined;
+        let gitCopyToClipboardCommand: vscode.Disposable | undefined;
         let gitOpenFileDiffCommand: vscode.Disposable | undefined;
 
         if (gitInitialized) {
@@ -179,9 +180,24 @@ export async function activate(context: vscode.ExtensionContext) {
                 await gitTreeDataProvider.loadMoreCommits(count);
             });
 
-            gitCopyHashCommand = vscode.commands.registerCommand('gitView.copyCommitHash', async (item?: GitCommitItem) => {
-                if (item?.commit?.hash) {
-                    await gitTreeDataProvider.copyCommitHash(item.commit.hash);
+            gitCopyHashCommand = vscode.commands.registerCommand('gitView.copyCommitHash', async (itemOrHash?: GitCommitItem | string) => {
+                // Handle both GitCommitItem (from context menu) and string (from tooltip link)
+                let hash: string | undefined;
+                if (typeof itemOrHash === 'string') {
+                    hash = itemOrHash;
+                } else if (itemOrHash?.commit?.hash) {
+                    hash = itemOrHash.commit.hash;
+                }
+                if (hash) {
+                    await gitTreeDataProvider.copyCommitHash(hash);
+                }
+            });
+
+            // Generic copy to clipboard command for tooltip links
+            gitCopyToClipboardCommand = vscode.commands.registerCommand('gitView.copyToClipboard', async (text?: string) => {
+                if (text) {
+                    await vscode.env.clipboard.writeText(text);
+                    vscode.window.showInformationMessage(`Copied to clipboard`);
                 }
             });
 
@@ -481,6 +497,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitOpenScmCommand) disposables.push(gitOpenScmCommand);
         if (gitLoadMoreCommand) disposables.push(gitLoadMoreCommand);
         if (gitCopyHashCommand) disposables.push(gitCopyHashCommand);
+        if (gitCopyToClipboardCommand) disposables.push(gitCopyToClipboardCommand);
         if (gitOpenFileDiffCommand) disposables.push(gitOpenFileDiffCommand);
 
         // Add all disposables to context subscriptions
