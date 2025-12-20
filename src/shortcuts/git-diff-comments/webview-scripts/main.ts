@@ -37,6 +37,9 @@ function initialize(): void {
     // Setup keyboard shortcuts
     setupKeyboardShortcuts();
 
+    // Setup click-outside-to-dismiss behavior for comment panels
+    setupClickOutsideToDismiss();
+
     // Setup click handlers for comment indicators
     setupCommentIndicatorHandlers();
 
@@ -209,6 +212,39 @@ function setupKeyboardShortcuts(): void {
         if (e.key === 'Escape') {
             hideCommentPanel();
             hideCommentsList();
+        }
+    });
+}
+
+/**
+ * Setup click-outside-to-dismiss behavior for comment panels
+ */
+function setupClickOutsideToDismiss(): void {
+    document.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        
+        // Check if clicking outside the comment panel
+        const commentPanel = document.getElementById('comment-panel');
+        if (commentPanel && !commentPanel.classList.contains('hidden')) {
+            // Don't dismiss if clicking inside the panel
+            if (!commentPanel.contains(target)) {
+                // Don't dismiss if clicking on a comment indicator (which opens the panel)
+                if (!target.classList.contains('comment-indicator')) {
+                    hideCommentPanel();
+                }
+            }
+        }
+        
+        // Check if clicking outside the comments list
+        const commentsList = document.getElementById('comments-list');
+        if (commentsList && !commentsList.classList.contains('hidden')) {
+            // Don't dismiss if clicking inside the panel
+            if (!commentsList.contains(target)) {
+                // Don't dismiss if clicking on a comment indicator (which opens the panel)
+                if (!target.classList.contains('comment-indicator')) {
+                    hideCommentsList();
+                }
+            }
         }
     });
 }

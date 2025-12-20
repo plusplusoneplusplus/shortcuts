@@ -339,6 +339,14 @@ function createCommentElement(comment: DiffComment): HTMLElement {
     div.className = `comment-item ${comment.status === 'resolved' ? 'resolved' : ''}`;
     div.dataset.commentId = comment.id;
 
+    // Status badge at the top for resolved comments
+    if (comment.status === 'resolved') {
+        const statusBadge = document.createElement('div');
+        statusBadge.className = 'status-badge resolved';
+        statusBadge.textContent = 'Resolved';
+        div.appendChild(statusBadge);
+    }
+
     // Header with author and date
     const header = document.createElement('div');
     header.className = 'comment-header';
@@ -363,7 +371,7 @@ function createCommentElement(comment: DiffComment): HTMLElement {
         : comment.selectedText;
     div.appendChild(preview);
 
-    // Comment text
+    // Comment text (no strikethrough for resolved comments)
     const text = document.createElement('div');
     text.className = 'comment-text';
     text.textContent = comment.comment;

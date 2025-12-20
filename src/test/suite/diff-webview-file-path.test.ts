@@ -321,5 +321,60 @@ suite('Diff Webview File Path Tests', () => {
             }
         });
     });
+
+    suite('Markdown File Detection', () => {
+        /**
+         * Helper to check if a file path is a markdown file
+         * Mirrors the logic in diff-review-editor-provider.ts
+         */
+        function isMarkdownFile(filePath: string): boolean {
+            return filePath.toLowerCase().endsWith('.md');
+        }
+
+        test('should detect .md files as markdown', () => {
+            assert.strictEqual(isMarkdownFile('README.md'), true);
+            assert.strictEqual(isMarkdownFile('docs/guide.md'), true);
+            assert.strictEqual(isMarkdownFile('/absolute/path/to/file.md'), true);
+        });
+
+        test('should detect .MD files as markdown (case insensitive)', () => {
+            assert.strictEqual(isMarkdownFile('README.MD'), true);
+            assert.strictEqual(isMarkdownFile('CHANGELOG.Md'), true);
+        });
+
+        test('should not detect non-markdown files', () => {
+            assert.strictEqual(isMarkdownFile('file.ts'), false);
+            assert.strictEqual(isMarkdownFile('file.tsx'), false);
+            assert.strictEqual(isMarkdownFile('file.js'), false);
+            assert.strictEqual(isMarkdownFile('file.mdx'), false);
+            assert.strictEqual(isMarkdownFile('file.markdown'), false);
+            assert.strictEqual(isMarkdownFile('file.txt'), false);
+        });
+
+        test('should handle files with .md in the middle of name', () => {
+            assert.strictEqual(isMarkdownFile('readme.md.bak'), false);
+            assert.strictEqual(isMarkdownFile('file.md.txt'), false);
+        });
+
+        test('should correctly route markdown files for opening', () => {
+            const gitContext = createMockGitContext('/project');
+            
+            // Markdown file should be opened with review editor
+            const mdMessage: DiffWebviewMessage = {
+                type: 'openFile',
+                fileToOpen: 'docs/README.md'
+            };
+            const mdFullPath = path.join(gitContext.repositoryRoot, mdMessage.fileToOpen!);
+            assert.strictEqual(isMarkdownFile(mdFullPath), true);
+            
+            // Non-markdown file should be opened normally
+            const tsMessage: DiffWebviewMessage = {
+                type: 'openFile',
+                fileToOpen: 'src/app.ts'
+            };
+            const tsFullPath = path.join(gitContext.repositoryRoot, tsMessage.fileToOpen!);
+            assert.strictEqual(isMarkdownFile(tsFullPath), false);
+        });
+    });
 });
 

@@ -362,7 +362,16 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     
                     try {
                         const uri = vscode.Uri.file(fullPath);
-                        await vscode.commands.executeCommand('vscode.open', uri);
+                        // Check if it's a markdown file - open with Review Editor
+                        if (fullPath.toLowerCase().endsWith('.md')) {
+                            await vscode.commands.executeCommand(
+                                'vscode.openWith',
+                                uri,
+                                'reviewEditorView'
+                            );
+                        } else {
+                            await vscode.commands.executeCommand('vscode.open', uri);
+                        }
                     } catch (error) {
                         vscode.window.showErrorMessage(`Could not open file: ${message.fileToOpen}`);
                     }
