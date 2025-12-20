@@ -6,6 +6,7 @@
  * - Side-by-side diff view with commenting
  * - Persistent comments that survive staging/committing
  * - Anchor-based position tracking for comment relocation
+ * - Tree view for displaying comments in the Git panel
  */
 
 // Types
@@ -32,6 +33,13 @@ export {
 
 // Comments manager
 export { DiffCommentsManager } from './diff-comments-manager';
+
+// Tree data provider for comments
+export {
+    DiffCommentFileItem,
+    DiffCommentItem,
+    DiffCommentsTreeDataProvider
+} from './diff-comments-tree-provider';
 
 // Content provider
 export {

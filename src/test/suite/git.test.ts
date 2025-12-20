@@ -90,19 +90,21 @@ suite('Git View Tests', () => {
         });
 
         test('should define section types', () => {
-            const sections: GitSectionType[] = ['changes', 'commits'];
-            assert.strictEqual(sections.length, 2);
+            const sections: GitSectionType[] = ['changes', 'commits', 'comments'];
+            assert.strictEqual(sections.length, 3);
         });
 
         test('should have correct GitViewCounts structure', () => {
             const counts: GitViewCounts = {
                 changes: { staged: 1, unstaged: 2, untracked: 0, total: 3 },
                 commitCount: 20,
-                hasMoreCommits: true
+                hasMoreCommits: true,
+                comments: { open: 2, resolved: 1, total: 3 }
             };
             assert.strictEqual(counts.changes.total, 3);
             assert.strictEqual(counts.commitCount, 20);
             assert.strictEqual(counts.hasMoreCommits, true);
+            assert.strictEqual(counts.comments.total, 3);
         });
 
         test('should have correct GitCommitFile structure', () => {

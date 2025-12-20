@@ -525,6 +525,36 @@
         "title": "Add Comment",
         "category": "Git Diff Comments",
         "icon": "$(comment)"
+      },
+      {
+        "command": "gitDiffComments.goToComment",
+        "title": "Go to Comment",
+        "category": "Git Diff Comments",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "gitDiffComments.openFileWithReview",
+        "title": "Open File with Diff Review",
+        "category": "Git Diff Comments",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gitDiffComments.deleteComment",
+        "title": "Delete Comment",
+        "category": "Git Diff Comments",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "gitDiffComments.resolveComment",
+        "title": "Resolve Comment",
+        "category": "Git Diff Comments",
+        "icon": "$(check)"
+      },
+      {
+        "command": "gitDiffComments.reopenComment",
+        "title": "Reopen Comment",
+        "category": "Git Diff Comments",
+        "icon": "$(circle-outline)"
       }
     ],
     "menus": {
@@ -800,6 +830,26 @@
           "command": "gitDiffComments.openWithReview",
           "when": "view == gitView && viewItem =~ /^gitChange_/",
           "group": "navigation@10"
+        },
+        {
+          "command": "gitDiffComments.openFileWithReview",
+          "when": "view == gitView && viewItem == diffCommentFile",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gitDiffComments.resolveComment",
+          "when": "view == gitView && viewItem == diffComment_open",
+          "group": "diffComment@1"
+        },
+        {
+          "command": "gitDiffComments.reopenComment",
+          "when": "view == gitView && viewItem == diffComment_resolved",
+          "group": "diffComment@1"
+        },
+        {
+          "command": "gitDiffComments.deleteComment",
+          "when": "view == gitView && (viewItem == diffComment_open || viewItem == diffComment_resolved)",
+          "group": "diffComment@2"
         }
       ],
       "explorer/context": [

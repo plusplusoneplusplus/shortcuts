@@ -18,7 +18,7 @@ export class SectionHeaderItem extends vscode.TreeItem {
 
     /**
      * Create a new section header
-     * @param sectionType The type of section ('changes' or 'commits')
+     * @param sectionType The type of section ('changes', 'commits', or 'comments')
      * @param count Number of items in this section
      * @param hasMore Whether there are more items available (for pagination)
      */
@@ -27,7 +27,8 @@ export class SectionHeaderItem extends vscode.TreeItem {
         count: number,
         hasMore: boolean = false
     ) {
-        const label = sectionType === 'changes' ? 'Changes' : 'Commits';
+        const label = sectionType === 'changes' ? 'Changes' : 
+                     sectionType === 'commits' ? 'Commits' : 'Comments';
         
         // Start expanded by default
         super(label, vscode.TreeItemCollapsibleState.Expanded);
@@ -55,8 +56,10 @@ export class SectionHeaderItem extends vscode.TreeItem {
     private getSectionIcon(): vscode.ThemeIcon {
         if (this.sectionType === 'changes') {
             return new vscode.ThemeIcon('git-compare');
-        } else {
+        } else if (this.sectionType === 'commits') {
             return new vscode.ThemeIcon('history');
+        } else {
+            return new vscode.ThemeIcon('comment-discussion');
         }
     }
 
@@ -69,12 +72,17 @@ export class SectionHeaderItem extends vscode.TreeItem {
                 return 'No uncommitted changes';
             }
             return `${count} uncommitted change${count === 1 ? '' : 's'}`;
-        } else {
+        } else if (this.sectionType === 'commits') {
             if (count === 0) {
                 return 'No commits in history';
             }
             const moreText = hasMore ? ' (more available)' : '';
             return `${count} commit${count === 1 ? '' : 's'} loaded${moreText}`;
+        } else {
+            if (count === 0) {
+                return 'No comments on changes';
+            }
+            return `${count} comment${count === 1 ? '' : 's'} on staged/unstaged changes`;
         }
     }
 }

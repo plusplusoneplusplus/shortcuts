@@ -17,7 +17,7 @@ import {
     PromptGenerator,
     ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
-import { DiffCommentsManager, DiffReviewEditorProvider } from './shortcuts/git-diff-comments';
+import { DiffCommentFileItem, DiffCommentItem, DiffCommentsManager, DiffReviewEditorProvider } from './shortcuts/git-diff-comments';
 import { NoteDocumentManager } from './shortcuts/global-notes';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { ThemeManager } from './shortcuts/theme-manager';
@@ -126,8 +126,13 @@ export async function activate(context: vscode.ExtensionContext) {
             showCollapseAll: false
         });
 
-        // Initialize Git tree data provider (unified Changes + Commits view)
+        // Initialize Git Diff Comments feature (must be before git tree provider)
+        const diffCommentsManager = new DiffCommentsManager(workspaceRoot);
+        await diffCommentsManager.initialize();
+
+        // Initialize Git tree data provider (unified Changes + Commits + Comments view)
         const gitTreeDataProvider = new GitTreeDataProvider();
+        gitTreeDataProvider.setDiffCommentsManager(diffCommentsManager);
         const gitInitialized = await gitTreeDataProvider.initialize();
 
         let gitTreeView: vscode.TreeView<vscode.TreeItem> | undefined;
@@ -137,6 +142,11 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitCopyHashCommand: vscode.Disposable | undefined;
         let gitCopyToClipboardCommand: vscode.Disposable | undefined;
         let gitOpenFileDiffCommand: vscode.Disposable | undefined;
+        let gitDiffCommentsGoToCommand: vscode.Disposable | undefined;
+        let gitDiffCommentsOpenFileCommand: vscode.Disposable | undefined;
+        let gitDiffCommentsDeleteCommand: vscode.Disposable | undefined;
+        let gitDiffCommentsResolveCommand: vscode.Disposable | undefined;
+        let gitDiffCommentsReopenCommand: vscode.Disposable | undefined;
 
         if (gitInitialized) {
             gitTreeView = vscode.window.createTreeView('gitView', {
@@ -160,6 +170,11 @@ export async function activate(context: vscode.ExtensionContext) {
                         ? `${counts.commitCount}+ commits` 
                         : `${counts.commitCount} commit${counts.commitCount === 1 ? '' : 's'}`;
                     parts.push(commitText);
+                }
+
+                // Comments summary
+                if (counts.comments.total > 0) {
+                    parts.push(`${counts.comments.open} comment${counts.comments.open === 1 ? '' : 's'}`);
                 }
                 
                 gitTreeView!.description = parts.length > 0 ? parts.join(', ') : undefined;
@@ -266,6 +281,84 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
             );
 
+            // Register git diff comments tree view commands
+            gitDiffCommentsGoToCommand = vscode.commands.registerCommand(
+                'gitDiffComments.goToComment',
+                async (item: DiffCommentItem) => {
+                    if (item?.comment) {
+                        // Open the diff review for this file and navigate to the comment
+                        const gitService = gitTreeDataProvider['gitService'];
+                        const repoRoot = gitService?.getFirstRepositoryRoot();
+                        if (repoRoot) {
+                            // Create a synthetic git change item to open the diff review
+                            await vscode.commands.executeCommand('gitDiffComments.openWithReview', {
+                                change: {
+                                    path: item.absoluteFilePath,
+                                    stage: item.comment.gitContext.wasStaged ? 'staged' : 'unstaged',
+                                    repositoryRoot: item.comment.gitContext.repositoryRoot,
+                                    repositoryName: item.comment.gitContext.repositoryName
+                                }
+                            });
+                        }
+                    }
+                }
+            );
+
+            gitDiffCommentsOpenFileCommand = vscode.commands.registerCommand(
+                'gitDiffComments.openFileWithReview',
+                async (item: DiffCommentFileItem) => {
+                    if (item?.filePath) {
+                        const gitService = gitTreeDataProvider['gitService'];
+                        const repoRoot = gitService?.getFirstRepositoryRoot();
+                        if (repoRoot && item.gitContext) {
+                            // Create a synthetic git change item to open the diff review
+                            await vscode.commands.executeCommand('gitDiffComments.openWithReview', {
+                                change: {
+                                    path: item.filePath,
+                                    stage: item.gitContext.wasStaged ? 'staged' : 'unstaged',
+                                    repositoryRoot: item.gitContext.repositoryRoot,
+                                    repositoryName: item.gitContext.repositoryName
+                                }
+                            });
+                        }
+                    }
+                }
+            );
+
+            gitDiffCommentsDeleteCommand = vscode.commands.registerCommand(
+                'gitDiffComments.deleteComment',
+                async (item: DiffCommentItem) => {
+                    if (item?.comment?.id) {
+                        const confirmed = await vscode.window.showWarningMessage(
+                            'Are you sure you want to delete this comment?',
+                            { modal: true },
+                            'Delete'
+                        );
+                        if (confirmed === 'Delete') {
+                            await diffCommentsManager.deleteComment(item.comment.id);
+                        }
+                    }
+                }
+            );
+
+            gitDiffCommentsResolveCommand = vscode.commands.registerCommand(
+                'gitDiffComments.resolveComment',
+                async (item: DiffCommentItem) => {
+                    if (item?.comment?.id) {
+                        await diffCommentsManager.updateComment(item.comment.id, { status: 'resolved' });
+                    }
+                }
+            );
+
+            gitDiffCommentsReopenCommand = vscode.commands.registerCommand(
+                'gitDiffComments.reopenComment',
+                async (item: DiffCommentItem) => {
+                    if (item?.comment?.id) {
+                        await diffCommentsManager.updateComment(item.comment.id, { status: 'open' });
+                    }
+                }
+            );
+
             console.log('Git view initialized successfully');
         } else {
             console.log('Git extension not available, Git view disabled');
@@ -348,9 +441,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const commentsManager = new CommentsManager(workspaceRoot);
         await commentsManager.initialize();
 
-        // Initialize Git Diff Comments feature
-        const diffCommentsManager = new DiffCommentsManager(workspaceRoot);
-        await diffCommentsManager.initialize();
+        // Register diff review commands (diffCommentsManager already initialized above)
         const diffReviewCommands = DiffReviewEditorProvider.registerCommands(context, diffCommentsManager);
 
         // Initialize AI Process Manager (must be before ReviewEditorViewProvider)
@@ -499,6 +590,11 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitCopyHashCommand) disposables.push(gitCopyHashCommand);
         if (gitCopyToClipboardCommand) disposables.push(gitCopyToClipboardCommand);
         if (gitOpenFileDiffCommand) disposables.push(gitOpenFileDiffCommand);
+        if (gitDiffCommentsGoToCommand) disposables.push(gitDiffCommentsGoToCommand);
+        if (gitDiffCommentsOpenFileCommand) disposables.push(gitDiffCommentsOpenFileCommand);
+        if (gitDiffCommentsDeleteCommand) disposables.push(gitDiffCommentsDeleteCommand);
+        if (gitDiffCommentsResolveCommand) disposables.push(gitDiffCommentsResolveCommand);
+        if (gitDiffCommentsReopenCommand) disposables.push(gitDiffCommentsReopenCommand);
 
         // Add all disposables to context subscriptions
         context.subscriptions.push(...disposables);

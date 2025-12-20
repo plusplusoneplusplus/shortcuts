@@ -119,7 +119,16 @@ export interface GitCommitFile {
 /**
  * Section types in the Git view
  */
-export type GitSectionType = 'changes' | 'commits';
+export type GitSectionType = 'changes' | 'commits' | 'comments';
+
+/**
+ * Comment counts for display
+ */
+export interface GitCommentCounts {
+    open: number;
+    resolved: number;
+    total: number;
+}
 
 /**
  * Combined counts for the Git view description
@@ -131,5 +140,7 @@ export interface GitViewCounts {
     commitCount: number;
     /** Whether there are more commits to load */
     hasMoreCommits: boolean;
+    /** Number of diff comments */
+    comments: GitCommentCounts;
 }
 

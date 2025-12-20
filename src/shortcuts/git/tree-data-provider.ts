@@ -1,4 +1,10 @@
 import * as vscode from 'vscode';
+import {
+    DiffCommentFileItem,
+    DiffCommentItem,
+    DiffCommentsTreeDataProvider
+} from '../git-diff-comments/diff-comments-tree-provider';
+import { DiffCommentsManager } from '../git-diff-comments/diff-comments-manager';
 import { GitChangeItem } from './git-change-item';
 import { GitCommitFileItem } from './git-commit-file-item';
 import { GitCommitItem } from './git-commit-item';
@@ -6,7 +12,7 @@ import { GitLogService } from './git-log-service';
 import { GitService } from './git-service';
 import { LoadMoreItem } from './load-more-item';
 import { SectionHeaderItem } from './section-header-item';
-import { GitChange, GitChangeCounts, GitChangeStage, GitCommit, GitViewCounts } from './types';
+import { GitChange, GitChangeCounts, GitChangeStage, GitCommentCounts, GitCommit, GitViewCounts } from './types';
 
 /**
  * Stage priority for sorting (lower = higher priority)
@@ -50,9 +56,35 @@ export class GitTreeDataProvider
     private changesCollapsed = false;
     private commitsCollapsed = false;
 
+    // Diff comments integration
+    private diffCommentsManager?: DiffCommentsManager;
+    private diffCommentsTreeProvider?: DiffCommentsTreeDataProvider;
+
     constructor() {
         this.gitService = new GitService();
         this.gitLogService = new GitLogService();
+    }
+
+    /**
+     * Set the diff comments manager for displaying comments in the tree
+     */
+    setDiffCommentsManager(manager: DiffCommentsManager): void {
+        this.diffCommentsManager = manager;
+        this.diffCommentsTreeProvider = new DiffCommentsTreeDataProvider(manager);
+        
+        // Listen for comment changes to refresh the tree
+        this.disposables.push(
+            manager.onDidChangeComments(() => {
+                this.refresh();
+            })
+        );
+    }
+
+    /**
+     * Get the diff comments tree provider for external use
+     */
+    getDiffCommentsTreeProvider(): DiffCommentsTreeDataProvider | undefined {
+        return this.diffCommentsTreeProvider;
     }
 
     /**
@@ -171,14 +203,21 @@ export class GitTreeDataProvider
             if (element instanceof SectionHeaderItem) {
                 if (element.sectionType === 'changes') {
                     return this.getChangeItems();
-                } else {
+                } else if (element.sectionType === 'commits') {
                     return this.getCommitItems();
+                } else if (element.sectionType === 'comments') {
+                    return this.getCommentFileItems();
                 }
             }
 
             // Commit item - return files changed in this commit
             if (element instanceof GitCommitItem) {
                 return this.getCommitFileItems(element.commit);
+            }
+
+            // Comment file item - return comments for this file
+            if (element instanceof DiffCommentFileItem) {
+                return this.getCommentItems(element.filePath);
             }
 
             // All other items have no children
@@ -195,11 +234,19 @@ export class GitTreeDataProvider
     private getRootItems(): vscode.TreeItem[] {
         const changeCounts = this.getChangeCounts();
         const commitCount = this.loadedCommits.length;
+        const commentCount = this.getCommentCount();
 
-        return [
+        const items: vscode.TreeItem[] = [
             new SectionHeaderItem('changes', changeCounts.total, false),
             new SectionHeaderItem('commits', commitCount, this.hasMoreCommits)
         ];
+
+        // Only show comments section if there are comments
+        if (commentCount > 0) {
+            items.push(new SectionHeaderItem('comments', commentCount, false));
+        }
+
+        return items;
     }
 
     /**
@@ -238,6 +285,53 @@ export class GitTreeDataProvider
             commit.hash
         );
         return files.map(file => new GitCommitFileItem(file));
+    }
+
+    /**
+     * Get comment file items (files with comments)
+     */
+    private async getCommentFileItems(): Promise<vscode.TreeItem[]> {
+        if (!this.diffCommentsTreeProvider) {
+            return [];
+        }
+        return this.diffCommentsTreeProvider.getChildren();
+    }
+
+    /**
+     * Get comment items for a specific file
+     */
+    private async getCommentItems(filePath: string): Promise<vscode.TreeItem[]> {
+        if (!this.diffCommentsTreeProvider) {
+            return [];
+        }
+        // Create a temporary file item to get its children
+        const comments = this.diffCommentsManager?.getCommentsForFile(filePath) || [];
+        const openCount = comments.filter(c => c.status === 'open').length;
+        const resolvedCount = comments.filter(c => c.status === 'resolved').length;
+        const gitContext = comments[0]?.gitContext;
+        const fileItem = new DiffCommentFileItem(filePath, openCount, resolvedCount, gitContext);
+        return this.diffCommentsTreeProvider.getChildren(fileItem);
+    }
+
+    /**
+     * Get the total number of diff comments
+     */
+    getCommentCount(): number {
+        return this.diffCommentsTreeProvider?.getTotalCommentCount() ?? 0;
+    }
+
+    /**
+     * Get the number of open diff comments
+     */
+    getOpenCommentCount(): number {
+        return this.diffCommentsTreeProvider?.getOpenCommentCount() ?? 0;
+    }
+
+    /**
+     * Get the number of resolved diff comments
+     */
+    getResolvedCommentCount(): number {
+        return this.diffCommentsTreeProvider?.getResolvedCommentCount() ?? 0;
     }
 
     /**
@@ -281,13 +375,25 @@ export class GitTreeDataProvider
     }
 
     /**
+     * Get comment counts for display
+     */
+    getCommentCounts(): GitCommentCounts {
+        return {
+            open: this.getOpenCommentCount(),
+            resolved: this.getResolvedCommentCount(),
+            total: this.getCommentCount()
+        };
+    }
+
+    /**
      * Get combined counts for the view description
      */
     getViewCounts(): GitViewCounts {
         return {
             changes: this.getChangeCounts(),
             commitCount: this.loadedCommits.length,
-            hasMoreCommits: this.hasMoreCommits
+            hasMoreCommits: this.hasMoreCommits,
+            comments: this.getCommentCounts()
         };
     }
 
