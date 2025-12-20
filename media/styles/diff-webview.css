@@ -638,3 +638,88 @@ html, body {
     animation: highlight-flash 2s ease-out;
 }
 
+/* ======================== */
+/* Diff Indicator Bar (Minimap) */
+/* ======================== */
+
+/* Container for the diff view with indicator */
+.diff-view-wrapper {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+/* The main diff content area */
+.diff-view-container {
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Indicator bar on the right side */
+.diff-indicator-bar {
+    width: 12px;
+    background-color: var(--vscode-editorGutter-background, transparent);
+    border-left: 1px solid var(--vscode-panel-border);
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+    /* Account for pane header height */
+    padding-top: 29px;
+}
+
+/* Inner container for marks - allows proper positioning */
+.diff-indicator-bar-inner {
+    position: relative;
+    height: 100%;
+    width: 100%;
+}
+
+/* Individual indicator marks */
+.diff-indicator-mark {
+    position: absolute;
+    right: 1px;
+    width: 10px;
+    min-height: 2px;
+    border-radius: 1px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    opacity: 0.9;
+}
+
+.diff-indicator-mark:hover {
+    opacity: 1;
+    box-shadow: 0 0 2px var(--vscode-focusBorder);
+}
+
+/* Addition marks (green) */
+.diff-indicator-mark.addition {
+    background-color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+}
+
+/* Deletion marks (red) */
+.diff-indicator-mark.deletion {
+    background-color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
+}
+
+/* Modified marks (yellow/orange) - for adjacent add/delete */
+.diff-indicator-mark.modified {
+    background-color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+}
+
+/* Comment marks (blue) */
+.diff-indicator-mark.comment {
+    background-color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+/* Current viewport indicator */
+.diff-indicator-viewport {
+    position: absolute;
+    right: 0;
+    width: 12px;
+    background-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+    border-radius: 2px;
+    pointer-events: none;
+    transition: top 0.05s ease-out, height 0.05s ease-out;
+}
+

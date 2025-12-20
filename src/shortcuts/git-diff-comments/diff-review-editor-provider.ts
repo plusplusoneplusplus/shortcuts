@@ -498,18 +498,25 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 </button>
             </div>
         </div>
-        <div class="diff-view-container" id="diff-view-container">
-            <div class="diff-pane old-pane">
-                <div class="pane-header">Old Version</div>
-                <div class="pane-content" id="old-content"></div>
+        <div class="diff-view-wrapper">
+            <div class="diff-view-container" id="diff-view-container">
+                <div class="diff-pane old-pane">
+                    <div class="pane-header">Old Version</div>
+                    <div class="pane-content" id="old-content"></div>
+                </div>
+                <div class="diff-pane new-pane">
+                    <div class="pane-header">New Version</div>
+                    <div class="pane-content" id="new-content"></div>
+                </div>
+                <div class="inline-diff-pane">
+                    <div class="pane-header">Unified Diff</div>
+                    <div class="pane-content" id="inline-content"></div>
+                </div>
             </div>
-            <div class="diff-pane new-pane">
-                <div class="pane-header">New Version</div>
-                <div class="pane-content" id="new-content"></div>
-            </div>
-            <div class="inline-diff-pane">
-                <div class="pane-header">Unified Diff</div>
-                <div class="pane-content" id="inline-content"></div>
+            <div class="diff-indicator-bar" id="diff-indicator-bar">
+                <div class="diff-indicator-bar-inner" id="diff-indicator-bar-inner">
+                    <div class="diff-indicator-viewport" id="diff-indicator-viewport"></div>
+                </div>
             </div>
         </div>
     </div>

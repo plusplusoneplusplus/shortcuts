@@ -2,9 +2,23 @@
  * Diff renderer - renders side-by-side diff view and inline view
  */
 
-import { DiffComment, DiffLine, DiffLineType } from './types';
-import { getCommentsForLine, getState, getViewMode, ViewMode } from './state';
 import { getLanguageFromFilePath, highlightCode, splitHighlightedHtmlIntoLines } from '../../shared/highlighted-html-lines';
+import { getCommentsForLine, getState, getViewMode } from './state';
+import { DiffComment, DiffLineType } from './types';
+
+/**
+ * Track diff line info for indicator bar
+ */
+interface DiffLineInfo {
+    index: number;
+    type: 'context' | 'addition' | 'deletion';
+    hasComment: boolean;
+}
+
+/**
+ * Store aligned diff info for indicator bar rendering
+ */
+let alignedDiffInfo: DiffLineInfo[] = [];
 
 /**
  * Parse content into lines
@@ -161,7 +175,7 @@ function createLineElement(
 function createEmptyLineElement(): HTMLElement {
     const lineDiv = document.createElement('div');
     lineDiv.className = 'diff-line diff-line-empty';
-    
+
     const gutterDiv = document.createElement('div');
     gutterDiv.className = 'line-gutter';
     lineDiv.appendChild(gutterDiv);
@@ -282,6 +296,9 @@ export function renderSplitDiff(): void {
     oldContainer.innerHTML = '';
     newContainer.innerHTML = '';
 
+    // Reset aligned diff info for indicator bar
+    alignedDiffInfo = [];
+
     // Parse lines
     const oldLines = parseLines(state.oldContent);
     const newLines = parseLines(state.newContent);
@@ -294,7 +311,20 @@ export function renderSplitDiff(): void {
     const aligned = backtrackLCS(oldLines, newLines, dp);
 
     // Render aligned lines
+    let lineIndex = 0;
     for (const line of aligned) {
+        // Track diff info for indicator bar
+        const oldComments = line.oldLineNum ? getCommentsForLine('old', line.oldLineNum) : [];
+        const newComments = line.newLineNum ? getCommentsForLine('new', line.newLineNum) : [];
+        const hasComment = oldComments.length > 0 || newComments.length > 0;
+
+        alignedDiffInfo.push({
+            index: lineIndex,
+            type: line.type === 'context' ? 'context' : (line.type === 'addition' ? 'addition' : 'deletion'),
+            hasComment
+        });
+        lineIndex++;
+
         // Old side
         if (line.oldLine !== null && line.oldLineNum !== null) {
             const comments = getCommentsForLine('old', line.oldLineNum);
@@ -338,6 +368,9 @@ export function renderSplitDiff(): void {
 
     // Synchronize scroll between panes
     setupScrollSync(oldContainer, newContainer);
+
+    // Render the indicator bar
+    renderIndicatorBar();
 }
 
 /**
@@ -449,6 +482,9 @@ export function renderInlineDiff(): void {
     // Clear existing content
     inlineContainer.innerHTML = '';
 
+    // Reset aligned diff info for indicator bar
+    alignedDiffInfo = [];
+
     // Parse lines
     const oldLines = parseLines(state.oldContent);
     const newLines = parseLines(state.newContent);
@@ -461,10 +497,20 @@ export function renderInlineDiff(): void {
     const aligned = backtrackLCS(oldLines, newLines, dp);
 
     // Render in unified/inline style
+    let lineIndex = 0;
     for (const line of aligned) {
         if (line.type === 'context') {
             // Context line - show with both line numbers
             const comments = getCommentsForLine('new', line.newLineNum!);
+
+            // Track diff info for indicator bar
+            alignedDiffInfo.push({
+                index: lineIndex,
+                type: 'context',
+                hasComment: comments.length > 0
+            });
+            lineIndex++;
+
             // For context, use the new version's highlighted content
             const highlightedContent = newHighlighted[line.newLineNum! - 1];
             const lineEl = createInlineLineElement(
@@ -480,6 +526,15 @@ export function renderInlineDiff(): void {
         } else if (line.type === 'deletion') {
             // Deletion - show old line
             const comments = getCommentsForLine('old', line.oldLineNum!);
+
+            // Track diff info for indicator bar
+            alignedDiffInfo.push({
+                index: lineIndex,
+                type: 'deletion',
+                hasComment: comments.length > 0
+            });
+            lineIndex++;
+
             const highlightedContent = oldHighlighted[line.oldLineNum! - 1];
             const lineEl = createInlineLineElement(
                 line.oldLineNum,
@@ -494,6 +549,15 @@ export function renderInlineDiff(): void {
         } else if (line.type === 'addition') {
             // Addition - show new line
             const comments = getCommentsForLine('new', line.newLineNum!);
+
+            // Track diff info for indicator bar
+            alignedDiffInfo.push({
+                index: lineIndex,
+                type: 'addition',
+                hasComment: comments.length > 0
+            });
+            lineIndex++;
+
             const highlightedContent = newHighlighted[line.newLineNum! - 1];
             const lineEl = createInlineLineElement(
                 null,
@@ -507,6 +571,9 @@ export function renderInlineDiff(): void {
             inlineContainer.appendChild(lineEl);
         }
     }
+
+    // Render the indicator bar
+    renderIndicatorBar();
 }
 
 // Module-level scroll sync state
@@ -540,7 +607,7 @@ function setupScrollSync(oldContainer: HTMLElement, newContainer: HTMLElement): 
 export function initializeScrollSync(): void {
     const oldContainer = document.getElementById('old-content');
     const newContainer = document.getElementById('new-content');
-    
+
     if (oldContainer && newContainer) {
         setupScrollSync(oldContainer, newContainer);
     }
@@ -553,7 +620,7 @@ export function initializeScrollSync(): void {
 export function highlightLine(side: 'old' | 'new', lineNumber: number): void {
     const viewMode = getViewMode();
     let lineEl: Element | null = null;
-    
+
     if (viewMode === 'inline') {
         // Inline view: search by data-old-line-number or data-new-line-number
         const inlineContainer = document.getElementById('inline-content');
@@ -563,19 +630,19 @@ export function highlightLine(side: 'old' | 'new', lineNumber: number): void {
         }
     } else {
         // Split view: search in the appropriate pane
-        const container = side === 'old' 
+        const container = side === 'old'
             ? document.getElementById('old-content')
             : document.getElementById('new-content');
-        
+
         if (container) {
             lineEl = container.querySelector(`[data-line-number="${lineNumber}"]`);
         }
     }
-    
+
     if (lineEl) {
         lineEl.classList.add('highlighted');
         lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        
+
         // Remove highlight after animation
         setTimeout(() => {
             lineEl?.classList.remove('highlighted');
@@ -589,7 +656,7 @@ export function highlightLine(side: 'old' | 'new', lineNumber: number): void {
 export function updateCommentIndicators(): void {
     const state = getState();
     const viewMode = getViewMode();
-    
+
     if (viewMode === 'inline') {
         // Update inline view
         const inlineContainer = document.getElementById('inline-content');
@@ -599,7 +666,7 @@ export function updateCommentIndicators(): void {
                 const el = lineEl as HTMLElement;
                 const side = el.dataset.side;
                 let comments: DiffComment[] = [];
-                
+
                 if (side === 'old' && el.dataset.oldLineNumber) {
                     const lineNum = parseInt(el.dataset.oldLineNumber);
                     comments = getCommentsForLine('old', lineNum);
@@ -610,7 +677,7 @@ export function updateCommentIndicators(): void {
                     const lineNum = parseInt(el.dataset.newLineNumber);
                     comments = getCommentsForLine('new', lineNum);
                 }
-                
+
                 updateInlineLineCommentIndicator(el, comments, state);
             });
         }
@@ -637,6 +704,9 @@ export function updateCommentIndicators(): void {
             });
         }
     }
+
+    // Update indicator bar to reflect comment changes
+    updateIndicatorBarComments();
 }
 
 /**
@@ -649,7 +719,7 @@ function updateLineCommentIndicator(
 ): void {
     const gutter = lineEl.querySelector('.line-gutter');
     const content = lineEl.querySelector('.line-content') as HTMLElement;
-    
+
     if (!gutter || !content) return;
 
     // Remove existing indicator
@@ -668,8 +738,8 @@ function updateLineCommentIndicator(
 
         // Update highlight
         const hasOpenComment = comments.some(c => c.status === 'open');
-        content.style.backgroundColor = hasOpenComment 
-            ? state.settings.highlightColor 
+        content.style.backgroundColor = hasOpenComment
+            ? state.settings.highlightColor
             : state.settings.resolvedHighlightColor;
     } else {
         // Remove highlight
@@ -687,7 +757,7 @@ function updateInlineLineCommentIndicator(
 ): void {
     const gutter = lineEl.querySelector('.inline-line-gutter');
     const content = lineEl.querySelector('.inline-line-content') as HTMLElement;
-    
+
     if (!gutter || !content) return;
 
     // Remove existing indicator
@@ -706,12 +776,241 @@ function updateInlineLineCommentIndicator(
 
         // Update highlight
         const hasOpenComment = comments.some(c => c.status === 'open');
-        content.style.backgroundColor = hasOpenComment 
-            ? state.settings.highlightColor 
+        content.style.backgroundColor = hasOpenComment
+            ? state.settings.highlightColor
             : state.settings.resolvedHighlightColor;
     } else {
         // Remove highlight
         content.style.backgroundColor = '';
     }
+}
+
+/**
+ * Render the diff indicator bar (minimap)
+ * Shows colored marks for additions, deletions, and comments
+ */
+export function renderIndicatorBar(): void {
+    const indicatorBarInner = document.getElementById('diff-indicator-bar-inner');
+    if (!indicatorBarInner) return;
+
+    // Clear existing marks (but keep viewport indicator)
+    const existingMarks = indicatorBarInner.querySelectorAll('.diff-indicator-mark');
+    existingMarks.forEach(mark => mark.remove());
+
+    const totalLines = alignedDiffInfo.length;
+    if (totalLines === 0) return;
+
+    // Get the content container to calculate positions relative to scroll height
+    const viewMode = getViewMode();
+    let contentContainer: HTMLElement | null = null;
+
+    if (viewMode === 'inline') {
+        contentContainer = document.getElementById('inline-content');
+    } else {
+        contentContainer = document.getElementById('new-content');
+    }
+
+    if (!contentContainer) return;
+
+    const barHeight = indicatorBarInner.clientHeight;
+    const scrollHeight = contentContainer.scrollHeight;
+    const clientHeight = contentContainer.clientHeight;
+
+    // If content doesn't need scrolling, use simple percentage
+    const useScrollRatio = scrollHeight > clientHeight;
+
+    // Group consecutive changes for better visualization
+    let i = 0;
+    while (i < alignedDiffInfo.length) {
+        const lineInfo = alignedDiffInfo[i];
+
+        // Skip context lines unless they have comments
+        if (lineInfo.type === 'context' && !lineInfo.hasComment) {
+            i++;
+            continue;
+        }
+
+        // Find consecutive lines of the same type
+        let endIndex = i;
+        while (endIndex < alignedDiffInfo.length - 1) {
+            const nextInfo = alignedDiffInfo[endIndex + 1];
+            // Group additions and deletions together as "modified"
+            const currentIsChange = lineInfo.type === 'addition' || lineInfo.type === 'deletion';
+            const nextIsChange = nextInfo.type === 'addition' || nextInfo.type === 'deletion';
+
+            if (currentIsChange && nextIsChange) {
+                endIndex++;
+            } else if (lineInfo.type === nextInfo.type) {
+                endIndex++;
+            } else {
+                break;
+            }
+        }
+
+        // Calculate position based on actual line elements if possible
+        let topPosition: number;
+        let markHeight: number;
+
+        if (useScrollRatio) {
+            // Calculate position based on scroll ratio
+            // Find the actual line element to get its position
+            const lineElements = contentContainer.querySelectorAll(
+                viewMode === 'inline' ? '.inline-diff-line' : '.diff-line'
+            );
+
+            if (lineElements[i]) {
+                const lineEl = lineElements[i] as HTMLElement;
+                const lineTop = lineEl.offsetTop;
+                const lineHeight = lineEl.offsetHeight;
+                const linesInGroup = endIndex - i + 1;
+
+                // Map the line position to the indicator bar
+                topPosition = (lineTop / scrollHeight) * barHeight;
+                markHeight = Math.max((lineHeight * linesInGroup / scrollHeight) * barHeight, 2);
+            } else {
+                // Fallback to percentage calculation
+                topPosition = (i / totalLines) * barHeight;
+                markHeight = Math.max(((endIndex - i + 1) / totalLines) * barHeight, 2);
+            }
+        } else {
+            // Simple percentage for non-scrolling content
+            topPosition = (i / totalLines) * barHeight;
+            markHeight = Math.max(((endIndex - i + 1) / totalLines) * barHeight, 2);
+        }
+
+        // Create the mark element
+        const mark = document.createElement('div');
+        mark.className = 'diff-indicator-mark';
+
+        // Determine the mark type
+        if (lineInfo.type === 'addition') {
+            mark.classList.add('addition');
+        } else if (lineInfo.type === 'deletion') {
+            mark.classList.add('deletion');
+        }
+
+        // Check if any line in this range has comments
+        let hasCommentInRange = false;
+        for (let j = i; j <= endIndex; j++) {
+            if (alignedDiffInfo[j].hasComment) {
+                hasCommentInRange = true;
+                break;
+            }
+        }
+        if (hasCommentInRange) {
+            mark.classList.add('comment');
+        }
+
+        mark.style.top = `${topPosition}px`;
+        mark.style.height = `${markHeight}px`;
+        mark.dataset.lineIndex = String(i);
+
+        // Click to scroll to that position
+        const clickIndex = i;
+        mark.addEventListener('click', () => {
+            scrollToLineIndex(clickIndex);
+        });
+
+        indicatorBarInner.appendChild(mark);
+
+        i = endIndex + 1;
+    }
+
+    // Setup viewport indicator tracking
+    setupViewportTracking();
+}
+
+/**
+ * Scroll to a specific line index in the diff view
+ */
+function scrollToLineIndex(index: number): void {
+    const viewMode = getViewMode();
+    let container: HTMLElement | null = null;
+    let lineElements: NodeListOf<Element> | null = null;
+
+    if (viewMode === 'inline') {
+        container = document.getElementById('inline-content');
+        lineElements = container?.querySelectorAll('.inline-diff-line') || null;
+    } else {
+        // For split view, use the new-content pane as reference
+        container = document.getElementById('new-content');
+        lineElements = container?.querySelectorAll('.diff-line') || null;
+    }
+
+    if (container && lineElements && lineElements[index]) {
+        lineElements[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
+/**
+ * Setup viewport indicator tracking
+ */
+let viewportTrackingInitialized = false;
+
+function setupViewportTracking(): void {
+    const viewMode = getViewMode();
+    let container: HTMLElement | null = null;
+
+    if (viewMode === 'inline') {
+        container = document.getElementById('inline-content');
+    } else {
+        // For split view, use the new-content pane as reference
+        container = document.getElementById('new-content');
+    }
+
+    if (!container) return;
+
+    // Update viewport indicator on scroll
+    const updateViewport = () => {
+        const indicatorBarInner = document.getElementById('diff-indicator-bar-inner');
+        const viewportIndicator = document.getElementById('diff-indicator-viewport');
+        if (!indicatorBarInner || !viewportIndicator || !container) return;
+
+        const scrollTop = container.scrollTop;
+        const scrollHeight = container.scrollHeight;
+        const clientHeight = container.clientHeight;
+        const barHeight = indicatorBarInner.clientHeight;
+
+        if (scrollHeight <= clientHeight) {
+            // Content fits without scrolling
+            viewportIndicator.style.display = 'none';
+            return;
+        }
+
+        viewportIndicator.style.display = 'block';
+
+        // Calculate viewport position and size
+        const viewportTop = (scrollTop / scrollHeight) * barHeight;
+        const viewportHeight = (clientHeight / scrollHeight) * barHeight;
+
+        viewportIndicator.style.top = `${viewportTop}px`;
+        viewportIndicator.style.height = `${Math.max(viewportHeight, 20)}px`;
+    };
+
+    // Remove old listener if exists
+    container.removeEventListener('scroll', updateViewport);
+    container.addEventListener('scroll', updateViewport);
+
+    // Initial update
+    updateViewport();
+}
+
+/**
+ * Update indicator bar when comments change
+ */
+export function updateIndicatorBarComments(): void {
+    const state = getState();
+
+    // Update hasComment flag in alignedDiffInfo
+    alignedDiffInfo.forEach((info, index) => {
+        // Check if this line has comments
+        // For simplicity, check both old and new sides
+        const oldComments = getCommentsForLine('old', index + 1);
+        const newComments = getCommentsForLine('new', index + 1);
+        info.hasComment = oldComments.length > 0 || newComments.length > 0;
+    });
+
+    // Re-render the indicator bar
+    renderIndicatorBar();
 }
 
