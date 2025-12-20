@@ -3,11 +3,14 @@
  */
 
 import { ExtensionMessage } from './types';
-import { renderDiff, updateCommentIndicators } from './diff-renderer';
+import { initializeScrollSync, renderDiff, updateCommentIndicators } from './diff-renderer';
 import { hideCommentPanel, hideCommentsList, initPanelElements, showCommentPanel, showCommentsForLine } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
-import { createInitialState, getCommentsForLine, getState, setComments, setSettings, updateState } from './state';
+import { createInitialState, getCommentsForLine, getState, getViewMode, setComments, setSettings, toggleViewMode, updateState, ViewMode } from './state';
 import { initVSCodeAPI, sendReady } from './vscode-bridge';
+
+// AbortController for managing event listeners
+let commentHandlersAbortController: AbortController | null = null;
 
 /**
  * Initialize the webview
@@ -36,6 +39,9 @@ function initialize(): void {
 
     // Setup click handlers for comment indicators
     setupCommentIndicatorHandlers();
+
+    // Setup view mode toggle
+    setupViewModeToggle();
 
     // Setup message listener
     window.addEventListener('message', handleMessage);
@@ -118,58 +124,161 @@ function handleAddCommentShortcut(): void {
 }
 
 /**
- * Setup click handlers for comment indicators
+ * Setup view mode toggle button
+ */
+function setupViewModeToggle(): void {
+    const toggleButton = document.getElementById('view-mode-toggle');
+    const toggleIcon = document.getElementById('toggle-icon');
+    const toggleLabel = document.getElementById('toggle-label');
+    const diffViewContainer = document.getElementById('diff-view-container');
+
+    if (!toggleButton || !toggleIcon || !toggleLabel || !diffViewContainer) {
+        console.error('[Diff Webview] View mode toggle elements not found');
+        return;
+    }
+
+    // Update UI to reflect current state
+    const updateToggleUI = (mode: ViewMode) => {
+        if (mode === 'inline') {
+            toggleIcon.textContent = '⫼';
+            toggleLabel.textContent = 'Inline';
+            diffViewContainer.classList.add('inline-view');
+        } else {
+            toggleIcon.textContent = '⫼';
+            toggleLabel.textContent = 'Split';
+            diffViewContainer.classList.remove('inline-view');
+        }
+    };
+
+    // Initialize UI
+    updateToggleUI(getViewMode());
+
+    // Handle click
+    toggleButton.addEventListener('click', () => {
+        const newMode = toggleViewMode();
+        updateToggleUI(newMode);
+        renderDiff();
+        
+        // Re-setup comment indicator handlers for the new view
+        setupCommentIndicatorHandlers();
+    });
+}
+
+/**
+ * Setup click handlers for comment indicators (called on view mode change too)
+ * Uses AbortController to properly clean up old listeners without cloning elements
  */
 function setupCommentIndicatorHandlers(): void {
-    // Use event delegation on the diff containers
-    const oldContainer = document.getElementById('old-content');
-    const newContainer = document.getElementById('new-content');
-
-    const handleClick = (e: MouseEvent, side: 'old' | 'new') => {
-        const target = e.target as HTMLElement;
+    // Abort any previous listeners
+    if (commentHandlersAbortController) {
+        commentHandlersAbortController.abort();
+    }
+    commentHandlersAbortController = new AbortController();
+    const signal = commentHandlersAbortController.signal;
+    
+    const viewMode = getViewMode();
+    
+    if (viewMode === 'inline') {
+        // Inline view handlers
+        const inlineContainer = document.getElementById('inline-content');
         
-        // Check if clicking on a comment indicator
-        if (target.classList.contains('comment-indicator')) {
-            e.preventDefault();
-            e.stopPropagation();
+        const handleInlineClick = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            
+            // Check if clicking on a comment indicator
+            if (target.classList.contains('comment-indicator')) {
+                e.preventDefault();
+                e.stopPropagation();
 
-            const lineEl = target.closest('.diff-line') as HTMLElement;
-            if (lineEl && lineEl.dataset.lineNumber) {
-                const lineNum = parseInt(lineEl.dataset.lineNumber);
-                const comments = getCommentsForLine(side, lineNum);
-                if (comments.length > 0) {
-                    // Pass the clicked indicator element for positioning
-                    showCommentsForLine(comments, target);
+                const lineEl = target.closest('.inline-diff-line') as HTMLElement;
+                if (lineEl) {
+                    const side = lineEl.dataset.side;
+                    let lineNum: number | null = null;
+                    let commentSide: 'old' | 'new' = 'new';
+                    
+                    if (side === 'old' && lineEl.dataset.oldLineNumber) {
+                        lineNum = parseInt(lineEl.dataset.oldLineNumber);
+                        commentSide = 'old';
+                    } else if (side === 'new' && lineEl.dataset.newLineNumber) {
+                        lineNum = parseInt(lineEl.dataset.newLineNumber);
+                        commentSide = 'new';
+                    } else if (side === 'context' && lineEl.dataset.newLineNumber) {
+                        lineNum = parseInt(lineEl.dataset.newLineNumber);
+                        commentSide = 'new';
+                    }
+                    
+                    if (lineNum !== null) {
+                        const comments = getCommentsForLine(commentSide, lineNum);
+                        if (comments.length > 0) {
+                            showCommentsForLine(comments, target);
+                        }
+                    }
                 }
             }
-        }
-    };
+        };
 
-    if (oldContainer) {
-        oldContainer.addEventListener('click', (e) => handleClick(e, 'old'));
-    }
-
-    if (newContainer) {
-        newContainer.addEventListener('click', (e) => handleClick(e, 'new'));
-    }
-
-    // Also handle double-click on lines to add comments
-    const handleDoubleClick = (e: MouseEvent) => {
-        // Only if there's a selection
-        if (hasValidSelection()) {
-            const selection = getCurrentSelection();
-            if (selection) {
-                showCommentPanel(selection);
+        // Handle double-click on lines to add comments
+        const handleInlineDoubleClick = (e: MouseEvent) => {
+            if (hasValidSelection()) {
+                const selection = getCurrentSelection();
+                if (selection) {
+                    showCommentPanel(selection);
+                }
             }
+        };
+
+        if (inlineContainer) {
+            inlineContainer.addEventListener('click', handleInlineClick, { signal });
+            inlineContainer.addEventListener('dblclick', handleInlineDoubleClick, { signal });
         }
-    };
+    } else {
+        // Split view handlers
+        const oldContainer = document.getElementById('old-content');
+        const newContainer = document.getElementById('new-content');
 
-    if (oldContainer) {
-        oldContainer.addEventListener('dblclick', handleDoubleClick);
-    }
+        const handleClick = (e: MouseEvent, side: 'old' | 'new') => {
+            const target = e.target as HTMLElement;
+            
+            // Check if clicking on a comment indicator
+            if (target.classList.contains('comment-indicator')) {
+                e.preventDefault();
+                e.stopPropagation();
 
-    if (newContainer) {
-        newContainer.addEventListener('dblclick', handleDoubleClick);
+                const lineEl = target.closest('.diff-line') as HTMLElement;
+                if (lineEl && lineEl.dataset.lineNumber) {
+                    const lineNum = parseInt(lineEl.dataset.lineNumber);
+                    const comments = getCommentsForLine(side, lineNum);
+                    if (comments.length > 0) {
+                        // Pass the clicked indicator element for positioning
+                        showCommentsForLine(comments, target);
+                    }
+                }
+            }
+        };
+
+        // Handle double-click on lines to add comments
+        const handleDoubleClick = (e: MouseEvent) => {
+            // Only if there's a selection
+            if (hasValidSelection()) {
+                const selection = getCurrentSelection();
+                if (selection) {
+                    showCommentPanel(selection);
+                }
+            }
+        };
+
+        if (oldContainer) {
+            oldContainer.addEventListener('click', (e) => handleClick(e, 'old'), { signal });
+            oldContainer.addEventListener('dblclick', handleDoubleClick, { signal });
+        }
+
+        if (newContainer) {
+            newContainer.addEventListener('click', (e) => handleClick(e, 'new'), { signal });
+            newContainer.addEventListener('dblclick', handleDoubleClick, { signal });
+        }
+        
+        // Re-initialize scroll sync for split view since we're not cloning elements anymore
+        initializeScrollSync();
     }
 }
 

@@ -10,6 +10,11 @@ import {
 } from './types';
 
 /**
+ * View mode type
+ */
+export type ViewMode = 'split' | 'inline';
+
+/**
  * Application state
  */
 export interface AppState {
@@ -22,6 +27,7 @@ export interface AppState {
     currentSelection: SelectionState | null;
     isCommentPanelOpen: boolean;
     editingCommentId: string | null;
+    viewMode: ViewMode;
 }
 
 /**
@@ -59,7 +65,8 @@ export function createInitialState(): AppState {
         settings: DEFAULT_SETTINGS,
         currentSelection: null,
         isCommentPanelOpen: false,
-        editingCommentId: null
+        editingCommentId: null,
+        viewMode: 'split' as ViewMode
     };
 }
 
@@ -150,5 +157,27 @@ export function getVisibleComments(): DiffComment[] {
         return state.comments;
     }
     return state.comments.filter(c => c.status !== 'resolved');
+}
+
+/**
+ * Get current view mode
+ */
+export function getViewMode(): ViewMode {
+    return state.viewMode;
+}
+
+/**
+ * Set view mode
+ */
+export function setViewMode(mode: ViewMode): void {
+    state.viewMode = mode;
+}
+
+/**
+ * Toggle view mode between split and inline
+ */
+export function toggleViewMode(): ViewMode {
+    state.viewMode = state.viewMode === 'split' ? 'inline' : 'split';
+    return state.viewMode;
 }
 

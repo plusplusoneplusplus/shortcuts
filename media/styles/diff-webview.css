@@ -46,6 +46,35 @@ html, body {
     gap: 16px;
     font-size: 12px;
     color: var(--vscode-descriptionForeground);
+    align-items: center;
+}
+
+/* View mode toggle button */
+.view-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    background-color: var(--vscode-button-secondaryBackground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--vscode-button-secondaryForeground);
+    transition: background-color 0.15s;
+}
+
+.view-mode-toggle:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.view-mode-toggle .toggle-icon {
+    font-size: 14px;
+}
+
+.view-mode-toggle .toggle-label {
+    font-weight: 500;
 }
 
 .diff-repo {
@@ -118,7 +147,8 @@ html, body {
 .diff-line {
     display: flex;
     min-height: 20px;
-    white-space: pre;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .diff-line:hover {
@@ -149,9 +179,11 @@ html, body {
     user-select: none;
     flex-shrink: 0;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: flex-end;
     gap: 4px;
+    padding-top: 0;
+    line-height: var(--vscode-editor-line-height, 1.5);
 }
 
 /* Comment indicator */
@@ -245,5 +277,137 @@ html, body {
 /* Hidden class */
 .hidden {
     display: none !important;
+}
+
+/* ======================== */
+/* Inline View Mode Styles  */
+/* ======================== */
+
+/* Inline view container */
+.diff-view-container.inline-view {
+    flex-direction: column;
+}
+
+.diff-view-container.inline-view .diff-pane {
+    display: none;
+}
+
+.diff-view-container.inline-view .inline-diff-pane {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Inline diff pane (hidden in split mode) */
+.inline-diff-pane {
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.inline-diff-pane .pane-header {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--vscode-descriptionForeground);
+    background-color: var(--vscode-editorGroupHeader-tabsBackground);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    flex-shrink: 0;
+}
+
+.inline-diff-pane .pane-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+    font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', monospace);
+    font-size: var(--vscode-editor-font-size, 13px);
+    line-height: var(--vscode-editor-line-height, 1.5);
+}
+
+/* Inline diff line styles */
+.inline-diff-line {
+    display: flex;
+    min-height: 20px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.inline-diff-line:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.inline-diff-line.highlighted {
+    animation: highlight-pulse 2s ease-out;
+}
+
+/* Inline line gutter (shows both line numbers) */
+.inline-line-gutter {
+    min-width: 90px;
+    padding: 0 8px;
+    text-align: right;
+    color: var(--vscode-editorLineNumber-foreground);
+    background-color: var(--vscode-editorGutter-background);
+    border-right: 1px solid var(--vscode-panel-border);
+    user-select: none;
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 4px;
+    padding-top: 0;
+    line-height: var(--vscode-editor-line-height, 1.5);
+}
+
+.inline-line-gutter .old-line-num,
+.inline-line-gutter .new-line-num {
+    min-width: 35px;
+    text-align: right;
+}
+
+.inline-line-gutter .old-line-num {
+    color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
+    opacity: 0.8;
+}
+
+.inline-line-gutter .new-line-num {
+    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+    opacity: 0.8;
+}
+
+.inline-diff-line-context .inline-line-gutter .old-line-num,
+.inline-diff-line-context .inline-line-gutter .new-line-num {
+    color: var(--vscode-editorLineNumber-foreground);
+    opacity: 1;
+}
+
+/* Inline line content */
+.inline-line-content {
+    flex: 1;
+    padding: 0 8px;
+    display: flex;
+}
+
+/* Inline line types */
+.inline-diff-line-context {
+    background-color: transparent;
+}
+
+.inline-diff-line-addition {
+    background-color: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
+}
+
+.inline-diff-line-addition .line-prefix {
+    color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+}
+
+.inline-diff-line-deletion {
+    background-color: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
+}
+
+.inline-diff-line-deletion .line-prefix {
+    color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
 }
 

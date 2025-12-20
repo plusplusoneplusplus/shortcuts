@@ -1,9 +1,9 @@
 /**
- * Diff renderer - renders side-by-side diff view
+ * Diff renderer - renders side-by-side diff view and inline view
  */
 
 import { DiffComment, DiffLine, DiffLineType } from './types';
-import { getCommentsForLine, getState } from './state';
+import { getCommentsForLine, getState, getViewMode, ViewMode } from './state';
 
 /**
  * Parse content into lines
@@ -198,9 +198,21 @@ function backtrackLCS(
 }
 
 /**
- * Render the diff view
+ * Render the diff view (dispatches to split or inline based on view mode)
  */
 export function renderDiff(): void {
+    const viewMode = getViewMode();
+    if (viewMode === 'inline') {
+        renderInlineDiff();
+    } else {
+        renderSplitDiff();
+    }
+}
+
+/**
+ * Render the split (side-by-side) diff view
+ */
+export function renderSplitDiff(): void {
     const state = getState();
     const oldContainer = document.getElementById('old-content');
     const newContainer = document.getElementById('new-content');
@@ -264,16 +276,179 @@ export function renderDiff(): void {
 }
 
 /**
+ * Create an inline line element (unified diff style)
+ */
+function createInlineLineElement(
+    oldLineNum: number | null,
+    newLineNum: number | null,
+    content: string,
+    type: DiffLineType,
+    side: 'old' | 'new' | 'context',
+    comments: DiffComment[]
+): HTMLElement {
+    const lineDiv = document.createElement('div');
+    lineDiv.className = `inline-diff-line inline-diff-line-${type}`;
+    
+    // Store data attributes for selection/comments
+    if (side === 'old' && oldLineNum !== null) {
+        lineDiv.dataset.oldLineNumber = String(oldLineNum);
+        lineDiv.dataset.side = 'old';
+    } else if (side === 'new' && newLineNum !== null) {
+        lineDiv.dataset.newLineNumber = String(newLineNum);
+        lineDiv.dataset.side = 'new';
+    } else if (side === 'context') {
+        if (oldLineNum !== null) lineDiv.dataset.oldLineNumber = String(oldLineNum);
+        if (newLineNum !== null) lineDiv.dataset.newLineNumber = String(newLineNum);
+        lineDiv.dataset.side = 'context';
+    }
+
+    // Line number gutter (shows both old and new line numbers)
+    const gutterDiv = document.createElement('div');
+    gutterDiv.className = 'inline-line-gutter';
+    
+    const oldNumSpan = document.createElement('span');
+    oldNumSpan.className = 'old-line-num';
+    oldNumSpan.textContent = oldLineNum !== null ? String(oldLineNum) : '';
+    gutterDiv.appendChild(oldNumSpan);
+    
+    const newNumSpan = document.createElement('span');
+    newNumSpan.className = 'new-line-num';
+    newNumSpan.textContent = newLineNum !== null ? String(newLineNum) : '';
+    gutterDiv.appendChild(newNumSpan);
+    
+    // Comment indicator
+    if (comments.length > 0) {
+        const indicator = document.createElement('span');
+        indicator.className = 'comment-indicator';
+        indicator.textContent = `💬${comments.length > 1 ? comments.length : ''}`;
+        indicator.title = `${comments.length} comment${comments.length > 1 ? 's' : ''}`;
+        gutterDiv.appendChild(indicator);
+    }
+    
+    lineDiv.appendChild(gutterDiv);
+
+    // Line content
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'inline-line-content';
+    
+    // Add prefix for diff type
+    let prefix = '';
+    if (type === 'addition') {
+        prefix = '+';
+    } else if (type === 'deletion') {
+        prefix = '-';
+    } else if (type === 'context') {
+        prefix = ' ';
+    }
+    
+    const prefixSpan = document.createElement('span');
+    prefixSpan.className = 'line-prefix';
+    prefixSpan.textContent = prefix;
+    contentDiv.appendChild(prefixSpan);
+
+    const textSpan = document.createElement('span');
+    textSpan.className = 'line-text';
+    textSpan.innerHTML = escapeHtml(content) || '&nbsp;';
+    contentDiv.appendChild(textSpan);
+
+    lineDiv.appendChild(contentDiv);
+
+    // Apply highlight for comments
+    if (comments.length > 0) {
+        const state = getState();
+        const hasOpenComment = comments.some(c => c.status === 'open');
+        const color = hasOpenComment 
+            ? state.settings.highlightColor 
+            : state.settings.resolvedHighlightColor;
+        contentDiv.style.backgroundColor = color;
+    }
+
+    return lineDiv;
+}
+
+/**
+ * Render the inline (unified) diff view
+ */
+export function renderInlineDiff(): void {
+    const state = getState();
+    const inlineContainer = document.getElementById('inline-content');
+
+    if (!inlineContainer) {
+        console.error('Inline diff container not found');
+        return;
+    }
+
+    // Clear existing content
+    inlineContainer.innerHTML = '';
+
+    // Parse lines
+    const oldLines = parseLines(state.oldContent);
+    const newLines = parseLines(state.newContent);
+
+    // Compute LCS for alignment
+    const dp = computeLCS(oldLines, newLines);
+    const aligned = backtrackLCS(oldLines, newLines, dp);
+
+    // Render in unified/inline style
+    for (const line of aligned) {
+        if (line.type === 'context') {
+            // Context line - show with both line numbers
+            const comments = getCommentsForLine('new', line.newLineNum!);
+            const lineEl = createInlineLineElement(
+                line.oldLineNum,
+                line.newLineNum,
+                line.newLine || line.oldLine || '',
+                'context',
+                'context',
+                comments
+            );
+            inlineContainer.appendChild(lineEl);
+        } else if (line.type === 'deletion') {
+            // Deletion - show old line
+            const comments = getCommentsForLine('old', line.oldLineNum!);
+            const lineEl = createInlineLineElement(
+                line.oldLineNum,
+                null,
+                line.oldLine || '',
+                'deletion',
+                'old',
+                comments
+            );
+            inlineContainer.appendChild(lineEl);
+        } else if (line.type === 'addition') {
+            // Addition - show new line
+            const comments = getCommentsForLine('new', line.newLineNum!);
+            const lineEl = createInlineLineElement(
+                null,
+                line.newLineNum,
+                line.newLine || '',
+                'addition',
+                'new',
+                comments
+            );
+            inlineContainer.appendChild(lineEl);
+        }
+    }
+}
+
+// Module-level scroll sync state
+let scrollSyncInitialized = false;
+let isSyncing = false;
+
+/**
  * Setup synchronized scrolling between panes
+ * Uses event delegation on the parent container to survive element replacements
  */
 function setupScrollSync(oldContainer: HTMLElement, newContainer: HTMLElement): void {
-    let isSyncing = false;
-
+    // Always set up fresh listeners since containers may have been replaced
     const syncScroll = (source: HTMLElement, target: HTMLElement) => {
         if (isSyncing) return;
         isSyncing = true;
         target.scrollTop = source.scrollTop;
-        isSyncing = false;
+        // Use requestAnimationFrame to ensure smooth syncing
+        requestAnimationFrame(() => {
+            isSyncing = false;
+        });
     };
 
     oldContainer.addEventListener('scroll', () => syncScroll(oldContainer, newContainer));
@@ -281,23 +456,51 @@ function setupScrollSync(oldContainer: HTMLElement, newContainer: HTMLElement): 
 }
 
 /**
+ * Initialize scroll sync for split view
+ * Call this after rendering or after view mode changes
+ */
+export function initializeScrollSync(): void {
+    const oldContainer = document.getElementById('old-content');
+    const newContainer = document.getElementById('new-content');
+    
+    if (oldContainer && newContainer) {
+        setupScrollSync(oldContainer, newContainer);
+    }
+}
+
+/**
  * Highlight a specific line (for showing comment location)
+ * Works for both split and inline views
  */
 export function highlightLine(side: 'old' | 'new', lineNumber: number): void {
-    const container = side === 'old' 
-        ? document.getElementById('old-content')
-        : document.getElementById('new-content');
+    const viewMode = getViewMode();
+    let lineEl: Element | null = null;
     
-    if (!container) return;
-
-    const lineEl = container.querySelector(`[data-line-number="${lineNumber}"]`);
+    if (viewMode === 'inline') {
+        // Inline view: search by data-old-line-number or data-new-line-number
+        const inlineContainer = document.getElementById('inline-content');
+        if (inlineContainer) {
+            const attr = side === 'old' ? 'data-old-line-number' : 'data-new-line-number';
+            lineEl = inlineContainer.querySelector(`[${attr}="${lineNumber}"]`);
+        }
+    } else {
+        // Split view: search in the appropriate pane
+        const container = side === 'old' 
+            ? document.getElementById('old-content')
+            : document.getElementById('new-content');
+        
+        if (container) {
+            lineEl = container.querySelector(`[data-line-number="${lineNumber}"]`);
+        }
+    }
+    
     if (lineEl) {
         lineEl.classList.add('highlighted');
         lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         
         // Remove highlight after animation
         setTimeout(() => {
-            lineEl.classList.remove('highlighted');
+            lineEl?.classList.remove('highlighted');
         }, 2000);
     }
 }
@@ -307,32 +510,59 @@ export function highlightLine(side: 'old' | 'new', lineNumber: number): void {
  */
 export function updateCommentIndicators(): void {
     const state = getState();
+    const viewMode = getViewMode();
     
-    // Update old side
-    const oldContainer = document.getElementById('old-content');
-    if (oldContainer) {
-        const lines = oldContainer.querySelectorAll('.diff-line[data-line-number]');
-        lines.forEach(lineEl => {
-            const lineNum = parseInt(lineEl.getAttribute('data-line-number') || '0');
-            const comments = getCommentsForLine('old', lineNum);
-            updateLineCommentIndicator(lineEl as HTMLElement, comments, state);
-        });
-    }
+    if (viewMode === 'inline') {
+        // Update inline view
+        const inlineContainer = document.getElementById('inline-content');
+        if (inlineContainer) {
+            const lines = inlineContainer.querySelectorAll('.inline-diff-line');
+            lines.forEach(lineEl => {
+                const el = lineEl as HTMLElement;
+                const side = el.dataset.side;
+                let comments: DiffComment[] = [];
+                
+                if (side === 'old' && el.dataset.oldLineNumber) {
+                    const lineNum = parseInt(el.dataset.oldLineNumber);
+                    comments = getCommentsForLine('old', lineNum);
+                } else if (side === 'new' && el.dataset.newLineNumber) {
+                    const lineNum = parseInt(el.dataset.newLineNumber);
+                    comments = getCommentsForLine('new', lineNum);
+                } else if (side === 'context' && el.dataset.newLineNumber) {
+                    const lineNum = parseInt(el.dataset.newLineNumber);
+                    comments = getCommentsForLine('new', lineNum);
+                }
+                
+                updateInlineLineCommentIndicator(el, comments, state);
+            });
+        }
+    } else {
+        // Update old side (split view)
+        const oldContainer = document.getElementById('old-content');
+        if (oldContainer) {
+            const lines = oldContainer.querySelectorAll('.diff-line[data-line-number]');
+            lines.forEach(lineEl => {
+                const lineNum = parseInt(lineEl.getAttribute('data-line-number') || '0');
+                const comments = getCommentsForLine('old', lineNum);
+                updateLineCommentIndicator(lineEl as HTMLElement, comments, state);
+            });
+        }
 
-    // Update new side
-    const newContainer = document.getElementById('new-content');
-    if (newContainer) {
-        const lines = newContainer.querySelectorAll('.diff-line[data-line-number]');
-        lines.forEach(lineEl => {
-            const lineNum = parseInt(lineEl.getAttribute('data-line-number') || '0');
-            const comments = getCommentsForLine('new', lineNum);
-            updateLineCommentIndicator(lineEl as HTMLElement, comments, state);
-        });
+        // Update new side (split view)
+        const newContainer = document.getElementById('new-content');
+        if (newContainer) {
+            const lines = newContainer.querySelectorAll('.diff-line[data-line-number]');
+            lines.forEach(lineEl => {
+                const lineNum = parseInt(lineEl.getAttribute('data-line-number') || '0');
+                const comments = getCommentsForLine('new', lineNum);
+                updateLineCommentIndicator(lineEl as HTMLElement, comments, state);
+            });
+        }
     }
 }
 
 /**
- * Update comment indicator on a single line
+ * Update comment indicator on a single line (split view)
  */
 function updateLineCommentIndicator(
     lineEl: HTMLElement,
@@ -341,6 +571,44 @@ function updateLineCommentIndicator(
 ): void {
     const gutter = lineEl.querySelector('.line-gutter');
     const content = lineEl.querySelector('.line-content') as HTMLElement;
+    
+    if (!gutter || !content) return;
+
+    // Remove existing indicator
+    const existingIndicator = gutter.querySelector('.comment-indicator');
+    if (existingIndicator) {
+        existingIndicator.remove();
+    }
+
+    // Add new indicator if there are comments
+    if (comments.length > 0) {
+        const indicator = document.createElement('span');
+        indicator.className = 'comment-indicator';
+        indicator.textContent = `💬${comments.length > 1 ? comments.length : ''}`;
+        indicator.title = `${comments.length} comment${comments.length > 1 ? 's' : ''}`;
+        gutter.appendChild(indicator);
+
+        // Update highlight
+        const hasOpenComment = comments.some(c => c.status === 'open');
+        content.style.backgroundColor = hasOpenComment 
+            ? state.settings.highlightColor 
+            : state.settings.resolvedHighlightColor;
+    } else {
+        // Remove highlight
+        content.style.backgroundColor = '';
+    }
+}
+
+/**
+ * Update comment indicator on a single line (inline view)
+ */
+function updateInlineLineCommentIndicator(
+    lineEl: HTMLElement,
+    comments: DiffComment[],
+    state: ReturnType<typeof getState>
+): void {
+    const gutter = lineEl.querySelector('.inline-line-gutter');
+    const content = lineEl.querySelector('.inline-line-content') as HTMLElement;
     
     if (!gutter || !content) return;
 

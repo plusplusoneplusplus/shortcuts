@@ -28,10 +28,50 @@ export function getCurrentSelection(): SelectionState | null {
         return null;
     }
 
+    // Check if this is inline view or split view
+    const isInlineView = startContainer.classList.contains('inline-diff-line');
+
     // Get line numbers and side
-    const startLineNum = parseInt(startContainer.dataset.lineNumber || '0');
-    const endLineNum = parseInt(endContainer.dataset.lineNumber || '0');
-    const side = startContainer.dataset.side as DiffSide;
+    let startLineNum: number;
+    let endLineNum: number;
+    let side: DiffSide;
+
+    if (isInlineView) {
+        // Inline view: get line number based on side
+        const startSide = startContainer.dataset.side;
+        const endSide = endContainer.dataset.side;
+        
+        // Determine which side to use (prefer the side with line numbers)
+        if (startSide === 'old' && startContainer.dataset.oldLineNumber) {
+            startLineNum = parseInt(startContainer.dataset.oldLineNumber);
+            side = 'old';
+        } else if (startSide === 'new' && startContainer.dataset.newLineNumber) {
+            startLineNum = parseInt(startContainer.dataset.newLineNumber);
+            side = 'new';
+        } else if (startSide === 'context') {
+            // For context lines, prefer new line number
+            startLineNum = parseInt(startContainer.dataset.newLineNumber || startContainer.dataset.oldLineNumber || '0');
+            side = 'new';
+        } else {
+            return null;
+        }
+        
+        // Get end line number
+        if (endSide === 'old' && endContainer.dataset.oldLineNumber) {
+            endLineNum = parseInt(endContainer.dataset.oldLineNumber);
+        } else if (endSide === 'new' && endContainer.dataset.newLineNumber) {
+            endLineNum = parseInt(endContainer.dataset.newLineNumber);
+        } else if (endSide === 'context') {
+            endLineNum = parseInt(endContainer.dataset.newLineNumber || endContainer.dataset.oldLineNumber || '0');
+        } else {
+            endLineNum = startLineNum;
+        }
+    } else {
+        // Split view: use data-line-number and data-side
+        startLineNum = parseInt(startContainer.dataset.lineNumber || '0');
+        endLineNum = parseInt(endContainer.dataset.lineNumber || '0');
+        side = startContainer.dataset.side as DiffSide;
+    }
 
     if (!side || startLineNum === 0 || endLineNum === 0) {
         return null;
@@ -58,14 +98,19 @@ export function getCurrentSelection(): SelectionState | null {
 }
 
 /**
- * Find the parent diff line element
+ * Find the parent diff line element (works for both split and inline views)
  */
 function findDiffLineElement(node: Node): HTMLElement | null {
     let current: Node | null = node;
     
     while (current) {
         if (current instanceof HTMLElement) {
+            // Check for split view line
             if (current.classList.contains('diff-line') && current.dataset.lineNumber) {
+                return current;
+            }
+            // Check for inline view line
+            if (current.classList.contains('inline-diff-line')) {
                 return current;
             }
         }
@@ -76,9 +121,10 @@ function findDiffLineElement(node: Node): HTMLElement | null {
 }
 
 /**
- * Calculate column offset within a line
+ * Calculate column offset within a line (works for both split and inline views)
  */
 function getColumnOffset(node: Node, offset: number, lineElement: HTMLElement): number {
+    // Try to find line-text in either split or inline content
     const textContent = lineElement.querySelector('.line-text');
     if (!textContent) {
         return 1;

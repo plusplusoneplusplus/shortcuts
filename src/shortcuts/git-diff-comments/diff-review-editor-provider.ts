@@ -344,9 +344,13 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             <div class="diff-info">
                 <span class="diff-repo">${escapeHtml(gitContext.repositoryName)}</span>
                 <span class="diff-refs">${escapeHtml(gitContext.oldRef)} → ${escapeHtml(gitContext.newRef)}</span>
+                <button class="view-mode-toggle" id="view-mode-toggle" title="Toggle between split and inline view">
+                    <span class="toggle-icon" id="toggle-icon">⫼</span>
+                    <span class="toggle-label" id="toggle-label">Split</span>
+                </button>
             </div>
         </div>
-        <div class="diff-view-container">
+        <div class="diff-view-container" id="diff-view-container">
             <div class="diff-pane old-pane">
                 <div class="pane-header">Old Version</div>
                 <div class="pane-content" id="old-content"></div>
@@ -354,6 +358,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             <div class="diff-pane new-pane">
                 <div class="pane-header">New Version</div>
                 <div class="pane-content" id="new-content"></div>
+            </div>
+            <div class="inline-diff-pane">
+                <div class="pane-header">Unified Diff</div>
+                <div class="pane-content" id="inline-content"></div>
             </div>
         </div>
     </div>
