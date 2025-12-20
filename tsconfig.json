@@ -27,6 +27,7 @@
     "src/test/fixtures/**/*",
     "src/shortcuts/markdown-comments/webview-scripts/**/*",
     "src/shortcuts/markdown-comments/webview-logic/**/*",
-    "src/shortcuts/git-diff-comments/webview-scripts/**/*"
+    "src/shortcuts/git-diff-comments/webview-scripts/**/*",
+    "src/shortcuts/shared/webview/**/*"
   ]
 }

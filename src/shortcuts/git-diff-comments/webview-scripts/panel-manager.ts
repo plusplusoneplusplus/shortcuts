@@ -1,11 +1,18 @@
 /**
  * Panel manager for comment input and display
+ * 
+ * Uses shared utilities from the base-panel-manager module for common
+ * functionality like drag, positioning, and date formatting.
  */
 
 import { DiffComment, SelectionState } from './types';
 import { getState, setCommentPanelOpen, setEditingCommentId } from './state';
 import { clearSelection, toDiffSelection } from './selection-handler';
 import { sendAddComment, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
+import {
+    formatCommentDate,
+    setupPanelDrag as setupSharedPanelDrag
+} from '../../shared/webview/base-panel-manager';
 
 /**
  * DOM element references
@@ -412,26 +419,10 @@ function createCommentElement(comment: DiffComment): HTMLElement {
 
 /**
  * Format a date string
+ * Uses the shared formatCommentDate utility
  */
 function formatDate(isoString: string): string {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) {
-        return 'just now';
-    } else if (diffMins < 60) {
-        return `${diffMins}m ago`;
-    } else if (diffHours < 24) {
-        return `${diffHours}h ago`;
-    } else if (diffDays < 7) {
-        return `${diffDays}d ago`;
-    } else {
-        return date.toLocaleDateString();
-    }
+    return formatCommentDate(isoString);
 }
 
 /**
@@ -450,67 +441,13 @@ export function isCommentsListVisible(): boolean {
 
 /**
  * Setup drag functionality for panels
- * Makes the panel draggable by its header
+ * Uses the shared setupPanelDrag utility
  */
 function setupPanelDrag(panel: HTMLElement): void {
-    const header = panel.querySelector('.comments-list-header, .comment-panel-header');
-    if (!header) return;
-
-    let isDragging = false;
-    let startX: number, startY: number;
-    let initialLeft: number, initialTop: number;
-
-    header.addEventListener('mousedown', (e) => {
-        const event = e as MouseEvent;
-        // Only start drag if clicking on header (not on close button)
-        if ((event.target as HTMLElement).closest('.close-btn, button')) return;
-
-        isDragging = true;
-        panel.classList.add('dragging');
-
-        startX = event.clientX;
-        startY = event.clientY;
-        
-        // Get current position
-        const rect = panel.getBoundingClientRect();
-        initialLeft = rect.left;
-        initialTop = rect.top;
-
-        // Ensure we're using fixed positioning for dragging
-        panel.style.position = 'fixed';
-
-        event.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-
-        const deltaX = e.clientX - startX;
-        const deltaY = e.clientY - startY;
-
-        let newLeft = initialLeft + deltaX;
-        let newTop = initialTop + deltaY;
-
-        // Keep panel within viewport bounds
-        const panelWidth = panel.offsetWidth;
-        const panelHeight = panel.offsetHeight;
-
-        newLeft = Math.max(10, Math.min(newLeft, window.innerWidth - panelWidth - 10));
-        newTop = Math.max(10, Math.min(newTop, window.innerHeight - panelHeight - 10));
-
-        panel.style.left = newLeft + 'px';
-        panel.style.top = newTop + 'px';
-        panel.style.right = 'auto'; // Clear right positioning
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (isDragging) {
-            isDragging = false;
-            panel.classList.remove('dragging');
-        }
-    });
-
-    // Add cursor style to indicate draggable header
-    (header as HTMLElement).style.cursor = 'move';
+    setupSharedPanelDrag(
+        panel,
+        '.comments-list-header, .comment-panel-header',
+        '.close-btn, button'
+    );
 }
 

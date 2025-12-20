@@ -1,10 +1,17 @@
 /**
  * Selection handler for diff view
  * Tracks text selection across diff cells
+ * 
+ * Uses shared utilities from selection-utils module.
  */
 
 import { DiffSelection, DiffSide, SelectionState } from './types';
 import { getState, setCurrentSelection } from './state';
+import {
+    calculateColumnOffset,
+    clearSelection as clearSelectionBase,
+    hasValidSelection as hasValidSelectionBase
+} from '../../shared/webview/selection-utils';
 
 /**
  * Get the current text selection in the diff view
@@ -122,35 +129,16 @@ function findDiffLineElement(node: Node): HTMLElement | null {
 
 /**
  * Calculate column offset within a line (works for both split and inline views)
+ * Uses the shared calculateColumnOffset utility
  */
 function getColumnOffset(node: Node, offset: number, lineElement: HTMLElement): number {
     // Try to find line-text in either split or inline content
-    const textContent = lineElement.querySelector('.line-text');
+    const textContent = lineElement.querySelector('.line-text') as HTMLElement | null;
     if (!textContent) {
         return 1;
     }
 
-    // If the node is within the text content, calculate offset
-    if (textContent.contains(node)) {
-        // Walk through text nodes to find the offset
-        let totalOffset = 0;
-        const walker = document.createTreeWalker(
-            textContent,
-            NodeFilter.SHOW_TEXT,
-            null
-        );
-
-        let currentNode = walker.nextNode();
-        while (currentNode) {
-            if (currentNode === node) {
-                return totalOffset + offset + 1; // 1-based
-            }
-            totalOffset += currentNode.textContent?.length || 0;
-            currentNode = walker.nextNode();
-        }
-    }
-
-    return 1;
+    return calculateColumnOffset(node, offset, textContent);
 }
 
 /**

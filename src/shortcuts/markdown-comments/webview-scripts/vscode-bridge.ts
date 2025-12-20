@@ -2,8 +2,15 @@
  * VS Code webview bridge
  * 
  * Handles communication between the webview and the VS Code extension.
+ * Uses shared utilities from the base-vscode-bridge module.
  */
 
+import {
+    BaseMessageHandler,
+    CommonMessageTypes,
+    postMessageToExtension,
+    setupBaseMessageListener
+} from '../../shared/webview/base-vscode-bridge';
 import { state } from './state';
 import { ExtensionMessage, WebviewMessage } from './types';
 
@@ -11,14 +18,14 @@ import { ExtensionMessage, WebviewMessage } from './types';
  * Send a message to the extension
  */
 export function postMessage(message: WebviewMessage): void {
-    state.vscode.postMessage(message);
+    postMessageToExtension(state.vscode, message);
 }
 
 /**
  * Notify the extension that the webview is ready
  */
 export function notifyReady(): void {
-    postMessage({ type: 'ready' });
+    postMessage({ type: CommonMessageTypes.READY });
 }
 
 /**
@@ -135,15 +142,14 @@ export function requestAskAI(context: {
 
 /**
  * Message handler type
+ * Re-exported from shared module for backward compatibility
  */
-export type MessageHandler = (message: ExtensionMessage) => void;
+export type MessageHandler = BaseMessageHandler<ExtensionMessage>;
 
 /**
  * Setup message listener from extension
  */
 export function setupMessageListener(handler: MessageHandler): void {
-    window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
-        handler(event.data);
-    });
+    setupBaseMessageListener<ExtensionMessage>(handler);
 }
 

@@ -1,9 +1,20 @@
 /**
  * Panel management for floating comment panel and inline edit panel
+ * 
+ * Uses shared utilities from the base-panel-manager module for common
+ * functionality like drag, resize, and positioning.
  */
 
 import { MarkdownComment } from '../types';
 import { escapeHtml } from '../webview-logic/markdown-renderer';
+import {
+    calculatePanelPositionBelowRect,
+    constrainToViewport,
+    DEFAULT_RESIZE_CONSTRAINTS,
+    formatCommentDate,
+    setupElementResize,
+    setupPanelDrag as setupSharedPanelDrag
+} from '../../shared/webview/base-panel-manager';
 import { state } from './state';
 import { addComment, deleteCommentMessage, editComment, reopenComment, resolveComment } from './vscode-bridge';
 
@@ -671,182 +682,28 @@ function setupBubbleDrag(bubble: HTMLElement): void {
 
 /**
  * Setup resize functionality for comment bubble
+ * Uses the shared setupElementResize utility
  */
 function setupBubbleResize(bubble: HTMLElement): void {
-    const handles = bubble.querySelectorAll('.resize-handle');
-    if (handles.length === 0) return;
-
-    let isResizing = false;
-    let currentHandle: string | null = null;
-    let startX: number, startY: number;
-    let initialWidth: number, initialHeight: number;
-    let initialLeft: number, initialTop: number;
-
-    // Min/max constraints
-    const minWidth = 280;
-    const minHeight = 120;
-    const maxWidth = window.innerWidth - 40;
-    const maxHeight = window.innerHeight - 40;
-
-    handles.forEach(handle => {
-        handle.addEventListener('mousedown', (e) => {
-            const event = e as MouseEvent;
-            event.preventDefault();
-            event.stopPropagation();
-
-            isResizing = true;
-            currentHandle = (handle as HTMLElement).dataset.resize || null;
-            bubble.classList.add('resizing');
-            (handle as HTMLElement).classList.add('active');
-            state.startInteraction();
-
-            startX = event.clientX;
-            startY = event.clientY;
-            initialWidth = bubble.offsetWidth;
-            initialHeight = bubble.offsetHeight;
-            initialLeft = parseInt(bubble.style.left) || 0;
-            initialTop = parseInt(bubble.style.top) || 0;
-        });
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!isResizing || !currentHandle) return;
-
-        const deltaX = e.clientX - startX;
-        const deltaY = e.clientY - startY;
-
-        let newWidth = initialWidth;
-        let newHeight = initialHeight;
-        let newLeft = initialLeft;
-        let newTop = initialTop;
-
-        // Calculate new dimensions based on which handle is being dragged
-        switch (currentHandle) {
-            case 'e': // East (right edge)
-                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth + deltaX));
-                break;
-            case 's': // South (bottom edge)
-                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight + deltaY));
-                break;
-            case 'se': // Southeast (bottom-right corner)
-                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth + deltaX));
-                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight + deltaY));
-                break;
-            case 'w': // West (left edge)
-                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth - deltaX));
-                newLeft = initialLeft + (initialWidth - newWidth);
-                break;
-            case 'n': // North (top edge)
-                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight - deltaY));
-                newTop = initialTop + (initialHeight - newHeight);
-                break;
-            case 'sw': // Southwest (bottom-left corner)
-                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth - deltaX));
-                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight + deltaY));
-                newLeft = initialLeft + (initialWidth - newWidth);
-                break;
-            case 'ne': // Northeast (top-right corner)
-                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth + deltaX));
-                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight - deltaY));
-                newTop = initialTop + (initialHeight - newHeight);
-                break;
-            case 'nw': // Northwest (top-left corner)
-                newWidth = Math.max(minWidth, Math.min(maxWidth, initialWidth - deltaX));
-                newHeight = Math.max(minHeight, Math.min(maxHeight, initialHeight - deltaY));
-                newLeft = initialLeft + (initialWidth - newWidth);
-                newTop = initialTop + (initialHeight - newHeight);
-                break;
-        }
-
-        // Keep within viewport bounds
-        if (newLeft < 10) {
-            newWidth = newWidth - (10 - newLeft);
-            newLeft = 10;
-        }
-        if (newTop < 10) {
-            newHeight = newHeight - (10 - newTop);
-            newTop = 10;
-        }
-        if (newLeft + newWidth > window.innerWidth - 10) {
-            newWidth = window.innerWidth - newLeft - 10;
-        }
-        if (newTop + newHeight > window.innerHeight - 10) {
-            newHeight = window.innerHeight - newTop - 10;
-        }
-
-        // Apply new dimensions
-        bubble.style.width = newWidth + 'px';
-        bubble.style.height = newHeight + 'px';
-        bubble.style.left = newLeft + 'px';
-        bubble.style.top = newTop + 'px';
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (isResizing) {
-            isResizing = false;
-            currentHandle = null;
-            bubble.classList.remove('resizing');
-            bubble.querySelectorAll('.resize-handle').forEach(h => {
-                h.classList.remove('active');
-            });
-            state.endInteraction();
-        }
-    });
+    setupElementResize(
+        bubble,
+        '.resize-handle',
+        DEFAULT_RESIZE_CONSTRAINTS,
+        () => state.startInteraction(),
+        () => state.endInteraction()
+    );
 }
 
 /**
  * Setup drag functionality for panels
+ * Uses the shared setupPanelDrag utility
  */
 function setupPanelDrag(panel: HTMLElement): void {
-    const header = panel.querySelector('.floating-panel-header, .inline-edit-header');
-    if (!header) return;
-
-    let isDragging = false;
-    let startX: number, startY: number;
-    let initialLeft: number, initialTop: number;
-
-    header.addEventListener('mousedown', (e) => {
-        const event = e as MouseEvent;
-        // Only start drag if clicking on header (not on close button)
-        if ((event.target as HTMLElement).closest('.floating-panel-close, .inline-edit-close')) return;
-
-        isDragging = true;
-        panel.classList.add('dragging');
-
-        startX = event.clientX;
-        startY = event.clientY;
-        initialLeft = parseInt(panel.style.left) || 0;
-        initialTop = parseInt(panel.style.top) || 0;
-
-        event.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-
-        const deltaX = e.clientX - startX;
-        const deltaY = e.clientY - startY;
-
-        let newLeft = initialLeft + deltaX;
-        let newTop = initialTop + deltaY;
-
-        // Keep panel within viewport bounds
-        const panelWidth = panel.offsetWidth;
-        const panelHeight = panel.offsetHeight;
-
-        newLeft = Math.max(10, Math.min(newLeft, window.innerWidth - panelWidth - 10));
-        newTop = Math.max(10, Math.min(newTop, window.innerHeight - panelHeight - 10));
-
-        panel.style.left = newLeft + 'px';
-        panel.style.top = newTop + 'px';
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (isDragging) {
-            isDragging = false;
-            panel.classList.remove('dragging');
-        }
-    });
+    setupSharedPanelDrag(
+        panel,
+        '.floating-panel-header, .inline-edit-header',
+        '.floating-panel-close, .inline-edit-close'
+    );
 }
 
 /**

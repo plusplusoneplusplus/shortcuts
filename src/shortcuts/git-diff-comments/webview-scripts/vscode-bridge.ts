@@ -1,7 +1,14 @@
 /**
  * VSCode API bridge for webview communication
+ * 
+ * Uses shared utilities from the base-vscode-bridge module.
  */
 
+import {
+    BaseVSCodeAPI,
+    CommonMessageTypes,
+    postMessageToExtension
+} from '../../shared/webview/base-vscode-bridge';
 import { DiffSelection, VSCodeAPI, WebviewMessage } from './types';
 
 /**
@@ -34,16 +41,14 @@ export function getVSCodeAPI(): VSCodeAPI | null {
  * Send a message to the extension
  */
 export function postMessage(message: WebviewMessage): void {
-    if (vscode) {
-        vscode.postMessage(message);
-    }
+    postMessageToExtension(vscode as BaseVSCodeAPI | null, message);
 }
 
 /**
  * Notify extension that webview is ready
  */
 export function sendReady(): void {
-    postMessage({ type: 'ready' });
+    postMessage({ type: CommonMessageTypes.READY });
 }
 
 /**

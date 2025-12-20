@@ -15,3 +15,6 @@ export * from './highlighted-html-lines';
 // Text matching utilities for anchor systems
 export * from './text-matching';
 
+// Note: Webview utilities are exported separately via './webview'
+// to avoid bundling issues with webview-specific code in the extension bundle
+

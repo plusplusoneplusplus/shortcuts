@@ -27,7 +27,8 @@
     "src/shortcuts/markdown-comments/types.ts",
     "src/shortcuts/markdown-comments/webview-utils.ts",
     "src/shortcuts/git-diff-comments/webview-scripts/**/*",
-    "src/shortcuts/git-diff-comments/types.ts"
+    "src/shortcuts/git-diff-comments/types.ts",
+    "src/shortcuts/shared/webview/**/*"
   ],
   "exclude": [
     "node_modules"
