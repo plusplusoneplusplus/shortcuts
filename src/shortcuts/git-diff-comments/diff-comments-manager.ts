@@ -3,6 +3,9 @@
  * Extends CommentsManagerBase to reuse common functionality
  */
 
+import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import { CommentsManagerBase } from '../markdown-comments/comments-manager-base';
 import {
     createDiffAnchor,
@@ -11,6 +14,7 @@ import {
     updateDiffAnchor
 } from './diff-anchor';
 import {
+    CleanupResult,
     DEFAULT_DIFF_ANCHOR_CONFIG,
     DEFAULT_DIFF_COMMENTS_CONFIG,
     DEFAULT_DIFF_COMMENTS_SETTINGS,
@@ -342,5 +346,147 @@ export class DiffCommentsManager extends CommentsManagerBase<
         }
 
         return results;
+    }
+
+    /**
+     * Clean up obsolete comments that reference non-existent git state.
+     * A comment is considered obsolete if:
+     * - It references a commit that no longer exists
+     * - It references a file in staged/unstaged changes that is no longer there
+     * - The file has been cleaned up (reverted, committed, etc.)
+     * 
+     * @param currentChanges Array of file paths currently in git changes (staged/unstaged)
+     * @returns CleanupResult with details about removed comments
+     */
+    async cleanupObsoleteComments(currentChanges: string[]): Promise<CleanupResult> {
+        const totalBefore = this.config.comments.length;
+        const removedIds: string[] = [];
+        const removedReasons = new Map<string, string>();
+
+        // Normalize current changes to relative paths for comparison
+        const normalizedChanges = new Set(
+            currentChanges.map(p => this.getRelativePath(p))
+        );
+
+        // Filter out obsolete comments
+        this.config.comments = this.config.comments.filter(comment => {
+            const isObsolete = this.isCommentObsolete(comment, normalizedChanges);
+            if (isObsolete.obsolete) {
+                removedIds.push(comment.id);
+                removedReasons.set(comment.id, isObsolete.reason);
+                return false;
+            }
+            return true;
+        });
+
+        const removed = removedIds.length;
+
+        if (removed > 0) {
+            await this.saveComments();
+            this.fireEvent({
+                type: 'comments-loaded',
+                comments: this.config.comments
+            });
+        }
+
+        return {
+            totalBefore,
+            removed,
+            removedIds,
+            removedReasons
+        };
+    }
+
+    /**
+     * Check if a comment is obsolete
+     * @param comment The comment to check
+     * @param currentChanges Set of file paths currently in git changes
+     * @returns Object with obsolete flag and reason
+     */
+    private isCommentObsolete(
+        comment: DiffComment,
+        currentChanges: Set<string>
+    ): { obsolete: boolean; reason: string } {
+        const gitContext = comment.gitContext;
+
+        // Check if this is a comment on a committed file (has commitHash)
+        if (gitContext.commitHash) {
+            // Verify the commit still exists
+            if (!this.commitExists(gitContext.repositoryRoot, gitContext.commitHash)) {
+                return {
+                    obsolete: true,
+                    reason: `Commit ${gitContext.commitHash.slice(0, 7)} no longer exists`
+                };
+            }
+            // Committed file comments are valid as long as the commit exists
+            return { obsolete: false, reason: '' };
+        }
+
+        // For staged/unstaged comments, check if the file is still in changes
+        const filePath = comment.filePath;
+
+        // Check if file is in current changes
+        if (!currentChanges.has(filePath)) {
+            // The file is no longer in staged/unstaged changes
+            // This could be because:
+            // - File was committed
+            // - File was reverted/reset
+            // - File was stashed
+            const wasStaged = gitContext.wasStaged;
+            const reason = wasStaged
+                ? 'File is no longer in staged changes (may have been committed or unstaged)'
+                : 'File is no longer in unstaged changes (may have been staged, committed, or reverted)';
+            return { obsolete: true, reason };
+        }
+
+        // File is still in changes, comment is valid
+        return { obsolete: false, reason: '' };
+    }
+
+    /**
+     * Check if a commit exists in the repository
+     * @param repoRoot Repository root path
+     * @param commitHash Commit hash to check
+     * @returns true if commit exists
+     */
+    private commitExists(repoRoot: string, commitHash: string): boolean {
+        try {
+            execSync(`git cat-file -t ${commitHash}`, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                stdio: ['pipe', 'pipe', 'pipe'],
+                timeout: 5000
+            });
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Get the list of obsolete comments without removing them
+     * Useful for previewing what would be cleaned up
+     * 
+     * @param currentChanges Array of file paths currently in git changes
+     * @returns Array of obsolete comments with their reasons
+     */
+    getObsoleteComments(currentChanges: string[]): Array<{ comment: DiffComment; reason: string }> {
+        const normalizedChanges = new Set(
+            currentChanges.map(p => this.getRelativePath(p))
+        );
+
+        const obsoleteComments: Array<{ comment: DiffComment; reason: string }> = [];
+
+        for (const comment of this.config.comments) {
+            const isObsolete = this.isCommentObsolete(comment, normalizedChanges);
+            if (isObsolete.obsolete) {
+                obsoleteComments.push({
+                    comment,
+                    reason: isObsolete.reason
+                });
+            }
+        }
+
+        return obsoleteComments;
     }
 }

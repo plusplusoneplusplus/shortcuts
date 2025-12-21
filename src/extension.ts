@@ -132,8 +132,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Initialize Git tree data provider (unified Changes + Commits + Comments view)
         const gitTreeDataProvider = new GitTreeDataProvider();
+        gitTreeDataProvider.setContext(context);
         gitTreeDataProvider.setDiffCommentsManager(diffCommentsManager);
         const gitInitialized = await gitTreeDataProvider.initialize();
+        
+        // Restore any previously looked-up commit from workspace state
+        await gitTreeDataProvider.restoreLookedUpCommit();
 
         let gitTreeView: vscode.TreeView<vscode.TreeItem> | undefined;
         let gitRefreshCommand: vscode.Disposable | undefined;
@@ -150,6 +154,7 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitOpenWithMarkdownReviewCommand: vscode.Disposable | undefined;
         let gitLookupCommitCommand: vscode.Disposable | undefined;
         let gitClearLookedUpCommitCommand: vscode.Disposable | undefined;
+        let gitDiffCommentsCleanupCommand: vscode.Disposable | undefined;
 
         if (gitInitialized) {
             gitTreeView = vscode.window.createTreeView('gitView', {
@@ -265,9 +270,10 @@ export async function activate(context: vscode.ExtensionContext) {
                                 file.parentHash,
                                 file.repositoryRoot
                             );
+                            // Use EMPTY_TREE_HASH for deleted files since the file doesn't exist at the commit
                             const emptyUri = toGitUri(
                                 file.path,
-                                file.commitHash,
+                                EMPTY_TREE_HASH,
                                 file.repositoryRoot
                             );
                             const title = `${fileName} (${shortHash}) [Deleted]`;
@@ -364,6 +370,46 @@ export async function activate(context: vscode.ExtensionContext) {
                 async (item: DiffCommentItem) => {
                     if (item?.comment?.id) {
                         await diffCommentsManager.updateComment(item.comment.id, { status: 'open' });
+                    }
+                }
+            );
+
+            // Register command to cleanup obsolete comments
+            gitDiffCommentsCleanupCommand = vscode.commands.registerCommand(
+                'gitDiffComments.cleanupObsolete',
+                async () => {
+                    // Get current changes from git service
+                    const gitService = gitTreeDataProvider['gitService'];
+                    const currentChanges = gitService.getAllChanges().map((c: { path: string }) => c.path);
+                    
+                    // Preview what will be cleaned up
+                    const obsoleteComments = diffCommentsManager.getObsoleteComments(currentChanges);
+                    
+                    if (obsoleteComments.length === 0) {
+                        vscode.window.showInformationMessage('No obsolete comments found.');
+                        return;
+                    }
+
+                    // Show confirmation with details
+                    const details = obsoleteComments
+                        .slice(0, 5)
+                        .map(({ comment, reason }) => `• ${comment.filePath}: ${reason}`)
+                        .join('\n');
+                    const moreText = obsoleteComments.length > 5 
+                        ? `\n... and ${obsoleteComments.length - 5} more` 
+                        : '';
+
+                    const confirmed = await vscode.window.showWarningMessage(
+                        `Found ${obsoleteComments.length} obsolete comment(s). Remove them?`,
+                        { modal: true, detail: details + moreText },
+                        'Remove All'
+                    );
+
+                    if (confirmed === 'Remove All') {
+                        const result = await diffCommentsManager.cleanupObsoleteComments(currentChanges);
+                        vscode.window.showInformationMessage(
+                            `Removed ${result.removed} obsolete comment(s).`
+                        );
                     }
                 }
             );
@@ -623,6 +669,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitDiffCommentsDeleteCommand) disposables.push(gitDiffCommentsDeleteCommand);
         if (gitDiffCommentsResolveCommand) disposables.push(gitDiffCommentsResolveCommand);
         if (gitDiffCommentsReopenCommand) disposables.push(gitDiffCommentsReopenCommand);
+        if (gitDiffCommentsCleanupCommand) disposables.push(gitDiffCommentsCleanupCommand);
         if (gitOpenWithMarkdownReviewCommand) disposables.push(gitOpenWithMarkdownReviewCommand);
         if (gitLookupCommitCommand) disposables.push(gitLookupCommitCommand);
         if (gitClearLookedUpCommitCommand) disposables.push(gitClearLookedUpCommitCommand);

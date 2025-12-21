@@ -809,4 +809,360 @@ suite('DiffCommentsManager Tests', () => {
             }
         });
     });
+
+    suite('Cleanup Obsolete Comments', () => {
+        test('should remove comments for files no longer in changes', async () => {
+            await manager.initialize();
+
+            // Add comments for files that will be "removed" from changes
+            await manager.addComment(
+                'file-in-changes.ts',
+                createTestSelection(),
+                'Test',
+                'Comment on file still in changes',
+                createTestGitContext(tempDir)
+            );
+            await manager.addComment(
+                'file-not-in-changes.ts',
+                createTestSelection(),
+                'Test',
+                'Comment on file no longer in changes',
+                createTestGitContext(tempDir)
+            );
+
+            assert.strictEqual(manager.getAllComments().length, 2);
+
+            // Only file-in-changes.ts is in current changes
+            const result = await manager.cleanupObsoleteComments(['file-in-changes.ts']);
+
+            assert.strictEqual(result.totalBefore, 2);
+            assert.strictEqual(result.removed, 1);
+            assert.strictEqual(result.removedIds.length, 1);
+            assert.ok(result.removedReasons.has(result.removedIds[0]));
+            assert.strictEqual(manager.getAllComments().length, 1);
+            assert.strictEqual(manager.getAllComments()[0].filePath, 'file-in-changes.ts');
+        });
+
+        test('should keep comments for files still in changes', async () => {
+            await manager.initialize();
+
+            await manager.addComment(
+                'active-file.ts',
+                createTestSelection(),
+                'Test',
+                'Comment',
+                createTestGitContext(tempDir)
+            );
+
+            const result = await manager.cleanupObsoleteComments(['active-file.ts']);
+
+            assert.strictEqual(result.removed, 0);
+            assert.strictEqual(manager.getAllComments().length, 1);
+        });
+
+        test('should handle empty current changes (all comments obsolete)', async () => {
+            await manager.initialize();
+
+            await manager.addComment('file1.ts', createTestSelection(), 'T', 'C', createTestGitContext(tempDir));
+            await manager.addComment('file2.ts', createTestSelection(), 'T', 'C', createTestGitContext(tempDir));
+            await manager.addComment('file3.ts', createTestSelection(), 'T', 'C', createTestGitContext(tempDir));
+
+            assert.strictEqual(manager.getAllComments().length, 3);
+
+            // No files in current changes
+            const result = await manager.cleanupObsoleteComments([]);
+
+            assert.strictEqual(result.removed, 3);
+            assert.strictEqual(manager.getAllComments().length, 0);
+        });
+
+        test('should handle no comments (nothing to clean)', async () => {
+            await manager.initialize();
+
+            const result = await manager.cleanupObsoleteComments(['some-file.ts']);
+
+            assert.strictEqual(result.totalBefore, 0);
+            assert.strictEqual(result.removed, 0);
+            assert.strictEqual(result.removedIds.length, 0);
+        });
+
+        test('should handle absolute paths in current changes', async () => {
+            await manager.initialize();
+
+            await manager.addComment(
+                'test-file.ts',
+                createTestSelection(),
+                'Test',
+                'Comment',
+                createTestGitContext(tempDir)
+            );
+
+            // Pass absolute path - should be normalized to relative
+            const absolutePath = path.join(tempDir, 'test-file.ts');
+            const result = await manager.cleanupObsoleteComments([absolutePath]);
+
+            assert.strictEqual(result.removed, 0);
+            assert.strictEqual(manager.getAllComments().length, 1);
+        });
+
+        test('should preserve comments on committed files when commit exists', async () => {
+            await manager.initialize();
+
+            // Create a comment with a commit hash (simulating a committed file comment)
+            const gitContextWithCommit: DiffGitContext = {
+                ...createTestGitContext(tempDir),
+                commitHash: 'abc123def456'  // This is a fake hash, will be checked
+            };
+
+            await manager.addComment(
+                'committed-file.ts',
+                createTestSelection(),
+                'Test',
+                'Comment on committed file',
+                gitContextWithCommit
+            );
+
+            // File is not in current changes, but has commit hash
+            // Since the commit doesn't actually exist, it should be removed
+            const result = await manager.cleanupObsoleteComments([]);
+
+            // The fake commit doesn't exist, so comment should be removed
+            assert.strictEqual(result.removed, 1);
+        });
+
+        test('should differentiate staged vs unstaged comments in removal reason', async () => {
+            await manager.initialize();
+
+            const stagedContext: DiffGitContext = {
+                ...createTestGitContext(tempDir),
+                wasStaged: true
+            };
+            const unstagedContext: DiffGitContext = {
+                ...createTestGitContext(tempDir),
+                wasStaged: false
+            };
+
+            await manager.addComment(
+                'staged-file.ts',
+                createTestSelection(),
+                'Test',
+                'Staged comment',
+                stagedContext
+            );
+            await manager.addComment(
+                'unstaged-file.ts',
+                createTestSelection(),
+                'Test',
+                'Unstaged comment',
+                unstagedContext
+            );
+
+            const result = await manager.cleanupObsoleteComments([]);
+
+            assert.strictEqual(result.removed, 2);
+            
+            // Check that reasons contain appropriate context
+            const reasons = Array.from(result.removedReasons.values());
+            const hasStaged = reasons.some(r => r.includes('staged'));
+            const hasUnstaged = reasons.some(r => r.includes('unstaged'));
+            assert.ok(hasStaged, 'Should have staged-related reason');
+            assert.ok(hasUnstaged, 'Should have unstaged-related reason');
+        });
+
+        test('should fire event after cleanup', async () => {
+            await manager.initialize();
+
+            let eventFired = false;
+            const disposable = manager.onDidChangeComments((event) => {
+                if (event.type === 'comments-loaded') {
+                    eventFired = true;
+                }
+            });
+
+            await manager.addComment(
+                'file.ts',
+                createTestSelection(),
+                'Test',
+                'Comment',
+                createTestGitContext(tempDir)
+            );
+
+            // Reset flag after add
+            eventFired = false;
+
+            await manager.cleanupObsoleteComments([]);
+
+            assert.ok(eventFired, 'Should fire comments-loaded event after cleanup');
+            disposable.dispose();
+        });
+
+        test('should not fire event when no comments removed', async () => {
+            await manager.initialize();
+
+            await manager.addComment(
+                'file.ts',
+                createTestSelection(),
+                'Test',
+                'Comment',
+                createTestGitContext(tempDir)
+            );
+
+            let eventCount = 0;
+            const disposable = manager.onDidChangeComments(() => {
+                eventCount++;
+            });
+
+            // Reset count after add
+            eventCount = 0;
+
+            // File is in changes, so no removal
+            await manager.cleanupObsoleteComments(['file.ts']);
+
+            assert.strictEqual(eventCount, 0, 'Should not fire event when nothing removed');
+            disposable.dispose();
+        });
+
+        test('should persist cleanup to file', async () => {
+            await manager.initialize();
+
+            await manager.addComment(
+                'file-to-remove.ts',
+                createTestSelection(),
+                'Test',
+                'Comment',
+                createTestGitContext(tempDir)
+            );
+
+            await manager.cleanupObsoleteComments([]);
+
+            // Create new manager and verify persistence
+            const newManager = new DiffCommentsManager(tempDir);
+            await newManager.initialize();
+
+            assert.strictEqual(newManager.getAllComments().length, 0);
+            newManager.dispose();
+        });
+    });
+
+    suite('Get Obsolete Comments (Preview)', () => {
+        test('should return list of obsolete comments without removing', async () => {
+            await manager.initialize();
+
+            await manager.addComment(
+                'active.ts',
+                createTestSelection(),
+                'Test',
+                'Active',
+                createTestGitContext(tempDir)
+            );
+            await manager.addComment(
+                'obsolete.ts',
+                createTestSelection(),
+                'Test',
+                'Obsolete',
+                createTestGitContext(tempDir)
+            );
+
+            const obsolete = manager.getObsoleteComments(['active.ts']);
+
+            assert.strictEqual(obsolete.length, 1);
+            assert.strictEqual(obsolete[0].comment.filePath, 'obsolete.ts');
+            assert.ok(obsolete[0].reason.length > 0);
+            
+            // Comments should still exist
+            assert.strictEqual(manager.getAllComments().length, 2);
+        });
+
+        test('should return empty array when no obsolete comments', async () => {
+            await manager.initialize();
+
+            await manager.addComment(
+                'active.ts',
+                createTestSelection(),
+                'Test',
+                'Active',
+                createTestGitContext(tempDir)
+            );
+
+            const obsolete = manager.getObsoleteComments(['active.ts']);
+
+            assert.strictEqual(obsolete.length, 0);
+        });
+
+        test('should include reason for each obsolete comment', async () => {
+            await manager.initialize();
+
+            await manager.addComment(
+                'file1.ts',
+                createTestSelection(),
+                'Test',
+                'Comment 1',
+                createTestGitContext(tempDir)
+            );
+            await manager.addComment(
+                'file2.ts',
+                createTestSelection(),
+                'Test',
+                'Comment 2',
+                createTestGitContext(tempDir)
+            );
+
+            const obsolete = manager.getObsoleteComments([]);
+
+            assert.strictEqual(obsolete.length, 2);
+            for (const { reason } of obsolete) {
+                assert.ok(reason.length > 0, 'Each obsolete comment should have a reason');
+            }
+        });
+    });
+
+    suite('Cleanup with Multiple Files', () => {
+        test('should correctly handle mixed scenario', async () => {
+            await manager.initialize();
+
+            // Add comments for various files
+            await manager.addComment('keep1.ts', createTestSelection(), 'T', 'C', createTestGitContext(tempDir));
+            await manager.addComment('remove1.ts', createTestSelection(), 'T', 'C', createTestGitContext(tempDir));
+            await manager.addComment('keep2.ts', createTestSelection(), 'T', 'C', createTestGitContext(tempDir));
+            await manager.addComment('remove2.ts', createTestSelection(), 'T', 'C', createTestGitContext(tempDir));
+            await manager.addComment('keep1.ts', createTestSelection(), 'T', 'Another comment', createTestGitContext(tempDir));
+
+            assert.strictEqual(manager.getAllComments().length, 5);
+
+            const result = await manager.cleanupObsoleteComments(['keep1.ts', 'keep2.ts']);
+
+            assert.strictEqual(result.removed, 2);
+            assert.strictEqual(manager.getAllComments().length, 3);
+
+            // Verify correct files remain
+            const remainingFiles = new Set(manager.getAllComments().map(c => c.filePath));
+            assert.ok(remainingFiles.has('keep1.ts'));
+            assert.ok(remainingFiles.has('keep2.ts'));
+            assert.ok(!remainingFiles.has('remove1.ts'));
+            assert.ok(!remainingFiles.has('remove2.ts'));
+        });
+
+        test('should handle comments on same file with different stages', async () => {
+            await manager.initialize();
+
+            const stagedContext: DiffGitContext = {
+                ...createTestGitContext(tempDir),
+                wasStaged: true
+            };
+            const unstagedContext: DiffGitContext = {
+                ...createTestGitContext(tempDir),
+                wasStaged: false
+            };
+
+            // Same file, different stage contexts
+            await manager.addComment('shared-file.ts', createTestSelection(), 'T', 'Staged', stagedContext);
+            await manager.addComment('shared-file.ts', createTestSelection(), 'T', 'Unstaged', unstagedContext);
+
+            // File is in changes
+            const result = await manager.cleanupObsoleteComments(['shared-file.ts']);
+
+            assert.strictEqual(result.removed, 0);
+            assert.strictEqual(manager.getAllComments().length, 2);
+        });
+    });
 });

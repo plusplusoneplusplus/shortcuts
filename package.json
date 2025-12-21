@@ -562,6 +562,12 @@
         "icon": "$(circle-outline)"
       },
       {
+        "command": "gitDiffComments.cleanupObsolete",
+        "title": "Refresh Comments (Cleanup Obsolete)",
+        "category": "Git Diff Comments",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "gitView.openWithMarkdownReview",
         "title": "Open with Markdown Review",
         "category": "Git",
@@ -893,6 +899,11 @@
           "command": "gitDiffComments.deleteComment",
           "when": "view == gitView && (viewItem == diffComment_open || viewItem == diffComment_resolved)",
           "group": "diffComment@2"
+        },
+        {
+          "command": "gitDiffComments.cleanupObsolete",
+          "when": "view == gitView && viewItem == gitSection_comments",
+          "group": "inline"
         }
       ],
       "explorer/context": [

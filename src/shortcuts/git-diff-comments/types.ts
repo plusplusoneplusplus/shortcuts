@@ -159,6 +159,20 @@ export type DiffCommentEventType = BaseCommentEventType;
 export type DiffCommentEvent = BaseCommentEvent<DiffComment>;
 
 /**
+ * Result of cleaning up obsolete comments
+ */
+export interface CleanupResult {
+    /** Total number of comments before cleanup */
+    totalBefore: number;
+    /** Number of comments removed */
+    removed: number;
+    /** IDs of removed comments */
+    removedIds: string[];
+    /** Reasons for each removal */
+    removedReasons: Map<string, string>;
+}
+
+/**
  * Parsed diff line information
  */
 export interface DiffLine {

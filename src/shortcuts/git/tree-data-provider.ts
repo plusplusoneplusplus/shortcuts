@@ -35,6 +35,11 @@ const DEFAULT_COMMIT_DISPLAY_COUNT = 5;
 const DEFAULT_COMMIT_LOAD_COUNT = 20;
 
 /**
+ * Storage key for persisting looked-up commit
+ */
+const LOOKED_UP_COMMIT_KEY = 'gitView.lookedUpCommit';
+
+/**
  * Tree data provider for the unified Git view
  * Displays both changes and commits in a sectioned tree structure
  */
@@ -48,6 +53,7 @@ export class GitTreeDataProvider
     private gitLogService: GitLogService;
     private disposables: vscode.Disposable[] = [];
     private initialized = false;
+    private context?: vscode.ExtensionContext;
 
     // Commit pagination state
     private loadedCommits: GitCommit[] = [];
@@ -67,6 +73,13 @@ export class GitTreeDataProvider
     constructor() {
         this.gitService = new GitService();
         this.gitLogService = new GitLogService();
+    }
+
+    /**
+     * Set the extension context for state persistence
+     */
+    setContext(context: vscode.ExtensionContext): void {
+        this.context = context;
     }
 
     /**
@@ -440,6 +453,7 @@ export class GitTreeDataProvider
      */
     setLookedUpCommit(commit: GitCommit | null): void {
         this.lookedUpCommit = commit;
+        this.persistLookedUpCommit();
         this.refresh();
     }
 
@@ -455,7 +469,48 @@ export class GitTreeDataProvider
      */
     clearLookedUpCommit(): void {
         this.lookedUpCommit = null;
+        this.persistLookedUpCommit();
         this.refresh();
+    }
+
+    /**
+     * Persist the looked-up commit to workspace state
+     */
+    private persistLookedUpCommit(): void {
+        if (!this.context) {
+            return;
+        }
+        if (this.lookedUpCommit) {
+            // Store the commit hash and repo root for restoration
+            this.context.workspaceState.update(LOOKED_UP_COMMIT_KEY, {
+                hash: this.lookedUpCommit.hash,
+                repositoryRoot: this.lookedUpCommit.repositoryRoot
+            });
+        } else {
+            this.context.workspaceState.update(LOOKED_UP_COMMIT_KEY, undefined);
+        }
+    }
+
+    /**
+     * Restore the looked-up commit from workspace state
+     * Should be called after initialization
+     */
+    async restoreLookedUpCommit(): Promise<void> {
+        if (!this.context) {
+            return;
+        }
+        const stored = this.context.workspaceState.get<{ hash: string; repositoryRoot: string }>(LOOKED_UP_COMMIT_KEY);
+        if (stored) {
+            // Validate the commit still exists and restore it
+            const commit = this.gitLogService.getCommit(stored.repositoryRoot, stored.hash);
+            if (commit) {
+                this.lookedUpCommit = commit;
+                this.refresh();
+            } else {
+                // Commit no longer exists, clear the stored state
+                this.context.workspaceState.update(LOOKED_UP_COMMIT_KEY, undefined);
+            }
+        }
     }
 
     /**
