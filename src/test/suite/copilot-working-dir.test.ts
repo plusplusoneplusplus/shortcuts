@@ -9,7 +9,10 @@ import { getWorkingDirectory } from '../../shortcuts/ai-service/copilot-cli-invo
 
 suite('Copilot Working Directory Tests', () => {
 
-    const workspaceRoot = '/Users/test/project';
+    // Use platform-appropriate paths
+    const isWindows = process.platform === 'win32';
+    const workspaceRoot = isWindows ? 'C:\\Users\\test\\project' : '/Users/test/project';
+    const parentDir = isWindows ? 'C:\\Users\\test' : '/Users/test';
 
     suite('getWorkingDirectory', () => {
 
@@ -32,21 +35,23 @@ suite('Copilot Working Directory Tests', () => {
             // Test nested path with {workspaceFolder}
             const testPath = '{workspaceFolder}/src';
             const expanded = testPath.replace(/\{workspaceFolder\}/g, workspaceRoot);
-            assert.strictEqual(expanded, '/Users/test/project/src');
+            const expected = workspaceRoot + '/src';
+            assert.strictEqual(expanded, expected);
         });
 
         test('should expand multiple {workspaceFolder} occurrences', () => {
             // Test multiple occurrences of {workspaceFolder}
             const testPath = '{workspaceFolder}/src:{workspaceFolder}/lib';
             const expanded = testPath.replace(/\{workspaceFolder\}/g, workspaceRoot);
-            assert.strictEqual(expanded, '/Users/test/project/src:/Users/test/project/lib');
+            const expected = `${workspaceRoot}/src:${workspaceRoot}/lib`;
+            assert.strictEqual(expanded, expected);
         });
 
         test('should preserve absolute paths', () => {
             // Test that absolute paths are preserved
-            const absolutePath = '/absolute/path/to/dir';
-            // When path starts with /, it should be preserved
-            assert.ok(absolutePath.startsWith('/'));
+            const absolutePath = isWindows ? 'C:\\absolute\\path\\to\\dir' : '/absolute/path/to/dir';
+            // When path is absolute, it should be preserved
+            assert.ok(path.isAbsolute(absolutePath));
         });
 
         test('should handle Windows-style absolute paths', () => {
@@ -60,14 +65,16 @@ suite('Copilot Working Directory Tests', () => {
             // Test that relative paths are joined with workspace root
             const relativePath = 'src/components';
             const joined = path.join(workspaceRoot, relativePath);
-            assert.strictEqual(joined, '/Users/test/project/src/components');
+            const expected = path.join(workspaceRoot, 'src', 'components');
+            assert.strictEqual(joined, expected);
         });
 
         test('should handle path with spaces', () => {
             // Test path with spaces
             const pathWithSpaces = '{workspaceFolder}/my project/src';
             const expanded = pathWithSpaces.replace(/\{workspaceFolder\}/g, workspaceRoot);
-            assert.strictEqual(expanded, '/Users/test/project/my project/src');
+            const expected = workspaceRoot + '/my project/src';
+            assert.strictEqual(expanded, expected);
         });
 
         test('should handle empty workspace root gracefully', () => {
@@ -82,7 +89,8 @@ suite('Copilot Working Directory Tests', () => {
             // Test deeply nested path
             const nestedPath = '{workspaceFolder}/src/components/ui/buttons';
             const expanded = nestedPath.replace(/\{workspaceFolder\}/g, workspaceRoot);
-            assert.strictEqual(expanded, '/Users/test/project/src/components/ui/buttons');
+            const expected = workspaceRoot + '/src/components/ui/buttons';
+            assert.strictEqual(expanded, expected);
         });
     });
 
@@ -108,16 +116,18 @@ suite('Copilot Working Directory Tests', () => {
             // Test path with trailing slash
             const pathWithSlash = '{workspaceFolder}/src/';
             const expanded = pathWithSlash.replace(/\{workspaceFolder\}/g, workspaceRoot);
-            assert.strictEqual(expanded, '/Users/test/project/src/');
+            const expected = workspaceRoot + '/src/';
+            assert.strictEqual(expanded, expected);
         });
 
         test('should handle workspace root with trailing slash', () => {
             // Test workspace root with trailing slash
-            const rootWithSlash = '/Users/test/project/';
+            const rootWithSlash = workspaceRoot + '/';
             const testPath = '{workspaceFolder}/src';
             const expanded = testPath.replace(/\{workspaceFolder\}/g, rootWithSlash);
             // Note: This will result in double slash which may need normalization
-            assert.strictEqual(expanded, '/Users/test/project//src');
+            const expected = workspaceRoot + '//src';
+            assert.strictEqual(expanded, expected);
         });
     });
 
@@ -134,21 +144,27 @@ suite('Copilot Working Directory Tests', () => {
             // Test parent directory reference
             const parentPath = '..';
             const resolved = path.resolve(workspaceRoot, parentPath);
-            assert.strictEqual(resolved, '/Users/test');
+            assert.strictEqual(resolved, parentDir);
         });
 
         test('should resolve ./src to src subdirectory', () => {
             // Test relative path with ./
             const relativePath = './src';
             const resolved = path.resolve(workspaceRoot, relativePath);
-            assert.strictEqual(resolved, '/Users/test/project/src');
+            const expected = path.join(workspaceRoot, 'src');
+            assert.strictEqual(resolved, expected);
         });
 
         test('should normalize paths with multiple slashes', () => {
-            // Test path normalization
-            const messyPath = '/Users/test//project///src';
+            // Test path normalization - use platform-appropriate path
+            const messyPath = isWindows 
+                ? 'C:\\Users\\test\\\\project\\\\\\src'
+                : '/Users/test//project///src';
             const normalized = path.normalize(messyPath);
-            assert.strictEqual(normalized, '/Users/test/project/src');
+            const expected = isWindows 
+                ? 'C:\\Users\\test\\project\\src'
+                : '/Users/test/project/src';
+            assert.strictEqual(normalized, expected);
         });
     });
 });
