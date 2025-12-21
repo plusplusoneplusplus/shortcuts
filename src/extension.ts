@@ -6,8 +6,15 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GitTreeDataProvider, GitCommitItem, GitCommitFile, LookedUpCommitItem } from './shortcuts/git';
-import { GlobalNotesTreeDataProvider } from './shortcuts/global-notes';
+import { GitCommitFile, GitCommitItem, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
+import {
+    DiffCommentFileItem,
+    DiffCommentItem,
+    DiffCommentsCommands,
+    DiffCommentsManager,
+    DiffReviewEditorProvider
+} from './shortcuts/git-diff-comments';
+import { GlobalNotesTreeDataProvider, NoteDocumentManager } from './shortcuts/global-notes';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import {
@@ -17,8 +24,6 @@ import {
     PromptGenerator,
     ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
-import { DiffCommentFileItem, DiffCommentItem, DiffCommentsManager, DiffReviewEditorProvider } from './shortcuts/git-diff-comments';
-import { NoteDocumentManager } from './shortcuts/global-notes';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { ThemeManager } from './shortcuts/theme-manager';
 
@@ -135,7 +140,7 @@ export async function activate(context: vscode.ExtensionContext) {
         gitTreeDataProvider.setContext(context);
         gitTreeDataProvider.setDiffCommentsManager(diffCommentsManager);
         const gitInitialized = await gitTreeDataProvider.initialize();
-        
+
         // Restore any previously looked-up commit from workspace state
         await gitTreeDataProvider.restoreLookedUpCommit();
 
@@ -166,16 +171,16 @@ export async function activate(context: vscode.ExtensionContext) {
             const updateGitViewDescription = () => {
                 const counts = gitTreeDataProvider.getViewCounts();
                 const parts: string[] = [];
-                
+
                 // Changes summary
                 if (counts.changes.total > 0) {
                     parts.push(`${counts.changes.total} change${counts.changes.total === 1 ? '' : 's'}`);
                 }
-                
+
                 // Commits summary
                 if (counts.commitCount > 0) {
-                    const commitText = counts.hasMoreCommits 
-                        ? `${counts.commitCount}+ commits` 
+                    const commitText = counts.hasMoreCommits
+                        ? `${counts.commitCount}+ commits`
                         : `${counts.commitCount} commit${counts.commitCount === 1 ? '' : 's'}`;
                     parts.push(commitText);
                 }
@@ -184,7 +189,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 if (counts.comments.total > 0) {
                     parts.push(`${counts.comments.open} comment${counts.comments.open === 1 ? '' : 's'}`);
                 }
-                
+
                 gitTreeView!.description = parts.length > 0 ? parts.join(', ') : undefined;
             };
             updateGitViewDescription();
@@ -335,10 +340,10 @@ export async function activate(context: vscode.ExtensionContext) {
                     // Get current changes from git service
                     const gitService = gitTreeDataProvider['gitService'];
                     const currentChanges = gitService.getAllChanges().map((c: { path: string }) => c.path);
-                    
+
                     // Preview what will be cleaned up
                     const obsoleteComments = diffCommentsManager.getObsoleteComments(currentChanges);
-                    
+
                     if (obsoleteComments.length === 0) {
                         vscode.window.showInformationMessage('No obsolete comments found.');
                         return;
@@ -349,8 +354,8 @@ export async function activate(context: vscode.ExtensionContext) {
                         .slice(0, 5)
                         .map(({ comment, reason }) => `• ${comment.filePath}: ${reason}`)
                         .join('\n');
-                    const moreText = obsoleteComments.length > 5 
-                        ? `\n... and ${obsoleteComments.length - 5} more` 
+                    const moreText = obsoleteComments.length > 5
+                        ? `\n... and ${obsoleteComments.length - 5} more`
                         : '';
 
                     const confirmed = await vscode.window.showWarningMessage(
@@ -471,6 +476,19 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Register diff review commands (diffCommentsManager already initialized above)
         const diffReviewCommands = DiffReviewEditorProvider.registerCommands(context, diffCommentsManager);
+
+        // Get the diff comments tree data provider from git tree provider
+        const diffCommentsTreeDataProvider = gitTreeDataProvider.getDiffCommentsTreeProvider();
+
+        // Initialize diff comments commands (context menu handlers)
+        let diffCommentsCommands: DiffCommentsCommands | undefined;
+        if (diffCommentsTreeDataProvider) {
+            diffCommentsCommands = new DiffCommentsCommands(
+                diffCommentsManager,
+                diffCommentsTreeDataProvider,
+                context
+            );
+        }
 
         // Initialize AI Process Manager (must be before ReviewEditorViewProvider)
         const aiProcessManager = new AIProcessManager();
@@ -607,7 +625,8 @@ export async function activate(context: vscode.ExtensionContext) {
             gitTreeDataProvider,
             // Git Diff Comments disposables
             diffCommentsManager,
-            ...diffReviewCommands
+            ...diffReviewCommands,
+            ...(diffCommentsCommands ? [diffCommentsCommands] : [])
         ];
 
         // Add optional git disposables if git extension is available

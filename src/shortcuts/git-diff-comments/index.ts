@@ -7,6 +7,7 @@
  * - Persistent comments that survive staging/committing
  * - Anchor-based position tracking for comment relocation
  * - Tree view for displaying comments in the Git panel
+ * - Context menu actions for copy prompt, resolve, delete
  */
 
 // Types
@@ -62,4 +63,14 @@ export {
 
 // Editor provider
 export { DiffReviewEditorProvider } from './diff-review-editor-provider';
+
+// Commands for tree view context menus
+export { DiffCommentsCommands } from './diff-comments-commands';
+
+// Prompt generator
+export {
+    DEFAULT_DIFF_PROMPT_OPTIONS,
+    DiffPromptGenerator
+} from './diff-prompt-generator';
+export type { DiffPromptGenerationOptions } from './diff-prompt-generator';
 

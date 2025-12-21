@@ -17,7 +17,7 @@ export type CommentCategory = 'pending' | 'committed';
  * Tree item representing a comment category group (Pending Changes or Committed)
  */
 export class DiffCommentCategoryItem extends vscode.TreeItem {
-    public readonly contextValue = 'diffCommentCategory';
+    public readonly contextValue: string;
     public readonly category: CommentCategory;
     public readonly commitHash?: string;
     public readonly openCount: number;
@@ -29,10 +29,10 @@ export class DiffCommentCategoryItem extends vscode.TreeItem {
         resolvedCount: number,
         commitHash?: string
     ) {
-        const label = category === 'pending' 
-            ? 'Pending Changes' 
+        const label = category === 'pending'
+            ? 'Pending Changes'
             : `Commit ${commitHash?.slice(0, 7) || 'unknown'}`;
-        
+
         super(label, vscode.TreeItemCollapsibleState.Expanded);
 
         this.category = category;
@@ -40,11 +40,22 @@ export class DiffCommentCategoryItem extends vscode.TreeItem {
         this.openCount = openCount;
         this.resolvedCount = resolvedCount;
 
-        this.description = `${openCount} open${resolvedCount > 0 ? `, ${resolvedCount} resolved` : ''}`;
+        // Context value includes whether there are open comments for conditional menu items
+        // Format: diffCommentCategory_hasOpen or diffCommentCategory_noOpen
+        this.contextValue = openCount > 0 ? 'diffCommentCategory_hasOpen' : 'diffCommentCategory_noOpen';
+
+        this.description = this.createDescription();
         this.tooltip = this.createTooltip();
         this.iconPath = category === 'pending'
             ? new vscode.ThemeIcon('git-pull-request-create', new vscode.ThemeColor('charts.yellow'))
             : new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('charts.purple'));
+    }
+
+    private createDescription(): string {
+        if (this.openCount === 0 && this.resolvedCount > 0) {
+            return `0 open, ${this.resolvedCount} resolved`;
+        }
+        return `${this.openCount} open${this.resolvedCount > 0 ? `, ${this.resolvedCount} resolved` : ''}`;
     }
 
     private createTooltip(): string {
@@ -60,7 +71,7 @@ export class DiffCommentCategoryItem extends vscode.TreeItem {
  * Tree item representing a file with diff comments
  */
 export class DiffCommentFileItem extends vscode.TreeItem {
-    public readonly contextValue = 'diffCommentFile';
+    public readonly contextValue: string;
     public readonly filePath: string;
     public readonly openCount: number;
     public readonly resolvedCount: number;
@@ -86,7 +97,11 @@ export class DiffCommentFileItem extends vscode.TreeItem {
         this.category = category;
         this.commitHash = commitHash;
 
-        this.description = `${openCount} open${resolvedCount > 0 ? `, ${resolvedCount} resolved` : ''}`;
+        // Context value includes whether there are open comments for conditional menu items
+        // Format: diffCommentFile_hasOpen or diffCommentFile_noOpen
+        this.contextValue = openCount > 0 ? 'diffCommentFile_hasOpen' : 'diffCommentFile_noOpen';
+
+        this.description = this.createDescription();
         this.tooltip = this.createTooltip();
         this.iconPath = new vscode.ThemeIcon('file-code', new vscode.ThemeColor('charts.blue'));
 
@@ -96,6 +111,13 @@ export class DiffCommentFileItem extends vscode.TreeItem {
             title: 'Open Diff Review',
             arguments: [this]
         };
+    }
+
+    private createDescription(): string {
+        if (this.openCount === 0 && this.resolvedCount > 0) {
+            return `0 open, ${this.resolvedCount} resolved`;
+        }
+        return `${this.openCount} open${this.resolvedCount > 0 ? `, ${this.resolvedCount} resolved` : ''}`;
     }
 
     private createTooltip(): string {
@@ -130,8 +152,8 @@ export class DiffCommentItem extends vscode.TreeItem {
             : `Lines ${startLine}-${endLine}`;
 
         // Side indicator
-        const sideLabel = comment.selection.side === 'old' ? '(-)' : 
-                         comment.selection.side === 'new' ? '(+)' : '';
+        const sideLabel = comment.selection.side === 'old' ? '(-)' :
+            comment.selection.side === 'new' ? '(+)' : '';
 
         // Truncate selected text for display
         const maxTextLength = 35;
@@ -171,7 +193,7 @@ export class DiffCommentItem extends vscode.TreeItem {
         const statusIcon = this.comment.status === 'resolved' ? '✓' : '○';
         const statusLabel = this.comment.status === 'resolved' ? 'Resolved' : 'Open';
         const sideLabel = this.comment.selection.side === 'old' ? 'Old version (deleted)' :
-                         this.comment.selection.side === 'new' ? 'New version (added)' : 'Both sides';
+            this.comment.selection.side === 'new' ? 'New version (added)' : 'Both sides';
 
         const tooltip = new vscode.MarkdownString(
             `**${statusLabel}** ${statusIcon}\n\n` +
@@ -188,7 +210,7 @@ export class DiffCommentItem extends vscode.TreeItem {
         if (this.comment.status === 'resolved') {
             return new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
         }
-        
+
         // Use different colors based on which side of the diff
         if (this.comment.selection.side === 'old') {
             return new vscode.ThemeIcon('comment', new vscode.ThemeColor('charts.red'));
@@ -394,9 +416,9 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
                 const absolutePath = this.commentsManager.getAbsolutePath(filePath);
                 const gitContext = comments[0]?.gitContext;
                 items.push(new DiffCommentFileItem(
-                    absolutePath, 
-                    openCount, 
-                    resolvedCount, 
+                    absolutePath,
+                    openCount,
+                    resolvedCount,
                     gitContext,
                     'pending'
                 ));
@@ -410,9 +432,9 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
                     const absolutePath = this.commentsManager.getAbsolutePath(filePath);
                     const gitContext = comments[0]?.gitContext;
                     items.push(new DiffCommentFileItem(
-                        absolutePath, 
-                        openCount, 
-                        resolvedCount, 
+                        absolutePath,
+                        openCount,
+                        resolvedCount,
                         gitContext,
                         'committed',
                         categoryItem.commitHash
@@ -431,8 +453,8 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
      * Get comment items for a specific file within a category
      */
     private getCommentItems(
-        absoluteFilePath: string, 
-        category?: CommentCategory, 
+        absoluteFilePath: string,
+        category?: CommentCategory,
         commitHash?: string
     ): DiffCommentItem[] {
         let comments = this.commentsManager.getCommentsForFile(absoluteFilePath);
@@ -474,7 +496,7 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
             const comment = element.comment;
             const commitHash = comment.gitContext.commitHash;
             const category: CommentCategory = commitHash ? 'committed' : 'pending';
-            
+
             // Get comments for this file in the same category
             let comments = this.commentsManager.getCommentsForFile(absolutePath);
             if (category === 'pending') {
@@ -482,17 +504,17 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
             } else {
                 comments = comments.filter(c => c.gitContext.commitHash === commitHash);
             }
-            
+
             const openCount = comments.filter(c => c.status === 'open').length;
             const resolvedCount = comments.filter(c => c.status === 'resolved').length;
             const gitContext = comments[0]?.gitContext;
             return new DiffCommentFileItem(absolutePath, openCount, resolvedCount, gitContext, category, commitHash);
         }
-        
+
         if (element instanceof DiffCommentFileItem) {
             const category = element.category;
             const commitHash = element.commitHash;
-            
+
             if (category === 'pending') {
                 const grouped = this.getGroupedComments();
                 let openCount = 0;
@@ -516,7 +538,7 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
                 return new DiffCommentCategoryItem('committed', openCount, resolvedCount, commitHash);
             }
         }
-        
+
         return undefined;
     }
 

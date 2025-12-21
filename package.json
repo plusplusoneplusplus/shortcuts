@@ -568,6 +568,66 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "gitDiffComments.copyPromptCategory",
+        "title": "Copy Prompt",
+        "category": "Git Diff Comments",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "gitDiffComments.showPromptCategory",
+        "title": "Show Prompt in Editor",
+        "category": "Git Diff Comments",
+        "icon": "$(file)"
+      },
+      {
+        "command": "gitDiffComments.resolveAllCategory",
+        "title": "Resolve All",
+        "category": "Git Diff Comments",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "gitDiffComments.deleteAllCategory",
+        "title": "Delete All",
+        "category": "Git Diff Comments",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "gitDiffComments.copyPromptFile",
+        "title": "Copy Prompt (This File)",
+        "category": "Git Diff Comments",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "gitDiffComments.showPromptFile",
+        "title": "Show Prompt in Editor",
+        "category": "Git Diff Comments",
+        "icon": "$(file)"
+      },
+      {
+        "command": "gitDiffComments.resolveAllFile",
+        "title": "Resolve All in File",
+        "category": "Git Diff Comments",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "gitDiffComments.deleteAllFile",
+        "title": "Delete All in File",
+        "category": "Git Diff Comments",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "gitDiffComments.copyPromptComment",
+        "title": "Copy Comment Prompt",
+        "category": "Git Diff Comments",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "gitDiffComments.editComment",
+        "title": "Edit Comment",
+        "category": "Git Diff Comments",
+        "icon": "$(edit)"
+      },
+      {
         "command": "gitView.openWithMarkdownReview",
         "title": "Open with Markdown Review",
         "category": "Git",
@@ -882,23 +942,118 @@
         },
         {
           "command": "gitDiffComments.openFileWithReview",
-          "when": "view == gitView && viewItem == diffCommentFile",
+          "when": "view == gitView && viewItem =~ /^diffCommentFile_/",
           "group": "navigation@1"
+        },
+        {
+          "command": "gitDiffComments.copyPromptCategory",
+          "when": "view == gitView && viewItem == diffCommentCategory_hasOpen",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitDiffComments.resolveAllCategory",
+          "when": "view == gitView && viewItem == diffCommentCategory_hasOpen",
+          "group": "inline@2"
+        },
+        {
+          "command": "gitDiffComments.copyPromptCategory",
+          "when": "view == gitView && viewItem == diffCommentCategory_hasOpen",
+          "group": "diffCommentCategory@1"
+        },
+        {
+          "command": "gitDiffComments.showPromptCategory",
+          "when": "view == gitView && viewItem == diffCommentCategory_hasOpen",
+          "group": "diffCommentCategory@2"
+        },
+        {
+          "command": "gitDiffComments.resolveAllCategory",
+          "when": "view == gitView && viewItem == diffCommentCategory_hasOpen",
+          "group": "diffCommentCategory@3"
+        },
+        {
+          "command": "gitDiffComments.deleteAllCategory",
+          "when": "view == gitView && viewItem =~ /^diffCommentCategory_/",
+          "group": "diffCommentCategory@4"
+        },
+        {
+          "command": "gitDiffComments.copyPromptFile",
+          "when": "view == gitView && viewItem == diffCommentFile_hasOpen",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitDiffComments.resolveAllFile",
+          "when": "view == gitView && viewItem == diffCommentFile_hasOpen",
+          "group": "inline@2"
+        },
+        {
+          "command": "gitDiffComments.openFileWithReview",
+          "when": "view == gitView && viewItem =~ /^diffCommentFile_/",
+          "group": "inline@3"
+        },
+        {
+          "command": "gitDiffComments.copyPromptFile",
+          "when": "view == gitView && viewItem == diffCommentFile_hasOpen",
+          "group": "diffCommentFile@1"
+        },
+        {
+          "command": "gitDiffComments.showPromptFile",
+          "when": "view == gitView && viewItem == diffCommentFile_hasOpen",
+          "group": "diffCommentFile@2"
+        },
+        {
+          "command": "gitDiffComments.resolveAllFile",
+          "when": "view == gitView && viewItem == diffCommentFile_hasOpen",
+          "group": "diffCommentFile@3"
+        },
+        {
+          "command": "gitDiffComments.deleteAllFile",
+          "when": "view == gitView && viewItem =~ /^diffCommentFile_/",
+          "group": "diffCommentFile@4"
+        },
+        {
+          "command": "gitDiffComments.openFileWithReview",
+          "when": "view == gitView && viewItem =~ /^diffCommentFile_/",
+          "group": "diffCommentFile@5"
         },
         {
           "command": "gitDiffComments.resolveComment",
           "when": "view == gitView && viewItem == diffComment_open",
-          "group": "diffComment@1"
-        },
-        {
-          "command": "gitDiffComments.reopenComment",
-          "when": "view == gitView && viewItem == diffComment_resolved",
-          "group": "diffComment@1"
+          "group": "inline@1"
         },
         {
           "command": "gitDiffComments.deleteComment",
           "when": "view == gitView && (viewItem == diffComment_open || viewItem == diffComment_resolved)",
+          "group": "inline@2"
+        },
+        {
+          "command": "gitDiffComments.copyPromptComment",
+          "when": "view == gitView && (viewItem == diffComment_open || viewItem == diffComment_resolved)",
+          "group": "diffComment@1"
+        },
+        {
+          "command": "gitDiffComments.resolveComment",
+          "when": "view == gitView && viewItem == diffComment_open",
           "group": "diffComment@2"
+        },
+        {
+          "command": "gitDiffComments.reopenComment",
+          "when": "view == gitView && viewItem == diffComment_resolved",
+          "group": "diffComment@2"
+        },
+        {
+          "command": "gitDiffComments.editComment",
+          "when": "view == gitView && (viewItem == diffComment_open || viewItem == diffComment_resolved)",
+          "group": "diffComment@3"
+        },
+        {
+          "command": "gitDiffComments.deleteComment",
+          "when": "view == gitView && (viewItem == diffComment_open || viewItem == diffComment_resolved)",
+          "group": "diffComment@4"
+        },
+        {
+          "command": "gitDiffComments.goToComment",
+          "when": "view == gitView && (viewItem == diffComment_open || viewItem == diffComment_resolved)",
+          "group": "diffComment@5"
         },
         {
           "command": "gitDiffComments.cleanupObsolete",
