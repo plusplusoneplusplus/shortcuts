@@ -228,22 +228,28 @@ suite('Git View Tests', () => {
     // GitChangeItem Tests (existing + enhanced)
     // ============================================
     suite('GitChangeItem', () => {
+        // Platform-aware paths for cross-platform tests
+        const isWindows = process.platform === 'win32';
+        const repoRoot = isWindows ? 'C:\\repo' : '/repo';
+        const defaultFilePath = isWindows ? 'C:\\repo\\src\\file.ts' : '/repo/src/file.ts';
+        
         const createMockChange = (
             status: GitChangeStatus,
             stage: GitChangeStage,
-            filePath: string = '/repo/src/file.ts'
+            filePath: string = defaultFilePath
         ): GitChange => ({
             path: filePath,
             status,
             stage,
-            repositoryRoot: '/repo',
+            repositoryRoot: repoRoot,
             repositoryName: 'repo',
             uri: vscode.Uri.file(filePath)
         });
 
         suite('Basic Properties', () => {
             test('should set label to filename', () => {
-                const change = createMockChange('modified', 'unstaged', '/repo/src/component.tsx');
+                const componentPath = isWindows ? 'C:\\repo\\src\\component.tsx' : '/repo/src/component.tsx';
+                const change = createMockChange('modified', 'unstaged', componentPath);
                 const item = new GitChangeItem(change);
                 assert.strictEqual(item.label, 'component.tsx');
             });
@@ -272,9 +278,10 @@ suite('Git View Tests', () => {
             });
 
             test('should set resourceUri', () => {
-                const change = createMockChange('modified', 'unstaged', '/repo/test.js');
+                const testPath = isWindows ? 'C:\\repo\\test.js' : '/repo/test.js';
+                const change = createMockChange('modified', 'unstaged', testPath);
                 const item = new GitChangeItem(change);
-                assert.strictEqual(item.resourceUri?.fsPath, '/repo/test.js');
+                assert.strictEqual(item.resourceUri?.fsPath, testPath);
             });
 
             test('should store the change object', () => {
@@ -1468,18 +1475,22 @@ suite('Git View Tests', () => {
         });
 
         test('GitChangeItem should have resourceUri for markdown detection', () => {
+            const isWin = process.platform === 'win32';
+            const mdPath = isWin ? 'C:\\repo\\docs\\README.md' : '/repo/docs/README.md';
+            const repoRootPath = isWin ? 'C:\\repo' : '/repo';
+            
             const change: GitChange = {
-                path: '/repo/docs/README.md',
+                path: mdPath,
                 status: 'modified',
                 stage: 'unstaged',
-                repositoryRoot: '/repo',
+                repositoryRoot: repoRootPath,
                 repositoryName: 'repo',
-                uri: vscode.Uri.file('/repo/docs/README.md')
+                uri: vscode.Uri.file(mdPath)
             };
             
             const item = new GitChangeItem(change);
             assert.ok(item.resourceUri);
-            assert.strictEqual(item.resourceUri?.fsPath, '/repo/docs/README.md');
+            assert.strictEqual(item.resourceUri?.fsPath, mdPath);
             assert.strictEqual(item.resourceUri?.fsPath.endsWith('.md'), true);
         });
 

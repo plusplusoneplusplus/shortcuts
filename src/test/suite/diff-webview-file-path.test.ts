@@ -10,12 +10,16 @@ import {
     DiffGitContext
 } from '../../shortcuts/git-diff-comments/types';
 
+// Platform detection for cross-platform tests
+const isWindows = process.platform === 'win32';
+
 /**
  * Mock git context for testing
  */
-function createMockGitContext(repoRoot: string = '/test/repo'): DiffGitContext {
+function createMockGitContext(repoRoot?: string): DiffGitContext {
+    const defaultRoot = isWindows ? 'C:\\test\\repo' : '/test/repo';
     return {
-        repositoryRoot: repoRoot,
+        repositoryRoot: repoRoot || defaultRoot,
         repositoryName: 'test-repo',
         oldRef: 'HEAD',
         newRef: ':0',
@@ -42,22 +46,25 @@ suite('Diff Webview File Path Tests', () => {
                 fileToOpen: 'src/components/Button.tsx'
             };
             
-            const gitContext = createMockGitContext('/Users/test/project');
+            const repoRoot = isWindows ? 'C:\\Users\\test\\project' : '/Users/test/project';
+            const gitContext = createMockGitContext(repoRoot);
             const fullPath = path.isAbsolute(message.fileToOpen!)
                 ? message.fileToOpen!
                 : path.join(gitContext.repositoryRoot, message.fileToOpen!);
             
-            assert.strictEqual(fullPath, '/Users/test/project/src/components/Button.tsx');
+            const expected = path.join(repoRoot, 'src', 'components', 'Button.tsx');
+            assert.strictEqual(fullPath, expected);
         });
 
         test('should handle absolute file path', () => {
-            const absolutePath = '/absolute/path/to/file.ts';
+            const absolutePath = isWindows ? 'C:\\absolute\\path\\to\\file.ts' : '/absolute/path/to/file.ts';
             const message: DiffWebviewMessage = {
                 type: 'openFile',
                 fileToOpen: absolutePath
             };
             
-            const gitContext = createMockGitContext('/Users/test/project');
+            const repoRoot = isWindows ? 'C:\\Users\\test\\project' : '/Users/test/project';
+            const gitContext = createMockGitContext(repoRoot);
             const fullPath = path.isAbsolute(message.fileToOpen!)
                 ? message.fileToOpen!
                 : path.join(gitContext.repositoryRoot, message.fileToOpen!);
@@ -71,10 +78,12 @@ suite('Diff Webview File Path Tests', () => {
                 fileToOpen: 'src/features/auth/login/LoginForm.tsx'
             };
             
-            const gitContext = createMockGitContext('/project');
+            const repoRoot = isWindows ? 'C:\\project' : '/project';
+            const gitContext = createMockGitContext(repoRoot);
             const fullPath = path.join(gitContext.repositoryRoot, message.fileToOpen!);
             
-            assert.strictEqual(fullPath, '/project/src/features/auth/login/LoginForm.tsx');
+            const expected = path.join(repoRoot, 'src', 'features', 'auth', 'login', 'LoginForm.tsx');
+            assert.strictEqual(fullPath, expected);
         });
 
         test('should handle file path with special characters', () => {
@@ -230,27 +239,30 @@ suite('Diff Webview File Path Tests', () => {
         });
 
         test('should join paths correctly', () => {
-            const repoRoot = '/project';
+            const repoRoot = isWindows ? 'C:\\project' : '/project';
             const filePath = 'src/app.ts';
             const fullPath = path.join(repoRoot, filePath);
             
-            assert.strictEqual(fullPath, '/project/src/app.ts');
+            const expected = path.join(repoRoot, 'src', 'app.ts');
+            assert.strictEqual(fullPath, expected);
         });
 
         test('should handle paths with multiple separators', () => {
-            const repoRoot = '/project/';
-            const filePath = '/src/app.ts';
+            const repoRoot = isWindows ? 'C:\\project\\' : '/project/';
+            const filePath = isWindows ? '\\src\\app.ts' : '/src/app.ts';
             const fullPath = path.join(repoRoot, filePath);
             
             // path.join normalizes the path
-            assert.strictEqual(fullPath, '/project/src/app.ts');
+            const expected = path.join(isWindows ? 'C:\\project' : '/project', 'src', 'app.ts');
+            assert.strictEqual(fullPath, expected);
         });
     });
 
     suite('Integration Scenarios', () => {
         test('should support typical diff review workflow - open file', () => {
             // Simulate a user clicking on a file path in the diff review
-            const gitContext = createMockGitContext('/Users/dev/myproject');
+            const repoRoot = isWindows ? 'C:\\Users\\dev\\myproject' : '/Users/dev/myproject';
+            const gitContext = createMockGitContext(repoRoot);
             const relativePath = 'client/kvstore_client.h';
             
             const message: DiffWebviewMessage = {
@@ -261,7 +273,8 @@ suite('Diff Webview File Path Tests', () => {
             // The provider would resolve this to full path
             const fullPath = path.join(gitContext.repositoryRoot, message.fileToOpen!);
             
-            assert.strictEqual(fullPath, '/Users/dev/myproject/client/kvstore_client.h');
+            const expected = path.join(repoRoot, 'client', 'kvstore_client.h');
+            assert.strictEqual(fullPath, expected);
             assert.strictEqual(message.type, 'openFile');
         });
 
