@@ -6,7 +6,7 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GitTreeDataProvider, GitCommitItem, GitCommitFile } from './shortcuts/git';
+import { GitTreeDataProvider, GitCommitItem, GitCommitFile, LookedUpCommitItem } from './shortcuts/git';
 import { GlobalNotesTreeDataProvider } from './shortcuts/global-notes';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
@@ -148,6 +148,8 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitDiffCommentsResolveCommand: vscode.Disposable | undefined;
         let gitDiffCommentsReopenCommand: vscode.Disposable | undefined;
         let gitOpenWithMarkdownReviewCommand: vscode.Disposable | undefined;
+        let gitLookupCommitCommand: vscode.Disposable | undefined;
+        let gitClearLookedUpCommitCommand: vscode.Disposable | undefined;
 
         if (gitInitialized) {
             gitTreeView = vscode.window.createTreeView('gitView', {
@@ -196,8 +198,8 @@ export async function activate(context: vscode.ExtensionContext) {
                 await gitTreeDataProvider.loadMoreCommits(count);
             });
 
-            gitCopyHashCommand = vscode.commands.registerCommand('gitView.copyCommitHash', async (itemOrHash?: GitCommitItem | string) => {
-                // Handle both GitCommitItem (from context menu) and string (from tooltip link)
+            gitCopyHashCommand = vscode.commands.registerCommand('gitView.copyCommitHash', async (itemOrHash?: GitCommitItem | LookedUpCommitItem | string) => {
+                // Handle GitCommitItem, LookedUpCommitItem (from context menu), or string (from tooltip link)
                 let hash: string | undefined;
                 if (typeof itemOrHash === 'string') {
                     hash = itemOrHash;
@@ -215,6 +217,16 @@ export async function activate(context: vscode.ExtensionContext) {
                     await vscode.env.clipboard.writeText(text);
                     vscode.window.showInformationMessage(`Copied to clipboard`);
                 }
+            });
+
+            // Lookup commit command
+            gitLookupCommitCommand = vscode.commands.registerCommand('gitView.lookupCommit', () => {
+                gitTreeDataProvider.showCommitLookup();
+            });
+
+            // Clear looked-up commit command
+            gitClearLookedUpCommitCommand = vscode.commands.registerCommand('gitView.clearLookedUpCommit', () => {
+                gitTreeDataProvider.clearLookedUpCommit();
             });
 
             // Register command to open commit file diff
@@ -612,6 +624,8 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitDiffCommentsResolveCommand) disposables.push(gitDiffCommentsResolveCommand);
         if (gitDiffCommentsReopenCommand) disposables.push(gitDiffCommentsReopenCommand);
         if (gitOpenWithMarkdownReviewCommand) disposables.push(gitOpenWithMarkdownReviewCommand);
+        if (gitLookupCommitCommand) disposables.push(gitLookupCommitCommand);
+        if (gitClearLookedUpCommitCommand) disposables.push(gitClearLookedUpCommitCommand);
 
         // Add all disposables to context subscriptions
         context.subscriptions.push(...disposables);

@@ -566,6 +566,18 @@
         "title": "Open with Markdown Review",
         "category": "Git",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gitView.lookupCommit",
+        "title": "Lookup Commit",
+        "category": "Git",
+        "icon": "$(search)"
+      },
+      {
+        "command": "gitView.clearLookedUpCommit",
+        "title": "Dismiss",
+        "category": "Git",
+        "icon": "$(close)"
       }
     ],
     "menus": {
@@ -623,6 +635,11 @@
         {
           "command": "clarificationProcesses.refresh",
           "when": "view == clarificationProcessesView",
+          "group": "navigation"
+        },
+        {
+          "command": "gitView.lookupCommit",
+          "when": "view == gitView",
           "group": "navigation"
         },
         {
@@ -836,6 +853,16 @@
           "command": "gitView.copyCommitHash",
           "when": "view == gitView && viewItem == gitCommit",
           "group": "gitCommit@1"
+        },
+        {
+          "command": "gitView.clearLookedUpCommit",
+          "when": "view == gitView && viewItem == lookedUpCommit",
+          "group": "inline"
+        },
+        {
+          "command": "gitView.copyCommitHash",
+          "when": "view == gitView && viewItem == lookedUpCommit",
+          "group": "lookedUpCommit@1"
         },
         {
           "command": "gitDiffComments.openWithReview",

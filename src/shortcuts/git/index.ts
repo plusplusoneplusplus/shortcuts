@@ -11,6 +11,7 @@ export * from './git-commit-item';
 export * from './git-commit-file-item';
 export * from './section-header-item';
 export * from './load-more-item';
+export * from './looked-up-commit-item';
 
 // Provider
 export * from './tree-data-provider';

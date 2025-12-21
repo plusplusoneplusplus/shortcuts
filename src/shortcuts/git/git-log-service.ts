@@ -248,7 +248,7 @@ export class GitLogService implements vscode.Disposable {
         try {
             const format = '%H|%h|%s|%an|%ae|%aI|%ar|%P|%D';
             const command = `git log --pretty=format:"${format}" -n 1 ${hash}`;
-            
+
             const output = execSync(command, {
                 cwd: repoRoot,
                 encoding: 'utf-8',
@@ -264,6 +264,49 @@ export class GitLogService implements vscode.Disposable {
         } catch (error) {
             console.error(`Failed to get commit ${hash} from ${repoRoot}:`, error);
             return undefined;
+        }
+    }
+
+    /**
+     * Validate a git ref and return the resolved commit hash
+     * Supports: full/short hash, branch names, tags, HEAD~N, etc.
+     * @param repoRoot Repository root path
+     * @param ref Git reference to validate
+     * @returns Resolved full hash or undefined if invalid
+     */
+    validateRef(repoRoot: string, ref: string): string | undefined {
+        try {
+            // Use ^{commit} to ensure it's a commit (not a tree or blob)
+            const command = `git rev-parse --verify "${ref}^{commit}"`;
+            const output = execSync(command, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                timeout: 5000,
+                stdio: ['pipe', 'pipe', 'pipe']  // Suppress stderr
+            });
+            return output.trim();
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Get branch names for suggestions
+     * @param repoRoot Repository root path
+     * @returns Array of branch names (limited to 10)
+     */
+    getBranches(repoRoot: string): string[] {
+        try {
+            const output = execSync('git branch -a --format="%(refname:short)"', {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                timeout: 5000
+            });
+            return output.trim().split('\n')
+                .filter(b => b && !b.includes('HEAD'))
+                .slice(0, 10);
+        } catch {
+            return [];
         }
     }
 

@@ -11,6 +11,7 @@ import { GitCommitItem } from './git-commit-item';
 import { GitLogService } from './git-log-service';
 import { GitService } from './git-service';
 import { LoadMoreItem } from './load-more-item';
+import { LookedUpCommitItem } from './looked-up-commit-item';
 import { SectionHeaderItem } from './section-header-item';
 import { GitChange, GitChangeCounts, GitChangeStage, GitCommentCounts, GitCommit, GitViewCounts } from './types';
 
@@ -59,6 +60,9 @@ export class GitTreeDataProvider
     // Diff comments integration
     private diffCommentsManager?: DiffCommentsManager;
     private diffCommentsTreeProvider?: DiffCommentsTreeDataProvider;
+
+    // Looked-up commit (null = none shown)
+    private lookedUpCommit: GitCommit | null = null;
 
     constructor() {
         this.gitService = new GitService();
@@ -215,6 +219,11 @@ export class GitTreeDataProvider
                 return this.getCommitFileItems(element.commit);
             }
 
+            // Looked-up commit item - return files changed in this commit
+            if (element instanceof LookedUpCommitItem) {
+                return this.getCommitFileItems(element.commit);
+            }
+
             // Comment file item - return comments for this file
             if (element instanceof DiffCommentFileItem) {
                 return this.getCommentItems(element.filePath);
@@ -244,6 +253,11 @@ export class GitTreeDataProvider
         // Only show comments section if there are comments
         if (commentCount > 0) {
             items.push(new SectionHeaderItem('comments', commentCount, false));
+        }
+
+        // Looked-up commit at the bottom
+        if (this.lookedUpCommit) {
+            items.push(new LookedUpCommitItem(this.lookedUpCommit));
         }
 
         return items;
@@ -418,6 +432,102 @@ export class GitTreeDataProvider
     async copyCommitHash(hash: string): Promise<void> {
         await vscode.env.clipboard.writeText(hash);
         vscode.window.showInformationMessage(`Copied commit hash: ${hash}`);
+    }
+
+    /**
+     * Set the looked-up commit (replaces any previous one)
+     * @param commit The commit to display, or null to clear
+     */
+    setLookedUpCommit(commit: GitCommit | null): void {
+        this.lookedUpCommit = commit;
+        this.refresh();
+    }
+
+    /**
+     * Get the current looked-up commit
+     */
+    getLookedUpCommit(): GitCommit | null {
+        return this.lookedUpCommit;
+    }
+
+    /**
+     * Clear the looked-up commit
+     */
+    clearLookedUpCommit(): void {
+        this.lookedUpCommit = null;
+        this.refresh();
+    }
+
+    /**
+     * Show the commit lookup quick pick UI
+     */
+    async showCommitLookup(): Promise<void> {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            vscode.window.showWarningMessage('No git repository found');
+            return;
+        }
+
+        const quickPick = vscode.window.createQuickPick();
+        quickPick.placeholder = 'Enter commit hash, branch, tag, or ref (e.g., HEAD~3)';
+        quickPick.title = 'Lookup Commit';
+
+        // Default suggestions
+        const defaultItems: vscode.QuickPickItem[] = [
+            { label: 'HEAD~1', description: 'Previous commit' },
+            { label: 'HEAD~2', description: '2 commits ago' },
+            { label: 'HEAD~5', description: '5 commits ago' },
+        ];
+
+        // Get branch suggestions
+        const branches = this.gitLogService.getBranches(repoRoot);
+        const branchItems: vscode.QuickPickItem[] = branches.map(branch => ({
+            label: branch,
+            description: 'branch'
+        }));
+
+        quickPick.items = [...defaultItems, ...branchItems];
+
+        quickPick.onDidChangeValue(value => {
+            if (value && !quickPick.items.some(i => i.label === value)) {
+                quickPick.items = [
+                    { label: value, description: 'Press Enter to lookup' },
+                    ...defaultItems,
+                    ...branchItems
+                ];
+            }
+        });
+
+        quickPick.onDidAccept(async () => {
+            const selected = quickPick.selectedItems[0]?.label || quickPick.value;
+            quickPick.hide();
+
+            if (!selected) {
+                return;
+            }
+
+            // Validate and resolve the ref
+            const resolvedHash = this.gitLogService.validateRef(repoRoot, selected);
+            if (!resolvedHash) {
+                vscode.window.showErrorMessage(`Invalid commit reference: ${selected}`);
+                return;
+            }
+
+            // Get full commit info
+            const commit = this.gitLogService.getCommit(repoRoot, resolvedHash);
+            if (!commit) {
+                vscode.window.showErrorMessage(`Could not load commit: ${selected}`);
+                return;
+            }
+
+            this.setLookedUpCommit(commit);
+        });
+
+        quickPick.onDidHide(() => {
+            quickPick.dispose();
+        });
+
+        quickPick.show();
     }
 
     /**
