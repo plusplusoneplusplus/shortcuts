@@ -234,7 +234,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 gitTreeDataProvider.clearLookedUpCommit();
             });
 
-            // Register command to open commit file diff
+            // Register command to open commit file diff using extension's diff review
             gitOpenFileDiffCommand = vscode.commands.registerCommand(
                 'gitView.openCommitFileDiff',
                 async (file: GitCommitFile) => {
@@ -243,56 +243,10 @@ export async function activate(context: vscode.ExtensionContext) {
                     }
 
                     try {
-                        const fileName = file.path.split('/').pop() || file.path;
-                        const shortHash = file.commitHash.slice(0, 7);
-
-                        // Handle different file statuses
-                        if (file.status === 'added') {
-                            // For newly added files, show the file content at the commit
-                            // Left side is empty (file didn't exist), right side is the new file
-                            const rightUri = toGitUri(
-                                file.path,
-                                file.commitHash,
-                                file.repositoryRoot
-                            );
-                            const emptyUri = toGitUri(
-                                file.path,
-                                EMPTY_TREE_HASH,
-                                file.repositoryRoot
-                            );
-                            const title = `${fileName} (${shortHash}) [Added]`;
-                            await vscode.commands.executeCommand('vscode.diff', emptyUri, rightUri, title);
-                        } else if (file.status === 'deleted') {
-                            // For deleted files, show the file content at the parent
-                            // Left side is the old file, right side is empty (file was deleted)
-                            const leftUri = toGitUri(
-                                file.path,
-                                file.parentHash,
-                                file.repositoryRoot
-                            );
-                            // Use EMPTY_TREE_HASH for deleted files since the file doesn't exist at the commit
-                            const emptyUri = toGitUri(
-                                file.path,
-                                EMPTY_TREE_HASH,
-                                file.repositoryRoot
-                            );
-                            const title = `${fileName} (${shortHash}) [Deleted]`;
-                            await vscode.commands.executeCommand('vscode.diff', leftUri, emptyUri, title);
-                        } else {
-                            // For modified, renamed, copied files - standard diff
-                            const leftUri = toGitUri(
-                                file.originalPath || file.path,
-                                file.parentHash,
-                                file.repositoryRoot
-                            );
-                            const rightUri = toGitUri(
-                                file.path,
-                                file.commitHash,
-                                file.repositoryRoot
-                            );
-                            const title = `${fileName} (${shortHash})`;
-                            await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
-                        }
+                        // Open using the extension's diff review with commenting capability
+                        await vscode.commands.executeCommand('gitDiffComments.openWithReview', {
+                            commitFile: file
+                        });
                     } catch (error) {
                         console.error('Failed to open commit file diff:', error);
                         vscode.window.showErrorMessage('Failed to open diff view');

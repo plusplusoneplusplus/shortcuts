@@ -36,10 +36,14 @@ export { DiffCommentsManager } from './diff-comments-manager';
 
 // Tree data provider for comments
 export {
+    DiffCommentCategoryItem,
     DiffCommentFileItem,
     DiffCommentItem,
     DiffCommentsTreeDataProvider
 } from './diff-comments-tree-provider';
+
+// Re-export CommentCategory type
+export type { CommentCategory } from './diff-comments-tree-provider';
 
 // Content provider
 export {

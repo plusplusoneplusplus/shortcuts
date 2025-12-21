@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import {
+    DiffCommentCategoryItem,
     DiffCommentFileItem,
     DiffCommentItem,
     DiffCommentsTreeDataProvider
@@ -237,9 +238,14 @@ export class GitTreeDataProvider
                 return this.getCommitFileItems(element.commit);
             }
 
+            // Comment category item - return files for this category
+            if (element instanceof DiffCommentCategoryItem) {
+                return this.getCommentFilesForCategory(element);
+            }
+
             // Comment file item - return comments for this file
             if (element instanceof DiffCommentFileItem) {
-                return this.getCommentItems(element.filePath);
+                return this.getCommentItems(element.filePath, element.category, element.commitHash);
             }
 
             // All other items have no children
@@ -315,7 +321,7 @@ export class GitTreeDataProvider
     }
 
     /**
-     * Get comment file items (files with comments)
+     * Get comment category items (Pending Changes, Committed groups)
      */
     private async getCommentFileItems(): Promise<vscode.TreeItem[]> {
         if (!this.diffCommentsTreeProvider) {
@@ -325,18 +331,32 @@ export class GitTreeDataProvider
     }
 
     /**
-     * Get comment items for a specific file
+     * Get comment files for a specific category
      */
-    private async getCommentItems(filePath: string): Promise<vscode.TreeItem[]> {
+    private async getCommentFilesForCategory(categoryItem: DiffCommentCategoryItem): Promise<vscode.TreeItem[]> {
         if (!this.diffCommentsTreeProvider) {
             return [];
         }
-        // Create a temporary file item to get its children
+        return this.diffCommentsTreeProvider.getChildren(categoryItem);
+    }
+
+    /**
+     * Get comment items for a specific file
+     */
+    private async getCommentItems(
+        filePath: string, 
+        category?: 'pending' | 'committed',
+        commitHash?: string
+    ): Promise<vscode.TreeItem[]> {
+        if (!this.diffCommentsTreeProvider) {
+            return [];
+        }
+        // Create a file item to get its children
         const comments = this.diffCommentsManager?.getCommentsForFile(filePath) || [];
         const openCount = comments.filter(c => c.status === 'open').length;
         const resolvedCount = comments.filter(c => c.status === 'resolved').length;
         const gitContext = comments[0]?.gitContext;
-        const fileItem = new DiffCommentFileItem(filePath, openCount, resolvedCount, gitContext);
+        const fileItem = new DiffCommentFileItem(filePath, openCount, resolvedCount, gitContext, category, commitHash);
         return this.diffCommentsTreeProvider.getChildren(fileItem);
     }
 

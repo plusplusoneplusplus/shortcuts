@@ -7,6 +7,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { DiffCommentsManager } from './diff-comments-manager';
 import {
+    createCommittedGitContext,
     createStagedGitContext,
     createUnstagedGitContext,
     createUntrackedGitContext,
@@ -142,7 +143,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
     /**
      * Open a diff review for a git change item
-     * @param item The git change item or comment item
+     * @param item The git change item, commit file, or comment item
      * @param scrollToCommentId Optional comment ID to scroll to after opening
      */
     async openDiffReview(item?: any, scrollToCommentId?: string): Promise<void> {
@@ -154,13 +155,12 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         // Extract information from the git change item
         let filePath: string;
         let gitContext: DiffGitContext;
-        let stage: 'staged' | 'unstaged' | 'untracked';
 
         // Handle different item types
         if (item.change) {
             // GitChangeItem from our tree view
             filePath = item.change.path;
-            stage = item.change.stage;
+            const stage = item.change.stage;
             
             const repoRoot = item.change.repositoryRoot;
             const repoName = item.change.repositoryName;
@@ -172,6 +172,18 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             } else {
                 gitContext = createUnstagedGitContext(repoRoot, repoName);
             }
+        } else if (item.commitFile) {
+            // GitCommitFile from commit tree view
+            const file = item.commitFile;
+            filePath = path.join(file.repositoryRoot, file.path);
+            const repoName = path.basename(file.repositoryRoot);
+            
+            gitContext = createCommittedGitContext(
+                file.repositoryRoot,
+                repoName,
+                file.commitHash,
+                file.parentHash
+            );
         } else if (item.resourceUri) {
             // VSCode SCM resource
             filePath = item.resourceUri.fsPath;
@@ -180,7 +192,6 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             const repoName = path.basename(repoRoot);
             
             // Determine stage from context value or default to unstaged
-            stage = 'unstaged';
             gitContext = createUnstagedGitContext(repoRoot, repoName);
         } else {
             vscode.window.showWarningMessage('Unable to determine file information.');
