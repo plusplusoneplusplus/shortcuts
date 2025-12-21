@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.0] - 2025-12-21
+
+### Added
+- **Git Diff Comments**: New feature for inline commenting on git diff views
+  - Add comments to specific diff lines with category-based grouping (issues, suggestions, questions)
+  - Context menu commands for comment management (copy prompt, resolve all, delete all)
+  - Cleanup command for removing obsolete comments
+  - Draggable comment panels with scroll-to-comment functionality
+- **Commit Lookup**: Search and display specific commits by hash in Git view
+- **Diff Indicator Bar**: Visual indicators showing change density in diff views
+
+### Changed
+- Unified Git view combining changes and commits in one panel
+- Enhanced diff webview with file path interactions and syntax highlighting
+- Shared webview utilities for consistent panel behavior
+
 ## [2.9.2] - 2025-12-18
 
 ### Changed
