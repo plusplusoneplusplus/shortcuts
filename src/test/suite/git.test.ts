@@ -281,7 +281,12 @@ suite('Git View Tests', () => {
                 const testPath = isWindows ? 'C:\\repo\\test.js' : '/repo/test.js';
                 const change = createMockChange('modified', 'unstaged', testPath);
                 const item = new GitChangeItem(change);
-                assert.strictEqual(item.resourceUri?.fsPath, testPath);
+                // On Windows, vscode.Uri.file() normalizes drive letter to lowercase
+                if (isWindows) {
+                    assert.strictEqual(item.resourceUri?.fsPath.toLowerCase(), testPath.toLowerCase());
+                } else {
+                    assert.strictEqual(item.resourceUri?.fsPath, testPath);
+                }
             });
 
             test('should store the change object', () => {
@@ -1490,7 +1495,12 @@ suite('Git View Tests', () => {
             
             const item = new GitChangeItem(change);
             assert.ok(item.resourceUri);
-            assert.strictEqual(item.resourceUri?.fsPath, mdPath);
+            // On Windows, vscode.Uri.file() normalizes drive letter to lowercase
+            if (isWin) {
+                assert.strictEqual(item.resourceUri?.fsPath.toLowerCase(), mdPath.toLowerCase());
+            } else {
+                assert.strictEqual(item.resourceUri?.fsPath, mdPath);
+            }
             assert.strictEqual(item.resourceUri?.fsPath.endsWith('.md'), true);
         });
 
