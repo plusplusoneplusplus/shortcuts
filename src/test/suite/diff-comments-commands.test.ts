@@ -507,6 +507,7 @@ suite('Prompt Output Format Validation', () => {
         const comments = [
             createTestComment('1', 'src/utils/parser.ts', 'Handle null case', {
                 startLine: 42,
+                endLine: 45, // Multi-line so it shows "Lines 42-45"
                 side: 'new'
             }),
             createTestComment('2', 'src/utils/parser.ts', 'Add error handling', {
@@ -538,7 +539,7 @@ suite('Prompt Output Format Validation', () => {
 
         // Verify comment format
         assert.ok(result.includes('### Comment 1'));
-        assert.ok(result.includes('Line 42'));
+        assert.ok(result.includes('Lines 42-45'));  // Multi-line format
         assert.ok(result.includes('**Code:**'));
         assert.ok(result.includes('**Comment:**'));
 
@@ -551,6 +552,7 @@ suite('Prompt Output Format Validation', () => {
         const comments = [
             createTestComment('1', 'src/utils/parser.ts', 'Handle null case', {
                 startLine: 42,
+                endLine: 42,  // Must match startLine for single-line format
                 side: 'new',
                 wasStaged: false
             })
@@ -558,15 +560,18 @@ suite('Prompt Output Format Validation', () => {
         const manager = new MockDiffCommentsManager(comments);
         const generator = new DiffPromptGenerator(manager as any);
 
+        // Use groupByFile: false to get the **File:** format
         const result = generator.generatePromptForComment('1', {
             includeGitContext: true,
-            includeCodeContext: true
+            includeCodeContext: true,
+            groupByFile: false
         });
 
         // Verify single comment structure
         assert.ok(result.includes('# Code Review: Comments to Address'));
         assert.ok(result.includes('**File:** `src/utils/parser.ts`'));
-        assert.ok(result.includes('Line 42'));
+        // Single line shows as "Line 42" in the comment header, format is "(Line 42, added)"
+        assert.ok(result.includes('Line 42, added'));
         assert.ok(result.includes('Handle null case'));
     });
 });

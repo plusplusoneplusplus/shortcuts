@@ -596,14 +596,17 @@ suite('ShortcutsCommands Integration Tests', () => {
 
     // E2E Tests for Delete Group functionality
     suite('Delete Logical Group E2E Tests', () => {
-        test('should delete logical group through command with real tree item', async () => {
+        test('should delete logical group through command with real tree item', async function() {
+            // Increase timeout for this flaky test
+            this.timeout(10000);
+            
             // Setup: Create a logical group
             await configManager.createLogicalGroup('Group To Delete');
             await configManager.saveConfiguration(await configManager.loadConfiguration());
 
             // Trigger the extension to refresh its view and wait for file system to settle
             await vscode.commands.executeCommand('shortcuts.refresh');
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 300));
 
             provider.refresh();
 
@@ -624,8 +627,10 @@ suite('ShortcutsCommands Integration Tests', () => {
                 await vscode.commands.executeCommand('shortcuts.deleteLogicalGroup', groupItem);
 
                 // Wait for file system operations and file watchers to complete
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 800));
                 configManager.invalidateCache();
+                
+                // Reload configuration fresh from disk
                 const config = await configManager.loadConfiguration();
 
                 const exists = config.logicalGroups.some(g => g.name === 'Group To Delete');

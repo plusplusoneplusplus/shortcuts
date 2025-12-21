@@ -293,9 +293,11 @@ suite('Tree Item Tooltip', () => {
 
         // Tooltip should be a MarkdownString
         assert.ok(item.tooltip);
-        const tooltipString = item.tooltip.toString();
-        assert.ok(tooltipString.includes('Open'));
-        assert.ok(tooltipString.includes('New version'));
+        // MarkdownString has a .value property containing the actual markdown content
+        const tooltipValue = (item.tooltip as any).value || item.tooltip.toString();
+        // The tooltip uses markdown format like **Open**
+        assert.ok(tooltipValue.includes('Open'), `Expected tooltip to include 'Open', got: ${tooltipValue}`);
+        assert.ok(tooltipValue.includes('New version'), `Expected tooltip to include 'New version', got: ${tooltipValue}`);
     });
 
     test('should show resolved status in tooltip', () => {
@@ -304,16 +306,20 @@ suite('Tree Item Tooltip', () => {
         });
         const item = new DiffCommentItem(comment, '/test/repo/src/parser.ts');
 
-        const tooltipString = item.tooltip?.toString();
-        assert.ok(tooltipString?.includes('Resolved'));
+        // MarkdownString has a .value property containing the actual markdown content
+        const tooltipValue = (item.tooltip as any)?.value || item.tooltip?.toString();
+        // The tooltip uses markdown format like **Resolved**
+        assert.ok(tooltipValue?.includes('Resolved'), `Expected tooltip to include 'Resolved', got: ${tooltipValue}`);
     });
 
     test('should include selected text in tooltip', () => {
         const comment = createTestComment('1', 'src/parser.ts', 'Fix issue');
         const item = new DiffCommentItem(comment, '/test/repo/src/parser.ts');
 
-        const tooltipString = item.tooltip?.toString();
-        assert.ok(tooltipString?.includes('const x = 1'));
+        // MarkdownString has a .value property containing the actual markdown content
+        const tooltipValue = (item.tooltip as any)?.value || item.tooltip?.toString();
+        // The test helper creates selectedText as `const x = ${id};` which is `const x = 1;`
+        assert.ok(tooltipValue?.includes('const x = 1;'), `Expected tooltip to include 'const x = 1;', got: ${tooltipValue}`);
     });
 });
 
