@@ -227,6 +227,11 @@
           "type": "string",
           "default": "Please explain",
           "markdownDescription": "Default prompt template for **Custom Instruction** when user doesn't provide one. The selected text and file path will be appended automatically."
+        },
+        "workspaceShortcuts.aiService.workingDirectory": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Working directory for Copilot CLI execution. Supports `{workspaceFolder}` variable which expands to the workspace folder path. Examples: `{workspaceFolder}`, `{workspaceFolder}/src`, `/absolute/path`. Leave empty to use workspace root."
         }
       }
     },
@@ -555,6 +560,12 @@
         "title": "Reopen Comment",
         "category": "Git Diff Comments",
         "icon": "$(circle-outline)"
+      },
+      {
+        "command": "gitView.openWithMarkdownReview",
+        "title": "Open with Markdown Review",
+        "category": "Git",
+        "icon": "$(comment-discussion)"
       }
     ],
     "menus": {
@@ -830,6 +841,11 @@
           "command": "gitDiffComments.openWithReview",
           "when": "view == gitView && viewItem =~ /^gitChange_/",
           "group": "navigation@10"
+        },
+        {
+          "command": "gitView.openWithMarkdownReview",
+          "when": "view == gitView && viewItem =~ /^gitChange_/ && resourceExtname == .md",
+          "group": "navigation@11"
         },
         {
           "command": "gitDiffComments.openFileWithReview",

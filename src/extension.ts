@@ -147,6 +147,7 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitDiffCommentsDeleteCommand: vscode.Disposable | undefined;
         let gitDiffCommentsResolveCommand: vscode.Disposable | undefined;
         let gitDiffCommentsReopenCommand: vscode.Disposable | undefined;
+        let gitOpenWithMarkdownReviewCommand: vscode.Disposable | undefined;
 
         if (gitInitialized) {
             gitTreeView = vscode.window.createTreeView('gitView', {
@@ -351,6 +352,25 @@ export async function activate(context: vscode.ExtensionContext) {
                 async (item: DiffCommentItem) => {
                     if (item?.comment?.id) {
                         await diffCommentsManager.updateComment(item.comment.id, { status: 'open' });
+                    }
+                }
+            );
+
+            // Register command to open markdown files from git view with Review Editor
+            gitOpenWithMarkdownReviewCommand = vscode.commands.registerCommand(
+                'gitView.openWithMarkdownReview',
+                async (item: any) => {
+                    // Handle GitChangeItem from git changes section
+                    const filePath = item?.change?.path || item?.resourceUri?.fsPath;
+                    if (filePath && filePath.endsWith('.md')) {
+                        const targetUri = vscode.Uri.file(filePath);
+                        await vscode.commands.executeCommand(
+                            'vscode.openWith',
+                            targetUri,
+                            ReviewEditorViewProvider.viewType
+                        );
+                    } else {
+                        vscode.window.showWarningMessage('This command only works with markdown files.');
                     }
                 }
             );
@@ -591,6 +611,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitDiffCommentsDeleteCommand) disposables.push(gitDiffCommentsDeleteCommand);
         if (gitDiffCommentsResolveCommand) disposables.push(gitDiffCommentsResolveCommand);
         if (gitDiffCommentsReopenCommand) disposables.push(gitDiffCommentsReopenCommand);
+        if (gitOpenWithMarkdownReviewCommand) disposables.push(gitOpenWithMarkdownReviewCommand);
 
         // Add all disposables to context subscriptions
         context.subscriptions.push(...disposables);

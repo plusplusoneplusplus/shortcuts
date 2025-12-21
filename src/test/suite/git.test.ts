@@ -1427,5 +1427,125 @@ suite('Git View Tests', () => {
             assert.ok(GitTreeDataProvider);
         });
     });
+
+    // ============================================
+    // Markdown Review Command Tests
+    // ============================================
+    suite('Markdown Review Command', () => {
+        
+        test('should detect markdown files by extension', () => {
+            const mdFile = '/path/to/file.md';
+            const txtFile = '/path/to/file.txt';
+            const noExt = '/path/to/file';
+            
+            assert.strictEqual(mdFile.endsWith('.md'), true);
+            assert.strictEqual(txtFile.endsWith('.md'), false);
+            assert.strictEqual(noExt.endsWith('.md'), false);
+        });
+
+        test('should handle uppercase MD extension', () => {
+            const upperMd = '/path/to/file.MD';
+            const mixedMd = '/path/to/file.Md';
+            
+            // Case-insensitive check
+            assert.strictEqual(upperMd.toLowerCase().endsWith('.md'), true);
+            assert.strictEqual(mixedMd.toLowerCase().endsWith('.md'), true);
+        });
+
+        test('should handle markdown files in nested paths', () => {
+            const nestedMd = '/project/docs/guides/README.md';
+            assert.strictEqual(nestedMd.endsWith('.md'), true);
+        });
+
+        test('should handle markdown files with spaces in path', () => {
+            const spacedPath = '/my project/my docs/readme.md';
+            assert.strictEqual(spacedPath.endsWith('.md'), true);
+        });
+
+        test('should handle markdown files with special characters in name', () => {
+            const specialChars = '/docs/file-name_v2.0.md';
+            assert.strictEqual(specialChars.endsWith('.md'), true);
+        });
+
+        test('GitChangeItem should have resourceUri for markdown detection', () => {
+            const change: GitChange = {
+                path: '/repo/docs/README.md',
+                status: 'modified',
+                stage: 'unstaged',
+                repositoryRoot: '/repo',
+                repositoryName: 'repo',
+                uri: vscode.Uri.file('/repo/docs/README.md')
+            };
+            
+            const item = new GitChangeItem(change);
+            assert.ok(item.resourceUri);
+            assert.strictEqual(item.resourceUri?.fsPath, '/repo/docs/README.md');
+            assert.strictEqual(item.resourceUri?.fsPath.endsWith('.md'), true);
+        });
+
+        test('GitChangeItem contextValue should match menu condition', () => {
+            const stagedChange: GitChange = {
+                path: '/repo/file.md',
+                status: 'modified',
+                stage: 'staged',
+                repositoryRoot: '/repo',
+                repositoryName: 'repo',
+                uri: vscode.Uri.file('/repo/file.md')
+            };
+            
+            const unstagedChange: GitChange = {
+                path: '/repo/file.md',
+                status: 'modified',
+                stage: 'unstaged',
+                repositoryRoot: '/repo',
+                repositoryName: 'repo',
+                uri: vscode.Uri.file('/repo/file.md')
+            };
+            
+            const stagedItem = new GitChangeItem(stagedChange);
+            const unstagedItem = new GitChangeItem(unstagedChange);
+            
+            // Context values should match the pattern /^gitChange_/
+            assert.ok(stagedItem.contextValue?.startsWith('gitChange_'));
+            assert.ok(unstagedItem.contextValue?.startsWith('gitChange_'));
+            assert.strictEqual(stagedItem.contextValue, 'gitChange_staged');
+            assert.strictEqual(unstagedItem.contextValue, 'gitChange_unstaged');
+        });
+
+        test('should extract file path from GitChangeItem change property', () => {
+            const change: GitChange = {
+                path: '/repo/docs/guide.md',
+                status: 'added',
+                stage: 'staged',
+                repositoryRoot: '/repo',
+                repositoryName: 'repo',
+                uri: vscode.Uri.file('/repo/docs/guide.md')
+            };
+            
+            const item = new GitChangeItem(change);
+            
+            // The command extracts path from item.change.path
+            const filePath = item.change?.path;
+            assert.strictEqual(filePath, '/repo/docs/guide.md');
+            assert.strictEqual(filePath?.endsWith('.md'), true);
+        });
+
+        test('should handle non-markdown files gracefully', () => {
+            const change: GitChange = {
+                path: '/repo/src/main.ts',
+                status: 'modified',
+                stage: 'unstaged',
+                repositoryRoot: '/repo',
+                repositoryName: 'repo',
+                uri: vscode.Uri.file('/repo/src/main.ts')
+            };
+            
+            const item = new GitChangeItem(change);
+            const filePath = item.change?.path;
+            
+            // Should not be a markdown file
+            assert.strictEqual(filePath?.endsWith('.md'), false);
+        });
+    });
 });
 

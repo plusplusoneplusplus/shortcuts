@@ -74,6 +74,32 @@ export function getAIModelSetting(): AIModel | undefined {
 }
 
 /**
+ * Get the configured working directory from VS Code settings.
+ * Supports {workspaceFolder} variable expansion.
+ * 
+ * @param workspaceRoot - The workspace root path for variable expansion
+ * @returns The configured working directory, or workspace root if not configured
+ */
+export function getWorkingDirectory(workspaceRoot: string): string {
+    const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService');
+    const workingDir = config.get<string>('workingDirectory', '');
+
+    if (!workingDir || workingDir.trim() === '') {
+        return workspaceRoot;
+    }
+
+    // Expand {workspaceFolder} variable
+    const expanded = workingDir.replace(/\{workspaceFolder\}/g, workspaceRoot);
+
+    // Handle relative paths (if not absolute and not starting with {workspaceFolder})
+    if (!expanded.startsWith('/') && !expanded.match(/^[A-Za-z]:/)) {
+        return require('path').join(workspaceRoot, expanded);
+    }
+
+    return expanded;
+}
+
+/**
  * Get the configured prompt template from VS Code settings.
  * Falls back to default prompts if not configured.
  * 
@@ -194,14 +220,19 @@ export async function copyToClipboard(text: string): Promise<void> {
  * This is the fallback method that doesn't capture output.
  * 
  * @param prompt - The prompt to send to Copilot CLI
+ * @param workspaceRoot - Optional workspace root for working directory configuration
  * @returns True if the terminal was created successfully
  */
-export async function invokeCopilotCLITerminal(prompt: string): Promise<boolean> {
+export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: string): Promise<boolean> {
     try {
+        // Get the configured working directory if workspace root is provided
+        const cwd = workspaceRoot ? getWorkingDirectory(workspaceRoot) : undefined;
+
         // Create a new terminal for the Copilot CLI
         const terminal = vscode.window.createTerminal({
             name: 'Copilot AI',
-            hideFromUser: false
+            hideFromUser: false,
+            cwd: cwd
         });
 
         // Build the copilot command with escaped prompt and optional model
@@ -220,10 +251,10 @@ export async function invokeCopilotCLITerminal(prompt: string): Promise<boolean>
 
 /**
  * Invoke the Copilot CLI and capture its output.
- * Runs copilot as a child process in the specified directory.
+ * Runs copilot as a child process in the configured working directory.
  *
  * @param prompt - The prompt to send to Copilot CLI
- * @param workspaceRoot - The workspace root directory
+ * @param workspaceRoot - The workspace root directory (used for variable expansion)
  * @param processManager - Optional process manager for tracking
  * @returns The invocation result with the AI response
  */
@@ -238,6 +269,9 @@ export async function invokeCopilotCLI(
         // Build the copilot command with escaped prompt and optional model
         const command = buildCopilotCommand(prompt);
 
+        // Get the configured working directory
+        const cwd = getWorkingDirectory(workspaceRoot);
+
         // Show progress notification
         return await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -246,7 +280,7 @@ export async function invokeCopilotCLI(
         }, async (progress, token) => {
             return new Promise<AIInvocationResult>((resolve) => {
                 const childProcess = exec(command, {
-                    cwd: workspaceRoot,
+                    cwd: cwd,
                     timeout: COPILOT_TIMEOUT_MS,
                     maxBuffer: 1024 * 1024 * 10 // 10MB buffer
                 }, (error, stdout, stderr) => {
