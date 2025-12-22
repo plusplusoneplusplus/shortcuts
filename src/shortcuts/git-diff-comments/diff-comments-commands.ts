@@ -111,14 +111,6 @@ export class DiffCommentsCommands implements vscode.Disposable {
             )
         );
 
-        // Existing commands that need to be updated to work with tree items
-        this.disposables.push(
-            vscode.commands.registerCommand(
-                'gitDiffComments.goToComment',
-                (item: DiffCommentItem) => this.goToComment(item)
-            )
-        );
-
         // Undo resolve command
         this.disposables.push(
             vscode.commands.registerCommand(
@@ -397,18 +389,6 @@ export class DiffCommentsCommands implements vscode.Disposable {
         });
 
         vscode.window.showInformationMessage('✓ Comment updated');
-    }
-
-    /**
-     * Navigate to a comment in the diff review editor
-     */
-    private async goToComment(item: DiffCommentItem): Promise<void> {
-        // Open the diff review editor and scroll to the comment
-        await vscode.commands.executeCommand(
-            'gitDiffComments.openWithReview',
-            { filePath: item.absoluteFilePath, gitContext: item.comment.gitContext },
-            item.comment.id
-        );
     }
 
     /**

@@ -4,7 +4,7 @@
 
 import { ExtensionMessage } from './types';
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
-import { hideCommentPanel, hideCommentsList, initPanelElements, showCommentPanel, showCommentsForLine } from './panel-manager';
+import { hideCommentPanel, hideCommentsList, initPanelElements, showCommentPanel, showCommentsForLine, showContextMenu } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getState, getViewMode, setComments, setSettings, toggleViewMode, updateState, ViewMode } from './state';
 import { initVSCodeAPI, sendCopyPath, sendOpenFile, sendReady } from './vscode-bridge';
@@ -229,7 +229,8 @@ function setupClickOutsideToDismiss(): void {
             // Don't dismiss if clicking inside the panel
             if (!commentPanel.contains(target)) {
                 // Don't dismiss if clicking on a comment indicator (which opens the panel)
-                if (!target.classList.contains('comment-indicator')) {
+                // Also don't dismiss if clicking on the context menu (which might be opening the panel)
+                if (!target.classList.contains('comment-indicator') && !target.closest('#custom-context-menu')) {
                     hideCommentPanel();
                 }
             }
@@ -356,6 +357,17 @@ function setupCommentIndicatorHandlers(): void {
     
     const viewMode = getViewMode();
     
+    // Common handler for context menu
+    const handleContextMenu = (e: MouseEvent) => {
+        if (hasValidSelection()) {
+            const selection = getCurrentSelection();
+            if (selection) {
+                e.preventDefault(); // Prevent default context menu
+                showContextMenu(e.clientX, e.clientY, selection);
+            }
+        }
+    };
+    
     if (viewMode === 'inline') {
         // Inline view handlers
         const inlineContainer = document.getElementById('inline-content');
@@ -395,19 +407,9 @@ function setupCommentIndicatorHandlers(): void {
             }
         };
 
-        // Handle double-click on lines to add comments
-        const handleInlineDoubleClick = (e: MouseEvent) => {
-            if (hasValidSelection()) {
-                const selection = getCurrentSelection();
-                if (selection) {
-                    showCommentPanel(selection);
-                }
-            }
-        };
-
         if (inlineContainer) {
             inlineContainer.addEventListener('click', handleInlineClick, { signal });
-            inlineContainer.addEventListener('dblclick', handleInlineDoubleClick, { signal });
+            inlineContainer.addEventListener('contextmenu', handleContextMenu, { signal });
         }
     } else {
         // Split view handlers
@@ -434,25 +436,14 @@ function setupCommentIndicatorHandlers(): void {
             }
         };
 
-        // Handle double-click on lines to add comments
-        const handleDoubleClick = (e: MouseEvent) => {
-            // Only if there's a selection
-            if (hasValidSelection()) {
-                const selection = getCurrentSelection();
-                if (selection) {
-                    showCommentPanel(selection);
-                }
-            }
-        };
-
         if (oldContainer) {
             oldContainer.addEventListener('click', (e) => handleClick(e, 'old'), { signal });
-            oldContainer.addEventListener('dblclick', handleDoubleClick, { signal });
+            oldContainer.addEventListener('contextmenu', handleContextMenu, { signal });
         }
 
         if (newContainer) {
             newContainer.addEventListener('click', (e) => handleClick(e, 'new'), { signal });
-            newContainer.addEventListener('dblclick', handleDoubleClick, { signal });
+            newContainer.addEventListener('contextmenu', handleContextMenu, { signal });
         }
         
         // Re-initialize scroll sync for split view since we're not cloning elements anymore

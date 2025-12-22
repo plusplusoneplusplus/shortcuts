@@ -26,6 +26,8 @@ let closeButton: HTMLButtonElement | null = null;
 let commentsListPanel: HTMLElement | null = null;
 let commentsListBody: HTMLElement | null = null;
 let closeCommentsListButton: HTMLButtonElement | null = null;
+let contextMenu: HTMLElement | null = null;
+let contextMenuAddComment: HTMLElement | null = null;
 
 /**
  * Current selection for the comment panel
@@ -45,6 +47,8 @@ export function initPanelElements(): void {
     commentsListPanel = document.getElementById('comments-list');
     commentsListBody = document.getElementById('comments-list-body');
     closeCommentsListButton = document.getElementById('close-comments-list') as HTMLButtonElement;
+    contextMenu = document.getElementById('custom-context-menu');
+    contextMenuAddComment = document.getElementById('context-menu-add-comment');
 
     // Setup event listeners
     if (submitButton) {
@@ -62,6 +66,24 @@ export function initPanelElements(): void {
     if (closeCommentsListButton) {
         closeCommentsListButton.addEventListener('click', hideCommentsList);
     }
+
+    if (contextMenuAddComment) {
+        contextMenuAddComment.addEventListener('click', () => {
+            if (currentPanelSelection) {
+                showCommentPanel(currentPanelSelection);
+                hideContextMenu();
+            }
+        });
+    }
+
+    // Hide context menu on click anywhere else
+    document.addEventListener('click', (e) => {
+        // Only hide if we clicked outside the context menu
+        // But if we clicked the "Add Comment" item, the click handler above handles it
+        if (contextMenu && !contextMenu.contains(e.target as Node)) {
+            hideContextMenu();
+        }
+    });
 
     // Handle keyboard shortcuts
     if (commentInput) {
@@ -445,6 +467,44 @@ export function isCommentPanelVisible(): boolean {
  */
 export function isCommentsListVisible(): boolean {
     return commentsListPanel ? !commentsListPanel.classList.contains('hidden') : false;
+}
+
+/**
+ * Show custom context menu
+ */
+export function showContextMenu(x: number, y: number, selection: SelectionState): void {
+    if (!contextMenu) return;
+
+    currentPanelSelection = selection;
+    
+    // Position menu
+    const menuWidth = 150;
+    const menuHeight = 40; // Approx
+    
+    let left = x;
+    let top = y;
+    
+    // Adjust if close to edge
+    if (left + menuWidth > window.innerWidth) {
+        left = window.innerWidth - menuWidth - 10;
+    }
+    
+    if (top + menuHeight > window.innerHeight) {
+        top = window.innerHeight - menuHeight - 10;
+    }
+    
+    contextMenu.style.left = `${left}px`;
+    contextMenu.style.top = `${top}px`;
+    contextMenu.classList.remove('hidden');
+}
+
+/**
+ * Hide custom context menu
+ */
+export function hideContextMenu(): void {
+    if (contextMenu) {
+        contextMenu.classList.add('hidden');
+    }
 }
 
 /**

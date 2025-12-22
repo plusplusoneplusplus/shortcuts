@@ -557,6 +557,11 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         <div class="comments-list-body" id="comments-list-body"></div>
     </div>
 
+    <!-- Context Menu (hidden by default) -->
+    <div id="custom-context-menu" class="context-menu hidden">
+        <div class="context-menu-item" id="context-menu-add-comment">Add Comment</div>
+    </div>
+
     <!-- Initial data for webview initialization -->
     <script nonce="${nonce}">
         window.initialData = {
