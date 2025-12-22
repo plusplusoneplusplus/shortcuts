@@ -503,6 +503,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             <div class="diff-info">
                 <span class="diff-repo">${escapeHtml(gitContext.repositoryName)}</span>
                 <span class="diff-refs">${escapeHtml(gitContext.oldRef)} → ${escapeHtml(gitContext.newRef)}</span>
+                <button class="whitespace-toggle" id="whitespace-toggle" title="Toggle whitespace diff visibility">
+                    <span class="toggle-icon" id="whitespace-icon">␣</span>
+                    <span class="toggle-label" id="whitespace-label">Show Whitespace</span>
+                </button>
                 <button class="view-mode-toggle" id="view-mode-toggle" title="Toggle between split and inline view">
                     <span class="toggle-icon" id="toggle-icon">⫼</span>
                     <span class="toggle-label" id="toggle-label">Split</span>

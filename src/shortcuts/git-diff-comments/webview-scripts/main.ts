@@ -6,7 +6,7 @@ import { ExtensionMessage } from './types';
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
 import { hideCommentPanel, hideCommentsList, initPanelElements, showCommentPanel, showCommentsForLine, showContextMenu } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
-import { createInitialState, getCommentsForLine, getState, getViewMode, setComments, setSettings, toggleViewMode, updateState, ViewMode } from './state';
+import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getState, getViewMode, setComments, setSettings, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { initVSCodeAPI, sendCopyPath, sendOpenFile, sendReady } from './vscode-bridge';
 
 // AbortController for managing event listeners
@@ -45,6 +45,9 @@ function initialize(): void {
 
     // Setup view mode toggle
     setupViewModeToggle();
+
+    // Setup whitespace toggle
+    setupWhitespaceToggle();
 
     // Setup file path click handler
     setupFilePathClickHandler();
@@ -339,6 +342,50 @@ function setupViewModeToggle(): void {
         renderDiff();
         
         // Re-setup comment indicator handlers for the new view
+        setupCommentIndicatorHandlers();
+    });
+}
+
+/**
+ * Setup whitespace toggle button
+ */
+function setupWhitespaceToggle(): void {
+    const toggleButton = document.getElementById('whitespace-toggle');
+    const toggleIcon = document.getElementById('whitespace-icon');
+    const toggleLabel = document.getElementById('whitespace-label');
+
+    if (!toggleButton || !toggleIcon || !toggleLabel) {
+        console.error('[Diff Webview] Whitespace toggle elements not found');
+        return;
+    }
+
+    // Update UI to reflect current state
+    const updateToggleUI = (ignoreWhitespace: boolean) => {
+        if (ignoreWhitespace) {
+            toggleIcon.textContent = '␣';
+            toggleLabel.textContent = 'Hide Whitespace';
+            toggleButton.classList.add('active');
+            toggleButton.title = 'Showing diff without whitespace changes - click to show whitespace changes';
+        } else {
+            toggleIcon.textContent = '␣';
+            toggleLabel.textContent = 'Show Whitespace';
+            toggleButton.classList.remove('active');
+            toggleButton.title = 'Showing all changes including whitespace - click to hide whitespace-only changes';
+        }
+    };
+
+    // Initialize UI
+    updateToggleUI(getIgnoreWhitespace());
+
+    // Handle click
+    toggleButton.addEventListener('click', () => {
+        const newValue = toggleIgnoreWhitespace();
+        updateToggleUI(newValue);
+        // Invalidate highlight cache since we're changing how lines are compared
+        invalidateHighlightCache();
+        renderDiff();
+        
+        // Re-setup comment indicator handlers after re-render
         setupCommentIndicatorHandlers();
     });
 }

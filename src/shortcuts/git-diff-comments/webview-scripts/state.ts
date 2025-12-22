@@ -28,6 +28,7 @@ export interface AppState {
     isCommentPanelOpen: boolean;
     editingCommentId: string | null;
     viewMode: ViewMode;
+    ignoreWhitespace: boolean;
 }
 
 /**
@@ -66,7 +67,8 @@ export function createInitialState(): AppState {
         currentSelection: null,
         isCommentPanelOpen: false,
         editingCommentId: null,
-        viewMode: 'split' as ViewMode
+        viewMode: 'split' as ViewMode,
+        ignoreWhitespace: false
     };
 }
 
@@ -179,5 +181,27 @@ export function setViewMode(mode: ViewMode): void {
 export function toggleViewMode(): ViewMode {
     state.viewMode = state.viewMode === 'split' ? 'inline' : 'split';
     return state.viewMode;
+}
+
+/**
+ * Get ignore whitespace setting
+ */
+export function getIgnoreWhitespace(): boolean {
+    return state.ignoreWhitespace;
+}
+
+/**
+ * Set ignore whitespace setting
+ */
+export function setIgnoreWhitespace(ignore: boolean): void {
+    state.ignoreWhitespace = ignore;
+}
+
+/**
+ * Toggle ignore whitespace setting
+ */
+export function toggleIgnoreWhitespace(): boolean {
+    state.ignoreWhitespace = !state.ignoreWhitespace;
+    return state.ignoreWhitespace;
 }
 

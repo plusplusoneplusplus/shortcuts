@@ -107,11 +107,11 @@ html, body {
 }
 
 /* View mode toggle button */
-.view-mode-toggle {
+.view-mode-toggle,
+.whitespace-toggle {
     display: flex;
     align-items: center;
     gap: 4px;
-    margin-left: auto;
     background-color: var(--vscode-button-secondaryBackground);
     border: 1px solid var(--vscode-button-border, transparent);
     border-radius: 4px;
@@ -119,19 +119,37 @@ html, body {
     cursor: pointer;
     font-size: 12px;
     color: var(--vscode-button-secondaryForeground);
-    transition: background-color 0.15s;
+    transition: background-color 0.15s, border-color 0.15s;
 }
 
-.view-mode-toggle:hover {
+.whitespace-toggle {
+    margin-left: auto;
+}
+
+.view-mode-toggle:hover,
+.whitespace-toggle:hover {
     background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
-.view-mode-toggle .toggle-icon {
+.view-mode-toggle .toggle-icon,
+.whitespace-toggle .toggle-icon {
     font-size: 14px;
 }
 
-.view-mode-toggle .toggle-label {
+.view-mode-toggle .toggle-label,
+.whitespace-toggle .toggle-label {
     font-weight: 500;
+}
+
+/* Whitespace toggle active state */
+.whitespace-toggle.active {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-background);
+}
+
+.whitespace-toggle.active:hover {
+    background-color: var(--vscode-button-hoverBackground);
 }
 
 .diff-repo {

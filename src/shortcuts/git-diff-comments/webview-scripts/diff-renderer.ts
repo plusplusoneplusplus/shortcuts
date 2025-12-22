@@ -3,7 +3,7 @@
  */
 
 import { getLanguageFromFilePath, highlightCode, splitHighlightedHtmlIntoLines } from '../../shared/highlighted-html-lines';
-import { getCommentsForLine, getState, getViewMode } from './state';
+import { getCommentsForLine, getIgnoreWhitespace, getState, getViewMode } from './state';
 import { DiffComment, DiffLineType } from './types';
 
 /**
@@ -189,16 +189,42 @@ function createEmptyLineElement(): HTMLElement {
 }
 
 /**
+ * Normalize a line for comparison when ignoring whitespace
+ * Removes leading/trailing whitespace and collapses internal whitespace
+ */
+function normalizeLineForComparison(line: string): string {
+    return line.trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * Check if two lines are equal, optionally ignoring whitespace
+ */
+function linesEqual(line1: string, line2: string, ignoreWhitespace: boolean): boolean {
+    if (ignoreWhitespace) {
+        return normalizeLineForComparison(line1) === normalizeLineForComparison(line2);
+    }
+    return line1 === line2;
+}
+
+/**
+ * Check if the only difference between two lines is whitespace
+ */
+function isWhitespaceOnlyChange(oldLine: string, newLine: string): boolean {
+    return normalizeLineForComparison(oldLine) === normalizeLineForComparison(newLine) &&
+           oldLine !== newLine;
+}
+
+/**
  * Compute LCS (Longest Common Subsequence) for diff alignment
  */
-function computeLCS(oldLines: string[], newLines: string[]): number[][] {
+function computeLCS(oldLines: string[], newLines: string[], ignoreWhitespace: boolean = false): number[][] {
     const m = oldLines.length;
     const n = newLines.length;
     const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
 
     for (let i = 1; i <= m; i++) {
         for (let j = 1; j <= n; j++) {
-            if (oldLines[i - 1] === newLines[j - 1]) {
+            if (linesEqual(oldLines[i - 1], newLines[j - 1], ignoreWhitespace)) {
                 dp[i][j] = dp[i - 1][j - 1] + 1;
             } else {
                 dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
@@ -223,15 +249,16 @@ interface AlignedLine {
 function backtrackLCS(
     oldLines: string[],
     newLines: string[],
-    dp: number[][]
+    dp: number[][],
+    ignoreWhitespace: boolean = false
 ): AlignedLine[] {
     const result: AlignedLine[] = [];
     let i = oldLines.length;
     let j = newLines.length;
 
     while (i > 0 || j > 0) {
-        if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
-            // Context line (unchanged)
+        if (i > 0 && j > 0 && linesEqual(oldLines[i - 1], newLines[j - 1], ignoreWhitespace)) {
+            // Context line (unchanged or whitespace-only change when ignoring whitespace)
             result.unshift({
                 oldLine: oldLines[i - 1],
                 newLine: newLines[j - 1],
@@ -284,6 +311,7 @@ export function renderDiff(): void {
  */
 export function renderSplitDiff(): void {
     const state = getState();
+    const ignoreWhitespace = getIgnoreWhitespace();
     const oldContainer = document.getElementById('old-content');
     const newContainer = document.getElementById('new-content');
 
@@ -306,9 +334,9 @@ export function renderSplitDiff(): void {
     // Get highlighted lines
     const { oldHighlighted, newHighlighted } = getHighlightedLines();
 
-    // Compute LCS for alignment
-    const dp = computeLCS(oldLines, newLines);
-    const aligned = backtrackLCS(oldLines, newLines, dp);
+    // Compute LCS for alignment (with optional whitespace ignoring)
+    const dp = computeLCS(oldLines, newLines, ignoreWhitespace);
+    const aligned = backtrackLCS(oldLines, newLines, dp, ignoreWhitespace);
 
     // Render aligned lines
     let lineIndex = 0;
@@ -472,6 +500,7 @@ function createInlineLineElement(
  */
 export function renderInlineDiff(): void {
     const state = getState();
+    const ignoreWhitespace = getIgnoreWhitespace();
     const inlineContainer = document.getElementById('inline-content');
 
     if (!inlineContainer) {
@@ -492,9 +521,9 @@ export function renderInlineDiff(): void {
     // Get highlighted lines
     const { oldHighlighted, newHighlighted } = getHighlightedLines();
 
-    // Compute LCS for alignment
-    const dp = computeLCS(oldLines, newLines);
-    const aligned = backtrackLCS(oldLines, newLines, dp);
+    // Compute LCS for alignment (with optional whitespace ignoring)
+    const dp = computeLCS(oldLines, newLines, ignoreWhitespace);
+    const aligned = backtrackLCS(oldLines, newLines, dp, ignoreWhitespace);
 
     // Render in unified/inline style
     let lineIndex = 0;
