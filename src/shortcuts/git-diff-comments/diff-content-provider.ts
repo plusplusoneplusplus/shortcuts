@@ -27,6 +27,14 @@ export interface DiffContentResult {
 }
 
 /**
+ * Normalize line endings to LF (Unix-style)
+ * This prevents CRLF vs LF differences from causing entire files to appear as changed
+ */
+function normalizeLineEndings(content: string): string {
+    return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+/**
  * Execute a git command and return the output
  */
 function execGit(args: string[], cwd: string): string {
@@ -85,6 +93,8 @@ function isBinaryFile(filePath: string, repositoryRoot: string): boolean {
 
 /**
  * Get file content at a specific Git ref
+ * Line endings are normalized to LF to prevent CRLF/LF differences from
+ * causing entire files to appear as changed on Windows
  */
 export function getFileAtRef(
     filePath: string,
@@ -97,9 +107,10 @@ export function getFileAtRef(
             const absolutePath = path.isAbsolute(filePath)
                 ? filePath
                 : path.join(repositoryRoot, filePath);
-            
+
             if (fs.existsSync(absolutePath)) {
-                return fs.readFileSync(absolutePath, 'utf8');
+                const content = fs.readFileSync(absolutePath, 'utf8');
+                return normalizeLineEndings(content);
             }
             return '';
         }
@@ -113,7 +124,7 @@ export function getFileAtRef(
             ['show', `${ref}:${gitPath}`],
             repositoryRoot
         );
-        return result;
+        return normalizeLineEndings(result);
     } catch (error: any) {
         // File might not exist at this ref (new file, deleted file, etc.)
         console.warn(`Could not get file at ref ${ref}:${filePath}:`, error.message);
