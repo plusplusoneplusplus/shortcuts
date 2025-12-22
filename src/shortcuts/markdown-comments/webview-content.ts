@@ -70,6 +70,16 @@ export function getWebviewContent(
 <body>
     <div class="toolbar">
         <div class="toolbar-group">
+            <div class="mode-toggle" id="modeToggle" title="Switch between Review and Source modes">
+                <button id="reviewModeBtn" class="mode-btn active" data-mode="review">
+                    <span class="icon">📝</span> Review
+                </button>
+                <button id="sourceModeBtn" class="mode-btn" data-mode="source">
+                    <span class="icon">📄</span> Source
+                </button>
+            </div>
+        </div>
+        <div class="toolbar-group toolbar-review-only">
             <button id="resolveAllBtn" class="toolbar-btn" title="Resolve All Comments">
                 <span class="icon">✅</span> Resolve All
             </button>
@@ -77,18 +87,18 @@ export function getWebviewContent(
                 <span class="icon">🗑️</span> Sign Off
             </button>
         </div>
-        <div class="toolbar-group">
+        <div class="toolbar-group toolbar-review-only">
             <button id="copyPromptBtn" class="toolbar-btn" title="Copy AI Prompt to Clipboard">
                 <span class="icon">📋</span> Copy Prompt
             </button>
         </div>
-        <div class="toolbar-group">
+        <div class="toolbar-group toolbar-review-only">
             <label class="toolbar-checkbox">
                 <input type="checkbox" id="showResolvedCheckbox" checked>
                 Show Resolved
             </label>
         </div>
-        <div class="toolbar-stats" id="statsDisplay">
+        <div class="toolbar-stats toolbar-review-only" id="statsDisplay">
             <span class="stat open-stat">Open: <span id="openCount">0</span></span>
             <span class="stat resolved-stat">Resolved: <span id="resolvedCount">0</span></span>
         </div>

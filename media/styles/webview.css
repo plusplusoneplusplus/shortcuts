@@ -86,8 +86,8 @@ body {
 .toolbar {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 8px 16px;
+    gap: 8px;
+    padding: 4px 10px;
     background: var(--vscode-titleBar-activeBackground);
     border-bottom: 1px solid var(--border-color);
     flex-wrap: wrap;
@@ -96,20 +96,20 @@ body {
 .toolbar-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
 }
 
 .toolbar-btn {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 6px 12px;
+    gap: 3px;
+    padding: 3px 8px;
     background: var(--button-bg);
     color: var(--button-fg);
     border: none;
-    border-radius: 4px;
+    border-radius: 3px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11px;
     transition: background-color 0.2s;
 }
 
@@ -123,27 +123,70 @@ body {
 }
 
 .toolbar-btn .icon {
-    font-size: 14px;
+    font-size: 12px;
+}
+
+/* Mode Toggle Button Group */
+.mode-toggle {
+    display: flex;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.mode-btn {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 8px;
+    background: transparent;
+    color: var(--text-color);
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    transition: background-color 0.2s, color 0.2s;
+    opacity: 0.7;
+}
+
+.mode-btn:hover {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.mode-btn.active {
+    background: var(--button-bg);
+    color: var(--button-fg);
+    opacity: 1;
+}
+
+.mode-btn .icon {
+    font-size: 11px;
+}
+
+/* Hide review-only controls in source mode */
+body.source-mode .toolbar-review-only {
+    display: none;
 }
 
 .toolbar-checkbox {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 12px;
+    gap: 4px;
+    font-size: 11px;
     cursor: pointer;
 }
 
 .toolbar-stats {
     margin-left: auto;
     display: flex;
-    gap: 12px;
-    font-size: 12px;
+    gap: 6px;
+    font-size: 11px;
 }
 
 .stat {
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
 }
 
 .open-stat {
@@ -261,6 +304,12 @@ body {
 
 .line-content:focus {
     outline: none;
+}
+
+/* Source mode line styling */
+.line-content.source-mode {
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--text-color);
 }
 
 /* Support for contenteditable on the wrapper */

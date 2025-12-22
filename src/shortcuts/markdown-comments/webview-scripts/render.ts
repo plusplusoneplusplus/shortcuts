@@ -289,12 +289,62 @@ function restoreCursorPosition(
 }
 
 /**
+ * Render in source mode - plain text view with line numbers
+ * No markdown highlighting, no code block rendering, no comments
+ */
+function renderSourceMode(): void {
+    const editorWrapper = document.getElementById('editorWrapper')!;
+    const openCount = document.getElementById('openCount')!;
+    const resolvedCount = document.getElementById('resolvedCount')!;
+
+    // Normalize line endings
+    const normalizedContent = state.currentContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalizedContent.split('\n');
+
+    let html = '';
+
+    lines.forEach((line, index) => {
+        const lineNum = index + 1;
+        // Escape HTML entities for safe display
+        const escapedLine = escapeHtml(line) || '&nbsp;';
+        
+        html += '<div class="line-row">' +
+            '<div class="line-number" contenteditable="false">' + lineNum + '</div>' +
+            '<div class="line-content source-mode" data-line="' + lineNum + '">' + escapedLine + '</div>' +
+            '</div>';
+    });
+
+    editorWrapper.innerHTML = html;
+
+    // Update stats (still show counts even in source mode)
+    const open = state.comments.filter(c => c.status === 'open').length;
+    const resolved = state.comments.filter(c => c.status === 'resolved').length;
+    openCount.textContent = String(open);
+    resolvedCount.textContent = String(resolved);
+}
+
+/**
+ * Escape HTML special characters
+ */
+function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
  * Main render function - renders the editor content with markdown highlighting,
  * code blocks, tables, and comments
  * 
  * @param isExternalChange - True if this render is triggered by an external change (undo/redo)
  */
 export function render(isExternalChange: boolean = false): void {
+    // Check if we're in source mode
+    if (state.viewMode === 'source') {
+        renderSourceMode();
+        return;
+    }
+
     const editorWrapper = document.getElementById('editorWrapper')!;
 
     // For external changes, try to restore cursor position by clamping to valid bounds

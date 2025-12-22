@@ -94,6 +94,53 @@ function setupToolbarEventListeners(): void {
         state.setSettings({ showResolved: (e.target as HTMLInputElement).checked });
         render();
     });
+
+    // Mode toggle buttons
+    setupModeToggle();
+}
+
+/**
+ * Setup mode toggle button handlers
+ */
+function setupModeToggle(): void {
+    const reviewModeBtn = document.getElementById('reviewModeBtn');
+    const sourceModeBtn = document.getElementById('sourceModeBtn');
+
+    reviewModeBtn?.addEventListener('click', () => {
+        if (state.viewMode !== 'review') {
+            setViewMode('review');
+        }
+    });
+
+    sourceModeBtn?.addEventListener('click', () => {
+        if (state.viewMode !== 'source') {
+            setViewMode('source');
+        }
+    });
+}
+
+/**
+ * Set the view mode and update UI
+ */
+export function setViewMode(mode: 'review' | 'source'): void {
+    state.setViewMode(mode);
+
+    // Update button active states
+    const reviewModeBtn = document.getElementById('reviewModeBtn');
+    const sourceModeBtn = document.getElementById('sourceModeBtn');
+
+    if (mode === 'review') {
+        reviewModeBtn?.classList.add('active');
+        sourceModeBtn?.classList.remove('active');
+        document.body.classList.remove('source-mode');
+    } else {
+        reviewModeBtn?.classList.remove('active');
+        sourceModeBtn?.classList.add('active');
+        document.body.classList.add('source-mode');
+    }
+
+    // Re-render with the new mode
+    render();
 }
 
 /**

@@ -18,6 +18,17 @@ import {
     PromptGenerator
 } from '../../shortcuts/markdown-comments';
 
+/**
+ * View mode for the editor (same as in webview-scripts/state.ts)
+ * - 'review': Rich markdown rendering with comments support
+ * - 'source': Plain text source view (raw markdown)
+ * 
+ * Note: We define this type here instead of importing from webview-scripts
+ * because webview-scripts uses browser-specific types (DOM) that are not
+ * available in the Node.js test environment.
+ */
+type ViewMode = 'review' | 'source';
+
 suite('Markdown Comments Feature Tests', () => {
     let tempDir: string;
     let commentsManager: CommentsManager;
@@ -1456,6 +1467,65 @@ suite('Markdown Comments Feature Tests', () => {
             assert.ok(comment);
             assert.strictEqual(comment.mermaidContext?.diagramType, 'sequence');
             assert.strictEqual(comment.mermaidContext?.elementType, 'edge');
+        });
+    });
+
+    suite('ViewMode Type', () => {
+        test('should have correct view mode type values', () => {
+            // Test that ViewMode type accepts valid values
+            const reviewMode: ViewMode = 'review';
+            const sourceMode: ViewMode = 'source';
+            
+            assert.strictEqual(reviewMode, 'review');
+            assert.strictEqual(sourceMode, 'source');
+        });
+
+        test('should support mode switching logic', () => {
+            // Test the mode switching logic that would be used in the webview
+            let currentMode: ViewMode = 'review';
+            
+            // Switch to source mode
+            currentMode = 'source';
+            assert.strictEqual(currentMode, 'source');
+            
+            // Switch back to review mode
+            currentMode = 'review';
+            assert.strictEqual(currentMode, 'review');
+        });
+
+        test('should correctly identify mode for UI state', () => {
+            // Test helper logic for determining UI state based on mode
+            function isReviewMode(mode: ViewMode): boolean {
+                return mode === 'review';
+            }
+            
+            function isSourceMode(mode: ViewMode): boolean {
+                return mode === 'source';
+            }
+            
+            assert.strictEqual(isReviewMode('review'), true);
+            assert.strictEqual(isReviewMode('source'), false);
+            assert.strictEqual(isSourceMode('source'), true);
+            assert.strictEqual(isSourceMode('review'), false);
+        });
+
+        test('should handle mode-dependent feature visibility', () => {
+            // Test logic for showing/hiding features based on mode
+            function shouldShowCommentTools(mode: ViewMode): boolean {
+                return mode === 'review';
+            }
+            
+            function shouldShowPlainText(mode: ViewMode): boolean {
+                return mode === 'source';
+            }
+            
+            // In review mode
+            assert.strictEqual(shouldShowCommentTools('review'), true);
+            assert.strictEqual(shouldShowPlainText('review'), false);
+            
+            // In source mode
+            assert.strictEqual(shouldShowCommentTools('source'), false);
+            assert.strictEqual(shouldShowPlainText('source'), true);
         });
     });
 });

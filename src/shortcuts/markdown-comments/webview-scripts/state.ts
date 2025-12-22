@@ -14,6 +14,13 @@ import {
 } from './types';
 
 /**
+ * View mode for the editor
+ * - 'review': Rich markdown rendering with comments support
+ * - 'source': Plain text source view (raw markdown)
+ */
+export type ViewMode = 'review' | 'source';
+
+/**
  * Webview state singleton
  */
 class WebviewStateManager {
@@ -35,6 +42,9 @@ class WebviewStateManager {
     private _editingCommentId: string | null = null;
     private _activeCommentBubble: ActiveCommentBubble | null = null;
     private _savedSelectionForContextMenu: SavedSelection | null = null;
+    
+    // View mode state
+    private _viewMode: ViewMode = 'review';
     
     // Mermaid state
     private _mermaidLoaded: boolean = false;
@@ -109,6 +119,10 @@ class WebviewStateManager {
         return this._isInteracting;
     }
     
+    get viewMode(): ViewMode {
+        return this._viewMode;
+    }
+    
     // Setters
     setVscode(api: VsCodeApi): void {
         this._vscode = api;
@@ -168,6 +182,10 @@ class WebviewStateManager {
     
     clearPendingMermaidBlocks(): void {
         this._pendingMermaidBlocks = [];
+    }
+    
+    setViewMode(mode: ViewMode): void {
+        this._viewMode = mode;
     }
     
     /**
