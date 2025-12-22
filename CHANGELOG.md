@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.11.0] - 2025-12-21
+
+### Added
+- **Context Menu for Git Diff Comments**: Select text in diff view and right-click to add comments directly
+
+### Fixed
+- **Windows Compatibility**: Git commands now work correctly on Windows by avoiding caret notation
+
 ## [2.10.1] - 2025-12-21
 
 ### Fixed
