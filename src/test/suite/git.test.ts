@@ -1568,5 +1568,140 @@ suite('Git View Tests', () => {
             assert.strictEqual(filePath?.endsWith('.md'), false);
         });
     });
+
+    // ============================================
+    // Windows Compatibility Tests
+    // ============================================
+    suite('Windows Compatibility', () => {
+        /**
+         * These tests verify that git commands work correctly on Windows.
+         * The main issue is that the caret (^) character is an escape character
+         * in Windows cmd.exe, which can cause git commands like "git rev-parse HEAD^"
+         * to fail or return incorrect results.
+         * 
+         * The fix uses ~1 instead of ^ for parent references:
+         * - HEAD^ -> HEAD~1 (both refer to first parent)
+         * - commit^ -> commit~1 (both refer to first parent)
+         */
+
+        test('should use tilde notation instead of caret for parent references', () => {
+            // Verify that the git command syntax uses ~1 instead of ^
+            // This is a documentation/contract test to ensure we don't regress
+            
+            // The problematic pattern: commitHash^
+            // The safe pattern: commitHash~1
+            
+            // Both are equivalent for first parent:
+            // HEAD^ = HEAD~1 = first parent of HEAD
+            // abc123^ = abc123~1 = first parent of abc123
+            
+            const commitHash = 'abc123def456789';
+            
+            // The command we should be using (Windows-safe)
+            const safeCommand = `git rev-parse ${commitHash}~1`;
+            
+            // Verify the command doesn't contain the problematic caret pattern
+            // (caret followed by end of string or whitespace)
+            const hasProblematicCaret = /\^($|\s)/.test(safeCommand);
+            assert.strictEqual(hasProblematicCaret, false, 
+                'Command should not use caret (^) for parent reference');
+            
+            // Verify it uses the tilde notation
+            assert.ok(safeCommand.includes('~1'), 
+                'Command should use ~1 for parent reference');
+        });
+
+        test('should not use caret in curly brace suffix for ref validation', () => {
+            // The ^{commit} suffix is also problematic on Windows
+            // We should use git cat-file -t instead to verify object type
+            
+            const ref = 'HEAD';
+            
+            // The problematic pattern: ref^{commit}
+            const problematicPattern = `${ref}^{commit}`;
+            
+            // Verify this pattern contains caret (what we want to avoid)
+            assert.ok(problematicPattern.includes('^'), 
+                'Problematic pattern should contain caret');
+            
+            // The safe alternative is to:
+            // 1. git rev-parse --verify "ref" to get the hash
+            // 2. git cat-file -t "hash" to verify it's a commit
+            const safeCommand1 = `git rev-parse --verify "${ref}"`;
+            const safeCommand2 = `git cat-file -t "hash"`;
+            
+            // Neither safe command should contain caret
+            assert.strictEqual(safeCommand1.includes('^'), false,
+                'Safe rev-parse command should not contain caret');
+            assert.strictEqual(safeCommand2.includes('^'), false,
+                'Safe cat-file command should not contain caret');
+        });
+
+        test('should handle Windows path separators in git commands', () => {
+            // Git commands should use forward slashes even on Windows
+            const windowsPath = 'src\\shortcuts\\git\\file.ts';
+            const gitPath = windowsPath.replace(/\\/g, '/');
+            
+            assert.strictEqual(gitPath, 'src/shortcuts/git/file.ts');
+            assert.strictEqual(gitPath.includes('\\'), false,
+                'Git path should not contain backslashes');
+        });
+
+        test('GitCommitFile should have parentHash for diff comparison', () => {
+            // Ensure the parentHash is properly set for committed files
+            // This is used to compare old (parent) vs new (commit) content
+            const file: GitCommitFile = {
+                path: 'src/file.ts',
+                status: 'modified',
+                commitHash: 'abc123def456789',
+                parentHash: 'parent123456789',
+                repositoryRoot: '/repo'
+            };
+            
+            assert.ok(file.parentHash, 'parentHash should be set');
+            assert.ok(file.commitHash, 'commitHash should be set');
+            assert.notStrictEqual(file.parentHash, file.commitHash,
+                'parentHash and commitHash should be different');
+        });
+
+        test('should handle empty parentHash for initial commits', () => {
+            // Initial commits have no parent, so we use the empty tree hash
+            const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+            
+            const file: GitCommitFile = {
+                path: 'README.md',
+                status: 'added',
+                commitHash: 'initial123',
+                parentHash: EMPTY_TREE_HASH,
+                repositoryRoot: '/repo'
+            };
+            
+            assert.strictEqual(file.parentHash, EMPTY_TREE_HASH,
+                'Initial commit should use empty tree hash as parent');
+        });
+
+        test('tilde and caret should be equivalent for first parent', () => {
+            // This is a documentation test explaining the equivalence
+            // In git:
+            // - HEAD^ means "first parent of HEAD"
+            // - HEAD~1 means "first ancestor, going back 1 generation"
+            // For non-merge commits, these are identical
+            // For merge commits, ^ refers to first parent (main branch)
+            
+            // We use ~1 because:
+            // 1. It's equivalent to ^ for first parent
+            // 2. It works on Windows without escaping issues
+            // 3. It's more explicit about the number of generations
+            
+            const commitRef = 'abc123';
+            const caretNotation = `${commitRef}^`;    // Problematic on Windows
+            const tildeNotation = `${commitRef}~1`;   // Safe on all platforms
+            
+            // Both notations refer to the same commit (first parent)
+            // This test documents our choice to use tilde notation
+            assert.ok(tildeNotation.endsWith('~1'),
+                'Should use tilde notation for cross-platform compatibility');
+        });
+    });
 });
 

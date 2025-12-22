@@ -276,15 +276,33 @@ export class GitLogService implements vscode.Disposable {
      */
     validateRef(repoRoot: string, ref: string): string | undefined {
         try {
-            // Use ^{commit} to ensure it's a commit (not a tree or blob)
-            const command = `git rev-parse --verify "${ref}^{commit}"`;
+            // Use git rev-parse --verify to ensure it's a valid ref
+            // Note: We avoid using ^{commit} suffix because the caret (^) is an 
+            // escape character in Windows cmd.exe. Instead, we verify the ref
+            // directly and check if it resolves to a valid commit.
+            const command = `git rev-parse --verify "${ref}"`;
             const output = execSync(command, {
                 cwd: repoRoot,
                 encoding: 'utf-8',
                 timeout: 5000,
                 stdio: ['pipe', 'pipe', 'pipe']  // Suppress stderr
             });
-            return output.trim();
+            const hash = output.trim();
+            
+            // Verify it's actually a commit object (not a tree or blob)
+            // by checking if git cat-file returns "commit"
+            const typeCommand = `git cat-file -t "${hash}"`;
+            const typeOutput = execSync(typeCommand, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                timeout: 5000,
+                stdio: ['pipe', 'pipe', 'pipe']
+            });
+            
+            if (typeOutput.trim() === 'commit') {
+                return hash;
+            }
+            return undefined;
         } catch {
             return undefined;
         }
@@ -368,7 +386,10 @@ export class GitLogService implements vscode.Disposable {
      */
     private getParentHash(repoRoot: string, commitHash: string): string {
         try {
-            const command = `git rev-parse ${commitHash}^`;
+            // Use git rev-parse with ~1 instead of ^ to avoid Windows cmd.exe issues
+            // The caret (^) is an escape character in Windows cmd.exe and can cause
+            // the command to fail or return incorrect results
+            const command = `git rev-parse ${commitHash}~1`;
             const output = execSync(command, {
                 cwd: repoRoot,
                 encoding: 'utf-8',
