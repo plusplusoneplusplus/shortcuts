@@ -44,7 +44,7 @@ Shortcuts are stored in `.vscode/shortcuts.yaml` (workspace) or `~/.vscode-short
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `workspaceShortcuts.openMarkdownInPreview` | `false` | Open markdown in preview mode |
+| `workspaceShortcuts.alwaysOpenMarkdownInReviewEditor` | `false` | Always open markdown in Review Editor View |
 | `workspaceShortcuts.sync.enabled` | `false` | Enable cloud sync |
 | `workspaceShortcuts.sync.provider` | `"vscode"` | Sync provider: "vscode" or "azure" |
 | `workspaceShortcuts.sync.autoSync` | `true` | Auto-sync on changes |

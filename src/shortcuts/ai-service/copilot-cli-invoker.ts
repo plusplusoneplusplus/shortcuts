@@ -78,13 +78,22 @@ export function getAIModelSetting(): AIModel | undefined {
  * Supports {workspaceFolder} variable expansion.
  * 
  * @param workspaceRoot - The workspace root path for variable expansion
- * @returns The configured working directory, or workspace root if not configured
+ * @returns The configured working directory, or {workspaceFolder}/src if it exists, or workspace root
  */
 export function getWorkingDirectory(workspaceRoot: string): string {
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService');
     const workingDir = config.get<string>('workingDirectory', '');
 
     if (!workingDir || workingDir.trim() === '') {
+        // Default to {workspaceFolder}/src if src directory exists
+        const fs = require('fs');
+        const path = require('path');
+        const srcPath = path.join(workspaceRoot, 'src');
+        
+        if (fs.existsSync(srcPath) && fs.statSync(srcPath).isDirectory()) {
+            return srcPath;
+        }
+        
         return workspaceRoot;
     }
 

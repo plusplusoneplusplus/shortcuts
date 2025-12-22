@@ -89,6 +89,7 @@ Test files are in `src/test/suite/` and include:
 - `AIProcessManager` - Manages running AI clarification requests
 - `AIProcessTreeDataProvider` - Shows running/completed AI processes
 - `CopilotCLIInvoker` - Invokes GitHub Copilot CLI or copies to clipboard
+- Working directory defaults to `{workspaceFolder}/src` if the src directory exists, otherwise falls back to workspace root
 
 ### Data Flow
 

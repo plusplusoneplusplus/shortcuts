@@ -103,10 +103,10 @@
     "configuration": {
       "title": "Workspace Shortcuts",
       "properties": {
-        "workspaceShortcuts.openMarkdownInPreview": {
+        "workspaceShortcuts.alwaysOpenMarkdownInReviewEditor": {
           "type": "boolean",
           "default": false,
-          "description": "Automatically open Markdown (.md) files in preview mode instead of edit mode when creating or opening from shortcuts"
+          "description": "Always open Markdown (.md) files in Review Editor View instead of the standard text editor when opening from shortcuts"
         },
         "workspaceShortcuts.sync.enabled": {
           "type": "boolean",
@@ -231,7 +231,7 @@
         "workspaceShortcuts.aiService.workingDirectory": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Working directory for Copilot CLI execution. Supports `{workspaceFolder}` variable which expands to the workspace folder path. Examples: `{workspaceFolder}`, `{workspaceFolder}/src`, `/absolute/path`. Leave empty to use workspace root."
+          "markdownDescription": "Working directory for Copilot CLI execution. Supports `{workspaceFolder}` variable which expands to the workspace folder path. Examples: `{workspaceFolder}`, `{workspaceFolder}/src`, `/absolute/path`. Leave empty to default to `{workspaceFolder}/src` if it exists, otherwise workspace root."
         }
       }
     },

@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { GlobalNotesTreeDataProvider } from './global-notes';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
-import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, GlobalNotesSectionItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
+import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
 
 /**
  * Command handlers for the shortcuts panel
@@ -255,19 +255,23 @@ export class ShortcutsCommands {
     }
 
     /**
-     * Open a file in the editor, respecting user preferences for markdown preview
+     * Open a file in the editor, respecting user preferences for markdown files
      * @param fileUri URI of the file to open
      */
     private async openFile(fileUri: vscode.Uri): Promise<void> {
         const config = vscode.workspace.getConfiguration('workspaceShortcuts');
-        const openMarkdownInPreview = config.get<boolean>('openMarkdownInPreview', false);
+        const alwaysOpenMarkdownInReviewEditor = config.get<boolean>('alwaysOpenMarkdownInReviewEditor', false);
 
         // Check if it's a markdown file
         const isMarkdown = fileUri.fsPath.toLowerCase().endsWith('.md');
 
-        if (isMarkdown && openMarkdownInPreview) {
-            // Open in preview mode
-            await vscode.commands.executeCommand('markdown.showPreview', fileUri);
+        if (isMarkdown && alwaysOpenMarkdownInReviewEditor) {
+            // Open in Review Editor View
+            await vscode.commands.executeCommand(
+                'vscode.openWith',
+                fileUri,
+                'reviewEditorView'
+            );
         } else {
             // Open normally in text editor
             await vscode.window.showTextDocument(fileUri);

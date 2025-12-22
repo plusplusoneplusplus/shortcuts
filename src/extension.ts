@@ -593,6 +593,62 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Track files we've already redirected to avoid infinite loops
+        const redirectedFiles = new Set<string>();
+
+        // Listen for markdown files being opened and redirect to Review Editor when setting is enabled
+        const markdownOpenListener = vscode.workspace.onDidOpenTextDocument(async (document) => {
+            // Check if it's a markdown file
+            if (!document.fileName.toLowerCase().endsWith('.md')) {
+                return;
+            }
+
+            // Check if the setting is enabled
+            const config = vscode.workspace.getConfiguration('workspaceShortcuts');
+            const alwaysOpenInReviewEditor = config.get<boolean>('alwaysOpenMarkdownInReviewEditor', false);
+
+            if (!alwaysOpenInReviewEditor) {
+                return;
+            }
+
+            // Check if we've already redirected this file (to avoid infinite loops)
+            const fileKey = document.uri.toString();
+            if (redirectedFiles.has(fileKey)) {
+                redirectedFiles.delete(fileKey);
+                return;
+            }
+
+            // Mark as redirected before opening to prevent loop
+            redirectedFiles.add(fileKey);
+
+            // Small delay to allow the document to fully open before we close and reopen
+            setTimeout(async () => {
+                try {
+                    // Close the current text editor for this file
+                    const editor = vscode.window.visibleTextEditors.find(
+                        e => e.document.uri.toString() === document.uri.toString()
+                    );
+                    
+                    if (editor) {
+                        // Close the text editor tab
+                        await vscode.window.showTextDocument(document, { preview: false, preserveFocus: true });
+                        await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+                    }
+
+                    // Open with Review Editor View
+                    await vscode.commands.executeCommand(
+                        'vscode.openWith',
+                        document.uri,
+                        ReviewEditorViewProvider.viewType
+                    );
+                } catch (error) {
+                    console.error('Error redirecting markdown to Review Editor:', error);
+                    // Clean up the redirect tracking on error
+                    redirectedFiles.delete(fileKey);
+                }
+            }, 50);
+        });
+
         // Collect all disposables for proper cleanup
         const disposables: vscode.Disposable[] = [
             treeView,
@@ -613,6 +669,7 @@ export async function activate(context: vscode.ExtensionContext) {
             commentsTreeDataProvider,
             customEditorDisposable,
             openWithCommentsCommand,
+            markdownOpenListener,
             ...commentsCommandDisposables,
             // AI Process disposables
             aiProcessesTreeView,

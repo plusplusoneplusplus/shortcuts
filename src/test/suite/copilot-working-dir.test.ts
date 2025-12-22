@@ -16,12 +16,13 @@ suite('Copilot Working Directory Tests', () => {
 
     suite('getWorkingDirectory', () => {
 
-        test('should return workspace root when setting is empty', () => {
-            // Default behavior when no setting is configured
+        test('should return workspace root when setting is empty and no src folder exists', () => {
+            // Default behavior when no setting is configured and no src folder
             // Note: This test assumes the setting returns empty string by default
+            // and the workspaceRoot path doesn't have a src folder
             const result = getWorkingDirectory(workspaceRoot);
-            // When setting is empty, should return workspace root
-            assert.ok(result === workspaceRoot || result.length > 0);
+            // When setting is empty and no src folder, should return workspace root or src if exists
+            assert.ok(result === workspaceRoot || result.endsWith('/src') || result.endsWith('\\src') || result.length > 0);
         });
 
         test('should expand {workspaceFolder} variable to workspace root', () => {
@@ -165,6 +166,66 @@ suite('Copilot Working Directory Tests', () => {
                 ? 'C:\\Users\\test\\project\\src'
                 : '/Users/test/project/src';
             assert.strictEqual(normalized, expected);
+        });
+    });
+
+    suite('Default to src folder when it exists', () => {
+        const fs = require('fs');
+        const os = require('os');
+        let tempDir: string;
+
+        suiteSetup(() => {
+            // Create a temporary directory for testing
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-working-dir-test-'));
+        });
+
+        suiteTeardown(() => {
+            // Clean up temporary directory
+            if (fs.existsSync(tempDir)) {
+                fs.rmSync(tempDir, { recursive: true, force: true });
+            }
+        });
+
+        test('should return {workspaceFolder}/src when src directory exists', () => {
+            // Create src directory in temp folder
+            const srcPath = path.join(tempDir, 'src');
+            fs.mkdirSync(srcPath, { recursive: true });
+
+            // Test that getWorkingDirectory returns the src path
+            const result = getWorkingDirectory(tempDir);
+            assert.strictEqual(result, srcPath, 'Should return src directory when it exists');
+        });
+
+        test('should return workspace root when src does not exist', () => {
+            // Create a temp folder without src directory
+            const noSrcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-no-src-test-'));
+
+            try {
+                const result = getWorkingDirectory(noSrcDir);
+                assert.strictEqual(result, noSrcDir, 'Should return workspace root when src does not exist');
+            } finally {
+                // Clean up
+                if (fs.existsSync(noSrcDir)) {
+                    fs.rmSync(noSrcDir, { recursive: true, force: true });
+                }
+            }
+        });
+
+        test('should return workspace root when src is a file not a directory', () => {
+            // Create a temp folder with src as a file
+            const srcFileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-src-file-test-'));
+            const srcFilePath = path.join(srcFileDir, 'src');
+            fs.writeFileSync(srcFilePath, 'this is a file, not a directory');
+
+            try {
+                const result = getWorkingDirectory(srcFileDir);
+                assert.strictEqual(result, srcFileDir, 'Should return workspace root when src is a file');
+            } finally {
+                // Clean up
+                if (fs.existsSync(srcFileDir)) {
+                    fs.rmSync(srcFileDir, { recursive: true, force: true });
+                }
+            }
         });
     });
 });
