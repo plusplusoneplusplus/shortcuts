@@ -15,27 +15,42 @@ const COPILOT_TIMEOUT_MS = 1200000; // 20 minutes
 
 /**
  * Escape a string for safe use in shell commands.
- * Uses single quotes which preserve content literally, except for single quotes
- * which need special handling.
  * 
- * Single-quoted strings in shell:
- * - Preserve all characters literally (including newlines, tabs, etc.)
- * - Cannot contain single quotes, so we break out and escape them
+ * Platform-specific escaping:
+ * - Windows (cmd.exe): Uses double quotes, escapes internal double quotes by doubling them ("")
+ * - Unix/macOS: Uses single quotes, escapes internal single quotes with '\''
  * 
  * @param str - The string to escape
+ * @param platform - Optional platform override for testing (defaults to process.platform)
  * @returns The escaped string safe for shell use
  */
-export function escapeShellArg(str: string): string {
-    // In single quotes, the only character that needs escaping is the single quote itself.
-    // We handle it by ending the single-quoted string, adding an escaped single quote,
-    // and starting a new single-quoted string: ' -> '\''
-    // 
-    // Newlines, tabs, backslashes, etc. are preserved literally in single quotes,
-    // which is exactly what we want for passing to copilot CLI.
-    const escaped = str.replace(/'/g, "'\\''");
+export function escapeShellArg(str: string, platform?: NodeJS.Platform): string {
+    const isWindows = (platform ?? process.platform) === 'win32';
 
-    // Wrap in single quotes for shell safety
-    return `'${escaped}'`;
+    if (isWindows) {
+        // Windows cmd.exe escaping:
+        // - Use double quotes to wrap the argument
+        // - Escape internal double quotes by doubling them ("")
+        // - Escape percent signs by doubling them (%%)
+        // - Escape caret (^) by doubling it (^^) when inside quotes
+        const escaped = str
+            .replace(/%/g, '%%')     // Escape percent signs (environment variable expansion)
+            .replace(/"/g, '""');    // Escape double quotes by doubling
+
+        return `"${escaped}"`;
+    } else {
+        // Unix/macOS shell escaping:
+        // In single quotes, the only character that needs escaping is the single quote itself.
+        // We handle it by ending the single-quoted string, adding an escaped single quote,
+        // and starting a new single-quoted string: ' -> '\''
+        // 
+        // Newlines, tabs, backslashes, etc. are preserved literally in single quotes,
+        // which is exactly what we want for passing to copilot CLI.
+        const escaped = str.replace(/'/g, "'\\''");
+
+        // Wrap in single quotes for shell safety
+        return `'${escaped}'`;
+    }
 }
 
 /**
@@ -89,11 +104,11 @@ export function getWorkingDirectory(workspaceRoot: string): string {
         const fs = require('fs');
         const path = require('path');
         const srcPath = path.join(workspaceRoot, 'src');
-        
+
         if (fs.existsSync(srcPath) && fs.statSync(srcPath).isDirectory()) {
             return srcPath;
         }
-        
+
         return workspaceRoot;
     }
 
