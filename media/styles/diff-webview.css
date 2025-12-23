@@ -259,6 +259,12 @@ html, body {
     gap: 4px;
     padding-top: 0;
     line-height: var(--vscode-editor-line-height, 1.5);
+    position: relative;
+}
+
+/* Line number span in gutter */
+.line-number {
+    display: inline-block;
 }
 
 /* Comment indicator */
@@ -267,11 +273,16 @@ html, body {
     cursor: pointer;
     opacity: 0.8;
     transition: opacity 0.15s, transform 0.15s;
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    line-height: 1;
 }
 
 .comment-indicator:hover {
     opacity: 1;
-    transform: scale(1.1);
+    transform: translateY(-50%) scale(1.1);
 }
 
 /* Line content */
@@ -434,6 +445,20 @@ html, body {
     gap: 4px;
     padding-top: 0;
     line-height: var(--vscode-editor-line-height, 1.5);
+    position: relative;
+}
+
+/* Comment indicator in inline view */
+.inline-line-gutter .comment-indicator {
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    line-height: 1;
+}
+
+.inline-line-gutter .comment-indicator:hover {
+    transform: translateY(-50%) scale(1.1);
 }
 
 .inline-line-gutter .old-line-num,

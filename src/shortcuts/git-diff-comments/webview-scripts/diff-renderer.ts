@@ -112,11 +112,15 @@ function createLineElement(
     const gutterDiv = document.createElement('div');
     gutterDiv.className = 'line-gutter';
 
+    // Wrap line number in a span for proper layout
+    const lineNumSpan = document.createElement('span');
+    lineNumSpan.className = 'line-number';
     if (lineNumber !== null) {
-        gutterDiv.textContent = String(lineNumber);
+        lineNumSpan.textContent = String(lineNumber);
     }
+    gutterDiv.appendChild(lineNumSpan);
 
-    // Comment indicator
+    // Comment indicator (positioned absolutely via CSS)
     if (comments.length > 0) {
         const indicator = document.createElement('span');
         indicator.className = 'comment-indicator';
@@ -178,6 +182,10 @@ function createEmptyLineElement(): HTMLElement {
 
     const gutterDiv = document.createElement('div');
     gutterDiv.className = 'line-gutter';
+    // Add empty line number span for consistent structure
+    const lineNumSpan = document.createElement('span');
+    lineNumSpan.className = 'line-number';
+    gutterDiv.appendChild(lineNumSpan);
     lineDiv.appendChild(gutterDiv);
 
     const contentDiv = document.createElement('div');
