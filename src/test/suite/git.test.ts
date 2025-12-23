@@ -1186,7 +1186,8 @@ suite('Git View Tests', () => {
                 // GitChangeItem uses resourceUri for file icons from icon theme
                 // instead of setting iconPath directly
                 assert.ok(item.resourceUri instanceof vscode.Uri);
-                assert.strictEqual(item.resourceUri?.fsPath, '/repo/file.ts');
+                // Check that the path ends with the expected filename (platform-independent)
+                assert.ok(item.resourceUri?.fsPath.endsWith('file.ts'));
             });
 
             test(`should have resourceUri for ${status} status (unstaged)`, () => {
@@ -1202,7 +1203,8 @@ suite('Git View Tests', () => {
                 // GitChangeItem uses resourceUri for file icons from icon theme
                 // instead of setting iconPath directly
                 assert.ok(item.resourceUri instanceof vscode.Uri);
-                assert.strictEqual(item.resourceUri?.fsPath, '/repo/file.ts');
+                // Check that the path ends with the expected filename (platform-independent)
+                assert.ok(item.resourceUri?.fsPath.endsWith('file.ts'));
             });
         }
     });
