@@ -108,6 +108,10 @@ function createLineElement(
         lineDiv.dataset.side = side;
     }
 
+    // Store original content for accurate extraction during save
+    // This preserves whitespace that might be lost when extracting from DOM
+    lineDiv.dataset.originalContent = content;
+
     // Line number gutter
     const gutterDiv = document.createElement('div');
     gutterDiv.className = 'line-gutter';
@@ -424,6 +428,10 @@ function createInlineLineElement(
 ): HTMLElement {
     const lineDiv = document.createElement('div');
     lineDiv.className = `inline-diff-line inline-diff-line-${type}`;
+
+    // Store original content for accurate extraction during save
+    // This preserves whitespace that might be lost when extracting from DOM
+    lineDiv.dataset.originalContent = content;
 
     // Store data attributes for selection/comments
     if (side === 'old' && oldLineNum !== null) {

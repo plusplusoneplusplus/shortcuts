@@ -290,7 +290,7 @@ export interface DiffAskAIContext {
  */
 export interface DiffWebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'saveContent';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'saveContent' | 'contentModified';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;
@@ -303,6 +303,8 @@ export interface DiffWebviewMessage {
     context?: DiffAskAIContext;
     /** New content to save (for saveContent message) */
     newContent?: string;
+    /** Whether content has been modified (for contentModified message) */
+    isDirty?: boolean;
 }
 
 /**

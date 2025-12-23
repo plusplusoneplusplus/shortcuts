@@ -2,12 +2,12 @@
  * Main entry point for the diff review webview
  */
 
-import { ExtensionMessage } from './types';
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
 import { hideCommentPanel, hideCommentsList, initPanelElements, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getState, getViewMode, setComments, setIsEditable, setSettings, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
-import { initVSCodeAPI, sendCopyPath, sendOpenFile, sendReady, sendSaveContent } from './vscode-bridge';
+import { ExtensionMessage } from './types';
+import { initVSCodeAPI, sendContentModified, sendCopyPath, sendOpenFile, sendReady, sendSaveContent } from './vscode-bridge';
 
 // AbortController for managing event listeners
 let commentHandlersAbortController: AbortController | null = null;
@@ -120,11 +120,11 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
  */
 function scrollToComment(commentId: string): void {
     console.log('[Diff Webview] Scrolling to comment:', commentId);
-    
+
     // Find the comment in our state
     const state = getState();
     const comment = state.comments.find(c => c.id === commentId);
-    
+
     if (!comment) {
         console.log('[Diff Webview] Comment not found:', commentId);
         return;
@@ -132,8 +132,8 @@ function scrollToComment(commentId: string): void {
 
     // Determine which line to scroll to based on the comment's selection
     const side = comment.selection.side;
-    const lineNumber = side === 'old' 
-        ? comment.selection.oldStartLine 
+    const lineNumber = side === 'old'
+        ? comment.selection.oldStartLine
         : comment.selection.newStartLine;
 
     if (lineNumber === null) {
@@ -152,7 +152,7 @@ function scrollToComment(commentId: string): void {
             for (const line of lines) {
                 const el = line as HTMLElement;
                 const lineSide = el.dataset.side;
-                
+
                 if (side === 'old' && lineSide === 'old' && el.dataset.oldLineNumber === String(lineNumber)) {
                     lineElement = el;
                     break;
@@ -181,12 +181,12 @@ function scrollToComment(commentId: string): void {
         // FIRST: Scroll to the line so it's visible
         // Position it near the top with some context
         lineElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        
+
         // THEN: After scroll completes, show the comments panel
         // The panel will position correctly since the element is now visible
         setTimeout(() => {
             if (!lineElement) return;
-            
+
             // Adjust scroll to add some top padding (context above the line)
             const container = lineElement.closest('.diff-pane, #inline-content') as HTMLElement;
             if (container) {
@@ -234,7 +234,7 @@ function setupKeyboardShortcuts(): void {
 function setupClickOutsideToDismiss(): void {
     document.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
-        
+
         // Check if clicking outside the comment panel
         const commentPanel = document.getElementById('comment-panel');
         if (commentPanel && !commentPanel.classList.contains('hidden')) {
@@ -247,7 +247,7 @@ function setupClickOutsideToDismiss(): void {
                 }
             }
         }
-        
+
         // Check if clicking outside the comments list
         const commentsList = document.getElementById('comments-list');
         if (commentsList && !commentsList.classList.contains('hidden')) {
@@ -283,7 +283,7 @@ function handleAddCommentShortcut(): void {
 function setupFilePathClickHandler(): void {
     const filePathLink = document.getElementById('file-path-link');
     const copyPathBtn = document.getElementById('copy-path-btn');
-    
+
     if (!filePathLink) {
         console.error('[Diff Webview] File path link element not found');
         return;
@@ -303,7 +303,7 @@ function setupFilePathClickHandler(): void {
             const state = getState();
             if (state.filePath) {
                 sendCopyPath(state.filePath);
-                
+
                 // Visual feedback
                 copyPathBtn.classList.add('copied');
                 setTimeout(() => {
@@ -349,7 +349,7 @@ function setupViewModeToggle(): void {
         const newMode = toggleViewMode();
         updateToggleUI(newMode);
         renderDiff();
-        
+
         // Re-setup comment indicator handlers for the new view
         setupCommentIndicatorHandlers();
     });
@@ -393,7 +393,7 @@ function setupWhitespaceToggle(): void {
         // Invalidate highlight cache since we're changing how lines are compared
         invalidateHighlightCache();
         renderDiff();
-        
+
         // Re-setup comment indicator handlers after re-render
         setupCommentIndicatorHandlers();
     });
@@ -410,9 +410,9 @@ function setupCommentIndicatorHandlers(): void {
     }
     commentHandlersAbortController = new AbortController();
     const signal = commentHandlersAbortController!.signal;
-    
+
     const viewMode = getViewMode();
-    
+
     // Common handler for context menu
     const handleContextMenu = (e: MouseEvent) => {
         if (hasValidSelection()) {
@@ -423,14 +423,14 @@ function setupCommentIndicatorHandlers(): void {
             }
         }
     };
-    
+
     if (viewMode === 'inline') {
         // Inline view handlers
         const inlineContainer = document.getElementById('inline-content');
-        
+
         const handleInlineClick = (e: MouseEvent) => {
             const target = e.target as HTMLElement;
-            
+
             // Check if clicking on a comment indicator
             if (target.classList.contains('comment-indicator')) {
                 e.preventDefault();
@@ -441,7 +441,7 @@ function setupCommentIndicatorHandlers(): void {
                     const side = lineEl.dataset.side;
                     let lineNum: number | null = null;
                     let commentSide: 'old' | 'new' = 'new';
-                    
+
                     if (side === 'old' && lineEl.dataset.oldLineNumber) {
                         lineNum = parseInt(lineEl.dataset.oldLineNumber);
                         commentSide = 'old';
@@ -452,7 +452,7 @@ function setupCommentIndicatorHandlers(): void {
                         lineNum = parseInt(lineEl.dataset.newLineNumber);
                         commentSide = 'new';
                     }
-                    
+
                     if (lineNum !== null) {
                         const comments = getCommentsForLine(commentSide, lineNum);
                         if (comments.length > 0) {
@@ -474,7 +474,7 @@ function setupCommentIndicatorHandlers(): void {
 
         const handleClick = (e: MouseEvent, side: 'old' | 'new') => {
             const target = e.target as HTMLElement;
-            
+
             // Check if clicking on a comment indicator
             if (target.classList.contains('comment-indicator')) {
                 e.preventDefault();
@@ -501,7 +501,7 @@ function setupCommentIndicatorHandlers(): void {
             newContainer.addEventListener('click', (e) => handleClick(e, 'new'), { signal });
             newContainer.addEventListener('contextmenu', handleContextMenu, { signal });
         }
-        
+
         // Re-initialize scroll sync for split view since we're not cloning elements anymore
         initializeScrollSync();
     }
@@ -527,13 +527,13 @@ let saveDebounceTimer: number | null = null;
  */
 function setupEditableContent(): void {
     const isEditable = getIsEditable();
-    
+
     if (!isEditable) {
         return;
     }
 
     const viewMode = getViewMode();
-    
+
     if (viewMode === 'inline') {
         // For inline view, make addition and context lines editable
         const inlineContainer = document.getElementById('inline-content');
@@ -580,7 +580,16 @@ function setupEditableContent(): void {
 function setupEditableLineHandlers(element: HTMLElement): void {
     // Track modifications
     element.addEventListener('input', () => {
-        contentModified = true;
+        if (!contentModified) {
+            contentModified = true;
+            // Notify extension that content is now dirty
+            sendContentModified(true);
+        }
+        // Mark the line element as edited so we know to extract from DOM
+        const lineEl = element.closest('.diff-line, .inline-diff-line') as HTMLElement;
+        if (lineEl) {
+            lineEl.dataset.edited = 'true';
+        }
         // Debounced auto-save after 2 seconds of no typing
         if (saveDebounceTimer) {
             clearTimeout(saveDebounceTimer);
@@ -617,32 +626,51 @@ function setupEditableLineHandlers(element: HTMLElement): void {
 }
 
 /**
+ * Extract line content, preserving original whitespace for unedited lines
+ * @param lineEl The line element
+ * @returns The line content string
+ */
+function extractLineContent(lineEl: HTMLElement): string {
+    // If the line was edited, extract from DOM (user's changes)
+    if (lineEl.dataset.edited === 'true') {
+        const textEl = lineEl.querySelector('.line-text');
+        return textEl?.textContent || '';
+    }
+
+    // For unedited lines, use the original content to preserve whitespace
+    if (lineEl.dataset.originalContent !== undefined) {
+        return lineEl.dataset.originalContent;
+    }
+
+    // Fallback to DOM extraction
+    const textEl = lineEl.querySelector('.line-text');
+    return textEl?.textContent || '';
+}
+
+/**
  * Save the edited content
  */
 function saveEditedContent(): void {
     const viewMode = getViewMode();
-    
+
     if (viewMode === 'inline') {
         // For inline view, extract content from addition and context lines
         const inlineContainer = document.getElementById('inline-content');
         if (!inlineContainer) return;
-        
+
         const lines: string[] = [];
         const lineElements = inlineContainer.querySelectorAll('.inline-diff-line');
-        
+
         lineElements.forEach((el) => {
             const htmlEl = el as HTMLElement;
             const side = htmlEl.dataset.side;
-            
+
             // Include context lines and new lines, skip deletions
             if (side === 'new' || side === 'context') {
-                const textEl = htmlEl.querySelector('.line-text');
-                if (textEl) {
-                    lines.push(textEl.textContent || '');
-                }
+                lines.push(extractLineContent(htmlEl));
             }
         });
-        
+
         const newContent = lines.join('\n');
         sendSaveContent(newContent);
         updateState({ newContent });
@@ -650,27 +678,26 @@ function saveEditedContent(): void {
         // For split view, extract content from the new pane
         const newContainer = document.getElementById('new-content');
         if (!newContainer) return;
-        
+
         const lines: string[] = [];
         const lineElements = newContainer.querySelectorAll('.diff-line');
-        
+
         lineElements.forEach((el) => {
             const htmlEl = el as HTMLElement;
             // Skip empty alignment lines
             if (!htmlEl.classList.contains('diff-line-empty')) {
-                const textEl = htmlEl.querySelector('.line-text');
-                if (textEl) {
-                    lines.push(textEl.textContent || '');
-                }
+                lines.push(extractLineContent(htmlEl));
             }
         });
-        
+
         const newContent = lines.join('\n');
         sendSaveContent(newContent);
         updateState({ newContent });
     }
-    
+
     contentModified = false;
+    // Notify extension that content is no longer dirty
+    sendContentModified(false);
 }
 
 // Initialize when DOM is ready

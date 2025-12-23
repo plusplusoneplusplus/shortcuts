@@ -47,6 +47,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     private activeWebviews: Map<string, vscode.WebviewPanel> = new Map();
     /** Store state for each webview for restoration */
     private webviewStates: Map<string, DiffWebviewState> = new Map();
+    /** Track dirty state per webview (keyed by filePath) */
+    private dirtyStates: Map<string, boolean> = new Map();
+    /** Store original titles per webview (keyed by filePath) */
+    private originalTitles: Map<string, string> = new Map();
     private disposables: vscode.Disposable[] = [];
     /** AI process manager for tracking running AI processes */
     private aiProcessManager?: AIProcessManager;
@@ -158,6 +162,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             panel.onDidDispose(() => {
                 this.activeWebviews.delete(fullPath);
                 this.webviewStates.delete(fullPath);
+                this.dirtyStates.delete(fullPath);
+                this.originalTitles.delete(fullPath);
             });
         } catch (error) {
             console.error('Failed to restore diff review panel:', error);
@@ -341,6 +347,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         panel.onDidDispose(() => {
             this.activeWebviews.delete(filePath);
             this.webviewStates.delete(filePath);
+            this.dirtyStates.delete(filePath);
+            this.originalTitles.delete(filePath);
         });
     }
 
@@ -467,6 +475,38 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     await this.handleSaveContent(absoluteFilePath, message.newContent, panel, gitContext);
                 }
                 break;
+
+            case 'contentModified':
+                if (message.isDirty !== undefined) {
+                    this.updateTabTitle(absoluteFilePath, message.isDirty);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Update the tab title to show dirty indicator (dot) following VS Code conventions
+     */
+    private updateTabTitle(filePath: string, isDirty: boolean): void {
+        const panel = this.activeWebviews.get(filePath);
+        if (!panel) return;
+
+        // Store original title if not already stored
+        if (!this.originalTitles.has(filePath)) {
+            this.originalTitles.set(filePath, panel.title);
+        }
+
+        const originalTitle = this.originalTitles.get(filePath) || panel.title;
+        
+        // Update dirty state
+        this.dirtyStates.set(filePath, isDirty);
+        
+        // Update panel title: add dot prefix for dirty state (VS Code convention)
+        if (isDirty) {
+            // VS Code shows dirty indicator as a dot before the title
+            panel.title = `● ${originalTitle}`;
+        } else {
+            panel.title = originalTitle;
         }
     }
 
@@ -490,7 +530,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 state.newContent = newContent;
             }
             
-            vscode.window.showInformationMessage('File saved successfully.');
+            // No notification needed - the dirty indicator dot in the tab disappearing is sufficient
         } catch (error: any) {
             vscode.window.showErrorMessage(`Failed to save file: ${error.message}`);
         }
@@ -835,6 +875,9 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             disposable.dispose();
         }
         this.activeWebviews.clear();
+        this.webviewStates.clear();
+        this.dirtyStates.clear();
+        this.originalTitles.clear();
         this._onDidChangeCustomDocument.dispose();
     }
 }

@@ -173,3 +173,13 @@ export function sendSaveContent(newContent: string): void {
     });
 }
 
+/**
+ * Send content modified state (for dirty indicator in tab)
+ */
+export function sendContentModified(isDirty: boolean): void {
+    postMessage({
+        type: 'contentModified',
+        isDirty
+    });
+}
+
