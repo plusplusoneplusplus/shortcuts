@@ -628,6 +628,12 @@
         "icon": "$(edit)"
       },
       {
+        "command": "gitDiffComments.deleteAllResolved",
+        "title": "Delete All Resolved Comments",
+        "category": "Git Diff Comments",
+        "icon": "$(trash)"
+      },
+      {
         "command": "gitView.openWithMarkdownReview",
         "title": "Open with Markdown Review",
         "category": "Git",
@@ -1057,6 +1063,11 @@
         },
         {
           "command": "gitDiffComments.cleanupObsolete",
+          "when": "view == gitView && viewItem == gitSection_comments",
+          "group": "inline"
+        },
+        {
+          "command": "gitDiffComments.deleteAllResolved",
           "when": "view == gitView && viewItem == gitSection_comments",
           "group": "inline"
         }

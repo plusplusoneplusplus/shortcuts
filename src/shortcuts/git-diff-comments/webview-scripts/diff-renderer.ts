@@ -159,7 +159,14 @@ function createLineElement(
     const textSpan = document.createElement('span');
     textSpan.className = 'line-text hljs';
     // Use pre-highlighted content if available, otherwise escape plain text
-    textSpan.innerHTML = (highlightedContent !== undefined ? highlightedContent : escapeHtml(content)) || '&nbsp;';
+    // For empty lines, use an empty string (CSS min-height handles visibility)
+    // Don't use &nbsp; as it becomes a real space when extracted via textContent
+    const htmlContent = highlightedContent !== undefined ? highlightedContent : escapeHtml(content);
+    textSpan.innerHTML = htmlContent || '';
+    if (!htmlContent) {
+        // Add a class for empty lines so CSS can handle min-height
+        textSpan.classList.add('empty-line');
+    }
     contentDiv.appendChild(textSpan);
 
     lineDiv.appendChild(contentDiv);
@@ -493,7 +500,14 @@ function createInlineLineElement(
     const textSpan = document.createElement('span');
     textSpan.className = 'line-text hljs';
     // Use pre-highlighted content if available, otherwise escape plain text
-    textSpan.innerHTML = (highlightedContent !== undefined ? highlightedContent : escapeHtml(content)) || '&nbsp;';
+    // For empty lines, use an empty string (CSS min-height handles visibility)
+    // Don't use &nbsp; as it becomes a real space when extracted via textContent
+    const inlineHtmlContent = highlightedContent !== undefined ? highlightedContent : escapeHtml(content);
+    textSpan.innerHTML = inlineHtmlContent || '';
+    if (!inlineHtmlContent) {
+        // Add a class for empty lines so CSS can handle min-height
+        textSpan.classList.add('empty-line');
+    }
     contentDiv.appendChild(textSpan);
 
     lineDiv.appendChild(contentDiv);

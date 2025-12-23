@@ -314,6 +314,12 @@ html, body {
     flex: 1;
 }
 
+/* Empty line placeholder - ensures proper height without adding content */
+.line-text.empty-line {
+    min-height: 1em;
+    display: inline-block;
+}
+
 /* Line types */
 .diff-line-context {
     background-color: transparent;
@@ -1039,5 +1045,22 @@ html, body {
 #inline-content.editable-mode .line-text.editable:hover:not(:focus) {
     background-color: var(--vscode-list-hoverBackground);
     border-radius: 2px;
+}
+
+/* ======================== */
+/* Keyboard Navigation      */
+/* ======================== */
+
+/* Keyboard focused line (for arrow key navigation) */
+.diff-line.keyboard-focused,
+.inline-diff-line.keyboard-focused {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: -2px;
+    background-color: var(--vscode-list-focusBackground, var(--vscode-list-hoverBackground));
+}
+
+.diff-line.keyboard-focused .line-content,
+.inline-diff-line.keyboard-focused .inline-line-content {
+    background-color: transparent;
 }
 

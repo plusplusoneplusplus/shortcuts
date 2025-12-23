@@ -118,6 +118,14 @@ export class DiffCommentsCommands implements vscode.Disposable {
                 () => this.undoResolve()
             )
         );
+
+        // Delete all resolved comments command
+        this.disposables.push(
+            vscode.commands.registerCommand(
+                'gitDiffComments.deleteAllResolved',
+                () => this.deleteAllResolvedComments()
+            )
+        );
     }
 
     /**
@@ -416,6 +424,37 @@ export class DiffCommentsCommands implements vscode.Disposable {
         this.lastResolveUndo = undefined;
 
         vscode.window.showInformationMessage(`↩ Reopened ${count} comment(s)`);
+    }
+
+    /**
+     * Delete all resolved comments across all categories
+     */
+    private async deleteAllResolvedComments(): Promise<void> {
+        const allComments = this.commentsManager.getAllComments();
+        const resolvedComments = allComments.filter(c => c.status === 'resolved');
+
+        if (resolvedComments.length === 0) {
+            vscode.window.showInformationMessage('No resolved comments to delete.');
+            return;
+        }
+
+        const confirmed = await vscode.window.showWarningMessage(
+            `Are you sure you want to delete all ${resolvedComments.length} resolved comment(s)?`,
+            { modal: true },
+            'Delete All Resolved'
+        );
+
+        if (confirmed !== 'Delete All Resolved') {
+            return;
+        }
+
+        for (const comment of resolvedComments) {
+            await this.commentsManager.deleteComment(comment.id);
+        }
+
+        vscode.window.showInformationMessage(
+            `🗑 Deleted ${resolvedComments.length} resolved comment(s)`
+        );
     }
 
     /**

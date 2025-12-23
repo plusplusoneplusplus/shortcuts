@@ -225,7 +225,234 @@ function setupKeyboardShortcuts(): void {
             hideCommentPanel();
             hideCommentsList();
         }
+
+        // Arrow key navigation
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            const activeElement = document.activeElement;
+            const isInInputOrTextarea = activeElement instanceof HTMLElement && 
+                (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+
+            // Don't interfere with input/textarea elements
+            if (isInInputOrTextarea) {
+                return;
+            }
+
+            // Check if we're in an editable line-text element
+            const isInEditableLine = activeElement instanceof HTMLElement && 
+                activeElement.isContentEditable &&
+                activeElement.classList.contains('line-text');
+
+            if (isInEditableLine) {
+                // In editable mode, navigate between lines when cursor is at boundary
+                const shouldNavigate = shouldNavigateFromEditableLine(
+                    activeElement as HTMLElement,
+                    e.key === 'ArrowUp' ? 'up' : 'down'
+                );
+                
+                if (shouldNavigate) {
+                    e.preventDefault();
+                    handleArrowKeyNavigationFromEditable(
+                        activeElement as HTMLElement,
+                        e.key === 'ArrowUp' ? 'up' : 'down'
+                    );
+                }
+                // Otherwise, let the browser handle cursor movement within the line
+            } else {
+                // Not in editable mode, use standard line navigation
+                e.preventDefault();
+                handleArrowKeyNavigation(e.key === 'ArrowUp' ? 'up' : 'down');
+            }
+        }
     });
+}
+
+/**
+ * Check if we should navigate to another line from an editable line
+ * Returns true if cursor is at the start (for up) or end (for down) of the line
+ */
+function shouldNavigateFromEditableLine(element: HTMLElement, direction: 'up' | 'down'): boolean {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+        return true; // No selection, allow navigation
+    }
+
+    const range = selection.getRangeAt(0);
+    
+    // If there's a selection (not collapsed), don't navigate
+    if (!range.collapsed) {
+        return false;
+    }
+
+    const textContent = element.textContent || '';
+    
+    if (direction === 'up') {
+        // Navigate up if cursor is at the very beginning of the line
+        // Check if we're at offset 0 of the first text node
+        if (range.startOffset === 0) {
+            // Check if we're at the start of the element
+            const beforeRange = document.createRange();
+            beforeRange.setStart(element, 0);
+            beforeRange.setEnd(range.startContainer, range.startOffset);
+            const textBefore = beforeRange.toString();
+            return textBefore.length === 0;
+        }
+        return false;
+    } else {
+        // Navigate down if cursor is at the very end of the line
+        const afterRange = document.createRange();
+        afterRange.setStart(range.endContainer, range.endOffset);
+        afterRange.setEndAfter(element);
+        const textAfter = afterRange.toString();
+        return textAfter.length === 0;
+    }
+}
+
+/**
+ * Handle arrow key navigation when in an editable line
+ * Moves focus to the adjacent editable line
+ */
+function handleArrowKeyNavigationFromEditable(currentElement: HTMLElement, direction: 'up' | 'down'): void {
+    const viewMode = getViewMode();
+    let container: HTMLElement | null = null;
+    let lineSelector: string;
+
+    if (viewMode === 'inline') {
+        container = document.getElementById('inline-content');
+        lineSelector = '.inline-diff-line';
+    } else {
+        container = document.getElementById('new-content');
+        lineSelector = '.diff-line';
+    }
+
+    if (!container) return;
+
+    // Find the current line element
+    const currentLine = currentElement.closest(lineSelector) as HTMLElement;
+    if (!currentLine) return;
+
+    const lines = Array.from(container.querySelectorAll(lineSelector));
+    const currentIndex = lines.indexOf(currentLine);
+    if (currentIndex === -1) return;
+
+    // Find the next/previous editable line
+    let targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    
+    while (targetIndex >= 0 && targetIndex < lines.length) {
+        const targetLine = lines[targetIndex] as HTMLElement;
+        const targetTextEl = targetLine.querySelector('.line-text.editable') as HTMLElement;
+        
+        if (targetTextEl) {
+            // Found an editable line, focus it
+            targetTextEl.focus();
+            
+            // Place cursor at the appropriate position
+            const selection = window.getSelection();
+            const range = document.createRange();
+            
+            if (direction === 'up') {
+                // Place cursor at the end of the line when going up
+                if (targetTextEl.lastChild) {
+                    const lastNode = targetTextEl.lastChild;
+                    if (lastNode.nodeType === Node.TEXT_NODE) {
+                        range.setStart(lastNode, (lastNode as Text).length);
+                        range.setEnd(lastNode, (lastNode as Text).length);
+                    } else {
+                        range.selectNodeContents(targetTextEl);
+                        range.collapse(false);
+                    }
+                } else {
+                    range.selectNodeContents(targetTextEl);
+                    range.collapse(false);
+                }
+            } else {
+                // Place cursor at the start of the line when going down
+                range.selectNodeContents(targetTextEl);
+                range.collapse(true);
+            }
+            
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+            
+            // Scroll into view
+            targetLine.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+            return;
+        }
+        
+        // Move to next candidate
+        targetIndex = direction === 'up' ? targetIndex - 1 : targetIndex + 1;
+    }
+}
+
+/**
+ * Handle arrow key navigation in the diff view
+ */
+function handleArrowKeyNavigation(direction: 'up' | 'down'): void {
+    const viewMode = getViewMode();
+    let container: HTMLElement | null = null;
+    let lineSelector: string;
+
+    if (viewMode === 'inline') {
+        container = document.getElementById('inline-content');
+        lineSelector = '.inline-diff-line';
+    } else {
+        // For split view, use the new-content pane as the primary navigation target
+        container = document.getElementById('new-content');
+        lineSelector = '.diff-line';
+    }
+
+    if (!container) return;
+
+    const lines = container.querySelectorAll(lineSelector);
+    if (lines.length === 0) return;
+
+    // Find the currently focused/selected line
+    const currentLine = container.querySelector(`${lineSelector}.keyboard-focused`) as HTMLElement;
+    let currentIndex = -1;
+
+    if (currentLine) {
+        currentIndex = Array.from(lines).indexOf(currentLine);
+    } else {
+        // If no line is focused, find the first visible line in the viewport
+        const containerRect = container.getBoundingClientRect();
+        const scrollTop = container.scrollTop;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i] as HTMLElement;
+            const lineTop = line.offsetTop - scrollTop;
+            // Check if this line is visible in the container
+            if (lineTop >= 0 && lineTop < containerRect.height) {
+                // Start from this visible line
+                currentIndex = i;
+                break;
+            }
+        }
+        
+        // If still not found, default to first or last based on direction
+        if (currentIndex === -1) {
+            currentIndex = direction === 'up' ? 0 : lines.length - 1;
+        }
+    }
+
+    // Calculate new index
+    let newIndex: number;
+    if (direction === 'up') {
+        newIndex = Math.max(0, currentIndex - 1);
+    } else {
+        newIndex = Math.min(lines.length - 1, currentIndex + 1);
+    }
+
+    // Remove focus from all lines (in case there are multiple)
+    container.querySelectorAll(`${lineSelector}.keyboard-focused`).forEach(el => {
+        el.classList.remove('keyboard-focused');
+    });
+
+    // Focus new line
+    const newLine = lines[newIndex] as HTMLElement;
+    if (newLine) {
+        newLine.classList.add('keyboard-focused');
+        // Use instant scroll for responsive navigation
+        newLine.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+    }
 }
 
 /**
