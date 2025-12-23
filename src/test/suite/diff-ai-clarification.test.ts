@@ -455,6 +455,7 @@ suite('Diff AI Clarification Handler Tests', () => {
     });
 
     suite('Re-exported AI Service Functions', () => {
+        const isWindows = process.platform === 'win32';
 
         test('parseCopilotOutput should work correctly', () => {
             const output = `✓ Read src/test.ts
@@ -468,14 +469,24 @@ Total usage est:       1 Premium request`;
             assert.strictEqual(result, 'This is the clarification text.');
         });
 
-        test('escapeShellArg should wrap string in single quotes', () => {
+        test('escapeShellArg should wrap string in appropriate quotes for platform', () => {
             const result = escapeShellArg('hello world');
-            assert.strictEqual(result, "'hello world'");
+            if (isWindows) {
+                assert.strictEqual(result, '"hello world"');
+            } else {
+                assert.strictEqual(result, "'hello world'");
+            }
         });
 
-        test('escapeShellArg should escape single quotes', () => {
+        test('escapeShellArg should escape quotes appropriately for platform', () => {
             const result = escapeShellArg("it's a test");
-            assert.strictEqual(result, "'it'\\''s a test'");
+            if (isWindows) {
+                // Windows preserves single quotes literally in double-quoted strings
+                assert.strictEqual(result, '"it\'s a test"');
+            } else {
+                // Unix escapes single quotes with end-escape-start pattern
+                assert.strictEqual(result, "'it'\\''s a test'");
+            }
         });
 
         test('VALID_MODELS should contain expected model options', () => {

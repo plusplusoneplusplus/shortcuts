@@ -238,40 +238,73 @@ Total usage est:       1 Premium request`;
     });
 
     suite('escapeShellArg', () => {
+        const isWindows = process.platform === 'win32';
 
-        test('should wrap string in single quotes', () => {
+        test('should wrap string in appropriate quotes for platform', () => {
             const result = escapeShellArg('hello world');
-            assert.strictEqual(result, "'hello world'");
+            if (isWindows) {
+                assert.strictEqual(result, '"hello world"');
+            } else {
+                assert.strictEqual(result, "'hello world'");
+            }
         });
 
-        test('should escape single quotes', () => {
+        test('should escape quotes appropriately for platform', () => {
             const result = escapeShellArg("it's a test");
-            assert.strictEqual(result, "'it'\\''s a test'");
+            if (isWindows) {
+                // Windows preserves single quotes literally in double-quoted strings
+                assert.strictEqual(result, '"it\'s a test"');
+            } else {
+                // Unix escapes single quotes with end-escape-start pattern
+                assert.strictEqual(result, "'it'\\''s a test'");
+            }
         });
 
         test('should preserve newlines', () => {
             const result = escapeShellArg('line1\nline2');
-            assert.strictEqual(result, "'line1\nline2'");
+            if (isWindows) {
+                assert.strictEqual(result, '"line1\nline2"');
+            } else {
+                assert.strictEqual(result, "'line1\nline2'");
+            }
         });
 
         test('should preserve tabs', () => {
             const result = escapeShellArg('col1\tcol2');
-            assert.strictEqual(result, "'col1\tcol2'");
+            if (isWindows) {
+                assert.strictEqual(result, '"col1\tcol2"');
+            } else {
+                assert.strictEqual(result, "'col1\tcol2'");
+            }
         });
 
         test('should handle multiple single quotes', () => {
             const result = escapeShellArg("it's Bob's file");
-            assert.strictEqual(result, "'it'\\''s Bob'\\''s file'");
+            if (isWindows) {
+                assert.strictEqual(result, '"it\'s Bob\'s file"');
+            } else {
+                assert.strictEqual(result, "'it'\\''s Bob'\\''s file'");
+            }
         });
 
         test('should handle empty string', () => {
             const result = escapeShellArg('');
-            assert.strictEqual(result, "''");
+            if (isWindows) {
+                assert.strictEqual(result, '""');
+            } else {
+                assert.strictEqual(result, "''");
+            }
         });
 
-        test('should preserve special characters in single quotes', () => {
+        test('should preserve special characters in quotes', () => {
             const result = escapeShellArg('$PATH `command` "quoted"');
-            assert.strictEqual(result, "'$PATH `command` \"quoted\"'");
+            if (isWindows) {
+                // Windows escapes double quotes by doubling them
+                assert.strictEqual(result, '"$PATH `command` ""quoted"""');
+            } else {
+                // Unix preserves double quotes literally in single-quoted strings
+                assert.strictEqual(result, "'$PATH `command` \"quoted\"'");
+            }
         });
     });
 
