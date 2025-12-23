@@ -135,3 +135,31 @@ export function sendCopyPath(filePath: string): void {
     });
 }
 
+/**
+ * AI instruction type for Ask AI feature
+ */
+export type DiffAIInstructionType = 'clarify' | 'go-deeper' | 'custom';
+
+/**
+ * Context for Ask AI request
+ */
+export interface AskAIContext {
+    selectedText: string;
+    startLine: number;
+    endLine: number;
+    side: 'old' | 'new' | 'both';
+    surroundingLines: string;
+    instructionType: DiffAIInstructionType;
+    customInstruction?: string;
+}
+
+/**
+ * Send Ask AI request
+ */
+export function sendAskAI(context: AskAIContext): void {
+    postMessage({
+        type: 'askAI',
+        context
+    });
+}
+

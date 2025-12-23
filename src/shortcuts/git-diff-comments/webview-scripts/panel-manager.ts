@@ -5,10 +5,10 @@
  * functionality like drag, positioning, and date formatting.
  */
 
-import { DiffComment, SelectionState } from './types';
+import { AskAIContext, DiffAIInstructionType, DiffComment, DiffSide, SelectionState } from './types';
 import { getState, setCommentPanelOpen, setEditingCommentId } from './state';
 import { clearSelection, toDiffSelection } from './selection-handler';
-import { sendAddComment, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
+import { sendAddComment, sendAskAI, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
 import {
     formatCommentDate,
     setupPanelDrag as setupSharedPanelDrag
@@ -28,11 +28,30 @@ let commentsListBody: HTMLElement | null = null;
 let closeCommentsListButton: HTMLButtonElement | null = null;
 let contextMenu: HTMLElement | null = null;
 let contextMenuAddComment: HTMLElement | null = null;
+// Ask AI context menu elements
+let contextMenuAskAI: HTMLElement | null = null;
+let askAISubmenu: HTMLElement | null = null;
+let askAIClarify: HTMLElement | null = null;
+let askAIGoDeeper: HTMLElement | null = null;
+let askAICustom: HTMLElement | null = null;
+// Custom instruction dialog elements
+let customInstructionDialog: HTMLElement | null = null;
+let customInstructionClose: HTMLElement | null = null;
+let customInstructionSelection: HTMLElement | null = null;
+let customInstructionInput: HTMLTextAreaElement | null = null;
+let customInstructionCancelBtn: HTMLElement | null = null;
+let customInstructionSubmitBtn: HTMLElement | null = null;
+let customInstructionOverlay: HTMLElement | null = null;
 
 /**
  * Current selection for the comment panel
  */
 let currentPanelSelection: SelectionState | null = null;
+
+/**
+ * Saved selection for Ask AI (used when showing custom instruction dialog)
+ */
+let savedSelectionForAskAI: SelectionState | null = null;
 
 /**
  * Initialize panel elements
@@ -49,6 +68,21 @@ export function initPanelElements(): void {
     closeCommentsListButton = document.getElementById('close-comments-list') as HTMLButtonElement;
     contextMenu = document.getElementById('custom-context-menu');
     contextMenuAddComment = document.getElementById('context-menu-add-comment');
+    
+    // Ask AI context menu elements
+    contextMenuAskAI = document.getElementById('context-menu-ask-ai');
+    askAISubmenu = document.getElementById('ask-ai-submenu');
+    askAIClarify = document.getElementById('ask-ai-clarify');
+    askAIGoDeeper = document.getElementById('ask-ai-go-deeper');
+    askAICustom = document.getElementById('ask-ai-custom');
+    
+    // Custom instruction dialog elements
+    customInstructionDialog = document.getElementById('custom-instruction-dialog');
+    customInstructionClose = document.getElementById('custom-instruction-close');
+    customInstructionSelection = document.getElementById('custom-instruction-selection');
+    customInstructionInput = document.getElementById('custom-instruction-input') as HTMLTextAreaElement;
+    customInstructionCancelBtn = document.getElementById('custom-instruction-cancel');
+    customInstructionSubmitBtn = document.getElementById('custom-instruction-submit');
 
     // Setup event listeners
     if (submitButton) {
@@ -75,6 +109,38 @@ export function initPanelElements(): void {
             }
         });
     }
+    
+    // Ask AI submenu event listeners
+    if (contextMenuAskAI) {
+        contextMenuAskAI.addEventListener('mouseenter', positionAskAISubmenu);
+    }
+    
+    if (askAIClarify) {
+        askAIClarify.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideContextMenu();
+            handleAskAI('clarify');
+        });
+    }
+    
+    if (askAIGoDeeper) {
+        askAIGoDeeper.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideContextMenu();
+            handleAskAI('go-deeper');
+        });
+    }
+    
+    if (askAICustom) {
+        askAICustom.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideContextMenu();
+            showCustomInstructionDialog();
+        });
+    }
+    
+    // Custom instruction dialog event listeners
+    setupCustomInstructionDialogListeners();
 
     // Hide context menu on click anywhere else
     document.addEventListener('click', (e) => {
@@ -477,16 +543,20 @@ export function showContextMenu(x: number, y: number, selection: SelectionState)
 
     currentPanelSelection = selection;
     
-    // Position menu
+    // Update Ask AI visibility based on settings
+    updateContextMenuForSettings();
+    
+    // Position menu - account for submenu width
+    const submenuWidth = 200;
     const menuWidth = 150;
-    const menuHeight = 40; // Approx
+    const menuHeight = 80; // Approx with Ask AI
     
     let left = x;
     let top = y;
     
-    // Adjust if close to edge
-    if (left + menuWidth > window.innerWidth) {
-        left = window.innerWidth - menuWidth - 10;
+    // Adjust if close to edge - need room for submenu
+    if (left + menuWidth + submenuWidth > window.innerWidth) {
+        left = Math.max(0, window.innerWidth - menuWidth - submenuWidth);
     }
     
     if (top + menuHeight > window.innerHeight) {
@@ -517,5 +587,226 @@ function setupPanelDrag(panel: HTMLElement): void {
         '.comments-list-header, .comment-panel-header',
         '.close-btn, button'
     );
+}
+
+/**
+ * Position Ask AI submenu based on available viewport space
+ */
+function positionAskAISubmenu(): void {
+    if (!askAISubmenu || !contextMenuAskAI || !contextMenu) return;
+    
+    const parentRect = contextMenuAskAI.getBoundingClientRect();
+    const menuRect = contextMenu.getBoundingClientRect();
+    
+    // Temporarily show submenu to get its dimensions
+    const originalDisplay = askAISubmenu.style.display;
+    askAISubmenu.style.display = 'block';
+    askAISubmenu.style.visibility = 'hidden';
+    const submenuRect = askAISubmenu.getBoundingClientRect();
+    askAISubmenu.style.visibility = '';
+    askAISubmenu.style.display = originalDisplay;
+    
+    // Check horizontal space
+    const spaceOnRight = window.innerWidth - menuRect.right;
+    const spaceOnLeft = menuRect.left;
+    
+    if (spaceOnRight < submenuRect.width && spaceOnLeft > submenuRect.width) {
+        // Show on left side
+        askAISubmenu.style.left = 'auto';
+        askAISubmenu.style.right = '100%';
+    } else {
+        // Show on right side (default)
+        askAISubmenu.style.left = '100%';
+        askAISubmenu.style.right = 'auto';
+    }
+    
+    // Check vertical space
+    const submenuBottomIfAlignedToTop = parentRect.top + submenuRect.height;
+    if (submenuBottomIfAlignedToTop > window.innerHeight) {
+        const overflow = submenuBottomIfAlignedToTop - window.innerHeight;
+        askAISubmenu.style.top = `${-overflow - 5}px`;
+    } else {
+        askAISubmenu.style.top = '-1px';
+    }
+}
+
+/**
+ * Handle Ask AI request
+ */
+function handleAskAI(instructionType: DiffAIInstructionType, customInstruction?: string): void {
+    if (!currentPanelSelection) {
+        console.log('[Diff Webview] No selection for Ask AI');
+        return;
+    }
+    
+    const state = getState();
+    
+    // Extract surrounding lines for context
+    const surroundingLines = extractSurroundingLines(
+        currentPanelSelection.side,
+        currentPanelSelection.startLine,
+        currentPanelSelection.endLine
+    );
+    
+    const context: AskAIContext = {
+        selectedText: currentPanelSelection.selectedText,
+        startLine: currentPanelSelection.startLine,
+        endLine: currentPanelSelection.endLine,
+        side: currentPanelSelection.side,
+        surroundingLines,
+        instructionType,
+        customInstruction
+    };
+    
+    sendAskAI(context);
+    currentPanelSelection = null;
+}
+
+/**
+ * Extract surrounding lines for AI context
+ */
+function extractSurroundingLines(side: DiffSide, startLine: number, endLine: number): string {
+    const state = getState();
+    const content = side === 'old' ? state.oldContent : state.newContent;
+    const lines = content.split('\n');
+    
+    // Get 5 lines before and after
+    const contextRadius = 5;
+    const contextStartLine = Math.max(0, startLine - 1 - contextRadius);
+    const contextEndLine = Math.min(lines.length, endLine + contextRadius);
+    
+    const surroundingLines: string[] = [];
+    for (let i = contextStartLine; i < contextEndLine; i++) {
+        // Skip the selected lines themselves
+        if (i >= startLine - 1 && i < endLine) {
+            continue;
+        }
+        surroundingLines.push(lines[i]);
+    }
+    
+    return surroundingLines.join('\n');
+}
+
+/**
+ * Setup custom instruction dialog event listeners
+ */
+function setupCustomInstructionDialogListeners(): void {
+    if (customInstructionClose) {
+        customInstructionClose.addEventListener('click', hideCustomInstructionDialog);
+    }
+    
+    if (customInstructionCancelBtn) {
+        customInstructionCancelBtn.addEventListener('click', hideCustomInstructionDialog);
+    }
+    
+    if (customInstructionSubmitBtn) {
+        customInstructionSubmitBtn.addEventListener('click', () => {
+            const instruction = customInstructionInput?.value.trim();
+            if (!instruction) {
+                customInstructionInput?.focus();
+                return;
+            }
+            hideCustomInstructionDialog();
+            
+            // Restore the selection and send Ask AI request
+            if (savedSelectionForAskAI) {
+                currentPanelSelection = savedSelectionForAskAI;
+                handleAskAI('custom', instruction);
+                savedSelectionForAskAI = null;
+            }
+        });
+    }
+    
+    if (customInstructionInput) {
+        customInstructionInput.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                customInstructionSubmitBtn?.click();
+            }
+            if (e.key === 'Escape') {
+                hideCustomInstructionDialog();
+            }
+        });
+    }
+}
+
+/**
+ * Show custom instruction dialog
+ */
+function showCustomInstructionDialog(): void {
+    if (!currentPanelSelection) {
+        console.log('[Diff Webview] No selection for custom instruction');
+        return;
+    }
+    
+    // Save the selection for later use
+    savedSelectionForAskAI = currentPanelSelection;
+    
+    // Create overlay
+    customInstructionOverlay = document.createElement('div');
+    customInstructionOverlay.className = 'custom-instruction-overlay';
+    customInstructionOverlay.addEventListener('click', hideCustomInstructionDialog);
+    document.body.appendChild(customInstructionOverlay);
+    
+    // Show selected text preview
+    if (customInstructionSelection) {
+        const truncatedText = savedSelectionForAskAI.selectedText.length > 100
+            ? savedSelectionForAskAI.selectedText.substring(0, 100) + '...'
+            : savedSelectionForAskAI.selectedText;
+        customInstructionSelection.textContent = truncatedText;
+    }
+    
+    // Clear input and show dialog
+    if (customInstructionInput) {
+        customInstructionInput.value = '';
+    }
+    
+    if (customInstructionDialog) {
+        customInstructionDialog.classList.remove('hidden');
+    }
+    
+    // Focus input
+    setTimeout(() => customInstructionInput?.focus(), 50);
+}
+
+/**
+ * Hide custom instruction dialog
+ */
+function hideCustomInstructionDialog(): void {
+    if (customInstructionDialog) {
+        customInstructionDialog.classList.add('hidden');
+    }
+    
+    if (customInstructionOverlay) {
+        customInstructionOverlay.remove();
+        customInstructionOverlay = null;
+    }
+}
+
+/**
+ * Update context menu visibility based on settings
+ * Call this when settings are updated
+ */
+export function updateContextMenuForSettings(): void {
+    const state = getState();
+    const askAIEnabled = state.settings.askAIEnabled;
+    
+    if (contextMenuAskAI) {
+        if (askAIEnabled) {
+            contextMenuAskAI.style.display = '';
+            // Show separator before Ask AI
+            const separator = contextMenuAskAI.previousElementSibling;
+            if (separator?.classList.contains('context-menu-separator')) {
+                (separator as HTMLElement).style.display = '';
+            }
+        } else {
+            contextMenuAskAI.style.display = 'none';
+            // Hide separator before Ask AI
+            const separator = contextMenuAskAI.previousElementSibling;
+            if (separator?.classList.contains('context-menu-separator')) {
+                (separator as HTMLElement).style.display = 'none';
+            }
+        }
+    }
 }
 

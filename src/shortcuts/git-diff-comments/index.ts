@@ -74,3 +74,11 @@ export {
 } from './diff-prompt-generator';
 export type { DiffPromptGenerationOptions } from './diff-prompt-generator';
 
+// AI clarification handler
+export {
+    buildDiffClarificationPrompt,
+    handleDiffAIClarification,
+    validateAndTruncateDiffPrompt
+} from './diff-ai-clarification-handler';
+export type { DiffClarificationResult } from './diff-ai-clarification-handler';
+

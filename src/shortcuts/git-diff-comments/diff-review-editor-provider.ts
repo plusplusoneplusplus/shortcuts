@@ -5,6 +5,7 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { AIProcessManager } from '../ai-service';
 import { DiffCommentsManager } from './diff-comments-manager';
 import {
     createCommittedGitContext,
@@ -13,7 +14,10 @@ import {
     createUntrackedGitContext,
     getDiffContent
 } from './diff-content-provider';
+import { handleDiffAIClarification } from './diff-ai-clarification-handler';
 import {
+    DiffAskAIContext,
+    DiffClarificationContext,
     DiffComment,
     DiffExtensionMessage,
     DiffGitContext,
@@ -35,11 +39,15 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     /** Store state for each webview for restoration */
     private webviewStates: Map<string, DiffWebviewState> = new Map();
     private disposables: vscode.Disposable[] = [];
+    /** AI process manager for tracking running AI processes */
+    private aiProcessManager?: AIProcessManager;
 
     constructor(
         private readonly context: vscode.ExtensionContext,
-        private readonly commentsManager: DiffCommentsManager
+        private readonly commentsManager: DiffCommentsManager,
+        aiProcessManager?: AIProcessManager
     ) {
+        this.aiProcessManager = aiProcessManager;
         // Listen for comment changes to update all open webviews
         this.disposables.push(
             this.commentsManager.onDidChangeComments(event => {
@@ -53,9 +61,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
      */
     public static registerCommands(
         context: vscode.ExtensionContext,
-        commentsManager: DiffCommentsManager
+        commentsManager: DiffCommentsManager,
+        aiProcessManager?: AIProcessManager
     ): vscode.Disposable[] {
-        const provider = new DiffReviewEditorProvider(context, commentsManager);
+        const provider = new DiffReviewEditorProvider(context, commentsManager, aiProcessManager);
         
         const openCommand = vscode.commands.registerCommand(
             'gitDiffComments.openWithReview',
@@ -399,6 +408,88 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     }
                 }
                 break;
+
+            case 'askAI':
+                if (message.context) {
+                    await this.handleAskAI(message.context, filePath, gitContext, oldContent, newContent, panel);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Handle AI clarification request from the webview
+     */
+    private async handleAskAI(
+        context: DiffAskAIContext,
+        filePath: string,
+        gitContext: DiffGitContext,
+        oldContent: string,
+        newContent: string,
+        panel: vscode.WebviewPanel
+    ): Promise<void> {
+        // Get workspace root from git context
+        const workspaceRoot = gitContext.repositoryRoot;
+
+        // Build clarification context
+        const clarificationContext: DiffClarificationContext = {
+            selectedText: context.selectedText,
+            selectionRange: {
+                startLine: context.startLine,
+                endLine: context.endLine
+            },
+            side: context.side,
+            filePath: filePath,
+            surroundingContent: context.surroundingLines,
+            instructionType: context.instructionType,
+            customInstruction: context.customInstruction
+        };
+
+        const result = await handleDiffAIClarification(clarificationContext, workspaceRoot, this.aiProcessManager);
+
+        // If successful, automatically add clarification as a comment
+        if (result.success && result.clarification) {
+            // Determine the label based on instruction type
+            const labelMap: Record<string, string> = {
+                'clarify': '🤖 **AI Clarification:**',
+                'go-deeper': '🔍 **AI Deep Analysis:**',
+                'custom': '🤖 **AI Response:**'
+            };
+            const label = labelMap[context.instructionType] || '🤖 **AI Clarification:**';
+
+            // Build selection for the comment
+            const selection: DiffSelection = {
+                side: context.side,
+                oldStartLine: context.side === 'old' ? context.startLine : null,
+                oldEndLine: context.side === 'old' ? context.endLine : null,
+                newStartLine: context.side === 'new' ? context.startLine : null,
+                newEndLine: context.side === 'new' ? context.endLine : null,
+                startColumn: 1,
+                endColumn: context.selectedText.length + 1
+            };
+
+            // Get the content for the side
+            const content = context.side === 'old' ? oldContent : newContent;
+
+            // Add the clarification as a comment on the selected text
+            await this.commentsManager.addComment(
+                filePath,
+                selection,
+                context.selectedText,
+                `${label}\n\n${result.clarification}`,
+                gitContext,
+                content
+            );
+
+            // Show a brief notification with option to copy
+            vscode.window.showInformationMessage(
+                'AI response added as comment.',
+                'Copy to Clipboard'
+            ).then(action => {
+                if (action === 'Copy to Clipboard') {
+                    vscode.env.clipboard.writeText(result.clarification!);
+                }
+            });
         }
     }
 
@@ -412,7 +503,17 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         newContent: string
     ): void {
         const comments = this.commentsManager.getCommentsForFile(filePath);
-        const settings = this.commentsManager.getSettings();
+        const baseSettings = this.commentsManager.getSettings();
+        
+        // Get AI service enabled setting
+        const aiConfig = vscode.workspace.getConfiguration('workspaceShortcuts.aiService');
+        const askAIEnabled = aiConfig.get<boolean>('enabled', false);
+        
+        // Extend settings with AI enabled flag
+        const settings = {
+            ...baseSettings,
+            askAIEnabled
+        };
 
         const message: DiffExtensionMessage = {
             type: 'update',
@@ -430,9 +531,19 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
      * Update all open webviews with latest comments
      */
     private updateAllWebviews(): void {
+        // Get AI service enabled setting
+        const aiConfig = vscode.workspace.getConfiguration('workspaceShortcuts.aiService');
+        const askAIEnabled = aiConfig.get<boolean>('enabled', false);
+        
         for (const [filePath, panel] of this.activeWebviews) {
             const comments = this.commentsManager.getCommentsForFile(filePath);
-            const settings = this.commentsManager.getSettings();
+            const baseSettings = this.commentsManager.getSettings();
+            
+            // Extend settings with AI enabled flag
+            const settings = {
+                ...baseSettings,
+                askAIEnabled
+            };
 
             const message: DiffExtensionMessage = {
                 type: 'update',
@@ -564,6 +675,45 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     <!-- Context Menu (hidden by default) -->
     <div id="custom-context-menu" class="context-menu hidden">
         <div class="context-menu-item" id="context-menu-add-comment">Add Comment</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item has-submenu" id="context-menu-ask-ai">
+            Ask AI
+            <div class="ask-ai-submenu" id="ask-ai-submenu">
+                <div class="context-menu-item" id="ask-ai-clarify">
+                    <span class="ai-icon">💡</span>
+                    <span>Clarify</span>
+                </div>
+                <div class="context-menu-item" id="ask-ai-go-deeper">
+                    <span class="ai-icon">🔍</span>
+                    <span>Go Deeper</span>
+                </div>
+                <div class="context-menu-item" id="ask-ai-custom">
+                    <span class="ai-icon">✏️</span>
+                    <span>Custom...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Instruction Dialog (hidden by default) -->
+    <div id="custom-instruction-dialog" class="custom-instruction-dialog hidden">
+        <div class="custom-instruction-header">
+            <h3>Custom AI Instruction</h3>
+            <button class="custom-instruction-close" id="custom-instruction-close">&times;</button>
+        </div>
+        <div class="custom-instruction-body">
+            <div class="custom-instruction-selection" id="custom-instruction-selection"></div>
+            <label class="custom-instruction-label">Enter your instruction:</label>
+            <textarea 
+                id="custom-instruction-input" 
+                class="custom-instruction-input" 
+                placeholder="e.g., Explain the security implications of..."
+            ></textarea>
+        </div>
+        <div class="custom-instruction-footer">
+            <button class="btn btn-secondary" id="custom-instruction-cancel">Cancel</button>
+            <button class="btn btn-primary" id="custom-instruction-submit">Ask AI</button>
+        </div>
     </div>
 
     <!-- Initial data for webview initialization -->

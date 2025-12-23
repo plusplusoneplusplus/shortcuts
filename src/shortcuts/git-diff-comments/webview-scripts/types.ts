@@ -61,6 +61,8 @@ export interface DiffCommentsSettings {
     showResolved: boolean;
     highlightColor: string;
     resolvedHighlightColor: string;
+    /** Whether Ask AI feature is enabled */
+    askAIEnabled?: boolean;
 }
 
 /**
@@ -89,11 +91,29 @@ export interface ExtensionMessage {
 }
 
 /**
+ * AI instruction type for Ask AI feature
+ */
+export type DiffAIInstructionType = 'clarify' | 'go-deeper' | 'custom';
+
+/**
+ * Context for Ask AI request
+ */
+export interface AskAIContext {
+    selectedText: string;
+    startLine: number;
+    endLine: number;
+    side: DiffSide;
+    surroundingLines: string;
+    instructionType: DiffAIInstructionType;
+    customInstruction?: string;
+}
+
+/**
  * Message from webview to extension
  */
 export interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;
@@ -102,6 +122,8 @@ export interface WebviewMessage {
     fileToOpen?: string;
     /** File path to copy (for copyPath message) */
     pathToCopy?: string;
+    /** AI clarification context (for askAI message) */
+    context?: AskAIContext;
 }
 
 /**

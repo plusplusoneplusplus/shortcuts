@@ -4,7 +4,7 @@
 
 import { ExtensionMessage } from './types';
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
-import { hideCommentPanel, hideCommentsList, initPanelElements, showCommentPanel, showCommentsForLine, showContextMenu } from './panel-manager';
+import { hideCommentPanel, hideCommentsList, initPanelElements, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getState, getViewMode, setComments, setSettings, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { initVSCodeAPI, sendCopyPath, sendOpenFile, sendReady } from './vscode-bridge';
@@ -89,6 +89,8 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
             if (message.settings) {
                 setSettings(message.settings);
                 updateCommentIndicators();
+                // Update context menu visibility based on askAIEnabled setting
+                updateContextMenuForSettings();
             }
             break;
 

@@ -16,8 +16,14 @@ import {
     BaseSelection
 } from '../markdown-comments/base-types';
 
+// Import AI types from ai-service
+import { AIToolType } from '../ai-service';
+
 // Re-export base types for convenience
 export type { BaseCommentEventType, BaseCommentStatus };
+
+// Re-export AI types for convenience
+export type { AIToolType };
 
 /**
  * Which side of the diff the selection/comment is on
@@ -239,11 +245,52 @@ export interface DiffReviewOptions {
 }
 
 /**
+ * AI instruction types for different kinds of queries
+ */
+export type DiffAIInstructionType = 'clarify' | 'go-deeper' | 'custom';
+
+/**
+ * Context for AI clarification requests in diff view
+ */
+export interface DiffClarificationContext {
+    /** The selected text to clarify */
+    selectedText: string;
+    /** Selection line range */
+    selectionRange: {
+        startLine: number;
+        endLine: number;
+    };
+    /** Which side of the diff the selection is on */
+    side: DiffSide;
+    /** File being reviewed */
+    filePath: string;
+    /** Surrounding lines for context */
+    surroundingContent: string;
+    /** Type of AI instruction */
+    instructionType: DiffAIInstructionType;
+    /** Custom instruction text (only used when instructionType is 'custom') */
+    customInstruction?: string;
+}
+
+/**
+ * Ask AI context from webview
+ */
+export interface DiffAskAIContext {
+    selectedText: string;
+    startLine: number;
+    endLine: number;
+    side: DiffSide;
+    surroundingLines: string;
+    instructionType: DiffAIInstructionType;
+    customInstruction?: string;
+}
+
+/**
  * Message types from webview to extension
  */
 export interface DiffWebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;
@@ -252,6 +299,16 @@ export interface DiffWebviewMessage {
     fileToOpen?: string;
     /** File path to copy (for copyPath message) */
     pathToCopy?: string;
+    /** AI clarification context (for askAI message) */
+    context?: DiffAskAIContext;
+}
+
+/**
+ * Extended settings for diff comments display (includes AI settings)
+ */
+export interface DiffCommentsSettingsExtended extends DiffCommentsSettings {
+    /** Whether Ask AI feature is enabled */
+    askAIEnabled?: boolean;
 }
 
 /**
@@ -263,7 +320,7 @@ export interface DiffExtensionMessage {
     newContent?: string;
     comments?: DiffComment[];
     filePath?: string;
-    settings?: DiffCommentsSettings;
+    settings?: DiffCommentsSettingsExtended;
     comment?: DiffComment;
     /** Comment ID to scroll to (for scrollToComment message) */
     scrollToCommentId?: string;
