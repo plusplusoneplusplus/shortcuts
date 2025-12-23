@@ -54,9 +54,14 @@ suite('Nested Groups Tests', () => {
         configManager.dispose();
         themeManager.dispose();
 
-        // Clean up temporary directory
-        if (fs.existsSync(tempDir)) {
-            fs.rmSync(tempDir, { recursive: true, force: true });
+        // Clean up temporary directory - ignore errors on Windows where files may be locked
+        try {
+            if (fs.existsSync(tempDir)) {
+                fs.rmSync(tempDir, { recursive: true, force: true });
+            }
+        } catch {
+            // Ignore cleanup errors - on Windows, files may be locked by VSCode
+            // The OS will clean up temp files eventually
         }
     });
 
