@@ -21,3 +21,6 @@ export * from './base-state';
 // Common selection utilities
 export * from './selection-utils';
 
+// Markdown rendering utilities for comment bubbles
+export * from './markdown-renderer';
+

@@ -13,6 +13,7 @@ import {
     formatCommentDate,
     setupPanelDrag as setupSharedPanelDrag
 } from '../../shared/webview/base-panel-manager';
+import { renderCommentMarkdown } from '../../shared/webview/markdown-renderer';
 
 /**
  * DOM element references
@@ -459,10 +460,10 @@ function createCommentElement(comment: DiffComment): HTMLElement {
         : comment.selectedText;
     div.appendChild(preview);
 
-    // Comment text (no strikethrough for resolved comments)
+    // Comment text with markdown rendering (no strikethrough for resolved comments)
     const text = document.createElement('div');
-    text.className = 'comment-text';
-    text.textContent = comment.comment;
+    text.className = 'comment-text comment-markdown-content';
+    text.innerHTML = renderCommentMarkdown(comment.comment);
     div.appendChild(text);
 
     // Actions

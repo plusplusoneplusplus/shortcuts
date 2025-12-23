@@ -474,8 +474,12 @@ export async function activate(context: vscode.ExtensionContext) {
         const commentsManager = new CommentsManager(workspaceRoot);
         await commentsManager.initialize();
 
+        // Initialize AI Process Manager (must be before ReviewEditorViewProvider and DiffReviewEditorProvider)
+        const aiProcessManager = new AIProcessManager();
+
         // Register diff review commands (diffCommentsManager already initialized above)
-        const diffReviewCommands = DiffReviewEditorProvider.registerCommands(context, diffCommentsManager);
+        // Pass aiProcessManager so AI clarification requests from diff view are tracked
+        const diffReviewCommands = DiffReviewEditorProvider.registerCommands(context, diffCommentsManager, aiProcessManager);
 
         // Get the diff comments tree data provider from git tree provider
         const diffCommentsTreeDataProvider = gitTreeDataProvider.getDiffCommentsTreeProvider();
@@ -489,9 +493,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 context
             );
         }
-
-        // Initialize AI Process Manager (must be before ReviewEditorViewProvider)
-        const aiProcessManager = new AIProcessManager();
 
         const commentsTreeDataProvider = new MarkdownCommentsTreeDataProvider(commentsManager);
         const promptGenerator = new PromptGenerator(commentsManager);
