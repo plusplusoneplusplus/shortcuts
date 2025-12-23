@@ -245,7 +245,7 @@ html, body {
 
 /* Line gutter */
 .line-gutter {
-    min-width: 50px;
+    min-width: 60px;
     padding: 0 8px;
     text-align: right;
     color: var(--vscode-editorLineNumber-foreground);
@@ -265,6 +265,16 @@ html, body {
 /* Line number span in gutter */
 .line-number {
     display: inline-block;
+    min-width: 30px;
+    text-align: right;
+}
+
+/* Line prefix in gutter (+ - or space) */
+.line-gutter .line-prefix {
+    width: 14px;
+    flex-shrink: 0;
+    text-align: center;
+    font-weight: 600;
 }
 
 /* Comment indicator */
@@ -292,10 +302,12 @@ html, body {
     display: flex;
 }
 
+/* Line prefix base styles (used in gutter) */
 .line-prefix {
-    width: 12px;
-    flex-shrink: 0;
-    color: var(--vscode-descriptionForeground);
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
 }
 
 .line-text {
@@ -312,8 +324,8 @@ html, body {
     background-color: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
 }
 
-.diff-line-addition .line-prefix,
-.line-added .line-prefix {
+.diff-line-addition .line-gutter .line-prefix,
+.line-added .line-gutter .line-prefix {
     color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
 }
 
@@ -322,8 +334,8 @@ html, body {
     background-color: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
 }
 
-.diff-line-deletion .line-prefix,
-.line-deleted .line-prefix {
+.diff-line-deletion .line-gutter .line-prefix,
+.line-deleted .line-gutter .line-prefix {
     color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
 }
 
@@ -431,7 +443,7 @@ html, body {
 
 /* Inline line gutter (shows both line numbers) */
 .inline-line-gutter {
-    min-width: 90px;
+    min-width: 100px;
     padding: 0 8px;
     text-align: right;
     color: var(--vscode-editorLineNumber-foreground);
@@ -446,6 +458,14 @@ html, body {
     padding-top: 0;
     line-height: var(--vscode-editor-line-height, 1.5);
     position: relative;
+}
+
+/* Line prefix in inline gutter */
+.inline-line-gutter .line-prefix {
+    width: 14px;
+    flex-shrink: 0;
+    text-align: center;
+    font-weight: 600;
 }
 
 /* Comment indicator in inline view */
@@ -499,7 +519,7 @@ html, body {
     background-color: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
 }
 
-.inline-diff-line-addition .line-prefix {
+.inline-diff-line-addition .inline-line-gutter .line-prefix {
     color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
 }
 
@@ -507,7 +527,7 @@ html, body {
     background-color: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
 }
 
-.inline-diff-line-deletion .line-prefix {
+.inline-diff-line-deletion .inline-line-gutter .line-prefix {
     color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
 }
 

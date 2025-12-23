@@ -112,6 +112,23 @@ function createLineElement(
     const gutterDiv = document.createElement('div');
     gutterDiv.className = 'line-gutter';
 
+    // Add prefix for diff type (to the left of line number)
+    let prefix = '';
+    if (type === 'addition') {
+        prefix = '+';
+        lineDiv.classList.add('line-added');
+    } else if (type === 'deletion') {
+        prefix = '-';
+        lineDiv.classList.add('line-deleted');
+    } else if (type === 'context') {
+        prefix = ' ';
+    }
+
+    const prefixSpan = document.createElement('span');
+    prefixSpan.className = 'line-prefix';
+    prefixSpan.textContent = prefix;
+    gutterDiv.appendChild(prefixSpan);
+
     // Wrap line number in a span for proper layout
     const lineNumSpan = document.createElement('span');
     lineNumSpan.className = 'line-number';
@@ -134,23 +151,6 @@ function createLineElement(
     // Line content
     const contentDiv = document.createElement('div');
     contentDiv.className = 'line-content';
-
-    // Add prefix for diff type
-    let prefix = '';
-    if (type === 'addition') {
-        prefix = '+';
-        lineDiv.classList.add('line-added');
-    } else if (type === 'deletion') {
-        prefix = '-';
-        lineDiv.classList.add('line-deleted');
-    } else if (type === 'context') {
-        prefix = ' ';
-    }
-
-    const prefixSpan = document.createElement('span');
-    prefixSpan.className = 'line-prefix';
-    prefixSpan.textContent = prefix;
-    contentDiv.appendChild(prefixSpan);
 
     const textSpan = document.createElement('span');
     textSpan.className = 'line-text hljs';
@@ -442,6 +442,21 @@ function createInlineLineElement(
     const gutterDiv = document.createElement('div');
     gutterDiv.className = 'inline-line-gutter';
 
+    // Add prefix for diff type (to the left of line numbers)
+    let prefix = '';
+    if (type === 'addition') {
+        prefix = '+';
+    } else if (type === 'deletion') {
+        prefix = '-';
+    } else if (type === 'context') {
+        prefix = ' ';
+    }
+
+    const prefixSpan = document.createElement('span');
+    prefixSpan.className = 'line-prefix';
+    prefixSpan.textContent = prefix;
+    gutterDiv.appendChild(prefixSpan);
+
     const oldNumSpan = document.createElement('span');
     oldNumSpan.className = 'old-line-num';
     oldNumSpan.textContent = oldLineNum !== null ? String(oldLineNum) : '';
@@ -466,21 +481,6 @@ function createInlineLineElement(
     // Line content
     const contentDiv = document.createElement('div');
     contentDiv.className = 'inline-line-content';
-
-    // Add prefix for diff type
-    let prefix = '';
-    if (type === 'addition') {
-        prefix = '+';
-    } else if (type === 'deletion') {
-        prefix = '-';
-    } else if (type === 'context') {
-        prefix = ' ';
-    }
-
-    const prefixSpan = document.createElement('span');
-    prefixSpan.className = 'line-prefix';
-    prefixSpan.textContent = prefix;
-    contentDiv.appendChild(prefixSpan);
 
     const textSpan = document.createElement('span');
     textSpan.className = 'line-text hljs';

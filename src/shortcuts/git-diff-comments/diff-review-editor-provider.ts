@@ -210,8 +210,30 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         // Check if a webview panel already exists for this file
         const existingPanel = this.activeWebviews.get(filePath);
         if (existingPanel) {
-            // Reveal the existing panel instead of creating a new one
+            // Reveal the existing panel
             existingPanel.reveal(vscode.ViewColumn.One);
+            
+            // Refresh the diff content in case the file has been updated externally
+            const relativePath = path.relative(gitContext.repositoryRoot, filePath);
+            const diffResult = getDiffContent(relativePath, gitContext);
+            
+            if (!diffResult.isBinary && !diffResult.error) {
+                // Update stored state
+                const webviewState: DiffWebviewState = {
+                    filePath: relativePath,
+                    gitContext,
+                    oldContent: diffResult.oldContent,
+                    newContent: diffResult.newContent
+                };
+                this.webviewStates.set(filePath, webviewState);
+                
+                // Send updated content to the webview
+                existingPanel.webview.postMessage({
+                    type: 'update',
+                    oldContent: diffResult.oldContent,
+                    newContent: diffResult.newContent
+                });
+            }
             
             // If we need to scroll to a specific comment, send the message
             if (scrollToCommentId) {
