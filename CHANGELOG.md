@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.12.0] - 2025-12-23
+
+### Added
+- **Editable Diff View**: Edit uncommitted changes directly in the diff review editor
+- **Dirty State Indicator**: Visual (•) indicator in title when diff has unsaved changes
+- **Ask AI in Diff View**: AI clarification features (clarify, go deeper, custom) for diff content
+- **Whitespace Toggle**: Show/hide whitespace changes in diff view
+- **Review/Source Mode Toggle**: Switch between formatted review and raw source views
+- **Diff Refresh**: Manual refresh button to reload diff content
+
 ## [2.11.0] - 2025-12-21
 
 ### Added
