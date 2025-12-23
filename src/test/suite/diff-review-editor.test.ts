@@ -22,13 +22,15 @@ suite('DiffReviewEditorProvider Tests', () => {
                 filePath: 'src/file.ts',
                 gitContext,
                 oldContent: 'old content',
-                newContent: 'new content'
+                newContent: 'new content',
+                isEditable: false
             };
 
             assert.strictEqual(state.filePath, 'src/file.ts');
             assert.strictEqual(state.gitContext.repositoryRoot, '/repo');
             assert.strictEqual(state.oldContent, 'old content');
             assert.strictEqual(state.newContent, 'new content');
+            assert.strictEqual(state.isEditable, false);
         });
 
         test('should be serializable to JSON', () => {
@@ -44,7 +46,8 @@ suite('DiffReviewEditorProvider Tests', () => {
                 filePath: 'src/component.tsx',
                 gitContext,
                 oldContent: 'function old() {}',
-                newContent: 'function new() {}'
+                newContent: 'function new() {}',
+                isEditable: false
             };
 
             // Serialize and deserialize
@@ -59,6 +62,7 @@ suite('DiffReviewEditorProvider Tests', () => {
             assert.strictEqual(deserialized.gitContext.wasStaged, state.gitContext.wasStaged);
             assert.strictEqual(deserialized.oldContent, state.oldContent);
             assert.strictEqual(deserialized.newContent, state.newContent);
+            assert.strictEqual(deserialized.isEditable, state.isEditable);
         });
 
         test('should handle empty content', () => {

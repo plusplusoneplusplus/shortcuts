@@ -29,6 +29,8 @@ export interface AppState {
     editingCommentId: string | null;
     viewMode: ViewMode;
     ignoreWhitespace: boolean;
+    /** Whether the new content is editable (uncommitted changes) */
+    isEditable: boolean;
 }
 
 /**
@@ -54,7 +56,8 @@ export function createInitialState(): AppState {
             oldRef: '',
             newRef: '',
             wasStaged: false
-        }
+        },
+        isEditable: false
     };
 
     return {
@@ -68,7 +71,8 @@ export function createInitialState(): AppState {
         isCommentPanelOpen: false,
         editingCommentId: null,
         viewMode: 'split' as ViewMode,
-        ignoreWhitespace: false
+        ignoreWhitespace: false,
+        isEditable: initialData.isEditable || false
     };
 }
 
@@ -203,5 +207,19 @@ export function setIgnoreWhitespace(ignore: boolean): void {
 export function toggleIgnoreWhitespace(): boolean {
     state.ignoreWhitespace = !state.ignoreWhitespace;
     return state.ignoreWhitespace;
+}
+
+/**
+ * Get whether content is editable
+ */
+export function getIsEditable(): boolean {
+    return state.isEditable;
+}
+
+/**
+ * Set whether content is editable
+ */
+export function setIsEditable(editable: boolean): void {
+    state.isEditable = editable;
 }
 

@@ -1,42 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { GitCommitFile, GitChangeStatus } from './types';
-
-/**
- * Icon configuration for each git change status
- */
-interface StatusIconConfig {
-    icon: string;
-    color: string;
-}
-
-/**
- * Icons for commit file changes
- */
-const STATUS_ICON_MAP: Record<GitChangeStatus, StatusIconConfig> = {
-    'modified': { icon: 'diff-modified', color: 'terminal.ansiYellow' },
-    'added': { icon: 'diff-added', color: 'terminal.ansiGreen' },
-    'deleted': { icon: 'diff-removed', color: 'terminal.ansiRed' },
-    'renamed': { icon: 'diff-renamed', color: 'terminal.ansiBlue' },
-    'copied': { icon: 'diff-added', color: 'terminal.ansiBlue' },
-    'untracked': { icon: 'question', color: 'terminal.ansiMagenta' },
-    'ignored': { icon: 'circle-slash', color: 'disabledForeground' },
-    'conflict': { icon: 'warning', color: 'terminal.ansiRed' }
-};
-
-/**
- * Short status indicator for display
- */
-const STATUS_SHORT: Record<GitChangeStatus, string> = {
-    'modified': 'M',
-    'added': 'A',
-    'deleted': 'D',
-    'renamed': 'R',
-    'copied': 'C',
-    'untracked': 'U',
-    'ignored': 'I',
-    'conflict': '!'
-};
+import { STATUS_SHORT } from './git-constants';
+import { GitCommitFile } from './types';
 
 /**
  * Tree item for displaying a file changed in a commit
@@ -68,8 +33,11 @@ export class GitCommitFileItem extends vscode.TreeItem {
         // Tooltip with full details
         this.tooltip = this.createTooltip();
 
-        // Status-specific icon with color
-        this.iconPath = this.getStatusIcon();
+        // Set resourceUri to enable VSCode to use the file icon from the current icon theme
+        // For commit files, we construct the URI from the repository root and file path
+        this.resourceUri = vscode.Uri.file(path.join(file.repositoryRoot, file.path));
+
+        // Don't set iconPath - let VSCode use the default file icon from icon theme
 
         // Command to open diff view
         this.command = {
@@ -77,14 +45,6 @@ export class GitCommitFileItem extends vscode.TreeItem {
             title: 'Open Diff',
             arguments: [file]
         };
-    }
-
-    /**
-     * Get the status icon with appropriate color
-     */
-    private getStatusIcon(): vscode.ThemeIcon {
-        const config = STATUS_ICON_MAP[this.file.status];
-        return new vscode.ThemeIcon(config.icon, new vscode.ThemeColor(config.color));
     }
 
     /**

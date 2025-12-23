@@ -290,7 +290,7 @@ export interface DiffAskAIContext {
  */
 export interface DiffWebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'saveContent';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;
@@ -301,6 +301,8 @@ export interface DiffWebviewMessage {
     pathToCopy?: string;
     /** AI clarification context (for askAI message) */
     context?: DiffAskAIContext;
+    /** New content to save (for saveContent message) */
+    newContent?: string;
 }
 
 /**
@@ -324,6 +326,8 @@ export interface DiffExtensionMessage {
     comment?: DiffComment;
     /** Comment ID to scroll to (for scrollToComment message) */
     scrollToCommentId?: string;
+    /** Whether the new content is editable (uncommitted changes) */
+    isEditable?: boolean;
 }
 
 /**
@@ -338,5 +342,7 @@ export interface DiffWebviewState {
     oldContent: string;
     /** New file content */
     newContent: string;
+    /** Whether the new content is editable (uncommitted changes) */
+    isEditable?: boolean;
 }
 

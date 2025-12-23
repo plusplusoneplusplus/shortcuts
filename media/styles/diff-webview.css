@@ -998,3 +998,46 @@ html, body {
     background-color: var(--vscode-button-hoverBackground);
 }
 
+/* ======================== */
+/* Editable Content Styles  */
+/* ======================== */
+
+/* Editable line text - for uncommitted changes */
+.line-text.editable {
+    cursor: text;
+    outline: none;
+    min-height: 1.2em;
+}
+
+.line-text.editable:focus {
+    background-color: var(--vscode-editor-selectionBackground);
+    border-radius: 2px;
+}
+
+.line-text.editable:hover:not(:focus) {
+    background-color: var(--vscode-list-hoverBackground);
+    border-radius: 2px;
+}
+
+/* Editable mode indicator on pane */
+.pane-content.editable-mode {
+    background-color: var(--vscode-editor-background);
+}
+
+/* Inline view editable content */
+#inline-content.editable-mode .line-text.editable {
+    cursor: text;
+    outline: none;
+    min-height: 1.2em;
+}
+
+#inline-content.editable-mode .line-text.editable:focus {
+    background-color: var(--vscode-editor-selectionBackground);
+    border-radius: 2px;
+}
+
+#inline-content.editable-mode .line-text.editable:hover:not(:focus) {
+    background-color: var(--vscode-list-hoverBackground);
+    border-radius: 2px;
+}
+

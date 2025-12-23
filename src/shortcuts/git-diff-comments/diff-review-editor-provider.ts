@@ -3,6 +3,7 @@
  * Provides a side-by-side diff view with commenting capability
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { AIProcessManager } from '../ai-service';
@@ -25,6 +26,14 @@ import {
     DiffWebviewMessage,
     DiffWebviewState
 } from './types';
+
+/**
+ * Check if the diff is editable (uncommitted changes to working tree)
+ */
+function isEditableDiff(gitContext: DiffGitContext): boolean {
+    // Editable if the new version is the working tree (unstaged or untracked changes)
+    return gitContext.newRef === 'WORKING_TREE';
+}
 
 /**
  * DiffReviewEditorProvider - Custom readonly editor for diff review with comments
@@ -114,13 +123,16 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             this.activeWebviews.set(fullPath, panel);
             this.webviewStates.set(fullPath, state);
 
+            const isEditable = state.isEditable ?? isEditableDiff(state.gitContext);
+
             // Set webview content
             panel.webview.html = this.getWebviewContent(
                 panel.webview,
                 state.filePath,
                 state.oldContent,
                 state.newContent,
-                state.gitContext
+                state.gitContext,
+                isEditable
             );
 
             // Handle messages from webview
@@ -128,11 +140,14 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 async (message: DiffWebviewMessage) => {
                     await this.handleWebviewMessage(
                         message,
+                        fullPath,
                         state.filePath,
                         state.gitContext,
                         state.oldContent,
                         state.newContent,
-                        panel
+                        panel,
+                        undefined,
+                        isEditable
                     );
                 },
                 undefined,
@@ -216,6 +231,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             // Refresh the diff content in case the file has been updated externally
             const relativePath = path.relative(gitContext.repositoryRoot, filePath);
             const diffResult = getDiffContent(relativePath, gitContext);
+            const isEditable = isEditableDiff(gitContext);
             
             if (!diffResult.isBinary && !diffResult.error) {
                 // Update stored state
@@ -223,7 +239,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                     filePath: relativePath,
                     gitContext,
                     oldContent: diffResult.oldContent,
-                    newContent: diffResult.newContent
+                    newContent: diffResult.newContent,
+                    isEditable
                 };
                 this.webviewStates.set(filePath, webviewState);
                 
@@ -231,7 +248,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 existingPanel.webview.postMessage({
                     type: 'update',
                     oldContent: diffResult.oldContent,
-                    newContent: diffResult.newContent
+                    newContent: diffResult.newContent,
+                    isEditable
                 });
             }
             
@@ -280,11 +298,13 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
         // Store reference and state for serialization
         this.activeWebviews.set(filePath, panel);
+        const isEditable = isEditableDiff(gitContext);
         const webviewState: DiffWebviewState = {
             filePath: relativePath,
             gitContext,
             oldContent: diffResult.oldContent,
-            newContent: diffResult.newContent
+            newContent: diffResult.newContent,
+            isEditable
         };
         this.webviewStates.set(filePath, webviewState);
 
@@ -294,7 +314,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             relativePath,
             diffResult.oldContent,
             diffResult.newContent,
-            gitContext
+            gitContext,
+            isEditable
         );
 
         // Handle messages from webview
@@ -302,12 +323,14 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             async (message: DiffWebviewMessage) => {
                 await this.handleWebviewMessage(
                     message,
+                    filePath,
                     relativePath,
                     gitContext,
                     diffResult.oldContent,
                     diffResult.newContent,
                     panel,
-                    scrollToCommentId
+                    scrollToCommentId,
+                    isEditable
                 );
             },
             undefined,
@@ -326,17 +349,19 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
      */
     private async handleWebviewMessage(
         message: DiffWebviewMessage,
-        filePath: string,
+        absoluteFilePath: string,
+        relativeFilePath: string,
         gitContext: DiffGitContext,
         oldContent: string,
         newContent: string,
         panel: vscode.WebviewPanel,
-        scrollToCommentId?: string
+        scrollToCommentId?: string,
+        isEditable?: boolean
     ): Promise<void> {
         switch (message.type) {
             case 'ready':
             case 'requestState':
-                this.sendStateToWebview(panel, filePath, oldContent, newContent);
+                this.sendStateToWebview(panel, relativeFilePath, oldContent, newContent, isEditable);
                 // If we need to scroll to a specific comment, send the message after state is sent
                 if (scrollToCommentId) {
                     setTimeout(() => {
@@ -352,7 +377,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 if (message.selection && message.comment && message.selectedText) {
                     const content = message.selection.side === 'old' ? oldContent : newContent;
                     await this.commentsManager.addComment(
-                        filePath,
+                        relativeFilePath,
                         message.selection,
                         message.selectedText,
                         message.comment,
@@ -433,9 +458,41 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
             case 'askAI':
                 if (message.context) {
-                    await this.handleAskAI(message.context, filePath, gitContext, oldContent, newContent, panel);
+                    await this.handleAskAI(message.context, relativeFilePath, gitContext, oldContent, newContent, panel);
                 }
                 break;
+
+            case 'saveContent':
+                if (message.newContent !== undefined && isEditable) {
+                    await this.handleSaveContent(absoluteFilePath, message.newContent, panel, gitContext);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Handle saving content to the file (for editable diff view)
+     */
+    private async handleSaveContent(
+        absoluteFilePath: string,
+        newContent: string,
+        panel: vscode.WebviewPanel,
+        gitContext: DiffGitContext
+    ): Promise<void> {
+        try {
+            // Write the content to the file
+            fs.writeFileSync(absoluteFilePath, newContent, 'utf8');
+            
+            // Update the stored state
+            const relativePath = path.relative(gitContext.repositoryRoot, absoluteFilePath);
+            const state = this.webviewStates.get(absoluteFilePath);
+            if (state) {
+                state.newContent = newContent;
+            }
+            
+            vscode.window.showInformationMessage('File saved successfully.');
+        } catch (error: any) {
+            vscode.window.showErrorMessage(`Failed to save file: ${error.message}`);
         }
     }
 
@@ -522,7 +579,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         panel: vscode.WebviewPanel,
         filePath: string,
         oldContent: string,
-        newContent: string
+        newContent: string,
+        isEditable?: boolean
     ): void {
         const comments = this.commentsManager.getCommentsForFile(filePath);
         const baseSettings = this.commentsManager.getSettings();
@@ -543,7 +601,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             newContent,
             comments,
             filePath,
-            settings
+            settings,
+            isEditable
         };
 
         panel.webview.postMessage(message);
@@ -586,7 +645,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         filePath: string,
         oldContent: string,
         newContent: string,
-        gitContext: DiffGitContext
+        gitContext: DiffGitContext,
+        isEditable: boolean = false
     ): string {
         // Get URIs for styles
         const styleUri = webview.asWebviewUri(
@@ -744,7 +804,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             filePath: ${JSON.stringify(filePath)},
             oldContent: ${JSON.stringify(oldContent)},
             newContent: ${JSON.stringify(newContent)},
-            gitContext: ${JSON.stringify(gitContext)}
+            gitContext: ${JSON.stringify(gitContext)},
+            isEditable: ${JSON.stringify(isEditable)}
         };
     </script>
     <!-- Load highlight.js from CDN for syntax highlighting -->

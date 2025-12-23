@@ -163,3 +163,13 @@ export function sendAskAI(context: AskAIContext): void {
     });
 }
 
+/**
+ * Send save content request (for editable diff view)
+ */
+export function sendSaveContent(newContent: string): void {
+    postMessage({
+        type: 'saveContent',
+        newContent
+    });
+}
+

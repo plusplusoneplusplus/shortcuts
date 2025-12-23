@@ -6,8 +6,8 @@ import { ExtensionMessage } from './types';
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
 import { hideCommentPanel, hideCommentsList, initPanelElements, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
-import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getState, getViewMode, setComments, setSettings, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
-import { initVSCodeAPI, sendCopyPath, sendOpenFile, sendReady } from './vscode-bridge';
+import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getState, getViewMode, setComments, setIsEditable, setSettings, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
+import { initVSCodeAPI, sendCopyPath, sendOpenFile, sendReady, sendSaveContent } from './vscode-bridge';
 
 // AbortController for managing event listeners
 let commentHandlersAbortController: AbortController | null = null;
@@ -52,6 +52,9 @@ function initialize(): void {
     // Setup file path click handler
     setupFilePathClickHandler();
 
+    // Setup editable content (for uncommitted changes)
+    setupEditableContent();
+
     // Setup message listener
     window.addEventListener('message', handleMessage);
 
@@ -81,6 +84,10 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
                 // Invalidate highlight cache when content changes
                 invalidateHighlightCache();
                 renderDiff();
+            }
+            if (message.isEditable !== undefined) {
+                setIsEditable(message.isEditable);
+                updateEditableUI();
             }
             if (message.comments) {
                 setComments(message.comments);
@@ -498,6 +505,172 @@ function setupCommentIndicatorHandlers(): void {
         // Re-initialize scroll sync for split view since we're not cloning elements anymore
         initializeScrollSync();
     }
+}
+
+/**
+ * Update UI to reflect editable state - make content directly editable
+ */
+function updateEditableUI(): void {
+    // Re-setup editable content when state changes
+    setupEditableContent();
+}
+
+/** Track if content has been modified */
+let contentModified = false;
+
+/** Debounce timer for auto-save */
+let saveDebounceTimer: number | null = null;
+
+/**
+ * Setup editable content for uncommitted changes
+ * Content is directly editable without needing a toggle button
+ */
+function setupEditableContent(): void {
+    const isEditable = getIsEditable();
+    
+    if (!isEditable) {
+        return;
+    }
+
+    const viewMode = getViewMode();
+    
+    if (viewMode === 'inline') {
+        // For inline view, make addition and context lines editable
+        const inlineContainer = document.getElementById('inline-content');
+        if (inlineContainer) {
+            inlineContainer.classList.add('editable-mode');
+            const lineElements = inlineContainer.querySelectorAll('.inline-diff-line');
+            lineElements.forEach((el) => {
+                const htmlEl = el as HTMLElement;
+                const side = htmlEl.dataset.side;
+                // Only make new and context lines editable (not deletions)
+                if (side === 'new' || side === 'context') {
+                    const textEl = htmlEl.querySelector('.line-text') as HTMLElement;
+                    if (textEl) {
+                        textEl.contentEditable = 'true';
+                        textEl.classList.add('editable');
+                        setupEditableLineHandlers(textEl);
+                    }
+                }
+            });
+        }
+    } else {
+        // For split view, make the new content pane editable
+        const newContainer = document.getElementById('new-content');
+        if (newContainer) {
+            newContainer.classList.add('editable-mode');
+            const lineContents = newContainer.querySelectorAll('.line-content .line-text');
+            lineContents.forEach((el) => {
+                const htmlEl = el as HTMLElement;
+                // Don't make empty alignment lines editable
+                const lineEl = htmlEl.closest('.diff-line');
+                if (lineEl && !lineEl.classList.contains('diff-line-empty')) {
+                    htmlEl.contentEditable = 'true';
+                    htmlEl.classList.add('editable');
+                    setupEditableLineHandlers(htmlEl);
+                }
+            });
+        }
+    }
+}
+
+/**
+ * Setup event handlers for an editable line
+ */
+function setupEditableLineHandlers(element: HTMLElement): void {
+    // Track modifications
+    element.addEventListener('input', () => {
+        contentModified = true;
+        // Debounced auto-save after 2 seconds of no typing
+        if (saveDebounceTimer) {
+            clearTimeout(saveDebounceTimer);
+        }
+        saveDebounceTimer = window.setTimeout(() => {
+            if (contentModified) {
+                saveEditedContent();
+            }
+        }, 2000);
+    });
+
+    // Save on blur (when user clicks away)
+    element.addEventListener('blur', () => {
+        if (contentModified) {
+            // Clear any pending debounce
+            if (saveDebounceTimer) {
+                clearTimeout(saveDebounceTimer);
+                saveDebounceTimer = null;
+            }
+            saveEditedContent();
+        }
+    });
+
+    // Handle keyboard shortcuts
+    element.addEventListener('keydown', (e) => {
+        // Ctrl/Cmd + S to save
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            if (contentModified) {
+                saveEditedContent();
+            }
+        }
+    });
+}
+
+/**
+ * Save the edited content
+ */
+function saveEditedContent(): void {
+    const viewMode = getViewMode();
+    
+    if (viewMode === 'inline') {
+        // For inline view, extract content from addition and context lines
+        const inlineContainer = document.getElementById('inline-content');
+        if (!inlineContainer) return;
+        
+        const lines: string[] = [];
+        const lineElements = inlineContainer.querySelectorAll('.inline-diff-line');
+        
+        lineElements.forEach((el) => {
+            const htmlEl = el as HTMLElement;
+            const side = htmlEl.dataset.side;
+            
+            // Include context lines and new lines, skip deletions
+            if (side === 'new' || side === 'context') {
+                const textEl = htmlEl.querySelector('.line-text');
+                if (textEl) {
+                    lines.push(textEl.textContent || '');
+                }
+            }
+        });
+        
+        const newContent = lines.join('\n');
+        sendSaveContent(newContent);
+        updateState({ newContent });
+    } else {
+        // For split view, extract content from the new pane
+        const newContainer = document.getElementById('new-content');
+        if (!newContainer) return;
+        
+        const lines: string[] = [];
+        const lineElements = newContainer.querySelectorAll('.diff-line');
+        
+        lineElements.forEach((el) => {
+            const htmlEl = el as HTMLElement;
+            // Skip empty alignment lines
+            if (!htmlEl.classList.contains('diff-line-empty')) {
+                const textEl = htmlEl.querySelector('.line-text');
+                if (textEl) {
+                    lines.push(textEl.textContent || '');
+                }
+            }
+        });
+        
+        const newContent = lines.join('\n');
+        sendSaveContent(newContent);
+        updateState({ newContent });
+    }
+    
+    contentModified = false;
 }
 
 // Initialize when DOM is ready

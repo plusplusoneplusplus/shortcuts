@@ -73,6 +73,8 @@ export interface InitialData {
     oldContent: string;
     newContent: string;
     gitContext: DiffGitContext;
+    /** Whether the new content is editable (uncommitted changes) */
+    isEditable?: boolean;
 }
 
 /**
@@ -88,6 +90,8 @@ export interface ExtensionMessage {
     comment?: DiffComment;
     /** Comment ID to scroll to (for scrollToComment message) */
     scrollToCommentId?: string;
+    /** Whether the new content is editable (uncommitted changes) */
+    isEditable?: boolean;
 }
 
 /**
@@ -113,7 +117,7 @@ export interface AskAIContext {
  */
 export interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'saveContent';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;
@@ -124,6 +128,8 @@ export interface WebviewMessage {
     pathToCopy?: string;
     /** AI clarification context (for askAI message) */
     context?: AskAIContext;
+    /** New content to save (for saveContent message) */
+    newContent?: string;
 }
 
 /**
