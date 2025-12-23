@@ -11,14 +11,14 @@ import { GitCommitItem } from '../../shortcuts/git/git-commit-item';
 import { LoadMoreItem } from '../../shortcuts/git/load-more-item';
 import { SectionHeaderItem } from '../../shortcuts/git/section-header-item';
 import {
-    GitChange,
-    GitChangeStatus,
-    GitChangeStage,
-    GitChangeCounts,
-    GitCommit,
-    GitCommitFile,
     CommitLoadOptions,
     CommitLoadResult,
+    GitChange,
+    GitChangeCounts,
+    GitChangeStage,
+    GitChangeStatus,
+    GitCommit,
+    GitCommitFile,
     GitSectionType,
     GitViewCounts
 } from '../../shortcuts/git/types';
@@ -232,7 +232,7 @@ suite('Git View Tests', () => {
         const isWindows = process.platform === 'win32';
         const repoRoot = isWindows ? 'C:\\repo' : '/repo';
         const defaultFilePath = isWindows ? 'C:\\repo\\src\\file.ts' : '/repo/src/file.ts';
-        
+
         const createMockChange = (
             status: GitChangeStatus,
             stage: GitChangeStage,
@@ -322,51 +322,53 @@ suite('Git View Tests', () => {
                 const change = createMockChange('modified', 'unstaged', '/repo/src/components/Button.tsx');
                 const item = new GitChangeItem(change);
                 assert.ok(item.description?.toString().includes('src/components') ||
-                          item.description?.toString().includes('src\\components'));
+                    item.description?.toString().includes('src\\components'));
             });
         });
 
-        suite('Icon Types by Status', () => {
-            test('staged modified should use diff-modified icon', () => {
+        suite('Resource URI for File Icons', () => {
+            // GitChangeItem now uses resourceUri for file icons from icon theme
+            // instead of setting iconPath directly. These tests verify resourceUri is set.
+            test('staged modified should have resourceUri', () => {
                 const change = createMockChange('modified', 'staged');
                 const item = new GitChangeItem(change);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-modified');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('staged added should use diff-added icon', () => {
+            test('staged added should have resourceUri', () => {
                 const change = createMockChange('added', 'staged');
                 const item = new GitChangeItem(change);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-added');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('staged deleted should use diff-removed icon', () => {
+            test('staged deleted should have resourceUri', () => {
                 const change = createMockChange('deleted', 'staged');
                 const item = new GitChangeItem(change);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-removed');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('unstaged modified should use edit icon', () => {
+            test('unstaged modified should have resourceUri', () => {
                 const change = createMockChange('modified', 'unstaged');
                 const item = new GitChangeItem(change);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'edit');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('unstaged deleted should use trash icon', () => {
+            test('unstaged deleted should have resourceUri', () => {
                 const change = createMockChange('deleted', 'unstaged');
                 const item = new GitChangeItem(change);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'trash');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('untracked should use question icon', () => {
+            test('untracked should have resourceUri', () => {
                 const change = createMockChange('untracked', 'untracked');
                 const item = new GitChangeItem(change);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'question');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('conflict should use warning icon', () => {
+            test('conflict should have resourceUri', () => {
                 const change = createMockChange('conflict', 'unstaged');
                 const item = new GitChangeItem(change);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'warning');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
         });
 
@@ -703,7 +705,7 @@ suite('Git View Tests', () => {
                 const file = createMockCommitFile('modified', 'src/components/Button.tsx');
                 const item = new GitCommitFileItem(file);
                 assert.ok(item.description?.toString().includes('src/components') ||
-                          item.description?.toString().includes('src\\components'));
+                    item.description?.toString().includes('src\\components'));
             });
 
             test('should show original filename for renames', () => {
@@ -721,41 +723,43 @@ suite('Git View Tests', () => {
             });
         });
 
-        suite('Icon Types by Status', () => {
-            test('modified should use diff-modified icon', () => {
+        suite('Resource URI for File Icons', () => {
+            // GitCommitFileItem now uses resourceUri for file icons from icon theme
+            // instead of setting iconPath directly. These tests verify resourceUri is set.
+            test('modified should have resourceUri', () => {
                 const file = createMockCommitFile('modified');
                 const item = new GitCommitFileItem(file);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-modified');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('added should use diff-added icon', () => {
+            test('added should have resourceUri', () => {
                 const file = createMockCommitFile('added');
                 const item = new GitCommitFileItem(file);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-added');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('deleted should use diff-removed icon', () => {
+            test('deleted should have resourceUri', () => {
                 const file = createMockCommitFile('deleted');
                 const item = new GitCommitFileItem(file);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-removed');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('renamed should use diff-renamed icon', () => {
+            test('renamed should have resourceUri', () => {
                 const file = createMockCommitFile('renamed', 'new.ts', 'old.ts');
                 const item = new GitCommitFileItem(file);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-renamed');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('copied should use diff-added icon', () => {
+            test('copied should have resourceUri', () => {
                 const file = createMockCommitFile('copied');
                 const item = new GitCommitFileItem(file);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-added');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
 
-            test('conflict should use warning icon', () => {
+            test('conflict should have resourceUri', () => {
                 const file = createMockCommitFile('conflict');
                 const item = new GitCommitFileItem(file);
-                assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'warning');
+                assert.ok(item.resourceUri instanceof vscode.Uri);
             });
         });
 
@@ -802,17 +806,18 @@ suite('Git View Tests', () => {
             });
         });
 
-        suite('All Statuses Have Icons', () => {
+        suite('All Statuses Have ResourceUri', () => {
+            // GitCommitFileItem now uses resourceUri for file icons from icon theme
             const allStatuses: GitChangeStatus[] = [
                 'modified', 'added', 'deleted', 'renamed',
                 'copied', 'untracked', 'ignored', 'conflict'
             ];
 
             for (const status of allStatuses) {
-                test(`should have icon for ${status} status`, () => {
+                test(`should have resourceUri for ${status} status`, () => {
                     const file = createMockCommitFile(status, 'file.ts', status === 'renamed' ? 'old.ts' : undefined);
                     const item = new GitCommitFileItem(file);
-                    assert.ok(item.iconPath instanceof vscode.ThemeIcon);
+                    assert.ok(item.resourceUri instanceof vscode.Uri);
                 });
             }
         });
@@ -1159,16 +1164,16 @@ suite('Git View Tests', () => {
     });
 
     // ============================================
-    // Status to Icon Mapping Tests
+    // Resource URI Tests (for file icons from icon theme)
     // ============================================
-    suite('Status to Icon Mapping', () => {
+    suite('Resource URI for Icons', () => {
         const allStatuses: GitChangeStatus[] = [
             'modified', 'added', 'deleted', 'renamed',
             'copied', 'untracked', 'ignored', 'conflict'
         ];
 
         for (const status of allStatuses) {
-            test(`should have icon for ${status} status (staged)`, () => {
+            test(`should have resourceUri for ${status} status (staged)`, () => {
                 const change: GitChange = {
                     path: '/repo/file.ts',
                     status,
@@ -1178,10 +1183,13 @@ suite('Git View Tests', () => {
                     uri: vscode.Uri.file('/repo/file.ts')
                 };
                 const item = new GitChangeItem(change);
-                assert.ok(item.iconPath instanceof vscode.ThemeIcon);
+                // GitChangeItem uses resourceUri for file icons from icon theme
+                // instead of setting iconPath directly
+                assert.ok(item.resourceUri instanceof vscode.Uri);
+                assert.strictEqual(item.resourceUri?.fsPath, '/repo/file.ts');
             });
 
-            test(`should have icon for ${status} status (unstaged)`, () => {
+            test(`should have resourceUri for ${status} status (unstaged)`, () => {
                 const change: GitChange = {
                     path: '/repo/file.ts',
                     status,
@@ -1191,7 +1199,10 @@ suite('Git View Tests', () => {
                     uri: vscode.Uri.file('/repo/file.ts')
                 };
                 const item = new GitChangeItem(change);
-                assert.ok(item.iconPath instanceof vscode.ThemeIcon);
+                // GitChangeItem uses resourceUri for file icons from icon theme
+                // instead of setting iconPath directly
+                assert.ok(item.resourceUri instanceof vscode.Uri);
+                assert.strictEqual(item.resourceUri?.fsPath, '/repo/file.ts');
             });
         }
     });
@@ -1275,7 +1286,7 @@ suite('Git View Tests', () => {
             const item = new GitCommitFileItem(file);
             assert.strictEqual(item.label, 'PrimaryButton.tsx');
             assert.ok(item.description?.toString().includes('src/components/ui/buttons') ||
-                      item.description?.toString().includes('src\\components\\ui\\buttons'));
+                item.description?.toString().includes('src\\components\\ui\\buttons'));
         });
 
         test('should handle commit file with copy status', () => {
@@ -1288,7 +1299,10 @@ suite('Git View Tests', () => {
                 repositoryRoot: '/repo'
             };
             const item = new GitCommitFileItem(file);
-            assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-added');
+            // GitCommitFileItem uses resourceUri for file icons from icon theme
+            assert.ok(item.resourceUri instanceof vscode.Uri);
+            // Description should include the status short code 'C' for copied
+            assert.ok(item.description?.toString().includes('C'));
         });
 
         test('should handle commit file at root level', () => {
@@ -1313,7 +1327,8 @@ suite('Git View Tests', () => {
             };
             const item = new GitCommitFileItem(file);
             assert.strictEqual(item.label, 'new-feature.ts');
-            assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-added');
+            // GitCommitFileItem uses resourceUri for file icons from icon theme
+            assert.ok(item.resourceUri instanceof vscode.Uri);
             assert.ok(item.description?.toString().includes('A'));
         });
 
@@ -1327,7 +1342,8 @@ suite('Git View Tests', () => {
             };
             const item = new GitCommitFileItem(file);
             assert.strictEqual(item.label, 'removed-file.ts');
-            assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'diff-removed');
+            // GitCommitFileItem uses resourceUri for file icons from icon theme
+            assert.ok(item.resourceUri instanceof vscode.Uri);
             assert.ok(item.description?.toString().includes('D'));
         });
 
@@ -1394,7 +1410,7 @@ suite('Git View Tests', () => {
     suite('Index Exports', () => {
         test('should export all types', async () => {
             const exports = await import('../../shortcuts/git');
-            
+
             // Types are checked at compile time, but we can verify the module loads
             assert.ok(exports);
         });
@@ -1444,12 +1460,12 @@ suite('Git View Tests', () => {
     // Markdown Review Command Tests
     // ============================================
     suite('Markdown Review Command', () => {
-        
+
         test('should detect markdown files by extension', () => {
             const mdFile = '/path/to/file.md';
             const txtFile = '/path/to/file.txt';
             const noExt = '/path/to/file';
-            
+
             assert.strictEqual(mdFile.endsWith('.md'), true);
             assert.strictEqual(txtFile.endsWith('.md'), false);
             assert.strictEqual(noExt.endsWith('.md'), false);
@@ -1458,7 +1474,7 @@ suite('Git View Tests', () => {
         test('should handle uppercase MD extension', () => {
             const upperMd = '/path/to/file.MD';
             const mixedMd = '/path/to/file.Md';
-            
+
             // Case-insensitive check
             assert.strictEqual(upperMd.toLowerCase().endsWith('.md'), true);
             assert.strictEqual(mixedMd.toLowerCase().endsWith('.md'), true);
@@ -1483,7 +1499,7 @@ suite('Git View Tests', () => {
             const isWin = process.platform === 'win32';
             const mdPath = isWin ? 'C:\\repo\\docs\\README.md' : '/repo/docs/README.md';
             const repoRootPath = isWin ? 'C:\\repo' : '/repo';
-            
+
             const change: GitChange = {
                 path: mdPath,
                 status: 'modified',
@@ -1492,7 +1508,7 @@ suite('Git View Tests', () => {
                 repositoryName: 'repo',
                 uri: vscode.Uri.file(mdPath)
             };
-            
+
             const item = new GitChangeItem(change);
             assert.ok(item.resourceUri);
             // On Windows, vscode.Uri.file() normalizes drive letter to lowercase
@@ -1513,7 +1529,7 @@ suite('Git View Tests', () => {
                 repositoryName: 'repo',
                 uri: vscode.Uri.file('/repo/file.md')
             };
-            
+
             const unstagedChange: GitChange = {
                 path: '/repo/file.md',
                 status: 'modified',
@@ -1522,10 +1538,10 @@ suite('Git View Tests', () => {
                 repositoryName: 'repo',
                 uri: vscode.Uri.file('/repo/file.md')
             };
-            
+
             const stagedItem = new GitChangeItem(stagedChange);
             const unstagedItem = new GitChangeItem(unstagedChange);
-            
+
             // Context values should match the pattern /^gitChange_/
             assert.ok(stagedItem.contextValue?.startsWith('gitChange_'));
             assert.ok(unstagedItem.contextValue?.startsWith('gitChange_'));
@@ -1542,9 +1558,9 @@ suite('Git View Tests', () => {
                 repositoryName: 'repo',
                 uri: vscode.Uri.file('/repo/docs/guide.md')
             };
-            
+
             const item = new GitChangeItem(change);
-            
+
             // The command extracts path from item.change.path
             const filePath = item.change?.path;
             assert.strictEqual(filePath, '/repo/docs/guide.md');
@@ -1560,10 +1576,10 @@ suite('Git View Tests', () => {
                 repositoryName: 'repo',
                 uri: vscode.Uri.file('/repo/src/main.ts')
             };
-            
+
             const item = new GitChangeItem(change);
             const filePath = item.change?.path;
-            
+
             // Should not be a markdown file
             assert.strictEqual(filePath?.endsWith('.md'), false);
         });
@@ -1587,49 +1603,49 @@ suite('Git View Tests', () => {
         test('should use tilde notation instead of caret for parent references', () => {
             // Verify that the git command syntax uses ~1 instead of ^
             // This is a documentation/contract test to ensure we don't regress
-            
+
             // The problematic pattern: commitHash^
             // The safe pattern: commitHash~1
-            
+
             // Both are equivalent for first parent:
             // HEAD^ = HEAD~1 = first parent of HEAD
             // abc123^ = abc123~1 = first parent of abc123
-            
+
             const commitHash = 'abc123def456789';
-            
+
             // The command we should be using (Windows-safe)
             const safeCommand = `git rev-parse ${commitHash}~1`;
-            
+
             // Verify the command doesn't contain the problematic caret pattern
             // (caret followed by end of string or whitespace)
             const hasProblematicCaret = /\^($|\s)/.test(safeCommand);
-            assert.strictEqual(hasProblematicCaret, false, 
+            assert.strictEqual(hasProblematicCaret, false,
                 'Command should not use caret (^) for parent reference');
-            
+
             // Verify it uses the tilde notation
-            assert.ok(safeCommand.includes('~1'), 
+            assert.ok(safeCommand.includes('~1'),
                 'Command should use ~1 for parent reference');
         });
 
         test('should not use caret in curly brace suffix for ref validation', () => {
             // The ^{commit} suffix is also problematic on Windows
             // We should use git cat-file -t instead to verify object type
-            
+
             const ref = 'HEAD';
-            
+
             // The problematic pattern: ref^{commit}
             const problematicPattern = `${ref}^{commit}`;
-            
+
             // Verify this pattern contains caret (what we want to avoid)
-            assert.ok(problematicPattern.includes('^'), 
+            assert.ok(problematicPattern.includes('^'),
                 'Problematic pattern should contain caret');
-            
+
             // The safe alternative is to:
             // 1. git rev-parse --verify "ref" to get the hash
             // 2. git cat-file -t "hash" to verify it's a commit
             const safeCommand1 = `git rev-parse --verify "${ref}"`;
             const safeCommand2 = `git cat-file -t "hash"`;
-            
+
             // Neither safe command should contain caret
             assert.strictEqual(safeCommand1.includes('^'), false,
                 'Safe rev-parse command should not contain caret');
@@ -1641,7 +1657,7 @@ suite('Git View Tests', () => {
             // Git commands should use forward slashes even on Windows
             const windowsPath = 'src\\shortcuts\\git\\file.ts';
             const gitPath = windowsPath.replace(/\\/g, '/');
-            
+
             assert.strictEqual(gitPath, 'src/shortcuts/git/file.ts');
             assert.strictEqual(gitPath.includes('\\'), false,
                 'Git path should not contain backslashes');
@@ -1657,7 +1673,7 @@ suite('Git View Tests', () => {
                 parentHash: 'parent123456789',
                 repositoryRoot: '/repo'
             };
-            
+
             assert.ok(file.parentHash, 'parentHash should be set');
             assert.ok(file.commitHash, 'commitHash should be set');
             assert.notStrictEqual(file.parentHash, file.commitHash,
@@ -1667,7 +1683,7 @@ suite('Git View Tests', () => {
         test('should handle empty parentHash for initial commits', () => {
             // Initial commits have no parent, so we use the empty tree hash
             const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
-            
+
             const file: GitCommitFile = {
                 path: 'README.md',
                 status: 'added',
@@ -1675,7 +1691,7 @@ suite('Git View Tests', () => {
                 parentHash: EMPTY_TREE_HASH,
                 repositoryRoot: '/repo'
             };
-            
+
             assert.strictEqual(file.parentHash, EMPTY_TREE_HASH,
                 'Initial commit should use empty tree hash as parent');
         });
@@ -1687,16 +1703,16 @@ suite('Git View Tests', () => {
             // - HEAD~1 means "first ancestor, going back 1 generation"
             // For non-merge commits, these are identical
             // For merge commits, ^ refers to first parent (main branch)
-            
+
             // We use ~1 because:
             // 1. It's equivalent to ^ for first parent
             // 2. It works on Windows without escaping issues
             // 3. It's more explicit about the number of generations
-            
+
             const commitRef = 'abc123';
             const caretNotation = `${commitRef}^`;    // Problematic on Windows
             const tildeNotation = `${commitRef}~1`;   // Safe on all platforms
-            
+
             // Both notations refer to the same commit (first parent)
             // This test documents our choice to use tilde notation
             assert.ok(tildeNotation.endsWith('~1'),
