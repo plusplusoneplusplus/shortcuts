@@ -80,7 +80,8 @@ export class DiffCommentsManager extends CommentsManagerBase<
         gitContext: DiffGitContext,
         content?: string,
         author?: string,
-        tags?: string[]
+        tags?: string[],
+        type?: DiffComment['type']
     ): Promise<DiffComment> {
         const now = new Date().toISOString();
         const relativePath = this.getRelativePath(filePath);
@@ -119,7 +120,8 @@ export class DiffCommentsManager extends CommentsManagerBase<
             author,
             tags,
             gitContext,
-            anchor
+            anchor,
+            type: type || 'user'
         };
 
         return this.addCommentToConfig(newComment);

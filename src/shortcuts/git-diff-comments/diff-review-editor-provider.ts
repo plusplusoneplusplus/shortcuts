@@ -576,6 +576,14 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             };
             const label = labelMap[context.instructionType] || '🤖 **AI Clarification:**';
 
+            // Determine the comment type based on instruction type
+            const typeMap: Record<string, 'ai-clarification' | 'ai-suggestion'> = {
+                'clarify': 'ai-clarification',
+                'go-deeper': 'ai-clarification',
+                'custom': 'ai-suggestion'
+            };
+            const commentType = typeMap[context.instructionType] || 'ai-clarification';
+
             // Build selection for the comment
             const selection: DiffSelection = {
                 side: context.side,
@@ -590,14 +598,17 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             // Get the content for the side
             const content = context.side === 'old' ? oldContent : newContent;
 
-            // Add the clarification as a comment on the selected text
+            // Add the clarification as a comment on the selected text with AI type
             await this.commentsManager.addComment(
                 filePath,
                 selection,
                 context.selectedText,
                 `${label}\n\n${result.clarification}`,
                 gitContext,
-                content
+                content,
+                undefined, // author
+                undefined, // tags
+                commentType
             );
 
             // Show a brief notification with option to copy

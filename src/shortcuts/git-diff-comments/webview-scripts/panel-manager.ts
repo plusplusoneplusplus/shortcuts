@@ -350,12 +350,16 @@ export function showCommentsForLine(comments: DiffComment[], anchorElement?: HTM
         listBody.appendChild(commentEl);
     });
 
+    // Calculate and set dynamic width based on content
+    const optimalWidth = calculateOptimalPanelWidth(comments);
+    listPanel.style.width = `${optimalWidth}px`;
+
     // Show panel
     listPanel.classList.remove('hidden');
 
     // Position panel near the anchor element if provided
     if (anchorElement) {
-        positionCommentsListNearElement(anchorElement);
+        positionCommentsListNearElement(anchorElement, optimalWidth);
     }
 }
 
@@ -363,12 +367,13 @@ export function showCommentsForLine(comments: DiffComment[], anchorElement?: HTM
  * Position the comments list panel near a given element
  * Positions BELOW the element so it doesn't overlap with the highlighted line
  * Offset to the right to avoid overlapping with line numbers
+ * @param element - The element to position near
+ * @param panelWidth - Optional dynamic panel width (defaults to 350)
  */
-function positionCommentsListNearElement(element: HTMLElement): void {
+function positionCommentsListNearElement(element: HTMLElement, panelWidth: number = 350): void {
     if (!commentsListPanel) return;
 
     const rect = element.getBoundingClientRect();
-    const panelWidth = 350; // from CSS
     const panelMaxHeight = window.innerHeight * 0.7; // 70vh from CSS
     const padding = 20;
     const lineHeight = 24; // Approximate line height
@@ -421,35 +426,161 @@ export function hideCommentsList(): void {
 }
 
 /**
+ * Get type label for AI comments
+ */
+function getTypeLabel(type?: string): string {
+    switch (type) {
+        case 'ai-suggestion': return '💡 AI Suggestion';
+        case 'ai-clarification': return '🤖 AI Clarification';
+        case 'ai-critique': return '⚠️ AI Critique';
+        case 'ai-question': return '❓ AI Question';
+        default: return '';
+    }
+}
+
+/**
+ * Calculate optimal panel width based on comments content
+ */
+function calculateOptimalPanelWidth(comments: DiffComment[]): number {
+    const minWidth = 350;
+    const maxWidth = 600;
+    
+    // Find the longest comment
+    let maxContentLength = 0;
+    let hasCodeBlocks = false;
+    let hasLongLines = false;
+    
+    for (const comment of comments) {
+        const length = comment.comment.length + comment.selectedText.length;
+        if (length > maxContentLength) {
+            maxContentLength = length;
+        }
+        if (comment.comment.includes('```')) {
+            hasCodeBlocks = true;
+        }
+        if (comment.comment.split('\n').some(line => line.length > 60)) {
+            hasLongLines = true;
+        }
+    }
+    
+    // Calculate width based on content
+    let width: number;
+    if (hasCodeBlocks || hasLongLines) {
+        // Code blocks and long lines need more width
+        width = Math.min(maxWidth, Math.max(500, minWidth));
+    } else if (maxContentLength < 150) {
+        // Short comments can use default width
+        width = minWidth;
+    } else if (maxContentLength < 400) {
+        // Medium comments
+        width = Math.min(450, minWidth + (maxContentLength - 150) * 0.4);
+    } else {
+        // Longer comments get wider
+        width = Math.min(maxWidth, 450 + (maxContentLength - 400) * 0.2);
+    }
+    
+    return width;
+}
+
+/**
  * Create a comment element for the list
  */
 function createCommentElement(comment: DiffComment): HTMLElement {
     const div = document.createElement('div');
-    div.className = `comment-item ${comment.status === 'resolved' ? 'resolved' : ''}`;
+    // Build class list: base class + status class + type class
+    const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
+    const statusClass = comment.status === 'resolved' ? 'resolved' : '';
+    div.className = ['comment-item', statusClass, typeClass].filter(c => c).join(' ');
     div.dataset.commentId = comment.id;
 
-    // Status badge at the top for resolved comments
-    if (comment.status === 'resolved') {
-        const statusBadge = document.createElement('div');
-        statusBadge.className = 'status-badge resolved';
-        statusBadge.textContent = 'Resolved';
-        div.appendChild(statusBadge);
-    }
-
-    // Header with author and date
+    // Header with meta info and action buttons
     const header = document.createElement('div');
     header.className = 'comment-header';
+    
+    // Left side: meta info (author, date, type badge, status)
+    const headerMeta = document.createElement('div');
+    headerMeta.className = 'comment-header-meta';
     
     const author = document.createElement('span');
     author.className = 'comment-author';
     author.textContent = comment.author || 'Anonymous';
-    header.appendChild(author);
-
+    headerMeta.appendChild(author);
+    
     const date = document.createElement('span');
     date.className = 'comment-date';
     date.textContent = formatDate(comment.createdAt);
-    header.appendChild(date);
+    headerMeta.appendChild(date);
+    
+    // Add type badge for AI comments
+    const typeLabel = getTypeLabel(comment.type);
+    if (typeLabel) {
+        const typeBadge = document.createElement('span');
+        typeBadge.className = `type-badge ${comment.type}`;
+        typeBadge.textContent = typeLabel;
+        headerMeta.appendChild(typeBadge);
+    }
+    
+    // Status badge
+    if (comment.status === 'resolved') {
+        const statusBadge = document.createElement('span');
+        statusBadge.className = 'status-badge resolved';
+        statusBadge.textContent = '✓ Resolved';
+        headerMeta.appendChild(statusBadge);
+    }
+    
+    header.appendChild(headerMeta);
 
+    // Right side: action buttons (icon buttons in header)
+    const headerActions = document.createElement('div');
+    headerActions.className = 'comment-header-actions';
+    
+    // Resolve/Reopen button
+    if (comment.status === 'open') {
+        const resolveBtn = document.createElement('button');
+        resolveBtn.className = 'comment-action-btn';
+        resolveBtn.title = 'Resolve';
+        resolveBtn.textContent = '✅';
+        resolveBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sendResolveComment(comment.id);
+        });
+        headerActions.appendChild(resolveBtn);
+    } else {
+        const reopenBtn = document.createElement('button');
+        reopenBtn.className = 'comment-action-btn';
+        reopenBtn.title = 'Reopen';
+        reopenBtn.textContent = '🔄';
+        reopenBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sendReopenComment(comment.id);
+        });
+        headerActions.appendChild(reopenBtn);
+    }
+
+    // Edit button
+    const editBtn = document.createElement('button');
+    editBtn.className = 'comment-action-btn';
+    editBtn.title = 'Edit';
+    editBtn.textContent = '✏️';
+    editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideCommentsList();
+        showEditCommentPanel(comment);
+    });
+    headerActions.appendChild(editBtn);
+
+    // Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'comment-action-btn comment-action-btn-danger';
+    deleteBtn.title = 'Delete';
+    deleteBtn.textContent = '🗑️';
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sendDeleteComment(comment.id);
+    });
+    headerActions.appendChild(deleteBtn);
+    
+    header.appendChild(headerActions);
     div.appendChild(header);
 
     // Selected text preview
@@ -460,56 +591,11 @@ function createCommentElement(comment: DiffComment): HTMLElement {
         : comment.selectedText;
     div.appendChild(preview);
 
-    // Comment text with markdown rendering (no strikethrough for resolved comments)
+    // Comment text with markdown rendering
     const text = document.createElement('div');
     text.className = 'comment-text comment-markdown-content';
     text.innerHTML = renderCommentMarkdown(comment.comment);
     div.appendChild(text);
-
-    // Actions
-    const actions = document.createElement('div');
-    actions.className = 'comment-actions';
-
-    if (comment.status === 'open') {
-        const resolveBtn = document.createElement('button');
-        resolveBtn.className = 'btn btn-small';
-        resolveBtn.textContent = 'Resolve';
-        resolveBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            sendResolveComment(comment.id);
-        });
-        actions.appendChild(resolveBtn);
-    } else {
-        const reopenBtn = document.createElement('button');
-        reopenBtn.className = 'btn btn-small';
-        reopenBtn.textContent = 'Reopen';
-        reopenBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            sendReopenComment(comment.id);
-        });
-        actions.appendChild(reopenBtn);
-    }
-
-    const editBtn = document.createElement('button');
-    editBtn.className = 'btn btn-small';
-    editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        hideCommentsList();
-        showEditCommentPanel(comment);
-    });
-    actions.appendChild(editBtn);
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn btn-small btn-danger';
-    deleteBtn.textContent = 'Delete';
-    deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        sendDeleteComment(comment.id);
-    });
-    actions.appendChild(deleteBtn);
-
-    div.appendChild(actions);
 
     return div;
 }

@@ -26,6 +26,12 @@ export type { BaseCommentEventType, BaseCommentStatus };
 export type { AIToolType };
 
 /**
+ * Comment type - distinguishes between user comments and different AI response types
+ * Matches the CommentType from markdown-comments for consistency
+ */
+export type DiffCommentType = 'user' | 'ai-suggestion' | 'ai-clarification' | 'ai-critique' | 'ai-question';
+
+/**
  * Which side of the diff the selection/comment is on
  */
 export type DiffSide = 'old' | 'new' | 'both';
@@ -85,6 +91,8 @@ export interface DiffGitContext {
 export interface DiffComment extends BaseComment<DiffSelection, DiffAnchor> {
     /** Git context when comment was created */
     gitContext: DiffGitContext;
+    /** Type of the comment (user or ai) - defaults to 'user' */
+    type?: DiffCommentType;
 }
 
 /**

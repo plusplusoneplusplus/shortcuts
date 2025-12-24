@@ -13,6 +13,11 @@ export type DiffSide = 'old' | 'new' | 'both';
 export type DiffCommentStatus = 'open' | 'resolved' | 'pending';
 
 /**
+ * Comment type - distinguishes between user comments and different AI response types
+ */
+export type DiffCommentType = 'user' | 'ai-suggestion' | 'ai-clarification' | 'ai-critique' | 'ai-question';
+
+/**
  * Selection in the diff view
  */
 export interface DiffSelection {
@@ -47,6 +52,8 @@ export interface DiffComment {
     selectedText: string;
     comment: string;
     status: DiffCommentStatus;
+    /** Type of the comment (user or ai) - defaults to 'user' */
+    type?: DiffCommentType;
     createdAt: string;
     updatedAt: string;
     author?: string;
