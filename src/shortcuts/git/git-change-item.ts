@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { STAGE_PREFIX } from './git-constants';
+import { STATUS_SHORT } from './git-constants';
 import { GitChange } from './types';
 
 /**
@@ -23,7 +23,7 @@ export class GitChangeItem extends vscode.TreeItem {
         const isMarkdown = ext === '.md';
         this.contextValue = `gitChange_${change.stage}${isMarkdown ? '_md' : ''}`;
 
-        // Description shows relative path and stage indicator
+        // Description shows status indicator and relative path
         this.description = this.getDescription();
 
         // Tooltip with full details
@@ -45,8 +45,8 @@ export class GitChangeItem extends vscode.TreeItem {
     }
 
     /**
-     * Get the description text (relative path + stage indicator)
-     * Format: "✓ staged" or "○ modified" or "? untracked" + path
+     * Get the description text (status indicator + relative path)
+     * Format: "M • src/folder" or "A • src/folder"
      */
     private getDescription(): string {
         const relativePath = path.relative(
@@ -56,15 +56,9 @@ export class GitChangeItem extends vscode.TreeItem {
 
         const parts: string[] = [];
 
-        // Add stage prefix symbol and label for clarity
-        const stagePrefix = STAGE_PREFIX[this.change.stage];
-        if (this.change.stage === 'staged') {
-            parts.push(`${stagePrefix} staged`);
-        } else if (this.change.stage === 'untracked') {
-            parts.push(`${stagePrefix} untracked`);
-        } else {
-            parts.push(`${stagePrefix} modified`);
-        }
+        // Add status short code (M, A, D, R, etc.)
+        const statusShort = STATUS_SHORT[this.change.status];
+        parts.push(statusShort);
 
         // Add relative path if not in repo root
         if (relativePath && relativePath !== '.') {

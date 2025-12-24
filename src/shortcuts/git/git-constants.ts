@@ -23,8 +23,18 @@ export const STATUS_SHORT: Record<GitChangeStatus, string> = {
  * Makes the stage visually clear with symbols
  */
 export const STAGE_PREFIX: Record<GitChangeStage, string> = {
-    'staged': '\u2713',      // ✓ checkmark
-    'unstaged': '\u25CB',    // ○ circle
-    'untracked': '?'         // ? question mark
+    'staged': '\u2713',      // ✓ checkmark - green visual indicator
+    'unstaged': '\u25CF',    // ● filled circle - indicates pending changes
+    'untracked': '?'         // ? question mark - new file
+};
+
+/**
+ * Stage labels for display
+ * Human-readable labels for each stage
+ */
+export const STAGE_LABEL: Record<GitChangeStage, string> = {
+    'staged': 'Staged',
+    'unstaged': 'Modified',
+    'untracked': 'Untracked'
 };
 

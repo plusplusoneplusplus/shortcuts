@@ -6,7 +6,7 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GitCommitFile, GitCommitItem, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
+import { GitChangeItem, GitCommitFile, GitCommitItem, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
 import {
     DiffCommentFileItem,
     DiffCommentItem,
@@ -160,6 +160,10 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitLookupCommitCommand: vscode.Disposable | undefined;
         let gitClearLookedUpCommitCommand: vscode.Disposable | undefined;
         let gitDiffCommentsCleanupCommand: vscode.Disposable | undefined;
+        let gitStageFileCommand: vscode.Disposable | undefined;
+        let gitUnstageFileCommand: vscode.Disposable | undefined;
+        let gitStageAllCommand: vscode.Disposable | undefined;
+        let gitUnstageAllCommand: vscode.Disposable | undefined;
 
         if (gitInitialized) {
             gitTreeView = vscode.window.createTreeView('gitView', {
@@ -388,6 +392,88 @@ export async function activate(context: vscode.ExtensionContext) {
                         );
                     } else {
                         vscode.window.showWarningMessage('This command only works with markdown files.');
+                    }
+                }
+            );
+
+            // Register stage file command
+            gitStageFileCommand = vscode.commands.registerCommand(
+                'gitView.stageFile',
+                async (item: GitChangeItem) => {
+                    if (item?.change?.path) {
+                        const gitService = gitTreeDataProvider['gitService'];
+                        const success = await gitService.stageFile(item.change.path);
+                        if (!success) {
+                            vscode.window.showErrorMessage(`Failed to stage file: ${item.change.path}`);
+                        }
+                    }
+                }
+            );
+
+            // Register unstage file command
+            gitUnstageFileCommand = vscode.commands.registerCommand(
+                'gitView.unstageFile',
+                async (item: GitChangeItem) => {
+                    if (item?.change?.path) {
+                        const gitService = gitTreeDataProvider['gitService'];
+                        const success = await gitService.unstageFile(item.change.path);
+                        if (!success) {
+                            vscode.window.showErrorMessage(`Failed to unstage file: ${item.change.path}`);
+                        }
+                    }
+                }
+            );
+
+            // Register stage all command
+            gitStageAllCommand = vscode.commands.registerCommand(
+                'gitView.stageAll',
+                async () => {
+                    const gitService = gitTreeDataProvider['gitService'];
+                    const changes = gitService.getAllChanges();
+                    const unstagedChanges = changes.filter(
+                        (c: { stage: string }) => c.stage === 'unstaged' || c.stage === 'untracked'
+                    );
+                    
+                    let successCount = 0;
+                    for (const change of unstagedChanges) {
+                        const success = await gitService.stageFile(change.path);
+                        if (success) {
+                            successCount++;
+                        }
+                    }
+                    
+                    if (successCount > 0) {
+                        vscode.window.showInformationMessage(`Staged ${successCount} file(s)`);
+                    } else if (unstagedChanges.length === 0) {
+                        vscode.window.showInformationMessage('No unstaged changes to stage');
+                    } else {
+                        vscode.window.showErrorMessage('Failed to stage files');
+                    }
+                }
+            );
+
+            // Register unstage all command
+            gitUnstageAllCommand = vscode.commands.registerCommand(
+                'gitView.unstageAll',
+                async () => {
+                    const gitService = gitTreeDataProvider['gitService'];
+                    const changes = gitService.getAllChanges();
+                    const stagedChanges = changes.filter((c: { stage: string }) => c.stage === 'staged');
+                    
+                    let successCount = 0;
+                    for (const change of stagedChanges) {
+                        const success = await gitService.unstageFile(change.path);
+                        if (success) {
+                            successCount++;
+                        }
+                    }
+                    
+                    if (successCount > 0) {
+                        vscode.window.showInformationMessage(`Unstaged ${successCount} file(s)`);
+                    } else if (stagedChanges.length === 0) {
+                        vscode.window.showInformationMessage('No staged changes to unstage');
+                    } else {
+                        vscode.window.showErrorMessage('Failed to unstage files');
                     }
                 }
             );
@@ -704,6 +790,10 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitOpenWithMarkdownReviewCommand) disposables.push(gitOpenWithMarkdownReviewCommand);
         if (gitLookupCommitCommand) disposables.push(gitLookupCommitCommand);
         if (gitClearLookedUpCommitCommand) disposables.push(gitClearLookedUpCommitCommand);
+        if (gitStageFileCommand) disposables.push(gitStageFileCommand);
+        if (gitUnstageFileCommand) disposables.push(gitUnstageFileCommand);
+        if (gitStageAllCommand) disposables.push(gitStageAllCommand);
+        if (gitUnstageAllCommand) disposables.push(gitUnstageAllCommand);
 
         // Add all disposables to context subscriptions
         context.subscriptions.push(...disposables);

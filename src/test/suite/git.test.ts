@@ -10,6 +10,7 @@ import { GitCommitFileItem } from '../../shortcuts/git/git-commit-file-item';
 import { GitCommitItem } from '../../shortcuts/git/git-commit-item';
 import { LoadMoreItem } from '../../shortcuts/git/load-more-item';
 import { SectionHeaderItem } from '../../shortcuts/git/section-header-item';
+import { StageSectionItem } from '../../shortcuts/git/stage-section-item';
 import {
     CommitLoadOptions,
     CommitLoadResult,
@@ -297,25 +298,22 @@ suite('Git View Tests', () => {
         });
 
         suite('Description Format', () => {
-            test('should show "✓ staged" for staged changes', () => {
+            test('should show status code M for modified staged changes', () => {
                 const change = createMockChange('modified', 'staged', '/repo/file.ts');
                 const item = new GitChangeItem(change);
-                assert.ok(item.description?.toString().includes('staged'));
-                assert.ok(item.description?.toString().includes('\u2713')); // checkmark
+                assert.ok(item.description?.toString().includes('M'));
             });
 
-            test('should show "○ modified" for unstaged changes', () => {
+            test('should show status code M for modified unstaged changes', () => {
                 const change = createMockChange('modified', 'unstaged', '/repo/file.ts');
                 const item = new GitChangeItem(change);
-                assert.ok(item.description?.toString().includes('modified'));
-                assert.ok(item.description?.toString().includes('\u25CB')); // circle
+                assert.ok(item.description?.toString().includes('M'));
             });
 
-            test('should show "? untracked" for untracked files', () => {
+            test('should show status code U for untracked files', () => {
                 const change = createMockChange('untracked', 'untracked', '/repo/file.ts');
                 const item = new GitChangeItem(change);
-                assert.ok(item.description?.toString().includes('untracked'));
-                assert.ok(item.description?.toString().includes('?'));
+                assert.ok(item.description?.toString().includes('U'));
             });
 
             test('should include relative path for nested files', () => {
@@ -1524,21 +1522,21 @@ suite('Git View Tests', () => {
 
         test('GitChangeItem contextValue should match menu condition', () => {
             const stagedChange: GitChange = {
-                path: '/repo/file.md',
+                path: '/repo/file.ts',
                 status: 'modified',
                 stage: 'staged',
                 repositoryRoot: '/repo',
                 repositoryName: 'repo',
-                uri: vscode.Uri.file('/repo/file.md')
+                uri: vscode.Uri.file('/repo/file.ts')
             };
 
             const unstagedChange: GitChange = {
-                path: '/repo/file.md',
+                path: '/repo/file.ts',
                 status: 'modified',
                 stage: 'unstaged',
                 repositoryRoot: '/repo',
                 repositoryName: 'repo',
-                uri: vscode.Uri.file('/repo/file.md')
+                uri: vscode.Uri.file('/repo/file.ts')
             };
 
             const stagedItem = new GitChangeItem(stagedChange);
@@ -1549,6 +1547,33 @@ suite('Git View Tests', () => {
             assert.ok(unstagedItem.contextValue?.startsWith('gitChange_'));
             assert.strictEqual(stagedItem.contextValue, 'gitChange_staged');
             assert.strictEqual(unstagedItem.contextValue, 'gitChange_unstaged');
+        });
+
+        test('GitChangeItem contextValue should have _md suffix for markdown files', () => {
+            const stagedMdChange: GitChange = {
+                path: '/repo/file.md',
+                status: 'modified',
+                stage: 'staged',
+                repositoryRoot: '/repo',
+                repositoryName: 'repo',
+                uri: vscode.Uri.file('/repo/file.md')
+            };
+
+            const unstagedMdChange: GitChange = {
+                path: '/repo/file.md',
+                status: 'modified',
+                stage: 'unstaged',
+                repositoryRoot: '/repo',
+                repositoryName: 'repo',
+                uri: vscode.Uri.file('/repo/file.md')
+            };
+
+            const stagedMdItem = new GitChangeItem(stagedMdChange);
+            const unstagedMdItem = new GitChangeItem(unstagedMdChange);
+
+            // Context values should have _md suffix for markdown files
+            assert.strictEqual(stagedMdItem.contextValue, 'gitChange_staged_md');
+            assert.strictEqual(unstagedMdItem.contextValue, 'gitChange_unstaged_md');
         });
 
         test('should extract file path from GitChangeItem change property', () => {
@@ -1719,6 +1744,293 @@ suite('Git View Tests', () => {
             // This test documents our choice to use tilde notation
             assert.ok(tildeNotation.endsWith('~1'),
                 'Should use tilde notation for cross-platform compatibility');
+        });
+    });
+
+    // ============================================
+    // Stage Section Item Tests
+    // ============================================
+    suite('StageSectionItem', () => {
+        test('should create staged section header', () => {
+            const header = new StageSectionItem('staged', 5);
+            assert.strictEqual(header.label, 'Staged Changes');
+            assert.strictEqual(header.stageType, 'staged');
+            assert.strictEqual(header.contextValue, 'gitStageSection_staged');
+            assert.strictEqual(header.description, '5');
+        });
+
+        test('should create unstaged section header', () => {
+            const header = new StageSectionItem('unstaged', 3);
+            assert.strictEqual(header.label, 'Changes');
+            assert.strictEqual(header.stageType, 'unstaged');
+            assert.strictEqual(header.contextValue, 'gitStageSection_unstaged');
+            assert.strictEqual(header.description, '3');
+        });
+
+        test('should create untracked section header', () => {
+            const header = new StageSectionItem('untracked', 2);
+            assert.strictEqual(header.label, 'Untracked Files');
+            assert.strictEqual(header.stageType, 'untracked');
+            assert.strictEqual(header.contextValue, 'gitStageSection_untracked');
+            assert.strictEqual(header.description, '2');
+        });
+
+        test('should be expanded by default', () => {
+            const header = new StageSectionItem('staged', 5);
+            assert.strictEqual(header.collapsibleState, vscode.TreeItemCollapsibleState.Expanded);
+        });
+
+        test('should have green icon for staged section', () => {
+            const header = new StageSectionItem('staged', 5);
+            assert.ok(header.iconPath instanceof vscode.ThemeIcon);
+            assert.strictEqual((header.iconPath as vscode.ThemeIcon).id, 'check');
+        });
+
+        test('should have circle-filled icon for unstaged section', () => {
+            const header = new StageSectionItem('unstaged', 3);
+            assert.ok(header.iconPath instanceof vscode.ThemeIcon);
+            assert.strictEqual((header.iconPath as vscode.ThemeIcon).id, 'circle-filled');
+        });
+
+        test('should have question icon for untracked section', () => {
+            const header = new StageSectionItem('untracked', 2);
+            assert.ok(header.iconPath instanceof vscode.ThemeIcon);
+            assert.strictEqual((header.iconPath as vscode.ThemeIcon).id, 'question');
+        });
+
+        test('should have tooltip for staged section', () => {
+            const header = new StageSectionItem('staged', 5);
+            assert.ok(header.tooltip?.toString().includes('5'));
+            assert.ok(header.tooltip?.toString().includes('staged'));
+            assert.ok(header.tooltip?.toString().includes('commit'));
+        });
+
+        test('should have tooltip for unstaged section', () => {
+            const header = new StageSectionItem('unstaged', 3);
+            assert.ok(header.tooltip?.toString().includes('3'));
+            assert.ok(header.tooltip?.toString().includes('modified'));
+            assert.ok(header.tooltip?.toString().includes('not staged'));
+        });
+
+        test('should have tooltip for untracked section', () => {
+            const header = new StageSectionItem('untracked', 2);
+            assert.ok(header.tooltip?.toString().includes('2'));
+            assert.ok(header.tooltip?.toString().includes('untracked'));
+        });
+
+        test('should handle singular count in tooltip', () => {
+            const stagedHeader = new StageSectionItem('staged', 1);
+            const unstagedHeader = new StageSectionItem('unstaged', 1);
+            const untrackedHeader = new StageSectionItem('untracked', 1);
+
+            assert.ok(stagedHeader.tooltip?.toString().includes('1 staged change '));
+            assert.ok(unstagedHeader.tooltip?.toString().includes('1 modified file '));
+            assert.ok(untrackedHeader.tooltip?.toString().includes('1 untracked file'));
+        });
+
+        test('should handle zero count', () => {
+            const header = new StageSectionItem('staged', 0);
+            assert.strictEqual(header.description, '0');
+            assert.ok(header.tooltip?.toString().includes('0'));
+        });
+    });
+
+    // ============================================
+    // GitChangeItem Description Tests (Updated)
+    // ============================================
+    suite('GitChangeItem Description (Updated)', () => {
+        // Platform-aware paths for cross-platform tests
+        const isWindows = process.platform === 'win32';
+        const repoRoot = isWindows ? 'C:\\repo' : '/repo';
+
+        const createMockChange = (
+            status: GitChangeStatus,
+            stage: GitChangeStage,
+            filePath: string
+        ): GitChange => ({
+            path: filePath,
+            status,
+            stage,
+            repositoryRoot: repoRoot,
+            repositoryName: 'repo',
+            uri: vscode.Uri.file(filePath)
+        });
+
+        test('should show status short code M for modified files', () => {
+            const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChange('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change);
+            assert.ok(item.description?.toString().includes('M'));
+        });
+
+        test('should show status short code A for added files', () => {
+            const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChange('added', 'staged', filePath);
+            const item = new GitChangeItem(change);
+            assert.ok(item.description?.toString().includes('A'));
+        });
+
+        test('should show status short code D for deleted files', () => {
+            const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChange('deleted', 'staged', filePath);
+            const item = new GitChangeItem(change);
+            assert.ok(item.description?.toString().includes('D'));
+        });
+
+        test('should show status short code U for untracked files', () => {
+            const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChange('untracked', 'untracked', filePath);
+            const item = new GitChangeItem(change);
+            assert.ok(item.description?.toString().includes('U'));
+        });
+
+        test('should include relative path in description', () => {
+            const filePath = isWindows ? 'C:\\repo\\src\\components\\file.ts' : '/repo/src/components/file.ts';
+            const change = createMockChange('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change);
+            assert.ok(item.description?.toString().includes('src/components') ||
+                item.description?.toString().includes('src\\components'));
+        });
+
+        test('should not include path for root level files', () => {
+            const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChange('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change);
+            // Should just have status code, no bullet point for path
+            const desc = item.description?.toString() || '';
+            assert.strictEqual(desc.includes('\u2022'), false);
+        });
+    });
+
+    // ============================================
+    // Stage/Unstage Context Value Tests
+    // ============================================
+    suite('Stage/Unstage Context Values', () => {
+        const isWindows = process.platform === 'win32';
+        const repoRoot = isWindows ? 'C:\\repo' : '/repo';
+
+        const createMockChange = (
+            status: GitChangeStatus,
+            stage: GitChangeStage,
+            filePath: string
+        ): GitChange => ({
+            path: filePath,
+            status,
+            stage,
+            repositoryRoot: repoRoot,
+            repositoryName: 'repo',
+            uri: vscode.Uri.file(filePath)
+        });
+
+        test('staged file should have contextValue matching stage button regex', () => {
+            const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChange('modified', 'staged', filePath);
+            const item = new GitChangeItem(change);
+            
+            // The unstage button appears for /^gitChange_staged/
+            const regex = /^gitChange_staged/;
+            assert.ok(regex.test(item.contextValue || ''), 
+                `contextValue "${item.contextValue}" should match /^gitChange_staged/`);
+        });
+
+        test('unstaged file should have contextValue matching unstage button regex', () => {
+            const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChange('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change);
+            
+            // The stage button appears for /^gitChange_(unstaged|untracked)/
+            const regex = /^gitChange_(unstaged|untracked)/;
+            assert.ok(regex.test(item.contextValue || ''), 
+                `contextValue "${item.contextValue}" should match /^gitChange_(unstaged|untracked)/`);
+        });
+
+        test('untracked file should have contextValue matching stage button regex', () => {
+            const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChange('untracked', 'untracked', filePath);
+            const item = new GitChangeItem(change);
+            
+            // The stage button appears for /^gitChange_(unstaged|untracked)/
+            const regex = /^gitChange_(unstaged|untracked)/;
+            assert.ok(regex.test(item.contextValue || ''), 
+                `contextValue "${item.contextValue}" should match /^gitChange_(unstaged|untracked)/`);
+        });
+
+        test('markdown files should have _md suffix in contextValue', () => {
+            const filePath = isWindows ? 'C:\\repo\\README.md' : '/repo/README.md';
+            const change = createMockChange('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change);
+            
+            assert.ok(item.contextValue?.endsWith('_md'), 
+                `contextValue "${item.contextValue}" should end with _md`);
+        });
+
+        test('non-markdown files should not have _md suffix', () => {
+            const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChange('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change);
+            
+            assert.ok(!item.contextValue?.endsWith('_md'), 
+                `contextValue "${item.contextValue}" should not end with _md`);
+        });
+    });
+
+    // ============================================
+    // GitService Stage/Unstage Tests
+    // ============================================
+    suite('GitService Stage/Unstage Methods', () => {
+        test('GitService should have stageFile method', async () => {
+            const { GitService } = await import('../../shortcuts/git/git-service');
+            const service = new GitService();
+
+            assert.ok(typeof service.stageFile === 'function');
+
+            service.dispose();
+        });
+
+        test('GitService should have unstageFile method', async () => {
+            const { GitService } = await import('../../shortcuts/git/git-service');
+            const service = new GitService();
+
+            assert.ok(typeof service.unstageFile === 'function');
+
+            service.dispose();
+        });
+
+        test('stageFile should return false when not initialized', async () => {
+            const { GitService } = await import('../../shortcuts/git/git-service');
+            const service = new GitService();
+
+            // Not initialized, should return false
+            const result = await service.stageFile('/some/path/file.ts');
+            assert.strictEqual(result, false);
+
+            service.dispose();
+        });
+
+        test('unstageFile should return false when not initialized', async () => {
+            const { GitService } = await import('../../shortcuts/git/git-service');
+            const service = new GitService();
+
+            // Not initialized, should return false
+            const result = await service.unstageFile('/some/path/file.ts');
+            assert.strictEqual(result, false);
+
+            service.dispose();
+        });
+    });
+
+    // ============================================
+    // StageSectionItem Export Tests
+    // ============================================
+    suite('StageSectionItem Exports', () => {
+        test('should export StageSectionItem from index', async () => {
+            const { StageSectionItem } = await import('../../shortcuts/git');
+            assert.ok(StageSectionItem);
+        });
+
+        test('StageSectionItem should be instance of TreeItem', () => {
+            const header = new StageSectionItem('staged', 5);
+            assert.ok(header instanceof vscode.TreeItem);
         });
     });
 });

@@ -10,6 +10,7 @@ export * from './git-change-item';
 export * from './git-commit-item';
 export * from './git-commit-file-item';
 export * from './section-header-item';
+export * from './stage-section-item';
 export * from './load-more-item';
 export * from './looked-up-commit-item';
 

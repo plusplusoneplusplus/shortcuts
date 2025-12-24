@@ -19,6 +19,8 @@ interface GitAPI {
 interface Repository {
     rootUri: vscode.Uri;
     state: RepositoryState;
+    add(paths: string[]): Promise<void>;
+    revert(paths: string[]): Promise<void>;
 }
 
 interface RepositoryState {
@@ -245,6 +247,66 @@ export class GitService implements vscode.Disposable {
                 this._onDidChangeChanges.fire();
             })
         );
+    }
+
+    /**
+     * Stage a file (add to index)
+     * @param filePath Absolute path to the file to stage
+     * @returns true if successful
+     */
+    async stageFile(filePath: string): Promise<boolean> {
+        try {
+            const repo = this.findRepositoryForFile(filePath);
+            if (!repo) {
+                console.log('No repository found for file:', filePath);
+                return false;
+            }
+
+            // VSCode Git API expects string paths, not Uri objects
+            await repo.add([filePath]);
+            return true;
+        } catch (error) {
+            console.error('Failed to stage file:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Unstage a file (remove from index, keep working tree changes)
+     * Uses git reset HEAD -- <file> under the hood
+     * @param filePath Absolute path to the file to unstage
+     * @returns true if successful
+     */
+    async unstageFile(filePath: string): Promise<boolean> {
+        try {
+            const repo = this.findRepositoryForFile(filePath);
+            if (!repo) {
+                console.log('No repository found for file:', filePath);
+                return false;
+            }
+
+            // VSCode Git API expects string paths, not Uri objects
+            // This calls git reset -q HEAD -- <file>
+            await repo.revert([filePath]);
+            return true;
+        } catch (error) {
+            console.error('Failed to unstage file:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Find the repository that contains a given file
+     * @param filePath Absolute path to the file
+     * @returns The repository, or undefined if not found
+     */
+    private findRepositoryForFile(filePath: string): Repository | undefined {
+        for (const repo of this.getRepositories()) {
+            if (filePath.startsWith(repo.rootUri.fsPath)) {
+                return repo;
+            }
+        }
+        return undefined;
     }
 
     /**

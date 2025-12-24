@@ -14,6 +14,7 @@ import { GitService } from './git-service';
 import { LoadMoreItem } from './load-more-item';
 import { LookedUpCommitItem } from './looked-up-commit-item';
 import { SectionHeaderItem } from './section-header-item';
+import { StageSectionItem } from './stage-section-item';
 import { GitChange, GitChangeCounts, GitChangeStage, GitCommentCounts, GitCommit, GitViewCounts } from './types';
 
 /**
@@ -220,12 +221,17 @@ export class GitTreeDataProvider
             // Section header - return section contents
             if (element instanceof SectionHeaderItem) {
                 if (element.sectionType === 'changes') {
-                    return this.getChangeItems();
+                    return this.getStageSectionItems();
                 } else if (element.sectionType === 'commits') {
                     return this.getCommitItems();
                 } else if (element.sectionType === 'comments') {
                     return this.getCommentFileItems();
                 }
+            }
+
+            // Stage section - return change items for that stage
+            if (element instanceof StageSectionItem) {
+                return this.getChangeItemsForStage(element.stageType);
             }
 
             // Commit item - return files changed in this commit
@@ -283,7 +289,40 @@ export class GitTreeDataProvider
     }
 
     /**
-     * Get change items for the Changes section
+     * Get stage section items (sub-headers for staged, unstaged, untracked)
+     * This provides better visual separation between different change types
+     */
+    private getStageSectionItems(): vscode.TreeItem[] {
+        const counts = this.getChangeCounts();
+        const items: vscode.TreeItem[] = [];
+
+        // Add sections only if they have items
+        if (counts.staged > 0) {
+            items.push(new StageSectionItem('staged', counts.staged));
+        }
+        if (counts.unstaged > 0) {
+            items.push(new StageSectionItem('unstaged', counts.unstaged));
+        }
+        if (counts.untracked > 0) {
+            items.push(new StageSectionItem('untracked', counts.untracked));
+        }
+
+        return items;
+    }
+
+    /**
+     * Get change items for a specific stage
+     */
+    private getChangeItemsForStage(stage: GitChangeStage): vscode.TreeItem[] {
+        const changes = this.gitService.getAllChanges();
+        const filteredChanges = changes.filter(change => change.stage === stage);
+        // Sort alphabetically by path within each stage
+        filteredChanges.sort((a, b) => a.path.localeCompare(b.path));
+        return filteredChanges.map(change => new GitChangeItem(change));
+    }
+
+    /**
+     * Get all change items (flat list, for backwards compatibility)
      */
     private getChangeItems(): vscode.TreeItem[] {
         const changes = this.gitService.getAllChanges();

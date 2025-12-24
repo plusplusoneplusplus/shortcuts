@@ -650,6 +650,30 @@
         "title": "Dismiss",
         "category": "Git",
         "icon": "$(close)"
+      },
+      {
+        "command": "gitView.stageFile",
+        "title": "Stage File",
+        "category": "Git",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gitView.unstageFile",
+        "title": "Unstage File",
+        "category": "Git",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "gitView.stageAll",
+        "title": "Stage All Changes",
+        "category": "Git",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gitView.unstageAll",
+        "title": "Unstage All Changes",
+        "category": "Git",
+        "icon": "$(remove)"
       }
     ],
     "menus": {
@@ -942,6 +966,26 @@
           "group": "lookedUpCommit@1"
         },
         {
+          "command": "gitView.stageFile",
+          "when": "view == gitView && viewItem =~ /^gitChange_(unstaged|untracked)/",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitView.unstageFile",
+          "when": "view == gitView && viewItem =~ /^gitChange_staged/",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitView.stageFile",
+          "when": "view == gitView && viewItem =~ /^gitChange_(unstaged|untracked)/",
+          "group": "gitChange@1"
+        },
+        {
+          "command": "gitView.unstageFile",
+          "when": "view == gitView && viewItem =~ /^gitChange_staged/",
+          "group": "gitChange@1"
+        },
+        {
           "command": "gitDiffComments.openWithReview",
           "when": "view == gitView && viewItem =~ /^gitChange_/",
           "group": "navigation@10"
@@ -1075,6 +1119,16 @@
           "command": "gitDiffComments.deleteAllResolved",
           "when": "view == gitView && viewItem == gitSection_comments",
           "group": "inline"
+        },
+        {
+          "command": "gitView.stageAll",
+          "when": "view == gitView && viewItem == gitSection_changes",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitView.unstageAll",
+          "when": "view == gitView && viewItem == gitSection_changes",
+          "group": "inline@2"
         }
       ],
       "explorer/context": [

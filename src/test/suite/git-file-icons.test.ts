@@ -73,8 +73,8 @@ suite('Git File Icons Tests', () => {
             assert.strictEqual(STAGE_PREFIX['staged'], '\u2713');
         });
 
-        test('should use circle for unstaged files', () => {
-            assert.strictEqual(STAGE_PREFIX['unstaged'], '\u25CB');
+        test('should use filled circle for unstaged files', () => {
+            assert.strictEqual(STAGE_PREFIX['unstaged'], '\u25CF');
         });
 
         test('should use question mark for untracked files', () => {
