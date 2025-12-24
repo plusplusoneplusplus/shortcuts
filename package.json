@@ -473,7 +473,7 @@
       },
       {
         "command": "markdownComments.openWithReviewEditor",
-        "title": "Open with Review Editor",
+        "title": "Open with Markdown Review Editor",
         "category": "Markdown Comments",
         "icon": "$(comment-discussion)"
       },
@@ -635,7 +635,7 @@
       },
       {
         "command": "gitView.openWithMarkdownReview",
-        "title": "Open with Markdown Review",
+        "title": "Open with Markdown Review Editor",
         "category": "Git",
         "icon": "$(comment-discussion)"
       },
@@ -785,6 +785,11 @@
           "command": "shortcuts.removeFromLogicalGroup",
           "when": "view == shortcutsView && (viewItem == logicalGroupItem_folder || viewItem == logicalGroupItem_file)",
           "group": "logicalGroupItem@3"
+        },
+        {
+          "command": "markdownComments.openWithReviewEditor",
+          "when": "view == shortcutsView && (viewItem == logicalGroupItem_file || viewItem == file) && resourceExtname == .md",
+          "group": "navigation@0"
         },
         {
           "command": "shortcuts.copyRelativePath",
@@ -943,7 +948,7 @@
         },
         {
           "command": "gitView.openWithMarkdownReview",
-          "when": "view == gitView && viewItem =~ /^gitChange_/ && resourceExtname == .md",
+          "when": "view == gitView && viewItem =~ /^gitChange_.*_md$/",
           "group": "navigation@11"
         },
         {

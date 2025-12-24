@@ -17,7 +17,11 @@ export class GitChangeItem extends vscode.TreeItem {
         super(path.basename(change.path), vscode.TreeItemCollapsibleState.None);
 
         this.change = change;
-        this.contextValue = `gitChange_${change.stage}`;
+        
+        // Include file extension in contextValue for context menu filtering
+        const ext = path.extname(change.path).toLowerCase();
+        const isMarkdown = ext === '.md';
+        this.contextValue = `gitChange_${change.stage}${isMarkdown ? '_md' : ''}`;
 
         // Description shows relative path and stage indicator
         this.description = this.getDescription();

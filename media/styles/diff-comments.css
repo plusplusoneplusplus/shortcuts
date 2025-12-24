@@ -165,7 +165,7 @@
     width: 350px;
     min-width: 350px;
     max-width: 600px;
-    max-height: 50vh;
+    max-height: 70vh;
     background-color: var(--vscode-editorWidget-background);
     border: 1px solid var(--vscode-editorWidget-border);
     border-radius: 6px;
@@ -218,16 +218,13 @@
 
 /* Comment Item */
 .comment-item {
-    padding: 10px 12px;
+    padding: 12px;
     margin-bottom: 8px;
     background-color: var(--vscode-editor-background);
     border: 1px solid var(--vscode-panel-border);
     border-left: 4px solid var(--vscode-panel-border);
     border-radius: 4px;
     transition: border-color 0.15s;
-    display: flex;
-    flex-direction: column;
-    max-height: 350px;
 }
 
 .comment-item:last-child {
@@ -268,9 +265,8 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     gap: 8px;
-    flex-shrink: 0;
 }
 
 .comment-header-meta {
@@ -353,8 +349,8 @@
 }
 
 .comment-preview {
-    padding: 4px 8px;
-    margin-bottom: 6px;
+    padding: 6px 8px;
+    margin-bottom: 8px;
     background-color: var(--vscode-textBlockQuote-background);
     border-left: 2px solid var(--vscode-textBlockQuote-border);
     font-family: var(--vscode-editor-font-family, monospace);
@@ -364,7 +360,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    flex-shrink: 0;
 }
 
 .comment-text {
@@ -373,28 +368,6 @@
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
-    flex: 1;
-    overflow-y: auto;
-    min-height: 0;
-    max-height: 200px;
-}
-
-/* Scrollbar styling for comment text */
-.comment-text::-webkit-scrollbar {
-    width: 6px;
-}
-
-.comment-text::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.comment-text::-webkit-scrollbar-thumb {
-    background-color: var(--vscode-scrollbarSlider-background, rgba(100, 100, 100, 0.4));
-    border-radius: 3px;
-}
-
-.comment-text::-webkit-scrollbar-thumb:hover {
-    background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.6));
 }
 
 /* Legacy comment-actions at bottom (kept for backward compatibility) */
