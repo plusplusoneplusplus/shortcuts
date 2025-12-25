@@ -1,10 +1,10 @@
 /**
  * AI Clarification Handler
- * 
+ *
  * Handles AI clarification requests from the review editor.
  * Routes requests to configured AI tools (Copilot CLI or clipboard).
  * Can capture Copilot CLI output and return it for adding as a comment.
- * 
+ *
  * This module uses the generic ai-service for CLI invocation while
  * providing markdown-specific prompt building and orchestration.
  */
@@ -14,14 +14,17 @@ import {
     AIInvocationResult,
     AIModel,
     AIProcessManager,
+    buildPrompt,
     copyToClipboard,
     DEFAULT_PROMPTS,
     escapeShellArg,
+    getAICommandRegistry,
     getAIModelSetting,
     getAIToolSetting,
     getPromptTemplate,
     invokeCopilotCLI,
     parseCopilotOutput,
+    PromptContext,
     VALID_MODELS
 } from '../ai-service';
 import { ClarificationContext } from './types';
@@ -54,45 +57,43 @@ export {
 export type { AIModel };
 
 /**
- * Build prompt instructions based on the instruction type.
- * Uses configurable prompt templates from VS Code settings.
- * 
- * @param context - The clarification context from the webview
- * @returns The instruction-specific prompt prefix
- */
-function getInstructionPrefix(context: ClarificationContext): string {
-    switch (context.instructionType) {
-        case 'clarify':
-            return getPromptTemplate('clarify');
-        case 'go-deeper':
-            return getPromptTemplate('goDeeper');
-        case 'custom':
-            // For custom instructions, the user's instruction is the prefix
-            // Fall back to the configurable default if no custom instruction provided
-            return context.customInstruction || getPromptTemplate('customDefault');
-        default:
-            return getPromptTemplate('clarify');
-    }
-}
-
-/**
  * Build a clarification prompt from the context.
- * Uses different prompt templates based on the instruction type.
+ * Uses the AI command registry for configurable prompts.
  * The AI tool can read the file directly for additional context.
- * 
+ *
  * @param context - The clarification context from the webview
  * @returns The formatted prompt string
  */
 export function buildClarificationPrompt(context: ClarificationContext): string {
-    const selectedText = context.selectedText.trim();
-    const instructionPrefix = getInstructionPrefix(context);
+    // Build prompt context from clarification context
+    const promptContext: PromptContext = {
+        selectedText: context.selectedText.trim(),
+        filePath: context.filePath,
+        surroundingContent: context.surroundingContent,
+        nearestHeading: context.nearestHeading,
+        headings: context.headings
+    };
 
-    // For custom instructions, format slightly differently
-    if (context.instructionType === 'custom') {
-        return `${instructionPrefix}: "${selectedText}" in the file ${context.filePath}`;
-    }
+    // Use the new prompt builder with the command registry
+    return buildPrompt(
+        context.instructionType,
+        promptContext,
+        context.customInstruction
+    );
+}
 
-    return `${instructionPrefix} "${selectedText}" in the file ${context.filePath}`;
+/**
+ * Get the response label for a command (for adding AI comments)
+ */
+export function getResponseLabel(commandId: string): string {
+    return getAICommandRegistry().getResponseLabel(commandId);
+}
+
+/**
+ * Get the comment type for a command (for styling)
+ */
+export function getCommentType(commandId: string): 'ai-clarification' | 'ai-critique' | 'ai-suggestion' | 'ai-question' {
+    return getAICommandRegistry().getCommentType(commandId);
 }
 
 /**

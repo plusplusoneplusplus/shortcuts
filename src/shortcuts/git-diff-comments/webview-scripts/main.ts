@@ -3,7 +3,7 @@
  */
 
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
-import { hideCommentPanel, hideCommentsList, initPanelElements, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
+import { hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getState, getViewMode, setComments, setIsEditable, setSettings, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
@@ -98,6 +98,10 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
                 updateCommentIndicators();
                 // Update context menu visibility based on askAIEnabled setting
                 updateContextMenuForSettings();
+                // Rebuild AI submenu if commands changed
+                if (message.settings.aiCommands) {
+                    rebuildAISubmenu();
+                }
             }
             break;
 

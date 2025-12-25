@@ -136,9 +136,10 @@ export function sendCopyPath(filePath: string): void {
 }
 
 /**
- * AI instruction type for Ask AI feature
+ * AI instruction type for Ask AI feature.
+ * This is now a string to support dynamic command IDs from the registry.
  */
-export type DiffAIInstructionType = 'clarify' | 'go-deeper' | 'custom';
+export type DiffAIInstructionType = string;
 
 /**
  * Context for Ask AI request
@@ -149,7 +150,9 @@ export interface AskAIContext {
     endLine: number;
     side: 'old' | 'new' | 'both';
     surroundingLines: string;
+    /** Command ID from the AI command registry */
     instructionType: DiffAIInstructionType;
+    /** Custom instruction text (only used when command has isCustomInput=true) */
     customInstruction?: string;
 }
 

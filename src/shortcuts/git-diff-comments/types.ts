@@ -253,9 +253,21 @@ export interface DiffReviewOptions {
 }
 
 /**
- * AI instruction types for different kinds of queries
+ * Serialized AI command for webview
  */
-export type DiffAIInstructionType = 'clarify' | 'go-deeper' | 'custom';
+export interface SerializedAICommand {
+    id: string;
+    label: string;
+    icon?: string;
+    order?: number;
+    isCustomInput?: boolean;
+}
+
+/**
+ * AI instruction types for different kinds of queries.
+ * This is now a string to support dynamic command IDs from the registry.
+ */
+export type DiffAIInstructionType = string;
 
 /**
  * Context for AI clarification requests in diff view
@@ -321,6 +333,8 @@ export interface DiffWebviewMessage {
 export interface DiffCommentsSettingsExtended extends DiffCommentsSettings {
     /** Whether Ask AI feature is enabled */
     askAIEnabled?: boolean;
+    /** Configurable AI commands */
+    aiCommands?: SerializedAICommand[];
 }
 
 /**

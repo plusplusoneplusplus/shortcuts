@@ -6,7 +6,7 @@
  * with the VS Code extension.
  */
 
-import { initDomHandlers } from './dom-handlers';
+import { initDomHandlers, rebuildAISubmenu } from './dom-handlers';
 import { updateResolvedImage } from './image-handlers';
 import { initPanelManager, scrollToComment } from './panel-manager';
 import { render } from './render';
@@ -75,6 +75,10 @@ function handleMessage(message: ExtensionMessage): void {
                 const checkbox = document.getElementById('showResolvedCheckbox') as HTMLInputElement;
                 if (checkbox) {
                     checkbox.checked = message.settings.showResolved;
+                }
+                // Rebuild AI submenu if commands changed
+                if (message.settings.aiCommands) {
+                    rebuildAISubmenu();
                 }
             }
 

@@ -368,7 +368,8 @@ Total usage est:       1 Premium request`;
             };
 
             const result = buildClarificationPrompt(context);
-            assert.strictEqual(result, 'Please explain: "test text" in the file docs/test.md');
+            // When no customInstruction is provided, no colon is added
+            assert.strictEqual(result, 'Please explain "test text" in the file docs/test.md');
         });
 
         test('should trim whitespace from selected text', () => {

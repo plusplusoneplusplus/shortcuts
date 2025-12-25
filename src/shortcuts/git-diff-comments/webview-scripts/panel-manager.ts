@@ -5,7 +5,7 @@
  * functionality like drag, positioning, and date formatting.
  */
 
-import { AskAIContext, DiffAIInstructionType, DiffComment, DiffSide, SelectionState } from './types';
+import { AskAIContext, DiffAIInstructionType, DiffComment, DiffSide, SelectionState, SerializedAICommand } from './types';
 import { getState, setCommentPanelOpen, setEditingCommentId } from './state';
 import { clearSelection, toDiffSelection } from './selection-handler';
 import { sendAddComment, sendAskAI, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
@@ -14,6 +14,15 @@ import {
     setupPanelDrag as setupSharedPanelDrag
 } from '../../shared/webview/base-panel-manager';
 import { renderCommentMarkdown } from '../../shared/webview/markdown-renderer';
+
+/**
+ * Default AI commands when none are configured
+ */
+const DEFAULT_AI_COMMANDS: SerializedAICommand[] = [
+    { id: 'clarify', label: 'Clarify', icon: '💡', order: 1 },
+    { id: 'go-deeper', label: 'Go Deeper', icon: '🔍', order: 2 },
+    { id: 'custom', label: 'Custom...', icon: '💬', order: 99, isCustomInput: true }
+];
 
 /**
  * DOM element references
@@ -32,9 +41,6 @@ let contextMenuAddComment: HTMLElement | null = null;
 // Ask AI context menu elements
 let contextMenuAskAI: HTMLElement | null = null;
 let askAISubmenu: HTMLElement | null = null;
-let askAIClarify: HTMLElement | null = null;
-let askAIGoDeeper: HTMLElement | null = null;
-let askAICustom: HTMLElement | null = null;
 // Custom instruction dialog elements
 let customInstructionDialog: HTMLElement | null = null;
 let customInstructionClose: HTMLElement | null = null;
@@ -43,6 +49,8 @@ let customInstructionInput: HTMLTextAreaElement | null = null;
 let customInstructionCancelBtn: HTMLElement | null = null;
 let customInstructionSubmitBtn: HTMLElement | null = null;
 let customInstructionOverlay: HTMLElement | null = null;
+// Current command ID for custom instruction dialog
+let pendingCustomCommandId: string = 'custom';
 
 /**
  * Current selection for the comment panel
@@ -53,6 +61,59 @@ let currentPanelSelection: SelectionState | null = null;
  * Saved selection for Ask AI (used when showing custom instruction dialog)
  */
 let savedSelectionForAskAI: SelectionState | null = null;
+
+/**
+ * Get the AI commands to display in menus
+ */
+function getAICommands(): SerializedAICommand[] {
+    const state = getState();
+    const commands = state.settings.aiCommands;
+    if (commands && commands.length > 0) {
+        return [...commands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+    }
+    return DEFAULT_AI_COMMANDS;
+}
+
+/**
+ * Build the AI submenu HTML dynamically
+ */
+function buildAISubmenuHTML(commands: SerializedAICommand[]): string {
+    return commands.map(cmd => {
+        const icon = cmd.icon ? `<span class="menu-icon">${cmd.icon}</span>` : '';
+        const dataCustomInput = cmd.isCustomInput ? 'data-custom-input="true"' : '';
+        return `<div class="context-menu-item ask-ai-item" data-command-id="${cmd.id}" ${dataCustomInput}>
+            ${icon}${cmd.label}
+        </div>`;
+    }).join('');
+}
+
+/**
+ * Rebuild the AI submenu based on current settings
+ */
+export function rebuildAISubmenu(): void {
+    if (!askAISubmenu) return;
+
+    const commands = getAICommands();
+    askAISubmenu.innerHTML = buildAISubmenuHTML(commands);
+
+    // Attach click handlers to all AI items
+    askAISubmenu.querySelectorAll('.ask-ai-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const element = item as HTMLElement;
+            const commandId = element.dataset.commandId || '';
+            const isCustomInput = element.dataset.customInput === 'true';
+
+            hideContextMenu();
+            if (isCustomInput) {
+                pendingCustomCommandId = commandId;
+                showCustomInstructionDialog();
+            } else {
+                handleAskAI(commandId);
+            }
+        });
+    });
+}
 
 /**
  * Initialize panel elements
@@ -73,10 +134,7 @@ export function initPanelElements(): void {
     // Ask AI context menu elements
     contextMenuAskAI = document.getElementById('context-menu-ask-ai');
     askAISubmenu = document.getElementById('ask-ai-submenu');
-    askAIClarify = document.getElementById('ask-ai-clarify');
-    askAIGoDeeper = document.getElementById('ask-ai-go-deeper');
-    askAICustom = document.getElementById('ask-ai-custom');
-    
+
     // Custom instruction dialog elements
     customInstructionDialog = document.getElementById('custom-instruction-dialog');
     customInstructionClose = document.getElementById('custom-instruction-close');
@@ -110,36 +168,15 @@ export function initPanelElements(): void {
             }
         });
     }
-    
+
     // Ask AI submenu event listeners
     if (contextMenuAskAI) {
         contextMenuAskAI.addEventListener('mouseenter', positionAskAISubmenu);
     }
-    
-    if (askAIClarify) {
-        askAIClarify.addEventListener('click', (e) => {
-            e.stopPropagation();
-            hideContextMenu();
-            handleAskAI('clarify');
-        });
-    }
-    
-    if (askAIGoDeeper) {
-        askAIGoDeeper.addEventListener('click', (e) => {
-            e.stopPropagation();
-            hideContextMenu();
-            handleAskAI('go-deeper');
-        });
-    }
-    
-    if (askAICustom) {
-        askAICustom.addEventListener('click', (e) => {
-            e.stopPropagation();
-            hideContextMenu();
-            showCustomInstructionDialog();
-        });
-    }
-    
+
+    // Build initial AI submenu with default commands
+    rebuildAISubmenu();
+
     // Custom instruction dialog event listeners
     setupCustomInstructionDialogListeners();
 
@@ -719,32 +756,32 @@ function positionAskAISubmenu(): void {
 
 /**
  * Handle Ask AI request
+ * @param commandId - The command ID from the AI command registry
+ * @param customInstruction - Optional custom instruction text (for custom input commands)
  */
-function handleAskAI(instructionType: DiffAIInstructionType, customInstruction?: string): void {
+function handleAskAI(commandId: string, customInstruction?: string): void {
     if (!currentPanelSelection) {
         console.log('[Diff Webview] No selection for Ask AI');
         return;
     }
-    
-    const state = getState();
-    
+
     // Extract surrounding lines for context
     const surroundingLines = extractSurroundingLines(
         currentPanelSelection.side,
         currentPanelSelection.startLine,
         currentPanelSelection.endLine
     );
-    
+
     const context: AskAIContext = {
         selectedText: currentPanelSelection.selectedText,
         startLine: currentPanelSelection.startLine,
         endLine: currentPanelSelection.endLine,
         side: currentPanelSelection.side,
         surroundingLines,
-        instructionType,
+        instructionType: commandId,
         customInstruction
     };
-    
+
     sendAskAI(context);
     currentPanelSelection = null;
 }
@@ -794,11 +831,12 @@ function setupCustomInstructionDialogListeners(): void {
                 return;
             }
             hideCustomInstructionDialog();
-            
+
             // Restore the selection and send Ask AI request
             if (savedSelectionForAskAI) {
                 currentPanelSelection = savedSelectionForAskAI;
-                handleAskAI('custom', instruction);
+                // Use the pending command ID (set when custom input command was clicked)
+                handleAskAI(pendingCustomCommandId, instruction);
                 savedSelectionForAskAI = null;
             }
         });

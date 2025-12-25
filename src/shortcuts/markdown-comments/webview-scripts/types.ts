@@ -26,12 +26,25 @@ export interface WebviewState {
 }
 
 /**
+ * Serialized AI command for webview
+ */
+export interface SerializedAICommand {
+    id: string;
+    label: string;
+    icon?: string;
+    order?: number;
+    isCustomInput?: boolean;
+}
+
+/**
  * Webview settings
  */
 export interface WebviewSettings {
     showResolved: boolean;
     /** Whether the Ask AI feature is enabled (preview) */
     askAIEnabled?: boolean;
+    /** Configurable AI commands */
+    aiCommands?: SerializedAICommand[];
 }
 
 /**
@@ -51,9 +64,10 @@ export interface SavedSelection extends PendingSelection {
 }
 
 /**
- * AI instruction type for different kinds of AI queries
+ * AI instruction type for different kinds of AI queries.
+ * This is now a string to support dynamic command IDs from the registry.
  */
-export type AIInstructionType = 'clarify' | 'go-deeper' | 'custom';
+export type AIInstructionType = string;
 
 /**
  * Context data sent from webview to extension when "Ask AI" is triggered
@@ -71,9 +85,9 @@ export interface AskAIContext {
     nearestHeading: string | null;
     /** Document structure - all headings */
     allHeadings: string[];
-    /** Type of AI instruction to use */
+    /** Command ID from the AI command registry */
     instructionType: AIInstructionType;
-    /** Custom instruction text (only used when instructionType is 'custom') */
+    /** Custom instruction text (only used when command has isCustomInput=true) */
     customInstruction?: string;
 }
 

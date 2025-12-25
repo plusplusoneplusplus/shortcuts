@@ -9,6 +9,11 @@ import {
     ExtractionContext
 } from '../webview-logic/content-extraction';
 import {
+    attachAISubmenuHandlers,
+    getAICommands,
+    updateAISubmenu
+} from './ai-menu-builder';
+import {
     closeActiveCommentBubble,
     closeFloatingPanel,
     closeInlineEditPanel,
@@ -18,6 +23,7 @@ import {
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
+import { SerializedAICommand } from './types';
 import { openFile, requestAskAI, requestCopyPrompt, requestDeleteAll, requestResolveAll, updateContent } from './vscode-bridge';
 
 // DOM element references
@@ -29,10 +35,8 @@ let contextMenuCopy: HTMLElement;
 let contextMenuPaste: HTMLElement;
 let contextMenuAddComment: HTMLElement;
 let contextMenuAskAI: HTMLElement;
-// Ask AI submenu elements
-let askAIClarify: HTMLElement;
-let askAIGoDeeper: HTMLElement;
-let askAICustom: HTMLElement;
+// Ask AI submenu element (dynamically populated)
+let askAISubmenu: HTMLElement;
 // Custom instruction dialog elements
 let customInstructionDialog: HTMLElement;
 let customInstructionClose: HTMLElement;
@@ -41,6 +45,8 @@ let customInstructionInput: HTMLTextAreaElement;
 let customInstructionCancelBtn: HTMLElement;
 let customInstructionSubmitBtn: HTMLElement;
 let customInstructionOverlay: HTMLElement | null = null;
+// Current command ID for custom instruction dialog
+let pendingCustomCommandId: string = 'custom';
 
 /**
  * Initialize DOM handlers
@@ -54,10 +60,8 @@ export function initDomHandlers(): void {
     contextMenuPaste = document.getElementById('contextMenuPaste')!;
     contextMenuAddComment = document.getElementById('contextMenuAddComment')!;
     contextMenuAskAI = document.getElementById('contextMenuAskAI')!;
-    // Ask AI submenu elements
-    askAIClarify = document.getElementById('askAIClarify')!;
-    askAIGoDeeper = document.getElementById('askAIGoDeeper')!;
-    askAICustom = document.getElementById('askAICustom')!;
+    // Ask AI submenu element (dynamically populated)
+    askAISubmenu = document.getElementById('askAISubmenu')!;
     // Custom instruction dialog elements
     customInstructionDialog = document.getElementById('customInstructionDialog')!;
     customInstructionClose = document.getElementById('customInstructionClose')!;
@@ -72,6 +76,31 @@ export function initDomHandlers(): void {
     setupKeyboardEventListeners();
     setupGlobalEventListeners();
     setupCustomInstructionDialogEventListeners();
+
+    // Build initial AI submenu with default commands
+    rebuildAISubmenu();
+}
+
+/**
+ * Rebuild the AI submenu based on current settings
+ */
+export function rebuildAISubmenu(): void {
+    const commands = getAICommands(state.settings.aiCommands);
+    updateAISubmenu(askAISubmenu, commands);
+    attachAISubmenuHandlers(askAISubmenu, handleAICommandClick);
+}
+
+/**
+ * Handle click on an AI command in the submenu
+ */
+function handleAICommandClick(commandId: string, isCustomInput: boolean): void {
+    hideContextMenu();
+    if (isCustomInput) {
+        pendingCustomCommandId = commandId;
+        showCustomInstructionDialog();
+    } else {
+        handleAskAIFromContextMenu(commandId);
+    }
 }
 
 /**
@@ -237,24 +266,7 @@ function setupContextMenuEventListeners(): void {
         positionSubmenu();
     });
 
-    // Ask AI submenu items
-    askAIClarify.addEventListener('click', (e) => {
-        e.stopPropagation();
-        hideContextMenu();
-        handleAskAIFromContextMenu('clarify');
-    });
-
-    askAIGoDeeper.addEventListener('click', (e) => {
-        e.stopPropagation();
-        hideContextMenu();
-        handleAskAIFromContextMenu('go-deeper');
-    });
-
-    askAICustom.addEventListener('click', (e) => {
-        e.stopPropagation();
-        hideContextMenu();
-        showCustomInstructionDialog();
-    });
+    // Note: AI submenu items are handled dynamically via rebuildAISubmenu()
 
     // Hide context menu on click outside
     document.addEventListener('click', (e) => {
@@ -589,13 +601,13 @@ function handleAddCommentFromContextMenu(): void {
 }
 
 /**
- * Handle "Ask AI" from context menu with a specific instruction type
+ * Handle "Ask AI" from context menu with a specific command ID
  * Extracts document context and sends to extension for AI clarification
- * @param instructionType - The type of AI instruction: 'clarify', 'go-deeper', or 'custom'
- * @param customInstruction - Optional custom instruction text (only for 'custom' type)
+ * @param commandId - The command ID from the AI command registry
+ * @param customInstruction - Optional custom instruction text (for custom input commands)
  */
 function handleAskAIFromContextMenu(
-    instructionType: 'clarify' | 'go-deeper' | 'custom',
+    commandId: string,
     customInstruction?: string
 ): void {
     const saved = state.savedSelectionForContextMenu;
@@ -606,11 +618,11 @@ function handleAskAIFromContextMenu(
 
     // Extract document context for the AI
     const baseContext = extractDocumentContext(saved.startLine, saved.endLine, saved.selectedText);
-    
-    // Add instruction type and optional custom instruction
+
+    // Add command ID (as instructionType for backward compatibility) and optional custom instruction
     const context = {
         ...baseContext,
-        instructionType,
+        instructionType: commandId,
         customInstruction
     };
 
@@ -692,7 +704,7 @@ function extractDocumentContext(startLine: number, endLine: number, selectedText
 function setupCustomInstructionDialogEventListeners(): void {
     customInstructionClose.addEventListener('click', hideCustomInstructionDialog);
     customInstructionCancelBtn.addEventListener('click', hideCustomInstructionDialog);
-    
+
     customInstructionSubmitBtn.addEventListener('click', () => {
         const instruction = customInstructionInput.value.trim();
         if (!instruction) {
@@ -700,9 +712,10 @@ function setupCustomInstructionDialogEventListeners(): void {
             return;
         }
         hideCustomInstructionDialog();
-        handleAskAIFromContextMenu('custom', instruction);
+        // Use the pending command ID (set when custom input command was clicked)
+        handleAskAIFromContextMenu(pendingCustomCommandId, instruction);
     });
-    
+
     // Submit on Ctrl+Enter
     customInstructionInput.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {

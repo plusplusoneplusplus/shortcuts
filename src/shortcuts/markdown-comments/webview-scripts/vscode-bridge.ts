@@ -134,7 +134,8 @@ export function requestAskAI(context: {
     surroundingLines: string;
     nearestHeading: string | null;
     allHeadings: string[];
-    instructionType: 'clarify' | 'go-deeper' | 'custom';
+    /** Command ID from the AI command registry */
+    instructionType: string;
     customInstruction?: string;
 }): void {
     postMessage({ type: 'askAI', context });

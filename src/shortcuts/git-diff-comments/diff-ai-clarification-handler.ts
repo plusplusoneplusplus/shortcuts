@@ -1,10 +1,10 @@
 /**
  * Diff AI Clarification Handler
- * 
+ *
  * Handles AI clarification requests from the diff review editor.
  * Routes requests to configured AI tools (Copilot CLI or clipboard).
  * Can capture Copilot CLI output and return it for adding as a comment.
- * 
+ *
  * This module uses the generic ai-service for CLI invocation while
  * providing diff-specific prompt building and orchestration.
  */
@@ -17,6 +17,7 @@ import {
     copyToClipboard,
     DEFAULT_PROMPTS,
     escapeShellArg,
+    getAICommandRegistry,
     getAIModelSetting,
     getAIToolSetting,
     getPromptTemplate,
@@ -54,48 +55,47 @@ export {
 export type { AIModel };
 
 /**
- * Build prompt instructions based on the instruction type.
- * Uses configurable prompt templates from VS Code settings.
- * 
- * @param context - The clarification context from the webview
- * @returns The instruction-specific prompt prefix
- */
-function getInstructionPrefix(context: DiffClarificationContext): string {
-    switch (context.instructionType) {
-        case 'clarify':
-            return getPromptTemplate('clarify');
-        case 'go-deeper':
-            return getPromptTemplate('goDeeper');
-        case 'custom':
-            // For custom instructions, the user's instruction is the prefix
-            // Fall back to the configurable default if no custom instruction provided
-            return context.customInstruction || getPromptTemplate('customDefault');
-        default:
-            return getPromptTemplate('clarify');
-    }
-}
-
-/**
  * Build a clarification prompt from the context.
- * Uses different prompt templates based on the instruction type.
+ * Uses the AI command registry for configurable prompts.
  * The AI tool can read the file directly for additional context.
- * 
+ *
  * @param context - The clarification context from the webview
  * @returns The formatted prompt string
  */
 export function buildDiffClarificationPrompt(context: DiffClarificationContext): string {
+    const registry = getAICommandRegistry();
     const selectedText = context.selectedText.trim();
-    const instructionPrefix = getInstructionPrefix(context);
-    
+
+    // Get the prompt from the registry
+    const promptPrefix = registry.getPromptForCommand(context.instructionType, context.customInstruction);
+
     // Include diff side information for context
     const sideInfo = context.side === 'old' ? ' (from old version)' : context.side === 'new' ? ' (from new version)' : '';
 
+    // Check if this is a custom input command
+    const command = registry.getCommand(context.instructionType);
+    const isCustomInput = command?.isCustomInput && context.customInstruction;
+
     // For custom instructions, format slightly differently
-    if (context.instructionType === 'custom') {
-        return `${instructionPrefix}: "${selectedText}"${sideInfo} in the file ${context.filePath}`;
+    if (isCustomInput) {
+        return `${promptPrefix}: "${selectedText}"${sideInfo} in the file ${context.filePath}`;
     }
 
-    return `${instructionPrefix} "${selectedText}"${sideInfo} in the file ${context.filePath}`;
+    return `${promptPrefix} "${selectedText}"${sideInfo} in the file ${context.filePath}`;
+}
+
+/**
+ * Get the response label for a command (for adding AI comments)
+ */
+export function getDiffResponseLabel(commandId: string): string {
+    return getAICommandRegistry().getResponseLabel(commandId);
+}
+
+/**
+ * Get the comment type for a command (for styling)
+ */
+export function getDiffCommentType(commandId: string): 'ai-clarification' | 'ai-critique' | 'ai-suggestion' | 'ai-question' {
+    return getAICommandRegistry().getCommentType(commandId);
 }
 
 /**

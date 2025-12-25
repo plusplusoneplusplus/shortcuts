@@ -251,9 +251,11 @@ export interface CommentTreeItemData {
 }
 
 /**
- * AI instruction types for different kinds of queries
+ * AI instruction types for different kinds of queries.
+ * This is now a string to support dynamic command IDs from the registry.
+ * Default commands: 'clarify', 'go-deeper', 'custom'
  */
-export type AIInstructionType = 'clarify' | 'go-deeper' | 'custom';
+export type AIInstructionType = string;
 
 /**
  * Document context for AI clarification requests

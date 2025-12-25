@@ -5,7 +5,7 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AIProcessManager } from '../ai-service';
+import { AIProcessManager, getAICommandRegistry } from '../ai-service';
 import { handleAIClarification } from './ai-clarification-handler';
 import { CommentsManager } from './comments-manager';
 import { isExternalUrl, isMarkdownFile, resolveFilePath } from './file-path-utils';
@@ -25,7 +25,8 @@ interface AskAIContext {
     surroundingLines: string;
     nearestHeading: string | null;
     allHeadings: string[];
-    instructionType: 'clarify' | 'go-deeper' | 'custom';
+    /** Command ID from the AI command registry */
+    instructionType: string;
     customInstruction?: string;
 }
 
@@ -182,9 +183,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             const comments = this.commentsManager.getCommentsForFile(relativePath);
             const baseSettings = this.commentsManager.getSettings();
 
-            // Add Ask AI enabled setting from VS Code configuration
+            // Add Ask AI enabled setting and commands from VS Code configuration
             const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiService').get<boolean>('enabled', false);
-            const settings = { ...baseSettings, askAIEnabled };
+            const aiCommands = getAICommandRegistry().getSerializedCommands();
+            const settings = { ...baseSettings, askAIEnabled, aiCommands };
 
             console.log('[Extension] updateWebview called - content length:', content.length);
             console.log('[Extension] updateWebview - content preview:', content.substring(0, 200));
@@ -225,9 +227,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             const comments = this.commentsManager.getCommentsForFile(relativePath);
             const baseSettings = this.commentsManager.getSettings();
 
-            // Add Ask AI enabled setting from VS Code configuration
+            // Add Ask AI enabled setting and commands from VS Code configuration
             const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiService').get<boolean>('enabled', false);
-            const settings = { ...baseSettings, askAIEnabled };
+            const aiCommands = getAICommandRegistry().getSerializedCommands();
+            const settings = { ...baseSettings, askAIEnabled, aiCommands };
 
             webviewPanel.webview.postMessage({
                 type: 'update',

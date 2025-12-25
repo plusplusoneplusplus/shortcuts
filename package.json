@@ -220,6 +220,52 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Working directory for Copilot CLI execution. Supports `{workspaceFolder}` variable which expands to the workspace folder path. Examples: `{workspaceFolder}`, `{workspaceFolder}/src`, `/absolute/path`. Leave empty to default to `{workspaceFolder}/src` if it exists, otherwise workspace root."
+        },
+        "workspaceShortcuts.aiService.commands": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "Custom AI commands for the Ask AI feature. Each command defines an action available in the context menu. Leave empty to use the default commands (Clarify, Go Deeper, Custom).\n\n**Template Variables:**\n- `{{selection}}` - The selected text\n- `{{file}}` - The file path\n- `{{heading}}` - Nearest heading above selection\n- `{{context}}` - Surrounding content",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "prompt"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique identifier for the command (e.g., 'clarify', 'summarize')"
+              },
+              "label": {
+                "type": "string",
+                "description": "Display label in menus (e.g., 'Clarify', 'Summarize')"
+              },
+              "icon": {
+                "type": "string",
+                "description": "Emoji icon for the command (e.g., '💡', '📝')"
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Prompt template. Use {{selection}}, {{file}}, {{heading}}, {{context}} for dynamic content. Simple prompts without variables will have selection and file appended automatically."
+              },
+              "order": {
+                "type": "number",
+                "description": "Display order in menus (lower numbers appear first)"
+              },
+              "isCustomInput": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, shows an input dialog for custom instructions"
+              },
+              "responseLabel": {
+                "type": "string",
+                "description": "Label prefix for AI response comments (e.g., '🤖 **AI Response:**')"
+              },
+              "commentType": {
+                "type": "string",
+                "enum": ["ai-clarification", "ai-critique", "ai-suggestion", "ai-question"],
+                "default": "ai-clarification",
+                "description": "Comment type for styling differentiation"
+              }
+            }
+          }
         }
       }
     },

@@ -62,6 +62,17 @@ export interface DiffComment {
 }
 
 /**
+ * Serialized AI command for webview
+ */
+export interface SerializedAICommand {
+    id: string;
+    label: string;
+    icon?: string;
+    order?: number;
+    isCustomInput?: boolean;
+}
+
+/**
  * Settings for display
  */
 export interface DiffCommentsSettings {
@@ -70,6 +81,8 @@ export interface DiffCommentsSettings {
     resolvedHighlightColor: string;
     /** Whether Ask AI feature is enabled */
     askAIEnabled?: boolean;
+    /** Configurable AI commands */
+    aiCommands?: SerializedAICommand[];
 }
 
 /**
@@ -102,9 +115,10 @@ export interface ExtensionMessage {
 }
 
 /**
- * AI instruction type for Ask AI feature
+ * AI instruction type for Ask AI feature.
+ * This is now a string to support dynamic command IDs from the registry.
  */
-export type DiffAIInstructionType = 'clarify' | 'go-deeper' | 'custom';
+export type DiffAIInstructionType = string;
 
 /**
  * Context for Ask AI request
@@ -115,7 +129,9 @@ export interface AskAIContext {
     endLine: number;
     side: DiffSide;
     surroundingLines: string;
+    /** Command ID from the AI command registry */
     instructionType: DiffAIInstructionType;
+    /** Custom instruction text (only used when command has isCustomInput=true) */
     customInstruction?: string;
 }
 

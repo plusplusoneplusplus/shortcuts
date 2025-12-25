@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AIProcessManager } from '../ai-service';
+import { AIProcessManager, getAICommandRegistry } from '../ai-service';
 import { DiffCommentsManager } from './diff-comments-manager';
 import {
     createCommittedGitContext,
@@ -635,15 +635,17 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     ): void {
         const comments = this.commentsManager.getCommentsForFile(filePath);
         const baseSettings = this.commentsManager.getSettings();
-        
-        // Get AI service enabled setting
+
+        // Get AI service enabled setting and commands
         const aiConfig = vscode.workspace.getConfiguration('workspaceShortcuts.aiService');
         const askAIEnabled = aiConfig.get<boolean>('enabled', false);
-        
-        // Extend settings with AI enabled flag
+        const aiCommands = getAICommandRegistry().getSerializedCommands();
+
+        // Extend settings with AI enabled flag and commands
         const settings = {
             ...baseSettings,
-            askAIEnabled
+            askAIEnabled,
+            aiCommands
         };
 
         const message: DiffExtensionMessage = {
@@ -663,18 +665,20 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
      * Update all open webviews with latest comments
      */
     private updateAllWebviews(): void {
-        // Get AI service enabled setting
+        // Get AI service enabled setting and commands
         const aiConfig = vscode.workspace.getConfiguration('workspaceShortcuts.aiService');
         const askAIEnabled = aiConfig.get<boolean>('enabled', false);
-        
+        const aiCommands = getAICommandRegistry().getSerializedCommands();
+
         for (const [filePath, panel] of this.activeWebviews) {
             const comments = this.commentsManager.getCommentsForFile(filePath);
             const baseSettings = this.commentsManager.getSettings();
-            
-            // Extend settings with AI enabled flag
+
+            // Extend settings with AI enabled flag and commands
             const settings = {
                 ...baseSettings,
-                askAIEnabled
+                askAIEnabled,
+                aiCommands
             };
 
             const message: DiffExtensionMessage = {
