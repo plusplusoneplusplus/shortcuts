@@ -2,7 +2,7 @@
  * Panel manager for comment input and display
  * 
  * Uses shared utilities from the base-panel-manager module for common
- * functionality like drag, positioning, and date formatting.
+ * functionality like drag, resize, positioning, and date formatting.
  */
 
 import { AskAIContext, DiffAIInstructionType, DiffComment, DiffSide, SelectionState, SerializedAICommand } from './types';
@@ -10,7 +10,11 @@ import { getState, setCommentPanelOpen, setEditingCommentId } from './state';
 import { clearSelection, toDiffSelection } from './selection-handler';
 import { sendAddComment, sendAskAI, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
 import {
+    calculateBubbleDimensions,
+    DEFAULT_RESIZE_CONSTRAINTS,
     formatCommentDate,
+    setupBubbleDrag as setupSharedBubbleDrag,
+    setupElementResize,
     setupPanelDrag as setupSharedPanelDrag
 } from '../../shared/webview/base-panel-manager';
 import { renderCommentMarkdown } from '../../shared/webview/markdown-renderer';
@@ -51,6 +55,9 @@ let customInstructionSubmitBtn: HTMLElement | null = null;
 let customInstructionOverlay: HTMLElement | null = null;
 // Current command ID for custom instruction dialog
 let pendingCustomCommandId: string = 'custom';
+
+// Active comment bubble (single floating bubble like markdown review)
+let activeCommentBubble: HTMLElement | null = null;
 
 /**
  * Current selection for the comment panel
@@ -365,11 +372,240 @@ function positionPanelNearSelection(): void {
 }
 
 /**
- * Show comments list for a specific line
+ * Show comments for a specific line
+ * Uses single floating bubble approach like markdown review for consistency
  * @param comments - The comments to display
- * @param anchorElement - Optional element to position the panel near
+ * @param anchorElement - Optional element to position the bubble near
  */
 export function showCommentsForLine(comments: DiffComment[], anchorElement?: HTMLElement): void {
+    if (comments.length === 0) {
+        return;
+    }
+
+    // Close any existing bubble
+    closeActiveCommentBubble();
+    hideCommentsList();
+
+    if (comments.length === 1 && anchorElement) {
+        // Single comment: show as floating bubble (like markdown review)
+        showCommentBubble(comments[0], anchorElement);
+    } else if (anchorElement) {
+        // Multiple comments: show in list panel positioned near the anchor
+        showCommentsInListPanel(comments);
+        positionCommentsListNearElement(anchorElement, calculateOptimalPanelWidth(comments));
+    } else {
+        // Fallback: show in list panel at default position
+        showCommentsInListPanel(comments);
+    }
+}
+
+/**
+ * Show a single comment in a floating bubble (like markdown review)
+ */
+function showCommentBubble(comment: DiffComment, anchorEl: HTMLElement): void {
+    closeActiveCommentBubble();
+
+    const bubble = document.createElement('div');
+    // Build class list: base class + status class + type class
+    const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
+    const statusClass = comment.status === 'resolved' ? 'resolved' : '';
+    bubble.className = ['inline-comment-bubble', statusClass, typeClass].filter(c => c).join(' ');
+    bubble.dataset.commentId = comment.id;
+
+    // Render bubble content (similar to markdown review's renderCommentBubbleContent)
+    bubble.innerHTML = renderCommentBubbleContent(comment);
+
+    // Always use fixed positioning
+    bubble.style.position = 'fixed';
+    bubble.style.zIndex = '1000';
+
+    // Calculate optimal dimensions based on content
+    const hasCodeBlocks = comment.comment.includes('```');
+    const hasLongLines = comment.comment.split('\n').some(line => line.length > 60);
+    const lineCount = comment.comment.split('\n').length;
+    const { width: bubbleWidth, height: bubbleHeight } = calculateBubbleDimensions(
+        comment.comment.length,
+        comment.selectedText.length,
+        hasCodeBlocks,
+        hasLongLines,
+        lineCount
+    );
+
+    const rect = anchorEl.getBoundingClientRect();
+    const padding = 20;
+
+    // Calculate initial position (prefer below and aligned with anchor)
+    let left = rect.left;
+    let top = rect.bottom + 5;
+
+    // Horizontal positioning: try to center on anchor, then adjust for screen bounds
+    const anchorCenterX = rect.left + (rect.width / 2);
+    left = anchorCenterX - (bubbleWidth / 2);
+
+    // Adjust if bubble would go off screen horizontally
+    if (left + bubbleWidth > window.innerWidth - padding) {
+        left = window.innerWidth - bubbleWidth - padding;
+    }
+    if (left < padding) {
+        left = padding;
+    }
+
+    // Vertical positioning: prefer below, but flip above if not enough space
+    const spaceBelow = window.innerHeight - rect.bottom - padding;
+    const spaceAbove = rect.top - padding;
+
+    if (spaceBelow < bubbleHeight && spaceAbove > spaceBelow) {
+        // Not enough space below and more space above - position above
+        top = rect.top - bubbleHeight - 5;
+        if (top < padding) {
+            top = padding;
+        }
+    } else {
+        // Position below
+        if (top + bubbleHeight > window.innerHeight - padding) {
+            top = window.innerHeight - bubbleHeight - padding;
+        }
+    }
+
+    bubble.style.left = left + 'px';
+    bubble.style.top = top + 'px';
+    bubble.style.width = bubbleWidth + 'px';
+    // Set max-height but let content determine actual height up to that limit
+    bubble.style.maxHeight = bubbleHeight + 'px';
+
+    document.body.appendChild(bubble);
+    activeCommentBubble = bubble;
+
+    // Setup bubble action handlers
+    setupBubbleActions(bubble, comment);
+
+    // Setup drag and resize
+    setupBubbleDrag(bubble);
+    setupBubbleResize(bubble);
+
+    // After rendering, adjust position if actual height is different
+    requestAnimationFrame(() => {
+        const actualHeight = bubble.offsetHeight;
+        const actualWidth = bubble.offsetWidth;
+
+        // Re-check vertical positioning with actual dimensions
+        const currentTop = parseInt(bubble.style.top);
+        if (currentTop + actualHeight > window.innerHeight - padding) {
+            // Try to position above if there's more space
+            const newSpaceAbove = rect.top - padding;
+            if (newSpaceAbove > actualHeight) {
+                bubble.style.top = (rect.top - actualHeight - 5) + 'px';
+            } else {
+                // Just constrain to viewport
+                bubble.style.top = Math.max(padding, window.innerHeight - actualHeight - padding) + 'px';
+            }
+        }
+
+        // Re-check horizontal positioning
+        const currentLeft = parseInt(bubble.style.left);
+        if (currentLeft + actualWidth > window.innerWidth - padding) {
+            bubble.style.left = Math.max(padding, window.innerWidth - actualWidth - padding) + 'px';
+        }
+    });
+}
+
+/**
+ * Render comment bubble content (matches markdown review's approach)
+ */
+function renderCommentBubbleContent(comment: DiffComment): string {
+    const statusLabel = comment.status === 'open' ? '○ Open' : '✓ Resolved';
+    const resolveBtn = comment.status === 'open'
+        ? '<button class="bubble-action-btn" data-action="resolve" title="Resolve">✅</button>'
+        : '<button class="bubble-action-btn" data-action="reopen" title="Reopen">🔄</button>';
+
+    // Line range info
+    const startLine = comment.selection.newStartLine ?? comment.selection.oldStartLine ?? 0;
+    const endLine = comment.selection.newEndLine ?? comment.selection.oldEndLine ?? startLine;
+    const lineRange = startLine === endLine
+        ? `Line ${startLine}`
+        : `Lines ${startLine}-${endLine}`;
+
+    // Get type label and class for AI comments
+    const typeLabel = getTypeLabel(comment.type);
+    const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
+
+    // Build type badge HTML if this is an AI comment
+    const typeBadge = typeLabel ? `<span class="status ${typeClass}">${typeLabel}</span>` : '';
+
+    // Escape selected text for safe display
+    const escapedSelectedText = escapeHtml(comment.selectedText);
+
+    return `<div class="bubble-header">
+        <div class="bubble-meta">${lineRange}
+        <span class="status ${comment.status}">${statusLabel}</span>
+        ${typeBadge}</div>
+        <div class="bubble-actions">
+        ${resolveBtn}
+        <button class="bubble-action-btn" data-action="edit" title="Edit">✏️</button>
+        <button class="bubble-action-btn" data-action="delete" title="Delete">🗑️</button>
+        </div></div>
+        <div class="bubble-selected-text">${escapedSelectedText}</div>
+        <div class="bubble-comment-text bubble-markdown-content">${renderCommentMarkdown(comment.comment)}</div>
+        <div class="resize-handle resize-handle-se" data-resize="se"></div>
+        <div class="resize-handle resize-handle-e" data-resize="e"></div>
+        <div class="resize-handle resize-handle-s" data-resize="s"></div>
+        <div class="resize-grip"></div>`;
+}
+
+/**
+ * Escape HTML for safe display
+ */
+function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * Setup bubble action button handlers
+ */
+function setupBubbleActions(bubble: HTMLElement, comment: DiffComment): void {
+    bubble.querySelectorAll('.bubble-action-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const action = (btn as HTMLElement).dataset.action;
+
+            switch (action) {
+                case 'resolve':
+                    sendResolveComment(comment.id);
+                    closeActiveCommentBubble();
+                    break;
+                case 'reopen':
+                    sendReopenComment(comment.id);
+                    closeActiveCommentBubble();
+                    break;
+                case 'edit':
+                    closeActiveCommentBubble();
+                    showEditCommentPanel(comment);
+                    break;
+                case 'delete':
+                    sendDeleteComment(comment.id);
+                    closeActiveCommentBubble();
+                    break;
+            }
+        });
+    });
+}
+
+/**
+ * Close the active comment bubble
+ */
+export function closeActiveCommentBubble(): void {
+    if (activeCommentBubble) {
+        activeCommentBubble.remove();
+        activeCommentBubble = null;
+    }
+}
+
+/**
+ * Fallback: Show comments in the list panel (for backward compatibility)
+ */
+function showCommentsInListPanel(comments: DiffComment[]): void {
     const listPanel = commentsListPanel;
     const listBody = commentsListBody;
     
@@ -393,11 +629,6 @@ export function showCommentsForLine(comments: DiffComment[], anchorElement?: HTM
 
     // Show panel
     listPanel.classList.remove('hidden');
-
-    // Position panel near the anchor element if provided
-    if (anchorElement) {
-        positionCommentsListNearElement(anchorElement, optimalWidth);
-    }
 }
 
 /**
@@ -477,6 +708,7 @@ function getTypeLabel(type?: string): string {
 
 /**
  * Calculate optimal panel width based on comments content
+ * Uses the shared calculateBubbleDimensions utility for consistency
  */
 function calculateOptimalPanelWidth(comments: DiffComment[]): number {
     const minWidth = 350;
@@ -486,6 +718,7 @@ function calculateOptimalPanelWidth(comments: DiffComment[]): number {
     let maxContentLength = 0;
     let hasCodeBlocks = false;
     let hasLongLines = false;
+    let maxLineCount = 1;
     
     for (const comment of comments) {
         const length = comment.comment.length + comment.selectedText.length;
@@ -498,25 +731,20 @@ function calculateOptimalPanelWidth(comments: DiffComment[]): number {
         if (comment.comment.split('\n').some(line => line.length > 60)) {
             hasLongLines = true;
         }
+        maxLineCount = Math.max(maxLineCount, comment.comment.split('\n').length);
     }
     
-    // Calculate width based on content
-    let width: number;
-    if (hasCodeBlocks || hasLongLines) {
-        // Code blocks and long lines need more width
-        width = Math.min(maxWidth, Math.max(500, minWidth));
-    } else if (maxContentLength < 150) {
-        // Short comments can use default width
-        width = minWidth;
-    } else if (maxContentLength < 400) {
-        // Medium comments
-        width = Math.min(450, minWidth + (maxContentLength - 150) * 0.4);
-    } else {
-        // Longer comments get wider
-        width = Math.min(maxWidth, 450 + (maxContentLength - 400) * 0.2);
-    }
+    // Use the shared utility for consistent sizing
+    const { width } = calculateBubbleDimensions(
+        maxContentLength,
+        0, // selectedTextLength already included in maxContentLength
+        hasCodeBlocks,
+        hasLongLines,
+        maxLineCount
+    );
     
-    return width;
+    // Clamp to our panel-specific bounds
+    return Math.max(minWidth, Math.min(maxWidth, width));
 }
 
 /**
@@ -632,7 +860,57 @@ function createCommentElement(comment: DiffComment): HTMLElement {
     text.innerHTML = renderCommentMarkdown(comment.comment);
     div.appendChild(text);
 
+    // Add resize handles for the bubble (matches markdown review)
+    const resizeHandleSE = document.createElement('div');
+    resizeHandleSE.className = 'resize-handle resize-handle-se';
+    resizeHandleSE.dataset.resize = 'se';
+    div.appendChild(resizeHandleSE);
+
+    const resizeHandleE = document.createElement('div');
+    resizeHandleE.className = 'resize-handle resize-handle-e';
+    resizeHandleE.dataset.resize = 'e';
+    div.appendChild(resizeHandleE);
+
+    const resizeHandleS = document.createElement('div');
+    resizeHandleS.className = 'resize-handle resize-handle-s';
+    resizeHandleS.dataset.resize = 's';
+    div.appendChild(resizeHandleS);
+
+    const resizeGrip = document.createElement('div');
+    resizeGrip.className = 'resize-grip';
+    div.appendChild(resizeGrip);
+
+    // Setup drag functionality for the bubble header
+    setupBubbleDrag(div);
+
+    // Setup resize functionality for the bubble
+    setupBubbleResize(div);
+
     return div;
+}
+
+/**
+ * Setup drag functionality for comment bubble
+ * Uses the shared setupBubbleDrag utility
+ */
+function setupBubbleDrag(bubble: HTMLElement): void {
+    setupSharedBubbleDrag(
+        bubble,
+        '.bubble-header',
+        '.bubble-action-btn'
+    );
+}
+
+/**
+ * Setup resize functionality for comment bubble
+ * Uses the shared setupElementResize utility
+ */
+function setupBubbleResize(bubble: HTMLElement): void {
+    setupElementResize(
+        bubble,
+        '.resize-handle',
+        DEFAULT_RESIZE_CONSTRAINTS
+    );
 }
 
 /**

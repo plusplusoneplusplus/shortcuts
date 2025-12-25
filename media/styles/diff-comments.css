@@ -1,20 +1,65 @@
 /**
  * Diff Comments Panel Styles
  * Floating comment panel and comments list
+ * 
+ * This file uses shared CSS variables from webview.css for consistency
+ * with the markdown review editor.
  */
+
+/* ==============================
+ * CSS Variables (shared with markdown review)
+ * ============================== */
+:root {
+    /* Comment highlight colors by type */
+    --highlight-open: rgba(255, 235, 59, 0.3);           /* Yellow for user comments */
+    --highlight-resolved: rgba(76, 175, 80, 0.2);        /* Green for resolved */
+    --highlight-hover: rgba(255, 235, 59, 0.5);          /* Yellow hover for user comments */
+    --highlight-ai-suggestion: rgba(33, 150, 243, 0.3);  /* Blue for AI suggestions */
+    --highlight-ai-suggestion-hover: rgba(33, 150, 243, 0.5);
+    --highlight-ai-clarification: rgba(156, 39, 176, 0.3); /* Purple for AI clarifications */
+    --highlight-ai-clarification-hover: rgba(156, 39, 176, 0.5);
+    --highlight-ai-critique: rgba(255, 152, 0, 0.3);     /* Orange for AI critiques */
+    --highlight-ai-critique-hover: rgba(255, 152, 0, 0.5);
+    --highlight-ai-question: rgba(0, 188, 212, 0.3);     /* Cyan for AI questions */
+    --highlight-ai-question-hover: rgba(0, 188, 212, 0.5);
+    
+    /* Comment border colors by type */
+    --comment-border-user: #f9a825;       /* Yellow/amber */
+    --comment-border-ai-suggestion: #2196f3;   /* Blue */
+    --comment-border-ai-clarification: #9c27b0; /* Purple */
+    --comment-border-ai-critique: #ff9800;      /* Orange */
+    --comment-border-ai-question: #00bcd4;      /* Cyan */
+    --comment-border-resolved: #4caf50;         /* Green */
+    
+    --comment-bg: var(--vscode-editorWidget-background);
+    --comment-border: var(--vscode-editorWidget-border);
+}
 
 /* Comment Panel */
 .comment-panel {
     position: fixed;
     width: 400px;
     max-width: 90vw;
-    background-color: var(--vscode-editorWidget-background);
-    border: 1px solid var(--vscode-editorWidget-border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    background-color: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
     z-index: 1000;
     display: flex;
     flex-direction: column;
+    animation: floatIn 0.2s ease-out;
+}
+
+@keyframes floatIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
 .comment-panel-header {
@@ -23,8 +68,12 @@
     align-items: center;
     padding: 12px 16px;
     border-bottom: 1px solid var(--vscode-panel-border);
-    background-color: var(--vscode-sideBar-background);
-    border-radius: 6px 6px 0 0;
+    cursor: move;
+    user-select: none;
+}
+
+.comment-panel-header:active {
+    cursor: grabbing;
 }
 
 .comment-panel-title {
@@ -53,6 +102,11 @@
 .comment-panel-close:hover {
     opacity: 1;
     background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.comment-panel.dragging {
+    opacity: 0.9;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
 .comment-panel-body {
@@ -162,18 +216,18 @@
     position: fixed;
     right: 20px;
     top: 100px;
-    width: 350px;
-    min-width: 350px;
+    width: 380px;
+    min-width: 280px;
     max-width: 600px;
     max-height: 70vh;
-    background-color: var(--vscode-editorWidget-background);
-    border: 1px solid var(--vscode-editorWidget-border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    background-color: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
     z-index: 999;
     display: flex;
     flex-direction: column;
-    transition: width 0.15s ease-out;
+    animation: floatIn 0.2s ease-out;
 }
 
 .comments-list-header {
@@ -182,10 +236,14 @@
     align-items: center;
     padding: 12px 16px;
     border-bottom: 1px solid var(--vscode-panel-border);
-    background-color: var(--vscode-sideBar-background);
-    border-radius: 6px 6px 0 0;
+    cursor: move;
+    user-select: none;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 14px;
+}
+
+.comments-list-header:active {
+    cursor: grabbing;
 }
 
 .comments-list-close {
@@ -606,15 +664,35 @@
 .inline-comment-bubble {
     padding: 12px;
     margin-bottom: 8px;
-    background: var(--vscode-editorWidget-background, #252526);
-    border: 1px solid var(--vscode-editorWidget-border, #454545);
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
     border-radius: 8px;
-    border-left: 4px solid var(--vscode-panel-border);
+    border-left: 4px solid var(--comment-border-user);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     font-family: var(--vscode-font-family);
     font-size: 13px;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    /* Dynamic sizing - width and max-height are set via JS based on content */
+    min-width: 280px;
+    max-width: 600px;
+    min-height: 120px;
+    /* Smooth transition when repositioning */
+    transition: left 0.15s ease-out, top 0.15s ease-out;
+    animation: bubbleIn 0.15s ease-out;
+}
+
+@keyframes bubbleIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .inline-comment-bubble:last-child {
@@ -622,25 +700,35 @@
 }
 
 .inline-comment-bubble.resolved {
-    border-left-color: #4caf50;
+    border-left-color: var(--comment-border-resolved);
     opacity: 0.85;
 }
 
 /* AI type-specific bubble borders */
 .inline-comment-bubble.ai-suggestion {
-    border-left-color: #2196f3;
+    border-left-color: var(--comment-border-ai-suggestion);
 }
 
 .inline-comment-bubble.ai-clarification {
-    border-left-color: #9c27b0;
+    border-left-color: var(--comment-border-ai-clarification);
 }
 
 .inline-comment-bubble.ai-critique {
-    border-left-color: #ff9800;
+    border-left-color: var(--comment-border-ai-critique);
 }
 
 .inline-comment-bubble.ai-question {
-    border-left-color: #00bcd4;
+    border-left-color: var(--comment-border-ai-question);
+}
+
+.inline-comment-bubble.dragging {
+    opacity: 0.9;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.inline-comment-bubble.resizing {
+    user-select: none;
+    transition: none;
 }
 
 .bubble-header {
@@ -648,6 +736,12 @@
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 8px;
+    cursor: move;
+    user-select: none;
+}
+
+.bubble-header:active {
+    cursor: grabbing;
 }
 
 .bubble-meta {
@@ -668,34 +762,34 @@
 }
 
 .bubble-meta .status.open {
-    background: rgba(249, 168, 37, 0.25);
-    color: #f9a825;
+    background: var(--highlight-open);
+    color: #f57f17;
 }
 
 .bubble-meta .status.resolved {
-    background: rgba(76, 175, 80, 0.25);
-    color: #4caf50;
+    background: var(--highlight-resolved);
+    color: #2e7d32;
 }
 
 /* AI type-specific status badges */
 .bubble-meta .status.ai-suggestion {
-    background: rgba(33, 150, 243, 0.25);
-    color: #2196f3;
+    background: var(--highlight-ai-suggestion);
+    color: #1565c0;
 }
 
 .bubble-meta .status.ai-clarification {
-    background: rgba(156, 39, 176, 0.25);
-    color: #9c27b0;
+    background: var(--highlight-ai-clarification);
+    color: #7b1fa2;
 }
 
 .bubble-meta .status.ai-critique {
-    background: rgba(255, 152, 0, 0.25);
-    color: #ff9800;
+    background: var(--highlight-ai-critique);
+    color: #e65100;
 }
 
 .bubble-meta .status.ai-question {
-    background: rgba(0, 188, 212, 0.25);
-    color: #00bcd4;
+    background: var(--highlight-ai-question);
+    color: #00838f;
 }
 
 .bubble-actions {
@@ -892,4 +986,129 @@
 
 .bubble-comment-text::-webkit-scrollbar-thumb:hover {
     background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.6));
+}
+
+/* ==============================
+ * Resize Handles for Panels
+ * ============================== */
+
+/* Common resize handle styles */
+.resize-handle {
+    position: absolute;
+    background: transparent;
+    z-index: 10;
+}
+
+.resize-handle:hover {
+    background: var(--vscode-focusBorder, #007acc);
+    opacity: 0.5;
+}
+
+.resize-handle.active {
+    background: var(--vscode-focusBorder, #007acc);
+    opacity: 0.7;
+}
+
+/* Corner resize handles */
+.resize-handle-se {
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: se-resize;
+    border-bottom-right-radius: 8px;
+}
+
+.resize-handle-sw {
+    left: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: sw-resize;
+    border-bottom-left-radius: 8px;
+}
+
+.resize-handle-ne {
+    right: 0;
+    top: 0;
+    width: 16px;
+    height: 16px;
+    cursor: ne-resize;
+    border-top-right-radius: 8px;
+}
+
+.resize-handle-nw {
+    left: 0;
+    top: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nw-resize;
+    border-top-left-radius: 8px;
+}
+
+/* Edge resize handles */
+.resize-handle-e {
+    right: 0;
+    top: 16px;
+    bottom: 16px;
+    width: 4px;
+    cursor: e-resize;
+}
+
+.resize-handle-w {
+    left: 0;
+    top: 16px;
+    bottom: 16px;
+    width: 4px;
+    cursor: w-resize;
+}
+
+.resize-handle-n {
+    top: 0;
+    left: 16px;
+    right: 16px;
+    height: 4px;
+    cursor: n-resize;
+}
+
+.resize-handle-s {
+    bottom: 0;
+    left: 16px;
+    right: 16px;
+    height: 4px;
+    cursor: s-resize;
+}
+
+/* Visual resize indicator (corner grip) */
+.resize-grip {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+    opacity: 0.4;
+}
+
+.resize-grip::before,
+.resize-grip::after {
+    content: '';
+    position: absolute;
+    background: var(--vscode-descriptionForeground, #666);
+}
+
+.resize-grip::before {
+    right: 0;
+    bottom: 0;
+    width: 8px;
+    height: 2px;
+    border-radius: 1px;
+}
+
+.resize-grip::after {
+    right: 0;
+    bottom: 0;
+    width: 2px;
+    height: 8px;
+    border-radius: 1px;
 }

@@ -373,3 +373,151 @@ export function escapeHtml(text: string): string {
     return div.innerHTML;
 }
 
+/**
+ * Setup drag functionality for a bubble/floating element
+ * Similar to setupPanelDrag but designed for dynamically created bubbles
+ * that may not have a dedicated header element.
+ * 
+ * @param bubble - The bubble element to make draggable
+ * @param headerSelector - CSS selector for the drag handle (usually the header)
+ * @param excludeSelector - CSS selector for elements that should not trigger drag
+ * @param onDragStart - Optional callback when drag starts
+ * @param onDragEnd - Optional callback when drag ends
+ */
+export function setupBubbleDrag(
+    bubble: HTMLElement,
+    headerSelector: string = '.bubble-header',
+    excludeSelector: string = '.bubble-action-btn, button',
+    onDragStart?: () => void,
+    onDragEnd?: () => void
+): void {
+    const header = bubble.querySelector(headerSelector);
+    if (!header) return;
+
+    let isDragging = false;
+    let startX: number, startY: number;
+    let initialLeft: number, initialTop: number;
+
+    const handleMouseDown = (e: Event) => {
+        const event = e as MouseEvent;
+        // Only start drag if not clicking on excluded elements
+        if ((event.target as HTMLElement).closest(excludeSelector)) return;
+
+        isDragging = true;
+        bubble.classList.add('dragging');
+        onDragStart?.();
+
+        startX = event.clientX;
+        startY = event.clientY;
+        
+        // Get current position
+        const rect = bubble.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+
+        // Ensure we're using fixed positioning for dragging
+        bubble.style.position = 'fixed';
+
+        event.preventDefault();
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+        if (!isDragging) return;
+
+        const deltaX = e.clientX - startX;
+        const deltaY = e.clientY - startY;
+
+        let newLeft = initialLeft + deltaX;
+        let newTop = initialTop + deltaY;
+
+        // Keep bubble within viewport bounds
+        const bubbleWidth = bubble.offsetWidth;
+        const bubbleHeight = bubble.offsetHeight;
+
+        newLeft = Math.max(10, Math.min(newLeft, window.innerWidth - bubbleWidth - 10));
+        newTop = Math.max(10, Math.min(newTop, window.innerHeight - bubbleHeight - 10));
+
+        bubble.style.left = newLeft + 'px';
+        bubble.style.top = newTop + 'px';
+    };
+
+    const handleMouseUp = () => {
+        if (isDragging) {
+            isDragging = false;
+            bubble.classList.remove('dragging');
+            onDragEnd?.();
+        }
+    };
+
+    header.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    // Add cursor style to indicate draggable header
+    (header as HTMLElement).style.cursor = 'move';
+}
+
+/**
+ * Create resize handles HTML for a bubble element
+ * Returns the HTML string for resize handles that can be appended to a bubble
+ */
+export function createResizeHandlesHTML(): string {
+    return `
+        <div class="resize-handle resize-handle-se" data-resize="se"></div>
+        <div class="resize-handle resize-handle-e" data-resize="e"></div>
+        <div class="resize-handle resize-handle-s" data-resize="s"></div>
+        <div class="resize-grip"></div>
+    `;
+}
+
+/**
+ * Calculate optimal bubble dimensions based on content characteristics
+ * @param commentLength - Length of the comment text
+ * @param selectedTextLength - Length of the selected text
+ * @param hasCodeBlocks - Whether the comment contains code blocks
+ * @param hasLongLines - Whether the comment has lines > 60 chars
+ * @param lineCount - Number of lines in the comment
+ */
+export function calculateBubbleDimensions(
+    commentLength: number,
+    selectedTextLength: number,
+    hasCodeBlocks: boolean,
+    hasLongLines: boolean,
+    lineCount: number
+): { width: number; height: number } {
+    const minWidth = 280;
+    const maxWidth = 600;
+    const minHeight = 120;
+    const maxHeight = 500;
+    
+    const totalLength = commentLength + selectedTextLength;
+    
+    // Calculate width based on content characteristics
+    let width: number;
+    if (hasCodeBlocks || hasLongLines) {
+        // Code blocks and long lines need more width
+        width = Math.min(maxWidth, Math.max(450, minWidth));
+    } else if (totalLength < 100) {
+        // Short comments can be narrower
+        width = minWidth;
+    } else if (totalLength < 300) {
+        // Medium comments
+        width = Math.min(380, minWidth + (totalLength - 100) * 0.5);
+    } else {
+        // Longer comments get wider
+        width = Math.min(maxWidth, 380 + (totalLength - 300) * 0.3);
+    }
+    
+    // Calculate height based on content
+    // Approximate: ~50px for header, ~80px for selected text, rest for comment
+    const baseHeight = 130; // header + selected text area + padding
+    const lineHeight = 20; // approximate line height for comment text
+    const estimatedCommentLines = Math.max(lineCount, Math.ceil(commentLength / (width / 8)));
+    let height = baseHeight + (estimatedCommentLines * lineHeight);
+    
+    // Clamp height
+    height = Math.max(minHeight, Math.min(maxHeight, height));
+    
+    return { width, height };
+}
+

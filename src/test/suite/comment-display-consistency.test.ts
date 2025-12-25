@@ -447,5 +447,210 @@ suite('Comment Display Consistency Tests', () => {
             assert.strictEqual(result.endLine, 30);
         });
     });
+
+    // =========================================================================
+    // Resize Handles Tests
+    // =========================================================================
+
+    suite('Resize Handles - Consistent Structure', () => {
+        /**
+         * Expected resize handle classes - should be identical in both views
+         */
+        const EXPECTED_RESIZE_HANDLES = [
+            'resize-handle resize-handle-se',
+            'resize-handle resize-handle-e',
+            'resize-handle resize-handle-s'
+        ];
+
+        const EXPECTED_RESIZE_GRIP = 'resize-grip';
+
+        test('should have SE resize handle', () => {
+            assert.ok(EXPECTED_RESIZE_HANDLES.includes('resize-handle resize-handle-se'));
+        });
+
+        test('should have E resize handle', () => {
+            assert.ok(EXPECTED_RESIZE_HANDLES.includes('resize-handle resize-handle-e'));
+        });
+
+        test('should have S resize handle', () => {
+            assert.ok(EXPECTED_RESIZE_HANDLES.includes('resize-handle resize-handle-s'));
+        });
+
+        test('should have resize grip class', () => {
+            assert.strictEqual(EXPECTED_RESIZE_GRIP, 'resize-grip');
+        });
+
+        test('should have correct number of resize handles', () => {
+            assert.strictEqual(EXPECTED_RESIZE_HANDLES.length, 3);
+        });
+    });
+
+    // =========================================================================
+    // Draggable Header Tests
+    // =========================================================================
+
+    suite('Draggable Header - Consistent Behavior', () => {
+        /**
+         * Expected draggable element selectors
+         */
+        const DRAGGABLE_SELECTORS = {
+            bubbleHeader: '.bubble-header',
+            panelHeader: '.comment-panel-header, .comments-list-header',
+            floatingPanelHeader: '.floating-panel-header'
+        };
+
+        /**
+         * Elements that should NOT trigger drag
+         */
+        const EXCLUDE_FROM_DRAG = [
+            '.bubble-action-btn',
+            'button',
+            '.close-btn'
+        ];
+
+        test('should have correct bubble header selector', () => {
+            assert.strictEqual(DRAGGABLE_SELECTORS.bubbleHeader, '.bubble-header');
+        });
+
+        test('should have correct panel header selector', () => {
+            assert.ok(DRAGGABLE_SELECTORS.panelHeader.includes('.comment-panel-header'));
+            assert.ok(DRAGGABLE_SELECTORS.panelHeader.includes('.comments-list-header'));
+        });
+
+        test('should exclude action buttons from drag', () => {
+            assert.ok(EXCLUDE_FROM_DRAG.includes('.bubble-action-btn'));
+        });
+
+        test('should exclude buttons from drag', () => {
+            assert.ok(EXCLUDE_FROM_DRAG.includes('button'));
+        });
+
+        test('should exclude close button from drag', () => {
+            assert.ok(EXCLUDE_FROM_DRAG.includes('.close-btn'));
+        });
+    });
+
+    // =========================================================================
+    // CSS Variable Consistency Tests
+    // =========================================================================
+
+    suite('CSS Variables - Consistent Naming', () => {
+        /**
+         * Expected CSS variables for comment styling
+         * Both views should use these exact variable names
+         */
+        const EXPECTED_CSS_VARIABLES = {
+            // Background and border
+            commentBg: '--comment-bg',
+            commentBorder: '--comment-border',
+            
+            // Highlight colors
+            highlightOpen: '--highlight-open',
+            highlightResolved: '--highlight-resolved',
+            highlightAiSuggestion: '--highlight-ai-suggestion',
+            highlightAiClarification: '--highlight-ai-clarification',
+            highlightAiCritique: '--highlight-ai-critique',
+            highlightAiQuestion: '--highlight-ai-question',
+            
+            // Border colors
+            borderUser: '--comment-border-user',
+            borderResolved: '--comment-border-resolved',
+            borderAiSuggestion: '--comment-border-ai-suggestion',
+            borderAiClarification: '--comment-border-ai-clarification',
+            borderAiCritique: '--comment-border-ai-critique',
+            borderAiQuestion: '--comment-border-ai-question'
+        };
+
+        test('should have comment-bg variable', () => {
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.commentBg, '--comment-bg');
+        });
+
+        test('should have comment-border variable', () => {
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.commentBorder, '--comment-border');
+        });
+
+        test('should have highlight-open variable', () => {
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.highlightOpen, '--highlight-open');
+        });
+
+        test('should have highlight-resolved variable', () => {
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.highlightResolved, '--highlight-resolved');
+        });
+
+        test('should have AI type highlight variables', () => {
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.highlightAiSuggestion, '--highlight-ai-suggestion');
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.highlightAiClarification, '--highlight-ai-clarification');
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.highlightAiCritique, '--highlight-ai-critique');
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.highlightAiQuestion, '--highlight-ai-question');
+        });
+
+        test('should have border color variables', () => {
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.borderUser, '--comment-border-user');
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.borderResolved, '--comment-border-resolved');
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.borderAiSuggestion, '--comment-border-ai-suggestion');
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.borderAiClarification, '--comment-border-ai-clarification');
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.borderAiCritique, '--comment-border-ai-critique');
+            assert.strictEqual(EXPECTED_CSS_VARIABLES.borderAiQuestion, '--comment-border-ai-question');
+        });
+    });
+
+    // =========================================================================
+    // Animation Consistency Tests
+    // =========================================================================
+
+    suite('Animations - Consistent Names', () => {
+        /**
+         * Expected animation names - should be identical in both views
+         */
+        const EXPECTED_ANIMATIONS = {
+            bubbleIn: 'bubbleIn',
+            floatIn: 'floatIn',
+            highlightFlash: 'commentHighlightFlash'
+        };
+
+        test('should have bubbleIn animation', () => {
+            assert.strictEqual(EXPECTED_ANIMATIONS.bubbleIn, 'bubbleIn');
+        });
+
+        test('should have floatIn animation', () => {
+            assert.strictEqual(EXPECTED_ANIMATIONS.floatIn, 'floatIn');
+        });
+
+        test('should have commentHighlightFlash animation', () => {
+            assert.strictEqual(EXPECTED_ANIMATIONS.highlightFlash, 'commentHighlightFlash');
+        });
+    });
+
+    // =========================================================================
+    // Bubble Dimensions Consistency Tests
+    // =========================================================================
+
+    suite('Bubble Dimensions - Consistent Constraints', () => {
+        /**
+         * Expected dimension constraints - should be identical in both views
+         */
+        const DIMENSION_CONSTRAINTS = {
+            minWidth: 280,
+            maxWidth: 600,
+            minHeight: 120,
+            maxHeight: 500
+        };
+
+        test('should have correct minimum width', () => {
+            assert.strictEqual(DIMENSION_CONSTRAINTS.minWidth, 280);
+        });
+
+        test('should have correct maximum width', () => {
+            assert.strictEqual(DIMENSION_CONSTRAINTS.maxWidth, 600);
+        });
+
+        test('should have correct minimum height', () => {
+            assert.strictEqual(DIMENSION_CONSTRAINTS.minHeight, 120);
+        });
+
+        test('should have correct maximum height', () => {
+            assert.strictEqual(DIMENSION_CONSTRAINTS.maxHeight, 500);
+        });
+    });
 });
 

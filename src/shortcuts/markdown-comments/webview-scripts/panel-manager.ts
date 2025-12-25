@@ -8,8 +8,11 @@
 import { MarkdownComment } from '../types';
 import { escapeHtml } from '../webview-logic/markdown-renderer';
 import {
+    calculateBubbleDimensions,
+    createResizeHandlesHTML,
     DEFAULT_RESIZE_CONSTRAINTS,
     formatCommentDate,
+    setupBubbleDrag as setupSharedBubbleDrag,
     setupElementResize,
     setupPanelDrag as setupSharedPanelDrag
 } from '../../shared/webview/base-panel-manager';
@@ -240,50 +243,20 @@ function saveEditedComment(): void {
 
 /**
  * Calculate optimal bubble dimensions based on content
+ * Uses the shared calculateBubbleDimensions utility
  */
-function calculateBubbleDimensions(comment: MarkdownComment): { width: number; height: number } {
-    const minWidth = 280;
-    const maxWidth = 600;
-    const minHeight = 120;
-    const maxHeight = 500;
-    
-    // Estimate content length
-    const commentLength = comment.comment.length;
-    const selectedTextLength = comment.selectedText.length;
-    const totalLength = commentLength + selectedTextLength;
-    
-    // Check for code blocks or long lines which need more width
+function calculateBubbleDimensionsForComment(comment: MarkdownComment): { width: number; height: number } {
     const hasCodeBlocks = comment.comment.includes('```');
     const hasLongLines = comment.comment.split('\n').some(line => line.length > 60);
-    const lines = comment.comment.split('\n').length;
+    const lineCount = comment.comment.split('\n').length;
     
-    // Calculate width based on content characteristics
-    let width: number;
-    if (hasCodeBlocks || hasLongLines) {
-        // Code blocks and long lines need more width
-        width = Math.min(maxWidth, Math.max(450, minWidth));
-    } else if (totalLength < 100) {
-        // Short comments can be narrower
-        width = minWidth;
-    } else if (totalLength < 300) {
-        // Medium comments
-        width = Math.min(380, minWidth + (totalLength - 100) * 0.5);
-    } else {
-        // Longer comments get wider
-        width = Math.min(maxWidth, 380 + (totalLength - 300) * 0.3);
-    }
-    
-    // Calculate height based on content
-    // Approximate: ~50px for header, ~80px for selected text, rest for comment
-    const baseHeight = 130; // header + selected text area + padding
-    const lineHeight = 20; // approximate line height for comment text
-    const estimatedCommentLines = Math.max(lines, Math.ceil(commentLength / (width / 8)));
-    let height = baseHeight + (estimatedCommentLines * lineHeight);
-    
-    // Clamp height
-    height = Math.max(minHeight, Math.min(maxHeight, height));
-    
-    return { width, height };
+    return calculateBubbleDimensions(
+        comment.comment.length,
+        comment.selectedText.length,
+        hasCodeBlocks,
+        hasLongLines,
+        lineCount
+    );
 }
 
 /**
@@ -304,7 +277,7 @@ export function showCommentBubble(comment: MarkdownComment, anchorEl: HTMLElemen
     bubble.style.zIndex = '200';
 
     // Calculate optimal dimensions based on content
-    const { width: bubbleWidth, height: bubbleHeight } = calculateBubbleDimensions(comment);
+    const { width: bubbleWidth, height: bubbleHeight } = calculateBubbleDimensionsForComment(comment);
     
     const rect = anchorEl.getBoundingClientRect();
     const padding = 20;
@@ -471,59 +444,16 @@ function setupBubbleActions(bubble: HTMLElement, comment: MarkdownComment): void
 
 /**
  * Setup drag functionality for comment bubble
+ * Uses the shared setupBubbleDrag utility
  */
 function setupBubbleDrag(bubble: HTMLElement): void {
-    const header = bubble.querySelector('.bubble-header');
-    if (!header) return;
-
-    let isDragging = false;
-    let startX: number, startY: number;
-    let initialLeft: number, initialTop: number;
-
-    header.addEventListener('mousedown', (e) => {
-        const event = e as MouseEvent;
-        // Only start drag if clicking on header (not on buttons)
-        if ((event.target as HTMLElement).closest('.bubble-action-btn')) return;
-
-        isDragging = true;
-        bubble.classList.add('dragging');
-        state.startInteraction();
-
-        startX = event.clientX;
-        startY = event.clientY;
-        initialLeft = parseInt(bubble.style.left) || 0;
-        initialTop = parseInt(bubble.style.top) || 0;
-
-        event.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-
-        const deltaX = e.clientX - startX;
-        const deltaY = e.clientY - startY;
-
-        let newLeft = initialLeft + deltaX;
-        let newTop = initialTop + deltaY;
-
-        // Keep bubble within viewport bounds
-        const bubbleWidth = bubble.offsetWidth;
-        const bubbleHeight = bubble.offsetHeight;
-
-        newLeft = Math.max(10, Math.min(newLeft, window.innerWidth - bubbleWidth - 10));
-        newTop = Math.max(10, Math.min(newTop, window.innerHeight - bubbleHeight - 10));
-
-        bubble.style.left = newLeft + 'px';
-        bubble.style.top = newTop + 'px';
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (isDragging) {
-            isDragging = false;
-            bubble.classList.remove('dragging');
-            state.endInteraction();
-        }
-    });
+    setupSharedBubbleDrag(
+        bubble,
+        '.bubble-header',
+        '.bubble-action-btn',
+        () => state.startInteraction(),
+        () => state.endInteraction()
+    );
 }
 
 /**

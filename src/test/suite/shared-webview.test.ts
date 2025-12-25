@@ -1163,5 +1163,237 @@ suite('Shared Webview Utilities Tests', () => {
             assert.strictEqual(result.width, 960); // maximum
         });
     });
+
+    // =========================================================================
+    // Calculate Bubble Dimensions Tests
+    // =========================================================================
+
+    suite('Base Panel Manager - calculateBubbleDimensions', () => {
+        /**
+         * Pure function implementation for testing - mirrors calculateBubbleDimensions
+         */
+        function calculateBubbleDimensions(
+            commentLength: number,
+            selectedTextLength: number,
+            hasCodeBlocks: boolean,
+            hasLongLines: boolean,
+            lineCount: number
+        ): { width: number; height: number } {
+            const minWidth = 280;
+            const maxWidth = 600;
+            const minHeight = 120;
+            const maxHeight = 500;
+            
+            const totalLength = commentLength + selectedTextLength;
+            
+            // Calculate width based on content characteristics
+            let width: number;
+            if (hasCodeBlocks || hasLongLines) {
+                width = Math.min(maxWidth, Math.max(450, minWidth));
+            } else if (totalLength < 100) {
+                width = minWidth;
+            } else if (totalLength < 300) {
+                width = Math.min(380, minWidth + (totalLength - 100) * 0.5);
+            } else {
+                width = Math.min(maxWidth, 380 + (totalLength - 300) * 0.3);
+            }
+            
+            // Calculate height based on content
+            const baseHeight = 130;
+            const lineHeight = 20;
+            const estimatedCommentLines = Math.max(lineCount, Math.ceil(commentLength / (width / 8)));
+            let height = baseHeight + (estimatedCommentLines * lineHeight);
+            
+            height = Math.max(minHeight, Math.min(maxHeight, height));
+            
+            return { width, height };
+        }
+
+        test('should return minimum dimensions for short comment', () => {
+            const result = calculateBubbleDimensions(50, 20, false, false, 1);
+            assert.strictEqual(result.width, 280);
+            assert.ok(result.height >= 120);
+        });
+
+        test('should increase width for medium length comment', () => {
+            const result = calculateBubbleDimensions(200, 50, false, false, 5);
+            assert.ok(result.width > 280);
+            assert.ok(result.width <= 380);
+        });
+
+        test('should increase width further for long comment', () => {
+            const result = calculateBubbleDimensions(400, 100, false, false, 10);
+            assert.ok(result.width > 380);
+            assert.ok(result.width <= 600);
+        });
+
+        test('should use maximum width for code blocks', () => {
+            const result = calculateBubbleDimensions(50, 20, true, false, 1);
+            assert.strictEqual(result.width, 450);
+        });
+
+        test('should use maximum width for long lines', () => {
+            const result = calculateBubbleDimensions(50, 20, false, true, 1);
+            assert.strictEqual(result.width, 450);
+        });
+
+        test('should increase height for multi-line comment', () => {
+            const result1 = calculateBubbleDimensions(100, 20, false, false, 2);
+            const result2 = calculateBubbleDimensions(100, 20, false, false, 10);
+            assert.ok(result2.height > result1.height);
+        });
+
+        test('should cap height at maximum', () => {
+            const result = calculateBubbleDimensions(1000, 500, false, false, 50);
+            assert.strictEqual(result.height, 500);
+        });
+
+        test('should handle zero length comment', () => {
+            const result = calculateBubbleDimensions(0, 0, false, false, 0);
+            assert.strictEqual(result.width, 280);
+            assert.ok(result.height >= 120);
+        });
+
+        test('should handle very long selected text', () => {
+            const result = calculateBubbleDimensions(50, 500, false, false, 1);
+            assert.ok(result.width > 380);
+        });
+
+        test('should return consistent dimensions for same input', () => {
+            const result1 = calculateBubbleDimensions(200, 100, true, false, 5);
+            const result2 = calculateBubbleDimensions(200, 100, true, false, 5);
+            assert.strictEqual(result1.width, result2.width);
+            assert.strictEqual(result1.height, result2.height);
+        });
+    });
+
+    // =========================================================================
+    // Bubble Drag State Tests
+    // =========================================================================
+
+    suite('Base Panel Manager - Bubble Drag Logic', () => {
+        /**
+         * Pure function implementation for testing drag position calculation
+         */
+        function calculateDragPosition(
+            startX: number,
+            startY: number,
+            currentX: number,
+            currentY: number,
+            initialLeft: number,
+            initialTop: number,
+            bubbleWidth: number,
+            bubbleHeight: number,
+            viewportWidth: number,
+            viewportHeight: number,
+            padding: number = 10
+        ): { left: number; top: number } {
+            const deltaX = currentX - startX;
+            const deltaY = currentY - startY;
+
+            let newLeft = initialLeft + deltaX;
+            let newTop = initialTop + deltaY;
+
+            // Keep bubble within viewport bounds
+            newLeft = Math.max(padding, Math.min(newLeft, viewportWidth - bubbleWidth - padding));
+            newTop = Math.max(padding, Math.min(newTop, viewportHeight - bubbleHeight - padding));
+
+            return { left: newLeft, top: newTop };
+        }
+
+        test('should move bubble by delta', () => {
+            const result = calculateDragPosition(
+                100, 100,  // start
+                150, 120,  // current
+                200, 200,  // initial position
+                300, 200,  // bubble size
+                1000, 800  // viewport
+            );
+            assert.strictEqual(result.left, 250); // 200 + 50
+            assert.strictEqual(result.top, 220);  // 200 + 20
+        });
+
+        test('should constrain to left edge', () => {
+            const result = calculateDragPosition(
+                100, 100,
+                0, 100,    // moved left
+                50, 200,
+                300, 200,
+                1000, 800
+            );
+            assert.strictEqual(result.left, 10); // minimum padding
+        });
+
+        test('should constrain to right edge', () => {
+            const result = calculateDragPosition(
+                100, 100,
+                900, 100,  // moved right
+                600, 200,
+                300, 200,
+                1000, 800
+            );
+            // 1000 - 300 - 10 = 690
+            assert.strictEqual(result.left, 690);
+        });
+
+        test('should constrain to top edge', () => {
+            const result = calculateDragPosition(
+                100, 100,
+                100, 0,    // moved up
+                200, 50,
+                300, 200,
+                1000, 800
+            );
+            assert.strictEqual(result.top, 10); // minimum padding
+        });
+
+        test('should constrain to bottom edge', () => {
+            const result = calculateDragPosition(
+                100, 100,
+                100, 800,  // moved down
+                200, 500,
+                300, 200,
+                1000, 800
+            );
+            // 800 - 200 - 10 = 590
+            assert.strictEqual(result.top, 590);
+        });
+
+        test('should constrain to corner', () => {
+            const result = calculateDragPosition(
+                100, 100,
+                0, 0,      // moved to top-left
+                50, 50,
+                300, 200,
+                1000, 800
+            );
+            assert.strictEqual(result.left, 10);
+            assert.strictEqual(result.top, 10);
+        });
+
+        test('should handle negative delta', () => {
+            const result = calculateDragPosition(
+                200, 200,
+                100, 100,  // moved up-left
+                400, 400,
+                300, 200,
+                1000, 800
+            );
+            assert.strictEqual(result.left, 300); // 400 - 100
+            assert.strictEqual(result.top, 300);  // 400 - 100
+        });
+
+        test('should handle zero delta', () => {
+            const result = calculateDragPosition(
+                100, 100,
+                100, 100,  // no movement
+                200, 200,
+                300, 200,
+                1000, 800
+            );
+            assert.strictEqual(result.left, 200);
+            assert.strictEqual(result.top, 200);
+        });
+    });
 });
 

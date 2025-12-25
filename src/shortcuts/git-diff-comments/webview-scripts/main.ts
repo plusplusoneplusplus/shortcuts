@@ -3,7 +3,7 @@
  */
 
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
-import { hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
+import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getState, getViewMode, setComments, setIsEditable, setSettings, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
@@ -224,10 +224,11 @@ function setupKeyboardShortcuts(): void {
             handleAddCommentShortcut();
         }
 
-        // Escape to close panels
+        // Escape to close panels and bubbles
         if (e.key === 'Escape') {
             hideCommentPanel();
             hideCommentsList();
+            closeActiveCommentBubble();
         }
 
         // Arrow key navigation
@@ -487,6 +488,18 @@ function setupClickOutsideToDismiss(): void {
                 // Don't dismiss if clicking on a comment indicator (which opens the panel)
                 if (!target.classList.contains('comment-indicator')) {
                     hideCommentsList();
+                }
+            }
+        }
+
+        // Check if clicking outside the active comment bubble
+        const activeBubble = document.querySelector('.inline-comment-bubble');
+        if (activeBubble) {
+            // Don't dismiss if clicking inside the bubble
+            if (!activeBubble.contains(target)) {
+                // Don't dismiss if clicking on a comment indicator (which opens the bubble)
+                if (!target.classList.contains('comment-indicator')) {
+                    closeActiveCommentBubble();
                 }
             }
         }
