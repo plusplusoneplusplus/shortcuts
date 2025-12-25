@@ -18,7 +18,7 @@ Quick notes accessible from any workspace. Auto-saved and available everywhere.
 Add inline comments to markdown files. Right-click any `.md` file and select "Open with Review Editor", then select text and press `Ctrl+Shift+M` to add comments. View all comments in the Markdown Comments panel.
 
 ### Cloud Sync
-Sync shortcuts across devices via VSCode Settings Sync or Azure Blob Storage. Automatic sync with last-write-wins conflict resolution.
+Sync shortcuts across devices via VSCode Settings Sync. Automatic sync with last-write-wins conflict resolution.
 
 ### Keyboard Shortcuts
 | Key | Action |
@@ -46,7 +46,7 @@ Shortcuts are stored in `.vscode/shortcuts.yaml` (workspace) or `~/.vscode-short
 |---------|---------|-------------|
 | `workspaceShortcuts.alwaysOpenMarkdownInReviewEditor` | `false` | Always open markdown in Review Editor View |
 | `workspaceShortcuts.sync.enabled` | `false` | Enable cloud sync |
-| `workspaceShortcuts.sync.provider` | `"vscode"` | Sync provider: "vscode" or "azure" |
+| `workspaceShortcuts.sync.provider` | `"vscode"` | Sync provider (VSCode Settings Sync) |
 | `workspaceShortcuts.sync.autoSync` | `true` | Auto-sync on changes |
 | `workspaceShortcuts.markdownComments.showResolved` | `true` | Show resolved comments |
 

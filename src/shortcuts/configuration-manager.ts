@@ -95,20 +95,6 @@ export class ConfigurationManager {
             };
         }
 
-        // Configure Azure provider
-        if (provider === 'azure') {
-            const container = config.get<string>('azure.container', '');
-            const accountName = config.get<string>('azure.accountName', '');
-
-            if (container && accountName) {
-                syncConfig.providers.azure = {
-                    enabled: true,
-                    container,
-                    accountName
-                };
-            }
-        }
-
         return syncConfig;
     }
 

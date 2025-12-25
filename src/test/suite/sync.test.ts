@@ -108,8 +108,6 @@ suite('Sync Provider Tests', () => {
             // - workspaceShortcuts.sync.autoSync
             // - workspaceShortcuts.sync.provider
             // - workspaceShortcuts.sync.vscode.scope
-            // - workspaceShortcuts.sync.azure.container
-            // - workspaceShortcuts.sync.azure.accountName
 
             // This test verifies the separation of concerns
             const config: ShortcutsConfig = {

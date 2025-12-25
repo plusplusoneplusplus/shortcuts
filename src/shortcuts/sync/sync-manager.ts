@@ -7,7 +7,6 @@ import * as vscode from 'vscode';
 import { CURRENT_CONFIG_VERSION } from '../config-migrations';
 import { NotificationManager } from '../notification-manager';
 import { ShortcutsConfig, SyncConfig } from '../types';
-import { AzureBlobProvider } from './providers/azure-blob-provider';
 import { ISyncProvider, SyncedConfig, SyncResult, SyncStatus } from './sync-provider';
 import { VSCodeSyncProvider } from './vscode-sync-provider';
 
@@ -45,16 +44,6 @@ export class SyncManager {
             );
             await provider.initialize();
             this.providers.set('vscode', provider);
-        }
-
-        // Initialize Azure provider
-        if (this.syncConfig.providers.azure?.enabled) {
-            const provider = new AzureBlobProvider(
-                this.syncConfig.providers.azure,
-                this.context.secrets
-            );
-            await provider.initialize();
-            this.providers.set('azure', provider);
         }
 
         // Set up periodic sync if configured

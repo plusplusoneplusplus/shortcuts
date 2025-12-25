@@ -73,15 +73,6 @@ export interface VSCodeSyncConfig {
 }
 
 /**
- * Azure Blob Storage sync provider configuration
- */
-export interface AzureSyncConfig {
-    enabled: boolean;
-    container: string;
-    accountName: string;
-}
-
-/**
  * Sync configuration for cloud providers
  */
 export interface SyncConfig {
@@ -94,7 +85,6 @@ export interface SyncConfig {
     /** Provider-specific configurations */
     providers: {
         vscodeSync?: VSCodeSyncConfig;
-        azure?: AzureSyncConfig;
     };
 }
 

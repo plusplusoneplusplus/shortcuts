@@ -127,12 +127,10 @@
           "type": "string",
           "default": "vscode",
           "enum": [
-            "vscode",
-            "azure"
+            "vscode"
           ],
           "enumDescriptions": [
-            "Use VSCode's built-in Settings Sync (syncs with your Microsoft/GitHub account)",
-            "Use Azure Blob Storage (requires container and account configuration)"
+            "Use VSCode's built-in Settings Sync (syncs with your Microsoft/GitHub account)"
           ],
           "description": "Select the cloud sync provider to use"
         },
@@ -148,16 +146,6 @@
             "Sync only within this workspace"
           ],
           "description": "VSCode Sync: Scope for synchronization"
-        },
-        "workspaceShortcuts.sync.azure.container": {
-          "type": "string",
-          "default": "",
-          "description": "Azure Blob Storage: Container name for storing shortcuts configuration"
-        },
-        "workspaceShortcuts.sync.azure.accountName": {
-          "type": "string",
-          "default": "",
-          "description": "Azure Blob Storage: Storage account name"
         },
         "workspaceShortcuts.markdownComments.showResolved": {
           "type": "boolean",
@@ -1256,7 +1244,6 @@
     "webpack-cli": "^5.0.0"
   },
   "dependencies": {
-    "@azure/storage-blob": "^12.17.0",
     "js-yaml": "^4.1.0"
   }
 }

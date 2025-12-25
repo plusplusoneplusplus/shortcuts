@@ -122,35 +122,6 @@ suite('Sync Integration Tests (Settings-based)', function () {
             assert.ok(providers.has('vscode'), 'Should have VSCode provider');
         });
 
-        test('should switch from VSCode to Azure provider', async () => {
-            // Start with VSCode sync
-            await mockSyncConfig.update('enabled', true);
-            await mockSyncConfig.update('autoSync', true);
-            await mockSyncConfig.update('provider', 'vscode');
-            await mockSyncConfig.update('vscode.scope', 'global');
-
-            await configManager.initializeSyncManager();
-
-            let syncManager = configManager.getSyncManager();
-            assert.ok(syncManager, 'Initial sync manager should exist');
-            assert.ok(syncManager.getProviders().has('vscode'), 'Should have VSCode provider');
-
-            // Switch to Azure
-            await mockSyncConfig.update('provider', 'azure');
-            await mockSyncConfig.update('azure.container', 'test-container');
-            await mockSyncConfig.update('azure.accountName', 'testaccount');
-
-            await configManager.reinitializeSyncManager();
-
-            syncManager = configManager.getSyncManager();
-            assert.ok(syncManager, 'Sync manager should still exist');
-
-            const providers = syncManager.getProviders();
-            assert.strictEqual(providers.size, 1, 'Should have 1 provider after switch');
-            assert.ok(providers.has('azure'), 'Should have Azure provider');
-            assert.ok(!providers.has('vscode'), 'Should not have VSCode provider anymore');
-        });
-
         test('should disable sync completely', async () => {
             // Start with sync enabled
             await mockSyncConfig.update('enabled', true);
@@ -274,21 +245,6 @@ suite('Sync Integration Tests (Settings-based)', function () {
             // with the default VSCode provider
             assert.ok(syncManager, 'Sync manager should exist with default vscode provider');
             assert.ok(syncManager.getProviders().has('vscode'), 'Should have VSCode provider as default');
-        });
-
-        test('should handle incomplete Azure configuration', async () => {
-            await mockSyncConfig.update('enabled', true);
-            await mockSyncConfig.update('provider', 'azure');
-            await mockSyncConfig.update('azure.container', 'test-container');
-            // Missing accountName
-
-            await configManager.initializeSyncManager();
-
-            const syncManager = configManager.getSyncManager();
-            // Sync manager is created but Azure provider is not added due to incomplete config
-            // The manager still exists but has no providers
-            assert.ok(syncManager, 'Sync manager should exist');
-            assert.strictEqual(syncManager.getProviders().size, 0, 'Should have no providers with incomplete Azure config');
         });
 
         test('should separate sync settings from shortcuts data', async () => {
