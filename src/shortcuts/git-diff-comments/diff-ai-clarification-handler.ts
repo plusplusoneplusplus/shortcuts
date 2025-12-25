@@ -9,26 +9,24 @@
  * providing diff-specific prompt building and orchestration.
  */
 
-import * as vscode from 'vscode';
 import {
-    AIInvocationResult,
     AIModel,
     AIProcessManager,
-    copyToClipboard,
     DEFAULT_PROMPTS,
     escapeShellArg,
     getAICommandRegistry,
     getAIModelSetting,
-    getAIToolSetting,
     getPromptTemplate,
-    invokeCopilotCLI,
     parseCopilotOutput,
     VALID_MODELS
 } from '../ai-service';
+import {
+    getCommentType as baseGetCommentType,
+    getResponseLabel as baseGetResponseLabel,
+    handleAIClarificationBase,
+    validateAndTruncatePromptBase
+} from '../shared/ai-clarification-handler-base';
 import { DiffClarificationContext } from './types';
-
-/** Maximum prompt size in characters */
-const MAX_PROMPT_SIZE = 8000;
 
 /**
  * Result of AI clarification request
@@ -88,14 +86,14 @@ export function buildDiffClarificationPrompt(context: DiffClarificationContext):
  * Get the response label for a command (for adding AI comments)
  */
 export function getDiffResponseLabel(commandId: string): string {
-    return getAICommandRegistry().getResponseLabel(commandId);
+    return baseGetResponseLabel(commandId);
 }
 
 /**
  * Get the comment type for a command (for styling)
  */
 export function getDiffCommentType(commandId: string): 'ai-clarification' | 'ai-critique' | 'ai-suggestion' | 'ai-question' {
-    return getAICommandRegistry().getCommentType(commandId);
+    return baseGetCommentType(commandId);
 }
 
 /**
@@ -107,32 +105,12 @@ export function getDiffCommentType(commandId: string): 'ai-clarification' | 'ai-
  */
 export function validateAndTruncateDiffPrompt(context: DiffClarificationContext): { prompt: string; truncated: boolean } {
     const prompt = buildDiffClarificationPrompt(context);
-
-    if (prompt.length <= MAX_PROMPT_SIZE) {
-        return { prompt, truncated: false };
-    }
-
-    // If selected text is too long, truncate it and rebuild the prompt
-    const maxSelectedLength = MAX_PROMPT_SIZE - 200; // Leave more room for instruction text
-    const truncatedText = context.selectedText.substring(0, maxSelectedLength) + '...';
-    const truncatedContext: DiffClarificationContext = {
-        ...context,
-        selectedText: truncatedText
-    };
-    const truncatedPrompt = buildDiffClarificationPrompt(truncatedContext);
-
-    return { prompt: truncatedPrompt, truncated: true };
-}
-
-/**
- * Convert generic AI invocation result to clarification result
- */
-function toDiffClarificationResult(result: AIInvocationResult): DiffClarificationResult {
-    return {
-        success: result.success,
-        clarification: result.response,
-        error: result.error
-    };
+    
+    return validateAndTruncatePromptBase(
+        prompt,
+        context.selectedText,
+        (truncatedText) => buildDiffClarificationPrompt({ ...context, selectedText: truncatedText })
+    );
 }
 
 /**
@@ -150,57 +128,7 @@ export async function handleDiffAIClarification(
     workspaceRoot: string,
     processManager?: AIProcessManager
 ): Promise<DiffClarificationResult> {
-    // Validate and build the prompt
     const { prompt, truncated } = validateAndTruncateDiffPrompt(context);
-
-    // Show truncation warning if necessary
-    if (truncated) {
-        vscode.window.showWarningMessage('AI clarification prompt was truncated to fit size limits.');
-    }
-
-    // Get the configured AI tool
-    const tool = getAIToolSetting();
-
-    if (tool === 'copilot-cli') {
-        // Try to invoke Copilot CLI and capture output
-        const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager);
-        const clarificationResult = toDiffClarificationResult(result);
-
-        if (!clarificationResult.success) {
-            // Fall back to clipboard
-            await copyToClipboard(prompt);
-            vscode.window.showWarningMessage(
-                `${clarificationResult.error || 'Failed to get AI clarification'}. Prompt copied to clipboard.`,
-                'Open Terminal'
-            ).then(selection => {
-                if (selection === 'Open Terminal') {
-                    vscode.commands.executeCommand('workbench.action.terminal.new');
-                }
-            });
-            return clarificationResult;
-        }
-
-        return clarificationResult;
-    } else {
-        // Copy to clipboard
-        await copyToClipboard(prompt);
-        vscode.window.showInformationMessage(
-            'AI clarification prompt copied to clipboard!',
-            'Open Copilot Chat'
-        ).then(selection => {
-            if (selection === 'Open Copilot Chat') {
-                // Try to open Copilot chat if available
-                vscode.commands.executeCommand('github.copilot.chat.focus').then(
-                    () => { /* success */ },
-                    () => { /* Copilot chat not available, ignore */ }
-                );
-            }
-        });
-
-        return {
-            success: false,
-            error: 'Using clipboard mode - no automatic clarification'
-        };
-    }
+    return handleAIClarificationBase(prompt, truncated, workspaceRoot, processManager);
 }
 

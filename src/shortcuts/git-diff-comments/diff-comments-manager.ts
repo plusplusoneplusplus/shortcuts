@@ -128,56 +128,17 @@ export class DiffCommentsManager extends CommentsManagerBase<
     }
 
     /**
-     * Get comments grouped by file
+     * Override getStartLine for diff comments which use oldStartLine/newStartLine
      */
-    getCommentsGroupedByFile(): Map<string, DiffComment[]> {
-        const grouped = new Map<string, DiffComment[]>();
-
-        for (const comment of this.config.comments) {
-            const existing = grouped.get(comment.filePath) || [];
-            existing.push(comment);
-            grouped.set(comment.filePath, existing);
-        }
-
-        // Sort comments within each file by line number
-        for (const [, comments] of grouped) {
-            comments.sort((a, b) => {
-                const aLine = a.selection.oldStartLine ?? a.selection.newStartLine ?? 0;
-                const bLine = b.selection.oldStartLine ?? b.selection.newStartLine ?? 0;
-                if (aLine !== bLine) {
-                    return aLine - bLine;
-                }
-                return a.selection.startColumn - b.selection.startColumn;
-            });
-        }
-
-        return grouped;
+    protected override getStartLine(comment: DiffComment): number {
+        return comment.selection.oldStartLine ?? comment.selection.newStartLine ?? 0;
     }
 
     /**
      * Validate and normalize the configuration
      */
     protected validateConfig(config: any): DiffCommentsConfig {
-        const validated: DiffCommentsConfig = {
-            version: typeof config.version === 'number' ? config.version : 1,
-            comments: [],
-            settings: {
-                ...DEFAULT_DIFF_COMMENTS_SETTINGS,
-                ...config.settings
-            }
-        };
-
-        if (Array.isArray(config.comments)) {
-            for (const comment of config.comments) {
-                if (this.isValidComment(comment)) {
-                    validated.comments.push(comment);
-                } else {
-                    console.warn('Skipping invalid diff comment:', comment);
-                }
-            }
-        }
-
-        return validated;
+        return this.validateConfigStructure(config, DEFAULT_DIFF_COMMENTS_SETTINGS);
     }
 
     /**

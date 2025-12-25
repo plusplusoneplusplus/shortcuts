@@ -4,8 +4,9 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { CommentsTreeProviderBase } from '../shared/comments-tree-provider-base';
 import { CommentsManager } from './comments-manager';
-import { CommentStatus, MarkdownComment } from './types';
+import { MarkdownComment } from './types';
 
 /**
  * Tree item representing a file with comments
@@ -116,69 +117,9 @@ export class CommentItem extends vscode.TreeItem {
 /**
  * Tree data provider for markdown comments
  */
-export class MarkdownCommentsTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.Disposable {
-    private readonly _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
-
-    private commentsManager: CommentsManager;
-    private showResolved: boolean = true;
-    private filterStatus?: CommentStatus;
-    private disposables: vscode.Disposable[] = [];
-
+export class MarkdownCommentsTreeDataProvider extends CommentsTreeProviderBase<CommentsManager> {
     constructor(commentsManager: CommentsManager) {
-        this.commentsManager = commentsManager;
-
-        // Listen for comment changes
-        this.disposables.push(
-            commentsManager.onDidChangeComments(() => {
-                this.refresh();
-            })
-        );
-    }
-
-    /**
-     * Refresh the tree view
-     */
-    refresh(): void {
-        this._onDidChangeTreeData.fire();
-    }
-
-    /**
-     * Toggle showing resolved comments
-     */
-    toggleShowResolved(): void {
-        this.showResolved = !this.showResolved;
-        this.refresh();
-    }
-
-    /**
-     * Set whether to show resolved comments
-     */
-    setShowResolved(show: boolean): void {
-        this.showResolved = show;
-        this.refresh();
-    }
-
-    /**
-     * Get whether resolved comments are shown
-     */
-    getShowResolved(): boolean {
-        return this.showResolved;
-    }
-
-    /**
-     * Set status filter
-     */
-    setFilterStatus(status?: CommentStatus): void {
-        this.filterStatus = status;
-        this.refresh();
-    }
-
-    /**
-     * Get tree item representation
-     */
-    getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
-        return element;
+        super(commentsManager);
     }
 
     /**
@@ -205,27 +146,19 @@ export class MarkdownCommentsTreeDataProvider implements vscode.TreeDataProvider
         const groupedComments = this.commentsManager.getCommentsGroupedByFile();
         const items: CommentFileItem[] = [];
 
-        Array.from(groupedComments.entries()).forEach(([filePath, comments]) => {
-            // Filter comments based on settings
-            let filteredComments = comments;
-            if (!this.showResolved) {
-                filteredComments = comments.filter(c => c.status !== 'resolved');
-            }
-            if (this.filterStatus) {
-                filteredComments = filteredComments.filter(c => c.status === this.filterStatus);
-            }
+        for (const [filePath, comments] of groupedComments) {
+            const filteredComments = this.filterComments(comments);
 
             // Skip files with no visible comments
             if (filteredComments.length === 0) {
-                return;
+                continue;
             }
 
-            const openCount = filteredComments.filter(c => c.status === 'open').length;
-            const resolvedCount = filteredComments.filter(c => c.status === 'resolved').length;
+            const { openCount, resolvedCount } = this.countByStatus(filteredComments);
             const absolutePath = this.commentsManager.getAbsolutePath(filePath);
 
             items.push(new CommentFileItem(absolutePath, openCount, resolvedCount));
-        });
+        }
 
         // Sort by file name
         items.sort((a, b) => path.basename(a.filePath).localeCompare(path.basename(b.filePath)));
@@ -237,25 +170,18 @@ export class MarkdownCommentsTreeDataProvider implements vscode.TreeDataProvider
      * Get comment items for a specific file
      */
     private getCommentItems(absoluteFilePath: string): CommentItem[] {
-        let comments = this.commentsManager.getCommentsForFile(absoluteFilePath);
-
-        // Filter comments based on settings
-        if (!this.showResolved) {
-            comments = comments.filter(c => c.status !== 'resolved');
-        }
-        if (this.filterStatus) {
-            comments = comments.filter(c => c.status === this.filterStatus);
-        }
+        const comments = this.commentsManager.getCommentsForFile(absoluteFilePath);
+        const filteredComments = this.filterComments(comments);
 
         // Sort by line number
-        comments.sort((a, b) => {
+        filteredComments.sort((a, b) => {
             if (a.selection.startLine !== b.selection.startLine) {
                 return a.selection.startLine - b.selection.startLine;
             }
             return a.selection.startColumn - b.selection.startColumn;
         });
 
-        return comments.map(c => new CommentItem(c, absoluteFilePath));
+        return filteredComments.map(c => new CommentItem(c, absoluteFilePath));
     }
 
     /**
@@ -272,27 +198,4 @@ export class MarkdownCommentsTreeDataProvider implements vscode.TreeDataProvider
         return undefined;
     }
 
-    /**
-     * Get the total number of open comments
-     */
-    getOpenCommentCount(): number {
-        return this.commentsManager.getOpenCommentCount();
-    }
-
-    /**
-     * Get the total number of resolved comments
-     */
-    getResolvedCommentCount(): number {
-        return this.commentsManager.getResolvedCommentCount();
-    }
-
-    /**
-     * Dispose of resources
-     */
-    dispose(): void {
-        this._onDidChangeTreeData.dispose();
-        for (const disposable of this.disposables) {
-            disposable.dispose();
-        }
-    }
 }

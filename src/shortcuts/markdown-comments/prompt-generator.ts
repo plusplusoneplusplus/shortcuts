@@ -3,8 +3,8 @@
  * Generates structured prompts for AI to resolve comments
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
+import { PromptGeneratorBase } from '../shared/prompt-generator-base';
 import { CommentsManager } from './comments-manager';
 import {
     DEFAULT_PROMPT_OPTIONS,
@@ -16,69 +16,55 @@ import {
 /**
  * Generates AI prompts from markdown comments
  */
-export class PromptGenerator {
-    private commentsManager: CommentsManager;
-
+export class PromptGenerator extends PromptGeneratorBase<
+    MarkdownComment,
+    CommentsManager,
+    PromptGenerationOptions
+> {
     constructor(commentsManager: CommentsManager) {
-        this.commentsManager = commentsManager;
+        super(commentsManager);
     }
 
     /**
-     * Generate a prompt from all open user comments.
-     * AI-generated comments are excluded from the prompt.
+     * Merge options with defaults
      */
-    generatePrompt(options: Partial<PromptGenerationOptions> = {}): string {
-        const opts: PromptGenerationOptions = {
+    protected mergeOptions(options: Partial<PromptGenerationOptions>): PromptGenerationOptions {
+        return {
             ...DEFAULT_PROMPT_OPTIONS,
             ...options
         };
-
-        // Filter to only include user comments, excluding AI-generated comments
-        const openComments = this.commentsManager.getOpenComments()
-            .filter(c => isUserComment(c));
-
-        if (openComments.length === 0) {
-            return 'No open comments to process.';
-        }
-
-        if (opts.outputFormat === 'json') {
-            return this.generateJsonPrompt(openComments, opts);
-        }
-
-        return this.generateMarkdownPrompt(openComments, opts);
     }
 
     /**
-     * Generate a prompt for specific comments
+     * Get filtered open comments (excludes AI-generated comments)
      */
-    generatePromptForComments(
-        commentIds: string[],
-        options: Partial<PromptGenerationOptions> = {}
-    ): string {
-        const opts: PromptGenerationOptions = {
-            ...DEFAULT_PROMPT_OPTIONS,
-            ...options
-        };
+    protected getFilteredOpenComments(): MarkdownComment[] {
+        return this.commentsManager.getOpenComments().filter(c => isUserComment(c));
+    }
 
-        const comments = commentIds
-            .map(id => this.commentsManager.getComment(id))
-            .filter((c): c is MarkdownComment => c !== undefined);
+    /**
+     * Get the message to show when no comments are available
+     */
+    protected getNoCommentsMessage(): string {
+        return 'No open comments to process.';
+    }
 
-        if (comments.length === 0) {
-            return 'No comments found for the specified IDs.';
-        }
-
-        if (opts.outputFormat === 'json') {
-            return this.generateJsonPrompt(comments, opts);
-        }
-
-        return this.generateMarkdownPrompt(comments, opts);
+    /**
+     * Sort comments by line number
+     */
+    protected sortCommentsByLine(comments: MarkdownComment[]): void {
+        comments.sort((a, b) => {
+            if (a.selection.startLine !== b.selection.startLine) {
+                return a.selection.startLine - b.selection.startLine;
+            }
+            return a.selection.startColumn - b.selection.startColumn;
+        });
     }
 
     /**
      * Generate a markdown-formatted prompt
      */
-    private generateMarkdownPrompt(
+    protected generateMarkdownPrompt(
         comments: MarkdownComment[],
         options: PromptGenerationOptions
     ): string {
@@ -164,7 +150,7 @@ export class PromptGenerator {
     /**
      * Format a single comment for the prompt
      */
-    private formatComment(
+    protected formatComment(
         comment: MarkdownComment,
         index: number,
         options: PromptGenerationOptions
@@ -210,7 +196,7 @@ export class PromptGenerator {
     /**
      * Generate a JSON-formatted prompt
      */
-    private generateJsonPrompt(
+    protected generateJsonPrompt(
         comments: MarkdownComment[],
         options: PromptGenerationOptions
     ): string {
@@ -249,7 +235,7 @@ export class PromptGenerator {
     /**
      * Format a comment as a JSON object
      */
-    private formatCommentAsJson(
+    protected formatCommentAsJson(
         comment: MarkdownComment,
         index: number,
         options: PromptGenerationOptions
@@ -274,53 +260,14 @@ export class PromptGenerator {
         return result;
     }
 
-    /**
-     * Group comments by file
-     */
-    private groupCommentsByFile(comments: MarkdownComment[]): Map<string, MarkdownComment[]> {
-        const grouped = new Map<string, MarkdownComment[]>();
-
-        for (const comment of comments) {
-            const existing = grouped.get(comment.filePath) || [];
-            existing.push(comment);
-            grouped.set(comment.filePath, existing);
-        }
-
-        // Sort comments within each file by line number
-        Array.from(grouped.entries()).forEach(([file, fileComments]) => {
-            fileComments.sort((a, b) => {
-                if (a.selection.startLine !== b.selection.startLine) {
-                    return a.selection.startLine - b.selection.startLine;
-                }
-                return a.selection.startColumn - b.selection.startColumn;
-            });
-        });
-
-        return grouped;
-    }
-
-    /**
-     * Read file content for inclusion in prompt
-     */
-    private readFileContent(relativePath: string): string | undefined {
-        try {
-            const absolutePath = this.commentsManager.getAbsolutePath(relativePath);
-            if (fs.existsSync(absolutePath)) {
-                return fs.readFileSync(absolutePath, 'utf8');
-            }
-        } catch (error) {
-            console.warn(`Could not read file ${relativePath}:`, error);
-        }
-        return undefined;
-    }
 
     /**
      * Get a summary of open user comments.
      * AI-generated comments are excluded from the summary.
+     * Override to provide markdown-specific formatting.
      */
-    getCommentsSummary(): string {
-        const openComments = this.commentsManager.getOpenComments()
-            .filter(c => isUserComment(c));
+    override getCommentsSummary(): string {
+        const openComments = this.getFilteredOpenComments();
         const grouped = this.groupCommentsByFile(openComments);
 
         const lines: string[] = [
@@ -328,35 +275,11 @@ export class PromptGenerator {
             ''
         ];
 
-        Array.from(grouped.entries()).forEach(([filePath, comments]) => {
+        for (const [filePath, comments] of grouped) {
             lines.push(`- ${path.basename(filePath)}: ${comments.length} comment(s)`);
-        });
-
-        return lines.join('\n');
-    }
-
-    /**
-     * Estimate token count for the generated prompt (rough estimate)
-     */
-    estimateTokenCount(prompt: string): number {
-        // Rough estimate: ~4 characters per token for English text
-        return Math.ceil(prompt.length / 4);
-    }
-
-    /**
-     * Split comments into chunks if there are too many
-     */
-    splitCommentsIntoChunks(
-        comments: MarkdownComment[],
-        maxPerChunk: number
-    ): MarkdownComment[][] {
-        const chunks: MarkdownComment[][] = [];
-
-        for (let i = 0; i < comments.length; i += maxPerChunk) {
-            chunks.push(comments.slice(i, i + maxPerChunk));
         }
 
-        return chunks;
+        return lines.join('\n');
     }
 
     /**

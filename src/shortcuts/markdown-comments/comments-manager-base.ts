@@ -346,6 +346,46 @@ export abstract class CommentsManagerBase<
     }
 
     /**
+     * Get comments grouped by file.
+     * Comments within each file are sorted by line number.
+     * Subclasses can override getLineNumber to customize sorting.
+     */
+    getCommentsGroupedByFile(): Map<string, TComment[]> {
+        const grouped = new Map<string, TComment[]>();
+
+        for (const comment of this.config.comments) {
+            const existing = grouped.get(comment.filePath) || [];
+            existing.push(comment);
+            grouped.set(comment.filePath, existing);
+        }
+
+        // Sort comments within each file by line number
+        for (const [, comments] of grouped) {
+            comments.sort((a, b) => {
+                const aLine = this.getStartLine(a);
+                const bLine = this.getStartLine(b);
+                if (aLine !== bLine) {
+                    return aLine - bLine;
+                }
+                return a.selection.startColumn - b.selection.startColumn;
+            });
+        }
+
+        return grouped;
+    }
+
+    /**
+     * Get the start line number from a comment.
+     * Subclasses can override this to handle different selection types.
+     */
+    protected getStartLine(comment: TComment): number {
+        return (comment.selection as any).startLine ?? 
+               (comment.selection as any).newStartLine ?? 
+               (comment.selection as any).oldStartLine ?? 
+               0;
+    }
+
+    /**
      * Get comment count for a file
      */
     getCommentCountForFile(filePath: string): number {
@@ -419,6 +459,36 @@ export abstract class CommentsManagerBase<
             clearTimeout(this.debounceTimer);
         }
         this._onDidChangeComments.dispose();
+    }
+
+    /**
+     * Helper method for validating config structure.
+     * Subclasses can use this in their validateConfig implementation.
+     */
+    protected validateConfigStructure(
+        config: any,
+        defaultSettings: TSettings
+    ): { version: number; comments: TComment[]; settings: TSettings } {
+        const validated = {
+            version: typeof config.version === 'number' ? config.version : 1,
+            comments: [] as TComment[],
+            settings: {
+                ...defaultSettings,
+                ...config.settings
+            } as TSettings
+        };
+
+        if (Array.isArray(config.comments)) {
+            for (const comment of config.comments) {
+                if (this.isValidComment(comment)) {
+                    validated.comments.push(comment);
+                } else {
+                    console.warn('Skipping invalid comment:', comment);
+                }
+            }
+        }
+
+        return validated;
     }
 
     // Abstract methods that subclasses must implement

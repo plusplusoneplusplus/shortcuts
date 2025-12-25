@@ -4,6 +4,7 @@
  */
 
 import * as path from 'path';
+import { PromptGeneratorBase } from '../shared/prompt-generator-base';
 import { DiffCommentsManager } from './diff-comments-manager';
 import { CommentCategory } from './diff-comments-tree-provider';
 import { DiffComment } from './types';
@@ -39,23 +40,51 @@ export const DEFAULT_DIFF_PROMPT_OPTIONS: DiffPromptGenerationOptions = {
 /**
  * Generates AI prompts from diff comments
  */
-export class DiffPromptGenerator {
-    constructor(private readonly commentsManager: DiffCommentsManager) { }
+export class DiffPromptGenerator extends PromptGeneratorBase<
+    DiffComment,
+    DiffCommentsManager,
+    DiffPromptGenerationOptions
+> {
+    constructor(commentsManager: DiffCommentsManager) {
+        super(commentsManager);
+    }
 
     /**
-     * Generate a prompt for all open comments
+     * Merge options with defaults
      */
-    generatePrompt(options: Partial<DiffPromptGenerationOptions> = {}): string {
-        const opts = { ...DEFAULT_DIFF_PROMPT_OPTIONS, ...options };
-        const openComments = this.commentsManager.getOpenComments();
+    protected mergeOptions(options: Partial<DiffPromptGenerationOptions>): DiffPromptGenerationOptions {
+        return {
+            ...DEFAULT_DIFF_PROMPT_OPTIONS,
+            ...options
+        };
+    }
 
-        if (openComments.length === 0) {
-            return 'No open comments to process.';
-        }
+    /**
+     * Get filtered open comments
+     */
+    protected getFilteredOpenComments(): DiffComment[] {
+        return this.commentsManager.getOpenComments();
+    }
 
-        return opts.outputFormat === 'json'
-            ? this.generateJsonPrompt(openComments, opts)
-            : this.generateMarkdownPrompt(openComments, opts);
+    /**
+     * Get the message to show when no comments are available
+     */
+    protected getNoCommentsMessage(): string {
+        return 'No open comments to process.';
+    }
+
+    /**
+     * Sort comments by line number
+     */
+    protected sortCommentsByLine(comments: DiffComment[]): void {
+        comments.sort((a, b) => {
+            const aLine = a.selection.newStartLine ?? a.selection.oldStartLine ?? 0;
+            const bLine = b.selection.newStartLine ?? b.selection.oldStartLine ?? 0;
+            if (aLine !== bLine) {
+                return aLine - bLine;
+            }
+            return a.selection.startColumn - b.selection.startColumn;
+        });
     }
 
     /**
@@ -133,31 +162,11 @@ export class DiffPromptGenerator {
             : this.generateMarkdownPrompt([comment], opts);
     }
 
-    /**
-     * Generate a prompt for specific comment IDs
-     */
-    generatePromptForComments(
-        commentIds: string[],
-        options: Partial<DiffPromptGenerationOptions> = {}
-    ): string {
-        const opts = { ...DEFAULT_DIFF_PROMPT_OPTIONS, ...options };
-        const comments = commentIds
-            .map(id => this.commentsManager.getComment(id))
-            .filter((c): c is DiffComment => c !== undefined);
-
-        if (comments.length === 0) {
-            return 'No comments found for the specified IDs.';
-        }
-
-        return opts.outputFormat === 'json'
-            ? this.generateJsonPrompt(comments, opts)
-            : this.generateMarkdownPrompt(comments, opts);
-    }
 
     /**
      * Generate a markdown-formatted prompt
      */
-    private generateMarkdownPrompt(
+    protected generateMarkdownPrompt(
         comments: DiffComment[],
         options: DiffPromptGenerationOptions
     ): string {
@@ -238,7 +247,7 @@ export class DiffPromptGenerator {
     /**
      * Format a single comment for the prompt
      */
-    private formatComment(
+    protected formatComment(
         comment: DiffComment,
         index: number,
         options: DiffPromptGenerationOptions
@@ -284,7 +293,7 @@ export class DiffPromptGenerator {
     /**
      * Generate a JSON-formatted prompt
      */
-    private generateJsonPrompt(
+    protected generateJsonPrompt(
         comments: DiffComment[],
         options: DiffPromptGenerationOptions
     ): string {
@@ -327,7 +336,7 @@ export class DiffPromptGenerator {
     /**
      * Format a comment as a JSON object
      */
-    private formatCommentAsJson(
+    protected formatCommentAsJson(
         comment: DiffComment,
         index: number,
         options: DiffPromptGenerationOptions
@@ -356,81 +365,5 @@ export class DiffPromptGenerator {
         return result;
     }
 
-    /**
-     * Group comments by file
-     */
-    private groupCommentsByFile(comments: DiffComment[]): Map<string, DiffComment[]> {
-        const grouped = new Map<string, DiffComment[]>();
-
-        for (const comment of comments) {
-            const existing = grouped.get(comment.filePath) || [];
-            existing.push(comment);
-            grouped.set(comment.filePath, existing);
-        }
-
-        // Sort comments within each file by line number
-        for (const [, fileComments] of grouped) {
-            fileComments.sort((a, b) => {
-                const aLine = a.selection.newStartLine ?? a.selection.oldStartLine ?? 0;
-                const bLine = b.selection.newStartLine ?? b.selection.oldStartLine ?? 0;
-                if (aLine !== bLine) {
-                    return aLine - bLine;
-                }
-                return a.selection.startColumn - b.selection.startColumn;
-            });
-        }
-
-        return grouped;
-    }
-
-    /**
-     * Get language identifier from file extension
-     */
-    private getLanguageFromExtension(ext: string): string {
-        const languageMap: Record<string, string> = {
-            'ts': 'typescript',
-            'tsx': 'typescript',
-            'js': 'javascript',
-            'jsx': 'javascript',
-            'py': 'python',
-            'rb': 'ruby',
-            'java': 'java',
-            'go': 'go',
-            'rs': 'rust',
-            'cpp': 'cpp',
-            'c': 'c',
-            'h': 'c',
-            'hpp': 'cpp',
-            'cs': 'csharp',
-            'php': 'php',
-            'swift': 'swift',
-            'kt': 'kotlin',
-            'scala': 'scala',
-            'sh': 'bash',
-            'bash': 'bash',
-            'zsh': 'bash',
-            'json': 'json',
-            'yaml': 'yaml',
-            'yml': 'yaml',
-            'xml': 'xml',
-            'html': 'html',
-            'css': 'css',
-            'scss': 'scss',
-            'less': 'less',
-            'sql': 'sql',
-            'md': 'markdown'
-        };
-
-        return languageMap[ext.toLowerCase()] || ext || 'text';
-    }
-
-    /**
-     * Get a summary of comments for notification
-     */
-    getCommentsSummary(comments: DiffComment[]): string {
-        const grouped = this.groupCommentsByFile(comments);
-        const fileNames = Array.from(grouped.keys()).map(f => path.basename(f));
-        return `Files: ${fileNames.join(', ')}`;
-    }
 }
 

@@ -106,28 +106,10 @@ export class CommentsManager extends CommentsManagerBase<
     }
 
     /**
-     * Get comments grouped by file
+     * Override getStartLine for markdown comments which use startLine directly
      */
-    getCommentsGroupedByFile(): Map<string, MarkdownComment[]> {
-        const grouped = new Map<string, MarkdownComment[]>();
-
-        for (const comment of this.config.comments) {
-            const existing = grouped.get(comment.filePath) || [];
-            existing.push(comment);
-            grouped.set(comment.filePath, existing);
-        }
-
-        // Sort comments within each file by line number
-        Array.from(grouped.entries()).forEach(([, comments]) => {
-            comments.sort((a, b) => {
-                if (a.selection.startLine !== b.selection.startLine) {
-                    return a.selection.startLine - b.selection.startLine;
-                }
-                return a.selection.startColumn - b.selection.startColumn;
-            });
-        });
-
-        return grouped;
+    protected override getStartLine(comment: MarkdownComment): number {
+        return comment.selection.startLine;
     }
 
     /**
@@ -161,26 +143,7 @@ export class CommentsManager extends CommentsManagerBase<
      * Validate and normalize the configuration
      */
     protected validateConfig(config: any): CommentsConfig {
-        const validated: CommentsConfig = {
-            version: typeof config.version === 'number' ? config.version : 1,
-            comments: [],
-            settings: {
-                ...DEFAULT_COMMENTS_SETTINGS,
-                ...config.settings
-            }
-        };
-
-        if (Array.isArray(config.comments)) {
-            for (const comment of config.comments) {
-                if (this.isValidComment(comment)) {
-                    validated.comments.push(comment);
-                } else {
-                    console.warn('Skipping invalid comment:', comment);
-                }
-            }
-        }
-
-        return validated;
+        return this.validateConfigStructure(config, DEFAULT_COMMENTS_SETTINGS);
     }
 
     /**

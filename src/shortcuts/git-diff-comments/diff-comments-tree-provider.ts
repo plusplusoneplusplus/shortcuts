@@ -5,8 +5,9 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { CommentsTreeProviderBase } from '../shared/comments-tree-provider-base';
 import { DiffCommentsManager } from './diff-comments-manager';
-import { DiffComment, DiffCommentStatus, DiffGitContext } from './types';
+import { DiffComment, DiffGitContext } from './types';
 
 /**
  * Comment category for grouping
@@ -235,69 +236,9 @@ interface GroupedCommentsData {
  * Tree data provider for git diff comments
  * Groups comments by category: Pending Changes and Committed (by commit hash)
  */
-export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.Disposable {
-    private readonly _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
-
-    private commentsManager: DiffCommentsManager;
-    private showResolved: boolean = true;
-    private filterStatus?: DiffCommentStatus;
-    private disposables: vscode.Disposable[] = [];
-
+export class DiffCommentsTreeDataProvider extends CommentsTreeProviderBase<DiffCommentsManager> {
     constructor(commentsManager: DiffCommentsManager) {
-        this.commentsManager = commentsManager;
-
-        // Listen for comment changes
-        this.disposables.push(
-            commentsManager.onDidChangeComments(() => {
-                this.refresh();
-            })
-        );
-    }
-
-    /**
-     * Refresh the tree view
-     */
-    refresh(): void {
-        this._onDidChangeTreeData.fire();
-    }
-
-    /**
-     * Toggle showing resolved comments
-     */
-    toggleShowResolved(): void {
-        this.showResolved = !this.showResolved;
-        this.refresh();
-    }
-
-    /**
-     * Set whether to show resolved comments
-     */
-    setShowResolved(show: boolean): void {
-        this.showResolved = show;
-        this.refresh();
-    }
-
-    /**
-     * Get whether resolved comments are shown
-     */
-    getShowResolved(): boolean {
-        return this.showResolved;
-    }
-
-    /**
-     * Set status filter
-     */
-    setFilterStatus(status?: DiffCommentStatus): void {
-        this.filterStatus = status;
-        this.refresh();
-    }
-
-    /**
-     * Get tree item representation
-     */
-    getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
-        return element;
+        super(commentsManager);
     }
 
     /**
@@ -327,20 +268,13 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
      */
     private getGroupedComments(): GroupedCommentsData {
         const allComments = this.commentsManager.getAllComments();
+        const filteredComments = this.filterComments(allComments);
         const result: GroupedCommentsData = {
             pending: new Map(),
             committed: new Map()
         };
 
-        for (const comment of allComments) {
-            // Apply filters
-            if (!this.showResolved && comment.status === 'resolved') {
-                continue;
-            }
-            if (this.filterStatus && comment.status !== this.filterStatus) {
-                continue;
-            }
-
+        for (const comment of filteredComments) {
             const filePath = comment.filePath;
             const commitHash = comment.gitContext.commitHash;
 
@@ -375,12 +309,8 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
 
         // Pending Changes category
         if (grouped.pending.size > 0) {
-            let openCount = 0;
-            let resolvedCount = 0;
-            grouped.pending.forEach(comments => {
-                openCount += comments.filter(c => c.status === 'open').length;
-                resolvedCount += comments.filter(c => c.status === 'resolved').length;
-            });
+            const allPendingComments = Array.from(grouped.pending.values()).flat();
+            const { openCount, resolvedCount } = this.countByStatus(allPendingComments);
             items.push(new DiffCommentCategoryItem('pending', openCount, resolvedCount));
         }
 
@@ -390,12 +320,8 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
         sortedCommits.sort((a, b) => a[0].localeCompare(b[0]));
 
         for (const [commitHash, files] of sortedCommits) {
-            let openCount = 0;
-            let resolvedCount = 0;
-            files.forEach(comments => {
-                openCount += comments.filter(c => c.status === 'open').length;
-                resolvedCount += comments.filter(c => c.status === 'resolved').length;
-            });
+            const allCommitComments = Array.from(files.values()).flat();
+            const { openCount, resolvedCount } = this.countByStatus(allCommitComments);
             items.push(new DiffCommentCategoryItem('committed', openCount, resolvedCount, commitHash));
         }
 
@@ -410,9 +336,8 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
         const items: DiffCommentFileItem[] = [];
 
         if (categoryItem.category === 'pending') {
-            grouped.pending.forEach((comments, filePath) => {
-                const openCount = comments.filter(c => c.status === 'open').length;
-                const resolvedCount = comments.filter(c => c.status === 'resolved').length;
+            for (const [filePath, comments] of grouped.pending) {
+                const { openCount, resolvedCount } = this.countByStatus(comments);
                 const absolutePath = this.commentsManager.getAbsolutePath(filePath);
                 const gitContext = comments[0]?.gitContext;
                 items.push(new DiffCommentFileItem(
@@ -422,13 +347,12 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
                     gitContext,
                     'pending'
                 ));
-            });
+            }
         } else if (categoryItem.commitHash) {
             const commitFiles = grouped.committed.get(categoryItem.commitHash);
             if (commitFiles) {
-                commitFiles.forEach((comments, filePath) => {
-                    const openCount = comments.filter(c => c.status === 'open').length;
-                    const resolvedCount = comments.filter(c => c.status === 'resolved').length;
+                for (const [filePath, comments] of commitFiles) {
+                    const { openCount, resolvedCount } = this.countByStatus(comments);
                     const absolutePath = this.commentsManager.getAbsolutePath(filePath);
                     const gitContext = comments[0]?.gitContext;
                     items.push(new DiffCommentFileItem(
@@ -439,7 +363,7 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
                         'committed',
                         categoryItem.commitHash
                     ));
-                });
+                }
             }
         }
 
@@ -466,13 +390,8 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
             comments = comments.filter(c => c.gitContext.commitHash === commitHash);
         }
 
-        // Filter comments based on settings
-        if (!this.showResolved) {
-            comments = comments.filter(c => c.status !== 'resolved');
-        }
-        if (this.filterStatus) {
-            comments = comments.filter(c => c.status === this.filterStatus);
-        }
+        // Apply status filters from base class
+        comments = this.filterComments(comments);
 
         // Sort by line number
         comments.sort((a, b) => {
@@ -505,8 +424,7 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
                 comments = comments.filter(c => c.gitContext.commitHash === commitHash);
             }
 
-            const openCount = comments.filter(c => c.status === 'open').length;
-            const resolvedCount = comments.filter(c => c.status === 'resolved').length;
+            const { openCount, resolvedCount } = this.countByStatus(comments);
             const gitContext = comments[0]?.gitContext;
             return new DiffCommentFileItem(absolutePath, openCount, resolvedCount, gitContext, category, commitHash);
         }
@@ -517,25 +435,18 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
 
             if (category === 'pending') {
                 const grouped = this.getGroupedComments();
-                let openCount = 0;
-                let resolvedCount = 0;
-                grouped.pending.forEach(comments => {
-                    openCount += comments.filter(c => c.status === 'open').length;
-                    resolvedCount += comments.filter(c => c.status === 'resolved').length;
-                });
+                const allPendingComments = Array.from(grouped.pending.values()).flat();
+                const { openCount, resolvedCount } = this.countByStatus(allPendingComments);
                 return new DiffCommentCategoryItem('pending', openCount, resolvedCount);
             } else if (category === 'committed' && commitHash) {
                 const grouped = this.getGroupedComments();
                 const commitFiles = grouped.committed.get(commitHash);
-                let openCount = 0;
-                let resolvedCount = 0;
                 if (commitFiles) {
-                    commitFiles.forEach(comments => {
-                        openCount += comments.filter(c => c.status === 'open').length;
-                        resolvedCount += comments.filter(c => c.status === 'resolved').length;
-                    });
+                    const allCommitComments = Array.from(commitFiles.values()).flat();
+                    const { openCount, resolvedCount } = this.countByStatus(allCommitComments);
+                    return new DiffCommentCategoryItem('committed', openCount, resolvedCount, commitHash);
                 }
-                return new DiffCommentCategoryItem('committed', openCount, resolvedCount, commitHash);
+                return new DiffCommentCategoryItem('committed', 0, 0, commitHash);
             }
         }
 
@@ -543,34 +454,10 @@ export class DiffCommentsTreeDataProvider implements vscode.TreeDataProvider<vsc
     }
 
     /**
-     * Get the total number of open comments
-     */
-    getOpenCommentCount(): number {
-        return this.commentsManager.getOpenCommentCount();
-    }
-
-    /**
-     * Get the total number of resolved comments
-     */
-    getResolvedCommentCount(): number {
-        return this.commentsManager.getResolvedCommentCount();
-    }
-
-    /**
      * Get the total number of comments
      */
     getTotalCommentCount(): number {
         return this.commentsManager.getAllComments().length;
-    }
-
-    /**
-     * Dispose of resources
-     */
-    dispose(): void {
-        this._onDidChangeTreeData.dispose();
-        for (const disposable of this.disposables) {
-            disposable.dispose();
-        }
     }
 }
 
