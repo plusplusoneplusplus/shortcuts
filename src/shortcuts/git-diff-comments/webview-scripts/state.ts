@@ -31,6 +31,8 @@ export interface AppState {
     ignoreWhitespace: boolean;
     /** Whether the new content is editable (uncommitted changes) */
     isEditable: boolean;
+    /** Whether user is currently interacting with a panel (resize/drag) */
+    isInteracting: boolean;
 }
 
 /**
@@ -72,7 +74,8 @@ export function createInitialState(): AppState {
         editingCommentId: null,
         viewMode: 'split' as ViewMode,
         ignoreWhitespace: false,
-        isEditable: initialData.isEditable || false
+        isEditable: initialData.isEditable || false,
+        isInteracting: false
     };
 }
 
@@ -221,5 +224,37 @@ export function getIsEditable(): boolean {
  */
 export function setIsEditable(editable: boolean): void {
     state.isEditable = editable;
+}
+
+/**
+ * Get whether user is currently interacting with a panel
+ */
+export function getIsInteracting(): boolean {
+    return state.isInteracting;
+}
+
+// Timeout handle for interaction end delay
+let interactionEndTimeout: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Mark the start of a user interaction (resize/drag) that should prevent click-to-close
+ */
+export function startInteraction(): void {
+    if (interactionEndTimeout) {
+        clearTimeout(interactionEndTimeout);
+        interactionEndTimeout = null;
+    }
+    state.isInteracting = true;
+}
+
+/**
+ * Mark the end of a user interaction, with a small delay to prevent click events
+ */
+export function endInteraction(): void {
+    // Delay clearing the interaction flag to allow click events to be ignored
+    interactionEndTimeout = setTimeout(() => {
+        state.isInteracting = false;
+        interactionEndTimeout = null;
+    }, 100);
 }
 

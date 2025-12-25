@@ -6,7 +6,7 @@
  */
 
 import { AskAIContext, DiffAIInstructionType, DiffComment, DiffSide, SelectionState, SerializedAICommand } from './types';
-import { getState, setCommentPanelOpen, setEditingCommentId } from './state';
+import { endInteraction, getState, setCommentPanelOpen, setEditingCommentId, startInteraction } from './state';
 import { clearSelection, toDiffSelection } from './selection-handler';
 import { sendAddComment, sendAskAI, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
 import {
@@ -897,7 +897,9 @@ function setupBubbleDrag(bubble: HTMLElement): void {
     setupSharedBubbleDrag(
         bubble,
         '.bubble-header',
-        '.bubble-action-btn'
+        '.bubble-action-btn',
+        () => startInteraction(),
+        () => endInteraction()
     );
 }
 
@@ -909,7 +911,9 @@ function setupBubbleResize(bubble: HTMLElement): void {
     setupElementResize(
         bubble,
         '.resize-handle',
-        DEFAULT_RESIZE_CONSTRAINTS
+        DEFAULT_RESIZE_CONSTRAINTS,
+        () => startInteraction(),
+        () => endInteraction()
     );
 }
 

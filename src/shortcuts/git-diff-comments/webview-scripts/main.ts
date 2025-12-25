@@ -5,7 +5,7 @@
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
 import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
-import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getState, getViewMode, setComments, setIsEditable, setSettings, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
+import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setIsEditable, setSettings, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
 import { initVSCodeAPI, sendContentModified, sendCopyPath, sendOpenFile, sendReady, sendSaveContent } from './vscode-bridge';
 
@@ -465,6 +465,11 @@ function handleArrowKeyNavigation(direction: 'up' | 'down'): void {
  */
 function setupClickOutsideToDismiss(): void {
     document.addEventListener('click', (e) => {
+        // Don't dismiss if user is currently interacting with a panel (resize/drag)
+        if (getIsInteracting()) {
+            return;
+        }
+
         const target = e.target as HTMLElement;
 
         // Check if clicking outside the comment panel

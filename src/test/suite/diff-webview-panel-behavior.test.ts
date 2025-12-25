@@ -117,8 +117,14 @@ suite('Diff Webview Panel Behavior Tests', () => {
         function shouldDismissPanel(
             panelVisible: boolean,
             clickedInsidePanel: boolean,
-            clickedOnIndicator: boolean
+            clickedOnIndicator: boolean,
+            isInteracting: boolean = false
         ): boolean {
+            // Don't dismiss if user is currently interacting (resize/drag)
+            if (isInteracting) {
+                return false;
+            }
+            
             if (!panelVisible) {
                 return false;
             }
@@ -169,6 +175,30 @@ suite('Diff Webview Panel Behavior Tests', () => {
             assert.strictEqual(
                 shouldDismissPanel(true, true, true),
                 false
+            );
+        });
+
+        test('should not dismiss when user is interacting (resizing)', () => {
+            // When user is resizing the panel, clicks should not dismiss it
+            assert.strictEqual(
+                shouldDismissPanel(true, false, false, true),
+                false
+            );
+        });
+
+        test('should not dismiss when user is interacting even if clicking outside', () => {
+            // Interaction flag should take precedence over click location
+            assert.strictEqual(
+                shouldDismissPanel(true, false, false, true),
+                false
+            );
+        });
+
+        test('should dismiss after interaction ends', () => {
+            // After interaction ends (isInteracting = false), normal dismiss logic applies
+            assert.strictEqual(
+                shouldDismissPanel(true, false, false, false),
+                true
             );
         });
     });
@@ -317,6 +347,146 @@ suite('Diff Webview Panel Behavior Tests', () => {
             const displayName = comment.author || 'Anonymous';
             
             assert.strictEqual(displayName, 'Anonymous');
+        });
+    });
+
+    suite('Selected Text Display', () => {
+        test('should display full selected text without truncation in bubble', () => {
+            // In the bubble view, selected text should be displayed in full
+            // (unlike the preview which truncates)
+            const longText = 'This is a very long selected text that spans multiple lines\n' +
+                'and contains code blocks and other content that should be fully visible\n' +
+                'without any truncation in the comment bubble view.';
+            const comment = createMockComment({ selectedText: longText });
+            
+            // The bubble should contain the full text (no truncation)
+            // The CSS handles scrolling for long content
+            assert.strictEqual(comment.selectedText, longText);
+            assert.ok(comment.selectedText.length > 100);
+        });
+
+        test('should preserve newlines in selected text', () => {
+            const textWithNewlines = 'Line 1\nLine 2\nLine 3';
+            const comment = createMockComment({ selectedText: textWithNewlines });
+            
+            // Newlines should be preserved
+            assert.ok(comment.selectedText.includes('\n'));
+            assert.strictEqual(comment.selectedText.split('\n').length, 3);
+        });
+
+        test('should handle code blocks in selected text', () => {
+            const codeText = 'function example() {\n  return true;\n}';
+            const comment = createMockComment({ selectedText: codeText });
+            
+            // Code should be preserved as-is
+            assert.strictEqual(comment.selectedText, codeText);
+        });
+
+        test('should handle special characters in selected text', () => {
+            const specialText = '<div class="test">Content & More</div>';
+            const comment = createMockComment({ selectedText: specialText });
+            
+            // Special characters should be preserved (HTML escaping is done at render time)
+            assert.strictEqual(comment.selectedText, specialText);
+        });
+    });
+
+    suite('Interaction State Management', () => {
+        /**
+         * Simulates the interaction state management from state.ts
+         */
+        class MockInteractionState {
+            private _isInteracting: boolean = false;
+            private _timeout: ReturnType<typeof setTimeout> | null = null;
+
+            get isInteracting(): boolean {
+                return this._isInteracting;
+            }
+
+            startInteraction(): void {
+                if (this._timeout) {
+                    clearTimeout(this._timeout);
+                    this._timeout = null;
+                }
+                this._isInteracting = true;
+            }
+
+            endInteraction(): void {
+                // In real code, this uses setTimeout with 100ms delay
+                // For testing, we simulate the immediate state
+                this._isInteracting = false;
+            }
+
+            // Simulate the delayed end (as it would be after timeout)
+            endInteractionDelayed(): void {
+                this._timeout = setTimeout(() => {
+                    this._isInteracting = false;
+                    this._timeout = null;
+                }, 100);
+            }
+        }
+
+        test('should start interaction correctly', () => {
+            const state = new MockInteractionState();
+            
+            assert.strictEqual(state.isInteracting, false);
+            state.startInteraction();
+            assert.strictEqual(state.isInteracting, true);
+        });
+
+        test('should end interaction correctly', () => {
+            const state = new MockInteractionState();
+            
+            state.startInteraction();
+            assert.strictEqual(state.isInteracting, true);
+            
+            state.endInteraction();
+            assert.strictEqual(state.isInteracting, false);
+        });
+
+        test('should handle multiple start calls', () => {
+            const state = new MockInteractionState();
+            
+            state.startInteraction();
+            state.startInteraction();
+            state.startInteraction();
+            
+            assert.strictEqual(state.isInteracting, true);
+        });
+
+        test('should handle start during end delay', () => {
+            const state = new MockInteractionState();
+            
+            state.startInteraction();
+            state.endInteractionDelayed();
+            
+            // Start again before the timeout completes
+            state.startInteraction();
+            
+            assert.strictEqual(state.isInteracting, true);
+        });
+
+        test('interaction state should prevent dismiss during resize', () => {
+            const state = new MockInteractionState();
+            
+            // Simulate resize start
+            state.startInteraction();
+            
+            // Check that dismiss is prevented
+            const shouldDismiss = !state.isInteracting;
+            assert.strictEqual(shouldDismiss, false);
+        });
+
+        test('interaction state should allow dismiss after resize ends', () => {
+            const state = new MockInteractionState();
+            
+            // Simulate resize start and end
+            state.startInteraction();
+            state.endInteraction();
+            
+            // Check that dismiss is allowed
+            const shouldDismiss = !state.isInteracting;
+            assert.strictEqual(shouldDismiss, true);
         });
     });
 });
