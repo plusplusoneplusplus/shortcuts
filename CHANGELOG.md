@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.13.0] - 2025-12-25
+
+### Added
+- **Configurable AI Commands**: Define custom AI actions with personalized prompts via settings
+- **Git Staging Commands**: Stage/unstage individual files or all changes directly from Git view
+- **Visual Stage Sections**: Staged and unstaged changes displayed in separate sections
+
+### Changed
+- **Enhanced Comment Bubbles**: Improved drag, resize, and interaction behavior for diff comments
+- **Consolidated AI Handling**: Unified AI clarification handlers across markdown and diff views
+- **Shared Components**: Refactored common webview and anchor utilities for better maintainability
+
+### Removed
+- Azure Blob Storage sync provider (simplified to VSCode Settings Sync only)
+
 ## [2.12.1] - 2025-12-23
 
 ### Fixed
