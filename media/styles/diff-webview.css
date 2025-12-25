@@ -776,9 +776,27 @@ html, body {
     background-color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
 }
 
-/* Comment marks (blue) */
-.diff-indicator-mark.comment {
+/* Comment marks (blue) - only for context lines with comments */
+.diff-indicator-mark.comment:not(.addition):not(.deletion):not(.modified) {
     background-color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+/* Addition with comment - green with blue border */
+.diff-indicator-mark.addition.comment {
+    background-color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+    box-shadow: inset 0 0 0 2px var(--vscode-textLink-foreground, #3794ff);
+}
+
+/* Deletion with comment - red with blue border */
+.diff-indicator-mark.deletion.comment {
+    background-color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
+    box-shadow: inset 0 0 0 2px var(--vscode-textLink-foreground, #3794ff);
+}
+
+/* Modified with comment - yellow with blue border */
+.diff-indicator-mark.modified.comment {
+    background-color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+    box-shadow: inset 0 0 0 2px var(--vscode-textLink-foreground, #3794ff);
 }
 
 /* Current viewport indicator */

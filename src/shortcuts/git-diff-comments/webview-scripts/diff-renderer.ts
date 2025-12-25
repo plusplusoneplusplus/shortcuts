@@ -13,12 +13,22 @@ interface DiffLineInfo {
     index: number;
     type: 'context' | 'addition' | 'deletion';
     hasComment: boolean;
+    /** Line number in the old file (null if this is an addition) */
+    oldLineNum: number | null;
+    /** Line number in the new file (null if this is a deletion) */
+    newLineNum: number | null;
 }
 
 /**
  * Store aligned diff info for indicator bar rendering
  */
 let alignedDiffInfo: DiffLineInfo[] = [];
+
+/**
+ * Maps from file line number to aligned diff index
+ * Key format: "old:lineNum" or "new:lineNum"
+ */
+let lineToIndexMap: Map<string, number> = new Map();
 
 /**
  * Parse content into lines
@@ -345,6 +355,7 @@ export function renderSplitDiff(): void {
 
     // Reset aligned diff info for indicator bar
     alignedDiffInfo = [];
+    lineToIndexMap = new Map();
 
     // Parse lines
     const oldLines = parseLines(state.oldContent);
@@ -368,8 +379,19 @@ export function renderSplitDiff(): void {
         alignedDiffInfo.push({
             index: lineIndex,
             type: line.type === 'context' ? 'context' : (line.type === 'addition' ? 'addition' : 'deletion'),
-            hasComment
+            hasComment,
+            oldLineNum: line.oldLineNum,
+            newLineNum: line.newLineNum
         });
+
+        // Build line number to index mapping
+        if (line.oldLineNum !== null) {
+            lineToIndexMap.set(`old:${line.oldLineNum}`, lineIndex);
+        }
+        if (line.newLineNum !== null) {
+            lineToIndexMap.set(`new:${line.newLineNum}`, lineIndex);
+        }
+
         lineIndex++;
 
         // Old side
@@ -543,6 +565,7 @@ export function renderInlineDiff(): void {
 
     // Reset aligned diff info for indicator bar
     alignedDiffInfo = [];
+    lineToIndexMap = new Map();
 
     // Parse lines
     const oldLines = parseLines(state.oldContent);
@@ -566,8 +589,19 @@ export function renderInlineDiff(): void {
             alignedDiffInfo.push({
                 index: lineIndex,
                 type: 'context',
-                hasComment: comments.length > 0
+                hasComment: comments.length > 0,
+                oldLineNum: line.oldLineNum,
+                newLineNum: line.newLineNum
             });
+
+            // Build line number to index mapping
+            if (line.oldLineNum !== null) {
+                lineToIndexMap.set(`old:${line.oldLineNum}`, lineIndex);
+            }
+            if (line.newLineNum !== null) {
+                lineToIndexMap.set(`new:${line.newLineNum}`, lineIndex);
+            }
+
             lineIndex++;
 
             // For context, use the new version's highlighted content
@@ -590,8 +624,16 @@ export function renderInlineDiff(): void {
             alignedDiffInfo.push({
                 index: lineIndex,
                 type: 'deletion',
-                hasComment: comments.length > 0
+                hasComment: comments.length > 0,
+                oldLineNum: line.oldLineNum,
+                newLineNum: null
             });
+
+            // Build line number to index mapping
+            if (line.oldLineNum !== null) {
+                lineToIndexMap.set(`old:${line.oldLineNum}`, lineIndex);
+            }
+
             lineIndex++;
 
             const highlightedContent = oldHighlighted[line.oldLineNum! - 1];
@@ -613,8 +655,16 @@ export function renderInlineDiff(): void {
             alignedDiffInfo.push({
                 index: lineIndex,
                 type: 'addition',
-                hasComment: comments.length > 0
+                hasComment: comments.length > 0,
+                oldLineNum: null,
+                newLineNum: line.newLineNum
             });
+
+            // Build line number to index mapping
+            if (line.newLineNum !== null) {
+                lineToIndexMap.set(`new:${line.newLineNum}`, lineIndex);
+            }
+
             lineIndex++;
 
             const highlightedContent = newHighlighted[line.newLineNum! - 1];
@@ -878,18 +928,44 @@ export function renderIndicatorBar(): void {
     // If content doesn't need scrolling, use simple percentage
     const useScrollRatio = scrollHeight > clientHeight;
 
-    // Group consecutive changes for better visualization
+    const lineElements = contentContainer.querySelectorAll(
+        viewMode === 'inline' ? '.inline-diff-line' : '.diff-line'
+    );
+
+    // Helper to calculate mark position and height for a range of aligned indices
+    const calculateMarkPosition = (startIdx: number, endIdx: number): { top: number; height: number } => {
+        if (useScrollRatio && lineElements[startIdx]) {
+            const startEl = lineElements[startIdx] as HTMLElement;
+            const endEl = lineElements[endIdx] as HTMLElement;
+            const lineTop = startEl.offsetTop;
+            const endBottom = endEl.offsetTop + endEl.offsetHeight;
+            const totalHeight = endBottom - lineTop;
+
+            return {
+                top: (lineTop / scrollHeight) * barHeight,
+                height: Math.max((totalHeight / scrollHeight) * barHeight, 2)
+            };
+        } else {
+            // Fallback to percentage calculation
+            return {
+                top: (startIdx / totalLines) * barHeight,
+                height: Math.max(((endIdx - startIdx + 1) / totalLines) * barHeight, 2)
+            };
+        }
+    };
+
+    // STEP 1: Render diff change marks (additions/deletions only, no comment styling)
     let i = 0;
     while (i < alignedDiffInfo.length) {
         const lineInfo = alignedDiffInfo[i];
 
-        // Skip context lines unless they have comments
-        if (lineInfo.type === 'context' && !lineInfo.hasComment) {
+        // Skip context lines for diff marks
+        if (lineInfo.type === 'context') {
             i++;
             continue;
         }
 
-        // Find consecutive lines of the same type
+        // Find consecutive lines of the same change type
         let endIndex = i;
         while (endIndex < alignedDiffInfo.length - 1) {
             const nextInfo = alignedDiffInfo[endIndex + 1];
@@ -899,45 +975,14 @@ export function renderIndicatorBar(): void {
 
             if (currentIsChange && nextIsChange) {
                 endIndex++;
-            } else if (lineInfo.type === nextInfo.type) {
-                endIndex++;
             } else {
                 break;
             }
         }
 
-        // Calculate position based on actual line elements if possible
-        let topPosition: number;
-        let markHeight: number;
+        const { top, height } = calculateMarkPosition(i, endIndex);
 
-        if (useScrollRatio) {
-            // Calculate position based on scroll ratio
-            // Find the actual line element to get its position
-            const lineElements = contentContainer.querySelectorAll(
-                viewMode === 'inline' ? '.inline-diff-line' : '.diff-line'
-            );
-
-            if (lineElements[i]) {
-                const lineEl = lineElements[i] as HTMLElement;
-                const lineTop = lineEl.offsetTop;
-                const lineHeight = lineEl.offsetHeight;
-                const linesInGroup = endIndex - i + 1;
-
-                // Map the line position to the indicator bar
-                topPosition = (lineTop / scrollHeight) * barHeight;
-                markHeight = Math.max((lineHeight * linesInGroup / scrollHeight) * barHeight, 2);
-            } else {
-                // Fallback to percentage calculation
-                topPosition = (i / totalLines) * barHeight;
-                markHeight = Math.max(((endIndex - i + 1) / totalLines) * barHeight, 2);
-            }
-        } else {
-            // Simple percentage for non-scrolling content
-            topPosition = (i / totalLines) * barHeight;
-            markHeight = Math.max(((endIndex - i + 1) / totalLines) * barHeight, 2);
-        }
-
-        // Create the mark element
+        // Create the mark element for diff changes
         const mark = document.createElement('div');
         mark.className = 'diff-indicator-mark';
 
@@ -948,20 +993,8 @@ export function renderIndicatorBar(): void {
             mark.classList.add('deletion');
         }
 
-        // Check if any line in this range has comments
-        let hasCommentInRange = false;
-        for (let j = i; j <= endIndex; j++) {
-            if (alignedDiffInfo[j].hasComment) {
-                hasCommentInRange = true;
-                break;
-            }
-        }
-        if (hasCommentInRange) {
-            mark.classList.add('comment');
-        }
-
-        mark.style.top = `${topPosition}px`;
-        mark.style.height = `${markHeight}px`;
+        mark.style.top = `${top}px`;
+        mark.style.height = `${height}px`;
         mark.dataset.lineIndex = String(i);
 
         // Click to scroll to that position
@@ -973,6 +1006,59 @@ export function renderIndicatorBar(): void {
         indicatorBarInner.appendChild(mark);
 
         i = endIndex + 1;
+    }
+
+    // STEP 2: Render comment marks based on actual selection ranges
+    const state = getState();
+    const visibleComments = state.settings.showResolved
+        ? state.comments
+        : state.comments.filter(c => c.status !== 'resolved');
+
+    // Track which comments we've rendered to avoid duplicates
+    const renderedComments = new Set<string>();
+
+    for (const comment of visibleComments) {
+        if (renderedComments.has(comment.id)) continue;
+        renderedComments.add(comment.id);
+
+        const selection = comment.selection;
+        let startIdx: number | undefined;
+        let endIdx: number | undefined;
+
+        // Find the aligned indices for this comment's selection range
+        if (selection.side === 'old' && selection.oldStartLine !== null && selection.oldEndLine !== null) {
+            startIdx = lineToIndexMap.get(`old:${selection.oldStartLine}`);
+            endIdx = lineToIndexMap.get(`old:${selection.oldEndLine}`);
+        } else if (selection.side === 'new' && selection.newStartLine !== null && selection.newEndLine !== null) {
+            startIdx = lineToIndexMap.get(`new:${selection.newStartLine}`);
+            endIdx = lineToIndexMap.get(`new:${selection.newEndLine}`);
+        }
+
+        // Skip if we couldn't find the line indices
+        if (startIdx === undefined || endIdx === undefined) continue;
+
+        // Ensure startIdx <= endIdx
+        if (startIdx > endIdx) {
+            [startIdx, endIdx] = [endIdx, startIdx];
+        }
+
+        const { top, height } = calculateMarkPosition(startIdx, endIdx);
+
+        // Create the comment mark element
+        const mark = document.createElement('div');
+        mark.className = 'diff-indicator-mark comment';
+        mark.style.top = `${top}px`;
+        mark.style.height = `${height}px`;
+        mark.dataset.commentId = comment.id;
+        mark.dataset.lineIndex = String(startIdx);
+
+        // Click to scroll to the comment location
+        const clickIdx = startIdx;
+        mark.addEventListener('click', () => {
+            scrollToLineIndex(clickIdx);
+        });
+
+        indicatorBarInner.appendChild(mark);
     }
 
     // Setup viewport indicator tracking
@@ -1058,18 +1144,15 @@ function setupViewportTracking(): void {
  * Update indicator bar when comments change
  */
 export function updateIndicatorBarComments(): void {
-    const state = getState();
-
-    // Update hasComment flag in alignedDiffInfo
-    alignedDiffInfo.forEach((info, index) => {
-        // Check if this line has comments
-        // For simplicity, check both old and new sides
-        const oldComments = getCommentsForLine('old', index + 1);
-        const newComments = getCommentsForLine('new', index + 1);
+    // Update hasComment flag in alignedDiffInfo based on actual line numbers
+    alignedDiffInfo.forEach((info) => {
+        // Check if this line has comments using actual line numbers
+        const oldComments = info.oldLineNum !== null ? getCommentsForLine('old', info.oldLineNum) : [];
+        const newComments = info.newLineNum !== null ? getCommentsForLine('new', info.newLineNum) : [];
         info.hasComment = oldComments.length > 0 || newComments.length > 0;
     });
 
-    // Re-render the indicator bar
+    // Re-render the indicator bar (which now handles comments based on selection ranges)
     renderIndicatorBar();
 }
 
