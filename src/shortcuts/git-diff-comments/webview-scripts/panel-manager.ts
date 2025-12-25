@@ -468,7 +468,7 @@ export function hideCommentsList(): void {
 function getTypeLabel(type?: string): string {
     switch (type) {
         case 'ai-suggestion': return '💡 AI Suggestion';
-        case 'ai-clarification': return '🤖 AI Clarification';
+        case 'ai-clarification': return '🔮 AI Clarification';
         case 'ai-critique': return '⚠️ AI Critique';
         case 'ai-question': return '❓ AI Question';
         default: return '';
@@ -521,60 +521,60 @@ function calculateOptimalPanelWidth(comments: DiffComment[]): number {
 
 /**
  * Create a comment element for the list
+ * Uses the same structure as markdown review's comment bubble for consistent look
  */
 function createCommentElement(comment: DiffComment): HTMLElement {
     const div = document.createElement('div');
     // Build class list: base class + status class + type class
+    // Use 'inline-comment-bubble' to match markdown review styling
     const typeClass = comment.type && comment.type !== 'user' ? comment.type : '';
     const statusClass = comment.status === 'resolved' ? 'resolved' : '';
-    div.className = ['comment-item', statusClass, typeClass].filter(c => c).join(' ');
+    div.className = ['inline-comment-bubble', statusClass, typeClass].filter(c => c).join(' ');
     div.dataset.commentId = comment.id;
 
-    // Header with meta info and action buttons
+    // Header with meta info and action buttons (matches markdown review's bubble-header)
     const header = document.createElement('div');
-    header.className = 'comment-header';
+    header.className = 'bubble-header';
     
-    // Left side: meta info (author, date, type badge, status)
+    // Left side: meta info (line range, status badge, type badge)
     const headerMeta = document.createElement('div');
-    headerMeta.className = 'comment-header-meta';
+    headerMeta.className = 'bubble-meta';
     
-    const author = document.createElement('span');
-    author.className = 'comment-author';
-    author.textContent = comment.author || 'Anonymous';
-    headerMeta.appendChild(author);
+    // Line range info (like markdown review shows "Line X" or "Lines X-Y")
+    // For diff view, use newStartLine/newEndLine if available, otherwise oldStartLine/oldEndLine
+    const lineRange = document.createElement('span');
+    const startLine = comment.selection.newStartLine ?? comment.selection.oldStartLine ?? 0;
+    const endLine = comment.selection.newEndLine ?? comment.selection.oldEndLine ?? startLine;
+    lineRange.textContent = startLine === endLine 
+        ? `Line ${startLine}` 
+        : `Lines ${startLine}-${endLine}`;
+    headerMeta.appendChild(lineRange);
     
-    const date = document.createElement('span');
-    date.className = 'comment-date';
-    date.textContent = formatDate(comment.createdAt);
-    headerMeta.appendChild(date);
+    // Status badge (○ Open or ✓ Resolved)
+    const statusBadge = document.createElement('span');
+    statusBadge.className = `status ${comment.status}`;
+    statusBadge.textContent = comment.status === 'open' ? '○ Open' : '✓ Resolved';
+    headerMeta.appendChild(statusBadge);
     
     // Add type badge for AI comments
     const typeLabel = getTypeLabel(comment.type);
     if (typeLabel) {
         const typeBadge = document.createElement('span');
-        typeBadge.className = `type-badge ${comment.type}`;
+        typeBadge.className = `status ${comment.type}`;
         typeBadge.textContent = typeLabel;
         headerMeta.appendChild(typeBadge);
     }
     
-    // Status badge
-    if (comment.status === 'resolved') {
-        const statusBadge = document.createElement('span');
-        statusBadge.className = 'status-badge resolved';
-        statusBadge.textContent = '✓ Resolved';
-        headerMeta.appendChild(statusBadge);
-    }
-    
     header.appendChild(headerMeta);
 
-    // Right side: action buttons (icon buttons in header)
+    // Right side: action buttons (matches markdown review's bubble-actions)
     const headerActions = document.createElement('div');
-    headerActions.className = 'comment-header-actions';
+    headerActions.className = 'bubble-actions';
     
     // Resolve/Reopen button
     if (comment.status === 'open') {
         const resolveBtn = document.createElement('button');
-        resolveBtn.className = 'comment-action-btn';
+        resolveBtn.className = 'bubble-action-btn';
         resolveBtn.title = 'Resolve';
         resolveBtn.textContent = '✅';
         resolveBtn.addEventListener('click', (e) => {
@@ -584,7 +584,7 @@ function createCommentElement(comment: DiffComment): HTMLElement {
         headerActions.appendChild(resolveBtn);
     } else {
         const reopenBtn = document.createElement('button');
-        reopenBtn.className = 'comment-action-btn';
+        reopenBtn.className = 'bubble-action-btn';
         reopenBtn.title = 'Reopen';
         reopenBtn.textContent = '🔄';
         reopenBtn.addEventListener('click', (e) => {
@@ -596,7 +596,7 @@ function createCommentElement(comment: DiffComment): HTMLElement {
 
     // Edit button
     const editBtn = document.createElement('button');
-    editBtn.className = 'comment-action-btn';
+    editBtn.className = 'bubble-action-btn';
     editBtn.title = 'Edit';
     editBtn.textContent = '✏️';
     editBtn.addEventListener('click', (e) => {
@@ -608,7 +608,7 @@ function createCommentElement(comment: DiffComment): HTMLElement {
 
     // Delete button
     const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'comment-action-btn comment-action-btn-danger';
+    deleteBtn.className = 'bubble-action-btn';
     deleteBtn.title = 'Delete';
     deleteBtn.textContent = '🗑️';
     deleteBtn.addEventListener('click', (e) => {
@@ -620,17 +620,15 @@ function createCommentElement(comment: DiffComment): HTMLElement {
     header.appendChild(headerActions);
     div.appendChild(header);
 
-    // Selected text preview
+    // Selected text preview (matches markdown review's bubble-selected-text)
     const preview = document.createElement('div');
-    preview.className = 'comment-preview';
-    preview.textContent = comment.selectedText.length > 50
-        ? comment.selectedText.substring(0, 50) + '...'
-        : comment.selectedText;
+    preview.className = 'bubble-selected-text';
+    preview.textContent = comment.selectedText;
     div.appendChild(preview);
 
-    // Comment text with markdown rendering
+    // Comment text with markdown rendering (matches markdown review's bubble-comment-text)
     const text = document.createElement('div');
-    text.className = 'comment-text comment-markdown-content';
+    text.className = 'bubble-comment-text bubble-markdown-content';
     text.innerHTML = renderCommentMarkdown(comment.comment);
     div.appendChild(text);
 
