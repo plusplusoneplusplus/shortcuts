@@ -17,3 +17,6 @@ export * from './looked-up-commit-item';
 // Provider
 export * from './tree-data-provider';
 
+// Drag and Drop
+export * from './git-drag-drop-controller';
+

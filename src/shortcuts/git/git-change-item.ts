@@ -11,19 +11,24 @@ import { GitChange } from './types';
 export class GitChangeItem extends vscode.TreeItem {
     public readonly contextValue: string;
     public readonly change: GitChange;
+    public readonly isLoading: boolean;
 
-    constructor(change: GitChange) {
+    constructor(change: GitChange, isLoading: boolean = false) {
         // Label is the filename
         super(path.basename(change.path), vscode.TreeItemCollapsibleState.None);
 
         this.change = change;
+        this.isLoading = isLoading;
         
         // Include file extension in contextValue for context menu filtering
+        // Add _loading suffix when the file is being staged/unstaged
         const ext = path.extname(change.path).toLowerCase();
         const isMarkdown = ext === '.md';
-        this.contextValue = `gitChange_${change.stage}${isMarkdown ? '_md' : ''}`;
+        const loadingSuffix = isLoading ? '_loading' : '';
+        this.contextValue = `gitChange_${change.stage}${isMarkdown ? '_md' : ''}${loadingSuffix}`;
 
         // Description shows status indicator and relative path
+        // Add loading indicator if applicable
         this.description = this.getDescription();
 
         // Tooltip with full details
@@ -33,20 +38,28 @@ export class GitChangeItem extends vscode.TreeItem {
         // and apply git decorations (colors) based on the file status
         this.resourceUri = change.uri;
 
-        // Don't set iconPath - let VSCode use the default file icon from icon theme
-        // The color will be applied via git decorations on resourceUri
-
-        // Command to open diff review view with inline commenting
-        this.command = {
-            command: 'gitDiffComments.openWithReview',
-            title: 'Open Diff Review',
-            arguments: [this]
-        };
+        // When loading, show a spinner icon and gray out the item
+        if (isLoading) {
+            this.iconPath = new vscode.ThemeIcon('loading~spin');
+            // Disable the command while loading
+            this.command = undefined;
+        } else {
+            // Don't set iconPath - let VSCode use the default file icon from icon theme
+            // The color will be applied via git decorations on resourceUri
+            
+            // Command to open diff review view with inline commenting
+            this.command = {
+                command: 'gitDiffComments.openWithReview',
+                title: 'Open Diff Review',
+                arguments: [this]
+            };
+        }
     }
 
     /**
      * Get the description text (status indicator + relative path)
      * Format: "M • src/folder" or "A • src/folder"
+     * When loading: "⏳ M • src/folder"
      */
     private getDescription(): string {
         const relativePath = path.relative(
@@ -55,6 +68,11 @@ export class GitChangeItem extends vscode.TreeItem {
         );
 
         const parts: string[] = [];
+
+        // Add loading indicator if applicable
+        if (this.isLoading) {
+            parts.push('⏳');
+        }
 
         // Add status short code (M, A, D, R, etc.)
         const statusShort = STATUS_SHORT[this.change.status];

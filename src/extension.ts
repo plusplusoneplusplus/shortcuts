@@ -6,7 +6,7 @@ import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GitChangeItem, GitCommitFile, GitCommitItem, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
+import { GitChangeItem, GitCommitFile, GitCommitItem, GitDragDropController, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
 import {
     DiffCommentFileItem,
     DiffCommentItem,
@@ -165,10 +165,15 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitStageAllCommand: vscode.Disposable | undefined;
         let gitUnstageAllCommand: vscode.Disposable | undefined;
 
+        // Create Git drag and drop controller for Copilot Chat integration
+        const gitDragDropController = new GitDragDropController();
+
         if (gitInitialized) {
             gitTreeView = vscode.window.createTreeView('gitView', {
                 treeDataProvider: gitTreeDataProvider,
-                showCollapseAll: true
+                showCollapseAll: true,
+                canSelectMany: true,
+                dragAndDropController: gitDragDropController
             });
 
             // Update view description with combined counts
@@ -401,10 +406,20 @@ export async function activate(context: vscode.ExtensionContext) {
                 'gitView.stageFile',
                 async (item: GitChangeItem) => {
                     if (item?.change?.path) {
+                        const filePath = item.change.path;
                         const gitService = gitTreeDataProvider['gitService'];
-                        const success = await gitService.stageFile(item.change.path);
-                        if (!success) {
-                            vscode.window.showErrorMessage(`Failed to stage file: ${item.change.path}`);
+                        
+                        // Set loading state
+                        gitTreeDataProvider.setFileLoading(filePath);
+                        
+                        try {
+                            const success = await gitService.stageFile(filePath);
+                            if (!success) {
+                                vscode.window.showErrorMessage(`Failed to stage file: ${filePath}`);
+                            }
+                        } finally {
+                            // Clear loading state
+                            gitTreeDataProvider.clearFileLoading(filePath);
                         }
                     }
                 }
@@ -415,10 +430,20 @@ export async function activate(context: vscode.ExtensionContext) {
                 'gitView.unstageFile',
                 async (item: GitChangeItem) => {
                     if (item?.change?.path) {
+                        const filePath = item.change.path;
                         const gitService = gitTreeDataProvider['gitService'];
-                        const success = await gitService.unstageFile(item.change.path);
-                        if (!success) {
-                            vscode.window.showErrorMessage(`Failed to unstage file: ${item.change.path}`);
+                        
+                        // Set loading state
+                        gitTreeDataProvider.setFileLoading(filePath);
+                        
+                        try {
+                            const success = await gitService.unstageFile(filePath);
+                            if (!success) {
+                                vscode.window.showErrorMessage(`Failed to unstage file: ${filePath}`);
+                            }
+                        } finally {
+                            // Clear loading state
+                            gitTreeDataProvider.clearFileLoading(filePath);
                         }
                     }
                 }
@@ -434,20 +459,33 @@ export async function activate(context: vscode.ExtensionContext) {
                         (c: { stage: string }) => c.stage === 'unstaged' || c.stage === 'untracked'
                     );
                     
-                    let successCount = 0;
-                    for (const change of unstagedChanges) {
-                        const success = await gitService.stageFile(change.path);
-                        if (success) {
-                            successCount++;
-                        }
+                    if (unstagedChanges.length === 0) {
+                        vscode.window.showInformationMessage('No unstaged changes to stage');
+                        return;
                     }
                     
-                    if (successCount > 0) {
-                        vscode.window.showInformationMessage(`Staged ${successCount} file(s)`);
-                    } else if (unstagedChanges.length === 0) {
-                        vscode.window.showInformationMessage('No unstaged changes to stage');
-                    } else {
-                        vscode.window.showErrorMessage('Failed to stage files');
+                    // Set loading state for all files
+                    for (const change of unstagedChanges) {
+                        gitTreeDataProvider.setFileLoading(change.path);
+                    }
+                    
+                    try {
+                        let successCount = 0;
+                        for (const change of unstagedChanges) {
+                            const success = await gitService.stageFile(change.path);
+                            if (success) {
+                                successCount++;
+                            }
+                        }
+                        
+                        if (successCount > 0) {
+                            vscode.window.showInformationMessage(`Staged ${successCount} file(s)`);
+                        } else {
+                            vscode.window.showErrorMessage('Failed to stage files');
+                        }
+                    } finally {
+                        // Clear all loading states
+                        gitTreeDataProvider.clearAllLoading();
                     }
                 }
             );
@@ -460,20 +498,33 @@ export async function activate(context: vscode.ExtensionContext) {
                     const changes = gitService.getAllChanges();
                     const stagedChanges = changes.filter((c: { stage: string }) => c.stage === 'staged');
                     
-                    let successCount = 0;
-                    for (const change of stagedChanges) {
-                        const success = await gitService.unstageFile(change.path);
-                        if (success) {
-                            successCount++;
-                        }
+                    if (stagedChanges.length === 0) {
+                        vscode.window.showInformationMessage('No staged changes to unstage');
+                        return;
                     }
                     
-                    if (successCount > 0) {
-                        vscode.window.showInformationMessage(`Unstaged ${successCount} file(s)`);
-                    } else if (stagedChanges.length === 0) {
-                        vscode.window.showInformationMessage('No staged changes to unstage');
-                    } else {
-                        vscode.window.showErrorMessage('Failed to unstage files');
+                    // Set loading state for all files
+                    for (const change of stagedChanges) {
+                        gitTreeDataProvider.setFileLoading(change.path);
+                    }
+                    
+                    try {
+                        let successCount = 0;
+                        for (const change of stagedChanges) {
+                            const success = await gitService.unstageFile(change.path);
+                            if (success) {
+                                successCount++;
+                            }
+                        }
+                        
+                        if (successCount > 0) {
+                            vscode.window.showInformationMessage(`Unstaged ${successCount} file(s)`);
+                        } else {
+                            vscode.window.showErrorMessage('Failed to unstage files');
+                        }
+                    } finally {
+                        // Clear all loading states
+                        gitTreeDataProvider.clearAllLoading();
                     }
                 }
             );

@@ -72,6 +72,9 @@ export class GitTreeDataProvider
     // Looked-up commit (null = none shown)
     private lookedUpCommit: GitCommit | null = null;
 
+    // Set of file paths currently being staged/unstaged (for loading state)
+    private loadingFiles: Set<string> = new Set();
+
     constructor() {
         this.gitService = new GitService();
         this.gitLogService = new GitLogService();
@@ -318,7 +321,10 @@ export class GitTreeDataProvider
         const filteredChanges = changes.filter(change => change.stage === stage);
         // Sort alphabetically by path within each stage
         filteredChanges.sort((a, b) => a.path.localeCompare(b.path));
-        return filteredChanges.map(change => new GitChangeItem(change));
+        return filteredChanges.map(change => {
+            const isLoading = this.loadingFiles.has(change.path);
+            return new GitChangeItem(change, isLoading);
+        });
     }
 
     /**
@@ -327,7 +333,10 @@ export class GitTreeDataProvider
     private getChangeItems(): vscode.TreeItem[] {
         const changes = this.gitService.getAllChanges();
         const sortedChanges = this.sortChanges(changes);
-        return sortedChanges.map(change => new GitChangeItem(change));
+        return sortedChanges.map(change => {
+            const isLoading = this.loadingFiles.has(change.path);
+            return new GitChangeItem(change, isLoading);
+        });
     }
 
     /**
@@ -495,6 +504,41 @@ export class GitTreeDataProvider
      */
     getHasMoreCommits(): boolean {
         return this.hasMoreCommits;
+    }
+
+    /**
+     * Mark a file as loading (being staged/unstaged)
+     * This will gray out the file in the tree view
+     * @param filePath Absolute path to the file
+     */
+    setFileLoading(filePath: string): void {
+        this.loadingFiles.add(filePath);
+        this.refresh();
+    }
+
+    /**
+     * Clear the loading state for a file
+     * @param filePath Absolute path to the file
+     */
+    clearFileLoading(filePath: string): void {
+        this.loadingFiles.delete(filePath);
+        this.refresh();
+    }
+
+    /**
+     * Check if a file is currently loading
+     * @param filePath Absolute path to the file
+     */
+    isFileLoading(filePath: string): boolean {
+        return this.loadingFiles.has(filePath);
+    }
+
+    /**
+     * Clear all loading states
+     */
+    clearAllLoading(): void {
+        this.loadingFiles.clear();
+        this.refresh();
     }
 
     /**
