@@ -14,8 +14,11 @@ export {
     AIProcessStatus,
     AIToolType,
     DEFAULT_PROMPTS,
+    deserializeProcess,
     ProcessEvent,
     ProcessEventType,
+    SerializedAIProcess,
+    serializeProcess,
     VALID_MODELS
 } from './types';
 

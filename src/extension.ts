@@ -560,8 +560,9 @@ export async function activate(context: vscode.ExtensionContext) {
         const commentsManager = new CommentsManager(workspaceRoot);
         await commentsManager.initialize();
 
-        // Initialize AI Process Manager (must be before ReviewEditorViewProvider and DiffReviewEditorProvider)
+        // Initialize AI Process Manager with persistence (must be before ReviewEditorViewProvider and DiffReviewEditorProvider)
         const aiProcessManager = new AIProcessManager();
+        await aiProcessManager.initialize(context);
 
         // Register diff review commands (diffCommentsManager already initialized above)
         // Pass aiProcessManager so AI clarification requests from diff view are tracked
@@ -637,6 +638,99 @@ export async function activate(context: vscode.ExtensionContext) {
             'clarificationProcesses.clearCompleted',
             () => {
                 aiProcessManager.clearCompletedProcesses();
+            }
+        );
+
+        const clearAllProcessesCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.clearAll',
+            async () => {
+                const confirm = await vscode.window.showWarningMessage(
+                    'Clear all AI processes including history?',
+                    { modal: true },
+                    'Clear All'
+                );
+                if (confirm === 'Clear All') {
+                    aiProcessManager.clearAllProcesses();
+                }
+            }
+        );
+
+        const removeProcessCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.remove',
+            (item: { process?: { id: string } }) => {
+                if (item?.process?.id) {
+                    aiProcessManager.removeProcess(item.process.id);
+                }
+            }
+        );
+
+        const viewProcessDetailsCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.viewDetails',
+            async (item: { process?: { id: string; promptPreview: string; fullPrompt: string; status: string; startTime: Date; endTime?: Date; error?: string; result?: string } }) => {
+                if (!item?.process) {
+                    return;
+                }
+
+                const process = item.process;
+                
+                // Build markdown content for the process details
+                const lines: string[] = [];
+                lines.push(`# AI Process Details`);
+                lines.push('');
+                lines.push(`## Status`);
+                const statusEmoji = process.status === 'running' ? '🔄' :
+                    process.status === 'completed' ? '✅' :
+                    process.status === 'failed' ? '❌' : '🚫';
+                lines.push(`${statusEmoji} **${process.status.charAt(0).toUpperCase() + process.status.slice(1)}**`);
+                lines.push('');
+                
+                lines.push(`## Timing`);
+                lines.push(`- **Started:** ${process.startTime.toLocaleString()}`);
+                if (process.endTime) {
+                    lines.push(`- **Ended:** ${process.endTime.toLocaleString()}`);
+                    const duration = process.endTime.getTime() - process.startTime.getTime();
+                    const seconds = Math.floor(duration / 1000);
+                    const minutes = Math.floor(seconds / 60);
+                    const hours = Math.floor(minutes / 60);
+                    let durationStr: string;
+                    if (hours > 0) {
+                        durationStr = `${hours}h ${minutes % 60}m`;
+                    } else if (minutes > 0) {
+                        durationStr = `${minutes}m ${seconds % 60}s`;
+                    } else {
+                        durationStr = `${seconds}s`;
+                    }
+                    lines.push(`- **Duration:** ${durationStr}`);
+                }
+                lines.push('');
+                
+                lines.push(`## Prompt`);
+                lines.push('```');
+                lines.push(process.fullPrompt);
+                lines.push('```');
+                lines.push('');
+                
+                if (process.result) {
+                    lines.push(`## AI Response`);
+                    lines.push('');
+                    lines.push(process.result);
+                    lines.push('');
+                }
+                
+                if (process.error) {
+                    lines.push(`## Error`);
+                    lines.push('```');
+                    lines.push(process.error);
+                    lines.push('```');
+                }
+
+                // Create a virtual document to display the details
+                const content = lines.join('\n');
+                const doc = await vscode.workspace.openTextDocument({
+                    content,
+                    language: 'markdown'
+                });
+                await vscode.window.showTextDocument(doc, { preview: true });
             }
         );
 
@@ -764,6 +858,9 @@ export async function activate(context: vscode.ExtensionContext) {
             aiProcessTreeDataProvider,
             cancelProcessCommand,
             clearCompletedCommand,
+            clearAllProcessesCommand,
+            removeProcessCommand,
+            viewProcessDetailsCommand,
             refreshProcessesCommand,
             // Git view disposables
             gitTreeDataProvider,

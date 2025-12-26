@@ -524,6 +524,24 @@
         "icon": "$(clear-all)"
       },
       {
+        "command": "clarificationProcesses.clearAll",
+        "title": "Clear All History",
+        "category": "AI Processes",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "clarificationProcesses.remove",
+        "title": "Remove",
+        "category": "AI Processes",
+        "icon": "$(close)"
+      },
+      {
+        "command": "clarificationProcesses.viewDetails",
+        "title": "View Details",
+        "category": "AI Processes",
+        "icon": "$(eye)"
+      },
+      {
         "command": "clarificationProcesses.refresh",
         "title": "Refresh",
         "category": "AI Processes",
@@ -763,6 +781,11 @@
           "group": "navigation"
         },
         {
+          "command": "clarificationProcesses.clearAll",
+          "when": "view == clarificationProcessesView",
+          "group": "navigation"
+        },
+        {
           "command": "clarificationProcesses.refresh",
           "when": "view == clarificationProcessesView",
           "group": "navigation"
@@ -983,6 +1006,16 @@
           "command": "clarificationProcesses.cancel",
           "when": "view == clarificationProcessesView && viewItem == clarificationProcess_running",
           "group": "process@1"
+        },
+        {
+          "command": "clarificationProcesses.viewDetails",
+          "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_/",
+          "group": "process@2"
+        },
+        {
+          "command": "clarificationProcesses.remove",
+          "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_(completed|failed|cancelled)$/",
+          "group": "process@3"
         },
         {
           "command": "gitView.copyCommitHash",

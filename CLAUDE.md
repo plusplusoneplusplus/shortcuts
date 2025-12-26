@@ -86,10 +86,12 @@ Test files are in `src/test/suite/` and include:
 - `PromptGenerator` - Generates AI prompts from comments
 
 **AI Service (`src/shortcuts/ai-service/`)**
-- `AIProcessManager` - Manages running AI clarification requests
+- `AIProcessManager` - Manages running AI clarification requests with persistence
 - `AIProcessTreeDataProvider` - Shows running/completed AI processes
 - `CopilotCLIInvoker` - Invokes GitHub Copilot CLI or copies to clipboard
 - Working directory defaults to `{workspaceFolder}/src` if the src directory exists, otherwise falls back to workspace root
+- AI processes are persisted using VSCode's Memento API (globalState) and restored on extension restart
+- Supports viewing full process details, removing individual processes, and clearing all history
 
 ### Data Flow
 

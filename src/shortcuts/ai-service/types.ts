@@ -63,6 +63,52 @@ export interface AIProcess {
 }
 
 /**
+ * Serialized format of AIProcess for persistence (Date -> ISO string)
+ */
+export interface SerializedAIProcess {
+    id: string;
+    promptPreview: string;
+    fullPrompt: string;
+    status: AIProcessStatus;
+    startTime: string;  // ISO string
+    endTime?: string;   // ISO string
+    error?: string;
+    result?: string;
+}
+
+/**
+ * Convert AIProcess to serialized format for storage
+ */
+export function serializeProcess(process: AIProcess): SerializedAIProcess {
+    return {
+        id: process.id,
+        promptPreview: process.promptPreview,
+        fullPrompt: process.fullPrompt,
+        status: process.status,
+        startTime: process.startTime.toISOString(),
+        endTime: process.endTime?.toISOString(),
+        error: process.error,
+        result: process.result
+    };
+}
+
+/**
+ * Convert serialized format back to AIProcess
+ */
+export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
+    return {
+        id: serialized.id,
+        promptPreview: serialized.promptPreview,
+        fullPrompt: serialized.fullPrompt,
+        status: serialized.status,
+        startTime: new Date(serialized.startTime),
+        endTime: serialized.endTime ? new Date(serialized.endTime) : undefined,
+        error: serialized.error,
+        result: serialized.result
+    };
+}
+
+/**
  * Default prompt templates for different instruction types
  */
 export const DEFAULT_PROMPTS = {

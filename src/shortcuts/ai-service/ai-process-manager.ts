@@ -1,13 +1,24 @@
 /**
- * AIProcessManager - Tracks running AI processes
+ * AIProcessManager - Tracks running AI processes with persistence
  * 
  * Generic process manager for tracking AI CLI invocations.
  * Provides events for process lifecycle and methods for managing processes.
+ * Persists completed processes to VSCode's Memento storage for review.
  */
 
 import { ChildProcess } from 'child_process';
 import * as vscode from 'vscode';
-import { AIProcess, AIProcessStatus, ProcessEvent, ProcessEventType } from './types';
+import { AIProcess, AIProcessStatus, deserializeProcess, ProcessEvent, ProcessEventType, serializeProcess, SerializedAIProcess } from './types';
+
+/**
+ * Storage key for persisted processes
+ */
+const STORAGE_KEY = 'aiProcesses.history';
+
+/**
+ * Maximum number of processes to persist
+ */
+const MAX_PERSISTED_PROCESSES = 100;
 
 /**
  * Internal process tracking with child process reference
@@ -17,14 +28,100 @@ interface TrackedProcess extends AIProcess {
 }
 
 /**
- * Manages AI process tracking
+ * Manages AI process tracking with persistence
  */
 export class AIProcessManager implements vscode.Disposable {
     private processes: Map<string, TrackedProcess> = new Map();
     private processCounter = 0;
+    private context?: vscode.ExtensionContext;
+    private initialized = false;
 
     private readonly _onDidChangeProcesses = new vscode.EventEmitter<ProcessEvent>();
     readonly onDidChangeProcesses: vscode.Event<ProcessEvent> = this._onDidChangeProcesses.event;
+
+    /**
+     * Initialize the process manager with extension context for persistence
+     * @param context VSCode extension context for Memento storage
+     */
+    async initialize(context: vscode.ExtensionContext): Promise<void> {
+        this.context = context;
+        await this.loadFromStorage();
+        this.initialized = true;
+    }
+
+    /**
+     * Check if the manager is initialized with persistence
+     */
+    isInitialized(): boolean {
+        return this.initialized;
+    }
+
+    /**
+     * Load persisted processes from storage
+     */
+    private async loadFromStorage(): Promise<void> {
+        if (!this.context) {
+            return;
+        }
+
+        try {
+            const serialized = this.context.globalState.get<SerializedAIProcess[]>(STORAGE_KEY, []);
+            
+            // Convert serialized processes back to AIProcess objects
+            for (const s of serialized) {
+                const process = deserializeProcess(s);
+                // Only load completed processes (not running ones - they're stale)
+                if (process.status !== 'running') {
+                    this.processes.set(process.id, process);
+                    // Update counter to avoid ID collisions
+                    const idMatch = process.id.match(/^process-(\d+)-/);
+                    if (idMatch) {
+                        const num = parseInt(idMatch[1], 10);
+                        if (num >= this.processCounter) {
+                            this.processCounter = num + 1;
+                        }
+                    }
+                }
+            }
+
+            if (serialized.length > 0) {
+                this._onDidChangeProcesses.fire({ type: 'processes-cleared' }); // Trigger refresh
+            }
+        } catch (error) {
+            console.error('Failed to load AI processes from storage:', error);
+        }
+    }
+
+    /**
+     * Save processes to storage
+     */
+    private async saveToStorage(): Promise<void> {
+        if (!this.context) {
+            return;
+        }
+
+        try {
+            // Get all non-running processes (running processes shouldn't be persisted)
+            const toSave = Array.from(this.processes.values())
+                .filter(p => p.status !== 'running')
+                .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
+                .slice(0, MAX_PERSISTED_PROCESSES)
+                .map(p => serializeProcess({
+                    id: p.id,
+                    promptPreview: p.promptPreview,
+                    fullPrompt: p.fullPrompt,
+                    status: p.status,
+                    startTime: p.startTime,
+                    endTime: p.endTime,
+                    error: p.error,
+                    result: p.result
+                }));
+
+            await this.context.globalState.update(STORAGE_KEY, toSave);
+        } catch (error) {
+            console.error('Failed to save AI processes to storage:', error);
+        }
+    }
 
     /**
      * Register a new process
@@ -74,6 +171,11 @@ export class AIProcessManager implements vscode.Disposable {
         process.childProcess = undefined;
 
         this._onDidChangeProcesses.fire({ type: 'process-updated', process });
+
+        // Persist changes when a process completes
+        if (status !== 'running') {
+            this.saveToStorage();
+        }
     }
 
     /**
@@ -116,6 +218,8 @@ export class AIProcessManager implements vscode.Disposable {
         if (process) {
             this.processes.delete(id);
             this._onDidChangeProcesses.fire({ type: 'process-removed', process });
+            // Persist the removal
+            this.saveToStorage();
         }
     }
 
@@ -137,7 +241,26 @@ export class AIProcessManager implements vscode.Disposable {
 
         if (toRemove.length > 0) {
             this._onDidChangeProcesses.fire({ type: 'processes-cleared' });
+            // Persist the clearing
+            this.saveToStorage();
         }
+    }
+
+    /**
+     * Clear all processes (including running ones - used for cleanup)
+     */
+    clearAllProcesses(): void {
+        // Cancel running processes first
+        for (const process of this.processes.values()) {
+            if (process.status === 'running' && process.childProcess) {
+                process.childProcess.kill();
+            }
+        }
+
+        this.processes.clear();
+        this._onDidChangeProcesses.fire({ type: 'processes-cleared' });
+        // Clear from storage
+        this.saveToStorage();
     }
 
     /**

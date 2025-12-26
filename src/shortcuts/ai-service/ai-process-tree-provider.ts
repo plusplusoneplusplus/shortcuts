@@ -31,7 +31,12 @@ export class AIProcessItem extends vscode.TreeItem {
         // Set tooltip with full details
         this.tooltip = this.createTooltip(process);
 
-        // No command on click - user can right-click for actions
+        // Click to view full details
+        this.command = {
+            command: 'clarificationProcesses.viewDetails',
+            title: 'View Details',
+            arguments: [this]
+        };
     }
 
     /**
