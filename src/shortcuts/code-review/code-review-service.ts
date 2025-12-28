@@ -18,7 +18,8 @@ import {
     DEFAULT_CODE_REVIEW_CONFIG,
     DiffStats,
     LARGE_DIFF_THRESHOLD,
-    RulesLoadResult
+    RulesLoadResult,
+    STRUCTURED_RESPONSE_PROMPT
 } from './types';
 
 /**
@@ -254,6 +255,9 @@ export class CodeReviewService implements vscode.Disposable {
         }
 
         parts.push(diff);
+
+        // Add structured response instructions
+        parts.push(STRUCTURED_RESPONSE_PROMPT);
 
         return parts.join('\n');
     }

@@ -101,3 +101,157 @@ export interface ConfigValidationResult {
  */
 export const LARGE_DIFF_THRESHOLD = 50 * 1024; // 50KB
 
+/**
+ * Severity levels for code review findings
+ */
+export type ReviewSeverity = 'error' | 'warning' | 'info' | 'suggestion';
+
+/**
+ * A single code review finding/violation
+ */
+export interface ReviewFinding {
+    /** Unique identifier for the finding */
+    id: string;
+    /** Severity level */
+    severity: ReviewSeverity;
+    /** The rule that was violated */
+    rule: string;
+    /** File path where the issue was found */
+    file?: string;
+    /** Line number (if applicable) */
+    line?: number;
+    /** Description of the issue */
+    description: string;
+    /** The problematic code snippet */
+    codeSnippet?: string;
+    /** Suggested fix or improvement */
+    suggestion?: string;
+    /** Additional context or explanation */
+    explanation?: string;
+}
+
+/**
+ * Summary statistics for a code review
+ */
+export interface ReviewSummary {
+    /** Total number of findings */
+    totalFindings: number;
+    /** Count by severity */
+    bySeverity: {
+        error: number;
+        warning: number;
+        info: number;
+        suggestion: number;
+    };
+    /** Count by rule */
+    byRule: Record<string, number>;
+    /** Overall assessment */
+    overallAssessment: 'pass' | 'needs-attention' | 'fail';
+    /** Brief summary text */
+    summaryText: string;
+}
+
+/**
+ * Structured code review result
+ */
+export interface CodeReviewResult {
+    /** Metadata about the review */
+    metadata: CodeReviewMetadata;
+    /** Summary of the review */
+    summary: ReviewSummary;
+    /** Individual findings */
+    findings: ReviewFinding[];
+    /** Raw AI response (for reference) */
+    rawResponse: string;
+    /** When the review was completed */
+    timestamp: Date;
+}
+
+/**
+ * Serialized code review result for storage
+ */
+export interface SerializedCodeReviewResult {
+    metadata: CodeReviewMetadata;
+    summary: ReviewSummary;
+    findings: ReviewFinding[];
+    rawResponse: string;
+    timestamp: string; // ISO string
+}
+
+/**
+ * Convert CodeReviewResult to serialized format
+ */
+export function serializeCodeReviewResult(result: CodeReviewResult): SerializedCodeReviewResult {
+    return {
+        metadata: result.metadata,
+        summary: result.summary,
+        findings: result.findings,
+        rawResponse: result.rawResponse,
+        timestamp: result.timestamp.toISOString()
+    };
+}
+
+/**
+ * Convert serialized format back to CodeReviewResult
+ */
+export function deserializeCodeReviewResult(serialized: SerializedCodeReviewResult): CodeReviewResult {
+    return {
+        metadata: serialized.metadata,
+        summary: serialized.summary,
+        findings: serialized.findings,
+        rawResponse: serialized.rawResponse,
+        timestamp: new Date(serialized.timestamp)
+    };
+}
+
+/**
+ * Prompt suffix to request structured response from AI
+ */
+export const STRUCTURED_RESPONSE_PROMPT = `
+
+---
+
+Please provide your response in the following structured format:
+
+## Summary
+Provide a brief overall assessment (1-2 sentences).
+Overall: [PASS | NEEDS_ATTENTION | FAIL]
+
+## Findings
+
+For each issue found, use this format:
+
+### [SEVERITY] Rule: [Rule Name]
+- **File:** [filename or "N/A"]
+- **Line:** [line number or "N/A"]
+- **Issue:** [Description of the problem]
+- **Code:** \`[problematic code snippet]\`
+- **Suggestion:** [How to fix it]
+- **Explanation:** [Why this matters]
+
+Where SEVERITY is one of: ERROR, WARNING, INFO, SUGGESTION
+
+If no issues are found, state "No violations found." under Findings.
+`;
+
+/**
+ * Regex patterns for parsing structured response
+ */
+export const RESPONSE_PATTERNS = {
+    /** Match overall assessment */
+    overallAssessment: /Overall:\s*(PASS|NEEDS_ATTENTION|FAIL)/i,
+    /** Match summary section */
+    summarySection: /##\s*Summary\s*\n([\s\S]*?)(?=##\s*Findings|$)/i,
+    /** Match findings section */
+    findingsSection: /##\s*Findings\s*\n([\s\S]*?)$/i,
+    /** Match individual finding */
+    finding: /###\s*\[(ERROR|WARNING|INFO|SUGGESTION)\]\s*Rule:\s*(.+?)\n([\s\S]*?)(?=###\s*\[|$)/gi,
+    /** Match finding details */
+    findingFile: /\*\*File:\*\*\s*(.+?)(?:\n|$)/i,
+    findingLine: /\*\*Line:\*\*\s*(\d+|N\/A)/i,
+    findingIssue: /\*\*Issue:\*\*\s*([\s\S]*?)(?=\*\*(?:Code|Suggestion|Explanation):|$)/i,
+    findingCode: /\*\*Code:\*\*\s*`([^`]*)`/i,
+    findingSuggestion: /\*\*Suggestion:\*\*\s*([\s\S]*?)(?=\*\*Explanation:|$)/i,
+    findingExplanation: /\*\*Explanation:\*\*\s*([\s\S]*?)$/i
+};
+

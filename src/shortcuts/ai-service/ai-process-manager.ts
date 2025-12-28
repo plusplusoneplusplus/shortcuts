@@ -108,13 +108,16 @@ export class AIProcessManager implements vscode.Disposable {
                 .slice(0, MAX_PERSISTED_PROCESSES)
                 .map(p => serializeProcess({
                     id: p.id,
+                    type: p.type,
                     promptPreview: p.promptPreview,
                     fullPrompt: p.fullPrompt,
                     status: p.status,
                     startTime: p.startTime,
                     endTime: p.endTime,
                     error: p.error,
-                    result: p.result
+                    result: p.result,
+                    codeReviewMetadata: p.codeReviewMetadata,
+                    structuredResult: p.structuredResult
                 }));
 
             await this.context.globalState.update(STORAGE_KEY, toSave);
@@ -135,6 +138,7 @@ export class AIProcessManager implements vscode.Disposable {
 
         const process: TrackedProcess = {
             id,
+            type: 'clarification',
             promptPreview,
             fullPrompt: prompt,
             status: 'running',
@@ -146,6 +150,75 @@ export class AIProcessManager implements vscode.Disposable {
         this._onDidChangeProcesses.fire({ type: 'process-added', process });
 
         return id;
+    }
+
+    /**
+     * Register a new code review process
+     * @param prompt The full prompt being sent
+     * @param metadata Code review metadata
+     * @param childProcess Optional child process reference for cancellation
+     * @returns The process ID
+     */
+    registerCodeReviewProcess(
+        prompt: string,
+        metadata: {
+            reviewType: 'commit' | 'pending' | 'staged';
+            commitSha?: string;
+            commitMessage?: string;
+            rulesUsed: string[];
+            diffStats?: { files: number; additions: number; deletions: number };
+        },
+        childProcess?: ChildProcess
+    ): string {
+        const id = `review-${++this.processCounter}-${Date.now()}`;
+        
+        // Create a more descriptive preview for code reviews
+        let promptPreview: string;
+        if (metadata.reviewType === 'commit' && metadata.commitSha) {
+            promptPreview = `Review: ${metadata.commitSha.substring(0, 7)}`;
+        } else if (metadata.reviewType === 'pending') {
+            promptPreview = 'Review: pending changes';
+        } else {
+            promptPreview = 'Review: staged changes';
+        }
+
+        const process: TrackedProcess = {
+            id,
+            type: 'code-review',
+            promptPreview,
+            fullPrompt: prompt,
+            status: 'running',
+            startTime: new Date(),
+            childProcess,
+            codeReviewMetadata: metadata
+        };
+
+        this.processes.set(id, process);
+        this._onDidChangeProcesses.fire({ type: 'process-added', process });
+
+        return id;
+    }
+
+    /**
+     * Complete a code review process with structured result
+     * @param id Process ID
+     * @param result Raw AI response
+     * @param structuredResult Parsed structured result as JSON string
+     */
+    completeCodeReviewProcess(id: string, result: string, structuredResult: string): void {
+        const process = this.processes.get(id);
+        if (!process) {
+            return;
+        }
+
+        process.status = 'completed';
+        process.endTime = new Date();
+        process.result = result;
+        process.structuredResult = structuredResult;
+        process.childProcess = undefined;
+
+        this._onDidChangeProcesses.fire({ type: 'process-updated', process });
+        this.saveToStorage();
     }
 
     /**
@@ -269,13 +342,16 @@ export class AIProcessManager implements vscode.Disposable {
     getProcesses(): AIProcess[] {
         return Array.from(this.processes.values()).map(p => ({
             id: p.id,
+            type: p.type,
             promptPreview: p.promptPreview,
             fullPrompt: p.fullPrompt,
             status: p.status,
             startTime: p.startTime,
             endTime: p.endTime,
             error: p.error,
-            result: p.result
+            result: p.result,
+            codeReviewMetadata: p.codeReviewMetadata,
+            structuredResult: p.structuredResult
         }));
     }
 
@@ -296,13 +372,16 @@ export class AIProcessManager implements vscode.Disposable {
         }
         return {
             id: process.id,
+            type: process.type,
             promptPreview: process.promptPreview,
             fullPrompt: process.fullPrompt,
             status: process.status,
             startTime: process.startTime,
             endTime: process.endTime,
             error: process.error,
-            result: process.result
+            result: process.result,
+            codeReviewMetadata: process.codeReviewMetadata,
+            structuredResult: process.structuredResult
         };
     }
 

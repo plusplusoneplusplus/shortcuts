@@ -20,23 +20,37 @@ export class AIProcessItem extends vscode.TreeItem {
         super(label, vscode.TreeItemCollapsibleState.None);
 
         this.process = process;
-        this.contextValue = `clarificationProcess_${process.status}`;
+        
+        // Different context value for code reviews
+        if (process.type === 'code-review') {
+            this.contextValue = `codeReviewProcess_${process.status}`;
+        } else {
+            this.contextValue = `clarificationProcess_${process.status}`;
+        }
 
         // Set description based on status
         this.description = this.getStatusDescription(process);
 
-        // Set icon based on status
-        this.iconPath = this.getStatusIcon(process.status);
+        // Set icon based on status and type
+        this.iconPath = this.getStatusIcon(process);
 
         // Set tooltip with full details
         this.tooltip = this.createTooltip(process);
 
-        // Click to view full details
-        this.command = {
-            command: 'clarificationProcesses.viewDetails',
-            title: 'View Details',
-            arguments: [this]
-        };
+        // Click to view full details - different command for code reviews
+        if (process.type === 'code-review' && process.status === 'completed') {
+            this.command = {
+                command: 'clarificationProcesses.viewCodeReviewDetails',
+                title: 'View Code Review',
+                arguments: [this]
+            };
+        } else {
+            this.command = {
+                command: 'clarificationProcesses.viewDetails',
+                title: 'View Details',
+                arguments: [this]
+            };
+        }
     }
 
     /**
@@ -57,10 +71,42 @@ export class AIProcessItem extends vscode.TreeItem {
     }
 
     /**
-     * Get icon based on status
+     * Get icon based on status and type
      */
-    private getStatusIcon(status: string): vscode.ThemeIcon {
-        switch (status) {
+    private getStatusIcon(process: AIProcess): vscode.ThemeIcon {
+        // For code reviews, use checklist icon with status color
+        if (process.type === 'code-review') {
+            switch (process.status) {
+                case 'running':
+                    return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.blue'));
+                case 'completed':
+                    // Check if we have structured result with assessment
+                    if (process.structuredResult) {
+                        try {
+                            const result = JSON.parse(process.structuredResult);
+                            if (result.summary?.overallAssessment === 'pass') {
+                                return new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'));
+                            } else if (result.summary?.overallAssessment === 'fail') {
+                                return new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
+                            } else {
+                                return new vscode.ThemeIcon('warning', new vscode.ThemeColor('charts.orange'));
+                            }
+                        } catch {
+                            // Fall through to default
+                        }
+                    }
+                    return new vscode.ThemeIcon('checklist', new vscode.ThemeColor('charts.green'));
+                case 'failed':
+                    return new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
+                case 'cancelled':
+                    return new vscode.ThemeIcon('circle-slash', new vscode.ThemeColor('charts.orange'));
+                default:
+                    return new vscode.ThemeIcon('checklist');
+            }
+        }
+
+        // Default icons for clarification processes
+        switch (process.status) {
             case 'running':
                 return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.blue'));
             case 'completed':
@@ -80,10 +126,52 @@ export class AIProcessItem extends vscode.TreeItem {
     private createTooltip(process: AIProcess): vscode.MarkdownString {
         const lines: string[] = [];
 
+        // Type indicator
+        if (process.type === 'code-review') {
+            lines.push('📋 **Code Review**');
+        } else {
+            lines.push('💬 **AI Clarification**');
+        }
+        lines.push('');
+
         // Status
         const statusEmoji = this.getStatusEmoji(process.status);
         lines.push(`**Status:** ${statusEmoji} ${process.status}`);
         lines.push('');
+
+        // Code review specific info
+        if (process.type === 'code-review' && process.codeReviewMetadata) {
+            const meta = process.codeReviewMetadata;
+            if (meta.commitSha) {
+                lines.push(`**Commit:** \`${meta.commitSha.substring(0, 7)}\``);
+                if (meta.commitMessage) {
+                    lines.push(`**Message:** ${meta.commitMessage}`);
+                }
+            } else {
+                lines.push(`**Type:** ${meta.reviewType === 'pending' ? 'Pending Changes' : 'Staged Changes'}`);
+            }
+            if (meta.diffStats) {
+                lines.push(`**Changes:** ${meta.diffStats.files} files, +${meta.diffStats.additions}/-${meta.diffStats.deletions}`);
+            }
+            lines.push(`**Rules:** ${meta.rulesUsed.length} rule(s)`);
+            lines.push('');
+
+            // Show summary if completed
+            if (process.structuredResult) {
+                try {
+                    const result = JSON.parse(process.structuredResult);
+                    if (result.summary) {
+                        const assessmentEmoji = result.summary.overallAssessment === 'pass' ? '✅' :
+                            result.summary.overallAssessment === 'fail' ? '❌' : '⚠️';
+                        lines.push(`**Result:** ${assessmentEmoji} ${result.summary.overallAssessment.toUpperCase()}`);
+                        lines.push(`**Findings:** ${result.summary.totalFindings} issue(s)`);
+                        lines.push('');
+                    }
+                } catch {
+                    // Ignore parse errors
+                }
+            }
+        }
 
         // Timing
         lines.push(`**Started:** ${process.startTime.toLocaleString()}`);
@@ -103,9 +191,11 @@ export class AIProcessItem extends vscode.TreeItem {
             lines.push('');
         }
 
-        // Prompt preview
-        lines.push('**Prompt:**');
-        lines.push(`> ${process.promptPreview}`);
+        // Prompt preview (only for clarification)
+        if (process.type !== 'code-review') {
+            lines.push('**Prompt:**');
+            lines.push(`> ${process.promptPreview}`);
+        }
 
         const tooltip = new vscode.MarkdownString(lines.join('\n'));
         tooltip.supportHtml = true;

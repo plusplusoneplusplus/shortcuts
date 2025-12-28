@@ -572,6 +572,18 @@
         "icon": "$(eye)"
       },
       {
+        "command": "clarificationProcesses.viewCodeReviewDetails",
+        "title": "View Code Review Results",
+        "category": "AI Processes",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "clarificationProcesses.viewRawResponse",
+        "title": "View Raw Response",
+        "category": "AI Processes",
+        "icon": "$(file-text)"
+      },
+      {
         "command": "clarificationProcesses.refresh",
         "title": "Refresh",
         "category": "AI Processes",
@@ -1068,13 +1080,38 @@
           "group": "process@1"
         },
         {
+          "command": "clarificationProcesses.cancel",
+          "when": "view == clarificationProcessesView && viewItem == codeReviewProcess_running",
+          "group": "process@1"
+        },
+        {
           "command": "clarificationProcesses.viewDetails",
           "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_/",
           "group": "process@2"
         },
         {
+          "command": "clarificationProcesses.viewCodeReviewDetails",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_completed$/",
+          "group": "process@2"
+        },
+        {
+          "command": "clarificationProcesses.viewRawResponse",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_completed$/",
+          "group": "process@3"
+        },
+        {
+          "command": "clarificationProcesses.viewDetails",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_(running|failed|cancelled)$/",
+          "group": "process@2"
+        },
+        {
           "command": "clarificationProcesses.remove",
           "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_(completed|failed|cancelled)$/",
+          "group": "process@3"
+        },
+        {
+          "command": "clarificationProcesses.remove",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_(completed|failed|cancelled)$/",
           "group": "process@3"
         },
         {

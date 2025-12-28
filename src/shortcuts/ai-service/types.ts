@@ -41,11 +41,38 @@ export interface AIInvocationResult {
 }
 
 /**
+ * Type of AI process
+ */
+export type AIProcessType = 'clarification' | 'code-review';
+
+/**
+ * Code review specific metadata
+ */
+export interface CodeReviewProcessMetadata {
+    /** Type of review */
+    reviewType: 'commit' | 'pending' | 'staged';
+    /** Commit SHA (for commit reviews) */
+    commitSha?: string;
+    /** Commit message */
+    commitMessage?: string;
+    /** Rules used for the review */
+    rulesUsed: string[];
+    /** Diff statistics */
+    diffStats?: {
+        files: number;
+        additions: number;
+        deletions: number;
+    };
+}
+
+/**
  * A tracked AI process
  */
 export interface AIProcess {
     /** Unique identifier */
     id: string;
+    /** Type of process */
+    type: AIProcessType;
     /** Preview of the prompt (first ~50 chars) */
     promptPreview: string;
     /** Full prompt text */
@@ -60,6 +87,10 @@ export interface AIProcess {
     error?: string;
     /** The AI response if completed */
     result?: string;
+    /** Code review specific metadata (if type is 'code-review') */
+    codeReviewMetadata?: CodeReviewProcessMetadata;
+    /** Parsed structured result (for code reviews) */
+    structuredResult?: string; // JSON string of CodeReviewResult
 }
 
 /**
@@ -67,6 +98,7 @@ export interface AIProcess {
  */
 export interface SerializedAIProcess {
     id: string;
+    type?: AIProcessType;
     promptPreview: string;
     fullPrompt: string;
     status: AIProcessStatus;
@@ -74,6 +106,8 @@ export interface SerializedAIProcess {
     endTime?: string;   // ISO string
     error?: string;
     result?: string;
+    codeReviewMetadata?: CodeReviewProcessMetadata;
+    structuredResult?: string;
 }
 
 /**
@@ -82,13 +116,16 @@ export interface SerializedAIProcess {
 export function serializeProcess(process: AIProcess): SerializedAIProcess {
     return {
         id: process.id,
+        type: process.type,
         promptPreview: process.promptPreview,
         fullPrompt: process.fullPrompt,
         status: process.status,
         startTime: process.startTime.toISOString(),
         endTime: process.endTime?.toISOString(),
         error: process.error,
-        result: process.result
+        result: process.result,
+        codeReviewMetadata: process.codeReviewMetadata,
+        structuredResult: process.structuredResult
     };
 }
 
@@ -98,13 +135,16 @@ export function serializeProcess(process: AIProcess): SerializedAIProcess {
 export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
     return {
         id: serialized.id,
+        type: serialized.type || 'clarification',
         promptPreview: serialized.promptPreview,
         fullPrompt: serialized.fullPrompt,
         status: serialized.status,
         startTime: new Date(serialized.startTime),
         endTime: serialized.endTime ? new Date(serialized.endTime) : undefined,
         error: serialized.error,
-        result: serialized.result
+        result: serialized.result,
+        codeReviewMetadata: serialized.codeReviewMetadata,
+        structuredResult: serialized.structuredResult
     };
 }
 

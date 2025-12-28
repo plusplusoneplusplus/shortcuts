@@ -786,6 +786,45 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Command to view code review details in the structured viewer
+        const viewCodeReviewDetailsCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.viewCodeReviewDetails',
+            async (item: { process?: { structuredResult?: string } }) => {
+                if (!item?.process?.structuredResult) {
+                    vscode.window.showWarningMessage('No structured result available for this code review.');
+                    return;
+                }
+
+                try {
+                    const { deserializeCodeReviewResult, CodeReviewViewer } = await import('./shortcuts/code-review');
+                    const serialized = JSON.parse(item.process.structuredResult);
+                    const result = deserializeCodeReviewResult(serialized);
+                    CodeReviewViewer.createOrShow(context.extensionUri, result);
+                } catch (error) {
+                    console.error('Failed to parse code review result:', error);
+                    vscode.window.showErrorMessage('Failed to display code review result.');
+                }
+            }
+        );
+
+        // Command to view raw response as text file
+        const viewRawResponseCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.viewRawResponse',
+            async (item: { process?: { result?: string; promptPreview?: string } }) => {
+                if (!item?.process?.result) {
+                    vscode.window.showWarningMessage('No response available for this process.');
+                    return;
+                }
+
+                const content = item.process.result;
+                const doc = await vscode.workspace.openTextDocument({
+                    content,
+                    language: 'markdown'
+                });
+                await vscode.window.showTextDocument(doc, { preview: true });
+            }
+        );
+
         const refreshProcessesCommand = vscode.commands.registerCommand(
             'clarificationProcesses.refresh',
             () => {
@@ -913,6 +952,8 @@ export async function activate(context: vscode.ExtensionContext) {
             clearAllProcessesCommand,
             removeProcessCommand,
             viewProcessDetailsCommand,
+            viewCodeReviewDetailsCommand,
+            viewRawResponseCommand,
             refreshProcessesCommand,
             // Git view disposables
             gitTreeDataProvider,

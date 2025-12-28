@@ -48,6 +48,7 @@ suite('AI Process Serialization Tests', () => {
             const startTime = new Date('2024-01-15T10:30:00.000Z');
             const process: AIProcess = {
                 id: 'test-1',
+                type: 'clarification',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
                 status: 'running',
@@ -64,6 +65,7 @@ suite('AI Process Serialization Tests', () => {
             const endTime = new Date('2024-01-15T10:35:00.000Z');
             const process: AIProcess = {
                 id: 'test-1',
+                type: 'clarification',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
                 status: 'completed',
@@ -79,6 +81,7 @@ suite('AI Process Serialization Tests', () => {
         test('should preserve undefined endTime', () => {
             const process: AIProcess = {
                 id: 'test-1',
+                type: 'clarification',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
                 status: 'running',
@@ -93,6 +96,7 @@ suite('AI Process Serialization Tests', () => {
         test('should preserve all other fields', () => {
             const process: AIProcess = {
                 id: 'test-123',
+                type: 'clarification',
                 promptPreview: 'Short preview',
                 fullPrompt: 'Full prompt with all the details',
                 status: 'failed',
@@ -114,6 +118,7 @@ suite('AI Process Serialization Tests', () => {
         test('should preserve result field', () => {
             const process: AIProcess = {
                 id: 'test-1',
+                type: 'clarification',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
                 status: 'completed',
@@ -202,6 +207,7 @@ suite('AI Process Serialization Tests', () => {
         test('should preserve data through serialize/deserialize cycle', () => {
             const original: AIProcess = {
                 id: 'test-roundtrip',
+                type: 'clarification',
                 promptPreview: 'Round trip test',
                 fullPrompt: 'Full prompt for round trip testing',
                 status: 'completed',
@@ -229,6 +235,7 @@ suite('AI Process Serialization Tests', () => {
             for (const status of statuses) {
                 const original: AIProcess = {
                     id: `test-${status}`,
+                    type: 'clarification',
                     promptPreview: 'Test',
                     fullPrompt: 'Test prompt',
                     status,
@@ -653,6 +660,7 @@ suite('AI Process View Details Tests', () => {
         
         const process: AIProcess = {
             id: 'test-1',
+            type: 'clarification',
             promptPreview: 'Test',
             fullPrompt: 'Test prompt',
             status: 'completed',

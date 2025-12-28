@@ -756,6 +756,7 @@ suite('AIProcessItem Tests', () => {
 
         test('running status should have sync~spin icon', () => {
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -771,6 +772,7 @@ suite('AIProcessItem Tests', () => {
 
         test('completed status should have pass icon', () => {
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -787,6 +789,7 @@ suite('AIProcessItem Tests', () => {
 
         test('failed status should have error icon', () => {
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -804,6 +807,7 @@ suite('AIProcessItem Tests', () => {
 
         test('cancelled status should have circle-slash icon', () => {
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -825,6 +829,7 @@ suite('AIProcessItem Tests', () => {
         test('running process should show elapsed time', () => {
             const startTime = new Date(Date.now() - 65000); // 65 seconds ago
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -844,6 +849,7 @@ suite('AIProcessItem Tests', () => {
             const startTime = new Date(Date.now() - 120000);
             const endTime = new Date();
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -862,6 +868,7 @@ suite('AIProcessItem Tests', () => {
             const startTime = new Date(Date.now() - 30000);
             const endTime = new Date();
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -882,6 +889,7 @@ suite('AIProcessItem Tests', () => {
 
         test('should include status in tooltip', () => {
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -898,6 +906,7 @@ suite('AIProcessItem Tests', () => {
 
         test('should include error in tooltip for failed process', () => {
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',
@@ -916,6 +925,7 @@ suite('AIProcessItem Tests', () => {
 
         test('should include prompt preview in tooltip', () => {
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Explain the authentication flow',
                 fullPrompt: 'Explain the authentication flow in detail',
@@ -935,6 +945,7 @@ suite('AIProcessItem Tests', () => {
 
         test('should not be collapsible', () => {
             const process: AIProcess = {
+                type: 'clarification',
                 id: 'test-1',
                 promptPreview: 'Test',
                 fullPrompt: 'Test prompt',

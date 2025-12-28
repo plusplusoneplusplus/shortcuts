@@ -7,13 +7,15 @@
 
 import * as vscode from 'vscode';
 import { AIProcessManager } from '../ai-service/ai-process-manager';
-import { copyToClipboard, getAIToolSetting, getWorkingDirectory, invokeCopilotCLI } from '../ai-service/copilot-cli-invoker';
+import { copyToClipboard, getAIToolSetting, invokeCopilotCLI } from '../ai-service/copilot-cli-invoker';
 import { GitCommitItem } from '../git/git-commit-item';
 import { GitLogService } from '../git/git-log-service';
 import { GitCommit } from '../git/types';
 import { LookedUpCommitItem } from '../git/looked-up-commit-item';
 import { CodeReviewService } from './code-review-service';
-import { CodeReviewMetadata } from './types';
+import { CodeReviewViewer } from './code-review-viewer';
+import { parseCodeReviewResponse, formatCodeReviewResultAsMarkdown } from './response-parser';
+import { CodeReviewMetadata, serializeCodeReviewResult } from './types';
 
 /**
  * Registers all code review commands
@@ -127,15 +129,19 @@ export function registerCodeReviewCommands(
                     location: vscode.ProgressLocation.Notification,
                     title: `${title}...`,
                     cancellable: true
-                }, async (progress, token) => {
+                }, async (progress) => {
                     progress.report({ message: `Reviewing against ${rulesResult.rules.length} rules...` });
 
-                    const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager);
+                    const result = await invokeCopilotCLI(prompt, workspaceRoot);
 
                     if (result.success && result.response) {
-                        // Open result in a new editor
+                        // Parse the structured response
+                        const structuredResult = parseCodeReviewResponse(result.response, metadata);
+                        
+                        // Format as markdown and open in editor
+                        const formattedResult = formatCodeReviewResultAsMarkdown(structuredResult);
                         const doc = await vscode.workspace.openTextDocument({
-                            content: `# Code Review Results\n\n${result.response}`,
+                            content: formattedResult,
                             language: 'markdown'
                         });
                         await vscode.window.showTextDocument(doc, { preview: true });
@@ -156,6 +162,18 @@ export function registerCodeReviewCommands(
                         `Code review prompt copied to clipboard (${rulesResult.rules.length} rules, ${stats.files} files)`
                     );
                 } else {
+                    // Register as a code review process with metadata
+                    const processId = processManager.registerCodeReviewProcess(
+                        prompt,
+                        {
+                            reviewType: metadata.type,
+                            commitSha: metadata.commitSha,
+                            commitMessage: metadata.commitMessage,
+                            rulesUsed: metadata.rulesUsed,
+                            diffStats: metadata.diffStats
+                        }
+                    );
+
                     // Show status in notification
                     vscode.window.withProgress({
                         location: vscode.ProgressLocation.Notification,
@@ -163,7 +181,24 @@ export function registerCodeReviewCommands(
                         cancellable: true
                     }, async (progress) => {
                         progress.report({ message: `Reviewing against ${rulesResult.rules.length} rules...` });
-                        await invokeCopilotCLI(prompt, workspaceRoot, processManager);
+                        
+                        const result = await invokeCopilotCLI(prompt, workspaceRoot);
+                        
+                        if (result.success && result.response) {
+                            // Parse the structured response
+                            const structuredResult = parseCodeReviewResponse(result.response, metadata);
+                            const serialized = JSON.stringify(serializeCodeReviewResult(structuredResult));
+                            
+                            // Complete the process with structured result
+                            processManager.completeCodeReviewProcess(processId, result.response, serialized);
+                            
+                            // Show the result in the viewer
+                            CodeReviewViewer.createOrShow(context.extensionUri, structuredResult);
+                        } else {
+                            // Mark as failed
+                            processManager.updateProcess(processId, 'failed', undefined, result.error);
+                            vscode.window.showErrorMessage(`Code review failed: ${result.error}`);
+                        }
                     });
                 }
                 break;
