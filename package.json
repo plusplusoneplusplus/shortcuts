@@ -296,6 +296,39 @@
             "Open in editor - Send to Copilot CLI and open the result in a new editor tab"
           ],
           "markdownDescription": "Output mode for code review results."
+        },
+        "workspaceShortcuts.discovery.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**[Preview]** Enable Auto AI Discovery feature to find related docs, files, and commits for a feature."
+        },
+        "workspaceShortcuts.discovery.maxCommits": {
+          "type": "number",
+          "default": 50,
+          "minimum": 10,
+          "maximum": 200,
+          "description": "Maximum number of commits to search in git history."
+        },
+        "workspaceShortcuts.discovery.minRelevanceScore": {
+          "type": "number",
+          "default": 30,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Minimum relevance score (0-100) to include in results."
+        },
+        "workspaceShortcuts.discovery.excludePatterns": {
+          "type": "array",
+          "default": [
+            "**/node_modules/**",
+            "**/dist/**",
+            "**/.git/**",
+            "**/out/**",
+            "**/build/**"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Glob patterns for files/folders to exclude from discovery."
         }
       }
     },
@@ -798,6 +831,24 @@
         "title": "Configure Code Review Rules",
         "category": "Code Review",
         "icon": "$(gear)"
+      },
+      {
+        "command": "shortcuts.discovery.start",
+        "title": "Auto-Discover Items...",
+        "category": "Discovery",
+        "icon": "$(search)"
+      },
+      {
+        "command": "shortcuts.discovery.startForGroup",
+        "title": "Auto-Discover Items for Group...",
+        "category": "Discovery",
+        "icon": "$(search)"
+      },
+      {
+        "command": "shortcuts.openCommit",
+        "title": "Open Commit",
+        "category": "Git",
+        "icon": "$(git-commit)"
       }
     ],
     "menus": {
@@ -810,6 +861,11 @@
         {
           "command": "shortcuts.createLogicalGroup",
           "when": "view == shortcutsView",
+          "group": "navigation"
+        },
+        {
+          "command": "shortcuts.discovery.start",
+          "when": "view == shortcutsView && config.workspaceShortcuts.discovery.enabled",
           "group": "navigation"
         },
         {
@@ -925,6 +981,11 @@
           "group": "logicalGroup@6"
         },
         {
+          "command": "shortcuts.discovery.startForGroup",
+          "when": "view == shortcutsView && viewItem == logicalGroup && config.workspaceShortcuts.discovery.enabled",
+          "group": "2_discovery"
+        },
+        {
           "command": "shortcuts.createFileInFolder",
           "when": "view == shortcutsView && viewItem == logicalGroupItem_folder",
           "group": "logicalGroupItem@1"
@@ -1038,6 +1099,16 @@
           "command": "shortcuts.deleteNote",
           "when": "view == shortcutsView && viewItem == note",
           "group": "note@3"
+        },
+        {
+          "command": "shortcuts.openCommit",
+          "when": "view == shortcutsView && viewItem == logicalGroupItem_commit",
+          "group": "commit@1"
+        },
+        {
+          "command": "shortcuts.removeFromLogicalGroup",
+          "when": "view == shortcutsView && viewItem == logicalGroupItem_commit",
+          "group": "commit@2"
         },
         {
           "command": "shortcuts.editGlobalNote",

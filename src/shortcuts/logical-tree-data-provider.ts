@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
 import { NotificationManager } from './notification-manager';
 import { ThemeManager } from './theme-manager';
-import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, ShortcutItem, TaskShortcutItem } from './tree-items';
+import { CommandShortcutItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, ShortcutItem, TaskShortcutItem } from './tree-items';
 import { BasePath, LogicalGroup } from './types';
 
 /**
@@ -240,11 +240,11 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
                 }
             }
 
-            // Sort items: folders first, then files, then notes, then commands/tasks, all alphabetically
+            // Sort items: folders first, then files, then commits, then notes, then commands/tasks, all alphabetically
             const sortedItems = [...groupConfig.items].sort((a, b) => {
-                const typeOrder = { folder: 0, file: 1, note: 2, command: 3, task: 4 };
-                const aOrder = typeOrder[a.type] ?? 5;
-                const bOrder = typeOrder[b.type] ?? 5;
+                const typeOrder: Record<string, number> = { folder: 0, file: 1, commit: 2, note: 3, command: 4, task: 5 };
+                const aOrder = typeOrder[a.type] ?? 6;
+                const bOrder = typeOrder[b.type] ?? 6;
 
                 if (aOrder !== bOrder) {
                     return aOrder - bOrder;
@@ -324,6 +324,23 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
                             itemConfig.icon
                         );
                         items.push(noteItem);
+                        continue;
+                    }
+
+                    // Handle commit items
+                    if (itemConfig.type === 'commit') {
+                        if (!itemConfig.commitRef) {
+                            console.warn(`Commit item missing commit reference: ${itemConfig.name}`);
+                            continue;
+                        }
+                        const commitItem = new CommitShortcutItem(
+                            itemConfig.name,
+                            itemConfig.commitRef.hash,
+                            itemConfig.commitRef.repositoryRoot,
+                            groupPath,
+                            itemConfig.icon
+                        );
+                        items.push(commitItem);
                         continue;
                     }
 

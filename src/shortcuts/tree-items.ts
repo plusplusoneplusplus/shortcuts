@@ -703,3 +703,53 @@ export class GlobalNoteItem extends vscode.TreeItem {
         return new vscode.ThemeIcon('note', new vscode.ThemeColor('editorWarning.foreground'));
     }
 }
+
+/**
+ * Tree item representing a git commit shortcut
+ * Used in logical groups to reference specific commits
+ */
+export class CommitShortcutItem extends vscode.TreeItem {
+    public readonly contextValue = 'logicalGroupItem_commit';
+    public readonly commitHash: string;
+    public readonly shortHash: string;
+    public readonly repositoryRoot: string;
+    public readonly parentGroup: string;
+
+    constructor(
+        label: string,
+        commitHash: string,
+        repositoryRoot: string,
+        parentGroup: string,
+        iconName?: string
+    ) {
+        super(label, vscode.TreeItemCollapsibleState.None);
+        this.commitHash = commitHash;
+        this.shortHash = commitHash.substring(0, 7);
+        this.repositoryRoot = repositoryRoot;
+        this.parentGroup = parentGroup;
+        
+        // Set tooltip with commit hash
+        this.tooltip = `Commit: ${this.shortHash}\n${label}`;
+        
+        // Set description to show short hash
+        this.description = this.shortHash;
+        
+        // Set icon
+        this.iconPath = this.getIconPath(iconName);
+
+        // Set up the command to open commit details when clicked
+        this.command = {
+            command: 'shortcuts.openCommit',
+            title: 'Open Commit',
+            arguments: [this]
+        };
+    }
+
+    private getIconPath(iconName?: string): vscode.ThemeIcon {
+        if (iconName) {
+            return new vscode.ThemeIcon(iconName, new vscode.ThemeColor('gitDecoration.addedResourceForeground'));
+        }
+        // Default to git-commit icon
+        return new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('gitDecoration.addedResourceForeground'));
+    }
+}

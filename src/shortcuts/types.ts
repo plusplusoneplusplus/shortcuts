@@ -24,17 +24,27 @@ export interface BasePath {
 /**
  * Type of logical group item
  */
-export type LogicalGroupItemType = 'folder' | 'file' | 'command' | 'task' | 'note';
+export type LogicalGroupItemType = 'folder' | 'file' | 'command' | 'task' | 'note' | 'commit';
 
 /**
- * Configuration for a logical group item (can be folder, file, command, task, or note)
+ * Commit reference for commit items
+ */
+export interface CommitRef {
+    /** Full commit hash */
+    hash: string;
+    /** Repository root path */
+    repositoryRoot: string;
+}
+
+/**
+ * Configuration for a logical group item (can be folder, file, command, task, note, or commit)
  */
 export interface LogicalGroupItem {
     /** Relative or absolute path to the folder or file. Can use base path aliases like @alias/path/to/file */
     path?: string;
     /** Display name for this item */
     name: string;
-    /** Type of item: 'folder', 'file', 'command', 'task', or 'note' */
+    /** Type of item: 'folder', 'file', 'command', 'task', 'note', or 'commit' */
     type: LogicalGroupItemType;
     /** Command ID to execute (for command items) */
     command?: string;
@@ -42,6 +52,8 @@ export interface LogicalGroupItem {
     task?: string;
     /** Note ID for storage reference (for note items) */
     noteId?: string;
+    /** Commit reference (for commit items) */
+    commitRef?: CommitRef;
     /** Optional arguments for command execution */
     args?: any[];
     /** Optional icon override */
