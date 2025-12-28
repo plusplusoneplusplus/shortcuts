@@ -464,6 +464,143 @@ export class GitLogService implements vscode.Disposable {
     }
 
     /**
+     * Get the diff for a specific commit
+     * @param repoRoot Repository root path
+     * @param commitHash Commit hash
+     * @returns The diff output as a string
+     */
+    getCommitDiff(repoRoot: string, commitHash: string): string {
+        try {
+            // Get the parent hash for the diff
+            const parentHash = this.getParentHash(repoRoot, commitHash);
+
+            // Get the diff between parent and commit
+            const command = `git diff ${parentHash} ${commitHash}`;
+            const output = execSync(command, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+                timeout: 30000
+            });
+
+            return output;
+        } catch (error) {
+            console.error(`Failed to get diff for commit ${commitHash}:`, error);
+            return '';
+        }
+    }
+
+    /**
+     * Get the diff for pending changes (staged + unstaged)
+     * @param repoRoot Repository root path
+     * @returns The diff output as a string
+     */
+    getPendingChangesDiff(repoRoot: string): string {
+        try {
+            // Get both staged and unstaged changes
+            // First get unstaged changes (working tree vs index)
+            const unstagedCommand = 'git diff';
+            const unstaged = execSync(unstagedCommand, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                maxBuffer: 10 * 1024 * 1024,
+                timeout: 30000
+            });
+
+            // Then get staged changes (index vs HEAD)
+            const stagedCommand = 'git diff --cached';
+            const staged = execSync(stagedCommand, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                maxBuffer: 10 * 1024 * 1024,
+                timeout: 30000
+            });
+
+            // Combine both diffs
+            let combined = '';
+            if (staged.trim()) {
+                combined += '# Staged Changes\n\n' + staged;
+            }
+            if (unstaged.trim()) {
+                if (combined) {
+                    combined += '\n\n';
+                }
+                combined += '# Unstaged Changes\n\n' + unstaged;
+            }
+
+            return combined;
+        } catch (error) {
+            console.error('Failed to get pending changes diff:', error);
+            return '';
+        }
+    }
+
+    /**
+     * Get the diff for staged changes only
+     * @param repoRoot Repository root path
+     * @returns The diff output as a string
+     */
+    getStagedChangesDiff(repoRoot: string): string {
+        try {
+            const command = 'git diff --cached';
+            const output = execSync(command, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                maxBuffer: 10 * 1024 * 1024,
+                timeout: 30000
+            });
+
+            return output;
+        } catch (error) {
+            console.error('Failed to get staged changes diff:', error);
+            return '';
+        }
+    }
+
+    /**
+     * Check if there are any pending changes
+     * @param repoRoot Repository root path
+     * @returns True if there are staged or unstaged changes
+     */
+    hasPendingChanges(repoRoot: string): boolean {
+        try {
+            // Check for any changes (staged or unstaged)
+            const command = 'git status --porcelain';
+            const output = execSync(command, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                timeout: 5000
+            });
+
+            return output.trim().length > 0;
+        } catch (error) {
+            console.error('Failed to check for pending changes:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Check if there are any staged changes
+     * @param repoRoot Repository root path
+     * @returns True if there are staged changes
+     */
+    hasStagedChanges(repoRoot: string): boolean {
+        try {
+            const command = 'git diff --cached --quiet';
+            execSync(command, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                timeout: 5000
+            });
+            // If command succeeds (exit 0), there are no staged changes
+            return false;
+        } catch {
+            // If command fails (exit 1), there are staged changes
+            return true;
+        }
+    }
+
+    /**
      * Dispose of all resources
      */
     dispose(): void {

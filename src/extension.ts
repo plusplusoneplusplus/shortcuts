@@ -2,11 +2,12 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { AIProcessManager, AIProcessTreeDataProvider } from './shortcuts/ai-service';
+import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GitChangeItem, GitCommitFile, GitCommitItem, GitDragDropController, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
+import { GitChangeItem, GitCommitFile, GitCommitItem, GitDragDropController, GitLogService, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
 import {
     DiffCommentFileItem,
     DiffCommentItem,
@@ -942,6 +943,13 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitUnstageFileCommand) disposables.push(gitUnstageFileCommand);
         if (gitStageAllCommand) disposables.push(gitStageAllCommand);
         if (gitUnstageAllCommand) disposables.push(gitUnstageAllCommand);
+
+        // Register code review commands (requires git log service)
+        if (gitInitialized) {
+            const gitLogService = gitTreeDataProvider['gitLogService'] as GitLogService;
+            const codeReviewDisposables = registerCodeReviewCommands(context, gitLogService, aiProcessManager);
+            disposables.push(...codeReviewDisposables);
+        }
 
         // Add all disposables to context subscriptions
         context.subscriptions.push(...disposables);

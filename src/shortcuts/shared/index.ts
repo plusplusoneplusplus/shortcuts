@@ -33,6 +33,9 @@ export type { BaseClarificationContext, BaseClarificationResult } from './ai-cla
 export { DEFAULT_BASE_PROMPT_OPTIONS, PromptGeneratorBase } from './prompt-generator-base';
 export type { BasePromptGenerationOptions } from './prompt-generator-base';
 
+// Glob utilities for file pattern matching
+export { getFilesWithExtension, glob } from './glob-utils';
+
 // Note: Webview utilities are exported separately via './webview'
 // to avoid bundling issues with webview-specific code in the extension bundle
 

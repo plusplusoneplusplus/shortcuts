@@ -266,6 +266,36 @@
               }
             }
           }
+        },
+        "workspaceShortcuts.codeReview.rulesFolder": {
+          "type": "string",
+          "default": ".github/cr-rules",
+          "markdownDescription": "Path to folder containing code review rule files (relative to workspace root). Rule files should be markdown files describing coding standards and guidelines."
+        },
+        "workspaceShortcuts.codeReview.rulesPattern": {
+          "type": "string",
+          "default": "**/*.md",
+          "markdownDescription": "Glob pattern for rule files within the rules folder. Files are loaded alphabetically, so prefix with numbers (e.g., `01-naming.md`) to control order."
+        },
+        "workspaceShortcuts.codeReview.promptTemplate": {
+          "type": "string",
+          "default": "Review the following code changes against the provided coding rules. Identify violations and suggest fixes.",
+          "markdownDescription": "Prompt template for code review. This text appears at the beginning of the prompt, followed by the rules and diff."
+        },
+        "workspaceShortcuts.codeReview.outputMode": {
+          "type": "string",
+          "default": "aiProcess",
+          "enum": [
+            "aiProcess",
+            "clipboard",
+            "editor"
+          ],
+          "enumDescriptions": [
+            "Show in AI Processes panel - Track progress and view results in the AI Processes tree view",
+            "Copy to clipboard - Copy the prompt to clipboard for use with external AI tools",
+            "Open in editor - Send to Copilot CLI and open the result in a new editor tab"
+          ],
+          "markdownDescription": "Output mode for code review results."
         }
       }
     },
@@ -726,6 +756,36 @@
         "title": "Unstage All Changes",
         "category": "Git",
         "icon": "$(remove)"
+      },
+      {
+        "command": "shortcuts.reviewCommitAgainstRules",
+        "title": "Review Against Rules",
+        "category": "Code Review",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "shortcuts.reviewCommitAgainstRulesSelect",
+        "title": "Review Against Rules...",
+        "category": "Code Review",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "shortcuts.reviewPendingAgainstRules",
+        "title": "Review Pending Changes Against Rules",
+        "category": "Code Review",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "shortcuts.reviewStagedAgainstRules",
+        "title": "Review Staged Changes Against Rules",
+        "category": "Code Review",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "shortcuts.configureReviewRules",
+        "title": "Configure Code Review Rules",
+        "category": "Code Review",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -1023,6 +1083,16 @@
           "group": "gitCommit@1"
         },
         {
+          "command": "shortcuts.reviewCommitAgainstRules",
+          "when": "view == gitView && viewItem == gitCommit",
+          "group": "gitCommit@2"
+        },
+        {
+          "command": "shortcuts.reviewCommitAgainstRulesSelect",
+          "when": "view == gitView && viewItem == gitCommit",
+          "group": "gitCommit@3"
+        },
+        {
           "command": "gitView.clearLookedUpCommit",
           "when": "view == gitView && viewItem == lookedUpCommit",
           "group": "inline"
@@ -1031,6 +1101,16 @@
           "command": "gitView.copyCommitHash",
           "when": "view == gitView && viewItem == lookedUpCommit",
           "group": "lookedUpCommit@1"
+        },
+        {
+          "command": "shortcuts.reviewCommitAgainstRules",
+          "when": "view == gitView && viewItem == lookedUpCommit",
+          "group": "lookedUpCommit@2"
+        },
+        {
+          "command": "shortcuts.reviewCommitAgainstRulesSelect",
+          "when": "view == gitView && viewItem == lookedUpCommit",
+          "group": "lookedUpCommit@3"
         },
         {
           "command": "gitView.stageFile",
@@ -1186,6 +1266,16 @@
           "command": "gitDiffComments.deleteAllResolved",
           "when": "view == gitView && viewItem == gitSection_comments",
           "group": "inline"
+        },
+        {
+          "command": "shortcuts.reviewPendingAgainstRules",
+          "when": "view == gitView && viewItem == gitSection_changes",
+          "group": "codeReview@1"
+        },
+        {
+          "command": "shortcuts.reviewStagedAgainstRules",
+          "when": "view == gitView && viewItem == gitSection_changes",
+          "group": "codeReview@2"
         },
         {
           "command": "gitView.stageAll",
