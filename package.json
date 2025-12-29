@@ -1,7 +1,7 @@
 {
   "name": "workspace-shortcuts",
-  "displayName": "Workspace Shortcuts",
-  "description": "Organize your workspace with customizable folder shortcuts and logical groups. Quick access to frequently used directories and files with split-view navigation.",
+  "displayName": "Markdown Review & Workspace Shortcuts",
+  "description": "Add inline comments and annotations to markdown files with a powerful review editor. Review git diffs, organize files into groups, and generate AI prompts from comments.",
   "version": "2.14.0",
   "publisher": "yihengtao",
   "repository": {
@@ -12,14 +12,14 @@
     "vscode": "^1.95.0"
   },
   "keywords": [
+    "markdown",
+    "review",
+    "comments",
+    "annotations",
+    "code review",
+    "git diff",
     "shortcuts",
-    "folders",
-    "navigation",
-    "productivity",
-    "workspace",
-    "quick access",
-    "tree view",
-    "file management"
+    "productivity"
   ],
   "icon": "resources/icons/shortcuts.png",
   "galleryBanner": {
