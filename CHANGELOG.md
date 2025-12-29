@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.14.0] - 2025-12-28
+
+### Added
+- **Auto AI Discovery**: Find related docs, files, and commits for a feature with relevance scoring
+- **Code Review Feature**: Review code against customizable rules with structured results viewer
+- **Drag-and-Drop in Git View**: Reorder and organize items in the Git tree view
+
+### Changed
+- **AI Process Persistence**: Processes now persist across VSCode restarts with detailed view support
+
 ## [2.13.0] - 2025-12-25
 
 ### Added
