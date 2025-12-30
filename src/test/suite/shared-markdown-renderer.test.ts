@@ -167,6 +167,65 @@ function renderCommentMarkdown(markdown: string): string {
 
 suite('Shared Markdown Renderer Tests', () => {
 
+    suite('escapeHtml', () => {
+
+        test('should return empty string for empty input', () => {
+            const result = escapeHtml('');
+            assert.strictEqual(result, '');
+        });
+
+        test('should preserve whitespace-only strings', () => {
+            assert.strictEqual(escapeHtml('   '), '   ');
+            assert.strictEqual(escapeHtml(' '), ' ');
+            assert.strictEqual(escapeHtml('\t'), '\t');
+        });
+
+        test('should escape ampersand', () => {
+            assert.strictEqual(escapeHtml('&'), '&amp;');
+            assert.strictEqual(escapeHtml('a & b'), 'a &amp; b');
+        });
+
+        test('should escape less than', () => {
+            assert.strictEqual(escapeHtml('<'), '&lt;');
+            assert.strictEqual(escapeHtml('<div>'), '&lt;div&gt;');
+        });
+
+        test('should escape greater than', () => {
+            assert.strictEqual(escapeHtml('>'), '&gt;');
+        });
+
+        test('should escape double quotes', () => {
+            assert.strictEqual(escapeHtml('"'), '&quot;');
+            assert.strictEqual(escapeHtml('say "hello"'), 'say &quot;hello&quot;');
+        });
+
+        test('should escape single quotes', () => {
+            assert.strictEqual(escapeHtml("'"), '&#039;');
+            assert.strictEqual(escapeHtml("it's"), 'it&#039;s');
+        });
+
+        test('should handle multiple special characters', () => {
+            const result = escapeHtml('<script>alert("xss")</script>');
+            assert.strictEqual(result, '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
+        });
+
+        test('should preserve regular text', () => {
+            assert.strictEqual(escapeHtml('hello world'), 'hello world');
+            assert.strictEqual(escapeHtml('abc123'), 'abc123');
+        });
+
+        test('should preserve unicode characters', () => {
+            assert.strictEqual(escapeHtml('你好'), '你好');
+            assert.strictEqual(escapeHtml('🌍'), '🌍');
+            assert.strictEqual(escapeHtml('émoji'), 'émoji');
+        });
+
+        test('should handle non-breaking space character', () => {
+            // Non-breaking space should be preserved as-is
+            assert.strictEqual(escapeHtml('\u00a0'), '\u00a0');
+        });
+    });
+
     suite('renderInlineMarkdown', () => {
 
         test('should handle empty string', () => {

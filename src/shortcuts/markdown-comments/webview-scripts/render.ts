@@ -11,7 +11,7 @@ import {
     NODE_TYPES,
     restoreCursorAfterContentChange
 } from '../webview-logic/cursor-management';
-import { applyMarkdownHighlighting } from '../webview-logic/markdown-renderer';
+import { applyMarkdownHighlighting, escapeHtml } from '../webview-logic/markdown-renderer';
 import { applyCommentHighlightToRange, getHighlightColumnsForLine } from '../webview-logic/selection-utils';
 import { parseCodeBlocks, renderCodeBlock, setupCodeBlockHandlers } from './code-block-handlers';
 import { setupCommentInteractions } from './dom-handlers';
@@ -323,14 +323,6 @@ function renderSourceMode(): void {
     resolvedCount.textContent = String(resolved);
 }
 
-/**
- * Escape HTML special characters
- */
-function escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
 
 /**
  * Main render function - renders the editor content with markdown highlighting,
