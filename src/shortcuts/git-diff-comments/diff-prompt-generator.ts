@@ -264,6 +264,10 @@ export class DiffPromptGenerator extends PromptGeneratorBase<
         lines.push(`### Comment ${index} (${lineRange}, ${sideLabel})`);
         lines.push('');
 
+        // Comment ID for tool invocation
+        lines.push(`**ID:** \`${comment.id}\``);
+        lines.push('');
+
         // Code context
         if (options.includeCodeContext) {
             // Determine language from file extension
@@ -345,6 +349,7 @@ export class DiffPromptGenerator extends PromptGeneratorBase<
         const endLine = comment.selection.newEndLine ?? comment.selection.oldEndLine ?? 0;
 
         const result: any = {
+            id: comment.id,
             index,
             location: {
                 startLine,

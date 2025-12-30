@@ -1433,6 +1433,34 @@
         "priority": "default"
       }
     ],
+    "languageModelTools": [
+      {
+        "name": "workspace-shortcuts_resolveComments",
+        "tags": ["comments", "review", "workspace-shortcuts"],
+        "toolReferenceName": "resolveComments",
+        "displayName": "Resolve Comments",
+        "modelDescription": "Resolves review comments in markdown files or git diffs by their IDs. Use 'markdown' for markdown review comments or 'diff' for git diff review comments. The comment IDs are provided in the prompts generated from comments.",
+        "userDescription": "Mark review comments as resolved",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(check)",
+        "inputSchema": {
+          "type": "object",
+          "required": ["commentType", "commentIds"],
+          "properties": {
+            "commentType": {
+              "type": "string",
+              "enum": ["markdown", "diff"],
+              "description": "The type of comments: 'markdown' for markdown review comments, 'diff' for git diff review comments"
+            },
+            "commentIds": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Comment IDs to resolve"
+            }
+          }
+        }
+      }
+    ],
     "keybindings": [
       {
         "command": "shortcuts.logical.handleEnterKey",

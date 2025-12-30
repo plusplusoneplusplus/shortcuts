@@ -25,6 +25,7 @@ import {
     PromptGenerator,
     ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
+import { registerLanguageModelTools } from './shortcuts/lm-tools';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { ThemeManager } from './shortcuts/theme-manager';
 
@@ -641,6 +642,13 @@ export async function activate(context: vscode.ExtensionContext) {
             promptGenerator
         );
 
+        // Register Language Model Tools for Copilot Chat integration
+        const lmToolDisposables = registerLanguageModelTools(
+            context,
+            commentsManager,
+            diffCommentsManager
+        );
+
         // Register the Review Editor View provider for markdown files with comments
         const customEditorDisposable = ReviewEditorViewProvider.register(context, commentsManager, aiProcessManager);
 
@@ -960,7 +968,9 @@ export async function activate(context: vscode.ExtensionContext) {
             // Git Diff Comments disposables
             diffCommentsManager,
             ...diffReviewCommands,
-            ...(diffCommentsCommands ? [diffCommentsCommands] : [])
+            ...(diffCommentsCommands ? [diffCommentsCommands] : []),
+            // Language Model Tools disposables
+            ...lmToolDisposables
         ];
 
         // Add optional git disposables if git extension is available

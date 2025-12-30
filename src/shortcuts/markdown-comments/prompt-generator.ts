@@ -169,6 +169,10 @@ export class PromptGenerator extends PromptGeneratorBase<
 
         lines.push('');
 
+        // Comment ID for tool invocation
+        lines.push(`**ID:** \`${comment.id}\``);
+        lines.push('');
+
         // Selected text
         lines.push('**Selected Text:**');
         lines.push('```');
@@ -241,6 +245,7 @@ export class PromptGenerator extends PromptGeneratorBase<
         options: PromptGenerationOptions
     ): any {
         const result: any = {
+            id: comment.id,
             index,
             selectedText: comment.selectedText,
             comment: comment.comment
