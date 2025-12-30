@@ -107,11 +107,11 @@ suite('KeywordExtractor Tests', () => {
         });
 
         test('should handle underscored words', () => {
-            const result = extractKeywords('user_service get_data');
+            const result = extractKeywords('user_service get_config');
             
             assert.ok(result.keywords.includes('user'));
             assert.ok(result.keywords.includes('service'));
-            assert.ok(result.keywords.includes('data'));
+            assert.ok(result.keywords.includes('config'));
         });
 
         test('should keep programming-related terms', () => {

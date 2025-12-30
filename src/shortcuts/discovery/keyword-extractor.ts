@@ -96,33 +96,33 @@ export function extractKeywords(
  * @returns Array of extracted keywords
  */
 function extractKeywordsSimple(description: string): string[] {
-    // Normalize the text
-    const normalized = description.toLowerCase();
-    
-    // Split into words (handle camelCase, PascalCase, snake_case, kebab-case)
-    const words = splitIntoWords(normalized);
+    // Split into words BEFORE lowercasing (to preserve camelCase info)
+    const words = splitIntoWords(description);
     
     // Filter and deduplicate
     const keywords = new Set<string>();
     
     for (const word of words) {
+        // Normalize to lowercase for comparison
+        const normalized = word.toLowerCase();
+        
         // Skip very short words
-        if (word.length < 2) continue;
+        if (normalized.length < 2) continue;
         
         // Keep programming-related terms
-        if (KEEP_TERMS.has(word)) {
-            keywords.add(word);
+        if (KEEP_TERMS.has(normalized)) {
+            keywords.add(normalized);
             continue;
         }
         
         // Skip stop words
-        if (STOP_WORDS.has(word)) continue;
+        if (STOP_WORDS.has(normalized)) continue;
         
         // Skip pure numbers
-        if (/^\d+$/.test(word)) continue;
+        if (/^\d+$/.test(normalized)) continue;
         
-        // Add the word
-        keywords.add(word);
+        // Add the word (lowercased)
+        keywords.add(normalized);
     }
     
     // Convert to array and sort by relevance (longer words first, then alphabetically)
@@ -137,7 +137,7 @@ function extractKeywordsSimple(description: string): string[] {
 /**
  * Split text into words, handling various naming conventions
  * @param text Text to split
- * @returns Array of words
+ * @returns Array of words (not lowercased, to preserve info for caller)
  */
 function splitIntoWords(text: string): string[] {
     const words: string[] = [];
@@ -148,9 +148,15 @@ function splitIntoWords(text: string): string[] {
     for (const part of parts) {
         if (!part) continue;
         
-        // Handle camelCase and PascalCase
-        const camelWords = part.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(' ');
-        words.push(...camelWords);
+        // Handle camelCase and PascalCase (split before lowercasing)
+        const camelWords = part.replace(/([a-z])([A-Z])/g, '$1 $2').split(' ');
+        
+        // Also handle sequences like "OAuth2" -> "OAuth" + "2" by splitting on number boundaries
+        for (const camelWord of camelWords) {
+            // Split on number boundaries (e.g., "OAuth2" -> ["OAuth", "2"])
+            const numberSplit = camelWord.split(/(\d+)/).filter(s => s);
+            words.push(...numberSplit);
+        }
     }
     
     return words;
