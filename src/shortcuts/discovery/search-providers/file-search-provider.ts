@@ -36,7 +36,12 @@ export class FileSearchProvider implements ISearchProvider {
         repositoryRoot: string
     ): Promise<RawSearchResult[]> {
         const results: RawSearchResult[] = [];
-        
+
+        // Return early if no repository root or no keywords
+        if (!repositoryRoot || keywords.length === 0) {
+            return results;
+        }
+
         try {
             // Build glob pattern based on scope
             const includePatterns = this.buildIncludePatterns(scope);

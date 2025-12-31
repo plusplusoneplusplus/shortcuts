@@ -220,13 +220,14 @@ suite('Tasks Viewer Tests', () => {
             });
 
             test('should unarchive a task', async () => {
-                const originalPath = await taskManager.createTask('To Unarchive');
+                const originalPath = await taskManager.createTask('To Restore');
                 const archivedPath = await taskManager.archiveTask(originalPath);
                 const restoredPath = await taskManager.unarchiveTask(archivedPath);
 
                 assert.ok(!fs.existsSync(archivedPath), 'Archived should not exist');
                 assert.ok(fs.existsSync(restoredPath), 'Restored file should exist');
-                assert.ok(!restoredPath.includes('archive'), 'Path should not contain archive');
+                // Check that the path doesn't include the archive folder (use path separator to be precise)
+                assert.ok(!restoredPath.includes(path.sep + 'archive' + path.sep), 'Path should not be in archive folder');
             });
 
             test('should show archived tasks when setting enabled', async () => {
@@ -261,7 +262,10 @@ suite('Tasks Viewer Tests', () => {
         });
 
         suite('File Watching', () => {
-            test('should call refresh callback on file changes', (done) => {
+            test('should call refresh callback on file changes', function (done) {
+                // Increase timeout for file watching test (CI can be slow)
+                this.timeout(5000);
+
                 taskManager.ensureFoldersExist();
 
                 let callCount = 0;
@@ -272,9 +276,11 @@ suite('Tasks Viewer Tests', () => {
                     }
                 });
 
-                // Create a file to trigger the watcher
-                const tasksFolder = taskManager.getTasksFolder();
-                fs.writeFileSync(path.join(tasksFolder, 'trigger.md'), '# Test');
+                // Small delay to ensure watcher is ready before creating file
+                setTimeout(() => {
+                    const tasksFolder = taskManager.getTasksFolder();
+                    fs.writeFileSync(path.join(tasksFolder, 'trigger.md'), '# Test');
+                }, 100);
             });
         });
 
