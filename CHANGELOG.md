@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.15.0] - 2025-12-31
+
+### Added
+- **Tasks Viewer**: New panel for managing markdown task files in `.vscode/tasks/`
+  - Create, rename, delete, and archive tasks
+  - Filter by name, sort by name or modified date
+  - Auto-refresh on file changes
+- **Language Model Tool**: Resolve comments via Copilot Chat using `@resolveComments`
+
+### Fixed
+- Source mode now properly escapes HTML for consistent empty line handling
+- Keyword extraction preserves casing and improves word splitting
+
 ## [2.14.1] - 2025-12-29
 
 ### Changed

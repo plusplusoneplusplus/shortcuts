@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Markdown Review & Workspace Shortcuts",
   "description": "Add inline comments and annotations to markdown files with a powerful review editor. Review git diffs, organize files into groups, and generate AI prompts from comments.",
-  "version": "2.14.1",
+  "version": "2.15.0",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
@@ -237,7 +237,11 @@
           "markdownDescription": "Custom AI commands for the Ask AI feature. Each command defines an action available in the context menu. Leave empty to use the default commands (Clarify, Go Deeper, Custom).\n\n**Template Variables:**\n- `{{selection}}` - The selected text\n- `{{file}}` - The file path\n- `{{heading}}` - Nearest heading above selection\n- `{{context}}` - Surrounding content",
           "items": {
             "type": "object",
-            "required": ["id", "label", "prompt"],
+            "required": [
+              "id",
+              "label",
+              "prompt"
+            ],
             "properties": {
               "id": {
                 "type": "string",
@@ -270,7 +274,12 @@
               },
               "commentType": {
                 "type": "string",
-                "enum": ["ai-clarification", "ai-critique", "ai-suggestion", "ai-question"],
+                "enum": [
+                  "ai-clarification",
+                  "ai-critique",
+                  "ai-suggestion",
+                  "ai-question"
+                ],
                 "default": "ai-clarification",
                 "description": "Comment type for styling differentiation"
               }
@@ -357,7 +366,10 @@
         },
         "workspaceShortcuts.tasksViewer.sortBy": {
           "type": "string",
-          "enum": ["name", "modifiedDate"],
+          "enum": [
+            "name",
+            "modifiedDate"
+          ],
           "enumDescriptions": [
             "Sort tasks alphabetically by name",
             "Sort tasks by last modified date (newest first)"
@@ -1570,7 +1582,11 @@
     "languageModelTools": [
       {
         "name": "workspace-shortcuts_resolveComments",
-        "tags": ["comments", "review", "workspace-shortcuts"],
+        "tags": [
+          "comments",
+          "review",
+          "workspace-shortcuts"
+        ],
         "toolReferenceName": "resolveComments",
         "displayName": "Resolve Comments",
         "modelDescription": "Resolves review comments in markdown files or git diffs by their IDs. Use 'markdown' for markdown review comments or 'diff' for git diff review comments. The comment IDs are provided in the prompts generated from comments.",
@@ -1579,16 +1595,24 @@
         "icon": "$(check)",
         "inputSchema": {
           "type": "object",
-          "required": ["commentType", "commentIds"],
+          "required": [
+            "commentType",
+            "commentIds"
+          ],
           "properties": {
             "commentType": {
               "type": "string",
-              "enum": ["markdown", "diff"],
+              "enum": [
+                "markdown",
+                "diff"
+              ],
               "description": "The type of comments: 'markdown' for markdown review comments, 'diff' for git diff review comments"
             },
             "commentIds": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Comment IDs to resolve"
             }
           }
