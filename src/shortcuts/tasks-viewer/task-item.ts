@@ -19,11 +19,11 @@ export class TaskItem extends vscode.TreeItem {
         this.description = this.formatModifiedTime(task.modifiedTime);
         this.iconPath = this.getIconPath(task.isArchived);
 
-        // Click to open in editor
+        // Click to open in Markdown Review Editor
         this.command = {
-            command: 'vscode.open',
+            command: 'vscode.openWith',
             title: 'Open Task',
-            arguments: [vscode.Uri.file(task.filePath)]
+            arguments: [vscode.Uri.file(task.filePath), 'reviewEditorView']
         };
     }
 

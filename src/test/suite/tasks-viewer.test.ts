@@ -322,7 +322,7 @@ suite('Tasks Viewer Tests', () => {
             assert.strictEqual(item.isArchived, true);
         });
 
-        test('should set open command', () => {
+        test('should set open command with Review Editor', () => {
             const task: Task = {
                 name: 'Task',
                 filePath: '/path/to/task.md',
@@ -333,9 +333,10 @@ suite('Tasks Viewer Tests', () => {
             const item = new TaskItem(task);
 
             assert.ok(item.command);
-            assert.strictEqual(item.command.command, 'vscode.open');
+            assert.strictEqual(item.command.command, 'vscode.openWith');
             assert.ok(item.command.arguments);
-            assert.strictEqual(item.command.arguments.length, 1);
+            assert.strictEqual(item.command.arguments.length, 2);
+            assert.strictEqual(item.command.arguments[1], 'reviewEditorView');
         });
 
         test('should set tooltip to file path', () => {

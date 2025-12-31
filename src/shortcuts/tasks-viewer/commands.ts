@@ -59,9 +59,12 @@ export class TasksCommands {
             const filePath = await this.taskManager.createTask(name.trim());
             this.treeDataProvider.refresh();
 
-            // Open the new task in editor
-            const document = await vscode.workspace.openTextDocument(filePath);
-            await vscode.window.showTextDocument(document);
+            // Open the new task in Markdown Review Editor
+            await vscode.commands.executeCommand(
+                'vscode.openWith',
+                vscode.Uri.file(filePath),
+                'reviewEditorView'
+            );
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to create task: ${err.message}`);
