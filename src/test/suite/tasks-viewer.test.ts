@@ -87,11 +87,13 @@ suite('Tasks Viewer Tests', () => {
 
             test('should sanitize task name for file', async () => {
                 const filePath = await taskManager.createTask('Task: With <Special> Chars!');
+                const fileName = path.basename(filePath);
 
                 assert.ok(fs.existsSync(filePath));
-                assert.ok(!filePath.includes(':'), 'Filename should not contain colon');
-                assert.ok(!filePath.includes('<'), 'Filename should not contain <');
-                assert.ok(!filePath.includes('>'), 'Filename should not contain >');
+                // Check only the filename (not full path) to avoid Windows drive letter colon
+                assert.ok(!fileName.includes(':'), 'Filename should not contain colon');
+                assert.ok(!fileName.includes('<'), 'Filename should not contain <');
+                assert.ok(!fileName.includes('>'), 'Filename should not contain >');
             });
 
             test('should throw error if task already exists', async () => {
