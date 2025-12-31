@@ -1,0 +1,9 @@
+/**
+ * Tasks Viewer module
+ * Provides a tree view for managing markdown task files
+ */
+export * from './types';
+export * from './task-manager';
+export * from './task-item';
+export * from './tree-data-provider';
+export * from './commands';

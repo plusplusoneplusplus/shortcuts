@@ -33,6 +33,7 @@
     "onView:shortcutsView",
     "onView:markdownCommentsView",
     "onView:gitView",
+    "onView:tasksView",
     "onCommand:shortcuts.createLogicalGroup",
     "onCustomEditor:reviewEditorView",
     "onCustomEditor:gitDiffReviewEditor",
@@ -62,6 +63,11 @@
           "when": "true"
         },
         {
+          "id": "tasksView",
+          "name": "Tasks",
+          "when": "config.workspaceShortcuts.tasksViewer.enabled"
+        },
+        {
           "id": "shortcutsView",
           "name": "Groups",
           "when": "true"
@@ -86,6 +92,10 @@
       {
         "view": "globalNotesView",
         "contents": "📝 **Global Notes**\n\n[Create First Note](command:shortcuts.createGlobalNote)\n\nQuick access notes available everywhere.\n\n**Features:**\n• Create notes accessible from any workspace\n• No group assignment needed\n• Perfect for quick ideas and reminders\n• Automatically saved"
+      },
+      {
+        "view": "tasksView",
+        "contents": "📋 **Tasks**\n\n[Create First Task](command:tasksViewer.create)\n\nManage tasks as markdown files.\n\n**Features:**\n• Tasks stored in `.vscode/tasks/`\n• Archive completed tasks\n• Filter and sort tasks\n• Click to open and edit"
       },
       {
         "view": "shortcutsView",
@@ -329,6 +339,31 @@
             "type": "string"
           },
           "description": "Glob patterns for files/folders to exclude from discovery."
+        },
+        "workspaceShortcuts.tasksViewer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Tasks Viewer panel"
+        },
+        "workspaceShortcuts.tasksViewer.folderPath": {
+          "type": "string",
+          "default": ".vscode/tasks",
+          "description": "Path to tasks folder relative to workspace root"
+        },
+        "workspaceShortcuts.tasksViewer.showArchived": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show archived tasks in the Tasks Viewer"
+        },
+        "workspaceShortcuts.tasksViewer.sortBy": {
+          "type": "string",
+          "enum": ["name", "modifiedDate"],
+          "enumDescriptions": [
+            "Sort tasks alphabetically by name",
+            "Sort tasks by last modified date (newest first)"
+          ],
+          "default": "modifiedDate",
+          "description": "How to sort tasks in the Tasks Viewer"
         }
       }
     },
@@ -849,6 +884,60 @@
         "title": "Open Commit",
         "category": "Git",
         "icon": "$(git-commit)"
+      },
+      {
+        "command": "tasksViewer.create",
+        "title": "Create Task",
+        "category": "Tasks",
+        "icon": "$(add)"
+      },
+      {
+        "command": "tasksViewer.rename",
+        "title": "Rename Task",
+        "category": "Tasks",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "tasksViewer.delete",
+        "title": "Delete Task",
+        "category": "Tasks",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "tasksViewer.archive",
+        "title": "Archive Task",
+        "category": "Tasks",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "tasksViewer.unarchive",
+        "title": "Unarchive Task",
+        "category": "Tasks",
+        "icon": "$(history)"
+      },
+      {
+        "command": "tasksViewer.filter",
+        "title": "Filter Tasks",
+        "category": "Tasks",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "tasksViewer.clearFilter",
+        "title": "Clear Filter",
+        "category": "Tasks",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "tasksViewer.refresh",
+        "title": "Refresh Tasks",
+        "category": "Tasks",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tasksViewer.openFolder",
+        "title": "Open Tasks Folder",
+        "category": "Tasks",
+        "icon": "$(folder-opened)"
       }
     ],
     "menus": {
@@ -856,6 +945,26 @@
         {
           "command": "shortcuts.createGlobalNote",
           "when": "view == globalNotesView",
+          "group": "navigation"
+        },
+        {
+          "command": "tasksViewer.create",
+          "when": "view == tasksView",
+          "group": "navigation"
+        },
+        {
+          "command": "tasksViewer.filter",
+          "when": "view == tasksView",
+          "group": "navigation"
+        },
+        {
+          "command": "tasksViewer.refresh",
+          "when": "view == tasksView",
+          "group": "navigation"
+        },
+        {
+          "command": "tasksViewer.openFolder",
+          "when": "view == tasksView",
           "group": "navigation"
         },
         {
@@ -1124,6 +1233,31 @@
           "command": "shortcuts.deleteGlobalNote",
           "when": "view == globalNotesView && viewItem == globalNote",
           "group": "globalNote@3"
+        },
+        {
+          "command": "tasksViewer.rename",
+          "when": "view == tasksView && viewItem == task",
+          "group": "task@1"
+        },
+        {
+          "command": "tasksViewer.archive",
+          "when": "view == tasksView && viewItem == task",
+          "group": "task@2"
+        },
+        {
+          "command": "tasksViewer.delete",
+          "when": "view == tasksView && viewItem == task",
+          "group": "task@3"
+        },
+        {
+          "command": "tasksViewer.unarchive",
+          "when": "view == tasksView && viewItem == archivedTask",
+          "group": "task@1"
+        },
+        {
+          "command": "tasksViewer.delete",
+          "when": "view == tasksView && viewItem == archivedTask",
+          "group": "task@2"
         },
         {
           "command": "markdownComments.resolveComment",

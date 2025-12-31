@@ -16,6 +16,7 @@ import {
     DiffReviewEditorProvider
 } from './shortcuts/git-diff-comments';
 import { GlobalNotesTreeDataProvider, NoteDocumentManager } from './shortcuts/global-notes';
+import { TaskManager, TasksTreeDataProvider, TasksCommands } from './shortcuts/tasks-viewer';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import {
@@ -132,6 +133,45 @@ export async function activate(context: vscode.ExtensionContext) {
             treeDataProvider: globalNotesTreeDataProvider,
             showCollapseAll: false
         });
+
+        // Initialize Tasks Viewer
+        const tasksViewerEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.tasksViewer').get<boolean>('enabled', true);
+        let tasksTreeView: vscode.TreeView<vscode.TreeItem> | undefined;
+        let taskManager: TaskManager | undefined;
+        let tasksTreeDataProvider: TasksTreeDataProvider | undefined;
+        let tasksCommands: TasksCommands | undefined;
+        let tasksCommandDisposables: vscode.Disposable[] = [];
+
+        if (tasksViewerEnabled && workspaceFolder) {
+            taskManager = new TaskManager(workspaceRoot);
+            taskManager.ensureFoldersExist();
+
+            tasksTreeDataProvider = new TasksTreeDataProvider(taskManager);
+
+            // Set up file watching for auto-refresh
+            taskManager.watchTasksFolder(() => {
+                tasksTreeDataProvider?.refresh();
+            });
+
+            tasksTreeView = vscode.window.createTreeView('tasksView', {
+                treeDataProvider: tasksTreeDataProvider,
+                showCollapseAll: false
+            });
+
+            // Update view description with task count
+            const updateTasksViewDescription = async () => {
+                if (taskManager && tasksTreeView) {
+                    const tasks = await taskManager.getTasks();
+                    const activeCount = tasks.filter(t => !t.isArchived).length;
+                    tasksTreeView.description = `${activeCount} task${activeCount !== 1 ? 's' : ''}`;
+                }
+            };
+            tasksTreeDataProvider.onDidChangeTreeData(updateTasksViewDescription);
+            updateTasksViewDescription();
+
+            tasksCommands = new TasksCommands(taskManager, tasksTreeDataProvider);
+            tasksCommandDisposables = tasksCommands.registerCommands(context);
+        }
 
         // Initialize Git Diff Comments feature (must be before git tree provider)
         const diffCommentsManager = new DiffCommentsManager(workspaceRoot);
@@ -933,6 +973,11 @@ export async function activate(context: vscode.ExtensionContext) {
         const disposables: vscode.Disposable[] = [
             treeView,
             globalNotesTreeView,
+            // Tasks Viewer disposables
+            ...(tasksTreeView ? [tasksTreeView] : []),
+            ...(taskManager ? [taskManager] : []),
+            ...(tasksTreeDataProvider ? [tasksTreeDataProvider] : []),
+            ...tasksCommandDisposables,
             treeDataProvider,
             globalNotesTreeDataProvider,
             configurationManager,
