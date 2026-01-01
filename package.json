@@ -60,7 +60,7 @@
         {
           "id": "globalNotesView",
           "name": "Global Notes",
-          "when": "true"
+          "when": "config.workspaceShortcuts.globalNotes.enabled"
         },
         {
           "id": "tasksView",
@@ -348,6 +348,11 @@
             "type": "string"
           },
           "description": "Glob patterns for files/folders to exclude from discovery."
+        },
+        "workspaceShortcuts.globalNotes.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the Global Notes panel"
         },
         "workspaceShortcuts.tasksViewer.enabled": {
           "type": "boolean",
