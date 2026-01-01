@@ -628,6 +628,96 @@ suite('Markdown Comments Feature Tests', () => {
         });
     });
 
+    suite('CommentItem Label Formatting', () => {
+        test('should show single line text without indicator', () => {
+            const comment: MarkdownComment = {
+                id: 'test-single',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 20 },
+                selectedText: 'Single line text',
+                comment: 'Comment',
+                status: 'open',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            const item = new CommentItem(comment, '/path/test.md');
+            assert.ok(item.label?.toString().includes('Single line text'));
+            assert.ok(!item.label?.toString().includes('|'));
+            assert.ok(!item.label?.toString().includes('more'));
+        });
+
+        test('should show two lines separated by pipe', () => {
+            const comment: MarkdownComment = {
+                id: 'test-two',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 2, endColumn: 20 },
+                selectedText: 'First line\nSecond line',
+                comment: 'Comment',
+                status: 'open',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            const item = new CommentItem(comment, '/path/test.md');
+            assert.ok(item.label?.toString().includes('First line'));
+            assert.ok(item.label?.toString().includes('Second line'));
+            assert.ok(item.label?.toString().includes('|'));
+            assert.ok(!item.label?.toString().includes('more'));
+        });
+
+        test('should show first two lines with indicator for 3+ lines', () => {
+            const comment: MarkdownComment = {
+                id: 'test-multi',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 5, endColumn: 20 },
+                selectedText: 'First line\nSecond line\nThird line\nFourth line\nFifth line',
+                comment: 'Comment',
+                status: 'open',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            const item = new CommentItem(comment, '/path/test.md');
+            assert.ok(item.label?.toString().includes('First line'));
+            assert.ok(item.label?.toString().includes('Second line'));
+            assert.ok(item.label?.toString().includes('|'));
+            assert.ok(item.label?.toString().includes('(+3 more)'));
+            // Should NOT include lines beyond the first two
+            assert.ok(!item.label?.toString().includes('Third line'));
+        });
+
+        test('should skip empty lines when counting', () => {
+            const comment: MarkdownComment = {
+                id: 'test-empty',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 5, endColumn: 20 },
+                selectedText: 'First line\n\n\nSecond line\n\nThird line',
+                comment: 'Comment',
+                status: 'open',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            const item = new CommentItem(comment, '/path/test.md');
+            // Should show First and Second (skipping empty lines), with +1 more for Third
+            assert.ok(item.label?.toString().includes('First line'));
+            assert.ok(item.label?.toString().includes('Second line'));
+            assert.ok(item.label?.toString().includes('(+1 more)'));
+        });
+
+        test('should handle empty selected text', () => {
+            const comment: MarkdownComment = {
+                id: 'test-empty-text',
+                filePath: 'test.md',
+                selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+                selectedText: '',
+                comment: 'Comment',
+                status: 'open',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            const item = new CommentItem(comment, '/path/test.md');
+            assert.ok(item.label?.toString().includes('""'));
+        });
+    });
+
     suite('MarkdownCommentsTreeDataProvider', () => {
         let treeProvider: MarkdownCommentsTreeDataProvider;
 

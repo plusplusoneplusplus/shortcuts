@@ -56,11 +56,17 @@ export class CommentItem extends vscode.TreeItem {
             ? `Line ${comment.selection.startLine}`
             : `Lines ${comment.selection.startLine}-${comment.selection.endLine}`;
 
-        // Truncate selected text for display
-        const maxTextLength = 40;
-        let selectedTextPreview = comment.selectedText.replace(/\n/g, ' ').trim();
-        if (selectedTextPreview.length > maxTextLength) {
-            selectedTextPreview = selectedTextPreview.substring(0, maxTextLength - 3) + '...';
+        // Show first 2 lines of selected text, indicate if more
+        const lines = comment.selectedText.split('\n').filter(l => l.trim() !== '');
+        let selectedTextPreview: string;
+        if (lines.length === 0) {
+            selectedTextPreview = '';
+        } else if (lines.length === 1) {
+            selectedTextPreview = lines[0].trim();
+        } else if (lines.length === 2) {
+            selectedTextPreview = lines[0].trim() + ' | ' + lines[1].trim();
+        } else {
+            selectedTextPreview = lines[0].trim() + ' | ' + lines[1].trim() + ' (+' + (lines.length - 2) + ' more)';
         }
 
         super(`💬 ${lineRange}: "${selectedTextPreview}"`, vscode.TreeItemCollapsibleState.None);
