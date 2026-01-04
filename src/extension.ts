@@ -8,7 +8,7 @@ import { ConfigurationManager } from './shortcuts/configuration-manager';
 import { DiscoveryEngine, registerDiscoveryCommands } from './shortcuts/discovery';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GitChangeItem, GitCommitFile, GitCommitItem, GitDragDropController, GitLogService, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
+import { GitChangeItem, GitCommitFile, GitCommitItem, GitDragDropController, GitLogService, GitShowTextDocumentProvider, GIT_SHOW_SCHEME, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
 import {
     DiffCommentFileItem,
     DiffCommentItem,
@@ -186,6 +186,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Restore any previously looked-up commit from workspace state
         await gitTreeDataProvider.restoreLookedUpCommit();
+
+        // Register GitShowTextDocumentProvider for viewing file content at specific commits
+        const gitShowProvider = new GitShowTextDocumentProvider();
+        const gitShowProviderDisposable = vscode.workspace.registerTextDocumentContentProvider(
+            GIT_SHOW_SCHEME,
+            gitShowProvider
+        );
 
         let gitTreeView: vscode.TreeView<vscode.TreeItem> | undefined;
         let gitRefreshCommand: vscode.Disposable | undefined;
@@ -999,6 +1006,8 @@ export async function activate(context: vscode.ExtensionContext) {
             refreshProcessesCommand,
             // Git view disposables
             gitTreeDataProvider,
+            gitShowProvider,
+            gitShowProviderDisposable,
             // Git Diff Comments disposables
             diffCommentsManager,
             ...diffReviewCommands,
@@ -1034,6 +1043,9 @@ export async function activate(context: vscode.ExtensionContext) {
             const gitLogService = gitTreeDataProvider['gitLogService'] as GitLogService;
             const codeReviewDisposables = registerCodeReviewCommands(context, gitLogService, aiProcessManager);
             disposables.push(...codeReviewDisposables);
+
+            // Connect GitLogService to LogicalTreeDataProvider for commit file expansion
+            treeDataProvider.setGitLogService(gitLogService);
         }
 
         // Register discovery commands

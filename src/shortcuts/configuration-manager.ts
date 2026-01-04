@@ -526,7 +526,7 @@ export class ConfigurationManager {
                         continue;
                     }
 
-                    if (item.type !== 'folder' && item.type !== 'file' && item.type !== 'command' && item.type !== 'task' && item.type !== 'note') {
+                    if (item.type !== 'folder' && item.type !== 'file' && item.type !== 'command' && item.type !== 'task' && item.type !== 'note' && item.type !== 'commit') {
                         console.warn('Skipping logical group item with invalid type:', item);
                         continue;
                     }
@@ -572,6 +572,32 @@ export class ConfigurationManager {
                             name: item.name,
                             type: 'note',
                             noteId: item.noteId,
+                            icon: typeof item.icon === 'string' ? item.icon : undefined
+                        });
+                        continue;
+                    }
+
+                    // Handle commit items
+                    if (item.type === 'commit') {
+                        if (!item.commitRef || typeof item.commitRef !== 'object') {
+                            console.warn('Skipping commit item with invalid commitRef:', item);
+                            continue;
+                        }
+                        if (typeof item.commitRef.hash !== 'string' || !item.commitRef.hash.trim()) {
+                            console.warn('Skipping commit item with invalid hash:', item);
+                            continue;
+                        }
+                        if (typeof item.commitRef.repositoryRoot !== 'string' || !item.commitRef.repositoryRoot.trim()) {
+                            console.warn('Skipping commit item with invalid repositoryRoot:', item);
+                            continue;
+                        }
+                        validItems.push({
+                            name: item.name,
+                            type: 'commit',
+                            commitRef: {
+                                hash: item.commitRef.hash,
+                                repositoryRoot: item.commitRef.repositoryRoot
+                            },
                             icon: typeof item.icon === 'string' ? item.icon : undefined
                         });
                         continue;

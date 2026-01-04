@@ -4,7 +4,8 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
 import { NotificationManager } from './notification-manager';
 import { ThemeManager } from './theme-manager';
-import { CommandShortcutItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, ShortcutItem, TaskShortcutItem } from './tree-items';
+import { CommandShortcutItem, CommitFileItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, ShortcutItem, TaskShortcutItem } from './tree-items';
+import { GitLogService } from './git/git-log-service';
 import { BasePath, LogicalGroup } from './types';
 
 /**
@@ -19,11 +20,19 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
     private workspaceRoot: string;
     private themeManager: ThemeManager;
     private searchFilter: string = '';
+    private gitLogService: GitLogService | undefined;
 
     constructor(workspaceRoot: string, configurationManager: ConfigurationManager, themeManager: ThemeManager) {
         this.workspaceRoot = workspaceRoot;
         this.configurationManager = configurationManager;
         this.themeManager = themeManager;
+    }
+
+    /**
+     * Set the GitLogService for fetching commit files
+     */
+    setGitLogService(gitLogService: GitLogService): void {
+        this.gitLogService = gitLogService;
     }
 
     /**
@@ -50,6 +59,9 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
             } else if (element instanceof FolderShortcutItem) {
                 // Return filesystem contents of expanded folders (nested folders)
                 return await this.getFolderContentsFromFolderItem(element);
+            } else if (element instanceof CommitShortcutItem) {
+                // Return files changed in the commit
+                return await this.getCommitFiles(element);
             } else {
                 // Files and other items have no children
                 return [];
@@ -329,10 +341,12 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
 
                     // Handle commit items
                     if (itemConfig.type === 'commit') {
+                        console.log(`Processing commit item: ${itemConfig.name}`);
                         if (!itemConfig.commitRef) {
                             console.warn(`Commit item missing commit reference: ${itemConfig.name}`);
                             continue;
                         }
+                        console.log(`Creating CommitShortcutItem with hash: ${itemConfig.commitRef.hash}`);
                         const commitItem = new CommitShortcutItem(
                             itemConfig.name,
                             itemConfig.commitRef.hash,
@@ -341,6 +355,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
                             itemConfig.icon
                         );
                         items.push(commitItem);
+                        console.log(`Added commit item to group: ${groupPath}`);
                         continue;
                     }
 
@@ -470,6 +485,47 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
     async findLogicalGroup(groupName: string): Promise<LogicalGroup | undefined> {
         const groups = await this.getLogicalGroups();
         return groups.find(g => g.name === groupName);
+    }
+
+    /**
+     * Get files changed in a commit
+     */
+    private async getCommitFiles(commitItem: CommitShortcutItem): Promise<vscode.TreeItem[]> {
+        if (!this.gitLogService) {
+            console.warn('GitLogService not available for commit file expansion');
+            return [];
+        }
+
+        try {
+            const files = this.gitLogService.getCommitFiles(
+                commitItem.repositoryRoot,
+                commitItem.commitHash
+            );
+
+            return files.map(file => {
+                // Convert GitChangeStatus to single-letter status
+                const statusMap: Record<string, 'A' | 'M' | 'D' | 'R' | 'C'> = {
+                    'added': 'A',
+                    'modified': 'M',
+                    'deleted': 'D',
+                    'renamed': 'R',
+                    'copied': 'C'
+                };
+                const status = statusMap[file.status] || 'M';
+
+                return new CommitFileItem(
+                    file.path,
+                    status,
+                    file.commitHash,
+                    file.parentHash,
+                    file.repositoryRoot,
+                    file.originalPath
+                );
+            });
+        } catch (error) {
+            console.error('Error getting commit files:', error);
+            return [];
+        }
     }
 
     /**

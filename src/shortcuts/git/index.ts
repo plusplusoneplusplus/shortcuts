@@ -17,6 +17,9 @@ export * from './looked-up-commit-item';
 // Provider
 export * from './tree-data-provider';
 
+// Text Document Provider
+export * from './git-show-text-document-provider';
+
 // Drag and Drop
 export * from './git-drag-drop-controller';
 

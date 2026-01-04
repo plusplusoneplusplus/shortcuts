@@ -968,6 +968,12 @@
         "icon": "$(git-commit)"
       },
       {
+        "command": "shortcuts.openCommitFileDiff",
+        "title": "Open Diff",
+        "category": "Git",
+        "icon": "$(diff)"
+      },
+      {
         "command": "tasksViewer.create",
         "title": "Create Task",
         "category": "Tasks",
@@ -1300,6 +1306,11 @@
           "command": "shortcuts.removeFromLogicalGroup",
           "when": "view == shortcutsView && viewItem == logicalGroupItem_commit",
           "group": "commit@2"
+        },
+        {
+          "command": "shortcuts.openCommitFileDiff",
+          "when": "view == shortcutsView && viewItem == commitFile",
+          "group": "commitFile@1"
         },
         {
           "command": "shortcuts.editGlobalNote",

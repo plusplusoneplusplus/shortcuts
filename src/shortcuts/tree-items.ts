@@ -707,6 +707,7 @@ export class GlobalNoteItem extends vscode.TreeItem {
 /**
  * Tree item representing a git commit shortcut
  * Used in logical groups to reference specific commits
+ * Expandable to show files changed in the commit
  */
 export class CommitShortcutItem extends vscode.TreeItem {
     public readonly contextValue = 'logicalGroupItem_commit';
@@ -722,14 +723,15 @@ export class CommitShortcutItem extends vscode.TreeItem {
         parentGroup: string,
         iconName?: string
     ) {
-        super(label, vscode.TreeItemCollapsibleState.None);
+        // Make the commit item expandable (collapsed by default)
+        super(label, vscode.TreeItemCollapsibleState.Collapsed);
         this.commitHash = commitHash;
         this.shortHash = commitHash.substring(0, 7);
         this.repositoryRoot = repositoryRoot;
         this.parentGroup = parentGroup;
         
         // Set tooltip with commit hash
-        this.tooltip = `Commit: ${this.shortHash}\n${label}`;
+        this.tooltip = `Commit: ${this.shortHash}\n${label}\n\nClick to expand and see changed files`;
         
         // Set description to show short hash
         this.description = this.shortHash;
@@ -737,12 +739,8 @@ export class CommitShortcutItem extends vscode.TreeItem {
         // Set icon
         this.iconPath = this.getIconPath(iconName);
 
-        // Set up the command to open commit details when clicked
-        this.command = {
-            command: 'shortcuts.openCommit',
-            title: 'Open Commit',
-            arguments: [this]
-        };
+        // No command - expanding/collapsing is the primary action
+        // Double-click or context menu can be used to open full commit view
     }
 
     private getIconPath(iconName?: string): vscode.ThemeIcon {
@@ -751,5 +749,83 @@ export class CommitShortcutItem extends vscode.TreeItem {
         }
         // Default to git-commit icon
         return new vscode.ThemeIcon('git-commit', new vscode.ThemeColor('gitDecoration.addedResourceForeground'));
+    }
+}
+
+/**
+ * Tree item representing a file within a commit
+ * Shows the file path, status, and opens diff view when clicked
+ */
+export class CommitFileItem extends vscode.TreeItem {
+    public readonly contextValue = 'commitFile';
+    public readonly filePath: string;
+    public readonly status: 'A' | 'M' | 'D' | 'R' | 'C';
+    public readonly commitHash: string;
+    public readonly parentHash: string;
+    public readonly repositoryRoot: string;
+    public readonly originalPath?: string;
+
+    constructor(
+        filePath: string,
+        status: 'A' | 'M' | 'D' | 'R' | 'C',
+        commitHash: string,
+        parentHash: string,
+        repositoryRoot: string,
+        originalPath?: string
+    ) {
+        super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
+        
+        this.filePath = filePath;
+        this.status = status;
+        this.commitHash = commitHash;
+        this.parentHash = parentHash;
+        this.repositoryRoot = repositoryRoot;
+        this.originalPath = originalPath;
+
+        // Set icon based on status
+        this.iconPath = this.getStatusIcon(status);
+
+        // Set description (directory path)
+        const dirPath = path.dirname(filePath);
+        this.description = dirPath === '.' ? '' : dirPath;
+
+        // Set tooltip with full path and status
+        const statusLabel = this.getStatusLabel(status);
+        this.tooltip = `${statusLabel}: ${filePath}${originalPath ? ` (from ${originalPath})` : ''}`;
+
+        // Click opens diff
+        this.command = {
+            command: 'shortcuts.openCommitFileDiff',
+            title: 'Open Diff',
+            arguments: [this]
+        };
+    }
+
+    private getStatusIcon(status: 'A' | 'M' | 'D' | 'R' | 'C'): vscode.ThemeIcon {
+        switch (status) {
+            case 'A':
+                return new vscode.ThemeIcon('diff-added', new vscode.ThemeColor('gitDecoration.addedResourceForeground'));
+            case 'M':
+                return new vscode.ThemeIcon('diff-modified', new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'));
+            case 'D':
+                return new vscode.ThemeIcon('diff-removed', new vscode.ThemeColor('gitDecoration.deletedResourceForeground'));
+            case 'R':
+                return new vscode.ThemeIcon('diff-renamed', new vscode.ThemeColor('gitDecoration.renamedResourceForeground'));
+            case 'C':
+                return new vscode.ThemeIcon('files', new vscode.ThemeColor('gitDecoration.addedResourceForeground'));
+            default:
+                return new vscode.ThemeIcon('file');
+        }
+    }
+
+    private getStatusLabel(status: 'A' | 'M' | 'D' | 'R' | 'C'): string {
+        switch (status) {
+            case 'A': return 'Added';
+            case 'M': return 'Modified';
+            case 'D': return 'Deleted';
+            case 'R': return 'Renamed';
+            case 'C': return 'Copied';
+            default: return 'Changed';
+        }
     }
 }

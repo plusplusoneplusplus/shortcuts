@@ -4,12 +4,14 @@
  * Registers and handles commands for the Auto AI Discovery feature.
  */
 
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { AIProcessManager } from '../ai-service';
 import { DiscoveryEngine, createDiscoveryRequest } from './discovery-engine';
 import { DiscoveryPreviewPanel } from './discovery-webview';
 import { ConfigurationManager } from '../configuration-manager';
-import { LogicalGroupItem, CommitShortcutItem } from '../tree-items';
+import { createGitShowUri, GIT_SHOW_SCHEME } from '../git/git-show-text-document-provider';
+import { LogicalGroupItem, CommitShortcutItem, CommitFileItem } from '../tree-items';
 import { DEFAULT_DISCOVERY_SCOPE, serializeDiscoveryProcess } from './types';
 
 /**
@@ -58,6 +60,16 @@ export function registerDiscoveryCommands(
             'shortcuts.openCommit',
             async (item: CommitShortcutItem) => {
                 await openCommit(item);
+            }
+        )
+    );
+
+    // Open commit file diff
+    disposables.push(
+        vscode.commands.registerCommand(
+            'shortcuts.openCommitFileDiff',
+            async (item: CommitFileItem) => {
+                await openCommitFileDiff(item);
             }
         )
     );
@@ -323,6 +335,68 @@ async function openCommit(item: CommitShortcutItem): Promise<void> {
         vscode.window.showInformationMessage(
             `Commit hash copied: ${item.shortHash}`
         );
+    }
+}
+
+/**
+ * Empty tree hash for git - represents an empty directory/file
+ * Used for diffing newly added files (no parent content)
+ */
+const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+/**
+ * Open a file diff for a commit file item
+ * Uses VSCode's built-in diff viewer with git-show URIs
+ */
+async function openCommitFileDiff(item: CommitFileItem): Promise<void> {
+    try {
+        const { filePath, commitHash, parentHash, repositoryRoot, status, originalPath } = item;
+
+        // Handle deleted files - show the file content at parent commit vs empty
+        if (status === 'D') {
+            const leftUri = createGitShowUri(filePath, parentHash, repositoryRoot);
+            const rightUri = createGitShowUri(filePath, EMPTY_TREE_HASH, repositoryRoot);
+            const title = `${path.basename(filePath)} (deleted in ${commitHash.slice(0, 7)})`;
+            await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
+            return;
+        }
+
+        // Handle added files - show empty vs file content at commit
+        if (status === 'A') {
+            const leftUri = createGitShowUri(filePath, EMPTY_TREE_HASH, repositoryRoot);
+            const rightUri = createGitShowUri(filePath, commitHash, repositoryRoot);
+            const title = `${path.basename(filePath)} (added in ${commitHash.slice(0, 7)})`;
+            await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
+            return;
+        }
+
+        // Handle renamed files - show original path at parent vs new path at commit
+        if (status === 'R' && originalPath) {
+            const leftUri = createGitShowUri(originalPath, parentHash, repositoryRoot);
+            const rightUri = createGitShowUri(filePath, commitHash, repositoryRoot);
+            const title = `${path.basename(originalPath)} → ${path.basename(filePath)} (${commitHash.slice(0, 7)})`;
+            await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
+            return;
+        }
+
+        // Handle copied files - show original path at parent vs new path at commit
+        if (status === 'C' && originalPath) {
+            const leftUri = createGitShowUri(originalPath, parentHash, repositoryRoot);
+            const rightUri = createGitShowUri(filePath, commitHash, repositoryRoot);
+            const title = `${path.basename(originalPath)} → ${path.basename(filePath)} (copied in ${commitHash.slice(0, 7)})`;
+            await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
+            return;
+        }
+
+        // Handle modified files - show file at parent vs file at commit
+        const leftUri = createGitShowUri(filePath, parentHash, repositoryRoot);
+        const rightUri = createGitShowUri(filePath, commitHash, repositoryRoot);
+        const title = `${path.basename(filePath)} (${commitHash.slice(0, 7)})`;
+
+        await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
+    } catch (error) {
+        console.error('Error opening commit file diff:', error);
+        vscode.window.showErrorMessage(`Failed to open diff: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
