@@ -425,6 +425,21 @@
           ],
           "default": "modifiedDate",
           "description": "How to sort tasks in the Tasks Viewer"
+        },
+        "workspaceShortcuts.markdownComments.codeBlockTheme": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "light",
+            "dark"
+          ],
+          "enumDescriptions": [
+            "Automatically select based on current VSCode theme",
+            "Always use light theme colors for code blocks",
+            "Always use dark theme colors for code blocks"
+          ],
+          "default": "auto",
+          "markdownDescription": "Color scheme for code block syntax highlighting in the Markdown Review Editor. Use **auto** to match your VSCode theme, or explicitly choose **light** or **dark**."
         }
       }
     },

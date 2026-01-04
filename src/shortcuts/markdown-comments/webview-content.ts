@@ -1,18 +1,19 @@
 /**
  * Webview content generator for the Review Editor View
  * Provides inline commenting experience similar to GitHub PR reviews
- * 
+ *
  * Features:
  * - Markdown syntax highlighting
  * - Code block syntax highlighting (via highlight.js)
  * - Mermaid diagram rendering
  * - Inline commenting on text and diagrams
- * 
+ *
  * The webview JavaScript is now bundled separately by webpack (dist/webview.js)
  * for better maintainability, testability, and IDE support.
  */
 
 import * as vscode from 'vscode';
+import { CodeBlockTheme, generateCodeBlockThemeStyle } from './code-block-themes';
 
 /**
  * Get URIs for CSS stylesheets
@@ -40,20 +41,36 @@ function getWebviewScriptUri(webview: vscode.Webview, extensionUri: vscode.Uri):
 }
 
 /**
+ * Options for webview content generation
+ */
+export interface WebviewContentOptions {
+    /** Code block theme setting: 'auto', 'light', or 'dark' */
+    codeBlockTheme: CodeBlockTheme;
+    /** Current VSCode theme kind for 'auto' detection */
+    vscodeThemeKind: 'light' | 'dark' | 'high-contrast' | 'high-contrast-light';
+}
+
+/**
  * Generate the HTML content for the Review Editor View webview
  */
 export function getWebviewContent(
     webview: vscode.Webview,
-    extensionUri: vscode.Uri
+    extensionUri: vscode.Uri,
+    options?: WebviewContentOptions
 ): string {
     // Get nonce for script security
     const nonce = getNonce();
-    
+
     // Get stylesheet URIs
     const styles = getStylesheetUris(webview, extensionUri);
-    
+
     // Get bundled webview script URI
     const webviewScriptUri = getWebviewScriptUri(webview, extensionUri);
+
+    // Generate code block theme CSS if options provided
+    const codeBlockThemeStyle = options
+        ? generateCodeBlockThemeStyle(options.codeBlockTheme, options.vscodeThemeKind)
+        : '';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -66,6 +83,7 @@ export function getWebviewContent(
     <link rel="stylesheet" href="${styles.markdownCss}">
     <link rel="stylesheet" href="${styles.commentsCss}">
     <link rel="stylesheet" href="${styles.componentsCss}">
+    ${codeBlockThemeStyle}
 </head>
 <body>
     <div class="toolbar">

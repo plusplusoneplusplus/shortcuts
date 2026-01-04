@@ -7,10 +7,11 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { AIProcessManager, getAICommandRegistry } from '../ai-service';
 import { handleAIClarification } from './ai-clarification-handler';
+import { CodeBlockTheme } from './code-block-themes';
 import { CommentsManager } from './comments-manager';
 import { isExternalUrl, isMarkdownFile, resolveFilePath } from './file-path-utils';
 import { ClarificationContext, isUserComment, MarkdownComment, MermaidContext } from './types';
-import { getWebviewContent } from './webview-content';
+import { getWebviewContent, WebviewContentOptions } from './webview-content';
 
 /**
  * Message types from webview to extension
@@ -76,6 +77,40 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         private readonly commentsManager: CommentsManager,
         private readonly aiProcessManager?: AIProcessManager
     ) { }
+
+    /**
+     * Get webview content options based on current settings and theme
+     */
+    private getWebviewContentOptions(): WebviewContentOptions {
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts.markdownComments');
+        const codeBlockTheme = config.get<CodeBlockTheme>('codeBlockTheme', 'auto');
+
+        // Get current VSCode theme kind
+        const themeKind = vscode.window.activeColorTheme.kind;
+        let vscodeThemeKind: WebviewContentOptions['vscodeThemeKind'];
+
+        switch (themeKind) {
+            case vscode.ColorThemeKind.Light:
+                vscodeThemeKind = 'light';
+                break;
+            case vscode.ColorThemeKind.Dark:
+                vscodeThemeKind = 'dark';
+                break;
+            case vscode.ColorThemeKind.HighContrast:
+                vscodeThemeKind = 'high-contrast';
+                break;
+            case vscode.ColorThemeKind.HighContrastLight:
+                vscodeThemeKind = 'high-contrast-light';
+                break;
+            default:
+                vscodeThemeKind = 'dark';
+        }
+
+        return {
+            codeBlockTheme,
+            vscodeThemeKind
+        };
+    }
 
     /**
      * Request to scroll to a comment when the file is opened
@@ -246,10 +281,11 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             previousContent = content;
         };
 
-        // Set HTML content
+        // Set HTML content with code block theme
         webviewPanel.webview.html = getWebviewContent(
             webviewPanel.webview,
-            this.context.extensionUri
+            this.context.extensionUri,
+            this.getWebviewContentOptions()
         );
 
         // Handle messages from webview
@@ -287,9 +323,33 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             }
         });
 
-        // Listen for configuration changes (especially AI service settings)
+        // Listen for configuration changes (AI service settings and code block theme)
         const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(event => {
             if (event.affectsConfiguration('workspaceShortcuts.aiService')) {
+                updateWebview();
+            }
+            // Update webview HTML when code block theme changes
+            if (event.affectsConfiguration('workspaceShortcuts.markdownComments.codeBlockTheme')) {
+                webviewPanel.webview.html = getWebviewContent(
+                    webviewPanel.webview,
+                    this.context.extensionUri,
+                    this.getWebviewContentOptions()
+                );
+                updateWebview();
+            }
+        });
+
+        // Listen for theme changes (for 'auto' mode)
+        const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {
+            const codeBlockTheme = vscode.workspace.getConfiguration('workspaceShortcuts.markdownComments')
+                .get<CodeBlockTheme>('codeBlockTheme', 'auto');
+            // Only refresh if using 'auto' mode
+            if (codeBlockTheme === 'auto') {
+                webviewPanel.webview.html = getWebviewContent(
+                    webviewPanel.webview,
+                    this.context.extensionUri,
+                    this.getWebviewContentOptions()
+                );
                 updateWebview();
             }
         });
@@ -300,7 +360,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             documentChangeDisposable.dispose();
             commentsChangeDisposable.dispose();
             configChangeDisposable.dispose();
-            
+            themeChangeDisposable.dispose();
+
             // Remove from active webviews tracking
             ReviewEditorViewProvider.activeWebviews.delete(normalizedFilePath);
         });
