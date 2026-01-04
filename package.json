@@ -321,6 +321,50 @@
           "default": false,
           "markdownDescription": "**[Preview]** Enable Auto AI Discovery feature to find related docs, files, and commits for a feature."
         },
+        "workspaceShortcuts.discovery.mode": {
+          "type": "string",
+          "default": "ai",
+          "enum": [
+            "ai",
+            "keyword",
+            "auto"
+          ],
+          "enumDescriptions": [
+            "Use AI-powered semantic search (requires Copilot CLI)",
+            "Use keyword-based search (no AI required)",
+            "Try AI first, fall back to keyword search if unavailable"
+          ],
+          "markdownDescription": "Discovery mode. AI mode uses Copilot CLI for semantic search. Keyword mode uses regex-based search."
+        },
+        "workspaceShortcuts.discovery.aiTimeout": {
+          "type": "number",
+          "default": 120,
+          "minimum": 30,
+          "maximum": 600,
+          "description": "Maximum time in seconds to wait for AI discovery to complete."
+        },
+        "workspaceShortcuts.discovery.maxResults": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "maximum": 100,
+          "description": "Maximum number of results to return from discovery."
+        },
+        "workspaceShortcuts.discovery.minRelevance": {
+          "type": "number",
+          "default": 40,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Minimum relevance score (0-100) to include in AI discovery results."
+        },
+        "workspaceShortcuts.discovery.focusAreas": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Directories to prioritize in AI discovery search (e.g., 'src', 'lib')."
+        },
         "workspaceShortcuts.discovery.maxCommits": {
           "type": "number",
           "default": 50,
@@ -333,7 +377,7 @@
           "default": 30,
           "minimum": 0,
           "maximum": 100,
-          "description": "Minimum relevance score (0-100) to include in results."
+          "description": "Minimum relevance score (0-100) to include in keyword-based results."
         },
         "workspaceShortcuts.discovery.excludePatterns": {
           "type": "array",

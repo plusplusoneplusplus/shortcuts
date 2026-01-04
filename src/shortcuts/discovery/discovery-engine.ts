@@ -1,12 +1,12 @@
 /**
  * Discovery Engine for Auto AI Discovery
  * 
- * Orchestrates the discovery process:
- * 1. Extract keywords from feature description
- * 2. Search files in parallel
- * 3. Search git history
- * 4. Score all results
- * 5. Rank and filter by relevance
+ * This module provides both AI-powered and keyword-based discovery:
+ * - AIDiscoveryEngine: Uses Copilot CLI for semantic search (recommended)
+ * - DiscoveryEngine: Legacy keyword-based search (fallback)
+ * 
+ * The DiscoveryEngine now delegates to AIDiscoveryEngine by default,
+ * with fallback to keyword-based search if AI is unavailable.
  */
 
 import * as vscode from 'vscode';
@@ -24,10 +24,27 @@ import {
 import { extractKeywords, combineKeywords } from './keyword-extractor';
 import { FileSearchProvider, GitSearchProvider } from './search-providers';
 import { scoreResults, deduplicateResults } from './relevance-scorer';
+import { AIDiscoveryEngine, createAIDiscoveryRequest } from './ai-discovery-engine';
+
+/**
+ * Discovery mode setting
+ */
+export type DiscoveryMode = 'ai' | 'keyword' | 'auto';
+
+/**
+ * Options for DiscoveryEngine constructor
+ */
+export interface DiscoveryEngineOptions {
+    /** Force a specific discovery mode (useful for testing) */
+    forceMode?: DiscoveryMode;
+}
 
 /**
  * Discovery Engine class
- * Manages the discovery process and emits events for progress updates
+ * Manages the discovery process and emits events for progress updates.
+ * 
+ * By default, uses AI-powered discovery via AIDiscoveryEngine.
+ * Falls back to keyword-based search if AI is unavailable or disabled.
  */
 export class DiscoveryEngine implements vscode.Disposable {
     private readonly _onDidChangeProcess = new vscode.EventEmitter<DiscoveryEvent>();
@@ -36,17 +53,82 @@ export class DiscoveryEngine implements vscode.Disposable {
     private processes: Map<string, DiscoveryProcess> = new Map();
     private fileSearchProvider: FileSearchProvider;
     private gitSearchProvider: GitSearchProvider;
+    private aiEngine: AIDiscoveryEngine;
     private disposables: vscode.Disposable[] = [];
+    private forcedMode?: DiscoveryMode;
     
-    constructor() {
+    constructor(options?: DiscoveryEngineOptions) {
         this.fileSearchProvider = new FileSearchProvider();
         this.gitSearchProvider = new GitSearchProvider();
+        this.aiEngine = new AIDiscoveryEngine();
+        this.forcedMode = options?.forceMode;
+        
+        // Forward AI engine events
+        this.disposables.push(
+            this.aiEngine.onDidChangeProcess(event => {
+                // Store process in our map for unified tracking
+                this.processes.set(event.process.id, event.process);
+                this._onDidChangeProcess.fire(event);
+            })
+        );
+    }
+
+    /**
+     * Get the discovery mode from settings or forced mode
+     */
+    private getDiscoveryMode(): DiscoveryMode {
+        // If mode is forced (e.g., for testing), use that
+        if (this.forcedMode) {
+            return this.forcedMode;
+        }
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts.discovery');
+        return config.get<DiscoveryMode>('mode', 'ai');
+    }
+
+    /**
+     * Check if AI discovery is enabled
+     */
+    private isAIDiscoveryEnabled(): boolean {
+        const mode = this.getDiscoveryMode();
+        return mode === 'ai' || mode === 'auto';
     }
     
     /**
      * Start a new discovery process
+     * Uses AI-powered discovery by default, with keyword fallback
      */
     async discover(request: DiscoveryRequest): Promise<DiscoveryProcess> {
+        const mode = this.getDiscoveryMode();
+
+        // Use AI discovery if enabled
+        if (mode === 'ai' || mode === 'auto') {
+            try {
+                console.log('Discovery: Using AI-powered discovery');
+                return await this.aiEngine.discover(request);
+            } catch (error) {
+                if (mode === 'ai') {
+                    // AI mode is required, don't fall back
+                    const process = this.createProcess(request);
+                    process.status = 'failed';
+                    process.error = `AI discovery failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                    process.endTime = new Date();
+                    this.processes.set(process.id, process);
+                    this.emitEvent('process-failed', process);
+                    return process;
+                }
+                // Auto mode: fall back to keyword search
+                console.log('Discovery: AI discovery failed, falling back to keyword search');
+            }
+        }
+
+        // Keyword-based discovery (legacy or fallback)
+        return this.discoverWithKeywords(request);
+    }
+
+    /**
+     * Legacy keyword-based discovery
+     */
+    private async discoverWithKeywords(request: DiscoveryRequest): Promise<DiscoveryProcess> {
         // Create new process
         const process = this.createProcess(request);
         this.processes.set(process.id, process);
@@ -127,6 +209,10 @@ export class DiscoveryEngine implements vscode.Disposable {
      * Cancel a running discovery process
      */
     cancelProcess(processId: string): void {
+        // Try AI engine first
+        this.aiEngine.cancelProcess(processId);
+
+        // Also check local processes
         const process = this.processes.get(processId);
         if (process && process.status === 'running') {
             process.status = 'cancelled';
@@ -139,14 +225,25 @@ export class DiscoveryEngine implements vscode.Disposable {
      * Get a process by ID
      */
     getProcess(processId: string): DiscoveryProcess | undefined {
-        return this.processes.get(processId);
+        return this.processes.get(processId) || this.aiEngine.getProcess(processId);
     }
     
     /**
      * Get all processes
      */
     getAllProcesses(): DiscoveryProcess[] {
-        return Array.from(this.processes.values());
+        // Combine processes from both engines, avoiding duplicates
+        const allProcesses = new Map<string, DiscoveryProcess>();
+        
+        for (const process of this.processes.values()) {
+            allProcesses.set(process.id, process);
+        }
+        
+        for (const process of this.aiEngine.getAllProcesses()) {
+            allProcesses.set(process.id, process);
+        }
+        
+        return Array.from(allProcesses.values());
     }
     
     /**
@@ -158,6 +255,7 @@ export class DiscoveryEngine implements vscode.Disposable {
                 this.processes.delete(id);
             }
         }
+        this.aiEngine.clearCompletedProcesses();
     }
     
     /**
@@ -263,6 +361,7 @@ export class DiscoveryEngine implements vscode.Disposable {
      */
     dispose(): void {
         this._onDidChangeProcess.dispose();
+        this.aiEngine.dispose();
         for (const disposable of this.disposables) {
             disposable.dispose();
         }

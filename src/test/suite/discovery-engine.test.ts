@@ -15,7 +15,8 @@ suite('Discovery Engine Tests', () => {
 
     setup(() => {
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'discovery-engine-test-'));
-        engine = new DiscoveryEngine();
+        // Use keyword mode to avoid AI timeouts in tests
+        engine = new DiscoveryEngine({ forceMode: 'keyword' });
         
         // Create test files
         fs.writeFileSync(path.join(tempDir, 'auth.ts'), 'export function authenticate() { return true; }');
