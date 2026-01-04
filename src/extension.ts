@@ -18,6 +18,7 @@ import {
 } from './shortcuts/git-diff-comments';
 import { GlobalNotesTreeDataProvider, NoteDocumentManager } from './shortcuts/global-notes';
 import { TaskManager, TasksTreeDataProvider, TasksCommands, TasksDragDropController } from './shortcuts/tasks-viewer';
+import { DebugPanelTreeDataProvider } from './shortcuts/debug-panel';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import {
@@ -177,6 +178,79 @@ export async function activate(context: vscode.ExtensionContext) {
             tasksCommands.setTreeView(tasksTreeView);
             tasksCommandDisposables = tasksCommands.registerCommands(context);
         }
+
+        // Initialize Debug Panel (always register, visibility controlled by when clause in package.json)
+        const debugPanelProvider = new DebugPanelTreeDataProvider();
+        const debugPanelView = vscode.window.createTreeView('debugPanelView', {
+            treeDataProvider: debugPanelProvider
+        });
+
+        const executeDebugCommand = vscode.commands.registerCommand(
+            'debugPanel.executeCommand',
+            async (commandId: string, args?: any[]) => {
+                try {
+                    await vscode.commands.executeCommand(commandId, ...(args || []));
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Unknown error';
+                    vscode.window.showErrorMessage(`Failed to execute command: ${message}`);
+                }
+            }
+        );
+
+        // Register command to open new chat with user prompt
+        const newChatWithPromptCommand = vscode.commands.registerCommand(
+            'debugPanel.newChatWithPrompt',
+            async () => {
+                const userPrompt = await vscode.window.showInputBox({
+                    prompt: 'Enter your prompt for the new chat session',
+                    placeHolder: 'Ask anything...',
+                    ignoreFocusOut: true
+                });
+
+                if (userPrompt) {
+                    try {
+                        // Try to open chat with the query parameter
+                        await vscode.commands.executeCommand('workbench.action.chat.open', {
+                            query: userPrompt
+                        });
+                    } catch {
+                        // Fallback: open chat and let user paste
+                        await vscode.commands.executeCommand('workbench.action.chat.open');
+                        vscode.window.showInformationMessage('Chat opened. Your prompt: ' + userPrompt);
+                    }
+                }
+            }
+        );
+
+        // Register command to start a new chat conversation with user prompt
+        // This does two steps: 1) create new chat, 2) send the prompt
+        const newChatConversationCommand = vscode.commands.registerCommand(
+            'debugPanel.newChatConversation',
+            async () => {
+                const userPrompt = await vscode.window.showInputBox({
+                    prompt: 'Enter your prompt for the new conversation',
+                    placeHolder: 'Start a new conversation...',
+                    ignoreFocusOut: true
+                });
+
+                if (userPrompt) {
+                    try {
+                        // Step 1: Create a new chat conversation (clears history)
+                        await vscode.commands.executeCommand('workbench.action.chat.newChat');
+                        // Small delay to ensure new chat is ready
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                        // Step 2: Send the prompt to the new chat
+                        await vscode.commands.executeCommand('workbench.action.chat.open', {
+                            query: userPrompt
+                        });
+                    } catch {
+                        // Fallback: try to at least open chat
+                        await vscode.commands.executeCommand('workbench.action.chat.open');
+                        vscode.window.showInformationMessage('Chat opened. Your prompt: ' + userPrompt);
+                    }
+                }
+            }
+        );
 
         // Initialize Git Diff Comments feature (must be before git tree provider)
         const diffCommentsManager = new DiffCommentsManager(workspaceRoot);
@@ -1041,6 +1115,9 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitUnstageFileCommand) disposables.push(gitUnstageFileCommand);
         if (gitStageAllCommand) disposables.push(gitStageAllCommand);
         if (gitUnstageAllCommand) disposables.push(gitUnstageAllCommand);
+
+        // Add Debug Panel disposables
+        disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand);
 
         // Register code review commands (requires git log service)
         if (gitInitialized) {

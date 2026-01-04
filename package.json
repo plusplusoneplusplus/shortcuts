@@ -81,6 +81,11 @@
           "id": "clarificationProcessesView",
           "name": "AI Processes",
           "when": "true"
+        },
+        {
+          "id": "debugPanelView",
+          "name": "Debug Commands",
+          "when": "config.workspaceShortcuts.debugPanel.enabled"
         }
       ]
     },
@@ -108,6 +113,10 @@
       {
         "view": "clarificationProcessesView",
         "contents": "🤖 **AI Processes**\n\nNo AI clarification requests running.\n\n**To start an AI clarification:**\n1. Open a markdown file with Review Editor\n2. Select text and use 'Ask AI' submenu\n3. Running processes will appear here\n\n**Features:**\n• Track running AI requests\n• Cancel long-running processes\n• View process history"
+      },
+      {
+        "view": "debugPanelView",
+        "contents": "🐛 **Debug Commands**\n\nQuick access to Copilot Chat commands.\n\n**Available Commands:**\n• New Chat - Open Copilot Chat\n• Inline Chat - Start inline chat\n• Explain/Fix/Generate Tests/Docs"
       }
     ],
     "configuration": {
@@ -440,6 +449,11 @@
           ],
           "default": "auto",
           "markdownDescription": "Color scheme for code block syntax highlighting in the Markdown Review Editor. Use **auto** to match your VSCode theme, or explicitly choose **light** or **dark**."
+        },
+        "workspaceShortcuts.debugPanel.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the Debugging Panel for triggering Copilot Chat commands"
         }
       }
     },
@@ -1038,6 +1052,11 @@
         "title": "Copy Full Path",
         "category": "Tasks",
         "icon": "$(file-symlink-file)"
+      },
+      {
+        "command": "debugPanel.executeCommand",
+        "title": "Execute Debug Command",
+        "category": "Debug Panel"
       }
     ],
     "menus": {
