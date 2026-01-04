@@ -18,7 +18,8 @@ export type WebviewMessageType =
     | 'addToGroup'
     | 'filterByScore'
     | 'refresh'
-    | 'cancel';
+    | 'cancel'
+    | 'showWarning';
 
 /**
  * Message from webview to extension
@@ -36,7 +37,8 @@ export function getWebviewContent(
     extensionUri: vscode.Uri,
     process: DiscoveryProcess | undefined,
     groups: string[],
-    minScore: number
+    minScore: number,
+    selectedTargetGroup: string = ''
 ): string {
     const nonce = getNonce();
     
@@ -59,7 +61,7 @@ export function getWebviewContent(
 <body>
     <div class="container">
         ${getHeaderContent(process)}
-        ${getFilterContent(minScore, groups)}
+        ${getFilterContent(minScore, groups, selectedTargetGroup)}
         ${getResultsContent(process, minScore)}
         ${getActionsContent(process, groups)}
     </div>
@@ -444,18 +446,19 @@ function getHeaderContent(process: DiscoveryProcess | undefined): string {
 /**
  * Get filter content
  */
-function getFilterContent(minScore: number, groups: string[]): string {
-    const groupOptions = groups.map(g => 
-        `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`
-    ).join('');
+function getFilterContent(minScore: number, groups: string[], selectedTargetGroup: string = ''): string {
+    const groupOptions = groups.map(g => {
+        const isSelected = g === selectedTargetGroup ? ' selected' : '';
+        return `<option value="${escapeHtml(g)}"${isSelected}>${escapeHtml(g)}</option>`;
+    }).join('');
     
+    // Note: Using event listener in script instead of inline oninput
     return `
         <div class="filters">
             <div class="filter-group">
                 <label class="filter-label">Min Score</label>
                 <input type="range" class="filter-input" id="minScoreFilter" 
-                    min="0" max="100" value="${minScore}" 
-                    oninput="updateMinScore(this.value)">
+                    min="0" max="100" value="${minScore}">
                 <span id="minScoreValue">${minScore}</span>
             </div>
             <div class="filter-group">
@@ -507,13 +510,14 @@ function getResultsContent(process: DiscoveryProcess | undefined, minScore: numb
     
     const selectedCount = filteredResults.filter(r => r.selected).length;
     
+    // Note: Using CSS classes for event delegation instead of inline onclick
     let html = `
         <div class="results">
             <div class="results-header">
                 <span class="results-count">${filteredResults.length} results (${selectedCount} selected)</span>
                 <div class="select-buttons">
-                    <button class="select-btn" onclick="selectAll()">Select All</button>
-                    <button class="select-btn" onclick="deselectAll()">Deselect All</button>
+                    <button class="select-btn select-all-btn">Select All</button>
+                    <button class="select-btn deselect-all-btn">Deselect All</button>
                 </div>
             </div>
     `;
@@ -562,9 +566,11 @@ function renderResultItem(result: DiscoveryResult): string {
     const path = result.path || (result.commit ? result.commit.shortHash : '');
     const keywords = result.matchedKeywords.slice(0, 3).join(', ');
     
+    // Note: Using data-id attribute for event delegation instead of inline onclick
+    // This is required because CSP blocks inline event handlers
     return `
-        <li class="result-item ${selectedClass}" data-id="${escapeHtml(result.id)}" onclick="toggleItem('${escapeHtml(result.id)}')">
-            <input type="checkbox" class="result-checkbox" ${result.selected ? 'checked' : ''}>
+        <li class="result-item ${selectedClass}" data-id="${escapeHtml(result.id)}">
+            <input type="checkbox" class="result-checkbox" ${result.selected ? 'checked' : ''} tabindex="-1">
             <div class="result-content">
                 <div class="result-name">${escapeHtml(result.name)}</div>
                 <div class="result-path">${escapeHtml(path)}</div>
@@ -588,58 +594,94 @@ function getActionsContent(process: DiscoveryProcess | undefined, groups: string
     
     const selectedCount = process.results.filter(r => r.selected).length;
     
+    // Note: Using CSS classes for event delegation instead of inline onclick
     return `
         <div class="actions">
-            <button class="action-btn primary" onclick="addToGroup()" ${selectedCount === 0 ? 'disabled' : ''}>
+            <button class="action-btn primary add-to-group-btn" ${selectedCount === 0 ? 'disabled' : ''}>
                 Add ${selectedCount} Selected to Group
             </button>
-            <button class="action-btn secondary" onclick="refresh()">
+            <button class="action-btn secondary refresh-btn">
                 Refresh
             </button>
         </div>
-    `;
+`;
 }
 
 /**
  * Get script content
+ * 
+ * Uses event delegation to handle clicks instead of inline onclick handlers.
+ * This is required because CSP blocks inline event handlers.
  */
 function getScript(): string {
     return `
-        const vscode = acquireVsCodeApi();
-        
-        function toggleItem(id) {
-            vscode.postMessage({ type: 'toggleItem', payload: { id } });
-        }
-        
-        function selectAll() {
-            vscode.postMessage({ type: 'selectAll' });
-        }
-        
-        function deselectAll() {
-            vscode.postMessage({ type: 'deselectAll' });
-        }
-        
-        function addToGroup() {
-            const targetGroup = document.getElementById('targetGroup').value;
-            if (!targetGroup) {
-                alert('Please select a target group');
-                return;
-            }
-            vscode.postMessage({ type: 'addToGroup', payload: { targetGroup } });
-        }
-        
-        function updateMinScore(value) {
-            document.getElementById('minScoreValue').textContent = value;
-            vscode.postMessage({ type: 'filterByScore', payload: { minScore: parseInt(value) } });
-        }
-        
-        function refresh() {
-            vscode.postMessage({ type: 'refresh' });
-        }
-        
-        function cancel() {
-            vscode.postMessage({ type: 'cancel' });
-        }
+        (function() {
+            const vscode = acquireVsCodeApi();
+            
+            // Event delegation for result item clicks
+            document.addEventListener('click', function(e) {
+                const target = e.target;
+                
+                // Handle result item clicks (toggle selection)
+                const resultItem = target.closest('.result-item');
+                if (resultItem) {
+                    const id = resultItem.getAttribute('data-id');
+                    if (id) {
+                        vscode.postMessage({ type: 'toggleItem', payload: { id: id } });
+                    }
+                    return;
+                }
+                
+                // Handle select all button
+                if (target.closest('.select-all-btn')) {
+                    vscode.postMessage({ type: 'selectAll' });
+                    return;
+                }
+                
+                // Handle deselect all button
+                if (target.closest('.deselect-all-btn')) {
+                    vscode.postMessage({ type: 'deselectAll' });
+                    return;
+                }
+                
+                // Handle add to group button
+                if (target.closest('.add-to-group-btn')) {
+                    const targetGroup = document.getElementById('targetGroup').value;
+                    if (!targetGroup) {
+                        // Use vscode notification instead of alert (which may be blocked)
+                        vscode.postMessage({ type: 'showWarning', payload: { message: 'Please select a target group' } });
+                        return;
+                    }
+                    vscode.postMessage({ type: 'addToGroup', payload: { targetGroup: targetGroup } });
+                    return;
+                }
+                
+                // Handle refresh button
+                if (target.closest('.refresh-btn')) {
+                    vscode.postMessage({ type: 'refresh' });
+                    return;
+                }
+                
+                // Handle cancel button
+                if (target.closest('.cancel-btn')) {
+                    vscode.postMessage({ type: 'cancel' });
+                    return;
+                }
+            });
+            
+            // Handle min score slider changes
+            document.addEventListener('input', function(e) {
+                const target = e.target;
+                if (target.id === 'minScoreFilter') {
+                    const value = target.value;
+                    const valueDisplay = document.getElementById('minScoreValue');
+                    if (valueDisplay) {
+                        valueDisplay.textContent = value;
+                    }
+                    vscode.postMessage({ type: 'filterByScore', payload: { minScore: parseInt(value, 10) } });
+                }
+            });
+        })();
     `;
 }
 

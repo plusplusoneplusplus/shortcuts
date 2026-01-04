@@ -26,6 +26,7 @@ export class DiscoveryPreviewPanel {
     
     private _currentProcess: DiscoveryProcess | undefined;
     private _minScore: number = 30;
+    private _selectedTargetGroup: string = '';
     private _disposables: vscode.Disposable[] = [];
     
     /**
@@ -168,6 +169,10 @@ export class DiscoveryPreviewPanel {
                     this._discoveryEngine.cancelProcess(this._currentProcess.id);
                 }
                 break;
+            
+            case 'showWarning':
+                vscode.window.showWarningMessage(message.payload.message);
+                break;
         }
     }
     
@@ -218,6 +223,9 @@ export class DiscoveryPreviewPanel {
             vscode.window.showWarningMessage('Please select a target group');
             return;
         }
+        
+        // Store the selected target group so it persists after update
+        this._selectedTargetGroup = targetGroup;
         
         const selectedResults = this._currentProcess.results.filter(r => r.selected);
         if (selectedResults.length === 0) {
@@ -333,7 +341,8 @@ export class DiscoveryPreviewPanel {
             this._extensionUri,
             this._currentProcess,
             groups,
-            this._minScore
+            this._minScore,
+            this._selectedTargetGroup
         );
     }
     
