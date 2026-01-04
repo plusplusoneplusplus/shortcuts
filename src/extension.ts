@@ -1,7 +1,7 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AIProcessManager, AIProcessTreeDataProvider } from './shortcuts/ai-service';
+import { AI_PROCESS_SCHEME, AIProcessDocumentProvider, AIProcessManager, AIProcessTreeDataProvider } from './shortcuts/ai-service';
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
@@ -703,6 +703,13 @@ export async function activate(context: vscode.ExtensionContext) {
         // Initialize AI Process tree data provider
         const aiProcessTreeDataProvider = new AIProcessTreeDataProvider(aiProcessManager);
 
+        // Initialize AI Process document provider for read-only viewing
+        const aiProcessDocumentProvider = new AIProcessDocumentProvider(aiProcessManager);
+        const aiProcessDocumentProviderDisposable = vscode.workspace.registerTextDocumentContentProvider(
+            AI_PROCESS_SCHEME,
+            aiProcessDocumentProvider
+        );
+
         // Register AI processes tree view
         const aiProcessesTreeView = vscode.window.createTreeView('clarificationProcessesView', {
             treeDataProvider: aiProcessTreeDataProvider,
@@ -767,71 +774,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const viewProcessDetailsCommand = vscode.commands.registerCommand(
             'clarificationProcesses.viewDetails',
-            async (item: { process?: { id: string; promptPreview: string; fullPrompt: string; status: string; startTime: Date; endTime?: Date; error?: string; result?: string } }) => {
-                if (!item?.process) {
+            async (item: { process?: { id: string } }) => {
+                if (!item?.process?.id) {
                     return;
                 }
 
-                const process = item.process;
-                
-                // Build markdown content for the process details
-                const lines: string[] = [];
-                lines.push(`# AI Process Details`);
-                lines.push('');
-                lines.push(`## Status`);
-                const statusEmoji = process.status === 'running' ? '🔄' :
-                    process.status === 'completed' ? '✅' :
-                    process.status === 'failed' ? '❌' : '🚫';
-                lines.push(`${statusEmoji} **${process.status.charAt(0).toUpperCase() + process.status.slice(1)}**`);
-                lines.push('');
-                
-                lines.push(`## Timing`);
-                lines.push(`- **Started:** ${process.startTime.toLocaleString()}`);
-                if (process.endTime) {
-                    lines.push(`- **Ended:** ${process.endTime.toLocaleString()}`);
-                    const duration = process.endTime.getTime() - process.startTime.getTime();
-                    const seconds = Math.floor(duration / 1000);
-                    const minutes = Math.floor(seconds / 60);
-                    const hours = Math.floor(minutes / 60);
-                    let durationStr: string;
-                    if (hours > 0) {
-                        durationStr = `${hours}h ${minutes % 60}m`;
-                    } else if (minutes > 0) {
-                        durationStr = `${minutes}m ${seconds % 60}s`;
-                    } else {
-                        durationStr = `${seconds}s`;
-                    }
-                    lines.push(`- **Duration:** ${durationStr}`);
-                }
-                lines.push('');
-                
-                lines.push(`## Prompt`);
-                lines.push('```');
-                lines.push(process.fullPrompt);
-                lines.push('```');
-                lines.push('');
-                
-                if (process.result) {
-                    lines.push(`## AI Response`);
-                    lines.push('');
-                    lines.push(process.result);
-                    lines.push('');
-                }
-                
-                if (process.error) {
-                    lines.push(`## Error`);
-                    lines.push('```');
-                    lines.push(process.error);
-                    lines.push('```');
-                }
-
-                // Create a virtual document to display the details
-                const content = lines.join('\n');
-                const doc = await vscode.workspace.openTextDocument({
-                    content,
-                    language: 'markdown'
-                });
-                await vscode.window.showTextDocument(doc, { preview: true });
+                // Use the document provider to open a read-only view
+                await aiProcessDocumentProvider.openProcess(item.process.id);
             }
         );
 
@@ -859,18 +808,27 @@ export async function activate(context: vscode.ExtensionContext) {
         // Command to view raw response as text file
         const viewRawResponseCommand = vscode.commands.registerCommand(
             'clarificationProcesses.viewRawResponse',
-            async (item: { process?: { result?: string; promptPreview?: string } }) => {
-                if (!item?.process?.result) {
-                    vscode.window.showWarningMessage('No response available for this process.');
+            async (item: { process?: { id: string; result?: string; resultFilePath?: string } }) => {
+                if (!item?.process?.id) {
+                    vscode.window.showWarningMessage('No process available.');
                     return;
                 }
 
-                const content = item.process.result;
-                const doc = await vscode.workspace.openTextDocument({
-                    content,
-                    language: 'markdown'
-                });
-                await vscode.window.showTextDocument(doc, { preview: true });
+                // If there's a result file, open it directly
+                if (item.process.resultFilePath) {
+                    try {
+                        const uri = vscode.Uri.file(item.process.resultFilePath);
+                        const doc = await vscode.workspace.openTextDocument(uri);
+                        await vscode.window.showTextDocument(doc, { preview: true });
+                        return;
+                    } catch (error) {
+                        // Fall back to document provider if file doesn't exist
+                        console.warn('Result file not found, falling back to document provider:', error);
+                    }
+                }
+
+                // Fall back to the document provider
+                await aiProcessDocumentProvider.openProcess(item.process.id);
             }
         );
 
@@ -1001,6 +959,7 @@ export async function activate(context: vscode.ExtensionContext) {
             aiProcessesTreeView,
             aiProcessManager,
             aiProcessTreeDataProvider,
+            aiProcessDocumentProviderDisposable,
             cancelProcessCommand,
             clearCompletedCommand,
             clearAllProcessesCommand,

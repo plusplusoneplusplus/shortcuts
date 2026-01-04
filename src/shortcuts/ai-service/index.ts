@@ -41,6 +41,9 @@ export { AIProcessManager } from './ai-process-manager';
 // Export tree data provider
 export { AIProcessItem, AIProcessTreeDataProvider } from './ai-process-tree-provider';
 
+// Export document provider for read-only process viewing
+export { AI_PROCESS_SCHEME, AIProcessDocumentProvider } from './ai-process-document-provider';
+
 // Export AI command types and registry
 export {
     AICommand,

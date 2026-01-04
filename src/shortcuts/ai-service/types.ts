@@ -108,6 +108,8 @@ export interface AIProcess {
     error?: string;
     /** The AI response if completed */
     result?: string;
+    /** Path to the file containing the full result */
+    resultFilePath?: string;
     /** Code review specific metadata (if type is 'code-review') */
     codeReviewMetadata?: CodeReviewProcessMetadata;
     /** Discovery specific metadata (if type is 'discovery') */
@@ -129,6 +131,7 @@ export interface SerializedAIProcess {
     endTime?: string;   // ISO string
     error?: string;
     result?: string;
+    resultFilePath?: string;
     codeReviewMetadata?: CodeReviewProcessMetadata;
     discoveryMetadata?: DiscoveryProcessMetadata;
     structuredResult?: string;
@@ -148,6 +151,7 @@ export function serializeProcess(process: AIProcess): SerializedAIProcess {
         endTime: process.endTime?.toISOString(),
         error: process.error,
         result: process.result,
+        resultFilePath: process.resultFilePath,
         codeReviewMetadata: process.codeReviewMetadata,
         discoveryMetadata: process.discoveryMetadata,
         structuredResult: process.structuredResult
@@ -168,6 +172,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         endTime: serialized.endTime ? new Date(serialized.endTime) : undefined,
         error: serialized.error,
         result: serialized.result,
+        resultFilePath: serialized.resultFilePath,
         codeReviewMetadata: serialized.codeReviewMetadata,
         discoveryMetadata: serialized.discoveryMetadata,
         structuredResult: serialized.structuredResult

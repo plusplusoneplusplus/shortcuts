@@ -1,12 +1,14 @@
 /**
  * AIProcessManager - Tracks running AI processes with persistence
- * 
+ *
  * Generic process manager for tracking AI CLI invocations.
  * Provides events for process lifecycle and methods for managing processes.
  * Persists completed processes to VSCode's Memento storage for review.
  */
 
 import { ChildProcess } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { AIProcess, AIProcessStatus, deserializeProcess, DiscoveryProcessMetadata, ProcessEvent, ProcessEventType, serializeProcess, SerializedAIProcess } from './types';
 
@@ -19,6 +21,11 @@ const STORAGE_KEY = 'aiProcesses.history';
  * Maximum number of processes to persist
  */
 const MAX_PERSISTED_PROCESSES = 100;
+
+/**
+ * Directory name for storing process results
+ */
+const RESULTS_DIR_NAME = 'ai-processes';
 
 /**
  * Internal process tracking with child process reference
@@ -116,6 +123,7 @@ export class AIProcessManager implements vscode.Disposable {
                     endTime: p.endTime,
                     error: p.error,
                     result: p.result,
+                    resultFilePath: p.resultFilePath,
                     codeReviewMetadata: p.codeReviewMetadata,
                     discoveryMetadata: p.discoveryMetadata,
                     structuredResult: p.structuredResult
@@ -254,6 +262,12 @@ export class AIProcessManager implements vscode.Disposable {
 
         process.childProcess = undefined;
 
+        // Save result to file
+        const filePath = this.saveResultToFile(process);
+        if (filePath) {
+            process.resultFilePath = filePath;
+        }
+
         this._onDidChangeProcesses.fire({ type: 'process-updated', process });
         this.saveToStorage();
     }
@@ -275,6 +289,12 @@ export class AIProcessManager implements vscode.Disposable {
         process.result = result;
         process.structuredResult = structuredResult;
         process.childProcess = undefined;
+
+        // Save result to file
+        const filePath = this.saveResultToFile(process);
+        if (filePath) {
+            process.resultFilePath = filePath;
+        }
 
         this._onDidChangeProcesses.fire({ type: 'process-updated', process });
         this.saveToStorage();
@@ -301,6 +321,14 @@ export class AIProcessManager implements vscode.Disposable {
 
         // Clear child process reference
         process.childProcess = undefined;
+
+        // Save result to file when process completes with a result
+        if (status !== 'running' && process.result) {
+            const filePath = this.saveResultToFile(process);
+            if (filePath) {
+                process.resultFilePath = filePath;
+            }
+        }
 
         this._onDidChangeProcesses.fire({ type: 'process-updated', process });
 
@@ -409,6 +437,7 @@ export class AIProcessManager implements vscode.Disposable {
             endTime: p.endTime,
             error: p.error,
             result: p.result,
+            resultFilePath: p.resultFilePath,
             codeReviewMetadata: p.codeReviewMetadata,
             discoveryMetadata: p.discoveryMetadata,
             structuredResult: p.structuredResult
@@ -440,6 +469,7 @@ export class AIProcessManager implements vscode.Disposable {
             endTime: process.endTime,
             error: process.error,
             result: process.result,
+            resultFilePath: process.resultFilePath,
             codeReviewMetadata: process.codeReviewMetadata,
             discoveryMetadata: process.discoveryMetadata,
             structuredResult: process.structuredResult
@@ -478,6 +508,97 @@ export class AIProcessManager implements vscode.Disposable {
             return cleaned;
         }
         return cleaned.substring(0, 47) + '...';
+    }
+
+    /**
+     * Get the results directory path
+     */
+    private getResultsDir(): string | undefined {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return undefined;
+        }
+        return path.join(workspaceFolders[0].uri.fsPath, '.vscode', RESULTS_DIR_NAME);
+    }
+
+    /**
+     * Ensure the results directory exists
+     */
+    private ensureResultsDir(): string | undefined {
+        const resultsDir = this.getResultsDir();
+        if (!resultsDir) {
+            return undefined;
+        }
+
+        try {
+            if (!fs.existsSync(resultsDir)) {
+                fs.mkdirSync(resultsDir, { recursive: true });
+            }
+            return resultsDir;
+        } catch (error) {
+            console.error('Failed to create results directory:', error);
+            return undefined;
+        }
+    }
+
+    /**
+     * Save process result to a file
+     * @param process The process to save
+     * @returns The file path if saved successfully, undefined otherwise
+     */
+    private saveResultToFile(process: TrackedProcess): string | undefined {
+        if (!process.result) {
+            return undefined;
+        }
+
+        const resultsDir = this.ensureResultsDir();
+        if (!resultsDir) {
+            return undefined;
+        }
+
+        try {
+            // Create filename from process ID and timestamp
+            const timestamp = process.startTime.toISOString().replace(/[:.]/g, '-');
+            const filename = `${process.id}_${timestamp}.md`;
+            const filePath = path.join(resultsDir, filename);
+
+            // Build file content with metadata header
+            const lines: string[] = [];
+            lines.push(`# AI Process Result`);
+            lines.push('');
+            lines.push(`- **Process ID:** ${process.id}`);
+            lines.push(`- **Type:** ${process.type}`);
+            lines.push(`- **Status:** ${process.status}`);
+            lines.push(`- **Started:** ${process.startTime.toISOString()}`);
+            if (process.endTime) {
+                lines.push(`- **Ended:** ${process.endTime.toISOString()}`);
+            }
+            lines.push('');
+            lines.push('## Prompt');
+            lines.push('');
+            lines.push('```');
+            lines.push(process.fullPrompt);
+            lines.push('```');
+            lines.push('');
+            lines.push('## Response');
+            lines.push('');
+            lines.push(process.result);
+
+            if (process.error) {
+                lines.push('');
+                lines.push('## Error');
+                lines.push('');
+                lines.push('```');
+                lines.push(process.error);
+                lines.push('```');
+            }
+
+            fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
+            return filePath;
+        } catch (error) {
+            console.error('Failed to save result to file:', error);
+            return undefined;
+        }
     }
 
     /**
