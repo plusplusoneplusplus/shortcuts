@@ -713,6 +713,12 @@
         "icon": "$(file-text)"
       },
       {
+        "command": "clarificationProcesses.viewDiscoveryResults",
+        "title": "View Discovery Results",
+        "category": "AI Processes",
+        "icon": "$(eye)"
+      },
+      {
         "command": "clarificationProcesses.refresh",
         "title": "Refresh",
         "category": "AI Processes",
@@ -1378,6 +1384,26 @@
         {
           "command": "clarificationProcesses.remove",
           "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_(completed|failed|cancelled)$/",
+          "group": "process@3"
+        },
+        {
+          "command": "clarificationProcesses.viewDiscoveryResults",
+          "when": "view == clarificationProcessesView && viewItem =~ /^discoveryProcess_completed$/",
+          "group": "process@2"
+        },
+        {
+          "command": "clarificationProcesses.viewDiscoveryResults",
+          "when": "view == clarificationProcessesView && viewItem =~ /^discoveryProcess_completed$/",
+          "group": "inline"
+        },
+        {
+          "command": "clarificationProcesses.cancel",
+          "when": "view == clarificationProcessesView && viewItem == discoveryProcess_running",
+          "group": "process@1"
+        },
+        {
+          "command": "clarificationProcesses.remove",
+          "when": "view == clarificationProcessesView && viewItem =~ /^discoveryProcess_(completed|failed|cancelled)$/",
           "group": "process@3"
         },
         {

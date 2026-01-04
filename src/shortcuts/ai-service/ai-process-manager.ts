@@ -283,8 +283,9 @@ export class AIProcessManager implements vscode.Disposable {
      * @param id Process ID
      * @param resultCount Number of items found
      * @param resultSummary Summary of results
+     * @param serializedResults Optional serialized discovery results (JSON string)
      */
-    completeDiscoveryProcess(id: string, resultCount: number, resultSummary?: string): void {
+    completeDiscoveryProcess(id: string, resultCount: number, resultSummary?: string, serializedResults?: string): void {
         const process = this.processes.get(id);
         if (!process) {
             return;
@@ -293,6 +294,11 @@ export class AIProcessManager implements vscode.Disposable {
         process.status = 'completed';
         process.endTime = new Date();
         process.result = resultSummary || `Found ${resultCount} related items`;
+
+        // Store serialized discovery results for later viewing
+        if (serializedResults) {
+            process.structuredResult = serializedResults;
+        }
 
         // Update metadata with result count
         if (process.discoveryMetadata) {

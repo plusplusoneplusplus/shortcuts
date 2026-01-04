@@ -10,7 +10,7 @@ import { DiscoveryEngine, createDiscoveryRequest } from './discovery-engine';
 import { DiscoveryPreviewPanel } from './discovery-webview';
 import { ConfigurationManager } from '../configuration-manager';
 import { LogicalGroupItem, CommitShortcutItem } from '../tree-items';
-import { DEFAULT_DISCOVERY_SCOPE } from './types';
+import { DEFAULT_DISCOVERY_SCOPE, serializeDiscoveryProcess } from './types';
 
 /**
  * Register discovery commands
@@ -210,10 +210,13 @@ async function startDiscovery(
                     // Update AI Process Manager based on discovery result
                     if (event.process.status === 'completed') {
                         const resultCount = event.process.results?.length || 0;
+                        // Serialize the discovery process for later viewing
+                        const serializedResults = JSON.stringify(serializeDiscoveryProcess(event.process));
                         aiProcessManager.completeDiscoveryProcess(
                             aiProcessId,
                             resultCount,
-                            `Found ${resultCount} related items for "${featureDescription}"`
+                            `Found ${resultCount} related items for "${featureDescription}"`,
+                            serializedResults
                         );
                     } else if (event.process.status === 'failed') {
                         aiProcessManager.failProcess(aiProcessId, event.process.error || 'Discovery failed');
@@ -253,10 +256,13 @@ async function startDiscovery(
 
                 if (discoveryProcess.status === 'completed') {
                     const resultCount = discoveryProcess.results?.length || 0;
+                    // Serialize the discovery process for later viewing
+                    const serializedResults = JSON.stringify(serializeDiscoveryProcess(discoveryProcess));
                     aiProcessManager.completeDiscoveryProcess(
                         aiProcessId,
                         resultCount,
-                        `Found ${resultCount} related items for "${featureDescription}"`
+                        `Found ${resultCount} related items for "${featureDescription}"`,
+                        serializedResults
                     );
                 } else if (discoveryProcess.status === 'failed') {
                     aiProcessManager.failProcess(aiProcessId, discoveryProcess.error || 'Discovery failed');

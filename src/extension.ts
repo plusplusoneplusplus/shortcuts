@@ -832,6 +832,34 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Command to view discovery results in the preview panel
+        const viewDiscoveryResultsCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.viewDiscoveryResults',
+            async (item: { process?: { structuredResult?: string; discoveryMetadata?: { featureDescription: string } } }) => {
+                if (!item?.process?.structuredResult) {
+                    vscode.window.showWarningMessage('No discovery results available for this process.');
+                    return;
+                }
+
+                try {
+                    const { deserializeDiscoveryProcess, DiscoveryPreviewPanel } = await import('./shortcuts/discovery');
+                    const serialized = JSON.parse(item.process.structuredResult);
+                    const discoveryProcess = deserializeDiscoveryProcess(serialized);
+                    
+                    // Show the discovery preview panel with the restored results
+                    DiscoveryPreviewPanel.createOrShow(
+                        context.extensionUri,
+                        discoveryEngine,
+                        configurationManager,
+                        discoveryProcess
+                    );
+                } catch (error) {
+                    console.error('Failed to parse discovery results:', error);
+                    vscode.window.showErrorMessage('Failed to display discovery results.');
+                }
+            }
+        );
+
         const refreshProcessesCommand = vscode.commands.registerCommand(
             'clarificationProcesses.refresh',
             () => {
@@ -967,6 +995,7 @@ export async function activate(context: vscode.ExtensionContext) {
             viewProcessDetailsCommand,
             viewCodeReviewDetailsCommand,
             viewRawResponseCommand,
+            viewDiscoveryResultsCommand,
             refreshProcessesCommand,
             // Git view disposables
             gitTreeDataProvider,
