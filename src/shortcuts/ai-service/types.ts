@@ -43,7 +43,7 @@ export interface AIInvocationResult {
 /**
  * Type of AI process
  */
-export type AIProcessType = 'clarification' | 'code-review';
+export type AIProcessType = 'clarification' | 'code-review' | 'discovery';
 
 /**
  * Code review specific metadata
@@ -63,6 +63,27 @@ export interface CodeReviewProcessMetadata {
         additions: number;
         deletions: number;
     };
+}
+
+/**
+ * Discovery process specific metadata
+ */
+export interface DiscoveryProcessMetadata {
+    /** Feature description being searched */
+    featureDescription: string;
+    /** Keywords used in the search */
+    keywords?: string[];
+    /** Target group path (if scoped to a group) */
+    targetGroupPath?: string;
+    /** Search scope settings */
+    scope?: {
+        includeSourceFiles: boolean;
+        includeDocs: boolean;
+        includeConfigFiles: boolean;
+        includeGitHistory: boolean;
+    };
+    /** Number of results found */
+    resultCount?: number;
 }
 
 /**
@@ -89,6 +110,8 @@ export interface AIProcess {
     result?: string;
     /** Code review specific metadata (if type is 'code-review') */
     codeReviewMetadata?: CodeReviewProcessMetadata;
+    /** Discovery specific metadata (if type is 'discovery') */
+    discoveryMetadata?: DiscoveryProcessMetadata;
     /** Parsed structured result (for code reviews) */
     structuredResult?: string; // JSON string of CodeReviewResult
 }
@@ -107,6 +130,7 @@ export interface SerializedAIProcess {
     error?: string;
     result?: string;
     codeReviewMetadata?: CodeReviewProcessMetadata;
+    discoveryMetadata?: DiscoveryProcessMetadata;
     structuredResult?: string;
 }
 
@@ -125,6 +149,7 @@ export function serializeProcess(process: AIProcess): SerializedAIProcess {
         error: process.error,
         result: process.result,
         codeReviewMetadata: process.codeReviewMetadata,
+        discoveryMetadata: process.discoveryMetadata,
         structuredResult: process.structuredResult
     };
 }
@@ -144,6 +169,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         error: serialized.error,
         result: serialized.result,
         codeReviewMetadata: serialized.codeReviewMetadata,
+        discoveryMetadata: serialized.discoveryMetadata,
         structuredResult: serialized.structuredResult
     };
 }

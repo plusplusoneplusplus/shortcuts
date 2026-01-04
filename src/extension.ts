@@ -5,6 +5,7 @@ import { AIProcessManager, AIProcessTreeDataProvider } from './shortcuts/ai-serv
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
+import { DiscoveryEngine, registerDiscoveryCommands } from './shortcuts/discovery';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
 import { GitChangeItem, GitCommitFile, GitCommitItem, GitDragDropController, GitLogService, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
@@ -1046,6 +1047,17 @@ export async function activate(context: vscode.ExtensionContext) {
             const codeReviewDisposables = registerCodeReviewCommands(context, gitLogService, aiProcessManager);
             disposables.push(...codeReviewDisposables);
         }
+
+        // Register discovery commands
+        const discoveryEngine = new DiscoveryEngine();
+        const discoveryDisposables = registerDiscoveryCommands(
+            context,
+            discoveryEngine,
+            configurationManager,
+            workspaceRoot,
+            aiProcessManager
+        );
+        disposables.push(discoveryEngine, ...discoveryDisposables);
 
         // Add all disposables to context subscriptions
         context.subscriptions.push(...disposables);

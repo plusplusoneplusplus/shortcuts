@@ -5,6 +5,7 @@
  */
 
 import * as vscode from 'vscode';
+import { AIProcessManager } from '../ai-service';
 import { DiscoveryEngine, createDiscoveryRequest } from './discovery-engine';
 import { DiscoveryPreviewPanel } from './discovery-webview';
 import { ConfigurationManager } from '../configuration-manager';
@@ -18,17 +19,18 @@ export function registerDiscoveryCommands(
     context: vscode.ExtensionContext,
     discoveryEngine: DiscoveryEngine,
     configManager: ConfigurationManager,
-    workspaceRoot: string
+    workspaceRoot: string,
+    aiProcessManager: AIProcessManager
 ): vscode.Disposable[] {
     const disposables: vscode.Disposable[] = [];
-    
+
     // Start discovery (global)
     disposables.push(
         vscode.commands.registerCommand('shortcuts.discovery.start', async () => {
-            await startDiscovery(context, discoveryEngine, configManager, workspaceRoot);
+            await startDiscovery(context, discoveryEngine, configManager, workspaceRoot, aiProcessManager);
         })
     );
-    
+
     // Start discovery for a specific group
     disposables.push(
         vscode.commands.registerCommand(
@@ -37,12 +39,13 @@ export function registerDiscoveryCommands(
                 const groupPath = item.parentGroupPath
                     ? `${item.parentGroupPath}/${item.originalName}`
                     : item.originalName;
-                    
+
                 await startDiscovery(
                     context,
                     discoveryEngine,
                     configManager,
                     workspaceRoot,
+                    aiProcessManager,
                     groupPath
                 );
             }
@@ -70,6 +73,7 @@ async function startDiscovery(
     discoveryEngine: DiscoveryEngine,
     configManager: ConfigurationManager,
     workspaceRoot: string,
+    aiProcessManager: AIProcessManager,
     targetGroupPath?: string
 ): Promise<void> {
     // Check if discovery is enabled
@@ -155,7 +159,20 @@ async function startDiscovery(
         targetGroupPath,
         scope
     });
-    
+
+    // Register with AI Process Manager for tracking in the panel
+    const aiProcessId = aiProcessManager.registerDiscoveryProcess({
+        featureDescription,
+        keywords,
+        targetGroupPath,
+        scope: {
+            includeSourceFiles: scope.includeSourceFiles,
+            includeDocs: scope.includeDocs,
+            includeConfigFiles: scope.includeConfigFiles,
+            includeGitHistory: scope.includeGitHistory
+        }
+    });
+
     // Show progress notification
     vscode.window.withProgress(
         {
@@ -164,44 +181,99 @@ async function startDiscovery(
             cancellable: true
         },
         async (progress, token) => {
-            // Start discovery
-            const process = await discoveryEngine.discover(request);
-            
-            // Listen for cancellation
-            token.onCancellationRequested(() => {
-                discoveryEngine.cancelProcess(process.id);
+            // Set up completion promise BEFORE starting discovery to avoid missing events
+            let resolveCompletion: () => void;
+            let discoveryProcessId: string | undefined;
+
+            const completionPromise = new Promise<void>((resolve) => {
+                resolveCompletion = resolve;
             });
-            
-            // Update progress
-            const listener = discoveryEngine.onDidChangeProcess(event => {
-                if (event.process.id === process.id) {
+
+            // Register event listeners BEFORE starting discovery
+            const progressListener = discoveryEngine.onDidChangeProcess(event => {
+                if (discoveryProcessId && event.process.id === discoveryProcessId) {
                     progress.report({
                         message: `${event.process.phase} (${event.process.progress}%)`,
                         increment: 0
                     });
                 }
             });
-            
-            // Wait for completion
-            return new Promise<void>((resolve) => {
-                const checkComplete = discoveryEngine.onDidChangeProcess(event => {
-                    if (event.process.id === process.id && 
-                        event.process.status !== 'running') {
-                        checkComplete.dispose();
-                        listener.dispose();
-                        
-                        // Show results panel
-                        DiscoveryPreviewPanel.createOrShow(
-                            context.extensionUri,
-                            discoveryEngine,
-                            configManager,
-                            event.process
+
+            const completionListener = discoveryEngine.onDidChangeProcess(event => {
+                if (discoveryProcessId &&
+                    event.process.id === discoveryProcessId &&
+                    event.process.status !== 'running') {
+
+                    completionListener.dispose();
+                    progressListener.dispose();
+
+                    // Update AI Process Manager based on discovery result
+                    if (event.process.status === 'completed') {
+                        const resultCount = event.process.results?.length || 0;
+                        aiProcessManager.completeDiscoveryProcess(
+                            aiProcessId,
+                            resultCount,
+                            `Found ${resultCount} related items for "${featureDescription}"`
                         );
-                        
-                        resolve();
+                    } else if (event.process.status === 'failed') {
+                        aiProcessManager.failProcess(aiProcessId, event.process.error || 'Discovery failed');
                     }
-                });
+
+                    // Show results panel
+                    DiscoveryPreviewPanel.createOrShow(
+                        context.extensionUri,
+                        discoveryEngine,
+                        configManager,
+                        event.process
+                    );
+
+                    resolveCompletion();
+                }
             });
+
+            // Listen for cancellation
+            token.onCancellationRequested(() => {
+                if (discoveryProcessId) {
+                    discoveryEngine.cancelProcess(discoveryProcessId);
+                }
+                aiProcessManager.updateProcess(aiProcessId, 'cancelled', undefined, 'Cancelled by user');
+                completionListener.dispose();
+                progressListener.dispose();
+                resolveCompletion();
+            });
+
+            // NOW start discovery - events will be caught by listeners above
+            const discoveryProcess = await discoveryEngine.discover(request);
+            discoveryProcessId = discoveryProcess.id;
+
+            // If discovery already completed synchronously, handle it
+            if (discoveryProcess.status !== 'running') {
+                completionListener.dispose();
+                progressListener.dispose();
+
+                if (discoveryProcess.status === 'completed') {
+                    const resultCount = discoveryProcess.results?.length || 0;
+                    aiProcessManager.completeDiscoveryProcess(
+                        aiProcessId,
+                        resultCount,
+                        `Found ${resultCount} related items for "${featureDescription}"`
+                    );
+                } else if (discoveryProcess.status === 'failed') {
+                    aiProcessManager.failProcess(aiProcessId, discoveryProcess.error || 'Discovery failed');
+                }
+
+                DiscoveryPreviewPanel.createOrShow(
+                    context.extensionUri,
+                    discoveryEngine,
+                    configManager,
+                    discoveryProcess
+                );
+
+                return;
+            }
+
+            // Wait for async completion
+            return completionPromise;
         }
     );
 }

@@ -20,10 +20,12 @@ export class AIProcessItem extends vscode.TreeItem {
         super(label, vscode.TreeItemCollapsibleState.None);
 
         this.process = process;
-        
-        // Different context value for code reviews
+
+        // Different context value for different process types
         if (process.type === 'code-review') {
             this.contextValue = `codeReviewProcess_${process.status}`;
+        } else if (process.type === 'discovery') {
+            this.contextValue = `discoveryProcess_${process.status}`;
         } else {
             this.contextValue = `clarificationProcess_${process.status}`;
         }
@@ -105,6 +107,22 @@ export class AIProcessItem extends vscode.TreeItem {
             }
         }
 
+        // Icons for discovery processes
+        if (process.type === 'discovery') {
+            switch (process.status) {
+                case 'running':
+                    return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.blue'));
+                case 'completed':
+                    return new vscode.ThemeIcon('search', new vscode.ThemeColor('charts.green'));
+                case 'failed':
+                    return new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
+                case 'cancelled':
+                    return new vscode.ThemeIcon('circle-slash', new vscode.ThemeColor('charts.orange'));
+                default:
+                    return new vscode.ThemeIcon('search');
+            }
+        }
+
         // Default icons for clarification processes
         switch (process.status) {
             case 'running':
@@ -129,6 +147,8 @@ export class AIProcessItem extends vscode.TreeItem {
         // Type indicator
         if (process.type === 'code-review') {
             lines.push('📋 **Code Review**');
+        } else if (process.type === 'discovery') {
+            lines.push('🔍 **Auto Discovery**');
         } else {
             lines.push('💬 **AI Clarification**');
         }
@@ -173,6 +193,30 @@ export class AIProcessItem extends vscode.TreeItem {
             }
         }
 
+        // Discovery specific info
+        if (process.type === 'discovery' && process.discoveryMetadata) {
+            const meta = process.discoveryMetadata;
+            lines.push(`**Feature:** ${meta.featureDescription}`);
+            if (meta.keywords && meta.keywords.length > 0) {
+                lines.push(`**Keywords:** ${meta.keywords.join(', ')}`);
+            }
+            if (meta.targetGroupPath) {
+                lines.push(`**Target Group:** ${meta.targetGroupPath}`);
+            }
+            if (meta.scope) {
+                const scopeParts: string[] = [];
+                if (meta.scope.includeSourceFiles) scopeParts.push('source');
+                if (meta.scope.includeDocs) scopeParts.push('docs');
+                if (meta.scope.includeConfigFiles) scopeParts.push('config');
+                if (meta.scope.includeGitHistory) scopeParts.push('git');
+                lines.push(`**Scope:** ${scopeParts.join(', ')}`);
+            }
+            if (meta.resultCount !== undefined) {
+                lines.push(`**Results:** ${meta.resultCount} item(s) found`);
+            }
+            lines.push('');
+        }
+
         // Timing
         lines.push(`**Started:** ${process.startTime.toLocaleString()}`);
         if (process.endTime) {
@@ -191,8 +235,8 @@ export class AIProcessItem extends vscode.TreeItem {
             lines.push('');
         }
 
-        // Prompt preview (only for clarification)
-        if (process.type !== 'code-review') {
+        // Prompt preview (only for clarification, discovery shows feature description above)
+        if (process.type === 'clarification') {
             lines.push('**Prompt:**');
             lines.push(`> ${process.promptPreview}`);
         }

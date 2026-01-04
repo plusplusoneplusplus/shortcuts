@@ -15,6 +15,7 @@ export {
     AIToolType,
     DEFAULT_PROMPTS,
     deserializeProcess,
+    DiscoveryProcessMetadata,
     ProcessEvent,
     ProcessEventType,
     SerializedAIProcess,

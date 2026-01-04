@@ -8,7 +8,7 @@
 
 import { ChildProcess } from 'child_process';
 import * as vscode from 'vscode';
-import { AIProcess, AIProcessStatus, deserializeProcess, ProcessEvent, ProcessEventType, serializeProcess, SerializedAIProcess } from './types';
+import { AIProcess, AIProcessStatus, deserializeProcess, DiscoveryProcessMetadata, ProcessEvent, ProcessEventType, serializeProcess, SerializedAIProcess } from './types';
 
 /**
  * Storage key for persisted processes
@@ -117,6 +117,7 @@ export class AIProcessManager implements vscode.Disposable {
                     error: p.error,
                     result: p.result,
                     codeReviewMetadata: p.codeReviewMetadata,
+                    discoveryMetadata: p.discoveryMetadata,
                     structuredResult: p.structuredResult
                 }));
 
@@ -197,6 +198,64 @@ export class AIProcessManager implements vscode.Disposable {
         this._onDidChangeProcesses.fire({ type: 'process-added', process });
 
         return id;
+    }
+
+    /**
+     * Register a new discovery process
+     * @param metadata Discovery process metadata
+     * @returns The process ID
+     */
+    registerDiscoveryProcess(
+        metadata: DiscoveryProcessMetadata
+    ): string {
+        const id = `discovery-${++this.processCounter}-${Date.now()}`;
+
+        // Create a descriptive preview
+        const preview = metadata.targetGroupPath
+            ? `Discover: ${metadata.featureDescription.substring(0, 30)}... (${metadata.targetGroupPath})`
+            : `Discover: ${metadata.featureDescription.substring(0, 40)}...`;
+
+        const process: TrackedProcess = {
+            id,
+            type: 'discovery',
+            promptPreview: preview.length > 50 ? preview.substring(0, 47) + '...' : preview,
+            fullPrompt: `Feature: ${metadata.featureDescription}\nKeywords: ${metadata.keywords?.join(', ') || 'auto-extracted'}`,
+            status: 'running',
+            startTime: new Date(),
+            discoveryMetadata: metadata
+        };
+
+        this.processes.set(id, process);
+        this._onDidChangeProcesses.fire({ type: 'process-added', process });
+
+        return id;
+    }
+
+    /**
+     * Complete a discovery process with results
+     * @param id Process ID
+     * @param resultCount Number of items found
+     * @param resultSummary Summary of results
+     */
+    completeDiscoveryProcess(id: string, resultCount: number, resultSummary?: string): void {
+        const process = this.processes.get(id);
+        if (!process) {
+            return;
+        }
+
+        process.status = 'completed';
+        process.endTime = new Date();
+        process.result = resultSummary || `Found ${resultCount} related items`;
+
+        // Update metadata with result count
+        if (process.discoveryMetadata) {
+            process.discoveryMetadata.resultCount = resultCount;
+        }
+
+        process.childProcess = undefined;
+
+        this._onDidChangeProcesses.fire({ type: 'process-updated', process });
+        this.saveToStorage();
     }
 
     /**
@@ -351,6 +410,7 @@ export class AIProcessManager implements vscode.Disposable {
             error: p.error,
             result: p.result,
             codeReviewMetadata: p.codeReviewMetadata,
+            discoveryMetadata: p.discoveryMetadata,
             structuredResult: p.structuredResult
         }));
     }
@@ -381,6 +441,7 @@ export class AIProcessManager implements vscode.Disposable {
             error: process.error,
             result: process.result,
             codeReviewMetadata: process.codeReviewMetadata,
+            discoveryMetadata: process.discoveryMetadata,
             structuredResult: process.structuredResult
         };
     }
