@@ -7,10 +7,19 @@ import { TaskItem } from './task-item';
  * Command handlers for the Tasks Viewer
  */
 export class TasksCommands {
+    private tasksTreeView?: vscode.TreeView<vscode.TreeItem>;
+
     constructor(
         private taskManager: TaskManager,
         private treeDataProvider: TasksTreeDataProvider
     ) {}
+
+    /**
+     * Set the tree view for multi-selection support
+     */
+    setTreeView(treeView: vscode.TreeView<vscode.TreeItem>): void {
+        this.tasksTreeView = treeView;
+    }
 
     /**
      * Register all tasks viewer commands
@@ -27,7 +36,9 @@ export class TasksCommands {
             vscode.commands.registerCommand('tasksViewer.filter', () => this.filterTasks()),
             vscode.commands.registerCommand('tasksViewer.clearFilter', () => this.clearFilter()),
             vscode.commands.registerCommand('tasksViewer.refresh', () => this.refreshTasks()),
-            vscode.commands.registerCommand('tasksViewer.openFolder', () => this.openTasksFolder())
+            vscode.commands.registerCommand('tasksViewer.openFolder', () => this.openTasksFolder()),
+            vscode.commands.registerCommand('tasksViewer.copyRelativePath', (item: TaskItem) => this.copyPath(item, false)),
+            vscode.commands.registerCommand('tasksViewer.copyFullPath', (item: TaskItem) => this.copyPath(item, true))
         );
 
         return disposables;
@@ -212,5 +223,71 @@ export class TasksCommands {
 
         const uri = vscode.Uri.file(tasksFolder);
         await vscode.commands.executeCommand('revealFileInOS', uri);
+    }
+
+    /**
+     * Copy the path of a task to clipboard (supports multi-selection)
+     * @param item The task item to copy the path from
+     * @param absolute Whether to copy absolute or relative path
+     */
+    private async copyPath(item: TaskItem, absolute: boolean): Promise<void> {
+        try {
+            // Get selected items from tree view for multi-selection support
+            const selectedItems = this.tasksTreeView?.selection || [item];
+
+            // Filter to only TaskItem instances
+            const taskItems = selectedItems.filter(i => i instanceof TaskItem) as TaskItem[];
+
+            if (taskItems.length === 0) {
+                vscode.window.showErrorMessage('No valid task items selected');
+                return;
+            }
+
+            // Collect all paths
+            const paths: string[] = [];
+            for (const taskItem of taskItems) {
+                const fsPath = taskItem.filePath;
+                if (!fsPath) {
+                    continue;
+                }
+
+                let pathToCopy: string;
+                if (absolute) {
+                    // Use absolute path
+                    pathToCopy = fsPath;
+                } else {
+                    // Calculate relative path from workspace root
+                    const uri = vscode.Uri.file(fsPath);
+                    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+                    if (workspaceFolder) {
+                        pathToCopy = vscode.workspace.asRelativePath(uri, false);
+                    } else {
+                        // Fallback to absolute path if not in workspace
+                        pathToCopy = fsPath;
+                    }
+                }
+                paths.push(pathToCopy);
+            }
+
+            if (paths.length === 0) {
+                vscode.window.showErrorMessage('No valid paths to copy');
+                return;
+            }
+
+            // Copy to clipboard
+            const textToCopy = paths.join('\n');
+            await vscode.env.clipboard.writeText(textToCopy);
+
+            // Show confirmation
+            const pathType = absolute ? 'absolute' : 'relative';
+            if (paths.length === 1) {
+                vscode.window.showInformationMessage(`Copied ${pathType} path to clipboard`);
+            } else {
+                vscode.window.showInformationMessage(`Copied ${paths.length} ${pathType} paths to clipboard`);
+            }
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to copy path: ${err.message}`);
+        }
     }
 }

@@ -17,7 +17,7 @@ import {
     DiffReviewEditorProvider
 } from './shortcuts/git-diff-comments';
 import { GlobalNotesTreeDataProvider, NoteDocumentManager } from './shortcuts/global-notes';
-import { TaskManager, TasksTreeDataProvider, TasksCommands } from './shortcuts/tasks-viewer';
+import { TaskManager, TasksTreeDataProvider, TasksCommands, TasksDragDropController } from './shortcuts/tasks-viewer';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import {
@@ -154,9 +154,12 @@ export async function activate(context: vscode.ExtensionContext) {
                 tasksTreeDataProvider?.refresh();
             });
 
+            const tasksDragDropController = new TasksDragDropController();
             tasksTreeView = vscode.window.createTreeView('tasksView', {
                 treeDataProvider: tasksTreeDataProvider,
-                showCollapseAll: false
+                showCollapseAll: true,
+                canSelectMany: true,
+                dragAndDropController: tasksDragDropController
             });
 
             // Update view description with task count
@@ -171,6 +174,7 @@ export async function activate(context: vscode.ExtensionContext) {
             updateTasksViewDescription();
 
             tasksCommands = new TasksCommands(taskManager, tasksTreeDataProvider);
+            tasksCommands.setTreeView(tasksTreeView);
             tasksCommandDisposables = tasksCommands.registerCommands(context);
         }
 

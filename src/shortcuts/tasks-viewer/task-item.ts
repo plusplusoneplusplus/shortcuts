@@ -19,6 +19,9 @@ export class TaskItem extends vscode.TreeItem {
         this.description = this.formatModifiedTime(task.modifiedTime);
         this.iconPath = this.getIconPath(task.isArchived);
 
+        // Set resourceUri for drag-and-drop support
+        this.resourceUri = vscode.Uri.file(task.filePath);
+
         // Click to open in Markdown Review Editor
         this.command = {
             command: 'vscode.openWith',

@@ -410,8 +410,8 @@
         },
         "workspaceShortcuts.tasksViewer.showArchived": {
           "type": "boolean",
-          "default": false,
-          "description": "Show archived tasks in the Tasks Viewer"
+          "default": true,
+          "description": "Show archived tasks in the Tasks Viewer (grouped into Active/Archived sections)"
         },
         "workspaceShortcuts.tasksViewer.sortBy": {
           "type": "string",
@@ -1026,6 +1026,18 @@
         "title": "Open Tasks Folder",
         "category": "Tasks",
         "icon": "$(folder-opened)"
+      },
+      {
+        "command": "tasksViewer.copyRelativePath",
+        "title": "Copy Relative Path",
+        "category": "Tasks",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "tasksViewer.copyFullPath",
+        "title": "Copy Full Path",
+        "category": "Tasks",
+        "icon": "$(file-symlink-file)"
       }
     ],
     "menus": {
@@ -1351,6 +1363,26 @@
           "command": "tasksViewer.delete",
           "when": "view == tasksView && viewItem == archivedTask",
           "group": "task@2"
+        },
+        {
+          "command": "tasksViewer.copyRelativePath",
+          "when": "view == tasksView && viewItem == task",
+          "group": "copy@1"
+        },
+        {
+          "command": "tasksViewer.copyFullPath",
+          "when": "view == tasksView && viewItem == task",
+          "group": "copy@2"
+        },
+        {
+          "command": "tasksViewer.copyRelativePath",
+          "when": "view == tasksView && viewItem == archivedTask",
+          "group": "copy@1"
+        },
+        {
+          "command": "tasksViewer.copyFullPath",
+          "when": "view == tasksView && viewItem == archivedTask",
+          "group": "copy@2"
         },
         {
           "command": "markdownComments.resolveComment",

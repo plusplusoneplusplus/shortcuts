@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { TaskManager, TasksTreeDataProvider, TaskItem, Task } from '../../shortcuts/tasks-viewer';
+import { TaskManager, TasksTreeDataProvider, TaskItem, Task, TaskGroupItem, TasksDragDropController } from '../../shortcuts/tasks-viewer';
 
 suite('Tasks Viewer Tests', () => {
     let tempDir: string;
@@ -601,6 +601,230 @@ suite('Tasks Viewer Tests', () => {
             assert.strictEqual(children.length, 1);
 
             treeDataProvider.dispose();
+        });
+    });
+
+    suite('TaskGroupItem', () => {
+        test('should create active group item with correct properties', () => {
+            const groupItem = new TaskGroupItem('active', 5);
+
+            assert.strictEqual(groupItem.label, 'Active Tasks');
+            assert.strictEqual(groupItem.groupType, 'active');
+            assert.strictEqual(groupItem.taskCount, 5);
+            assert.strictEqual(groupItem.description, '5');
+            assert.strictEqual(groupItem.contextValue, 'taskGroup_active');
+            assert.strictEqual(groupItem.collapsibleState, vscode.TreeItemCollapsibleState.Expanded);
+        });
+
+        test('should create archived group item with correct properties', () => {
+            const groupItem = new TaskGroupItem('archived', 3);
+
+            assert.strictEqual(groupItem.label, 'Archived Tasks');
+            assert.strictEqual(groupItem.groupType, 'archived');
+            assert.strictEqual(groupItem.taskCount, 3);
+            assert.strictEqual(groupItem.description, '3');
+            assert.strictEqual(groupItem.contextValue, 'taskGroup_archived');
+        });
+
+        test('should handle zero count', () => {
+            const groupItem = new TaskGroupItem('active', 0);
+
+            assert.strictEqual(groupItem.taskCount, 0);
+            assert.strictEqual(groupItem.description, '0');
+        });
+    });
+
+    suite('Grouped Tree View', () => {
+        let treeDataProvider: TasksTreeDataProvider;
+
+        setup(() => {
+            // Override settings to show archived (grouped view)
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            (vscode.workspace as any).getConfiguration = (section?: string) => {
+                if (section === 'workspaceShortcuts.tasksViewer') {
+                    return {
+                        get: <T>(key: string, defaultValue?: T): T => {
+                            const defaults: Record<string, any> = {
+                                enabled: true,
+                                folderPath: '.vscode/tasks',
+                                showArchived: true,
+                                sortBy: 'modifiedDate'
+                            };
+                            return (defaults[key] !== undefined ? defaults[key] : defaultValue) as T;
+                        }
+                    };
+                }
+                return originalGetConfiguration(section);
+            };
+
+            treeDataProvider = new TasksTreeDataProvider(taskManager);
+        });
+
+        teardown(() => {
+            treeDataProvider.dispose();
+        });
+
+        test('should return group items when showArchived is enabled', async () => {
+            taskManager.ensureFoldersExist();
+
+            const children = await treeDataProvider.getChildren();
+
+            // Should have 2 groups: Active and Archived
+            assert.strictEqual(children.length, 2);
+            assert.ok(children[0] instanceof TaskGroupItem);
+            assert.ok(children[1] instanceof TaskGroupItem);
+
+            const activeGroup = children[0] as TaskGroupItem;
+            const archivedGroup = children[1] as TaskGroupItem;
+
+            assert.strictEqual(activeGroup.groupType, 'active');
+            assert.strictEqual(archivedGroup.groupType, 'archived');
+        });
+
+        test('should show tasks under correct groups', async () => {
+            // Create active and archived tasks
+            await taskManager.createTask('Active Task');
+            const toArchive = await taskManager.createTask('Archived Task');
+            await taskManager.archiveTask(toArchive);
+
+            const rootChildren = await treeDataProvider.getChildren();
+            assert.strictEqual(rootChildren.length, 2);
+
+            const activeGroup = rootChildren[0] as TaskGroupItem;
+            const archivedGroup = rootChildren[1] as TaskGroupItem;
+
+            // Check counts
+            assert.strictEqual(activeGroup.taskCount, 1);
+            assert.strictEqual(archivedGroup.taskCount, 1);
+
+            // Check children of active group
+            const activeChildren = await treeDataProvider.getChildren(activeGroup);
+            assert.strictEqual(activeChildren.length, 1);
+            assert.ok(activeChildren[0] instanceof TaskItem);
+            assert.strictEqual((activeChildren[0] as TaskItem).isArchived, false);
+
+            // Check children of archived group
+            const archivedChildren = await treeDataProvider.getChildren(archivedGroup);
+            assert.strictEqual(archivedChildren.length, 1);
+            assert.ok(archivedChildren[0] instanceof TaskItem);
+            assert.strictEqual((archivedChildren[0] as TaskItem).isArchived, true);
+        });
+
+        test('should show empty groups when no tasks', async () => {
+            taskManager.ensureFoldersExist();
+
+            const children = await treeDataProvider.getChildren();
+
+            const activeGroup = children[0] as TaskGroupItem;
+            const archivedGroup = children[1] as TaskGroupItem;
+
+            assert.strictEqual(activeGroup.taskCount, 0);
+            assert.strictEqual(archivedGroup.taskCount, 0);
+
+            const activeChildren = await treeDataProvider.getChildren(activeGroup);
+            const archivedChildren = await treeDataProvider.getChildren(archivedGroup);
+
+            assert.strictEqual(activeChildren.length, 0);
+            assert.strictEqual(archivedChildren.length, 0);
+        });
+
+        test('should apply filter to grouped view', async () => {
+            await taskManager.createTask('Apple Task');
+            await taskManager.createTask('Banana Task');
+            const toArchive = await taskManager.createTask('Apple Archived');
+            await taskManager.archiveTask(toArchive);
+
+            treeDataProvider.setFilter('apple');
+
+            const rootChildren = await treeDataProvider.getChildren();
+            const activeGroup = rootChildren[0] as TaskGroupItem;
+            const archivedGroup = rootChildren[1] as TaskGroupItem;
+
+            // Should filter both active and archived
+            assert.strictEqual(activeGroup.taskCount, 1);
+            assert.strictEqual(archivedGroup.taskCount, 1);
+        });
+    });
+
+    suite('TasksDragDropController', () => {
+        let dragDropController: TasksDragDropController;
+
+        setup(() => {
+            dragDropController = new TasksDragDropController();
+        });
+
+        test('should have correct drag MIME types', () => {
+            assert.deepStrictEqual(dragDropController.dragMimeTypes, ['text/uri-list']);
+        });
+
+        test('should have empty drop MIME types', () => {
+            assert.deepStrictEqual(dragDropController.dropMimeTypes, []);
+        });
+
+        test('should handle drag with TaskItem', async () => {
+            const task: Task = {
+                name: 'Test Task',
+                filePath: '/path/to/task.md',
+                modifiedTime: new Date(),
+                isArchived: false
+            };
+            const taskItem = new TaskItem(task);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const token = new vscode.CancellationTokenSource().token;
+
+            await dragDropController.handleDrag([taskItem], dataTransfer, token);
+
+            const uriList = dataTransfer.get('text/uri-list');
+            assert.ok(uriList, 'Should have uri-list in data transfer');
+            assert.ok(uriList.value.includes('file://'), 'Should contain file URI');
+        });
+
+        test('should handle drag with multiple TaskItems', async () => {
+            const tasks: Task[] = [
+                { name: 'Task 1', filePath: '/path/to/task1.md', modifiedTime: new Date(), isArchived: false },
+                { name: 'Task 2', filePath: '/path/to/task2.md', modifiedTime: new Date(), isArchived: false }
+            ];
+            const taskItems = tasks.map(t => new TaskItem(t));
+
+            const dataTransfer = new vscode.DataTransfer();
+            const token = new vscode.CancellationTokenSource().token;
+
+            await dragDropController.handleDrag(taskItems, dataTransfer, token);
+
+            const uriList = dataTransfer.get('text/uri-list');
+            assert.ok(uriList, 'Should have uri-list in data transfer');
+            // Should have two URIs separated by CRLF
+            const uris = uriList.value.split('\r\n');
+            assert.strictEqual(uris.length, 2, 'Should have 2 URIs');
+        });
+
+        test('should not add to data transfer for non-TaskItem', async () => {
+            const groupItem = new TaskGroupItem('active', 5);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const token = new vscode.CancellationTokenSource().token;
+
+            await dragDropController.handleDrag([groupItem], dataTransfer, token);
+
+            const uriList = dataTransfer.get('text/uri-list');
+            assert.ok(!uriList, 'Should not have uri-list for group items');
+        });
+    });
+
+    suite('TaskItem resourceUri', () => {
+        test('should have resourceUri set for drag-and-drop', () => {
+            const task: Task = {
+                name: 'Test Task',
+                filePath: '/path/to/task.md',
+                modifiedTime: new Date(),
+                isArchived: false
+            };
+
+            const item = new TaskItem(task);
+
+            assert.ok(item.resourceUri, 'Should have resourceUri');
+            assert.strictEqual(item.resourceUri.fsPath, '/path/to/task.md');
         });
     });
 });
