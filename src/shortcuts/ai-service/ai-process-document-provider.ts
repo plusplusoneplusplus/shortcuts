@@ -5,6 +5,7 @@
  * without prompting to save when closing.
  */
 
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { AIProcess, AIProcessManager } from './';
 
@@ -101,6 +102,24 @@ export class AIProcessDocumentProvider implements vscode.TextDocumentContentProv
             lines.push('');
         }
 
+        // Raw stdout section (if available)
+        if (process.rawStdoutFilePath) {
+            lines.push(`## Raw Stdout`);
+            lines.push(`- **Path:** \`${process.rawStdoutFilePath}\``);
+            lines.push('');
+
+            const stdoutContent = this.readRawStdout(process.rawStdoutFilePath);
+            if (stdoutContent === undefined) {
+                lines.push('_Raw stdout file could not be read._');
+                lines.push('');
+            } else {
+                lines.push('```text');
+                lines.push(stdoutContent);
+                lines.push('```');
+                lines.push('');
+            }
+        }
+
         // Prompt section
         lines.push(`## Prompt`);
         lines.push('```');
@@ -134,6 +153,18 @@ export class AIProcessDocumentProvider implements vscode.TextDocumentContentProv
         const uri = this.createUri(processId);
         const doc = await vscode.workspace.openTextDocument(uri);
         await vscode.window.showTextDocument(doc, { preview: true });
+    }
+
+    private readRawStdout(filePath: string): string | undefined {
+        try {
+            if (!fs.existsSync(filePath)) {
+                return undefined;
+            }
+            return fs.readFileSync(filePath, 'utf8');
+        } catch (error) {
+            console.error('Failed to read raw stdout file:', error);
+            return undefined;
+        }
     }
 
     dispose(): void {

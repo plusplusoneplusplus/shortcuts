@@ -97,6 +97,79 @@ suite('AI Process Result File Tests', () => {
         });
     });
 
+    suite('rawStdoutFilePath field serialization', () => {
+
+        test('should serialize rawStdoutFilePath field', () => {
+            const process: AIProcess = {
+                id: 'test-1',
+                type: 'clarification',
+                promptPreview: 'Test prompt',
+                fullPrompt: 'Full test prompt',
+                status: 'completed',
+                startTime: new Date('2024-01-15T10:30:00.000Z'),
+                endTime: new Date('2024-01-15T10:35:00.000Z'),
+                result: 'AI response text',
+                rawStdoutFilePath: '/tmp/shortcuts-ai-processes/stdout.txt'
+            };
+
+            const serialized = serializeProcess(process);
+
+            assert.strictEqual(serialized.rawStdoutFilePath, '/tmp/shortcuts-ai-processes/stdout.txt');
+        });
+
+        test('should preserve undefined rawStdoutFilePath', () => {
+            const process: AIProcess = {
+                id: 'test-1',
+                type: 'clarification',
+                promptPreview: 'Test prompt',
+                fullPrompt: 'Full test prompt',
+                status: 'completed',
+                startTime: new Date('2024-01-15T10:30:00.000Z'),
+                result: 'AI response'
+            };
+
+            const serialized = serializeProcess(process);
+
+            assert.strictEqual(serialized.rawStdoutFilePath, undefined);
+        });
+
+        test('should deserialize rawStdoutFilePath field', () => {
+            const serialized: SerializedAIProcess = {
+                id: 'test-1',
+                promptPreview: 'Test prompt',
+                fullPrompt: 'Full test prompt',
+                status: 'completed',
+                startTime: '2024-01-15T10:30:00.000Z',
+                endTime: '2024-01-15T10:35:00.000Z',
+                result: 'AI response',
+                rawStdoutFilePath: '/tmp/shortcuts-ai-processes/stdout.txt'
+            };
+
+            const process = deserializeProcess(serialized);
+
+            assert.strictEqual(process.rawStdoutFilePath, '/tmp/shortcuts-ai-processes/stdout.txt');
+        });
+
+        test('should preserve rawStdoutFilePath through serialize/deserialize cycle', () => {
+            const original: AIProcess = {
+                id: 'test-roundtrip',
+                type: 'clarification',
+                promptPreview: 'Round trip test',
+                fullPrompt: 'Full prompt for round trip testing',
+                status: 'completed',
+                startTime: new Date('2024-01-15T10:30:00.000Z'),
+                endTime: new Date('2024-01-15T10:35:00.000Z'),
+                result: 'AI response',
+                rawStdoutFilePath: '/tmp/shortcuts-ai-processes/stdout.txt'
+            };
+
+            const serialized = serializeProcess(original);
+            const restored = deserializeProcess(serialized);
+
+            assert.strictEqual(restored.rawStdoutFilePath, original.rawStdoutFilePath);
+        });
+    });
+
     suite('AIProcess interface', () => {
 
         test('should allow resultFilePath on AIProcess', () => {
@@ -110,6 +183,7 @@ suite('AI Process Result File Tests', () => {
                 endTime: new Date(),
                 result: 'Code looks good',
                 resultFilePath: '/some/path/result.md',
+                rawStdoutFilePath: '/tmp/shortcuts-ai-processes/review-stdout.txt',
                 codeReviewMetadata: {
                     reviewType: 'commit',
                     rulesUsed: ['rule1']
@@ -118,6 +192,7 @@ suite('AI Process Result File Tests', () => {
 
             assert.ok(process.resultFilePath);
             assert.strictEqual(process.resultFilePath, '/some/path/result.md');
+            assert.strictEqual(process.rawStdoutFilePath, '/tmp/shortcuts-ai-processes/review-stdout.txt');
         });
 
         test('should work with discovery processes', () => {

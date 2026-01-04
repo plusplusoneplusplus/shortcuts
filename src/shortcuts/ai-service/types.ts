@@ -110,6 +110,8 @@ export interface AIProcess {
     result?: string;
     /** Path to the file containing the full result */
     resultFilePath?: string;
+    /** Path to the file containing raw stdout from the AI tool */
+    rawStdoutFilePath?: string;
     /** Code review specific metadata (if type is 'code-review') */
     codeReviewMetadata?: CodeReviewProcessMetadata;
     /** Discovery specific metadata (if type is 'discovery') */
@@ -132,6 +134,7 @@ export interface SerializedAIProcess {
     error?: string;
     result?: string;
     resultFilePath?: string;
+    rawStdoutFilePath?: string;
     codeReviewMetadata?: CodeReviewProcessMetadata;
     discoveryMetadata?: DiscoveryProcessMetadata;
     structuredResult?: string;
@@ -152,6 +155,7 @@ export function serializeProcess(process: AIProcess): SerializedAIProcess {
         error: process.error,
         result: process.result,
         resultFilePath: process.resultFilePath,
+        rawStdoutFilePath: process.rawStdoutFilePath,
         codeReviewMetadata: process.codeReviewMetadata,
         discoveryMetadata: process.discoveryMetadata,
         structuredResult: process.structuredResult
@@ -173,6 +177,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         error: serialized.error,
         result: serialized.result,
         resultFilePath: serialized.resultFilePath,
+        rawStdoutFilePath: serialized.rawStdoutFilePath,
         codeReviewMetadata: serialized.codeReviewMetadata,
         discoveryMetadata: serialized.discoveryMetadata,
         structuredResult: serialized.structuredResult
@@ -200,4 +205,3 @@ export interface ProcessEvent {
     type: ProcessEventType;
     process?: AIProcess;
 }
-

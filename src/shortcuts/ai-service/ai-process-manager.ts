@@ -8,6 +8,7 @@
 
 import { ChildProcess } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { AIProcess, AIProcessStatus, deserializeProcess, DiscoveryProcessMetadata, ProcessEvent, ProcessEventType, serializeProcess, SerializedAIProcess } from './types';
@@ -26,6 +27,7 @@ const MAX_PERSISTED_PROCESSES = 100;
  * Directory name for storing process results
  */
 const RESULTS_DIR_NAME = 'ai-processes';
+const RAW_STDOUT_DIR_NAME = 'shortcuts-ai-processes';
 
 /**
  * Internal process tracking with child process reference
@@ -124,6 +126,7 @@ export class AIProcessManager implements vscode.Disposable {
                     error: p.error,
                     result: p.result,
                     resultFilePath: p.resultFilePath,
+                    rawStdoutFilePath: p.rawStdoutFilePath,
                     codeReviewMetadata: p.codeReviewMetadata,
                     discoveryMetadata: p.discoveryMetadata,
                     structuredResult: p.structuredResult
@@ -237,6 +240,42 @@ export class AIProcessManager implements vscode.Disposable {
         this._onDidChangeProcesses.fire({ type: 'process-added', process });
 
         return id;
+    }
+
+    /**
+     * Attach a child process to an existing tracked process.
+     */
+    attachChildProcess(id: string, childProcess: ChildProcess): void {
+        const process = this.processes.get(id);
+        if (!process) {
+            return;
+        }
+
+        process.childProcess = childProcess;
+    }
+
+    /**
+     * Save raw stdout to a temp file and attach it to the process.
+     */
+    attachRawStdout(id: string, stdout: string): string | undefined {
+        const process = this.processes.get(id);
+        if (!process || stdout.length === 0) {
+            return undefined;
+        }
+
+        const filePath = this.saveRawStdoutToFile(process, stdout);
+        if (!filePath) {
+            return undefined;
+        }
+
+        process.rawStdoutFilePath = filePath;
+        this._onDidChangeProcesses.fire({ type: 'process-updated', process });
+
+        if (process.status !== 'running') {
+            this.saveToStorage();
+        }
+
+        return filePath;
     }
 
     /**
@@ -438,6 +477,7 @@ export class AIProcessManager implements vscode.Disposable {
             error: p.error,
             result: p.result,
             resultFilePath: p.resultFilePath,
+            rawStdoutFilePath: p.rawStdoutFilePath,
             codeReviewMetadata: p.codeReviewMetadata,
             discoveryMetadata: p.discoveryMetadata,
             structuredResult: p.structuredResult
@@ -470,6 +510,7 @@ export class AIProcessManager implements vscode.Disposable {
             error: process.error,
             result: process.result,
             resultFilePath: process.resultFilePath,
+            rawStdoutFilePath: process.rawStdoutFilePath,
             codeReviewMetadata: process.codeReviewMetadata,
             discoveryMetadata: process.discoveryMetadata,
             structuredResult: process.structuredResult
@@ -602,6 +643,45 @@ export class AIProcessManager implements vscode.Disposable {
     }
 
     /**
+     * Ensure the temp directory for raw stdout exists
+     */
+    private ensureRawStdoutDir(): string | undefined {
+        const stdoutDir = path.join(os.tmpdir(), RAW_STDOUT_DIR_NAME);
+        try {
+            if (!fs.existsSync(stdoutDir)) {
+                fs.mkdirSync(stdoutDir, { recursive: true });
+            }
+            return stdoutDir;
+        } catch (error) {
+            console.error('Failed to create raw stdout directory:', error);
+            return undefined;
+        }
+    }
+
+    /**
+     * Save raw stdout to a temp file
+     */
+    private saveRawStdoutToFile(process: TrackedProcess, stdout: string): string | undefined {
+        const stdoutDir = this.ensureRawStdoutDir();
+        if (!stdoutDir) {
+            return undefined;
+        }
+
+        try {
+            const safeId = process.id.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const timestamp = process.startTime.toISOString().replace(/[:.]/g, '-');
+            const filename = `${safeId}_${timestamp}_stdout.txt`;
+            const filePath = process.rawStdoutFilePath || path.join(stdoutDir, filename);
+
+            fs.writeFileSync(filePath, stdout, 'utf8');
+            return filePath;
+        } catch (error) {
+            console.error('Failed to save raw stdout to file:', error);
+            return undefined;
+        }
+    }
+
+    /**
      * Dispose of resources
      */
     dispose(): void {
@@ -615,4 +695,3 @@ export class AIProcessManager implements vscode.Disposable {
         this._onDidChangeProcesses.dispose();
     }
 }
-

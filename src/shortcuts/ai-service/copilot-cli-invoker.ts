@@ -285,9 +285,10 @@ export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: s
 export async function invokeCopilotCLI(
     prompt: string,
     workspaceRoot: string,
-    processManager?: AIProcessManager
+    processManager?: AIProcessManager,
+    existingProcessId?: string
 ): Promise<AIInvocationResult> {
-    let processId: string | undefined;
+    let processId: string | undefined = existingProcessId;
 
     try {
         // Build the copilot command with escaped prompt and optional model
@@ -308,6 +309,10 @@ export async function invokeCopilotCLI(
                     timeout: COPILOT_TIMEOUT_MS,
                     maxBuffer: 1024 * 1024 * 10 // 10MB buffer
                 }, (error, stdout, stderr) => {
+                    if (processManager && processId && stdout) {
+                        processManager.attachRawStdout(processId, stdout);
+                    }
+
                     if (error) {
                         // Check if it's a timeout
                         if (error.killed) {
@@ -375,7 +380,11 @@ export async function invokeCopilotCLI(
 
                 // Register the process with the manager
                 if (processManager) {
-                    processId = processManager.registerProcess(prompt, childProcess);
+                    if (processId) {
+                        processManager.attachChildProcess(processId, childProcess);
+                    } else {
+                        processId = processManager.registerProcess(prompt, childProcess);
+                    }
                 }
 
                 // Handle cancellation
@@ -403,4 +412,3 @@ export async function invokeCopilotCLI(
         };
     }
 }
-

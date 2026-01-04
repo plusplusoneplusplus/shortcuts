@@ -182,7 +182,7 @@ export function registerCodeReviewCommands(
                     }, async (progress) => {
                         progress.report({ message: `Reviewing against ${rulesResult.rules.length} rules...` });
                         
-                        const result = await invokeCopilotCLI(prompt, workspaceRoot);
+                        const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager, processId);
                         
                         if (result.success && result.response) {
                             // Parse the structured response
@@ -347,4 +347,3 @@ export function registerCodeReviewCommands(
 
     return disposables;
 }
-
