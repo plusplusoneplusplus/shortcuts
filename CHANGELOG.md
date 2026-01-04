@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.16.0] - 2026-01-03
+
+### Added
+- Toggle setting for Global Notes panel visibility (`workspaceShortcuts.globalNotes.enabled`)
+- Multi-line comments now show full first 2 lines in source preview
+
+### Fixed
+- Tasks now open in Markdown Review Editor instead of plain text editor
+- Windows filename validation now checks filename only, not full path
+
 ## [2.15.0] - 2025-12-31
 
 ### Added
