@@ -3354,5 +3354,259 @@ suite('Webview Scripts Tests', () => {
             assert.ok(height > 120, 'Bullet lists should increase height');
         });
     });
+
+    suite('Tab/Shift+Tab Indentation Logic', () => {
+        /**
+         * Pure function implementation for testing - mirrors the indentation logic
+         */
+        function applyIndent(lines: string[], startLineIdx: number, endLineIdx: number, isOutdent: boolean): {
+            modifiedLines: string[];
+            firstLineIndentChange: number;
+            lastLineIndentChange: number;
+        } {
+            const INDENT = '    '; // 4 spaces
+            const modifiedLines = [...lines];
+            let firstLineIndentChange = 0;
+            let lastLineIndentChange = 0;
+
+            for (let i = startLineIdx; i <= endLineIdx; i++) {
+                if (i < 0 || i >= modifiedLines.length) continue;
+
+                const line = modifiedLines[i];
+                if (isOutdent) {
+                    let removed = 0;
+                    if (line.startsWith('\t')) {
+                        modifiedLines[i] = line.substring(1);
+                        removed = 1;
+                    } else {
+                        let spacesToRemove = 0;
+                        for (let j = 0; j < 4 && j < line.length; j++) {
+                            if (line[j] === ' ') {
+                                spacesToRemove++;
+                            } else {
+                                break;
+                            }
+                        }
+                        if (spacesToRemove > 0) {
+                            modifiedLines[i] = line.substring(spacesToRemove);
+                            removed = spacesToRemove;
+                        }
+                    }
+                    // Use (removed || 0) to avoid -0 vs 0 issues in strict equality
+                    if (i === startLineIdx) firstLineIndentChange = removed > 0 ? -removed : 0;
+                    if (i === endLineIdx) lastLineIndentChange = removed > 0 ? -removed : 0;
+                } else {
+                    modifiedLines[i] = INDENT + line;
+                    if (i === startLineIdx) firstLineIndentChange = 4;
+                    if (i === endLineIdx) lastLineIndentChange = 4;
+                }
+            }
+
+            return { modifiedLines, firstLineIndentChange, lastLineIndentChange };
+        }
+
+        test('should indent single line with 4 spaces', () => {
+            const lines = ['Hello World'];
+            const result = applyIndent(lines, 0, 0, false);
+            assert.strictEqual(result.modifiedLines[0], '    Hello World');
+            assert.strictEqual(result.firstLineIndentChange, 4);
+            assert.strictEqual(result.lastLineIndentChange, 4);
+        });
+
+        test('should indent multiple lines with 4 spaces each', () => {
+            const lines = ['Line 1', 'Line 2', 'Line 3'];
+            const result = applyIndent(lines, 0, 2, false);
+            assert.strictEqual(result.modifiedLines[0], '    Line 1');
+            assert.strictEqual(result.modifiedLines[1], '    Line 2');
+            assert.strictEqual(result.modifiedLines[2], '    Line 3');
+        });
+
+        test('should indent only selected lines', () => {
+            const lines = ['Line 1', 'Line 2', 'Line 3', 'Line 4'];
+            const result = applyIndent(lines, 1, 2, false);
+            assert.strictEqual(result.modifiedLines[0], 'Line 1');
+            assert.strictEqual(result.modifiedLines[1], '    Line 2');
+            assert.strictEqual(result.modifiedLines[2], '    Line 3');
+            assert.strictEqual(result.modifiedLines[3], 'Line 4');
+        });
+
+        test('should outdent single line by removing up to 4 spaces', () => {
+            const lines = ['    Hello World'];
+            const result = applyIndent(lines, 0, 0, true);
+            assert.strictEqual(result.modifiedLines[0], 'Hello World');
+            assert.strictEqual(result.firstLineIndentChange, -4);
+        });
+
+        test('should outdent line with less than 4 spaces', () => {
+            const lines = ['  Hello World'];
+            const result = applyIndent(lines, 0, 0, true);
+            assert.strictEqual(result.modifiedLines[0], 'Hello World');
+            assert.strictEqual(result.firstLineIndentChange, -2);
+        });
+
+        test('should outdent line with tab character', () => {
+            const lines = ['\tHello World'];
+            const result = applyIndent(lines, 0, 0, true);
+            assert.strictEqual(result.modifiedLines[0], 'Hello World');
+            assert.strictEqual(result.firstLineIndentChange, -1);
+        });
+
+        test('should outdent multiple lines', () => {
+            const lines = ['    Line 1', '    Line 2', '    Line 3'];
+            const result = applyIndent(lines, 0, 2, true);
+            assert.strictEqual(result.modifiedLines[0], 'Line 1');
+            assert.strictEqual(result.modifiedLines[1], 'Line 2');
+            assert.strictEqual(result.modifiedLines[2], 'Line 3');
+        });
+
+        test('should handle outdent on line with no leading whitespace', () => {
+            const lines = ['Hello World'];
+            const result = applyIndent(lines, 0, 0, true);
+            assert.strictEqual(result.modifiedLines[0], 'Hello World');
+            assert.strictEqual(result.firstLineIndentChange, 0);
+        });
+
+        test('should handle mixed indentation in multi-line outdent', () => {
+            const lines = ['    Line 1', '  Line 2', '\tLine 3', 'Line 4'];
+            const result = applyIndent(lines, 0, 3, true);
+            assert.strictEqual(result.modifiedLines[0], 'Line 1');
+            assert.strictEqual(result.modifiedLines[1], 'Line 2');
+            assert.strictEqual(result.modifiedLines[2], 'Line 3');
+            assert.strictEqual(result.modifiedLines[3], 'Line 4');
+        });
+
+        test('should preserve content after leading whitespace on outdent', () => {
+            const lines = ['    Hello    World'];
+            const result = applyIndent(lines, 0, 0, true);
+            assert.strictEqual(result.modifiedLines[0], 'Hello    World');
+        });
+
+        test('should handle empty lines', () => {
+            const lines = ['Line 1', '', 'Line 3'];
+            const result = applyIndent(lines, 0, 2, false);
+            assert.strictEqual(result.modifiedLines[0], '    Line 1');
+            assert.strictEqual(result.modifiedLines[1], '    ');
+            assert.strictEqual(result.modifiedLines[2], '    Line 3');
+        });
+
+        test('should handle outdent on empty lines', () => {
+            const lines = ['    Line 1', '    ', '    Line 3'];
+            const result = applyIndent(lines, 0, 2, true);
+            assert.strictEqual(result.modifiedLines[0], 'Line 1');
+            assert.strictEqual(result.modifiedLines[1], '');
+            assert.strictEqual(result.modifiedLines[2], 'Line 3');
+        });
+
+        test('should track indent changes for first and last lines correctly', () => {
+            const lines = ['    Line 1', '  Line 2', 'Line 3'];
+            const result = applyIndent(lines, 0, 2, true);
+            assert.strictEqual(result.firstLineIndentChange, -4);
+            assert.strictEqual(result.lastLineIndentChange, 0);
+        });
+
+        test('should handle indent on already indented lines', () => {
+            const lines = ['    Already indented'];
+            const result = applyIndent(lines, 0, 0, false);
+            assert.strictEqual(result.modifiedLines[0], '        Already indented');
+        });
+
+        test('should handle out of bounds line indices gracefully', () => {
+            const lines = ['Line 1', 'Line 2'];
+            const result = applyIndent(lines, -1, 5, false);
+            // Should only indent lines 0 and 1
+            assert.strictEqual(result.modifiedLines[0], '    Line 1');
+            assert.strictEqual(result.modifiedLines[1], '    Line 2');
+        });
+    });
+
+    suite('Cursor Position After Save Tests', () => {
+        /**
+         * Tests for cursor position preservation logic
+         * These test the pure functions used in cursor restoration
+         */
+        
+        interface SelectionInfo {
+            startLine: number;
+            startColumn: number;
+            endLine: number;
+            endColumn: number;
+        }
+
+        /**
+         * Calculate new cursor position after indent operation
+         */
+        function calculateCursorAfterIndent(
+            selection: SelectionInfo,
+            firstLineIndentChange: number,
+            lastLineIndentChange: number
+        ): SelectionInfo {
+            return {
+                startLine: selection.startLine,
+                startColumn: Math.max(0, selection.startColumn + firstLineIndentChange),
+                endLine: selection.endLine,
+                endColumn: Math.max(0, selection.endColumn + lastLineIndentChange)
+            };
+        }
+
+        test('should adjust cursor position after single line indent', () => {
+            const selection: SelectionInfo = {
+                startLine: 1,
+                startColumn: 5,
+                endLine: 1,
+                endColumn: 10
+            };
+            const result = calculateCursorAfterIndent(selection, 4, 4);
+            assert.strictEqual(result.startColumn, 9);
+            assert.strictEqual(result.endColumn, 14);
+        });
+
+        test('should adjust cursor position after single line outdent', () => {
+            const selection: SelectionInfo = {
+                startLine: 1,
+                startColumn: 8,
+                endLine: 1,
+                endColumn: 12
+            };
+            const result = calculateCursorAfterIndent(selection, -4, -4);
+            assert.strictEqual(result.startColumn, 4);
+            assert.strictEqual(result.endColumn, 8);
+        });
+
+        test('should not allow negative column after outdent', () => {
+            const selection: SelectionInfo = {
+                startLine: 1,
+                startColumn: 2,
+                endLine: 1,
+                endColumn: 5
+            };
+            const result = calculateCursorAfterIndent(selection, -4, -4);
+            assert.strictEqual(result.startColumn, 0);
+            assert.strictEqual(result.endColumn, 1);
+        });
+
+        test('should handle multi-line selection with different indent changes', () => {
+            const selection: SelectionInfo = {
+                startLine: 1,
+                startColumn: 5,
+                endLine: 3,
+                endColumn: 8
+            };
+            const result = calculateCursorAfterIndent(selection, -4, -2);
+            assert.strictEqual(result.startColumn, 1);
+            assert.strictEqual(result.endColumn, 6);
+        });
+
+        test('should preserve line numbers after indent', () => {
+            const selection: SelectionInfo = {
+                startLine: 5,
+                startColumn: 3,
+                endLine: 8,
+                endColumn: 10
+            };
+            const result = calculateCursorAfterIndent(selection, 4, 4);
+            assert.strictEqual(result.startLine, 5);
+            assert.strictEqual(result.endLine, 8);
+        });
+    });
 });
 

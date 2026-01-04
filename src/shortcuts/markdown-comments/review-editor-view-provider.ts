@@ -291,10 +291,11 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         // Handle messages from webview
         const messageDisposable = webviewPanel.webview.onDidReceiveMessage(
             async (message: WebviewMessage) => {
-                // Set a timestamp window (100ms) during which we ignore document changes
+                // Set a timestamp window (200ms) during which we ignore document changes
                 // This handles multiple document change events that can fire for a single edit
+                // Increased from 100ms to 200ms to better handle Ctrl+S save operations
                 await this.handleWebviewMessage(message, document, relativePath, webviewPanel, updateWebview, () => {
-                    webviewEditUntil = Date.now() + 100;
+                    webviewEditUntil = Date.now() + 200;
                 });
             }
         );

@@ -888,7 +888,7 @@ function handleEditorInput(): void {
 function handleEditorKeydown(e: KeyboardEvent): void {
     if (e.key === 'Tab') {
         e.preventDefault();
-        document.execCommand('insertText', false, '    ');
+        handleTabKey(e.shiftKey);
     } else if (e.key === 'Enter' && !e.shiftKey) {
         // Handle Enter key explicitly to prevent browser from creating
         // DOM elements that break the flex layout in line-row containers.
@@ -896,6 +896,236 @@ function handleEditorKeydown(e: KeyboardEvent): void {
         // flex siblings, causing text to appear side-by-side instead of on new lines.
         e.preventDefault();
         handleEnterKey();
+    } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        // Handle Ctrl+S / Cmd+S to save without cursor reset
+        e.preventDefault();
+        handleSaveKey();
+    }
+}
+
+/**
+ * Handle Tab/Shift+Tab key for indentation
+ * Supports multi-line selection for bulk indent/outdent
+ */
+function handleTabKey(isShiftKey: boolean): void {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const selectionInfo = getSelectionPosition(range);
+
+    if (!selectionInfo) {
+        // Fallback: simple tab insertion
+        if (!isShiftKey) {
+            document.execCommand('insertText', false, '    ');
+        }
+        return;
+    }
+
+    const lines = state.currentContent.split('\n');
+    const startLineIdx = selectionInfo.startLine - 1;
+    const endLineIdx = selectionInfo.endLine - 1;
+    const startCol = selectionInfo.startColumn - 1;
+    const endCol = selectionInfo.endColumn - 1;
+
+    // Check if we have a multi-line selection or cursor is at the start of line
+    const isMultiLine = startLineIdx !== endLineIdx;
+    const isAtLineStart = startCol === 0;
+    const hasSelection = !range.collapsed;
+
+    if (isMultiLine || (hasSelection && isAtLineStart)) {
+        // Multi-line indent/outdent
+        handleMultiLineIndent(lines, startLineIdx, endLineIdx, isShiftKey, selectionInfo);
+    } else if (isShiftKey) {
+        // Single line outdent at cursor position
+        handleSingleLineOutdent(lines, startLineIdx, startCol);
+    } else {
+        // Single line indent: insert 4 spaces at cursor
+        document.execCommand('insertText', false, '    ');
+    }
+}
+
+/**
+ * Handle multi-line indent/outdent
+ */
+function handleMultiLineIndent(
+    lines: string[],
+    startLineIdx: number,
+    endLineIdx: number,
+    isOutdent: boolean,
+    selectionInfo: { startLine: number; startColumn: number; endLine: number; endColumn: number }
+): void {
+    const INDENT = '    '; // 4 spaces
+    let modifiedLines = [...lines];
+    let totalIndentChange = 0;
+    let firstLineIndentChange = 0;
+    let lastLineIndentChange = 0;
+
+    for (let i = startLineIdx; i <= endLineIdx; i++) {
+        if (i < 0 || i >= modifiedLines.length) continue;
+
+        const line = modifiedLines[i];
+        if (isOutdent) {
+            // Remove up to 4 spaces or 1 tab from the beginning
+            let removed = 0;
+            if (line.startsWith('\t')) {
+                modifiedLines[i] = line.substring(1);
+                removed = 1;
+            } else {
+                // Remove up to 4 spaces
+                let spacesToRemove = 0;
+                for (let j = 0; j < 4 && j < line.length; j++) {
+                    if (line[j] === ' ') {
+                        spacesToRemove++;
+                    } else {
+                        break;
+                    }
+                }
+                if (spacesToRemove > 0) {
+                    modifiedLines[i] = line.substring(spacesToRemove);
+                    removed = spacesToRemove;
+                }
+            }
+            if (i === startLineIdx) firstLineIndentChange = -removed;
+            if (i === endLineIdx) lastLineIndentChange = -removed;
+            totalIndentChange -= removed;
+        } else {
+            // Add 4 spaces at the beginning
+            modifiedLines[i] = INDENT + line;
+            if (i === startLineIdx) firstLineIndentChange = 4;
+            if (i === endLineIdx) lastLineIndentChange = 4;
+            totalIndentChange += 4;
+        }
+    }
+
+    // Update content
+    const newContent = modifiedLines.join('\n');
+    state.setCurrentContent(newContent);
+    updateContent(newContent);
+
+    // Re-render
+    render();
+
+    // Restore selection to cover the same lines (adjusted for indent changes)
+    setTimeout(() => {
+        const newStartCol = Math.max(0, (selectionInfo.startColumn - 1) + firstLineIndentChange);
+        const newEndCol = Math.max(0, (selectionInfo.endColumn - 1) + lastLineIndentChange);
+        restoreSelectionRange(selectionInfo.startLine, newStartCol, selectionInfo.endLine, newEndCol);
+    }, 0);
+}
+
+/**
+ * Handle single line outdent at cursor position
+ */
+function handleSingleLineOutdent(lines: string[], lineIdx: number, cursorCol: number): void {
+    if (lineIdx < 0 || lineIdx >= lines.length) return;
+
+    const line = lines[lineIdx];
+    let removed = 0;
+
+    // Remove up to 4 spaces or 1 tab from the beginning
+    if (line.startsWith('\t')) {
+        lines[lineIdx] = line.substring(1);
+        removed = 1;
+    } else {
+        let spacesToRemove = 0;
+        for (let j = 0; j < 4 && j < line.length; j++) {
+            if (line[j] === ' ') {
+                spacesToRemove++;
+            } else {
+                break;
+            }
+        }
+        if (spacesToRemove > 0) {
+            lines[lineIdx] = line.substring(spacesToRemove);
+            removed = spacesToRemove;
+        }
+    }
+
+    if (removed === 0) return; // Nothing to remove
+
+    // Update content
+    const newContent = lines.join('\n');
+    state.setCurrentContent(newContent);
+    updateContent(newContent);
+
+    // Re-render
+    render();
+
+    // Restore cursor position (adjusted for removed characters)
+    setTimeout(() => {
+        const newCol = Math.max(0, cursorCol - removed);
+        restoreCursorToPosition(lineIdx + 1, newCol);
+    }, 0);
+}
+
+/**
+ * Restore selection to a specific range after re-render
+ */
+function restoreSelectionRange(startLine: number, startCol: number, endLine: number, endCol: number): void {
+    const startLineElement = editorWrapper.querySelector(`.line-content[data-line="${startLine}"]`);
+    const endLineElement = editorWrapper.querySelector(`.line-content[data-line="${endLine}"]`);
+
+    if (!startLineElement || !endLineElement) return;
+
+    const startTarget = findTextNodeAtColumn(startLineElement as HTMLElement, startCol);
+    const endTarget = findTextNodeAtColumn(endLineElement as HTMLElement, endCol);
+
+    if (!startTarget || !endTarget) return;
+
+    try {
+        const range = document.createRange();
+        range.setStart(startTarget.node, startTarget.offset);
+        range.setEnd(endTarget.node, endTarget.offset);
+
+        const selection = window.getSelection();
+        if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+    } catch (e) {
+        console.warn('[Webview] Could not restore selection range:', e);
+    }
+}
+
+/**
+ * Handle Ctrl+S / Cmd+S save key
+ * Saves content while preserving cursor position
+ */
+function handleSaveKey(): void {
+    // Get current cursor position before any updates
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const selectionInfo = getSelectionPosition(range);
+
+    // Extract current content and send update
+    const newContent = getPlainTextContent();
+    if (newContent !== state.currentContent) {
+        state.setCurrentContent(newContent);
+        updateContent(newContent);
+    }
+
+    // Mark that we're saving - the cursor position will be preserved
+    // because we're not triggering a re-render here
+    // The extension will apply the edit and the webviewEditUntil timestamp
+    // will prevent re-rendering
+
+    // If we did need to re-render, restore cursor position
+    if (selectionInfo) {
+        setTimeout(() => {
+            if (range.collapsed) {
+                restoreCursorToPosition(selectionInfo.startLine, selectionInfo.startColumn - 1);
+            } else {
+                restoreSelectionRange(
+                    selectionInfo.startLine,
+                    selectionInfo.startColumn - 1,
+                    selectionInfo.endLine,
+                    selectionInfo.endColumn - 1
+                );
+            }
+        }, 0);
     }
 }
 
