@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.16.1] - 2026-01-04
+
+### Added
+- AI-powered discovery engine to find related docs, files, and commits for features
+- Discovery preview panel with target group selection and warning messages
+- Code block theme customization for Markdown Review Editor (`workspaceShortcuts.markdownComments.codeBlockTheme`)
+- Commit items in groups now show file diffs with expand/collapse support
+- "View Discovery Results" command for completed discovery processes
+
+### Changed
+- AI process management now handles raw stdout with read-only document provider
+
 ## [2.16.0] - 2026-01-03
 
 ### Added
