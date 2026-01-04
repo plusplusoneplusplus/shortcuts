@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { GlobalNotesTreeDataProvider } from './global-notes';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
-import { CommandShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
+import { CommandShortcutItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
 
 /**
  * Command handlers for the shortcuts panel
@@ -74,7 +74,7 @@ export class ShortcutsCommands {
         );
 
         disposables.push(
-            vscode.commands.registerCommand('shortcuts.removeFromLogicalGroup', async (item: LogicalGroupChildItem) => {
+            vscode.commands.registerCommand('shortcuts.removeFromLogicalGroup', async (item: LogicalGroupChildItem | CommitShortcutItem) => {
                 await this.removeFromLogicalGroup(item);
             })
         );
@@ -637,8 +637,9 @@ export class ShortcutsCommands {
 
     /**
      * Remove an item from a logical group (supports multi-selection)
+     * Handles both file/folder items (LogicalGroupChildItem) and commit items (CommitShortcutItem)
      */
-    private async removeFromLogicalGroup(item: LogicalGroupChildItem): Promise<void> {
+    private async removeFromLogicalGroup(item: LogicalGroupChildItem | CommitShortcutItem): Promise<void> {
         if (!this.treeDataProvider) {
             return;
         }
@@ -646,23 +647,54 @@ export class ShortcutsCommands {
         try {
             // Get all selected items from the tree view
             const selectedItems = this.treeView?.selection || [item];
-            const groupChildItems = selectedItems.filter(i => i instanceof LogicalGroupChildItem) as LogicalGroupChildItem[];
+            
+            // Helper to check if item is a commit (using contextValue since instanceof may not work across module boundaries)
+            const isCommitItem = (i: any): i is CommitShortcutItem => {
+                return i?.contextValue === 'logicalGroupItem_commit' && 'commitHash' in i && 'parentGroup' in i;
+            };
+            
+            // Helper to check if item is a file/folder child item
+            const isGroupChildItem = (i: any): i is LogicalGroupChildItem => {
+                return (i?.contextValue === 'logicalGroupItem_folder' || i?.contextValue === 'logicalGroupItem_file') 
+                    && 'parentGroup' in i && 'fsPath' in i;
+            };
+            
+            // Separate file/folder items from commit items
+            const groupChildItems = selectedItems.filter(isGroupChildItem);
+            const commitItems = selectedItems.filter(isCommitItem);
 
-            if (groupChildItems.length === 0) {
-                return;
+            if (groupChildItems.length === 0 && commitItems.length === 0) {
+                // Check the passed item directly
+                if (isCommitItem(item)) {
+                    commitItems.push(item);
+                } else if (isGroupChildItem(item)) {
+                    groupChildItems.push(item);
+                } else {
+                    console.warn('removeFromLogicalGroup: item is neither commit nor file/folder:', item);
+                    return;
+                }
             }
 
             // Remove all selected items (no confirmation prompt)
             const configManager = this.treeDataProvider.getConfigurationManager();
+            
+            // Remove file/folder items
             for (const childItem of groupChildItems) {
                 await configManager.removeFromLogicalGroup(childItem.parentGroup, childItem.fsPath);
+            }
+            
+            // Remove commit items
+            for (const commitItem of commitItems) {
+                console.log(`Removing commit ${commitItem.commitHash} from group ${commitItem.parentGroup}`);
+                await configManager.removeCommitFromLogicalGroup(commitItem.parentGroup, commitItem.commitHash);
             }
 
             this.treeDataProvider.refresh();
 
-            const successMessage = groupChildItems.length === 1
+            const totalRemoved = groupChildItems.length + commitItems.length;
+            const successMessage = totalRemoved === 1
                 ? 'Item removed from logical group successfully!'
-                : `${groupChildItems.length} items removed from groups successfully!`;
+                : `${totalRemoved} items removed from groups successfully!`;
             NotificationManager.showInfo(successMessage, { timeout: 3000 });
 
         } catch (error) {

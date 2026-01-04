@@ -294,5 +294,71 @@ suite('Nested Groups Tests', () => {
         const childChildren = await provider.getChildren(parentChildren[0]);
         assert.strictEqual(childChildren.length, 1);
     });
+
+    test('should preserve commit items in nested groups', async () => {
+        // Create parent and nested group
+        await configManager.createLogicalGroup('Parent', 'Parent description');
+        await configManager.createNestedLogicalGroup('Parent', 'Commits', 'Commit items');
+
+        // Get current config and manually add a commit item to nested group
+        let config = await configManager.loadConfiguration();
+        const nestedGroup = config.logicalGroups[0].groups?.[0];
+        assert.ok(nestedGroup, 'Nested group should exist');
+        
+        nestedGroup.items.push({
+            name: 'feat: Test commit message',
+            type: 'commit',
+            commitRef: {
+                hash: 'abc123def456789',
+                repositoryRoot: tempDir
+            }
+        });
+        await configManager.saveConfiguration(config);
+
+        // Reload configuration to trigger validation
+        config = await configManager.loadConfiguration();
+
+        // Verify commit item is preserved in nested group
+        const updatedNestedGroup = config.logicalGroups[0].groups?.[0];
+        assert.ok(updatedNestedGroup, 'Nested group should still exist');
+        assert.strictEqual(updatedNestedGroup.items.length, 1, 'Should have 1 item in nested group');
+        assert.strictEqual(updatedNestedGroup.items[0].type, 'commit', 'Item should be a commit');
+        assert.strictEqual(updatedNestedGroup.items[0].name, 'feat: Test commit message');
+        assert.ok(updatedNestedGroup.items[0].commitRef, 'Commit should have commitRef');
+        assert.strictEqual(updatedNestedGroup.items[0].commitRef!.hash, 'abc123def456789');
+        assert.strictEqual(updatedNestedGroup.items[0].commitRef!.repositoryRoot, tempDir);
+    });
+
+    test('should preserve commit items in deeply nested groups', async () => {
+        // Create deeply nested structure: Parent > Child > Grandchild
+        await configManager.createLogicalGroup('Parent', 'Parent description');
+        await configManager.createNestedLogicalGroup('Parent', 'Child', 'Child description');
+        await configManager.createNestedLogicalGroup('Parent/Child', 'Grandchild', 'Grandchild description');
+
+        // Get current config and manually add a commit item to deeply nested group
+        let config = await configManager.loadConfiguration();
+        const grandchildGroup = config.logicalGroups[0].groups?.[0].groups?.[0];
+        assert.ok(grandchildGroup, 'Grandchild group should exist');
+        
+        grandchildGroup.items.push({
+            name: 'fix: Deep nested commit',
+            type: 'commit',
+            commitRef: {
+                hash: 'deep123commit456',
+                repositoryRoot: tempDir
+            }
+        });
+        await configManager.saveConfiguration(config);
+
+        // Reload configuration to trigger validation
+        config = await configManager.loadConfiguration();
+
+        // Verify commit item is preserved in deeply nested group
+        const updatedGrandchild = config.logicalGroups[0].groups?.[0].groups?.[0];
+        assert.ok(updatedGrandchild, 'Grandchild group should still exist');
+        assert.strictEqual(updatedGrandchild.items.length, 1, 'Should have 1 item in grandchild group');
+        assert.strictEqual(updatedGrandchild.items[0].type, 'commit', 'Item should be a commit');
+        assert.strictEqual(updatedGrandchild.items[0].name, 'fix: Deep nested commit');
+    });
 });
 

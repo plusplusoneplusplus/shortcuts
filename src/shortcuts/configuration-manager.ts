@@ -768,6 +768,36 @@ export class ConfigurationManager {
                     continue;
                 }
 
+                // Handle commit items
+                if (item.type === 'commit') {
+                    if (!item.commitRef || typeof item.commitRef !== 'object') {
+                        console.warn('Skipping commit item with invalid commitRef:', item);
+                        continue;
+                    }
+                    if (typeof item.commitRef.hash !== 'string' || !item.commitRef.hash.trim()) {
+                        console.warn('Skipping commit item with invalid hash:', item);
+                        continue;
+                    }
+                    if (typeof item.commitRef.repositoryRoot !== 'string' || !item.commitRef.repositoryRoot.trim()) {
+                        console.warn('Skipping commit item with invalid repositoryRoot:', item);
+                        continue;
+                    }
+                    if (typeof item.name !== 'string' || !item.name.trim()) {
+                        console.warn('Skipping commit item with invalid name:', item);
+                        continue;
+                    }
+                    validItems.push({
+                        name: item.name,
+                        type: 'commit',
+                        commitRef: {
+                            hash: item.commitRef.hash,
+                            repositoryRoot: item.commitRef.repositoryRoot
+                        },
+                        icon: typeof item.icon === 'string' ? item.icon : undefined
+                    });
+                    continue;
+                }
+
                 // Validate file/folder items
                 if (typeof item.path !== 'string' || !item.path.trim()) {
                     console.warn('Skipping nested group item with invalid path:', item);
@@ -1250,6 +1280,49 @@ export class ConfigurationManager {
             const err = error instanceof Error ? error : new Error('Unknown error');
             console.error('Error removing from logical group:', err);
             NotificationManager.showError(`Failed to remove from logical group: ${err.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Remove a commit from a logical group
+     * @param groupPath Path to the group (supports nested groups like "parent/child")
+     * @param commitHash Hash of the commit to remove
+     */
+    async removeCommitFromLogicalGroup(groupPath: string, commitHash: string): Promise<void> {
+        try {
+            const config = await this.loadConfiguration();
+
+            if (!config.logicalGroups) {
+                return;
+            }
+
+            const group = this.findGroupByPath(config.logicalGroups, groupPath);
+            if (!group) {
+                NotificationManager.showError(`Logical group not found: ${groupPath}`);
+                return;
+            }
+
+            // Find and remove the commit item
+            const initialLength = group.items.length;
+            group.items = group.items.filter(item => {
+                if (item.type !== 'commit' || !item.commitRef) {
+                    return true; // Keep non-commit items
+                }
+                return item.commitRef.hash !== commitHash;
+            });
+
+            if (group.items.length === initialLength) {
+                NotificationManager.showWarning('Commit not found in logical group.');
+                return;
+            }
+
+            await this.saveConfiguration(config);
+
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            console.error('Error removing commit from logical group:', err);
+            NotificationManager.showError(`Failed to remove commit from logical group: ${err.message}`);
             throw error;
         }
     }

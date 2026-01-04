@@ -268,7 +268,8 @@ export class DiscoveryEngine implements vscode.Disposable {
             featureDescription: request.featureDescription,
             phase: 'initializing',
             progress: 0,
-            startTime: new Date()
+            startTime: new Date(),
+            targetGroupPath: request.targetGroupPath
         };
     }
     

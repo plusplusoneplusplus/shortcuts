@@ -136,6 +136,8 @@ export interface DiscoveryProcess {
     startTime: Date;
     /** When the process ended (if finished) */
     endTime?: Date;
+    /** Target group path for adding results (optional) */
+    targetGroupPath?: string;
 }
 
 /**
@@ -219,6 +221,7 @@ export interface SerializedDiscoveryProcess {
     error?: string;
     startTime: string; // ISO string
     endTime?: string; // ISO string
+    targetGroupPath?: string;
 }
 
 /**
@@ -234,7 +237,8 @@ export function serializeDiscoveryProcess(process: DiscoveryProcess): Serialized
         results: process.results,
         error: process.error,
         startTime: process.startTime.toISOString(),
-        endTime: process.endTime?.toISOString()
+        endTime: process.endTime?.toISOString(),
+        targetGroupPath: process.targetGroupPath
     };
 }
 
@@ -251,7 +255,8 @@ export function deserializeDiscoveryProcess(serialized: SerializedDiscoveryProce
         results: serialized.results,
         error: serialized.error,
         startTime: new Date(serialized.startTime),
-        endTime: serialized.endTime ? new Date(serialized.endTime) : undefined
+        endTime: serialized.endTime ? new Date(serialized.endTime) : undefined,
+        targetGroupPath: serialized.targetGroupPath
     };
 }
 

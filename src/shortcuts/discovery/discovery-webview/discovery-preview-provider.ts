@@ -5,8 +5,8 @@
  */
 
 import * as vscode from 'vscode';
-import { DiscoveryProcess, DiscoveryResult } from '../types';
-import { LogicalGroupItem } from '../../types';
+import { DiscoveryProcess, DiscoveryResult, DiscoverySourceType } from '../types';
+import { LogicalGroupItem, LogicalGroup, ShortcutsConfig } from '../../types';
 import { DiscoveryEngine } from '../discovery-engine';
 import { getWebviewContent, WebviewMessage } from './webview-content';
 import { ConfigurationManager } from '../../configuration-manager';
@@ -89,6 +89,11 @@ export class DiscoveryPreviewPanel {
         this._configManager = configManager;
         this._currentProcess = process;
         
+        // Set the default target group from the process if available
+        if (process?.targetGroupPath) {
+            this._selectedTargetGroup = process.targetGroupPath;
+        }
+        
         // Set the webview's initial html content
         this._update();
         
@@ -131,6 +136,10 @@ export class DiscoveryPreviewPanel {
      */
     public setProcess(process: DiscoveryProcess): void {
         this._currentProcess = process;
+        // Set the default target group from the process if available
+        if (process.targetGroupPath && !this._selectedTargetGroup) {
+            this._selectedTargetGroup = process.targetGroupPath;
+        }
         this._update();
     }
     
@@ -217,6 +226,7 @@ export class DiscoveryPreviewPanel {
     
     /**
      * Add selected results to a logical group
+     * Groups items by type (source code, docs, commits) as subgroups
      */
     private async _addToGroup(targetGroup: string): Promise<void> {
         if (!this._currentProcess?.results || !targetGroup) {
@@ -234,28 +244,77 @@ export class DiscoveryPreviewPanel {
         }
         
         try {
-            // Add each selected result to the group
-            let addedCount = 0;
+            // Group results by type
+            const sourceResults: DiscoveryResult[] = [];
+            const docResults: DiscoveryResult[] = [];
+            const commitResults: DiscoveryResult[] = [];
             
             for (const result of selectedResults) {
-                try {
-                    if (result.type === 'commit' && result.commit) {
-                        // Add commit to group
-                        await this._addCommitToGroup(targetGroup, result);
-                        addedCount++;
-                    } else if (result.path) {
-                        // Add file/folder to group
-                        const itemType = result.type === 'folder' ? 'folder' : 'file';
-                        await this._configManager.addToLogicalGroup(
-                            targetGroup,
-                            result.path,
-                            result.name,
-                            itemType
-                        );
-                        addedCount++;
+                if (result.type === 'commit') {
+                    commitResults.push(result);
+                } else if (result.type === 'doc') {
+                    docResults.push(result);
+                } else {
+                    // file, folder, or other source code
+                    sourceResults.push(result);
+                }
+            }
+            
+            let addedCount = 0;
+            
+            // Add source code items to "Source Code" subgroup
+            if (sourceResults.length > 0) {
+                const subgroupPath = await this._ensureSubgroup(targetGroup, 'Source Code', 'Source code files');
+                for (const result of sourceResults) {
+                    try {
+                        if (result.path) {
+                            const itemType = result.type === 'folder' ? 'folder' : 'file';
+                            await this._configManager.addToLogicalGroup(
+                                subgroupPath,
+                                result.path,
+                                result.name,
+                                itemType
+                            );
+                            addedCount++;
+                        }
+                    } catch (error) {
+                        console.error(`Failed to add ${result.name} to group:`, error);
                     }
-                } catch (error) {
-                    console.error(`Failed to add ${result.name} to group:`, error);
+                }
+            }
+            
+            // Add documentation items to "Documentation" subgroup
+            if (docResults.length > 0) {
+                const subgroupPath = await this._ensureSubgroup(targetGroup, 'Documentation', 'Documentation files');
+                for (const result of docResults) {
+                    try {
+                        if (result.path) {
+                            await this._configManager.addToLogicalGroup(
+                                subgroupPath,
+                                result.path,
+                                result.name,
+                                'file'
+                            );
+                            addedCount++;
+                        }
+                    } catch (error) {
+                        console.error(`Failed to add ${result.name} to group:`, error);
+                    }
+                }
+            }
+            
+            // Add commit items to "Commits" subgroup
+            if (commitResults.length > 0) {
+                const subgroupPath = await this._ensureSubgroup(targetGroup, 'Commits', 'Related git commits');
+                for (const result of commitResults) {
+                    try {
+                        if (result.commit) {
+                            await this._addCommitToGroup(subgroupPath, result);
+                            addedCount++;
+                        }
+                    } catch (error) {
+                        console.error(`Failed to add ${result.name} to group:`, error);
+                    }
                 }
             }
             
@@ -274,6 +333,41 @@ export class DiscoveryPreviewPanel {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to add items: ${err.message}`);
         }
+    }
+    
+    /**
+     * Ensure a subgroup exists within the target group, create if needed
+     */
+    private async _ensureSubgroup(parentGroupPath: string, subgroupName: string, description: string): Promise<string> {
+        const config = await this._configManager.loadConfiguration();
+        const subgroupPath = `${parentGroupPath}/${subgroupName}`;
+        
+        // Find the parent group
+        const pathParts = parentGroupPath.split('/');
+        let currentGroups = config.logicalGroups;
+        let targetGroup = currentGroups.find(g => g.name === pathParts[0]);
+        
+        for (let i = 1; i < pathParts.length && targetGroup; i++) {
+            currentGroups = targetGroup.groups || [];
+            targetGroup = currentGroups.find(g => g.name === pathParts[i]);
+        }
+        
+        if (!targetGroup) {
+            throw new Error(`Parent group not found: ${parentGroupPath}`);
+        }
+        
+        // Check if subgroup already exists
+        if (!targetGroup.groups) {
+            targetGroup.groups = [];
+        }
+        
+        const existingSubgroup = targetGroup.groups.find(g => g.name === subgroupName);
+        if (!existingSubgroup) {
+            // Create the subgroup
+            await this._configManager.createNestedLogicalGroup(parentGroupPath, subgroupName, description);
+        }
+        
+        return subgroupPath;
     }
     
     /**
@@ -336,14 +430,87 @@ export class DiscoveryPreviewPanel {
         const config = await this._configManager.loadConfiguration();
         const groups = this._getGroupPaths(config.logicalGroups);
         
+        // Filter out items that already exist in the target group
+        let processToShow = this._currentProcess;
+        if (this._currentProcess?.results && this._selectedTargetGroup) {
+            const existingItems = await this._getExistingItemsInGroup(config, this._selectedTargetGroup);
+            processToShow = {
+                ...this._currentProcess,
+                results: this._currentProcess.results.filter(result => {
+                    // Check if this result already exists in the group
+                    if (result.type === 'commit' && result.commit) {
+                        return !existingItems.commitHashes.has(result.commit.hash);
+                    } else if (result.path) {
+                        return !existingItems.filePaths.has(result.path);
+                    }
+                    return true;
+                })
+            };
+        }
+        
         this._panel.webview.html = getWebviewContent(
             webview,
             this._extensionUri,
-            this._currentProcess,
+            processToShow,
             groups,
             this._minScore,
             this._selectedTargetGroup
         );
+    }
+    
+    /**
+     * Get existing items in a group (including subgroups)
+     */
+    private async _getExistingItemsInGroup(
+        config: ShortcutsConfig,
+        groupPath: string
+    ): Promise<{ filePaths: Set<string>; commitHashes: Set<string> }> {
+        const filePaths = new Set<string>();
+        const commitHashes = new Set<string>();
+        
+        // Find the group
+        const pathParts = groupPath.split('/');
+        let currentGroups = config.logicalGroups;
+        let targetGroup = currentGroups.find(g => g.name === pathParts[0]);
+        
+        for (let i = 1; i < pathParts.length && targetGroup; i++) {
+            currentGroups = targetGroup.groups || [];
+            targetGroup = currentGroups.find(g => g.name === pathParts[i]);
+        }
+        
+        if (!targetGroup) {
+            return { filePaths, commitHashes };
+        }
+        
+        // Collect all items from the group and its subgroups
+        this._collectItemsFromGroup(targetGroup, filePaths, commitHashes);
+        
+        return { filePaths, commitHashes };
+    }
+    
+    /**
+     * Recursively collect items from a group and its subgroups
+     */
+    private _collectItemsFromGroup(
+        group: LogicalGroup,
+        filePaths: Set<string>,
+        commitHashes: Set<string>
+    ): void {
+        // Collect items from this group
+        for (const item of group.items) {
+            if (item.type === 'commit' && item.commitRef) {
+                commitHashes.add(item.commitRef.hash);
+            } else if (item.path) {
+                filePaths.add(item.path);
+            }
+        }
+        
+        // Recursively collect from subgroups
+        if (group.groups) {
+            for (const subgroup of group.groups) {
+                this._collectItemsFromGroup(subgroup, filePaths, commitHashes);
+            }
+        }
     }
     
     /**
