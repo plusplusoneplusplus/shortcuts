@@ -16,9 +16,10 @@ import {
     AIDiscoveryItem,
     DEFAULT_AI_DISCOVERY_CONFIG,
     createAIDiscoveryRequest,
-    parseDiscoveryResponse
+    parseDiscoveryResponse,
+    buildExistingItemsSection
 } from '../../shortcuts/discovery/ai-discovery-engine';
-import { DiscoveryRequest, DEFAULT_DISCOVERY_SCOPE } from '../../shortcuts/discovery/types';
+import { DiscoveryRequest, DEFAULT_DISCOVERY_SCOPE, ExistingGroupSnapshot } from '../../shortcuts/discovery/types';
 
 suite('AI Discovery Engine Tests', () => {
     let tempDir: string;
@@ -776,6 +777,160 @@ suite('AIDiscoveryEngine Event Tests', () => {
         
         assert.ok(disposable);
         disposable.dispose();
+    });
+});
+
+suite('buildExistingItemsSection Tests', () => {
+    test('should return empty string for undefined snapshot', () => {
+        const result = buildExistingItemsSection(undefined);
+        assert.strictEqual(result, '');
+    });
+
+    test('should return empty string for snapshot with empty items', () => {
+        const snapshot: ExistingGroupSnapshot = {
+            name: 'Test Group',
+            items: []
+        };
+        const result = buildExistingItemsSection(snapshot);
+        assert.strictEqual(result, '');
+    });
+
+    test('should include file paths in output', () => {
+        const snapshot: ExistingGroupSnapshot = {
+            name: 'Auth Module',
+            description: 'Authentication related files',
+            items: [
+                { type: 'file', path: 'src/auth/login.ts' },
+                { type: 'file', path: 'src/auth/logout.ts' }
+            ]
+        };
+        const result = buildExistingItemsSection(snapshot);
+        
+        assert.ok(result.includes('Auth Module'));
+        assert.ok(result.includes('src/auth/login.ts'));
+        assert.ok(result.includes('src/auth/logout.ts'));
+        assert.ok(result.includes('Existing Items to Skip'));
+    });
+
+    test('should include folder paths in output', () => {
+        const snapshot: ExistingGroupSnapshot = {
+            name: 'Components',
+            items: [
+                { type: 'folder', path: 'src/components' },
+                { type: 'folder', path: 'src/shared' }
+            ]
+        };
+        const result = buildExistingItemsSection(snapshot);
+        
+        assert.ok(result.includes('src/components'));
+        assert.ok(result.includes('src/shared'));
+        assert.ok(result.includes('Files/folders already in group'));
+    });
+
+    test('should include commit hashes in output', () => {
+        const snapshot: ExistingGroupSnapshot = {
+            name: 'Feature Commits',
+            items: [
+                { type: 'commit', commitHash: 'abc1234567890' },
+                { type: 'commit', commitHash: 'def9876543210' }
+            ]
+        };
+        const result = buildExistingItemsSection(snapshot);
+        
+        assert.ok(result.includes('abc1234567890'));
+        assert.ok(result.includes('def9876543210'));
+        assert.ok(result.includes('Commits already in group'));
+    });
+
+    test('should include both files and commits in output', () => {
+        const snapshot: ExistingGroupSnapshot = {
+            name: 'Mixed Group',
+            items: [
+                { type: 'file', path: 'src/main.ts' },
+                { type: 'folder', path: 'src/utils' },
+                { type: 'commit', commitHash: 'abc123' }
+            ]
+        };
+        const result = buildExistingItemsSection(snapshot);
+        
+        assert.ok(result.includes('src/main.ts'));
+        assert.ok(result.includes('src/utils'));
+        assert.ok(result.includes('abc123'));
+        assert.ok(result.includes('Files/folders already in group'));
+        assert.ok(result.includes('Commits already in group'));
+    });
+
+    test('should filter out items with missing paths or hashes', () => {
+        const snapshot: ExistingGroupSnapshot = {
+            name: 'Partial Group',
+            items: [
+                { type: 'file', path: 'src/valid.ts' },
+                { type: 'file' }, // Missing path
+                { type: 'commit', commitHash: 'abc123' },
+                { type: 'commit' } // Missing commitHash
+            ]
+        };
+        const result = buildExistingItemsSection(snapshot);
+        
+        assert.ok(result.includes('src/valid.ts'));
+        assert.ok(result.includes('abc123'));
+        // The output should still be valid
+        assert.ok(result.includes('Existing Items to Skip'));
+    });
+});
+
+suite('createAIDiscoveryRequest with existingGroupSnapshot Tests', () => {
+    const tempDir = '/tmp/test-repo';
+
+    test('should create request without existingGroupSnapshot', () => {
+        const request = createAIDiscoveryRequest('authentication feature', tempDir);
+        
+        assert.strictEqual(request.existingGroupSnapshot, undefined);
+    });
+
+    test('should create request with existingGroupSnapshot', () => {
+        const snapshot: ExistingGroupSnapshot = {
+            name: 'Auth',
+            description: 'Authentication module',
+            items: [
+                { type: 'file', path: 'src/auth.ts' }
+            ]
+        };
+        
+        const request = createAIDiscoveryRequest('authentication feature', tempDir, {
+            existingGroupSnapshot: snapshot
+        });
+        
+        assert.ok(request.existingGroupSnapshot);
+        assert.strictEqual(request.existingGroupSnapshot.name, 'Auth');
+        assert.strictEqual(request.existingGroupSnapshot.description, 'Authentication module');
+        assert.strictEqual(request.existingGroupSnapshot.items.length, 1);
+        assert.strictEqual(request.existingGroupSnapshot.items[0].path, 'src/auth.ts');
+    });
+
+    test('should create request with all options including existingGroupSnapshot', () => {
+        const snapshot: ExistingGroupSnapshot = {
+            name: 'Feature Group',
+            items: [
+                { type: 'file', path: 'src/feature.ts' },
+                { type: 'commit', commitHash: 'abc123' }
+            ]
+        };
+        
+        const request = createAIDiscoveryRequest('complex feature', tempDir, {
+            keywords: ['test', 'feature'],
+            targetGroupPath: 'My Group',
+            scope: { includeDocs: false },
+            existingGroupSnapshot: snapshot
+        });
+        
+        assert.strictEqual(request.featureDescription, 'complex feature');
+        assert.deepStrictEqual(request.keywords, ['test', 'feature']);
+        assert.strictEqual(request.targetGroupPath, 'My Group');
+        assert.strictEqual(request.scope.includeDocs, false);
+        assert.ok(request.existingGroupSnapshot);
+        assert.strictEqual(request.existingGroupSnapshot.name, 'Feature Group');
+        assert.strictEqual(request.existingGroupSnapshot.items.length, 2);
     });
 });
 

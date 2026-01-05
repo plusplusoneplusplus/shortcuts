@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { DiscoveryEngine, createDiscoveryRequest } from '../../shortcuts/discovery/discovery-engine';
-import { DEFAULT_DISCOVERY_SCOPE, DiscoveryRequest, DiscoveryProcess } from '../../shortcuts/discovery/types';
+import { DEFAULT_DISCOVERY_SCOPE, DiscoveryRequest, DiscoveryProcess, ExistingGroupSnapshot } from '../../shortcuts/discovery/types';
 
 suite('Discovery Engine Tests', () => {
     let tempDir: string;
@@ -412,6 +412,101 @@ suite('Discovery Engine Tests', () => {
             const process = await engine.discover(request);
             
             // Should succeed with provided keywords
+            assert.ok(['completed', 'failed'].includes(process.status));
+        });
+    });
+
+    suite('createDiscoveryRequest with existingGroupSnapshot', () => {
+        test('should create request without existingGroupSnapshot', () => {
+            const request = createDiscoveryRequest('authentication feature', tempDir);
+            
+            assert.strictEqual(request.existingGroupSnapshot, undefined);
+        });
+
+        test('should create request with existingGroupSnapshot', () => {
+            const snapshot: ExistingGroupSnapshot = {
+                name: 'Auth Module',
+                description: 'Authentication related files',
+                items: [
+                    { type: 'file', path: 'src/auth.ts' },
+                    { type: 'folder', path: 'src/auth' }
+                ]
+            };
+            
+            const request = createDiscoveryRequest('authentication feature', tempDir, {
+                existingGroupSnapshot: snapshot
+            });
+            
+            assert.ok(request.existingGroupSnapshot);
+            assert.strictEqual(request.existingGroupSnapshot.name, 'Auth Module');
+            assert.strictEqual(request.existingGroupSnapshot.description, 'Authentication related files');
+            assert.strictEqual(request.existingGroupSnapshot.items.length, 2);
+        });
+
+        test('should create request with existingGroupSnapshot containing commits', () => {
+            const snapshot: ExistingGroupSnapshot = {
+                name: 'Feature Commits',
+                items: [
+                    { type: 'commit', commitHash: 'abc1234567890' },
+                    { type: 'commit', commitHash: 'def9876543210' }
+                ]
+            };
+            
+            const request = createDiscoveryRequest('feature commits', tempDir, {
+                existingGroupSnapshot: snapshot
+            });
+            
+            assert.ok(request.existingGroupSnapshot);
+            assert.strictEqual(request.existingGroupSnapshot.items.length, 2);
+            assert.strictEqual(request.existingGroupSnapshot.items[0].type, 'commit');
+            assert.strictEqual(request.existingGroupSnapshot.items[0].commitHash, 'abc1234567890');
+        });
+
+        test('should create request with all options including existingGroupSnapshot', () => {
+            const snapshot: ExistingGroupSnapshot = {
+                name: 'Mixed Group',
+                items: [
+                    { type: 'file', path: 'src/main.ts' },
+                    { type: 'commit', commitHash: 'abc123' }
+                ]
+            };
+            
+            const request = createDiscoveryRequest('complex feature', tempDir, {
+                keywords: ['test'],
+                targetGroupPath: 'My Group',
+                scope: { includeDocs: false },
+                existingGroupSnapshot: snapshot
+            });
+            
+            assert.strictEqual(request.featureDescription, 'complex feature');
+            assert.deepStrictEqual(request.keywords, ['test']);
+            assert.strictEqual(request.targetGroupPath, 'My Group');
+            assert.strictEqual(request.scope.includeDocs, false);
+            assert.ok(request.existingGroupSnapshot);
+            assert.strictEqual(request.existingGroupSnapshot.name, 'Mixed Group');
+        });
+
+        test('should preserve existingGroupSnapshot in request for discovery', async () => {
+            const snapshot: ExistingGroupSnapshot = {
+                name: 'Existing Group',
+                items: [
+                    { type: 'file', path: 'src/existing.ts' }
+                ]
+            };
+            
+            const request = createDiscoveryRequest('test feature', tempDir, {
+                scope: { ...DEFAULT_DISCOVERY_SCOPE, includeGitHistory: false },
+                existingGroupSnapshot: snapshot
+            });
+            
+            // Verify the snapshot is part of the request
+            assert.ok(request.existingGroupSnapshot);
+            assert.strictEqual(request.existingGroupSnapshot.name, 'Existing Group');
+            
+            // Run discovery - the snapshot should be passed through
+            const process = await engine.discover(request);
+            
+            // Process should complete (or fail due to test environment)
             assert.ok(['completed', 'failed'].includes(process.status));
         });
     });

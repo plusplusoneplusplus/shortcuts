@@ -19,7 +19,8 @@ import {
     DiscoveryEvent,
     DiscoveryEventType,
     DiscoverySourceType,
-    DiscoveryCommitInfo
+    DiscoveryCommitInfo,
+    ExistingGroupSnapshot
 } from './types';
 
 /**
@@ -75,11 +76,51 @@ export interface AIDiscoveryResponse {
 }
 
 /**
+ * Build the existing items section for the prompt
+ * Exported for testing purposes
+ */
+export function buildExistingItemsSection(existingGroupSnapshot?: ExistingGroupSnapshot): string {
+    if (!existingGroupSnapshot || existingGroupSnapshot.items.length === 0) {
+        return '';
+    }
+
+    const fileItems = existingGroupSnapshot.items
+        .filter(item => item.type === 'file' || item.type === 'folder')
+        .map(item => item.path)
+        .filter(Boolean);
+    
+    const commitItems = existingGroupSnapshot.items
+        .filter(item => item.type === 'commit')
+        .map(item => item.commitHash)
+        .filter(Boolean);
+
+    const parts: string[] = [];
+    
+    if (fileItems.length > 0) {
+        parts.push(`Files/folders already in group:\n${fileItems.map(p => `  - ${p}`).join('\n')}`);
+    }
+    
+    if (commitItems.length > 0) {
+        parts.push(`Commits already in group:\n${commitItems.map(h => `  - ${h}`).join('\n')}`);
+    }
+
+    if (parts.length === 0) {
+        return '';
+    }
+
+    return `\n## Existing Items to Skip
+The following items are already in the group "${existingGroupSnapshot.name}" and should NOT be included in results:
+${parts.join('\n\n')}
+`;
+}
+
+/**
  * Build the discovery prompt for the AI
  */
 function buildDiscoveryPrompt(
     featureDescription: string,
-    config: AIDiscoveryConfig
+    config: AIDiscoveryConfig,
+    existingGroupSnapshot?: ExistingGroupSnapshot
 ): string {
     const focusAreasSection = config.focusAreas && config.focusAreas.length > 0
         ? `\n## Priority Areas\nFocus on these directories first: ${config.focusAreas.join(', ')}`
@@ -89,13 +130,15 @@ function buildDiscoveryPrompt(
         ? `\n## Excluded Patterns\nSkip files matching: ${config.excludePatterns.join(', ')}`
         : '';
 
+    const existingItemsSection = buildExistingItemsSection(existingGroupSnapshot);
+
     return `You are a code exploration agent. Find all files and commits related to a feature.
 
 ## Feature to find
 ${featureDescription}
 ${focusAreasSection}
 ${excludeSection}
-
+${existingItemsSection}
 ## Instructions
 
 1. First, think about what search terms would find this feature:
@@ -137,7 +180,7 @@ ${excludeSection}
 - Sort by relevance (highest first)
 - Include at least: source files, tests (if found), recent commits
 - For commits: include both "hash" and "message" fields
-- For files: include "path" field (relative to repository root)`;
+- For files: include "path" field (relative to repository root)${existingGroupSnapshot ? '\n- Do NOT include any items listed in "Existing Items to Skip"' : ''}`;
 }
 
 /**
@@ -306,12 +349,16 @@ export class AIDiscoveryEngine implements vscode.Disposable {
             // Phase 1: Preparing AI query
             await this.updatePhase(process, 'extracting-keywords', 5);
 
-            // Build the prompt
-            const prompt = buildDiscoveryPrompt(request.featureDescription, {
-                ...config,
-                focusAreas: config.focusAreas,
-                excludePatterns: request.scope.excludePatterns
-            });
+            // Build the prompt with existing group snapshot if available
+            const prompt = buildDiscoveryPrompt(
+                request.featureDescription,
+                {
+                    ...config,
+                    focusAreas: config.focusAreas,
+                    excludePatterns: request.scope.excludePatterns
+                },
+                request.existingGroupSnapshot
+            );
 
             // Phase 2: AI is exploring the codebase
             await this.updatePhase(process, 'scanning-files', 10);
@@ -617,6 +664,7 @@ export function createAIDiscoveryRequest(
             maxCommits: number;
             excludePatterns: string[];
         }>;
+        existingGroupSnapshot?: ExistingGroupSnapshot;
     }
 ): DiscoveryRequest {
     const defaultScope = {
@@ -636,7 +684,8 @@ export function createAIDiscoveryRequest(
             ...options?.scope
         },
         targetGroupPath: options?.targetGroupPath,
-        repositoryRoot
+        repositoryRoot,
+        existingGroupSnapshot: options?.existingGroupSnapshot
     };
 }
 

@@ -53,6 +53,30 @@ export interface DiscoveryResult {
 }
 
 /**
+ * Existing group item snapshot for bypassing in discovery
+ */
+export interface ExistingGroupItem {
+    /** Item type */
+    type: 'file' | 'folder' | 'commit';
+    /** Path for files/folders */
+    path?: string;
+    /** Commit hash for commits */
+    commitHash?: string;
+}
+
+/**
+ * Existing group snapshot for context in discovery
+ */
+export interface ExistingGroupSnapshot {
+    /** Group name */
+    name: string;
+    /** Group description */
+    description?: string;
+    /** Items already in the group to bypass */
+    items: ExistingGroupItem[];
+}
+
+/**
  * Scope configuration for discovery
  */
 export interface DiscoveryScope {
@@ -96,6 +120,8 @@ export interface DiscoveryRequest {
     targetGroupPath?: string;
     /** Repository root path */
     repositoryRoot: string;
+    /** Optional existing group snapshot - items to bypass in discovery results */
+    existingGroupSnapshot?: ExistingGroupSnapshot;
 }
 
 /**

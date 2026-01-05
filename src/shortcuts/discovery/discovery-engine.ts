@@ -19,7 +19,8 @@ import {
     DiscoveryEventType,
     RawSearchResult,
     DEFAULT_DISCOVERY_SCOPE,
-    DEFAULT_SCORING_CONFIG
+    DEFAULT_SCORING_CONFIG,
+    ExistingGroupSnapshot
 } from './types';
 import { extractKeywords, combineKeywords } from './keyword-extractor';
 import { FileSearchProvider, GitSearchProvider } from './search-providers';
@@ -379,6 +380,7 @@ export function createDiscoveryRequest(
         keywords?: string[];
         targetGroupPath?: string;
         scope?: Partial<typeof DEFAULT_DISCOVERY_SCOPE>;
+        existingGroupSnapshot?: ExistingGroupSnapshot;
     }
 ): DiscoveryRequest {
     return {
@@ -389,7 +391,8 @@ export function createDiscoveryRequest(
             ...options?.scope
         },
         targetGroupPath: options?.targetGroupPath,
-        repositoryRoot
+        repositoryRoot,
+        existingGroupSnapshot: options?.existingGroupSnapshot
     };
 }
 

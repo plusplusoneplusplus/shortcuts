@@ -12,7 +12,65 @@ import { DiscoveryPreviewPanel } from './discovery-webview';
 import { ConfigurationManager } from '../configuration-manager';
 import { createGitShowUri, GIT_SHOW_SCHEME } from '../git/git-show-text-document-provider';
 import { LogicalGroupItem, CommitShortcutItem, CommitFileItem } from '../tree-items';
-import { DEFAULT_DISCOVERY_SCOPE, serializeDiscoveryProcess } from './types';
+import { DEFAULT_DISCOVERY_SCOPE, serializeDiscoveryProcess, ExistingGroupSnapshot, ExistingGroupItem } from './types';
+import { LogicalGroup, LogicalGroupItem as LogicalGroupItemType } from '../types';
+
+/**
+ * Get existing group snapshot from configuration
+ */
+async function getExistingGroupSnapshot(
+    configManager: ConfigurationManager,
+    groupPath: string
+): Promise<ExistingGroupSnapshot | undefined> {
+    try {
+        const config = await configManager.loadConfiguration();
+        
+        // Find the group by path (supports nested groups like "parent/child")
+        const pathParts = groupPath.split('/');
+        let currentGroups = config.logicalGroups;
+        let targetGroup: LogicalGroup | undefined;
+
+        for (const part of pathParts) {
+            targetGroup = currentGroups.find(g => g.name === part);
+            if (!targetGroup) {
+                return undefined;
+            }
+            currentGroups = targetGroup.groups || [];
+        }
+
+        if (!targetGroup) {
+            return undefined;
+        }
+
+        // Convert group items to ExistingGroupItem format
+        const existingItems: ExistingGroupItem[] = [];
+        
+        for (const item of targetGroup.items) {
+            if (item.type === 'file' || item.type === 'folder') {
+                if (item.path) {
+                    existingItems.push({
+                        type: item.type,
+                        path: item.path
+                    });
+                }
+            } else if (item.type === 'commit' && item.commitRef) {
+                existingItems.push({
+                    type: 'commit',
+                    commitHash: item.commitRef.hash
+                });
+            }
+        }
+
+        return {
+            name: targetGroup.name,
+            description: targetGroup.description,
+            items: existingItems
+        };
+    } catch (error) {
+        console.error('Error getting existing group snapshot:', error);
+        return undefined;
+    }
+}
 
 /**
  * Register discovery commands
@@ -42,13 +100,17 @@ export function registerDiscoveryCommands(
                     ? `${item.parentGroupPath}/${item.originalName}`
                     : item.originalName;
 
+                // Get existing group snapshot for bypassing existing items
+                const existingGroupSnapshot = await getExistingGroupSnapshot(configManager, groupPath);
+
                 await startDiscovery(
                     context,
                     discoveryEngine,
                     configManager,
                     workspaceRoot,
                     aiProcessManager,
-                    groupPath
+                    groupPath,
+                    existingGroupSnapshot
                 );
             }
         )
@@ -86,7 +148,8 @@ async function startDiscovery(
     configManager: ConfigurationManager,
     workspaceRoot: string,
     aiProcessManager: AIProcessManager,
-    targetGroupPath?: string
+    targetGroupPath?: string,
+    existingGroupSnapshot?: ExistingGroupSnapshot
 ): Promise<void> {
     // Check if discovery is enabled
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.discovery');
@@ -106,10 +169,21 @@ async function startDiscovery(
         }
     }
     
-    // Get feature description from user
+    // Build default feature description from group name and description if available
+    let defaultDescription = '';
+    if (existingGroupSnapshot) {
+        defaultDescription = existingGroupSnapshot.description 
+            ? `${existingGroupSnapshot.name}: ${existingGroupSnapshot.description}`
+            : existingGroupSnapshot.name;
+    }
+    
+    // Get feature description from user, pre-filled with group info if available
     const featureDescription = await vscode.window.showInputBox({
-        prompt: 'Describe the feature you want to find related items for',
+        prompt: existingGroupSnapshot 
+            ? `Describe the feature for "${existingGroupSnapshot.name}" group`
+            : 'Describe the feature you want to find related items for',
         placeHolder: 'e.g., "user authentication with JWT tokens"',
+        value: defaultDescription,
         validateInput: (value) => {
             if (!value || value.trim().length < 3) {
                 return 'Please enter a description (at least 3 characters)';
@@ -165,11 +239,12 @@ async function startDiscovery(
         excludePatterns: config.get<string[]>('excludePatterns', DEFAULT_DISCOVERY_SCOPE.excludePatterns)
     };
     
-    // Create discovery request
+    // Create discovery request with existing group snapshot if available
     const request = createDiscoveryRequest(featureDescription, workspaceRoot, {
         keywords,
         targetGroupPath,
-        scope
+        scope,
+        existingGroupSnapshot
     });
 
     // Register with AI Process Manager for tracking in the panel
