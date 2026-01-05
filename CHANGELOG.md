@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.16.2] - 2026-01-04
+
+### Added
+- Tasks viewer now supports grouping (Active/Archived sections) with drag-and-drop reordering
+
+### Changed
+- Markdown comments editor improved indentation handling and save behavior
+- Discovery process now handles existing group snapshots for better conflict resolution
+
 ## [2.16.1] - 2026-01-04
 
 ### Added
