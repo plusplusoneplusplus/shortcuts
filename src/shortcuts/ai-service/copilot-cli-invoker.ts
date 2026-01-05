@@ -5,13 +5,92 @@
  * Handles shell escaping, command building, output parsing, and CLI execution.
  */
 
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 import * as vscode from 'vscode';
 import { AIProcessManager } from './ai-process-manager';
 import { AIInvocationResult, AIModel, AIToolType, VALID_MODELS } from './types';
 
 /** Timeout for copilot CLI execution in milliseconds */
 const COPILOT_TIMEOUT_MS = 1200000; // 20 minutes
+
+/** Cache for program existence checks to avoid repeated lookups */
+const programExistsCache = new Map<string, { exists: boolean; path?: string; error?: string }>();
+
+/**
+ * Check if a program/command exists in the system PATH.
+ * Results are cached to avoid repeated lookups.
+ * 
+ * Platform-specific implementation:
+ * - Windows: Uses `where` command
+ * - Unix/macOS: Uses `which` command
+ * 
+ * @param programName - The name of the program to check (e.g., 'copilot', 'git')
+ * @param platform - Optional platform override for testing (defaults to process.platform)
+ * @returns Object with exists boolean and optional path where program was found
+ */
+export function checkProgramExists(
+    programName: string,
+    platform?: NodeJS.Platform
+): { exists: boolean; path?: string; error?: string } {
+    // Create cache key that includes platform to handle cross-platform testing
+    const cacheKey = `${programName}:${platform ?? process.platform}`;
+
+    // Return cached result if available
+    const cached = programExistsCache.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const isWindows = (platform ?? process.platform) === 'win32';
+    const checkCommand = isWindows ? `where ${programName}` : `which ${programName}`;
+
+    let result: { exists: boolean; path?: string; error?: string };
+
+    try {
+        const output = execSync(checkCommand, {
+            encoding: 'utf-8',
+            stdio: ['pipe', 'pipe', 'pipe'],
+            timeout: 5000 // 5 second timeout for the check
+        });
+
+        // Parse the result - get the first line (path to the program)
+        const programPath = output.trim().split('\n')[0].trim();
+
+        result = {
+            exists: true,
+            path: programPath
+        };
+    } catch (error) {
+        // Command failed - program not found
+        result = {
+            exists: false,
+            error: `'${programName}' is not installed or not found in PATH. Please install it first.`
+        };
+    }
+
+    // Cache the result
+    programExistsCache.set(cacheKey, result);
+    return result;
+}
+
+/**
+ * Clear the program existence cache.
+ * Useful for testing or when the user installs a program and wants to retry.
+ * 
+ * @param programName - Optional program name to clear. If not provided, clears entire cache.
+ */
+export function clearProgramExistsCache(programName?: string): void {
+    if (programName) {
+        // Clear all entries for this program (all platforms)
+        for (const key of programExistsCache.keys()) {
+            if (key.startsWith(`${programName}:`)) {
+                programExistsCache.delete(key);
+            }
+        }
+    } else {
+        programExistsCache.clear();
+    }
+}
 
 /**
  * Escape a string for safe use in shell commands.
@@ -248,6 +327,18 @@ export async function copyToClipboard(text: string): Promise<void> {
  * @returns True if the terminal was created successfully
  */
 export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: string): Promise<boolean> {
+    // Check if copilot CLI is installed before attempting to run
+    const programCheck = checkProgramExists('copilot');
+    if (!programCheck.exists) {
+        const errorMsg = 'Copilot CLI is not installed or not found in PATH. Please install it with: npm install -g @githubnext/github-copilot-cli';
+        vscode.window.showErrorMessage(errorMsg, 'Copy Install Command').then(selection => {
+            if (selection === 'Copy Install Command') {
+                vscode.env.clipboard.writeText('npm install -g @githubnext/github-copilot-cli');
+            }
+        });
+        return false;
+    }
+
     try {
         // Get the configured working directory if workspace root is provided
         const cwd = workspaceRoot ? getWorkingDirectory(workspaceRoot) : undefined;
@@ -289,6 +380,24 @@ export async function invokeCopilotCLI(
     existingProcessId?: string
 ): Promise<AIInvocationResult> {
     let processId: string | undefined = existingProcessId;
+
+    // Check if copilot CLI is installed before attempting to run
+    const programCheck = checkProgramExists('copilot');
+    if (!programCheck.exists) {
+        const errorMsg = 'Copilot CLI is not installed or not found in PATH. Please install it with: npm install -g @githubnext/github-copilot-cli';
+        vscode.window.showErrorMessage(errorMsg, 'Copy Install Command').then(selection => {
+            if (selection === 'Copy Install Command') {
+                vscode.env.clipboard.writeText('npm install -g @githubnext/github-copilot-cli');
+            }
+        });
+        if (processManager && existingProcessId) {
+            processManager.failProcess(existingProcessId, errorMsg);
+        }
+        return {
+            success: false,
+            error: errorMsg
+        };
+    }
 
     try {
         // Build the copilot command with escaped prompt and optional model

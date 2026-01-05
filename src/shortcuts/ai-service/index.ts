@@ -13,18 +13,16 @@ export {
     AIProcess,
     AIProcessStatus,
     AIToolType,
-    DEFAULT_PROMPTS,
-    deserializeProcess,
-    DiscoveryProcessMetadata,
+    DEFAULT_PROMPTS, deserializeProcess, DiscoveryProcessMetadata,
     ProcessEvent,
     ProcessEventType,
-    SerializedAIProcess,
-    serializeProcess,
-    VALID_MODELS
+    SerializedAIProcess, serializeProcess, VALID_MODELS
 } from './types';
 
 // Export CLI invoker functions
 export {
+    checkProgramExists,
+    clearProgramExistsCache,
     copyToClipboard,
     escapeShellArg,
     getAIModelSetting,
@@ -48,10 +46,8 @@ export { AI_PROCESS_SCHEME, AIProcessDocumentProvider } from './ai-process-docum
 export {
     AICommand,
     AICommandsConfig,
-    DEFAULT_AI_COMMANDS,
-    serializeCommand,
-    serializeCommands,
-    SerializedAICommand
+    DEFAULT_AI_COMMANDS, serializeCommand,
+    serializeCommands, SerializedAICommand
 } from './ai-command-types';
 
 export { AICommandRegistry, getAICommandRegistry } from './ai-command-registry';

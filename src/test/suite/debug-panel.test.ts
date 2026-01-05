@@ -35,9 +35,16 @@ suite('Debug Panel Tests', () => {
             assert.strictEqual(openChat?.commandId, 'workbench.panel.chat.view.copilot.focus');
         });
 
-        test('should have exactly 2 commands', () => {
+        test('should have exactly 3 commands', () => {
             const commands = getDefaultDebugCommands();
-            assert.strictEqual(commands.length, 2);
+            assert.strictEqual(commands.length, 3);
+        });
+
+        test('should include new-chat-conversation command', () => {
+            const commands = getDefaultDebugCommands();
+            const newChatConversation = commands.find(c => c.id === 'new-chat-conversation');
+            assert.ok(newChatConversation);
+            assert.strictEqual(newChatConversation?.commandId, 'debugPanel.newChatConversation');
         });
     });
 
