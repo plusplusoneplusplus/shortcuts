@@ -108,6 +108,7 @@ export type WebviewMessage =
     | { type: 'resolveAll' }
     | { type: 'deleteAll' }
     | { type: 'copyPrompt'; promptOptions: { format: string } }
+    | { type: 'sendToChat'; promptOptions: { format: string } }
     | { type: 'addComment'; selection: PendingSelection; comment: string; mermaidContext?: MermaidContext }
     | { type: 'editComment'; commentId: string; comment: string }
     | { type: 'resolveComment'; commentId: string }

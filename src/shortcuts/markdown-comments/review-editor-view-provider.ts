@@ -34,7 +34,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI';
+    'copyPrompt' | 'sendToChat' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI';
     commentId?: string;
     content?: string;
     selection?: {
@@ -502,6 +502,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 await this.generateAndCopyPrompt(relativePath, message.promptOptions);
                 break;
 
+            case 'sendToChat':
+                await this.generateAndSendToChat(relativePath, message.promptOptions);
+                break;
+
             case 'resolveImagePath':
                 if (message.path && message.imgId) {
                     await this.resolveAndSendImagePath(
@@ -759,6 +763,43 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         const prompt = this.generatePromptText(comments, filePath, options);
         await vscode.env.clipboard.writeText(prompt);
         vscode.window.showInformationMessage('AI prompt copied to clipboard!');
+    }
+
+    /**
+     * Generate AI prompt and send to VSCode Chat.
+     * Only includes user comments, excluding AI-generated comments.
+     */
+    private async generateAndSendToChat(
+        filePath: string,
+        options?: { includeFileContent: boolean; format: 'markdown' | 'json' }
+    ): Promise<void> {
+        const comments = this.commentsManager.getCommentsForFile(filePath)
+            .filter(c => c.status === 'open')
+            .filter(c => isUserComment(c));
+
+        if (comments.length === 0) {
+            vscode.window.showInformationMessage('No open user comments to generate prompt from.');
+            return;
+        }
+
+        const prompt = this.generatePromptText(comments, filePath, options);
+        
+        try {
+            // Try to open chat with the prompt directly
+            await vscode.commands.executeCommand('workbench.action.chat.open', {
+                query: prompt
+            });
+        } catch {
+            // Fallback: copy to clipboard and open chat
+            await vscode.env.clipboard.writeText(prompt);
+            try {
+                await vscode.commands.executeCommand('workbench.action.chat.open');
+                vscode.window.showInformationMessage('Chat opened. Prompt copied to clipboard - paste to continue.');
+            } catch {
+                // If chat is not available, just notify the user
+                vscode.window.showWarningMessage('Chat not available. Prompt copied to clipboard.');
+            }
+        }
     }
 
     /**

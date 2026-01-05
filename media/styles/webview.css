@@ -169,6 +169,81 @@ body.source-mode .toolbar-review-only {
     display: none;
 }
 
+/* ==============================
+ * AI Action Dropdown
+ * ============================== */
+.ai-action-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.ai-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ai-action-btn .dropdown-arrow {
+    font-size: 8px;
+    margin-left: 2px;
+    transition: transform 0.2s ease;
+}
+
+.ai-action-btn.active .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+.ai-action-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 160px;
+    margin-top: 4px;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.ai-action-menu.show {
+    display: block;
+}
+
+.ai-action-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    gap: 8px;
+}
+
+.ai-action-menu-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.ai-action-menu-item:first-child {
+    border-radius: 5px 5px 0 0;
+}
+
+.ai-action-menu-item:last-child {
+    border-radius: 0 0 5px 5px;
+}
+
+.ai-action-icon {
+    font-size: 14px;
+    width: 20px;
+    text-align: center;
+}
+
+.ai-action-label {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
 .toolbar-checkbox {
     display: flex;
     align-items: center;

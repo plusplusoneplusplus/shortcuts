@@ -50,6 +50,13 @@ export function requestCopyPrompt(format: string = 'markdown'): void {
 }
 
 /**
+ * Request the extension to send the AI prompt to chat
+ */
+export function requestSendToChat(format: string = 'markdown'): void {
+    postMessage({ type: 'sendToChat', promptOptions: { format } });
+}
+
+/**
  * Add a new comment
  */
 export function addComment(comment: string): void {

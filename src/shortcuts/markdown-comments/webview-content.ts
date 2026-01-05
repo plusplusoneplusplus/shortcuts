@@ -106,9 +106,22 @@ export function getWebviewContent(
             </button>
         </div>
         <div class="toolbar-group toolbar-review-only">
-            <button id="copyPromptBtn" class="toolbar-btn" title="Copy AI Prompt to Clipboard">
-                <span class="icon">📋</span> Copy Prompt
-            </button>
+            <div class="ai-action-dropdown" id="aiActionDropdown">
+                <button id="aiActionBtn" class="toolbar-btn ai-action-btn" title="AI Actions">
+                    <span class="icon">🤖</span> AI Action
+                    <span class="dropdown-arrow">▼</span>
+                </button>
+                <div class="ai-action-menu" id="aiActionMenu">
+                    <div class="ai-action-menu-item" id="sendToChatBtn">
+                        <span class="ai-action-icon">💬</span>
+                        <span class="ai-action-label">Send to Chat</span>
+                    </div>
+                    <div class="ai-action-menu-item" id="copyPromptBtn">
+                        <span class="ai-action-icon">📋</span>
+                        <span class="ai-action-label">Copy as Prompt</span>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="toolbar-group toolbar-review-only">
             <label class="toolbar-checkbox">

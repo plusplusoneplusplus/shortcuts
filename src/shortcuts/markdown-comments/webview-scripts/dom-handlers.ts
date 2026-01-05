@@ -24,7 +24,7 @@ import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
 import { SerializedAICommand } from './types';
-import { openFile, requestAskAI, requestCopyPrompt, requestDeleteAll, requestResolveAll, updateContent } from './vscode-bridge';
+import { openFile, requestAskAI, requestCopyPrompt, requestDeleteAll, requestResolveAll, requestSendToChat, updateContent } from './vscode-bridge';
 
 // DOM element references
 let editorWrapper: HTMLElement;
@@ -115,9 +115,8 @@ function setupToolbarEventListeners(): void {
         requestDeleteAll();
     });
 
-    document.getElementById('copyPromptBtn')?.addEventListener('click', () => {
-        requestCopyPrompt('markdown');
-    });
+    // AI Action dropdown
+    setupAIActionDropdown();
 
     showResolvedCheckbox.addEventListener('change', (e) => {
         state.setSettings({ showResolved: (e.target as HTMLInputElement).checked });
@@ -126,6 +125,80 @@ function setupToolbarEventListeners(): void {
 
     // Mode toggle buttons
     setupModeToggle();
+}
+
+/**
+ * Setup AI Action dropdown menu handlers
+ */
+function setupAIActionDropdown(): void {
+    const aiActionDropdown = document.getElementById('aiActionDropdown');
+    const aiActionBtn = document.getElementById('aiActionBtn');
+    const aiActionMenu = document.getElementById('aiActionMenu');
+    const sendToChatBtn = document.getElementById('sendToChatBtn');
+    const copyPromptBtn = document.getElementById('copyPromptBtn');
+
+    if (!aiActionDropdown || !aiActionBtn || !aiActionMenu) return;
+
+    // Toggle dropdown on button click
+    aiActionBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = aiActionMenu.classList.contains('show');
+        if (isOpen) {
+            hideAIActionMenu();
+        } else {
+            showAIActionMenu();
+        }
+    });
+
+    // Send to Chat action
+    sendToChatBtn?.addEventListener('click', () => {
+        hideAIActionMenu();
+        requestSendToChat('markdown');
+    });
+
+    // Copy as Prompt action
+    copyPromptBtn?.addEventListener('click', () => {
+        hideAIActionMenu();
+        requestCopyPrompt('markdown');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!aiActionDropdown.contains(e.target as Node)) {
+            hideAIActionMenu();
+        }
+    });
+
+    // Close dropdown on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            hideAIActionMenu();
+        }
+    });
+}
+
+/**
+ * Show the AI Action dropdown menu
+ */
+function showAIActionMenu(): void {
+    const aiActionMenu = document.getElementById('aiActionMenu');
+    const aiActionBtn = document.getElementById('aiActionBtn');
+    if (aiActionMenu && aiActionBtn) {
+        aiActionMenu.classList.add('show');
+        aiActionBtn.classList.add('active');
+    }
+}
+
+/**
+ * Hide the AI Action dropdown menu
+ */
+function hideAIActionMenu(): void {
+    const aiActionMenu = document.getElementById('aiActionMenu');
+    const aiActionBtn = document.getElementById('aiActionBtn');
+    if (aiActionMenu && aiActionBtn) {
+        aiActionMenu.classList.remove('show');
+        aiActionBtn.classList.remove('active');
+    }
 }
 
 /**
