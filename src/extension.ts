@@ -2,6 +2,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { AI_PROCESS_SCHEME, AIProcessDocumentProvider, AIProcessManager, AIProcessTreeDataProvider } from './shortcuts/ai-service';
+import { getExtensionLogger, LogCategory } from './shortcuts/shared';
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
@@ -83,6 +84,11 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log(`Initializing shortcuts panel for workspace: ${workspaceRoot}`);
 
     try {
+        // Initialize shared extension logger first (before any operations)
+        const extensionLogger = getExtensionLogger();
+        extensionLogger.initialize({ channelName: 'Shortcuts' });
+        extensionLogger.info(LogCategory.EXTENSION, 'Shortcuts extension activating', { workspaceRoot });
+        
         // Initialize configuration and theme managers
         const configurationManager = new ConfigurationManager(workspaceRoot, context);
         const themeManager = new ThemeManager();
@@ -1043,6 +1049,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Collect all disposables for proper cleanup
         const disposables: vscode.Disposable[] = [
+            extensionLogger,
             treeView,
             globalNotesTreeView,
             // Tasks Viewer disposables

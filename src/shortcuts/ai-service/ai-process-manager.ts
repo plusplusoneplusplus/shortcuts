@@ -11,7 +11,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AIProcess, AIProcessStatus, deserializeProcess, DiscoveryProcessMetadata, ProcessEvent, ProcessEventType, serializeProcess, SerializedAIProcess } from './types';
+import { getExtensionLogger, LogCategory } from './ai-service-logger';
+import { AIProcess, AIProcessStatus, deserializeProcess, DiscoveryProcessMetadata, ProcessEvent, SerializedAIProcess, serializeProcess } from './types';
 
 /**
  * Storage key for persisted processes
@@ -75,7 +76,7 @@ export class AIProcessManager implements vscode.Disposable {
 
         try {
             const serialized = this.context.globalState.get<SerializedAIProcess[]>(STORAGE_KEY, []);
-            
+
             // Convert serialized processes back to AIProcess objects
             for (const s of serialized) {
                 const process = deserializeProcess(s);
@@ -97,7 +98,8 @@ export class AIProcessManager implements vscode.Disposable {
                 this._onDidChangeProcesses.fire({ type: 'processes-cleared' }); // Trigger refresh
             }
         } catch (error) {
-            console.error('Failed to load AI processes from storage:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.AI, 'Failed to load AI processes from storage', error instanceof Error ? error : new Error(String(error)));
         }
     }
 
@@ -134,7 +136,8 @@ export class AIProcessManager implements vscode.Disposable {
 
             await this.context.globalState.update(STORAGE_KEY, toSave);
         } catch (error) {
-            console.error('Failed to save AI processes to storage:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.AI, 'Failed to save AI processes to storage', error instanceof Error ? error : new Error(String(error)));
         }
     }
 
@@ -183,7 +186,7 @@ export class AIProcessManager implements vscode.Disposable {
         childProcess?: ChildProcess
     ): string {
         const id = `review-${++this.processCounter}-${Date.now()}`;
-        
+
         // Create a more descriptive preview for code reviews
         let promptPreview: string;
         if (metadata.reviewType === 'commit' && metadata.commitSha) {
@@ -583,7 +586,10 @@ export class AIProcessManager implements vscode.Disposable {
             }
             return resultsDir;
         } catch (error) {
-            console.error('Failed to create results directory:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.FILESYSTEM, 'Failed to create results directory', error instanceof Error ? error : new Error(String(error)), {
+                resultsDir
+            });
             return undefined;
         }
     }
@@ -643,7 +649,10 @@ export class AIProcessManager implements vscode.Disposable {
             fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
             return filePath;
         } catch (error) {
-            console.error('Failed to save result to file:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.FILESYSTEM, 'Failed to save result to file', error instanceof Error ? error : new Error(String(error)), {
+                processId: process.id
+            });
             return undefined;
         }
     }
@@ -659,7 +668,10 @@ export class AIProcessManager implements vscode.Disposable {
             }
             return stdoutDir;
         } catch (error) {
-            console.error('Failed to create raw stdout directory:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.FILESYSTEM, 'Failed to create raw stdout directory', error instanceof Error ? error : new Error(String(error)), {
+                stdoutDir
+            });
             return undefined;
         }
     }
@@ -682,7 +694,10 @@ export class AIProcessManager implements vscode.Disposable {
             fs.writeFileSync(filePath, stdout, 'utf8');
             return filePath;
         } catch (error) {
-            console.error('Failed to save raw stdout to file:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.FILESYSTEM, 'Failed to save raw stdout to file', error instanceof Error ? error : new Error(String(error)), {
+                processId: process.id
+            });
             return undefined;
         }
     }

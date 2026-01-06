@@ -8,6 +8,7 @@
 import { exec, execSync } from 'child_process';
 import * as vscode from 'vscode';
 import { AIProcessManager } from './ai-process-manager';
+import { getExtensionLogger } from './ai-service-logger';
 import { AIInvocationResult, AIModel, AIToolType, VALID_MODELS } from './types';
 
 /** Timeout for copilot CLI execution in milliseconds */
@@ -46,6 +47,8 @@ export function checkProgramExists(
 
     let result: { exists: boolean; path?: string; error?: string };
 
+    const logger = getExtensionLogger();
+    
     try {
         const output = execSync(checkCommand, {
             encoding: 'utf-8',
@@ -60,12 +63,17 @@ export function checkProgramExists(
             exists: true,
             path: programPath
         };
+        
+        logger.logProgramCheck(programName, true, programPath);
     } catch (error) {
         // Command failed - program not found
+        const errorMsg = `'${programName}' is not installed or not found in PATH. Please install it first.`;
         result = {
             exists: false,
-            error: `'${programName}' is not installed or not found in PATH. Please install it first.`
+            error: errorMsg
         };
+        
+        logger.logProgramCheck(programName, false, undefined, errorMsg);
     }
 
     // Cache the result
@@ -327,10 +335,15 @@ export async function copyToClipboard(text: string): Promise<void> {
  * @returns True if the terminal was created successfully
  */
 export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: string): Promise<boolean> {
+    const logger = getExtensionLogger();
+    
     // Check if copilot CLI is installed before attempting to run
     const programCheck = checkProgramExists('copilot');
     if (!programCheck.exists) {
         const errorMsg = 'Copilot CLI is not installed or not found in PATH. Please install it with: npm install -g @githubnext/github-copilot-cli';
+        logger.logAIProcessLaunchFailure('Copilot CLI not installed', undefined, {
+            programCheck: programCheck.error
+        });
         vscode.window.showErrorMessage(errorMsg, 'Copy Install Command').then(selection => {
             if (selection === 'Copy Install Command') {
                 vscode.env.clipboard.writeText('npm install -g @githubnext/github-copilot-cli');
@@ -343,6 +356,11 @@ export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: s
         // Get the configured working directory if workspace root is provided
         const cwd = workspaceRoot ? getWorkingDirectory(workspaceRoot) : undefined;
 
+        // Build the copilot command with escaped prompt and optional model
+        const command = buildCopilotCommand(prompt);
+        
+        logger.logAIProcessLaunch(prompt, cwd || 'default', command);
+
         // Create a new terminal for the Copilot CLI
         const terminal = vscode.window.createTerminal({
             name: 'Copilot AI',
@@ -350,16 +368,21 @@ export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: s
             cwd: cwd
         });
 
-        // Build the copilot command with escaped prompt and optional model
-        const command = buildCopilotCommand(prompt);
-
         // Show the terminal and send the command
         terminal.show(true);
         terminal.sendText(command);
 
+        logger.logOperationComplete('AI', 'launch terminal', undefined, {
+            terminalName: 'Copilot AI',
+            workingDirectory: cwd
+        });
+
         return true;
     } catch (error) {
-        console.error('[AI Service] Failed to invoke Copilot CLI:', error);
+        const err = error instanceof Error ? error : new Error(String(error));
+        logger.logAIProcessLaunchFailure('Failed to create terminal', err, {
+            workspaceRoot
+        });
         return false;
     }
 }
@@ -379,12 +402,18 @@ export async function invokeCopilotCLI(
     processManager?: AIProcessManager,
     existingProcessId?: string
 ): Promise<AIInvocationResult> {
+    const logger = getExtensionLogger();
     let processId: string | undefined = existingProcessId;
+    const startTime = Date.now();
 
     // Check if copilot CLI is installed before attempting to run
     const programCheck = checkProgramExists('copilot');
     if (!programCheck.exists) {
         const errorMsg = 'Copilot CLI is not installed or not found in PATH. Please install it with: npm install -g @githubnext/github-copilot-cli';
+        logger.logAIProcessLaunchFailure('Copilot CLI not installed', undefined, {
+            programCheck: programCheck.error,
+            existingProcessId
+        });
         vscode.window.showErrorMessage(errorMsg, 'Copy Install Command').then(selection => {
             if (selection === 'Copy Install Command') {
                 vscode.env.clipboard.writeText('npm install -g @githubnext/github-copilot-cli');
@@ -405,6 +434,8 @@ export async function invokeCopilotCLI(
 
         // Get the configured working directory
         const cwd = getWorkingDirectory(workspaceRoot);
+        
+        logger.logAIProcessLaunch(prompt, cwd, command);
 
         // Show progress notification
         return await vscode.window.withProgress({
@@ -418,6 +449,8 @@ export async function invokeCopilotCLI(
                     timeout: COPILOT_TIMEOUT_MS,
                     maxBuffer: 1024 * 1024 * 10 // 10MB buffer
                 }, (error, stdout, stderr) => {
+                    const durationMs = Date.now() - startTime;
+                    
                     if (processManager && processId && stdout) {
                         processManager.attachRawStdout(processId, stdout);
                     }
@@ -426,6 +459,11 @@ export async function invokeCopilotCLI(
                         // Check if it's a timeout
                         if (error.killed) {
                             const errorMsg = 'Copilot CLI timed out after 20 minutes. The process was force killed.';
+                            logger.logAIProcessLaunchFailure('Process timed out', error, {
+                                processId,
+                                durationMs,
+                                timeoutMs: COPILOT_TIMEOUT_MS
+                            });
                             if (processManager && processId) {
                                 processManager.failProcess(processId, errorMsg);
                             }
@@ -440,6 +478,10 @@ export async function invokeCopilotCLI(
                         if (error.message.includes('command not found') ||
                             error.message.includes('not recognized')) {
                             const errorMsg = 'Copilot CLI is not installed. Please install it with: npm install -g @anthropic-ai/claude-code';
+                            logger.logAIProcessLaunchFailure('Command not found at runtime', error, {
+                                processId,
+                                durationMs
+                            });
                             if (processManager && processId) {
                                 processManager.failProcess(processId, errorMsg);
                             }
@@ -451,6 +493,11 @@ export async function invokeCopilotCLI(
                         }
 
                         const errorMsg = `Copilot CLI error: ${error.message}`;
+                        logger.logAIProcessLaunchFailure('CLI execution error', error, {
+                            processId,
+                            durationMs,
+                            stderr: stderr ? stderr.substring(0, 500) : undefined
+                        });
                         if (processManager && processId) {
                             processManager.failProcess(processId, errorMsg);
                         }
@@ -466,6 +513,11 @@ export async function invokeCopilotCLI(
 
                     if (!response) {
                         const errorMsg = 'No response received from Copilot CLI';
+                        logger.logAIProcessLaunchFailure('Empty response', undefined, {
+                            processId,
+                            durationMs,
+                            stdoutLength: stdout?.length || 0
+                        });
                         if (processManager && processId) {
                             processManager.failProcess(processId, errorMsg);
                         }
@@ -480,6 +532,8 @@ export async function invokeCopilotCLI(
                     if (processManager && processId) {
                         processManager.completeProcess(processId, response);
                     }
+                    
+                    logger.logAIProcessComplete(processId || 'unknown', durationMs, true);
 
                     resolve({
                         success: true,
@@ -499,6 +553,8 @@ export async function invokeCopilotCLI(
                 // Handle cancellation
                 token.onCancellationRequested(() => {
                     childProcess.kill();
+                    const durationMs = Date.now() - startTime;
+                    logger.logAIProcessCancelled(processId || 'unknown', 'User cancelled');
                     if (processManager && processId) {
                         processManager.updateProcess(processId, 'cancelled', undefined, 'Cancelled by user');
                     }
@@ -510,8 +566,12 @@ export async function invokeCopilotCLI(
             });
         });
     } catch (error) {
-        console.error('[AI Service] Failed to invoke Copilot CLI:', error);
-        const errorMsg = `Failed to run Copilot CLI: ${error}`;
+        const err = error instanceof Error ? error : new Error(String(error));
+        const errorMsg = `Failed to run Copilot CLI: ${err.message}`;
+        logger.logAIProcessLaunchFailure('Unexpected error', err, {
+            processId,
+            workspaceRoot
+        });
         if (processManager && processId) {
             processManager.failProcess(processId, errorMsg);
         }

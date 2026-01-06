@@ -55,3 +55,7 @@ export { AICommandRegistry, getAICommandRegistry } from './ai-command-registry';
 // Export prompt builder
 export { buildPrompt, getAvailableVariables, PromptContext, usesTemplateVariables } from './prompt-builder';
 
+// Export AI Service logger (backward compatibility - use shared/extension-logger for new code)
+export { AILogLevel, AIServiceLogger, getAIServiceLogger, LogLevel, ExtensionLogger, getExtensionLogger, LogCategory } from './ai-service-logger';
+export type { AILogEntry } from './ai-service-logger';
+

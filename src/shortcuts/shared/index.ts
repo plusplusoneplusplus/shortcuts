@@ -36,6 +36,18 @@ export type { BasePromptGenerationOptions } from './prompt-generator-base';
 // Glob utilities for file pattern matching
 export { getFilesWithExtension, glob } from './glob-utils';
 
+// Extension-wide logging framework
+export {
+    AILogLevel, // Backward compatibility alias
+    AIServiceLogger, // Backward compatibility alias
+    ExtensionLogger,
+    getAIServiceLogger, // Backward compatibility alias
+    getExtensionLogger,
+    LogCategory,
+    LogLevel
+} from './extension-logger';
+export type { LogEntry, LoggerConfig } from './extension-logger';
+
 // Note: Webview utilities are exported separately via './webview'
 // to avoid bundling issues with webview-specific code in the extension bundle
 
