@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
 import { NotificationManager } from './notification-manager';
+import { getExtensionLogger, LogCategory } from './shared';
 import { ThemeManager } from './theme-manager';
 import { CommandShortcutItem, CommitFileItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, ShortcutItem, TaskShortcutItem } from './tree-items';
 import { GitLogService } from './git/git-log-service';
@@ -68,7 +69,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
             }
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error getting logical tree children:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error getting logical tree children', err);
             NotificationManager.showError(`Error loading logical groups: ${err.message}`);
             return [];
         }
@@ -410,7 +411,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
             }
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error(`Error reading logical group contents for ${groupItem.label}:`, err);
+            getExtensionLogger().error(LogCategory.EXTENSION, `Error reading logical group contents for ${groupItem.label}`, err);
             NotificationManager.showError(`Error reading group: ${err.message}`);
         }
 
@@ -523,7 +524,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
                 );
             });
         } catch (error) {
-            console.error('Error getting commit files:', error);
+            getExtensionLogger().error(LogCategory.GIT, 'Error getting commit files', error instanceof Error ? error : undefined);
             return [];
         }
     }
@@ -616,7 +617,7 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
             }
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error(`Error reading folder contents for ${displayPath}:`, err);
+            getExtensionLogger().error(LogCategory.FILESYSTEM, `Error reading folder contents for ${displayPath}`, err);
             NotificationManager.showError(`Error reading folder: ${err.message}`);
         }
 

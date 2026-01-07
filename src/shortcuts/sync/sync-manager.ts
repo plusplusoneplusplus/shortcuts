@@ -6,6 +6,7 @@ import * as os from 'os';
 import * as vscode from 'vscode';
 import { CURRENT_CONFIG_VERSION } from '../config-migrations';
 import { NotificationManager } from '../notification-manager';
+import { getExtensionLogger, LogCategory } from '../shared';
 import { ShortcutsConfig, SyncConfig } from '../types';
 import { ISyncProvider, SyncedConfig, SyncResult, SyncStatus } from './sync-provider';
 import { VSCodeSyncProvider } from './vscode-sync-provider';
@@ -89,7 +90,7 @@ export class SyncManager {
         }
 
         if (this.syncInProgress) {
-            console.log('Sync already in progress, skipping');
+            getExtensionLogger().debug(LogCategory.SYNC, 'Sync already in progress, skipping');
             return new Map();
         }
 
@@ -115,16 +116,16 @@ export class SyncManager {
                         results.set(name, result);
 
                         if (result.success) {
-                            console.log(`Successfully synced to ${name}`);
+                            getExtensionLogger().info(LogCategory.SYNC, `Successfully synced to ${name}`);
                         } else {
-                            console.error(`Failed to sync to ${name}:`, result.error);
+                            getExtensionLogger().error(LogCategory.SYNC, `Failed to sync to ${name}`, undefined, { error: result.error });
                             NotificationManager.showWarning(
                                 `Failed to sync to ${provider.getName()}: ${result.error}`
                             );
                         }
                     } catch (error) {
                         const err = error instanceof Error ? error : new Error('Unknown error');
-                        console.error(`Error syncing to ${name}:`, err);
+                        getExtensionLogger().error(LogCategory.SYNC, `Error syncing to ${name}`, err);
                         results.set(name, {
                             success: false,
                             error: err.message
@@ -152,7 +153,7 @@ export class SyncManager {
         }
 
         if (this.syncInProgress) {
-            console.log('Sync already in progress, skipping');
+            getExtensionLogger().debug(LogCategory.SYNC, 'Sync already in progress, skipping');
             return {};
         }
 
@@ -167,7 +168,7 @@ export class SyncManager {
                         return { name, result, provider };
                     } catch (error) {
                         const err = error instanceof Error ? error : new Error('Unknown error');
-                        console.error(`Error downloading from ${name}:`, err);
+                        getExtensionLogger().error(LogCategory.SYNC, `Error downloading from ${name}`, err);
                         return { name, result: { success: false, error: err.message }, provider };
                     }
                 }
@@ -192,7 +193,7 @@ export class SyncManager {
             }
 
             if (newestConfig) {
-                console.log(`Using configuration from ${newestSource} (last modified: ${new Date(newestTimestamp)})`);
+                getExtensionLogger().info(LogCategory.SYNC, `Using configuration from ${newestSource} (last modified: ${new Date(newestTimestamp)})`);
                 return {
                     config: newestConfig.config,
                     source: newestSource
@@ -223,7 +224,7 @@ export class SyncManager {
                         const timestamp = await provider.getLastModified();
                         return { name, timestamp, providerName: provider.getName() };
                     } catch (error) {
-                        console.error(`Error checking updates from ${name}:`, error);
+                        getExtensionLogger().error(LogCategory.SYNC, `Error checking updates from ${name}`, error instanceof Error ? error : undefined);
                         return { name, timestamp: undefined, providerName: provider.getName() };
                     }
                 }
@@ -249,7 +250,7 @@ export class SyncManager {
             };
 
         } catch (error) {
-            console.error('Error checking for updates:', error);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error checking for updates', error instanceof Error ? error : undefined);
             return { hasUpdates: false };
         }
     }
@@ -270,7 +271,7 @@ export class SyncManager {
         // Schedule new sync
         this.debounceTimer = setTimeout(() => {
             this.syncToCloud(config).catch(error => {
-                console.error('Error during scheduled sync:', error);
+                getExtensionLogger().error(LogCategory.SYNC, 'Error during scheduled sync', error instanceof Error ? error : undefined);
             });
         }, this.DEBOUNCE_MS);
     }
@@ -319,11 +320,11 @@ export class SyncManager {
         this.periodicSyncTimer = setInterval(() => {
             this.checkForUpdates().then(result => {
                 if (result.hasUpdates) {
-                    console.log(`Updates available from ${result.source}, syncing...`);
+                    getExtensionLogger().info(LogCategory.SYNC, `Updates available from ${result.source}, syncing...`);
                     // The actual sync will be handled by the configuration manager
                 }
             }).catch(error => {
-                console.error('Error during periodic sync check:', error);
+                getExtensionLogger().error(LogCategory.SYNC, 'Error during periodic sync check', error instanceof Error ? error : undefined);
             });
         }, intervalMs);
     }

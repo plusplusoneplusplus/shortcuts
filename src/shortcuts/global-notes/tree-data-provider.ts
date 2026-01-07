@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConfigurationManager } from '../configuration-manager';
 import { NotificationManager } from '../notification-manager';
+import { getExtensionLogger, LogCategory } from '../shared';
 import { GlobalNoteItem } from '../tree-items';
 
 /**
@@ -38,7 +39,7 @@ export class GlobalNotesTreeDataProvider implements vscode.TreeDataProvider<vsco
             }
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error getting global notes:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error getting global notes', err);
             NotificationManager.showError(`Error loading global notes: ${err.message}`);
             return [];
         }

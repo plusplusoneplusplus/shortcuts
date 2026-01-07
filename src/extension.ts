@@ -397,7 +397,7 @@ export async function activate(context: vscode.ExtensionContext) {
                             commitFile: file
                         });
                     } catch (error) {
-                        console.error('Failed to open commit file diff:', error);
+                        getExtensionLogger().error(LogCategory.GIT, 'Failed to open commit file diff', error instanceof Error ? error : undefined);
                         vscode.window.showErrorMessage('Failed to open diff view');
                     }
                 }
@@ -931,7 +931,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     const result = deserializeCodeReviewResult(serialized);
                     CodeReviewViewer.createOrShow(context.extensionUri, result);
                 } catch (error) {
-                    console.error('Failed to parse code review result:', error);
+                    getExtensionLogger().error(LogCategory.AI, 'Failed to parse code review result', error instanceof Error ? error : undefined);
                     vscode.window.showErrorMessage('Failed to display code review result.');
                 }
             }
@@ -986,7 +986,7 @@ export async function activate(context: vscode.ExtensionContext) {
                         discoveryProcess
                     );
                 } catch (error) {
-                    console.error('Failed to parse discovery results:', error);
+                    getExtensionLogger().error(LogCategory.DISCOVERY, 'Failed to parse discovery results', error instanceof Error ? error : undefined);
                     vscode.window.showErrorMessage('Failed to display discovery results.');
                 }
             }
@@ -1081,7 +1081,7 @@ export async function activate(context: vscode.ExtensionContext) {
                         ReviewEditorViewProvider.viewType
                     );
                 } catch (error) {
-                    console.error('Error redirecting markdown to Review Editor:', error);
+                    getExtensionLogger().error(LogCategory.MARKDOWN, 'Error redirecting markdown to Review Editor', error instanceof Error ? error : undefined);
                     // Clean up the redirect tracking on error
                     redirectedFiles.delete(fileKey);
                 }
@@ -1206,7 +1206,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
     } catch (error) {
-        console.error('Error activating shortcuts extension:', error);
+        getExtensionLogger().error(LogCategory.EXTENSION, 'Error activating shortcuts extension', error instanceof Error ? error : undefined);
         const message = error instanceof Error ? error.message : 'Unknown error';
         vscode.window.showErrorMessage(`Failed to activate shortcuts extension: ${message}`);
     }

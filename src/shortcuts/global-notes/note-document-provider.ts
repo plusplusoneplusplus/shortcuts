@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ConfigurationManager } from '../configuration-manager';
+import { getExtensionLogger, LogCategory } from '../shared';
 
 /**
  * Provides a virtual file system for notes
@@ -77,7 +78,7 @@ export class NoteFileSystemProvider implements vscode.FileSystemProvider {
             if (error instanceof vscode.FileSystemError) {
                 throw error;
             }
-            console.error('Error in stat after retries:', error);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error in stat after retries', error instanceof Error ? error : undefined);
             throw vscode.FileSystemError.FileNotFound(uri);
         }
     }
@@ -107,7 +108,7 @@ export class NoteFileSystemProvider implements vscode.FileSystemProvider {
                 return Buffer.from(content, 'utf8');
             });
         } catch (error) {
-            console.error('Error reading note:', error);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error reading note', error instanceof Error ? error : undefined);
             // Throw FileNotFound error so VSCode handles it properly
             if (error instanceof vscode.FileSystemError) {
                 throw error;
@@ -130,7 +131,7 @@ export class NoteFileSystemProvider implements vscode.FileSystemProvider {
                 uri
             }]);
         } catch (error) {
-            console.error('Error writing note:', error);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error writing note', error instanceof Error ? error : undefined);
             throw vscode.FileSystemError.Unavailable('Failed to save note');
         }
     }
@@ -206,7 +207,7 @@ export class NoteDocumentManager {
             });
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error opening note:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error opening note', err);
             vscode.window.showErrorMessage(`Failed to open note: ${err.message}`);
         }
     }

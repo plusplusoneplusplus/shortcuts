@@ -6,6 +6,7 @@ import {
     DiffCommentsTreeDataProvider
 } from '../git-diff-comments/diff-comments-tree-provider';
 import { DiffCommentsManager } from '../git-diff-comments/diff-comments-manager';
+import { getExtensionLogger, LogCategory } from '../shared';
 import { GitChangeItem } from './git-change-item';
 import { GitCommitFileItem } from './git-commit-file-item';
 import { GitCommitItem } from './git-commit-item';
@@ -260,7 +261,7 @@ export class GitTreeDataProvider
             // All other items have no children
             return [];
         } catch (error) {
-            console.error('Error getting git tree children:', error);
+            getExtensionLogger().error(LogCategory.GIT, 'Error getting git tree children', error instanceof Error ? error : undefined);
             return [];
         }
     }

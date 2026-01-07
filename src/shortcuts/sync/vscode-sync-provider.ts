@@ -5,6 +5,7 @@
 
 import * as os from 'os';
 import * as vscode from 'vscode';
+import { getExtensionLogger, LogCategory } from '../shared';
 import { ISyncProvider, SyncResult, SyncStatus, SyncedConfig } from './sync-provider';
 
 /**
@@ -125,7 +126,7 @@ export class VSCodeSyncProvider implements ISyncProvider {
             const config = storage.get<SyncedConfig>(VSCodeSyncProvider.STORAGE_KEY);
             return config?.metadata.lastModified;
         } catch (error) {
-            console.error('Error getting last modified timestamp:', error);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error getting last modified timestamp', error instanceof Error ? error : undefined);
             return undefined;
         }
     }
@@ -139,7 +140,7 @@ export class VSCodeSyncProvider implements ISyncProvider {
             await storage.update(VSCodeSyncProvider.STORAGE_KEY, undefined);
             return true;
         } catch (error) {
-            console.error('Error deleting configuration:', error);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error deleting configuration', error instanceof Error ? error : undefined);
             return false;
         }
     }
@@ -153,7 +154,7 @@ export class VSCodeSyncProvider implements ISyncProvider {
             this.status = configured ? SyncStatus.Ready : SyncStatus.NotConfigured;
             return configured;
         } catch (error) {
-            console.error('Error initializing VSCode sync provider:', error);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error initializing VSCode sync provider', error instanceof Error ? error : undefined);
             this.status = SyncStatus.Error;
             return false;
         }

@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { AIProcessManager, getAICommandRegistry } from '../ai-service';
+import { getExtensionLogger, LogCategory } from '../shared';
 import { DiffCommentsManager } from './diff-comments-manager';
 import {
     createCommittedGitContext,
@@ -166,7 +167,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 this.originalTitles.delete(fullPath);
             });
         } catch (error) {
-            console.error('Failed to restore diff review panel:', error);
+            getExtensionLogger().error(LogCategory.DIFF_COMMENTS, 'Failed to restore diff review panel', error instanceof Error ? error : undefined);
             panel.dispose();
         }
     }

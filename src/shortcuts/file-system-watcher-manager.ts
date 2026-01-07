@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
+import { getExtensionLogger, LogCategory } from './shared';
 import { BasePath } from './types';
 
 /**
@@ -64,7 +65,7 @@ export class FileSystemWatcherManager implements vscode.Disposable {
 
             console.log(`Created ${this.watchers.length} file system watchers for shortcuts`);
         } catch (error) {
-            console.error('Error updating file system watchers:', error);
+            getExtensionLogger().error(LogCategory.FILESYSTEM, 'Error updating file system watchers', error instanceof Error ? error : undefined);
         }
     }
 

@@ -4,7 +4,7 @@ import { GlobalNotesTreeDataProvider } from './global-notes';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
 import { CommandShortcutItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
-import { getExtensionLogger } from './shared/extension-logger';
+import { getExtensionLogger, LogCategory } from './shared/extension-logger';
 
 /**
  * Command handlers for the shortcuts panel
@@ -314,7 +314,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error resetting configuration:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error resetting configuration', err);
             NotificationManager.showError(`Failed to reset configuration: ${err.message}`);
         }
     }
@@ -340,7 +340,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error opening configuration file:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error opening configuration file', err);
             NotificationManager.showError(`Failed to open configuration file: ${err.message}`);
         }
     }
@@ -383,7 +383,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error creating logical group', err);
             NotificationManager.showError(`Failed to create logical group: ${err.message}`);
         }
     }
@@ -430,7 +430,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating nested logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error creating nested logical group', err);
             NotificationManager.showError(`Failed to create subgroup: ${err.message}`);
         }
     }
@@ -488,7 +488,8 @@ export class ShortcutsCommands {
 
                     addedCount++;
                 } catch (error) {
-                    console.warn(`Failed to add ${uri.fsPath}:`, error);
+                    const err = error instanceof Error ? error : new Error(String(error));
+                    getExtensionLogger().warn(LogCategory.CONFIG, `Failed to add ${uri.fsPath}`, { error: err.message });
                     skippedCount++;
                 }
             }
@@ -507,7 +508,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error adding to logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error adding to logical group', err);
             NotificationManager.showError(`Failed to add to logical group: ${err.message}`);
         }
     }
@@ -573,7 +574,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error adding files to logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error adding files to logical group', err);
             NotificationManager.showError(`Failed to add files: ${err.message}`);
         }
     }
@@ -639,7 +640,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error adding folders to logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error adding folders to logical group', err);
             NotificationManager.showError(`Failed to add folders: ${err.message}`);
         }
     }
@@ -679,7 +680,7 @@ export class ShortcutsCommands {
                 } else if (isGroupChildItem(item)) {
                     groupChildItems.push(item);
                 } else {
-                    console.warn('removeFromLogicalGroup: item is neither commit nor file/folder:', item);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'removeFromLogicalGroup: item is neither commit nor file/folder', { item });
                     return;
                 }
             }
@@ -694,7 +695,7 @@ export class ShortcutsCommands {
             
             // Remove commit items
             for (const commitItem of commitItems) {
-                console.log(`Removing commit ${commitItem.commitHash} from group ${commitItem.parentGroup}`);
+                getExtensionLogger().debug(LogCategory.GIT, `Removing commit ${commitItem.commitHash} from group ${commitItem.parentGroup}`);
                 await configManager.removeCommitFromLogicalGroup(commitItem.parentGroup, commitItem.commitHash);
             }
 
@@ -708,7 +709,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error removing from logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error removing from logical group', err);
             NotificationManager.showError(`Failed to remove from logical group: ${err.message}`);
         }
     }
@@ -746,7 +747,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error renaming logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error renaming logical group', err);
             NotificationManager.showError(`Failed to rename logical group: ${err.message}`);
         }
     }
@@ -811,7 +812,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error deleting logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error deleting logical group', err);
             NotificationManager.showError(`Failed to delete logical group: ${err.message}`);
         }
     }
@@ -882,7 +883,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error copying path:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error copying path', err);
             NotificationManager.showError(`Failed to copy path: ${err.message}`);
         }
     }
@@ -994,7 +995,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating file in logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error creating file in logical group', err);
             NotificationManager.showError(`Failed to create file: ${err.message}`);
         }
     }
@@ -1075,7 +1076,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating file in folder:', err);
+            getExtensionLogger().error(LogCategory.FILESYSTEM, 'Error creating file in folder', err);
             NotificationManager.showError(`Failed to create file: ${err.message}`);
         }
     }
@@ -1157,7 +1158,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating folder in folder:', err);
+            getExtensionLogger().error(LogCategory.FILESYSTEM, 'Error creating folder in folder', err);
             NotificationManager.showError(`Failed to create folder: ${err.message}`);
         }
     }
@@ -1272,7 +1273,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating folder in logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error creating folder in logical group', err);
             NotificationManager.showError(`Failed to create folder: ${err.message}`);
         }
     }
@@ -1291,7 +1292,7 @@ export class ShortcutsCommands {
             await vscode.commands.executeCommand('revealInExplorer', item.resourceUri);
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error revealing in explorer:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error revealing in explorer', err);
             NotificationManager.showError(`Failed to reveal in explorer: ${err.message}`);
         }
     }
@@ -1330,7 +1331,7 @@ export class ShortcutsCommands {
             terminal.show();
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error opening terminal:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error opening terminal', err);
             NotificationManager.showError(`Failed to open terminal: ${err.message}`);
         }
     }
@@ -1356,7 +1357,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error executing command:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error executing command', err);
             NotificationManager.showError(`Failed to execute command "${item.label}": ${err.message}`);
         }
     }
@@ -1388,7 +1389,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error executing task:', err);
+            getExtensionLogger().error(LogCategory.TASKS, 'Error executing task', err);
             NotificationManager.showError(`Failed to execute task "${item.label}": ${err.message}`);
         }
     }
@@ -1431,7 +1432,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error configuring sync:', err);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error configuring sync', err);
             NotificationManager.showError(`Failed to configure sync: ${err.message}`);
         }
     }
@@ -1467,7 +1468,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error enabling sync:', err);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error enabling sync', err);
             NotificationManager.showError(`Failed to enable sync: ${err.message}`);
         }
     }
@@ -1490,7 +1491,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error disabling sync:', err);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error disabling sync', err);
             NotificationManager.showError(`Failed to disable sync: ${err.message}`);
         }
     }
@@ -1516,7 +1517,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error syncing:', err);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error syncing', err);
             NotificationManager.showError(`Failed to sync: ${err.message}`);
         }
     }
@@ -1535,7 +1536,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error getting sync status:', err);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error getting sync status', err);
             NotificationManager.showError(`Failed to get sync status: ${err.message}`);
         }
     }
@@ -1584,7 +1585,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating note:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error creating note', err);
             NotificationManager.showError(`Failed to create note: ${err.message}`);
         }
     }
@@ -1604,7 +1605,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error editing note:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error editing note', err);
             NotificationManager.showError(`Failed to open note: ${err.message}`);
         }
     }
@@ -1637,7 +1638,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error deleting note:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error deleting note', err);
             NotificationManager.showError(`Failed to delete note: ${err.message}`);
         }
     }
@@ -1710,7 +1711,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error renaming note:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error renaming note', err);
             NotificationManager.showError(`Failed to rename note: ${err.message}`);
         }
     }
@@ -1754,7 +1755,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating global note:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error creating global note', err);
             NotificationManager.showError(`Failed to create global note: ${err.message}`);
         }
     }
@@ -1774,7 +1775,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error editing global note:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error editing global note', err);
             NotificationManager.showError(`Failed to open note: ${err.message}`);
         }
     }
@@ -1807,7 +1808,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error deleting global note:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error deleting global note', err);
             NotificationManager.showError(`Failed to delete global note: ${err.message}`);
         }
     }
@@ -1847,7 +1848,7 @@ export class ShortcutsCommands {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error renaming global note:', err);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error renaming global note', err);
             NotificationManager.showError(`Failed to rename global note: ${err.message}`);
         }
     }

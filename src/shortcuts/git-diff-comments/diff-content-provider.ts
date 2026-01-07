@@ -10,6 +10,7 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getExtensionLogger, LogCategory } from '../shared';
 import { DiffGitContext } from './types';
 
 /**
@@ -415,7 +416,7 @@ export function getUnifiedDiff(
             return execGit(['diff', oldRef, newRef, '--', gitPath], repositoryRoot);
         }
     } catch (error: any) {
-        console.error('Error getting unified diff:', error);
+        getExtensionLogger().error(LogCategory.GIT, 'Error getting unified diff', error instanceof Error ? error : undefined);
         return '';
     }
 

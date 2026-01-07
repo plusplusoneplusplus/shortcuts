@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { getExtensionLogger, LogCategory } from '../shared';
 import { GitCommit, GitCommitFile, GitChangeStatus, CommitLoadOptions, CommitLoadResult } from './types';
 
 /**
@@ -51,7 +52,7 @@ export class GitLogService implements vscode.Disposable {
 
             return true;
         } catch (error) {
-            console.error('Failed to initialize git log service:', error);
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to initialize git log service', error instanceof Error ? error : undefined);
             return false;
         }
     }
@@ -112,7 +113,7 @@ export class GitLogService implements vscode.Disposable {
 
             return { commits, hasMore };
         } catch (error) {
-            console.error(`Failed to get commits for ${repoRoot}:`, error);
+            getExtensionLogger().error(LogCategory.GIT, `Failed to get commits for ${repoRoot}`, error instanceof Error ? error : undefined);
             return { commits: [], hasMore: false };
         }
     }
@@ -205,7 +206,7 @@ export class GitLogService implements vscode.Disposable {
             const totalCount = parseInt(output.trim(), 10);
             return totalCount > currentCount;
         } catch (error) {
-            console.error(`Failed to check for more commits in ${repoRoot}:`, error);
+            getExtensionLogger().error(LogCategory.GIT, `Failed to check for more commits in ${repoRoot}`, error instanceof Error ? error : undefined);
             return false;
         }
     }
@@ -262,7 +263,7 @@ export class GitLogService implements vscode.Disposable {
             const repoName = path.basename(repoRoot);
             return this.parseCommitLine(output.trim(), repoRoot, repoName);
         } catch (error) {
-            console.error(`Failed to get commit ${hash} from ${repoRoot}:`, error);
+            getExtensionLogger().error(LogCategory.GIT, `Failed to get commit ${hash} from ${repoRoot}`, error instanceof Error ? error : undefined);
             return undefined;
         }
     }
@@ -374,7 +375,7 @@ export class GitLogService implements vscode.Disposable {
 
             return files;
         } catch (error) {
-            console.error(`Failed to get commit files for ${commitHash} from ${repoRoot}:`, error);
+            getExtensionLogger().error(LogCategory.GIT, `Failed to get commit files for ${commitHash} from ${repoRoot}`, error instanceof Error ? error : undefined);
             return [];
         }
     }
@@ -485,7 +486,7 @@ export class GitLogService implements vscode.Disposable {
 
             return output;
         } catch (error) {
-            console.error(`Failed to get diff for commit ${commitHash}:`, error);
+            getExtensionLogger().error(LogCategory.GIT, `Failed to get diff for commit ${commitHash}`, error instanceof Error ? error : undefined);
             return '';
         }
     }
@@ -530,7 +531,7 @@ export class GitLogService implements vscode.Disposable {
 
             return combined;
         } catch (error) {
-            console.error('Failed to get pending changes diff:', error);
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to get pending changes diff', error instanceof Error ? error : undefined);
             return '';
         }
     }
@@ -552,7 +553,7 @@ export class GitLogService implements vscode.Disposable {
 
             return output;
         } catch (error) {
-            console.error('Failed to get staged changes diff:', error);
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to get staged changes diff', error instanceof Error ? error : undefined);
             return '';
         }
     }
@@ -574,7 +575,7 @@ export class GitLogService implements vscode.Disposable {
 
             return output.trim().length > 0;
         } catch (error) {
-            console.error('Failed to check for pending changes:', error);
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to check for pending changes', error instanceof Error ? error : undefined);
             return false;
         }
     }

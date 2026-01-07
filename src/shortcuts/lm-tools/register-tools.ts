@@ -3,8 +3,9 @@
  */
 
 import * as vscode from 'vscode';
-import { CommentsManager } from '../markdown-comments/comments-manager';
 import { DiffCommentsManager } from '../git-diff-comments/diff-comments-manager';
+import { CommentsManager } from '../markdown-comments/comments-manager';
+import { getExtensionLogger, LogCategory } from '../shared';
 import { ResolveCommentsTool } from './resolve-comments-tool';
 
 /**
@@ -43,7 +44,7 @@ export function registerLanguageModelTools(
 
         console.log('Language Model Tools registered successfully');
     } catch (error) {
-        console.error('Failed to register Language Model Tools:', error);
+        getExtensionLogger().error(LogCategory.EXTENSION, 'Failed to register Language Model Tools', error instanceof Error ? error : undefined);
     }
 
     return disposables;

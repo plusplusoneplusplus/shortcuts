@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
 import { NotificationManager } from './notification-manager';
+import { getExtensionLogger, LogCategory } from './shared';
 import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, ShortcutItem } from './tree-items';
 
 /**
@@ -372,7 +373,7 @@ export class ShortcutsDragDropController implements vscode.TreeDragAndDropContro
                 console.log(`[DRAG-DROP] Successfully moved note "${noteItem.label}"`);
                 movedCount++;
             } catch (error) {
-                console.error(`[DRAG-DROP] Failed to move note "${noteItem.label}":`, error);
+                getExtensionLogger().error(LogCategory.EXTENSION, `[DRAG-DROP] Failed to move note "${noteItem.label}"`, error instanceof Error ? error : undefined);
                 skippedCount++;
             }
         }

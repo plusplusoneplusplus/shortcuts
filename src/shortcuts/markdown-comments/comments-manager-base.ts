@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { getExtensionLogger, LogCategory } from '../shared';
 import {
     BaseAnchor,
     BaseComment,
@@ -76,7 +77,7 @@ export abstract class CommentsManagerBase<
 
             return this.config;
         } catch (error) {
-            console.error('Error loading comments:', error);
+            getExtensionLogger().error(LogCategory.MARKDOWN, 'Error loading comments', error instanceof Error ? error : undefined);
             this.config = this.getDefaultConfig();
             return this.config;
         }
@@ -96,7 +97,7 @@ export abstract class CommentsManagerBase<
             const content = JSON.stringify(this.config, null, 2);
             fs.writeFileSync(this.configPath, content, 'utf8');
         } catch (error) {
-            console.error('Error saving comments:', error);
+            getExtensionLogger().error(LogCategory.MARKDOWN, 'Error saving comments', error instanceof Error ? error : undefined);
             throw error;
         }
     }

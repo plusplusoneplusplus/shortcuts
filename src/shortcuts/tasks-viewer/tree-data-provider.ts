@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { getExtensionLogger, LogCategory } from '../shared';
 import { TaskManager } from './task-manager';
 import { TaskItem } from './task-item';
 import { TaskGroupItem } from './task-group-item';
@@ -45,7 +46,7 @@ export class TasksTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
             }
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error getting tasks:', err);
+            getExtensionLogger().error(LogCategory.TASKS, 'Error getting tasks', err);
             vscode.window.showErrorMessage(`Error loading tasks: ${err.message}`);
             return [];
         }

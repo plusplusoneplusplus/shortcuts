@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import * as vscode from 'vscode';
+import { getExtensionLogger, LogCategory } from '../shared';
 
 /**
  * URI scheme for git show content provider
@@ -49,7 +50,7 @@ export class GitShowTextDocumentProvider implements vscode.TextDocumentContentPr
 
             return this.getFileContentAtCommit(repo, commit, filePath);
         } catch (error) {
-            console.error('GitShowTextDocumentProvider: Error providing content', error);
+            getExtensionLogger().error(LogCategory.GIT, 'GitShowTextDocumentProvider: Error providing content', error instanceof Error ? error : undefined);
             return '';
         }
     }
@@ -89,7 +90,7 @@ export class GitShowTextDocumentProvider implements vscode.TextDocumentContentPr
             if (err.status === 128 || (err.message && err.message.includes('does not exist'))) {
                 return '';
             }
-            console.error(`GitShowTextDocumentProvider: Failed to get file content for ${filePath} at ${commit}:`, error);
+            getExtensionLogger().error(LogCategory.GIT, `GitShowTextDocumentProvider: Failed to get file content for ${filePath} at ${commit}`, error instanceof Error ? error : undefined);
             return '';
         }
     }

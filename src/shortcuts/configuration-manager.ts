@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { CURRENT_CONFIG_VERSION, detectConfigVersion, migrateConfig } from './config-migrations';
 import { NotificationManager } from './notification-manager';
+import { getExtensionLogger, LogCategory } from './shared/extension-logger';
 import { SyncManager } from './sync/sync-manager';
 import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, GlobalNote, LogicalGroup, LogicalGroupItem, ShortcutsConfig, SyncConfig } from './types';
 
@@ -143,10 +144,11 @@ export class ConfigurationManager {
                     const workspaceContent = fs.readFileSync(this.configPath, 'utf8');
                     const parsedWorkspaceConfig = yaml.load(workspaceContent) as any;
                     const workspaceConfig = this.validateConfiguration(parsedWorkspaceConfig);
-                    console.log('Using workspace configuration');
+                    getExtensionLogger().info(LogCategory.CONFIG, 'Using workspace configuration');
                     return workspaceConfig;
                 } catch (error) {
-                    console.warn('Error loading workspace config, falling back to global:', error);
+                    const err = error instanceof Error ? error : new Error(String(error));
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Error loading workspace config, falling back to global', { error: err.message });
                 }
             }
 
@@ -157,21 +159,22 @@ export class ConfigurationManager {
                     const globalContent = fs.readFileSync(globalConfigPath, 'utf8');
                     const parsedGlobalConfig = yaml.load(globalContent) as any;
                     const globalConfig = this.validateConfiguration(parsedGlobalConfig);
-                    console.log('Using global configuration');
+                    getExtensionLogger().info(LogCategory.CONFIG, 'Using global configuration');
                     return globalConfig;
                 } catch (error) {
-                    console.warn('Error loading global config:', error);
+                    const err = error instanceof Error ? error : new Error(String(error));
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Error loading global config', { error: err.message });
                 }
             }
 
             // If no configuration exists, create default in appropriate location
-            console.log('No configuration found, creating default');
+            getExtensionLogger().info(LogCategory.CONFIG, 'No configuration found, creating default');
             await this.saveConfiguration(DEFAULT_SHORTCUTS_CONFIG);
             return DEFAULT_SHORTCUTS_CONFIG;
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Configuration load error:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Configuration load error', err);
 
             let userMessage: string;
             if (err.message.includes('ENOENT') || err.message.includes('no such file')) {
@@ -232,7 +235,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Configuration save error:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Configuration save error', err);
 
             let userMessage: string;
             if (err.message.includes('EACCES') || err.message.includes('permission denied')) {
@@ -324,17 +327,17 @@ export class ConfigurationManager {
 
         // Watch for file changes, creation, and deletion
         this.fileWatcher.onDidChange(() => {
-            console.log('Shortcuts configuration file changed externally');
+            getExtensionLogger().debug(LogCategory.CONFIG, 'Shortcuts configuration file changed externally');
             this.handleConfigFileChange();
         });
 
         this.fileWatcher.onDidCreate(() => {
-            console.log('Shortcuts configuration file created externally');
+            getExtensionLogger().debug(LogCategory.CONFIG, 'Shortcuts configuration file created externally');
             this.handleConfigFileChange();
         });
 
         this.fileWatcher.onDidDelete(() => {
-            console.log('Shortcuts configuration file deleted externally');
+            getExtensionLogger().debug(LogCategory.CONFIG, 'Shortcuts configuration file deleted externally');
             this.handleConfigFileChange();
         });
 
@@ -360,7 +363,7 @@ export class ConfigurationManager {
     private migratePhysicalShortcuts(config: any): any {
         // If there are old physical shortcuts, migrate them to logical groups
         if (config.shortcuts && Array.isArray(config.shortcuts) && config.shortcuts.length > 0) {
-            console.log('Migrating physical shortcuts to logical groups...');
+            getExtensionLogger().info(LogCategory.CONFIG, 'Migrating physical shortcuts to logical groups...');
 
             if (!config.logicalGroups) {
                 config.logicalGroups = [];
@@ -380,12 +383,12 @@ export class ConfigurationManager {
                 try {
                     const resolvedPath = this.resolvePath(shortcut.path, config.basePaths);
                     if (!fs.existsSync(resolvedPath)) {
-                        console.warn(`Skipping migration of shortcut with non-existent path: ${shortcut.path}`);
+                        getExtensionLogger().warn(LogCategory.CONFIG, `Skipping migration of shortcut with non-existent path: ${shortcut.path}`);
                         continue;
                     }
 
                     if (!fs.statSync(resolvedPath).isDirectory()) {
-                        console.warn(`Skipping migration of shortcut with non-directory path: ${shortcut.path}`);
+                        getExtensionLogger().warn(LogCategory.CONFIG, `Skipping migration of shortcut with non-directory path: ${shortcut.path}`);
                         continue;
                     }
 
@@ -394,7 +397,7 @@ export class ConfigurationManager {
                     // Check if group with this name already exists
                     const existingGroup = config.logicalGroups.find((g: any) => g.name === groupName);
                     if (existingGroup) {
-                        console.warn(`Group "${groupName}" already exists, skipping migration of shortcut`);
+                        getExtensionLogger().warn(LogCategory.CONFIG, `Group "${groupName}" already exists, skipping migration of shortcut`);
                         continue;
                     }
 
@@ -413,13 +416,13 @@ export class ConfigurationManager {
                     config.logicalGroups.push(newGroup);
                 } catch (error) {
                     const err = error instanceof Error ? error : new Error('Unknown error');
-                    console.warn(`Error migrating shortcut ${shortcut.path}:`, err);
+                    getExtensionLogger().warn(LogCategory.CONFIG, `Error migrating shortcut ${shortcut.path}`, { error: err.message });
                 }
             }
 
             // Remove the old shortcuts array
             delete config.shortcuts;
-            console.log('Migration complete. Physical shortcuts have been converted to logical groups.');
+            getExtensionLogger().info(LogCategory.CONFIG, 'Migration complete. Physical shortcuts have been converted to logical groups.');
         }
 
         return config;
@@ -444,10 +447,10 @@ export class ConfigurationManager {
             });
 
             if (migrationResult.migrated) {
-                console.log(`Configuration migrated from v${migrationResult.fromVersion} to v${migrationResult.toVersion}`);
+                getExtensionLogger().info(LogCategory.CONFIG, `Configuration migrated from v${migrationResult.fromVersion} to v${migrationResult.toVersion}`);
 
                 if (migrationResult.warnings.length > 0) {
-                    console.warn('Migration warnings:', migrationResult.warnings);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Migration warnings', { warnings: migrationResult.warnings });
                     NotificationManager.showWarning(
                         `Configuration migrated with ${migrationResult.warnings.length} warning(s). Check console for details.`,
                         { timeout: 5000 }
@@ -463,12 +466,12 @@ export class ConfigurationManager {
         if (config.basePaths && Array.isArray(config.basePaths)) {
             for (const basePath of config.basePaths) {
                 if (!basePath || typeof basePath !== 'object') {
-                    console.warn('Skipping invalid base path:', basePath);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping invalid base path', { basePath });
                     continue;
                 }
 
                 if (typeof basePath.alias !== 'string' || !basePath.alias.trim()) {
-                    console.warn('Skipping base path with invalid alias:', basePath);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping base path with invalid alias', { basePath });
                     continue;
                 }
 
@@ -478,7 +481,7 @@ export class ConfigurationManager {
                     : `@${basePath.alias}`;
 
                 if (typeof basePath.path !== 'string' || !basePath.path.trim()) {
-                    console.warn('Skipping base path with invalid path:', basePath);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping base path with invalid path', { basePath });
                     continue;
                 }
 
@@ -500,41 +503,41 @@ export class ConfigurationManager {
         if (config.logicalGroups && Array.isArray(config.logicalGroups)) {
             for (const group of config.logicalGroups) {
                 if (!group || typeof group !== 'object') {
-                    console.warn('Skipping invalid logical group:', group);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping invalid logical group', { group });
                     continue;
                 }
 
                 if (typeof group.name !== 'string' || !group.name.trim()) {
-                    console.warn('Skipping logical group with invalid name:', group);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping logical group with invalid name', { group });
                     continue;
                 }
 
                 if (!Array.isArray(group.items)) {
-                    console.warn('Skipping logical group with invalid items array:', group);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping logical group with invalid items array', { group });
                     continue;
                 }
 
                 const validItems: LogicalGroupItem[] = [];
                 for (const item of group.items) {
                     if (!item || typeof item !== 'object') {
-                        console.warn('Skipping invalid logical group item:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping invalid logical group item', { item });
                         continue;
                     }
 
                     if (typeof item.name !== 'string' || !item.name.trim()) {
-                        console.warn('Skipping logical group item with invalid name:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping logical group item with invalid name', { item });
                         continue;
                     }
 
                     if (item.type !== 'folder' && item.type !== 'file' && item.type !== 'command' && item.type !== 'task' && item.type !== 'note' && item.type !== 'commit') {
-                        console.warn('Skipping logical group item with invalid type:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping logical group item with invalid type', { item });
                         continue;
                     }
 
                     // Handle command items
                     if (item.type === 'command') {
                         if (typeof item.command !== 'string' || !item.command.trim()) {
-                            console.warn('Skipping command item with invalid command ID:', item);
+                            getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping command item with invalid command ID', { item });
                             continue;
                         }
                         validItems.push({
@@ -550,7 +553,7 @@ export class ConfigurationManager {
                     // Handle task items
                     if (item.type === 'task') {
                         if (typeof item.task !== 'string' || !item.task.trim()) {
-                            console.warn('Skipping task item with invalid task name:', item);
+                            getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping task item with invalid task name', { item });
                             continue;
                         }
                         validItems.push({
@@ -565,7 +568,7 @@ export class ConfigurationManager {
                     // Handle note items
                     if (item.type === 'note') {
                         if (typeof item.noteId !== 'string' || !item.noteId.trim()) {
-                            console.warn('Skipping note item with invalid note ID:', item);
+                            getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping note item with invalid note ID', { item });
                             continue;
                         }
                         validItems.push({
@@ -580,15 +583,15 @@ export class ConfigurationManager {
                     // Handle commit items
                     if (item.type === 'commit') {
                         if (!item.commitRef || typeof item.commitRef !== 'object') {
-                            console.warn('Skipping commit item with invalid commitRef:', item);
+                            getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping commit item with invalid commitRef', { item });
                             continue;
                         }
                         if (typeof item.commitRef.hash !== 'string' || !item.commitRef.hash.trim()) {
-                            console.warn('Skipping commit item with invalid hash:', item);
+                            getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping commit item with invalid hash', { item });
                             continue;
                         }
                         if (typeof item.commitRef.repositoryRoot !== 'string' || !item.commitRef.repositoryRoot.trim()) {
-                            console.warn('Skipping commit item with invalid repositoryRoot:', item);
+                            getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping commit item with invalid repositoryRoot', { item });
                             continue;
                         }
                         validItems.push({
@@ -605,7 +608,7 @@ export class ConfigurationManager {
 
                     // Handle folder and file items (require path)
                     if (typeof item.path !== 'string' || !item.path.trim()) {
-                        console.warn('Skipping logical group item with invalid path:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping logical group item with invalid path', { item });
                         continue;
                     }
 
@@ -613,14 +616,14 @@ export class ConfigurationManager {
                     try {
                         const resolvedPath = this.resolvePath(item.path, validBasePaths);
                         if (!fs.existsSync(resolvedPath)) {
-                            console.warn(`Skipping logical group item with non-existent path: ${item.path}`);
+                            getExtensionLogger().warn(LogCategory.CONFIG, `Skipping logical group item with non-existent path: ${item.path}`);
                             continue;
                         }
 
                         const stat = fs.statSync(resolvedPath);
                         const actualType = stat.isDirectory() ? 'folder' : 'file';
                         if (actualType !== item.type) {
-                            console.warn(`Logical group item type mismatch for ${item.path}: expected ${item.type}, found ${actualType}. Using actual type.`);
+                            getExtensionLogger().warn(LogCategory.CONFIG, `Logical group item type mismatch for ${item.path}: expected ${item.type}, found ${actualType}. Using actual type.`);
                         }
 
                         validItems.push({
@@ -630,7 +633,7 @@ export class ConfigurationManager {
                         });
                     } catch (error) {
                         const err = error instanceof Error ? error : new Error('Unknown error');
-                        console.warn(`Skipping logical group item with invalid path: ${item.path}`, err);
+                        getExtensionLogger().warn(LogCategory.CONFIG, `Skipping logical group item with invalid path: ${item.path}`, { error: err.message });
                         continue;
                     }
                 }
@@ -656,17 +659,17 @@ export class ConfigurationManager {
         if (config.globalNotes && Array.isArray(config.globalNotes)) {
             for (const note of config.globalNotes) {
                 if (!note || typeof note !== 'object') {
-                    console.warn('Skipping invalid global note:', note);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping invalid global note', { note });
                     continue;
                 }
 
                 if (typeof note.name !== 'string' || !note.name.trim()) {
-                    console.warn('Skipping global note with invalid name:', note);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping global note with invalid name', { note });
                     continue;
                 }
 
                 if (typeof note.noteId !== 'string' || !note.noteId.trim()) {
-                    console.warn('Skipping global note with invalid noteId:', note);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping global note with invalid noteId', { note });
                     continue;
                 }
 
@@ -701,24 +704,24 @@ export class ConfigurationManager {
 
         for (const group of groups) {
             if (!group || typeof group !== 'object') {
-                console.warn('Skipping invalid nested group:', group);
+                getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping invalid nested group', { group });
                 continue;
             }
 
             if (typeof group.name !== 'string' || !group.name.trim()) {
-                console.warn('Skipping nested group with invalid name:', group);
+                getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping nested group with invalid name', { group });
                 continue;
             }
 
             if (!Array.isArray(group.items)) {
-                console.warn('Skipping nested group with invalid items array:', group);
+                getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping nested group with invalid items array', { group });
                 continue;
             }
 
             const validItems: LogicalGroupItem[] = [];
             for (const item of group.items) {
                 if (!item || typeof item !== 'object') {
-                    console.warn('Skipping invalid nested group item:', item);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping invalid nested group item', { item });
                     continue;
                 }
 
@@ -726,15 +729,15 @@ export class ConfigurationManager {
                 if (item.type === 'command' || item.type === 'task') {
                     // Validate command or task items
                     if (item.type === 'command' && typeof item.command !== 'string') {
-                        console.warn('Skipping command item with invalid command:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping command item with invalid command', { item });
                         continue;
                     }
                     if (item.type === 'task' && typeof item.task !== 'string') {
-                        console.warn('Skipping task item with invalid task name:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping task item with invalid task name', { item });
                         continue;
                     }
                     if (typeof item.name !== 'string' || !item.name.trim()) {
-                        console.warn('Skipping command/task item with invalid name:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping command/task item with invalid name', { item });
                         continue;
                     }
 
@@ -752,11 +755,11 @@ export class ConfigurationManager {
                 // Handle note items
                 if (item.type === 'note') {
                     if (typeof item.noteId !== 'string' || !item.noteId.trim()) {
-                        console.warn('Skipping note item with invalid note ID:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping note item with invalid note ID', { item });
                         continue;
                     }
                     if (typeof item.name !== 'string' || !item.name.trim()) {
-                        console.warn('Skipping note item with invalid name:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping note item with invalid name', { item });
                         continue;
                     }
                     validItems.push({
@@ -771,19 +774,19 @@ export class ConfigurationManager {
                 // Handle commit items
                 if (item.type === 'commit') {
                     if (!item.commitRef || typeof item.commitRef !== 'object') {
-                        console.warn('Skipping commit item with invalid commitRef:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping commit item with invalid commitRef', { item });
                         continue;
                     }
                     if (typeof item.commitRef.hash !== 'string' || !item.commitRef.hash.trim()) {
-                        console.warn('Skipping commit item with invalid hash:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping commit item with invalid hash', { item });
                         continue;
                     }
                     if (typeof item.commitRef.repositoryRoot !== 'string' || !item.commitRef.repositoryRoot.trim()) {
-                        console.warn('Skipping commit item with invalid repositoryRoot:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping commit item with invalid repositoryRoot', { item });
                         continue;
                     }
                     if (typeof item.name !== 'string' || !item.name.trim()) {
-                        console.warn('Skipping commit item with invalid name:', item);
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping commit item with invalid name', { item });
                         continue;
                     }
                     validItems.push({
@@ -800,17 +803,17 @@ export class ConfigurationManager {
 
                 // Validate file/folder items
                 if (typeof item.path !== 'string' || !item.path.trim()) {
-                    console.warn('Skipping nested group item with invalid path:', item);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping nested group item with invalid path', { item });
                     continue;
                 }
 
                 if (typeof item.name !== 'string' || !item.name.trim()) {
-                    console.warn('Skipping nested group item with invalid name:', item);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping nested group item with invalid name', { item });
                     continue;
                 }
 
                 if (item.type !== 'folder' && item.type !== 'file') {
-                    console.warn('Skipping nested group item with invalid type:', item);
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Skipping nested group item with invalid type', { item });
                     continue;
                 }
 
@@ -818,14 +821,14 @@ export class ConfigurationManager {
                 try {
                     const resolvedPath = this.resolvePath(item.path, validBasePaths);
                     if (!fs.existsSync(resolvedPath)) {
-                        console.warn(`Skipping nested group item with non-existent path: ${item.path}`);
+                        getExtensionLogger().warn(LogCategory.CONFIG, `Skipping nested group item with non-existent path: ${item.path}`);
                         continue;
                     }
 
                     const stat = fs.statSync(resolvedPath);
                     const actualType = stat.isDirectory() ? 'folder' : 'file';
                     if (actualType !== item.type) {
-                        console.warn(`Nested group item type mismatch for ${item.path}: expected ${item.type}, found ${actualType}. Using actual type.`);
+                        getExtensionLogger().warn(LogCategory.CONFIG, `Nested group item type mismatch for ${item.path}: expected ${item.type}, found ${actualType}. Using actual type.`);
                     }
 
                     validItems.push({
@@ -835,7 +838,7 @@ export class ConfigurationManager {
                     });
                 } catch (error) {
                     const err = error instanceof Error ? error : new Error('Unknown error');
-                    console.warn(`Skipping nested group item with invalid path: ${item.path}`, err);
+                    getExtensionLogger().warn(LogCategory.CONFIG, `Skipping nested group item with invalid path: ${item.path}`, { error: err.message });
                     continue;
                 }
             }
@@ -900,7 +903,7 @@ export class ConfigurationManager {
         // Find the matching base path
         const basePath = basePaths.find(bp => bp.alias === aliasName);
         if (!basePath) {
-            console.warn(`Base path alias "${aliasName}" not found in configuration`);
+            getExtensionLogger().warn(LogCategory.CONFIG, `Base path alias "${aliasName}" not found in configuration`);
             return inputPath;
         }
 
@@ -1048,7 +1051,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error creating logical group', err);
             NotificationManager.showError(`Failed to create logical group: ${err.message}`);
             throw error;
         }
@@ -1107,7 +1110,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating nested logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error creating nested logical group', err);
             NotificationManager.showError(`Failed to create nested group: ${err.message}`);
             throw error;
         }
@@ -1185,7 +1188,7 @@ export class ConfigurationManager {
                 // Use forward slashes for consistency
                 const normalizedRelative = aliasMatch.relativePath.replace(/\\/g, '/');
                 pathToStore = `${aliasMatch.alias}/${normalizedRelative}`;
-                console.log(`Using existing alias for path: ${pathToStore}`);
+                getExtensionLogger().debug(LogCategory.CONFIG, `Using existing alias for path: ${pathToStore}`);
             } else {
                 // Check if file is in a git repository
                 const gitRoot = this.findGitRoot(resolvedPath);
@@ -1205,7 +1208,7 @@ export class ConfigurationManager {
                         const relativePath = path.relative(gitRoot, resolvedPath);
                         const normalizedRelative = relativePath.replace(/\\/g, '/');
                         pathToStore = `${existingAliasForGitRoot.alias}/${normalizedRelative}`;
-                        console.log(`Using git root alias for path: ${pathToStore}`);
+                        getExtensionLogger().debug(LogCategory.CONFIG, `Using git root alias for path: ${pathToStore}`);
                     } else {
                         // Use relative or absolute path as before
                         const relativePath = path.relative(this.workspaceRoot, resolvedPath);
@@ -1230,7 +1233,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error adding to logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error adding to logical group', err);
             NotificationManager.showError(`Failed to add to logical group: ${err.message}`);
             throw error;
         }
@@ -1278,7 +1281,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error removing from logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error removing from logical group', err);
             NotificationManager.showError(`Failed to remove from logical group: ${err.message}`);
             throw error;
         }
@@ -1321,7 +1324,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error removing commit from logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error removing commit from logical group', err);
             NotificationManager.showError(`Failed to remove commit from logical group: ${err.message}`);
             throw error;
         }
@@ -1357,7 +1360,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error renaming logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error renaming logical group', err);
             NotificationManager.showError(`Failed to rename logical group: ${err.message}`);
             throw error;
         }
@@ -1388,7 +1391,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error deleting logical group:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error deleting logical group', err);
             NotificationManager.showError(`Failed to delete logical group: ${err.message}`);
             throw error;
         }
@@ -1436,7 +1439,7 @@ export class ConfigurationManager {
             return noteId;
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating note:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error creating note', err);
             NotificationManager.showError(`Failed to create note: ${err.message}`);
             throw error;
         }
@@ -1487,7 +1490,8 @@ export class ConfigurationManager {
 
             return false;
         } catch (error) {
-            console.error('Error checking note existence:', error);
+            const err = error instanceof Error ? error : new Error(String(error));
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error checking note existence', err);
             return false;
         }
     }
@@ -1506,7 +1510,7 @@ export class ConfigurationManager {
             return content;
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error getting note content:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error getting note content', err);
             return '';
         }
     }
@@ -1525,7 +1529,7 @@ export class ConfigurationManager {
             await this.extensionContext.globalState.update(`note_${noteId}`, content);
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error saving note content:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error saving note content', err);
             NotificationManager.showError(`Failed to save note: ${err.message}`);
             throw error;
         }
@@ -1570,7 +1574,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error deleting note:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error deleting note', err);
             NotificationManager.showError(`Failed to delete note: ${err.message}`);
             throw error;
         }
@@ -1583,7 +1587,7 @@ export class ConfigurationManager {
      * @param noteId ID of the note to move
      */
     async moveNote(sourceGroupPath: string, targetGroupPath: string, noteId: string): Promise<void> {
-        console.log(`[CONFIG-MANAGER] moveNote called:`, {
+        getExtensionLogger().debug(LogCategory.CONFIG, '[CONFIG-MANAGER] moveNote called', {
             sourceGroupPath,
             targetGroupPath,
             noteId
@@ -1591,47 +1595,47 @@ export class ConfigurationManager {
 
         try {
             const config = await this.loadConfiguration();
-            console.log(`[CONFIG-MANAGER] Config loaded, has ${config.logicalGroups.length} logical groups`);
+            getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Config loaded, has ${config.logicalGroups.length} logical groups`);
 
             if (!config.logicalGroups) {
                 throw new Error('No logical groups found in configuration');
             }
 
             // Find source and target groups
-            console.log(`[CONFIG-MANAGER] Finding source group: "${sourceGroupPath}"`);
+            getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Finding source group: "${sourceGroupPath}"`);
             const sourceGroup = this.findGroupByPath(config.logicalGroups, sourceGroupPath);
-            console.log(`[CONFIG-MANAGER] Source group found:`, sourceGroup ? 'YES' : 'NO');
+            getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Source group found: ${sourceGroup ? 'YES' : 'NO'}`);
             if (sourceGroup) {
-                console.log(`[CONFIG-MANAGER] Source group has ${sourceGroup.items.length} items`);
+                getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Source group has ${sourceGroup.items.length} items`);
             }
 
-            console.log(`[CONFIG-MANAGER] Finding target group: "${targetGroupPath}"`);
+            getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Finding target group: "${targetGroupPath}"`);
             const targetGroup = this.findGroupByPath(config.logicalGroups, targetGroupPath);
-            console.log(`[CONFIG-MANAGER] Target group found:`, targetGroup ? 'YES' : 'NO');
+            getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Target group found: ${targetGroup ? 'YES' : 'NO'}`);
             if (targetGroup) {
-                console.log(`[CONFIG-MANAGER] Target group has ${targetGroup.items.length} items`);
+                getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Target group has ${targetGroup.items.length} items`);
             }
 
             if (!sourceGroup) {
                 const error = `Source group not found: ${sourceGroupPath}`;
-                console.error(`[CONFIG-MANAGER] ERROR: ${error}`);
+                getExtensionLogger().error(LogCategory.CONFIG, `[CONFIG-MANAGER] ERROR: ${error}`);
                 NotificationManager.showError(error);
                 throw new Error(error);
             }
 
             if (!targetGroup) {
                 const error = `Target group not found: ${targetGroupPath}`;
-                console.error(`[CONFIG-MANAGER] ERROR: ${error}`);
+                getExtensionLogger().error(LogCategory.CONFIG, `[CONFIG-MANAGER] ERROR: ${error}`);
                 NotificationManager.showError(error);
                 throw new Error(error);
             }
 
             // Find and remove note from source group
-            console.log(`[CONFIG-MANAGER] Looking for note with ID: ${noteId} in source group`);
+            getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Looking for note with ID: ${noteId} in source group`);
             const noteItem = sourceGroup.items.find(item => item.noteId === noteId);
-            console.log(`[CONFIG-MANAGER] Note item found:`, noteItem ? 'YES' : 'NO');
+            getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Note item found: ${noteItem ? 'YES' : 'NO'}`);
             if (noteItem) {
-                console.log(`[CONFIG-MANAGER] Note item:`, noteItem);
+                getExtensionLogger().debug(LogCategory.CONFIG, '[CONFIG-MANAGER] Note item', { noteItem });
             }
 
             if (!noteItem) {
@@ -1639,29 +1643,29 @@ export class ConfigurationManager {
                     name: i.name,
                     noteId: i.noteId
                 }));
-                const error = `Note not found in source group "${sourceGroupPath}"`;
-                console.error(`[CONFIG-MANAGER] ERROR: ${error}`);
-                console.error(`[CONFIG-MANAGER] Available notes in source:`, availableNotes);
-                NotificationManager.showError(error);
-                throw new Error(error);
+                const errorMsg = `Note not found in source group "${sourceGroupPath}"`;
+                getExtensionLogger().error(LogCategory.CONFIG, `[CONFIG-MANAGER] ERROR: ${errorMsg}`, new Error(errorMsg));
+                getExtensionLogger().debug(LogCategory.CONFIG, '[CONFIG-MANAGER] Available notes in source', { availableNotes });
+                NotificationManager.showError(errorMsg);
+                throw new Error(errorMsg);
             }
 
-            console.log(`[CONFIG-MANAGER] Removing note from source group`);
+            getExtensionLogger().debug(LogCategory.CONFIG, '[CONFIG-MANAGER] Removing note from source group');
             // Remove from source and add to target
             sourceGroup.items = sourceGroup.items.filter(item => item.noteId !== noteId);
-            console.log(`[CONFIG-MANAGER] Source group now has ${sourceGroup.items.length} items`);
+            getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Source group now has ${sourceGroup.items.length} items`);
 
-            console.log(`[CONFIG-MANAGER] Adding note to target group`);
+            getExtensionLogger().debug(LogCategory.CONFIG, '[CONFIG-MANAGER] Adding note to target group');
             targetGroup.items.push(noteItem);
-            console.log(`[CONFIG-MANAGER] Target group now has ${targetGroup.items.length} items`);
+            getExtensionLogger().debug(LogCategory.CONFIG, `[CONFIG-MANAGER] Target group now has ${targetGroup.items.length} items`);
 
-            console.log(`[CONFIG-MANAGER] Saving configuration...`);
+            getExtensionLogger().debug(LogCategory.CONFIG, '[CONFIG-MANAGER] Saving configuration...');
             await this.saveConfiguration(config);
-            console.log(`[CONFIG-MANAGER] Configuration saved successfully`);
+            getExtensionLogger().debug(LogCategory.CONFIG, '[CONFIG-MANAGER] Configuration saved successfully');
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error moving note:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error moving note', err);
             if (!err.message.includes('not found')) {
                 NotificationManager.showError(`Failed to move note: ${err.message}`);
             }
@@ -1710,7 +1714,7 @@ export class ConfigurationManager {
             return noteId;
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error creating global note:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error creating global note', err);
             throw error;
         }
     }
@@ -1747,7 +1751,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error deleting global note:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error deleting global note', err);
             NotificationManager.showError(`Failed to delete note: ${err.message}`);
             throw error;
         }
@@ -1783,7 +1787,7 @@ export class ConfigurationManager {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error renaming global note:', err);
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error renaming global note', err);
             NotificationManager.showError(`Failed to rename note: ${err.message}`);
             throw error;
         }
@@ -1797,7 +1801,8 @@ export class ConfigurationManager {
             const config = await this.loadConfiguration();
             return config.globalNotes || [];
         } catch (error) {
-            console.error('Error getting global notes:', error);
+            const err = error instanceof Error ? error : new Error(String(error));
+            getExtensionLogger().error(LogCategory.CONFIG, 'Error getting global notes', err);
             return [];
         }
     }
@@ -1825,7 +1830,7 @@ export class ConfigurationManager {
 
             // If cloud is newer, download and use it
             if (result.timestamp && result.timestamp > localTimestamp) {
-                console.log(`Cloud configuration is newer (${result.source}), syncing...`);
+                getExtensionLogger().info(LogCategory.SYNC, `Cloud configuration is newer (${result.source}), syncing...`);
                 const syncResult = await this.syncManager.syncFromCloud();
 
                 if (syncResult.config) {
@@ -1841,7 +1846,8 @@ export class ConfigurationManager {
 
             return undefined;
         } catch (error) {
-            console.error('Error checking for cloud updates:', error);
+            const err = error instanceof Error ? error : new Error(String(error));
+            getExtensionLogger().error(LogCategory.SYNC, 'Error checking for cloud updates', err);
             return undefined;
         }
     }
@@ -1877,7 +1883,8 @@ export class ConfigurationManager {
             fs.writeFileSync(this.configPath, yamlContent, 'utf8');
 
         } catch (error) {
-            console.error('Error saving configuration from cloud:', error);
+            const err = error instanceof Error ? error : new Error(String(error));
+            getExtensionLogger().error(LogCategory.SYNC, 'Error saving configuration from cloud', err);
         }
     }
 
@@ -1906,7 +1913,7 @@ export class ConfigurationManager {
             }
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error syncing to cloud:', err);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error syncing to cloud', err);
             NotificationManager.showError(`Failed to sync: ${err.message}`);
         }
     }
@@ -1936,7 +1943,7 @@ export class ConfigurationManager {
             }
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Error syncing from cloud:', err);
+            getExtensionLogger().error(LogCategory.SYNC, 'Error syncing from cloud', err);
             NotificationManager.showError(`Failed to sync: ${err.message}`);
         }
     }

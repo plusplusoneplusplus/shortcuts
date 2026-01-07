@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { getExtensionLogger, LogCategory } from '../shared';
 import { GitChange, GitChangeStatus, GitChangeStage } from './types';
 
 /**
@@ -107,7 +108,7 @@ export class GitService implements vscode.Disposable {
 
             return true;
         } catch (error) {
-            console.error('Failed to initialize git service:', error);
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to initialize git service', error instanceof Error ? error : undefined);
             return false;
         }
     }
@@ -266,7 +267,7 @@ export class GitService implements vscode.Disposable {
             await repo.add([filePath]);
             return true;
         } catch (error) {
-            console.error('Failed to stage file:', error);
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to stage file', error instanceof Error ? error : undefined, { filePath });
             return false;
         }
     }
@@ -290,7 +291,7 @@ export class GitService implements vscode.Disposable {
             await repo.revert([filePath]);
             return true;
         } catch (error) {
-            console.error('Failed to unstage file:', error);
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to unstage file', error instanceof Error ? error : undefined, { filePath });
             return false;
         }
     }

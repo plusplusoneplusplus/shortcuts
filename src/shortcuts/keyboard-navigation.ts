@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { NotificationManager } from './notification-manager';
+import { getExtensionLogger, LogCategory } from './shared';
 import { ShortcutItem, FolderShortcutItem, FileShortcutItem, SearchTreeItem } from './tree-items';
 
 /**
@@ -189,7 +190,7 @@ export class KeyboardNavigationHandler {
                 });
             }
         } catch (error) {
-            console.error('Error navigating to first item:', error);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error navigating to first item', error instanceof Error ? error : undefined);
         }
     }
 
@@ -223,7 +224,7 @@ export class KeyboardNavigationHandler {
                 });
             }
         } catch (error) {
-            console.error('Error navigating to last item:', error);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error navigating to last item', error instanceof Error ? error : undefined);
         }
     }
 
@@ -360,7 +361,7 @@ export class KeyboardNavigationHandler {
                 expand: true
             });
         } catch (error) {
-            console.error('Error expanding folder:', error);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error expanding folder', error instanceof Error ? error : undefined);
         }
     }
 
@@ -375,7 +376,7 @@ export class KeyboardNavigationHandler {
                 expand: false
             });
         } catch (error) {
-            console.error('Error collapsing folder:', error);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error collapsing folder', error instanceof Error ? error : undefined);
         }
     }
 
@@ -399,7 +400,7 @@ export class KeyboardNavigationHandler {
 
             return lastChild;
         } catch (error) {
-            console.error('Error finding last visible descendant:', error);
+            getExtensionLogger().error(LogCategory.EXTENSION, 'Error finding last visible descendant', error instanceof Error ? error : undefined);
             return null;
         }
     }

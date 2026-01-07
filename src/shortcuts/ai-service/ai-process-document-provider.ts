@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { AIProcess, AIProcessManager } from './';
+import { getExtensionLogger, LogCategory } from '../shared';
 
 /**
  * URI scheme for AI process documents
@@ -162,7 +163,7 @@ export class AIProcessDocumentProvider implements vscode.TextDocumentContentProv
             }
             return fs.readFileSync(filePath, 'utf8');
         } catch (error) {
-            console.error('Failed to read raw stdout file:', error);
+            getExtensionLogger().error(LogCategory.AI, 'Failed to read raw stdout file', error instanceof Error ? error : undefined, { filePath });
             return undefined;
         }
     }
