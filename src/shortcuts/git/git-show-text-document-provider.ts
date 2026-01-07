@@ -64,8 +64,11 @@ export class GitShowTextDocumentProvider implements vscode.TextDocumentContentPr
      */
     private getFileContentAtCommit(repoRoot: string, commit: string, filePath: string): string {
         try {
-            // Normalize the file path - remove leading slash if present
-            const normalizedPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+            // Normalize the file path:
+            // 1. Remove leading slash if present
+            // 2. Convert backslashes to forward slashes for git compatibility (Windows)
+            let normalizedPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+            normalizedPath = normalizedPath.replace(/\\/g, '/');
             
             // Use git show to get file content at the specified commit
             // Format: git show commit:path/to/file

@@ -904,6 +904,12 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "gitView.openCommitFileWithMarkdownPreview",
+        "title": "Open Markdown Preview",
+        "category": "Git",
+        "icon": "$(preview)"
+      },
+      {
         "command": "gitView.lookupCommit",
         "title": "Lookup Commit",
         "category": "Git",
@@ -1553,6 +1559,11 @@
           "command": "gitView.openWithMarkdownReview",
           "when": "view == gitView && viewItem =~ /^gitChange_.*_md$/",
           "group": "navigation@11"
+        },
+        {
+          "command": "gitView.openCommitFileWithMarkdownPreview",
+          "when": "view == gitView && viewItem == gitCommitFile_md",
+          "group": "navigation@1"
         },
         {
           "command": "gitDiffComments.openFileWithReview",

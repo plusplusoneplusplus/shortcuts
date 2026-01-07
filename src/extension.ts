@@ -2,14 +2,14 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { AI_PROCESS_SCHEME, AIProcessDocumentProvider, AIProcessManager, AIProcessTreeDataProvider } from './shortcuts/ai-service';
-import { getExtensionLogger, LogCategory } from './shortcuts/shared';
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
+import { DebugPanelTreeDataProvider } from './shortcuts/debug-panel';
 import { DiscoveryEngine, registerDiscoveryCommands } from './shortcuts/discovery';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GitChangeItem, GitCommitFile, GitCommitItem, GitDragDropController, GitLogService, GitShowTextDocumentProvider, GIT_SHOW_SCHEME, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
+import { GIT_SHOW_SCHEME, GitChangeItem, GitCommitFile, GitCommitFileItem, GitCommitItem, GitDragDropController, GitLogService, GitShowTextDocumentProvider, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
 import {
     DiffCommentFileItem,
     DiffCommentItem,
@@ -18,9 +18,8 @@ import {
     DiffReviewEditorProvider
 } from './shortcuts/git-diff-comments';
 import { GlobalNotesTreeDataProvider, NoteDocumentManager } from './shortcuts/global-notes';
-import { TaskManager, TasksTreeDataProvider, TasksCommands, TasksDragDropController } from './shortcuts/tasks-viewer';
-import { DebugPanelTreeDataProvider } from './shortcuts/debug-panel';
 import { KeyboardNavigationHandler } from './shortcuts/keyboard-navigation';
+import { registerLanguageModelTools } from './shortcuts/lm-tools';
 import { LogicalTreeDataProvider } from './shortcuts/logical-tree-data-provider';
 import {
     CommentsManager,
@@ -29,8 +28,9 @@ import {
     PromptGenerator,
     ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
-import { registerLanguageModelTools } from './shortcuts/lm-tools';
 import { NotificationManager } from './shortcuts/notification-manager';
+import { getExtensionLogger, LogCategory } from './shortcuts/shared';
+import { TaskManager, TasksCommands, TasksDragDropController, TasksTreeDataProvider } from './shortcuts/tasks-viewer';
 import { ThemeManager } from './shortcuts/theme-manager';
 
 /**
@@ -88,7 +88,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const extensionLogger = getExtensionLogger();
         extensionLogger.initialize({ channelName: 'Shortcuts' });
         extensionLogger.info(LogCategory.EXTENSION, 'Shortcuts extension activating', { workspaceRoot });
-        
+
         // Initialize configuration and theme managers
         const configurationManager = new ConfigurationManager(workspaceRoot, context);
         const themeManager = new ThemeManager();
@@ -291,6 +291,7 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitDiffCommentsResolveCommand: vscode.Disposable | undefined;
         let gitDiffCommentsReopenCommand: vscode.Disposable | undefined;
         let gitOpenWithMarkdownReviewCommand: vscode.Disposable | undefined;
+        let gitOpenCommitFileWithMarkdownPreviewCommand: vscode.Disposable | undefined;
         let gitLookupCommitCommand: vscode.Disposable | undefined;
         let gitClearLookedUpCommitCommand: vscode.Disposable | undefined;
         let gitDiffCommentsCleanupCommand: vscode.Disposable | undefined;
@@ -535,6 +536,46 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
             );
 
+            // Register command to open markdown files from commit history with VSCode's markdown preview
+            // This creates a virtual document with the file content at that commit, since the file
+            // may have been renamed or deleted in the current workspace
+            gitOpenCommitFileWithMarkdownPreviewCommand = vscode.commands.registerCommand(
+                'gitView.openCommitFileWithMarkdownPreview',
+                async (item: GitCommitFileItem) => {
+                    if (!item?.file) {
+                        vscode.window.showWarningMessage('No file selected.');
+                        return;
+                    }
+
+                    const file = item.file;
+                    const ext = path.extname(file.path).toLowerCase();
+                    if (ext !== '.md') {
+                        vscode.window.showWarningMessage('This command only works with markdown files.');
+                        return;
+                    }
+
+                    try {
+                        // Create a git-show URI to get the file content at the commit
+                        const gitShowUri = vscode.Uri.parse(
+                            `${GIT_SHOW_SCHEME}:${file.path}?commit=${encodeURIComponent(file.commitHash)}&repo=${encodeURIComponent(file.repositoryRoot)}`
+                        );
+
+                        // Open the document first to ensure it's loaded
+                        const doc = await vscode.workspace.openTextDocument(gitShowUri);
+
+                        // Show the markdown preview using VSCode's built-in preview
+                        // The markdown.showPreview command works with any text document
+                        await vscode.commands.executeCommand(
+                            'markdown.showPreview',
+                            gitShowUri
+                        );
+                    } catch (error) {
+                        const err = error instanceof Error ? error : new Error('Unknown error');
+                        vscode.window.showErrorMessage(`Failed to open markdown preview: ${err.message}`);
+                    }
+                }
+            );
+
             // Register stage file command
             gitStageFileCommand = vscode.commands.registerCommand(
                 'gitView.stageFile',
@@ -542,10 +583,10 @@ export async function activate(context: vscode.ExtensionContext) {
                     if (item?.change?.path) {
                         const filePath = item.change.path;
                         const gitService = gitTreeDataProvider['gitService'];
-                        
+
                         // Set loading state
                         gitTreeDataProvider.setFileLoading(filePath);
-                        
+
                         try {
                             const success = await gitService.stageFile(filePath);
                             if (!success) {
@@ -566,10 +607,10 @@ export async function activate(context: vscode.ExtensionContext) {
                     if (item?.change?.path) {
                         const filePath = item.change.path;
                         const gitService = gitTreeDataProvider['gitService'];
-                        
+
                         // Set loading state
                         gitTreeDataProvider.setFileLoading(filePath);
-                        
+
                         try {
                             const success = await gitService.unstageFile(filePath);
                             if (!success) {
@@ -592,17 +633,17 @@ export async function activate(context: vscode.ExtensionContext) {
                     const unstagedChanges = changes.filter(
                         (c: { stage: string }) => c.stage === 'unstaged' || c.stage === 'untracked'
                     );
-                    
+
                     if (unstagedChanges.length === 0) {
                         vscode.window.showInformationMessage('No unstaged changes to stage');
                         return;
                     }
-                    
+
                     // Set loading state for all files
                     for (const change of unstagedChanges) {
                         gitTreeDataProvider.setFileLoading(change.path);
                     }
-                    
+
                     try {
                         let successCount = 0;
                         for (const change of unstagedChanges) {
@@ -611,7 +652,7 @@ export async function activate(context: vscode.ExtensionContext) {
                                 successCount++;
                             }
                         }
-                        
+
                         if (successCount > 0) {
                             vscode.window.showInformationMessage(`Staged ${successCount} file(s)`);
                         } else {
@@ -631,17 +672,17 @@ export async function activate(context: vscode.ExtensionContext) {
                     const gitService = gitTreeDataProvider['gitService'];
                     const changes = gitService.getAllChanges();
                     const stagedChanges = changes.filter((c: { stage: string }) => c.stage === 'staged');
-                    
+
                     if (stagedChanges.length === 0) {
                         vscode.window.showInformationMessage('No staged changes to unstage');
                         return;
                     }
-                    
+
                     // Set loading state for all files
                     for (const change of stagedChanges) {
                         gitTreeDataProvider.setFileLoading(change.path);
                     }
-                    
+
                     try {
                         let successCount = 0;
                         for (const change of stagedChanges) {
@@ -650,7 +691,7 @@ export async function activate(context: vscode.ExtensionContext) {
                                 successCount++;
                             }
                         }
-                        
+
                         if (successCount > 0) {
                             vscode.window.showInformationMessage(`Unstaged ${successCount} file(s)`);
                         } else {
@@ -936,7 +977,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     const { deserializeDiscoveryProcess, DiscoveryPreviewPanel } = await import('./shortcuts/discovery');
                     const serialized = JSON.parse(item.process.structuredResult);
                     const discoveryProcess = deserializeDiscoveryProcess(serialized);
-                    
+
                     // Show the discovery preview panel with the restored results
                     DiscoveryPreviewPanel.createOrShow(
                         context.extensionUri,
@@ -1026,7 +1067,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     const editor = vscode.window.visibleTextEditors.find(
                         e => e.document.uri.toString() === document.uri.toString()
                     );
-                    
+
                     if (editor) {
                         // Close the text editor tab
                         await vscode.window.showTextDocument(document, { preview: false, preserveFocus: true });
@@ -1116,6 +1157,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitDiffCommentsReopenCommand) disposables.push(gitDiffCommentsReopenCommand);
         if (gitDiffCommentsCleanupCommand) disposables.push(gitDiffCommentsCleanupCommand);
         if (gitOpenWithMarkdownReviewCommand) disposables.push(gitOpenWithMarkdownReviewCommand);
+        if (gitOpenCommitFileWithMarkdownPreviewCommand) disposables.push(gitOpenCommitFileWithMarkdownPreviewCommand);
         if (gitLookupCommitCommand) disposables.push(gitLookupCommitCommand);
         if (gitClearLookedUpCommitCommand) disposables.push(gitClearLookedUpCommitCommand);
         if (gitStageFileCommand) disposables.push(gitStageFileCommand);

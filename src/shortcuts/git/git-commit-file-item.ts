@@ -9,8 +9,9 @@ import { GitCommitFile } from './types';
 export class GitCommitFileItem extends vscode.TreeItem {
     /**
      * Context value for menu contributions
+     * Includes _md suffix for markdown files to enable context menu filtering
      */
-    public readonly contextValue = 'gitCommitFile';
+    public readonly contextValue: string;
 
     /**
      * The commit file this item represents
@@ -26,6 +27,11 @@ export class GitCommitFileItem extends vscode.TreeItem {
         super(path.basename(file.path), vscode.TreeItemCollapsibleState.None);
 
         this.file = file;
+
+        // Include file extension in contextValue for context menu filtering
+        const ext = path.extname(file.path).toLowerCase();
+        const isMarkdown = ext === '.md';
+        this.contextValue = `gitCommitFile${isMarkdown ? '_md' : ''}`;
 
         // Description shows relative directory path and status
         this.description = this.createDescription();

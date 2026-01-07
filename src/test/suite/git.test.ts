@@ -647,10 +647,23 @@ suite('Git View Tests', () => {
                 assert.strictEqual(item.label, 'Button.tsx');
             });
 
-            test('should set contextValue to gitCommitFile', () => {
-                const file = createMockCommitFile();
+            test('should set contextValue to gitCommitFile for non-markdown files', () => {
+                const file = createMockCommitFile('modified', 'src/file.ts');
                 const item = new GitCommitFileItem(file);
                 assert.strictEqual(item.contextValue, 'gitCommitFile');
+            });
+
+            test('should set contextValue to gitCommitFile_md for markdown files', () => {
+                const file = createMockCommitFile('modified', 'docs/README.md');
+                const item = new GitCommitFileItem(file);
+                assert.strictEqual(item.contextValue, 'gitCommitFile_md');
+            });
+
+            test('should handle case-insensitive .MD extension', () => {
+                const file = createMockCommitFile('modified', 'docs/NOTES.MD');
+                const item = new GitCommitFileItem(file);
+                // Extension comparison is case-insensitive, .MD should also match
+                assert.strictEqual(item.contextValue, 'gitCommitFile_md');
             });
 
             test('should not be collapsible', () => {
