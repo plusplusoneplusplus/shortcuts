@@ -72,6 +72,10 @@ export interface CodeReviewMetadata {
     rulesUsed: string[];
     /** Diff statistics */
     diffStats?: DiffStats;
+    /** Repository root path (for reference-based prompts) */
+    repositoryRoot?: string;
+    /** Full paths to rule files (for reference-based prompts) */
+    rulePaths?: string[];
 }
 
 /**
@@ -233,6 +237,19 @@ Where SEVERITY is one of: ERROR, WARNING, INFO, SUGGESTION
 
 If no issues are found, state "No violations found." under Findings.
 `;
+
+/**
+ * Configuration for prompt mode
+ */
+export type PromptMode = 'embedded' | 'reference';
+
+/**
+ * Options for building the code review prompt
+ */
+export interface PromptBuildOptions {
+    /** Whether to use reference-based prompts (commit ID, file paths) instead of embedding content */
+    mode: PromptMode;
+}
 
 /**
  * Regex patterns for parsing structured response

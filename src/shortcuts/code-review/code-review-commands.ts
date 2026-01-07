@@ -10,11 +10,11 @@ import { AIProcessManager } from '../ai-service/ai-process-manager';
 import { copyToClipboard, getAIToolSetting, invokeCopilotCLI } from '../ai-service/copilot-cli-invoker';
 import { GitCommitItem } from '../git/git-commit-item';
 import { GitLogService } from '../git/git-log-service';
-import { GitCommit } from '../git/types';
 import { LookedUpCommitItem } from '../git/looked-up-commit-item';
+import { GitCommit } from '../git/types';
 import { CodeReviewService } from './code-review-service';
 import { CodeReviewViewer } from './code-review-viewer';
-import { parseCodeReviewResponse, formatCodeReviewResultAsMarkdown } from './response-parser';
+import { formatCodeReviewResultAsMarkdown, parseCodeReviewResponse } from './response-parser';
 import { CodeReviewMetadata, serializeCodeReviewResult } from './types';
 
 /**
@@ -50,6 +50,7 @@ export function registerCodeReviewCommands(
 
     /**
      * Execute a code review with the given diff and metadata
+     * Uses reference-based prompts by default (commit ID, file paths) instead of embedding content
      */
     async function executeReview(
         diff: string,
@@ -108,9 +109,11 @@ export function registerCodeReviewCommands(
         }
 
         metadata.rulesUsed = rulesResult.rules.map(r => r.filename);
+        metadata.rulePaths = rulesResult.rules.map(r => r.path);
 
-        // Build prompt
-        const prompt = codeReviewService.buildPrompt(diff, rulesResult.rules, metadata);
+        // Build reference-based prompt (uses commit ID and file paths instead of embedding content)
+        // This allows the AI to retrieve the content itself, reducing prompt size
+        const prompt = codeReviewService.buildReferencePrompt(rulesResult.rules, metadata, { mode: 'reference' });
         const config = codeReviewService.getConfig();
         const title = codeReviewService.createProcessTitle(metadata);
 
@@ -137,7 +140,7 @@ export function registerCodeReviewCommands(
                     if (result.success && result.response) {
                         // Parse the structured response
                         const structuredResult = parseCodeReviewResponse(result.response, metadata);
-                        
+
                         // Format as markdown and open in editor
                         const formattedResult = formatCodeReviewResultAsMarkdown(structuredResult);
                         const doc = await vscode.workspace.openTextDocument({
@@ -181,17 +184,17 @@ export function registerCodeReviewCommands(
                         cancellable: true
                     }, async (progress) => {
                         progress.report({ message: `Reviewing against ${rulesResult.rules.length} rules...` });
-                        
+
                         const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager, processId);
-                        
+
                         if (result.success && result.response) {
                             // Parse the structured response
                             const structuredResult = parseCodeReviewResponse(result.response, metadata);
                             const serialized = JSON.stringify(serializeCodeReviewResult(structuredResult));
-                            
+
                             // Complete the process with structured result
                             processManager.completeCodeReviewProcess(processId, result.response, serialized);
-                            
+
                             // Show the result in the viewer
                             CodeReviewViewer.createOrShow(context.extensionUri, structuredResult);
                         } else {
@@ -238,7 +241,8 @@ export function registerCodeReviewCommands(
             type: 'commit',
             commitSha: commit.hash,
             commitMessage: commit.subject,
-            rulesUsed: []
+            rulesUsed: [],
+            repositoryRoot: repoRoot
         };
 
         await executeReview(diff, metadata, selectedRules);
@@ -294,7 +298,8 @@ export function registerCodeReviewCommands(
 
                 const metadata: CodeReviewMetadata = {
                     type: 'pending',
-                    rulesUsed: []
+                    rulesUsed: [],
+                    repositoryRoot: repoRoot
                 };
 
                 await executeReview(diff, metadata);
@@ -324,7 +329,8 @@ export function registerCodeReviewCommands(
 
                 const metadata: CodeReviewMetadata = {
                     type: 'staged',
-                    rulesUsed: []
+                    rulesUsed: [],
+                    repositoryRoot: repoRoot
                 };
 
                 await executeReview(diff, metadata);

@@ -457,5 +457,272 @@ suite('Metadata Types', () => {
         assert.strictEqual(metadata.commitMessage, undefined);
         assert.strictEqual(metadata.rulesUsed.length, 0);
     });
+
+    test('CodeReviewMetadata supports repositoryRoot and rulePaths', () => {
+        const metadata: CodeReviewMetadata = {
+            type: 'commit',
+            commitSha: 'abc123',
+            commitMessage: 'test commit',
+            rulesUsed: ['rule1.md', 'rule2.md'],
+            repositoryRoot: '/path/to/repo',
+            rulePaths: ['/path/to/repo/.github/cr-rules/rule1.md', '/path/to/repo/.github/cr-rules/rule2.md']
+        };
+
+        assert.strictEqual(metadata.repositoryRoot, '/path/to/repo');
+        assert.strictEqual(metadata.rulePaths?.length, 2);
+        assert.ok(metadata.rulePaths?.[0].includes('rule1.md'));
+    });
+});
+
+suite('Reference-Based Prompt Construction', () => {
+    /**
+     * Normalize a file path for use in prompts.
+     * Converts backslashes to forward slashes for cross-platform compatibility.
+     */
+    function normalizePathForPrompt(filePath: string): string {
+        if (!filePath) {
+            return '';
+        }
+        return filePath.replace(/\\/g, '/');
+    }
+
+    /**
+     * Build a reference-based prompt for code review.
+     */
+    function buildReferencePrompt(rules: CodeRule[], metadata: CodeReviewMetadata): string {
+        const parts: string[] = [];
+
+        parts.push(DEFAULT_CODE_REVIEW_CONFIG.promptTemplate);
+        parts.push('');
+        parts.push('---');
+        parts.push('');
+
+        // Add coding rules section with file paths
+        parts.push('# Coding Rules');
+        parts.push('');
+        parts.push('Please read and apply the following rule files:');
+        parts.push('');
+
+        for (const rule of rules) {
+            const normalizedPath = normalizePathForPrompt(rule.path);
+            parts.push(`- ${rule.filename}: \`${normalizedPath}\``);
+        }
+
+        parts.push('');
+        parts.push('---');
+        parts.push('');
+
+        // Add code changes section with references
+        parts.push('# Code Changes');
+        parts.push('');
+
+        if (metadata.type === 'commit' && metadata.commitSha) {
+            parts.push(`Repository: \`${normalizePathForPrompt(metadata.repositoryRoot || '')}\``);
+            parts.push(`Commit: ${metadata.commitSha}`);
+            if (metadata.commitMessage) {
+                parts.push(`Message: ${metadata.commitMessage}`);
+            }
+            parts.push('');
+            parts.push('Please retrieve the commit diff using the commit hash above.');
+            parts.push('You can use `git show <commit>` or `git diff <commit>~1 <commit>` to get the diff.');
+        } else if (metadata.type === 'pending') {
+            parts.push(`Repository: \`${normalizePathForPrompt(metadata.repositoryRoot || '')}\``);
+            parts.push('Type: Pending Changes (staged + unstaged)');
+            parts.push('');
+            parts.push('Please retrieve the pending changes using:');
+            parts.push('- `git diff` for unstaged changes');
+            parts.push('- `git diff --cached` for staged changes');
+        } else if (metadata.type === 'staged') {
+            parts.push(`Repository: \`${normalizePathForPrompt(metadata.repositoryRoot || '')}\``);
+            parts.push('Type: Staged Changes');
+            parts.push('');
+            parts.push('Please retrieve the staged changes using `git diff --cached`.');
+        }
+
+        return parts.join('\n');
+    }
+
+    test('builds reference-based prompt for commit review', () => {
+        const rules: CodeRule[] = [
+            { filename: 'naming.md', path: '/repo/.github/cr-rules/naming.md', content: '# Naming Rules' },
+            { filename: 'security.md', path: '/repo/.github/cr-rules/security.md', content: '# Security' }
+        ];
+
+        const metadata: CodeReviewMetadata = {
+            type: 'commit',
+            commitSha: 'abc1234567890',
+            commitMessage: 'feat: add login',
+            rulesUsed: ['naming.md', 'security.md'],
+            repositoryRoot: '/repo'
+        };
+
+        const prompt = buildReferencePrompt(rules, metadata);
+
+        // Verify structure - should NOT include rule content
+        assert.ok(prompt.includes('Review the following code changes'));
+        assert.ok(prompt.includes('# Coding Rules'));
+        assert.ok(prompt.includes('Please read and apply the following rule files'));
+        assert.ok(prompt.includes('naming.md'));
+        assert.ok(prompt.includes('security.md'));
+        assert.ok(prompt.includes('/repo/.github/cr-rules/naming.md'));
+        assert.ok(!prompt.includes('# Naming Rules'), 'Should not include rule content');
+        
+        // Verify commit reference
+        assert.ok(prompt.includes('Repository: `/repo`'));
+        assert.ok(prompt.includes('Commit: abc1234567890'));
+        assert.ok(prompt.includes('feat: add login'));
+        assert.ok(prompt.includes('Please retrieve the commit diff'));
+        assert.ok(prompt.includes('git show'));
+    });
+
+    test('builds reference-based prompt for pending changes', () => {
+        const rules: CodeRule[] = [
+            { filename: 'style.md', path: '/repo/.github/cr-rules/style.md', content: '# Style' }
+        ];
+
+        const metadata: CodeReviewMetadata = {
+            type: 'pending',
+            rulesUsed: ['style.md'],
+            repositoryRoot: '/repo'
+        };
+
+        const prompt = buildReferencePrompt(rules, metadata);
+
+        assert.ok(prompt.includes('Repository: `/repo`'));
+        assert.ok(prompt.includes('Type: Pending Changes'));
+        assert.ok(prompt.includes('git diff'));
+        assert.ok(prompt.includes('git diff --cached'));
+    });
+
+    test('builds reference-based prompt for staged changes', () => {
+        const rules: CodeRule[] = [
+            { filename: 'lint.md', path: '/repo/.github/cr-rules/lint.md', content: '# Lint' }
+        ];
+
+        const metadata: CodeReviewMetadata = {
+            type: 'staged',
+            rulesUsed: ['lint.md'],
+            repositoryRoot: '/repo'
+        };
+
+        const prompt = buildReferencePrompt(rules, metadata);
+
+        assert.ok(prompt.includes('Repository: `/repo`'));
+        assert.ok(prompt.includes('Type: Staged Changes'));
+        assert.ok(prompt.includes('git diff --cached'));
+    });
+
+    test('reference prompt does not include diff content', () => {
+        const rules: CodeRule[] = [
+            { filename: 'naming.md', path: '/repo/rules/naming.md', content: '# Naming\nUse camelCase' }
+        ];
+
+        const metadata: CodeReviewMetadata = {
+            type: 'commit',
+            commitSha: 'abc123',
+            rulesUsed: ['naming.md'],
+            repositoryRoot: '/repo'
+        };
+
+        const prompt = buildReferencePrompt(rules, metadata);
+
+        // Should not include actual rule content
+        assert.ok(!prompt.includes('Use camelCase'), 'Should not embed rule content');
+        // Should not include diff content (no diff --git)
+        assert.ok(!prompt.includes('diff --git'), 'Should not include diff content');
+    });
+});
+
+suite('CodeReviewService Path Normalization', () => {
+    /**
+     * Normalize a file path for use in prompts.
+     * This is a standalone version for testing the algorithm.
+     */
+    function normalizePathForPrompt(filePath: string): string {
+        if (!filePath) {
+            return '';
+        }
+        return filePath.replace(/\\/g, '/');
+    }
+
+    test('normalizePathForPrompt handles Windows paths', () => {
+        const windowsPath = 'C:\\Users\\user\\repo\\.github\\cr-rules\\naming.md';
+        const normalized = normalizePathForPrompt(windowsPath);
+        
+        assert.strictEqual(normalized, 'C:/Users/user/repo/.github/cr-rules/naming.md');
+    });
+
+    test('normalizePathForPrompt handles empty path', () => {
+        assert.strictEqual(normalizePathForPrompt(''), '');
+    });
+
+    test('normalizePathForPrompt handles null/undefined gracefully', () => {
+        // TypeScript would prevent this at compile time, but test runtime behavior
+        assert.strictEqual(normalizePathForPrompt(null as unknown as string), '');
+        assert.strictEqual(normalizePathForPrompt(undefined as unknown as string), '');
+    });
+});
+
+suite('Cross-Platform Path Handling', () => {
+    /**
+     * Normalize a file path for use in prompts.
+     */
+    function normalizePathForPrompt(filePath: string): string {
+        if (!filePath) {
+            return '';
+        }
+        return filePath.replace(/\\/g, '/');
+    }
+
+    test('normalizes Windows backslashes to forward slashes', () => {
+        const windowsPath = 'C:\\Users\\user\\repo\\.github\\cr-rules\\naming.md';
+        const normalized = normalizePathForPrompt(windowsPath);
+        
+        assert.strictEqual(normalized, 'C:/Users/user/repo/.github/cr-rules/naming.md');
+        assert.ok(!normalized.includes('\\'), 'Should not contain backslashes');
+    });
+
+    test('preserves Unix forward slashes', () => {
+        const unixPath = '/home/user/repo/.github/cr-rules/naming.md';
+        const normalized = normalizePathForPrompt(unixPath);
+        
+        assert.strictEqual(normalized, unixPath);
+    });
+
+    test('handles mixed path separators', () => {
+        const mixedPath = 'C:\\Users\\user/repo\\.github/cr-rules\\naming.md';
+        const normalized = normalizePathForPrompt(mixedPath);
+        
+        assert.strictEqual(normalized, 'C:/Users/user/repo/.github/cr-rules/naming.md');
+    });
+
+    test('handles empty path', () => {
+        assert.strictEqual(normalizePathForPrompt(''), '');
+    });
+
+    test('handles path with no separators', () => {
+        assert.strictEqual(normalizePathForPrompt('filename.md'), 'filename.md');
+    });
+
+    test('handles UNC paths (Windows network paths)', () => {
+        const uncPath = '\\\\server\\share\\repo\\.github\\cr-rules\\naming.md';
+        const normalized = normalizePathForPrompt(uncPath);
+        
+        assert.strictEqual(normalized, '//server/share/repo/.github/cr-rules/naming.md');
+    });
+
+    test('handles paths with spaces', () => {
+        const pathWithSpaces = 'C:\\Users\\John Doe\\My Projects\\repo\\.github\\cr-rules\\naming.md';
+        const normalized = normalizePathForPrompt(pathWithSpaces);
+        
+        assert.strictEqual(normalized, 'C:/Users/John Doe/My Projects/repo/.github/cr-rules/naming.md');
+    });
+
+    test('handles relative paths', () => {
+        const relativePath = '..\\..\\repo\\.github\\cr-rules\\naming.md';
+        const normalized = normalizePathForPrompt(relativePath);
+        
+        assert.strictEqual(normalized, '../../repo/.github/cr-rules/naming.md');
+    });
 });
 

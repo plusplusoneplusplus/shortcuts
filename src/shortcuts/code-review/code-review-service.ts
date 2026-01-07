@@ -18,6 +18,7 @@ import {
     DEFAULT_CODE_REVIEW_CONFIG,
     DiffStats,
     LARGE_DIFF_THRESHOLD,
+    PromptBuildOptions,
     RulesLoadResult,
     STRUCTURED_RESPONSE_PROMPT
 } from './types';
@@ -207,13 +208,16 @@ export class CodeReviewService implements vscode.Disposable {
     }
 
     /**
-     * Build the prompt for code review
-     * @param diff The git diff to review
-     * @param rules The code rules to check against
-     * @param metadata Metadata about the review (commit info, etc.)
-     * @returns The constructed prompt string
+     * Build a reference-based prompt for code review.
+     * Instead of embedding the full diff and rule content, this provides references
+     * (commit ID, file paths) that the AI can use to retrieve the content.
+     * 
+     * @param rules The code rules to check against (only paths are used)
+     * @param metadata Metadata about the review (commit info, repository root, etc.)
+     * @param options Prompt build options
+     * @returns The constructed prompt string with references
      */
-    buildPrompt(diff: string, rules: CodeRule[], metadata: CodeReviewMetadata): string {
+    buildReferencePrompt(rules: CodeRule[], metadata: CodeReviewMetadata, options?: PromptBuildOptions): string {
         const config = this.getConfig();
         const parts: string[] = [];
 
@@ -223,43 +227,70 @@ export class CodeReviewService implements vscode.Disposable {
         parts.push('---');
         parts.push('');
 
-        // Add coding rules section
+        // Add coding rules section with file paths
         parts.push('# Coding Rules');
+        parts.push('');
+        parts.push('Please read and apply the following rule files:');
         parts.push('');
 
         for (const rule of rules) {
-            parts.push(`## ${rule.filename}`);
-            parts.push(rule.content);
-            parts.push('');
+            // Use forward slashes for cross-platform compatibility in prompts
+            const normalizedPath = this.normalizePathForPrompt(rule.path);
+            parts.push(`- ${rule.filename}: \`${normalizedPath}\``);
         }
 
+        parts.push('');
         parts.push('---');
         parts.push('');
 
-        // Add code changes section
+        // Add code changes section with references
         parts.push('# Code Changes');
         parts.push('');
 
         if (metadata.type === 'commit' && metadata.commitSha) {
+            parts.push(`Repository: \`${this.normalizePathForPrompt(metadata.repositoryRoot || '')}\``);
             parts.push(`Commit: ${metadata.commitSha}`);
             if (metadata.commitMessage) {
                 parts.push(`Message: ${metadata.commitMessage}`);
             }
             parts.push('');
+            parts.push('Please retrieve the commit diff using the commit hash above.');
+            parts.push('You can use `git show <commit>` or `git diff <commit>~1 <commit>` to get the diff.');
         } else if (metadata.type === 'pending') {
+            parts.push(`Repository: \`${this.normalizePathForPrompt(metadata.repositoryRoot || '')}\``);
             parts.push('Type: Pending Changes (staged + unstaged)');
             parts.push('');
+            parts.push('Please retrieve the pending changes using:');
+            parts.push('- `git diff` for unstaged changes');
+            parts.push('- `git diff --cached` for staged changes');
         } else if (metadata.type === 'staged') {
+            parts.push(`Repository: \`${this.normalizePathForPrompt(metadata.repositoryRoot || '')}\``);
             parts.push('Type: Staged Changes');
             parts.push('');
+            parts.push('Please retrieve the staged changes using `git diff --cached`.');
         }
 
-        parts.push(diff);
+        parts.push('');
 
         // Add structured response instructions
         parts.push(STRUCTURED_RESPONSE_PROMPT);
 
         return parts.join('\n');
+    }
+
+    /**
+     * Normalize a file path for use in prompts.
+     * Converts backslashes to forward slashes for cross-platform compatibility.
+     * 
+     * @param filePath The file path to normalize
+     * @returns Normalized path with forward slashes
+     */
+    normalizePathForPrompt(filePath: string): string {
+        if (!filePath) {
+            return '';
+        }
+        // Convert backslashes to forward slashes for cross-platform compatibility
+        return filePath.replace(/\\/g, '/');
     }
 
     /**
