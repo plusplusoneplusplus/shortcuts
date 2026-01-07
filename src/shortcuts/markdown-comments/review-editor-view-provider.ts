@@ -10,6 +10,7 @@ import { handleAIClarification } from './ai-clarification-handler';
 import { CodeBlockTheme } from './code-block-themes';
 import { CommentsManager } from './comments-manager';
 import { isExternalUrl, isMarkdownFile, resolveFilePath } from './file-path-utils';
+import { PromptGenerator } from './prompt-generator';
 import { ClarificationContext, isUserComment, MarkdownComment, MermaidContext } from './types';
 import { getWebviewContent, WebviewContentOptions } from './webview-content';
 
@@ -73,11 +74,15 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     // Pending scroll requests (commentId to scroll to after file opens)
     private static pendingScrollRequests = new Map<string, string>();
 
+    private readonly promptGenerator: PromptGenerator;
+
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly commentsManager: CommentsManager,
         private readonly aiProcessManager?: AIProcessManager
-    ) { }
+    ) {
+        this.promptGenerator = new PromptGenerator(commentsManager);
+    }
 
     /**
      * Get webview content options based on current settings and theme
@@ -785,9 +790,16 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             return;
         }
 
-        const prompt = this.generatePromptText(comments, filePath, options);
+        // Use the unified PromptGenerator with comment IDs included
+        const commentIds = comments.map(c => c.id);
+        const prompt = this.promptGenerator.generatePromptForComments(commentIds, {
+            outputFormat: options?.format || 'markdown',
+            includeFullFileContent: options?.includeFileContent || false,
+            groupByFile: true,
+            includeLineNumbers: true
+        });
         const newConversation = options?.newConversation ?? true;
-        
+
         try {
             if (newConversation) {
                 // Start a new chat conversation (clears history) then send prompt
@@ -814,76 +826,5 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 vscode.window.showWarningMessage('Chat not available. Prompt copied to clipboard.');
             }
         }
-    }
-
-    /**
-     * Generate prompt text from comments
-     */
-    private generatePromptText(
-        comments: MarkdownComment[],
-        filePath: string,
-        options?: { includeFileContent: boolean; format: 'markdown' | 'json' }
-    ): string {
-        const format = options?.format || 'markdown';
-
-        if (format === 'json') {
-            return JSON.stringify({
-                task: 'Review and address the following comments in the markdown document',
-                file: filePath,
-                comments: comments.map(c => ({
-                    id: c.id,
-                    lineRange: c.selection.startLine === c.selection.endLine
-                        ? `Line ${c.selection.startLine}`
-                        : `Lines ${c.selection.startLine}-${c.selection.endLine}`,
-                    selectedText: c.selectedText,
-                    comment: c.comment,
-                    author: c.author
-                })),
-                instructions: 'For each comment, modify the corresponding section to address the feedback.'
-            }, null, 2);
-        }
-
-        // Markdown format
-        const lines: string[] = [
-            '# Document Revision Request',
-            '',
-            `**File:** ${filePath}`,
-            `**Open Comments:** ${comments.length}`,
-            '',
-            '---',
-            '',
-            '## Comments to Address',
-            ''
-        ];
-
-        comments.forEach((comment, index) => {
-            const lineRange = comment.selection.startLine === comment.selection.endLine
-                ? `Line ${comment.selection.startLine}`
-                : `Lines ${comment.selection.startLine}-${comment.selection.endLine}`;
-
-            lines.push(`### Comment ${index + 1}`);
-            lines.push('');
-            lines.push(`**Location:** ${lineRange}`);
-            if (comment.author) {
-                lines.push(`**Author:** ${comment.author}`);
-            }
-            lines.push('');
-            lines.push('**Selected Text:**');
-            lines.push('```');
-            lines.push(comment.selectedText);
-            lines.push('```');
-            lines.push('');
-            lines.push('**Comment:**');
-            lines.push(`> ${comment.comment}`);
-            lines.push('');
-            lines.push('---');
-            lines.push('');
-        });
-
-        lines.push('## Instructions');
-        lines.push('');
-        lines.push('For each comment above, modify the corresponding section in the document to address the feedback.');
-
-        return lines.join('\n');
     }
 }
