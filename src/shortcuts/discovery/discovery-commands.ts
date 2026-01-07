@@ -14,6 +14,7 @@ import { createGitShowUri, GIT_SHOW_SCHEME } from '../git/git-show-text-document
 import { LogicalGroupItem, CommitShortcutItem, CommitFileItem } from '../tree-items';
 import { DEFAULT_DISCOVERY_SCOPE, serializeDiscoveryProcess, ExistingGroupSnapshot, ExistingGroupItem } from './types';
 import { LogicalGroup, LogicalGroupItem as LogicalGroupItemType } from '../types';
+import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 
 /**
  * Get existing group snapshot from configuration
@@ -67,7 +68,10 @@ async function getExistingGroupSnapshot(
             items: existingItems
         };
     } catch (error) {
-        console.error('Error getting existing group snapshot:', error);
+        const logger = getExtensionLogger();
+        logger.error(LogCategory.DISCOVERY, 'Error getting existing group snapshot', error instanceof Error ? error : new Error(String(error)), {
+            groupPath
+        });
         return undefined;
     }
 }
@@ -403,7 +407,10 @@ async function openCommit(item: CommitShortcutItem): Promise<void> {
             }
         }
     } catch (error) {
-        console.error('Error opening commit:', error);
+        const logger = getExtensionLogger();
+        logger.error(LogCategory.DISCOVERY, 'Error opening commit', error instanceof Error ? error : new Error(String(error)), {
+            commitHash: item.commitHash
+        });
         
         // Fallback: copy hash to clipboard
         await vscode.env.clipboard.writeText(item.commitHash);
@@ -470,7 +477,11 @@ async function openCommitFileDiff(item: CommitFileItem): Promise<void> {
 
         await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
     } catch (error) {
-        console.error('Error opening commit file diff:', error);
+        const logger = getExtensionLogger();
+        logger.error(LogCategory.DISCOVERY, 'Error opening commit file diff', error instanceof Error ? error : new Error(String(error)), {
+            filePath: item.filePath,
+            commitHash: item.commitHash
+        });
         vscode.window.showErrorMessage(`Failed to open diff: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }

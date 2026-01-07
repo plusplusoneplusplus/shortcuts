@@ -10,6 +10,7 @@ import { LogicalGroupItem, LogicalGroup, ShortcutsConfig } from '../../types';
 import { DiscoveryEngine } from '../discovery-engine';
 import { getWebviewContent, WebviewMessage } from './webview-content';
 import { ConfigurationManager } from '../../configuration-manager';
+import { getExtensionLogger, LogCategory } from '../../shared/extension-logger';
 
 /**
  * Discovery Preview Panel
@@ -278,7 +279,8 @@ export class DiscoveryPreviewPanel {
                             addedCount++;
                         }
                     } catch (error) {
-                        console.error(`Failed to add ${result.name} to group:`, error);
+                        const logger = getExtensionLogger();
+                        logger.error(LogCategory.DISCOVERY, `Failed to add ${result.name} to group`, error instanceof Error ? error : new Error(String(error)));
                     }
                 }
             }
@@ -298,7 +300,8 @@ export class DiscoveryPreviewPanel {
                             addedCount++;
                         }
                     } catch (error) {
-                        console.error(`Failed to add ${result.name} to group:`, error);
+                        const logger = getExtensionLogger();
+                        logger.error(LogCategory.DISCOVERY, `Failed to add ${result.name} to group`, error instanceof Error ? error : new Error(String(error)));
                     }
                 }
             }
@@ -313,7 +316,8 @@ export class DiscoveryPreviewPanel {
                             addedCount++;
                         }
                     } catch (error) {
-                        console.error(`Failed to add ${result.name} to group:`, error);
+                        const logger = getExtensionLogger();
+                        logger.error(LogCategory.DISCOVERY, `Failed to add ${result.name} to group`, error instanceof Error ? error : new Error(String(error)));
                     }
                 }
             }
@@ -402,7 +406,11 @@ export class DiscoveryPreviewPanel {
         );
         
         if (existingCommit) {
-            console.log('Commit already exists in group');
+            const logger = getExtensionLogger();
+            logger.debug(LogCategory.DISCOVERY, 'Commit already exists in group', {
+                commitHash: result.commit!.hash,
+                groupPath
+            });
             return;
         }
         

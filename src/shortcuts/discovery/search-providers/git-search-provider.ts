@@ -10,6 +10,7 @@ import { execSync } from 'child_process';
 import * as path from 'path';
 import { RawSearchResult, DiscoveryScope, DiscoveryCommitInfo } from '../types';
 import { ISearchProvider } from './types';
+import { getExtensionLogger, LogCategory } from '../../shared/extension-logger';
 
 /**
  * Git search provider implementation
@@ -49,7 +50,8 @@ export class GitSearchProvider implements ISearchProvider {
             // This is handled separately by the discovery engine
             
         } catch (error) {
-            console.error('Error in git search:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.DISCOVERY, 'Error in git search', error instanceof Error ? error : new Error(String(error)));
         }
         
         return results;
@@ -89,7 +91,8 @@ export class GitSearchProvider implements ISearchProvider {
                 }
             }
         } catch (error) {
-            console.error('Error searching commits by message:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.DISCOVERY, 'Error searching commits by message', error instanceof Error ? error : new Error(String(error)));
         }
         
         return results.slice(0, maxCommits);
@@ -126,7 +129,8 @@ export class GitSearchProvider implements ISearchProvider {
                 });
             }
         } catch (error) {
-            console.error('Error searching commits by paths:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.DISCOVERY, 'Error searching commits by paths', error instanceof Error ? error : new Error(String(error)));
         }
         
         return results;

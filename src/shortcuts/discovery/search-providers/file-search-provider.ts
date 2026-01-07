@@ -12,6 +12,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { RawSearchResult, DiscoveryScope, DiscoverySourceType } from '../types';
 import { ISearchProvider, getFileCategory, shouldIncludeFile } from './types';
+import { getExtensionLogger, LogCategory } from '../../shared/extension-logger';
 
 /**
  * Maximum file size to read for content matching (in bytes)
@@ -67,7 +68,8 @@ export class FileSearchProvider implements ISearchProvider {
                 }
             }
         } catch (error) {
-            console.error('Error in file search:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.DISCOVERY, 'Error in file search', error instanceof Error ? error : new Error(String(error)));
         }
         
         return results;
@@ -153,7 +155,8 @@ export class FileSearchProvider implements ISearchProvider {
             
             return files;
         } catch (error) {
-            console.error('Error finding files:', error);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.DISCOVERY, 'Error finding files', error instanceof Error ? error : new Error(String(error)));
             return [];
         }
     }
@@ -210,7 +213,10 @@ export class FileSearchProvider implements ISearchProvider {
                 contentSnippet
             };
         } catch (error) {
-            console.error(`Error searching file ${fileUri.fsPath}:`, error);
+            const logger = getExtensionLogger();
+            logger.debug(LogCategory.DISCOVERY, `Error searching file ${fileUri.fsPath}`, {
+                error: error instanceof Error ? error.message : String(error)
+            });
             return null;
         }
     }

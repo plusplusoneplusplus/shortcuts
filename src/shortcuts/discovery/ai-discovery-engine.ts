@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import { exec, ChildProcess } from 'child_process';
 import { escapeShellArg, getAIModelSetting, getWorkingDirectory } from '../ai-service/copilot-cli-invoker';
 import { AIProcessManager } from '../ai-service/ai-process-manager';
+import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 import {
     DiscoveryRequest,
     DiscoveryProcess,
@@ -399,7 +400,11 @@ export class AIDiscoveryEngine implements vscode.Disposable {
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('AI Discovery error:', err);
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.DISCOVERY, 'AI Discovery failed', err, {
+                processId: process.id,
+                featureDescription: request.featureDescription
+            });
 
             process.status = 'failed';
             process.error = err.message;
@@ -423,6 +428,9 @@ export class AIDiscoveryEngine implements vscode.Disposable {
         timeoutSeconds: number,
         processId: string
     ): Promise<{ success: boolean; response?: string; error?: string }> {
+        const logger = getExtensionLogger();
+        const startTime = Date.now();
+        
         return new Promise((resolve) => {
             const escapedPrompt = escapeShellArg(prompt);
             const model = getAIModelSetting();
@@ -433,29 +441,57 @@ export class AIDiscoveryEngine implements vscode.Disposable {
                 command = `copilot --allow-all-tools --model ${model} -p ${escapedPrompt}`;
             }
 
+            logger.logOperationStart(LogCategory.DISCOVERY, 'AI discovery CLI invocation', {
+                processId,
+                workingDirectory: cwd,
+                model: model || 'default',
+                timeoutSeconds
+            });
+
             const childProcess = exec(command, {
                 cwd,
                 timeout: timeoutSeconds * 1000,
                 maxBuffer: 1024 * 1024 * 10 // 10MB buffer
             }, (error, stdout, stderr) => {
+                const durationMs = Date.now() - startTime;
+                
                 if (error) {
                     if (error.killed) {
+                        const errorMsg = `AI discovery timed out after ${timeoutSeconds} seconds`;
+                        logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery CLI invocation', error, {
+                            processId,
+                            durationMs,
+                            reason: 'timeout',
+                            timeoutSeconds
+                        });
                         resolve({
                             success: false,
-                            error: `AI discovery timed out after ${timeoutSeconds} seconds`
+                            error: errorMsg
                         });
                         return;
                     }
 
                     if (error.message.includes('command not found') ||
                         error.message.includes('not recognized')) {
+                        const errorMsg = 'Copilot CLI is not installed. Please install it with: npm install -g @anthropic-ai/claude-code';
+                        logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery CLI invocation', error, {
+                            processId,
+                            durationMs,
+                            reason: 'cli_not_found'
+                        });
                         resolve({
                             success: false,
-                            error: 'Copilot CLI is not installed. Please install it with: npm install -g @anthropic-ai/claude-code'
+                            error: errorMsg
                         });
                         return;
                     }
 
+                    logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery CLI invocation', error, {
+                        processId,
+                        durationMs,
+                        reason: 'cli_error',
+                        stderr: stderr ? stderr.substring(0, 500) : undefined
+                    });
                     resolve({
                         success: false,
                         error: `Copilot CLI error: ${error.message}`
@@ -467,6 +503,12 @@ export class AIDiscoveryEngine implements vscode.Disposable {
                 const response = this.parseCopilotOutput(stdout);
 
                 if (!response) {
+                    logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery CLI invocation', undefined, {
+                        processId,
+                        durationMs,
+                        reason: 'empty_response',
+                        stdoutLength: stdout?.length || 0
+                    });
                     resolve({
                         success: false,
                         error: 'No response received from Copilot CLI'
@@ -474,6 +516,10 @@ export class AIDiscoveryEngine implements vscode.Disposable {
                     return;
                 }
 
+                logger.logOperationComplete(LogCategory.DISCOVERY, 'AI discovery CLI invocation', durationMs, {
+                    processId,
+                    responseLength: response.length
+                });
                 resolve({
                     success: true,
                     response

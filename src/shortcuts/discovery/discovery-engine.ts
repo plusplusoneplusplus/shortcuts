@@ -26,6 +26,7 @@ import { extractKeywords, combineKeywords } from './keyword-extractor';
 import { FileSearchProvider, GitSearchProvider } from './search-providers';
 import { scoreResults, deduplicateResults } from './relevance-scorer';
 import { AIDiscoveryEngine, createAIDiscoveryRequest } from './ai-discovery-engine';
+import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 
 /**
  * Discovery mode setting
@@ -101,24 +102,37 @@ export class DiscoveryEngine implements vscode.Disposable {
     async discover(request: DiscoveryRequest): Promise<DiscoveryProcess> {
         const mode = this.getDiscoveryMode();
 
+        const logger = getExtensionLogger();
+        
         // Use AI discovery if enabled
         if (mode === 'ai' || mode === 'auto') {
             try {
-                console.log('Discovery: Using AI-powered discovery');
+                logger.info(LogCategory.DISCOVERY, 'Starting AI-powered discovery', {
+                    mode,
+                    featureDescription: request.featureDescription
+                });
                 return await this.aiEngine.discover(request);
             } catch (error) {
+                const err = error instanceof Error ? error : new Error('Unknown error');
                 if (mode === 'ai') {
                     // AI mode is required, don't fall back
+                    logger.error(LogCategory.DISCOVERY, 'AI discovery failed (no fallback)', err, {
+                        mode,
+                        featureDescription: request.featureDescription
+                    });
                     const process = this.createProcess(request);
                     process.status = 'failed';
-                    process.error = `AI discovery failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                    process.error = `AI discovery failed: ${err.message}`;
                     process.endTime = new Date();
                     this.processes.set(process.id, process);
                     this.emitEvent('process-failed', process);
                     return process;
                 }
                 // Auto mode: fall back to keyword search
-                console.log('Discovery: AI discovery failed, falling back to keyword search');
+                logger.warn(LogCategory.DISCOVERY, 'AI discovery failed, falling back to keyword search', {
+                    error: err.message,
+                    featureDescription: request.featureDescription
+                });
             }
         }
 
@@ -130,10 +144,17 @@ export class DiscoveryEngine implements vscode.Disposable {
      * Legacy keyword-based discovery
      */
     private async discoverWithKeywords(request: DiscoveryRequest): Promise<DiscoveryProcess> {
+        const logger = getExtensionLogger();
+        
         // Create new process
         const process = this.createProcess(request);
         this.processes.set(process.id, process);
         this.emitEvent('process-started', process);
+        
+        logger.info(LogCategory.DISCOVERY, 'Starting keyword-based discovery', {
+            processId: process.id,
+            featureDescription: request.featureDescription
+        });
         
         try {
             // Phase 1: Extract keywords
@@ -148,7 +169,10 @@ export class DiscoveryEngine implements vscode.Disposable {
                 throw new Error('No keywords could be extracted from the feature description');
             }
             
-            console.log(`Discovery: Extracted ${keywords.length} keywords:`, keywords);
+            logger.debug(LogCategory.DISCOVERY, `Extracted ${keywords.length} keywords`, {
+                processId: process.id,
+                keywords
+            });
             
             // Phase 2: Search files
             await this.updatePhase(process, 'scanning-files', 10);
@@ -157,7 +181,9 @@ export class DiscoveryEngine implements vscode.Disposable {
                 request,
                 (progress) => this.updateProgress(process, 10 + progress * 0.3)
             );
-            console.log(`Discovery: Found ${fileResults.length} file matches`);
+            logger.debug(LogCategory.DISCOVERY, `Found ${fileResults.length} file matches`, {
+                processId: process.id
+            });
             
             // Phase 3: Search git history
             await this.updatePhase(process, 'scanning-git', 40);
@@ -166,7 +192,9 @@ export class DiscoveryEngine implements vscode.Disposable {
                 request,
                 (progress) => this.updateProgress(process, 40 + progress * 0.2)
             );
-            console.log(`Discovery: Found ${gitResults.length} commit matches`);
+            logger.debug(LogCategory.DISCOVERY, `Found ${gitResults.length} commit matches`, {
+                processId: process.id
+            });
             
             // Phase 4: Score and rank results
             await this.updatePhase(process, 'scoring-relevance', 60);
@@ -180,7 +208,12 @@ export class DiscoveryEngine implements vscode.Disposable {
             
             // Deduplicate
             const uniqueResults = deduplicateResults(scoredResults);
-            console.log(`Discovery: ${uniqueResults.length} unique results after scoring`);
+            logger.info(LogCategory.DISCOVERY, 'Keyword-based discovery completed', {
+                processId: process.id,
+                totalResults: uniqueResults.length,
+                fileMatches: fileResults.length,
+                gitMatches: gitResults.length
+            });
             
             // Phase 5: Complete
             await this.updatePhase(process, 'completed', 100);
@@ -194,7 +227,10 @@ export class DiscoveryEngine implements vscode.Disposable {
             
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
-            console.error('Discovery error:', err);
+            logger.error(LogCategory.DISCOVERY, 'Keyword-based discovery failed', err, {
+                processId: process.id,
+                featureDescription: request.featureDescription
+            });
             
             process.status = 'failed';
             process.error = err.message;
@@ -336,7 +372,10 @@ export class DiscoveryEngine implements vscode.Disposable {
         
         // Check if it's a git repository
         if (!GitSearchProvider.isGitRepository(request.repositoryRoot)) {
-            console.log('Discovery: Not a git repository, skipping git search');
+            const logger = getExtensionLogger();
+            logger.debug(LogCategory.DISCOVERY, 'Not a git repository, skipping git search', {
+                repositoryRoot: request.repositoryRoot
+            });
             onProgress(1);
             return [];
         }

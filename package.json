@@ -634,6 +634,12 @@
         "icon": "$(info)"
       },
       {
+        "command": "shortcuts.showLogs",
+        "title": "Show Extension Logs",
+        "category": "Shortcuts",
+        "icon": "$(output)"
+      },
+      {
         "command": "markdownComments.deleteComment",
         "title": "Delete Comment",
         "category": "Markdown Comments",

@@ -4,6 +4,7 @@ import { GlobalNotesTreeDataProvider } from './global-notes';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
 import { CommandShortcutItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
+import { getExtensionLogger } from './shared/extension-logger';
 
 /**
  * Command handlers for the shortcuts panel
@@ -44,6 +45,14 @@ export class ShortcutsCommands {
         disposables.push(
             vscode.commands.registerCommand('shortcuts.openConfiguration', async () => {
                 await this.openConfiguration();
+            })
+        );
+
+        // Show extension logs command
+        disposables.push(
+            vscode.commands.registerCommand('shortcuts.showLogs', () => {
+                const logger = getExtensionLogger();
+                logger.show(false); // false = don't preserve focus, bring it to front
             })
         );
 
