@@ -244,6 +244,12 @@ body.source-mode .toolbar-review-only {
     white-space: nowrap;
 }
 
+.ai-action-menu-divider {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--comment-border);
+}
+
 .toolbar-checkbox {
     display: flex;
     align-items: center;

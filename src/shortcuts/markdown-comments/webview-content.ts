@@ -112,10 +112,15 @@ export function getWebviewContent(
                     <span class="dropdown-arrow">▼</span>
                 </button>
                 <div class="ai-action-menu" id="aiActionMenu">
-                    <div class="ai-action-menu-item" id="sendToChatBtn">
+                    <div class="ai-action-menu-item" id="sendToNewChatBtn">
                         <span class="ai-action-icon">💬</span>
-                        <span class="ai-action-label">Send to Chat</span>
+                        <span class="ai-action-label">Send to New Chat</span>
                     </div>
+                    <div class="ai-action-menu-item" id="sendToExistingChatBtn">
+                        <span class="ai-action-icon">🔄</span>
+                        <span class="ai-action-label">Send to Existing Chat</span>
+                    </div>
+                    <div class="ai-action-menu-divider"></div>
                     <div class="ai-action-menu-item" id="copyPromptBtn">
                         <span class="ai-action-icon">📋</span>
                         <span class="ai-action-label">Copy as Prompt</span>

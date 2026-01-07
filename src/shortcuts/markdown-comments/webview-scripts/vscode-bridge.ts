@@ -51,9 +51,11 @@ export function requestCopyPrompt(format: string = 'markdown'): void {
 
 /**
  * Request the extension to send the AI prompt to chat
+ * @param format - The format of the prompt ('markdown' or 'json')
+ * @param newConversation - If true, starts a new chat conversation; if false, uses existing chat
  */
-export function requestSendToChat(format: string = 'markdown'): void {
-    postMessage({ type: 'sendToChat', promptOptions: { format } });
+export function requestSendToChat(format: string = 'markdown', newConversation: boolean = true): void {
+    postMessage({ type: 'sendToChat', promptOptions: { format, newConversation } });
 }
 
 /**

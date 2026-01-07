@@ -48,6 +48,7 @@ interface WebviewMessage {
     promptOptions?: {
         includeFileContent: boolean;
         format: 'markdown' | 'json';
+        newConversation?: boolean;
     };
     mermaidContext?: MermaidContext;
     // Image resolution fields
@@ -768,10 +769,12 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     /**
      * Generate AI prompt and send to VSCode Chat.
      * Only includes user comments, excluding AI-generated comments.
+     * @param filePath - The file path for the comments
+     * @param options - Options including format and whether to start a new conversation
      */
     private async generateAndSendToChat(
         filePath: string,
-        options?: { includeFileContent: boolean; format: 'markdown' | 'json' }
+        options?: { includeFileContent: boolean; format: 'markdown' | 'json'; newConversation?: boolean }
     ): Promise<void> {
         const comments = this.commentsManager.getCommentsForFile(filePath)
             .filter(c => c.status === 'open')
@@ -783,9 +786,16 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         }
 
         const prompt = this.generatePromptText(comments, filePath, options);
+        const newConversation = options?.newConversation ?? true;
         
         try {
-            // Try to open chat with the prompt directly
+            if (newConversation) {
+                // Start a new chat conversation (clears history) then send prompt
+                await vscode.commands.executeCommand('workbench.action.chat.newChat');
+                // Small delay to ensure new chat is ready
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+            // Send prompt to chat (new or existing)
             await vscode.commands.executeCommand('workbench.action.chat.open', {
                 query: prompt
             });
@@ -793,6 +803,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             // Fallback: copy to clipboard and open chat
             await vscode.env.clipboard.writeText(prompt);
             try {
+                if (newConversation) {
+                    await vscode.commands.executeCommand('workbench.action.chat.newChat');
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
                 await vscode.commands.executeCommand('workbench.action.chat.open');
                 vscode.window.showInformationMessage('Chat opened. Prompt copied to clipboard - paste to continue.');
             } catch {

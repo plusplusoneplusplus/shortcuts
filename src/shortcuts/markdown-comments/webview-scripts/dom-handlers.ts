@@ -134,7 +134,8 @@ function setupAIActionDropdown(): void {
     const aiActionDropdown = document.getElementById('aiActionDropdown');
     const aiActionBtn = document.getElementById('aiActionBtn');
     const aiActionMenu = document.getElementById('aiActionMenu');
-    const sendToChatBtn = document.getElementById('sendToChatBtn');
+    const sendToNewChatBtn = document.getElementById('sendToNewChatBtn');
+    const sendToExistingChatBtn = document.getElementById('sendToExistingChatBtn');
     const copyPromptBtn = document.getElementById('copyPromptBtn');
 
     if (!aiActionDropdown || !aiActionBtn || !aiActionMenu) return;
@@ -150,10 +151,16 @@ function setupAIActionDropdown(): void {
         }
     });
 
-    // Send to Chat action
-    sendToChatBtn?.addEventListener('click', () => {
+    // Send to New Chat action (starts a new conversation)
+    sendToNewChatBtn?.addEventListener('click', () => {
         hideAIActionMenu();
-        requestSendToChat('markdown');
+        requestSendToChat('markdown', true);
+    });
+
+    // Send to Existing Chat action (uses existing conversation)
+    sendToExistingChatBtn?.addEventListener('click', () => {
+        hideAIActionMenu();
+        requestSendToChat('markdown', false);
     });
 
     // Copy as Prompt action
