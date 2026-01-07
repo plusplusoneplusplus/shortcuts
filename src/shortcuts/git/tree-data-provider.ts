@@ -1,11 +1,10 @@
 import * as vscode from 'vscode';
+import { DiffCommentsManager } from '../git-diff-comments/diff-comments-manager';
 import {
     DiffCommentCategoryItem,
     DiffCommentFileItem,
-    DiffCommentItem,
     DiffCommentsTreeDataProvider
 } from '../git-diff-comments/diff-comments-tree-provider';
-import { DiffCommentsManager } from '../git-diff-comments/diff-comments-manager';
 import { getExtensionLogger, LogCategory } from '../shared';
 import { GitChangeItem } from './git-change-item';
 import { GitCommitFileItem } from './git-commit-file-item';
@@ -94,7 +93,7 @@ export class GitTreeDataProvider
     setDiffCommentsManager(manager: DiffCommentsManager): void {
         this.diffCommentsManager = manager;
         this.diffCommentsTreeProvider = new DiffCommentsTreeDataProvider(manager);
-        
+
         // Listen for comment changes to refresh the tree
         this.disposables.push(
             manager.onDidChangeComments(() => {
@@ -163,13 +162,27 @@ export class GitTreeDataProvider
     }
 
     /**
-     * Reload commits from scratch (e.g., after a new commit)
+     * Reload commits while preserving the current count
+     * This ensures that when the git panel refreshes, the user's expanded commit list is maintained
      */
     private reloadCommits(): void {
-        // Reset to initial state and reload
-        this.loadedCommits = [];
-        this.hasMoreCommits = false;
-        this.loadInitialCommits();
+        // Preserve the current number of loaded commits (minimum DEFAULT_COMMIT_DISPLAY_COUNT)
+        const currentCount = Math.max(this.loadedCommits.length, DEFAULT_COMMIT_DISPLAY_COUNT);
+
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            this.loadedCommits = [];
+            this.hasMoreCommits = false;
+            return;
+        }
+
+        const result = this.gitLogService.getCommits(repoRoot, {
+            maxCount: currentCount,
+            skip: 0
+        });
+
+        this.loadedCommits = result.commits;
+        this.hasMoreCommits = result.hasMore;
     }
 
     /**
@@ -393,7 +406,7 @@ export class GitTreeDataProvider
      * Get comment items for a specific file
      */
     private async getCommentItems(
-        filePath: string, 
+        filePath: string,
         category?: 'pending' | 'committed',
         commitHash?: string
     ): Promise<vscode.TreeItem[]> {

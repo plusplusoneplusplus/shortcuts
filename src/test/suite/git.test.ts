@@ -1939,10 +1939,10 @@ suite('Git View Tests', () => {
             const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChange('modified', 'staged', filePath);
             const item = new GitChangeItem(change);
-            
+
             // The unstage button appears for /^gitChange_staged/
             const regex = /^gitChange_staged/;
-            assert.ok(regex.test(item.contextValue || ''), 
+            assert.ok(regex.test(item.contextValue || ''),
                 `contextValue "${item.contextValue}" should match /^gitChange_staged/`);
         });
 
@@ -1950,10 +1950,10 @@ suite('Git View Tests', () => {
             const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChange('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change);
-            
+
             // The stage button appears for /^gitChange_(unstaged|untracked)/
             const regex = /^gitChange_(unstaged|untracked)/;
-            assert.ok(regex.test(item.contextValue || ''), 
+            assert.ok(regex.test(item.contextValue || ''),
                 `contextValue "${item.contextValue}" should match /^gitChange_(unstaged|untracked)/`);
         });
 
@@ -1961,10 +1961,10 @@ suite('Git View Tests', () => {
             const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChange('untracked', 'untracked', filePath);
             const item = new GitChangeItem(change);
-            
+
             // The stage button appears for /^gitChange_(unstaged|untracked)/
             const regex = /^gitChange_(unstaged|untracked)/;
-            assert.ok(regex.test(item.contextValue || ''), 
+            assert.ok(regex.test(item.contextValue || ''),
                 `contextValue "${item.contextValue}" should match /^gitChange_(unstaged|untracked)/`);
         });
 
@@ -1972,8 +1972,8 @@ suite('Git View Tests', () => {
             const filePath = isWindows ? 'C:\\repo\\README.md' : '/repo/README.md';
             const change = createMockChange('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change);
-            
-            assert.ok(item.contextValue?.endsWith('_md'), 
+
+            assert.ok(item.contextValue?.endsWith('_md'),
                 `contextValue "${item.contextValue}" should end with _md`);
         });
 
@@ -1981,8 +1981,8 @@ suite('Git View Tests', () => {
             const filePath = isWindows ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChange('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change);
-            
-            assert.ok(!item.contextValue?.endsWith('_md'), 
+
+            assert.ok(!item.contextValue?.endsWith('_md'),
                 `contextValue "${item.contextValue}" should not end with _md`);
         });
     });
@@ -2077,37 +2077,37 @@ suite('Git View Tests', () => {
         test('should have correct dragMimeTypes', async () => {
             const { GitDragDropController } = await import('../../shortcuts/git');
             const controller = new GitDragDropController();
-            
+
             assert.ok(Array.isArray(controller.dragMimeTypes));
-            assert.ok(controller.dragMimeTypes.includes('text/uri-list'), 
+            assert.ok(controller.dragMimeTypes.includes('text/uri-list'),
                 'Should include text/uri-list for Copilot Chat compatibility');
         });
 
         test('should have empty dropMimeTypes (read-only tree)', async () => {
             const { GitDragDropController } = await import('../../shortcuts/git');
             const controller = new GitDragDropController();
-            
+
             assert.ok(Array.isArray(controller.dropMimeTypes));
-            assert.strictEqual(controller.dropMimeTypes.length, 0, 
+            assert.strictEqual(controller.dropMimeTypes.length, 0,
                 'Git tree should not accept drops');
         });
 
         test('handleDrag should populate dataTransfer with URIs from GitChangeItem', async () => {
             const { GitDragDropController } = await import('../../shortcuts/git');
             const controller = new GitDragDropController();
-            
+
             const filePath = isWindowsDrag ? 'C:\\repo\\test-file.ts' : '/repo/test-file.ts';
             const change = createMockChangeDrag('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change);
-            
+
             const dataTransfer = new vscode.DataTransfer();
             const token = new vscode.CancellationTokenSource().token;
-            
+
             await controller.handleDrag([item], dataTransfer, token);
-            
+
             const uriListData = dataTransfer.get('text/uri-list');
             assert.ok(uriListData, 'Should set text/uri-list data');
-            
+
             const uriListString = uriListData?.value;
             assert.ok(typeof uriListString === 'string', 'URI list should be a string');
             assert.ok(uriListString.includes('file://'), 'Should contain file URI');
@@ -2116,22 +2116,22 @@ suite('Git View Tests', () => {
         test('handleDrag should handle multiple items', async () => {
             const { GitDragDropController } = await import('../../shortcuts/git');
             const controller = new GitDragDropController();
-            
+
             const filePath1 = isWindowsDrag ? 'C:\\repo\\file1.ts' : '/repo/file1.ts';
             const filePath2 = isWindowsDrag ? 'C:\\repo\\file2.ts' : '/repo/file2.ts';
             const change1 = createMockChangeDrag('modified', 'unstaged', filePath1);
             const change2 = createMockChangeDrag('added', 'staged', filePath2);
             const item1 = new GitChangeItem(change1);
             const item2 = new GitChangeItem(change2);
-            
+
             const dataTransfer = new vscode.DataTransfer();
             const token = new vscode.CancellationTokenSource().token;
-            
+
             await controller.handleDrag([item1, item2], dataTransfer, token);
-            
+
             const uriListData = dataTransfer.get('text/uri-list');
             assert.ok(uriListData, 'Should set text/uri-list data');
-            
+
             const uriListString = uriListData?.value;
             // Multiple URIs should be separated by CRLF
             assert.ok(uriListString.includes('\r\n') || uriListString.split('file://').length > 2,
@@ -2141,16 +2141,16 @@ suite('Git View Tests', () => {
         test('handleDrag should handle items without resourceUri gracefully', async () => {
             const { GitDragDropController } = await import('../../shortcuts/git');
             const controller = new GitDragDropController();
-            
+
             // Create a mock tree item without resourceUri
             const mockItem = new vscode.TreeItem('Mock Item');
-            
+
             const dataTransfer = new vscode.DataTransfer();
             const token = new vscode.CancellationTokenSource().token;
-            
+
             // Should not throw
             await controller.handleDrag([mockItem], dataTransfer, token);
-            
+
             // No URIs should be set for items without resourceUri
             const uriListData = dataTransfer.get('text/uri-list');
             assert.ok(!uriListData, 'Should not set URI list for items without resourceUri');
@@ -2183,7 +2183,7 @@ suite('Git View Tests', () => {
             const filePath = isWindowsLoading ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChangeLoading('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change);
-            
+
             assert.strictEqual(item.isLoading, false, 'Should not be loading by default');
         });
 
@@ -2191,7 +2191,7 @@ suite('Git View Tests', () => {
             const filePath = isWindowsLoading ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChangeLoading('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change, true);
-            
+
             assert.strictEqual(item.isLoading, true, 'Should be loading');
         });
 
@@ -2199,10 +2199,10 @@ suite('Git View Tests', () => {
             const filePath = isWindowsLoading ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChangeLoading('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change, true);
-            
+
             assert.ok(item.iconPath, 'Loading item should have an icon');
             assert.ok(item.iconPath instanceof vscode.ThemeIcon, 'Icon should be a ThemeIcon');
-            assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'loading~spin', 
+            assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'loading~spin',
                 'Should use loading spinner icon');
         });
 
@@ -2210,8 +2210,8 @@ suite('Git View Tests', () => {
             const filePath = isWindowsLoading ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChangeLoading('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change, true);
-            
-            assert.strictEqual(item.command, undefined, 
+
+            assert.strictEqual(item.command, undefined,
                 'Loading item should not have a command (disabled)');
         });
 
@@ -2219,7 +2219,7 @@ suite('Git View Tests', () => {
             const filePath = isWindowsLoading ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChangeLoading('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change, false);
-            
+
             assert.ok(item.command, 'Non-loading item should have a command');
             assert.strictEqual(item.command?.command, 'gitDiffComments.openWithReview');
         });
@@ -2228,8 +2228,8 @@ suite('Git View Tests', () => {
             const filePath = isWindowsLoading ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChangeLoading('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change, true);
-            
-            assert.ok(item.contextValue?.endsWith('_loading'), 
+
+            assert.ok(item.contextValue?.endsWith('_loading'),
                 `contextValue "${item.contextValue}" should end with _loading`);
         });
 
@@ -2237,8 +2237,8 @@ suite('Git View Tests', () => {
             const filePath = isWindowsLoading ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChangeLoading('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change, true);
-            
-            assert.ok((item.description as string)?.includes('⏳'), 
+
+            assert.ok((item.description as string)?.includes('⏳'),
                 `description "${item.description}" should contain loading indicator`);
         });
 
@@ -2246,8 +2246,8 @@ suite('Git View Tests', () => {
             const filePath = isWindowsLoading ? 'C:\\repo\\file.ts' : '/repo/file.ts';
             const change = createMockChangeLoading('modified', 'unstaged', filePath);
             const item = new GitChangeItem(change, false);
-            
-            assert.ok(!(item.description as string)?.includes('⏳'), 
+
+            assert.ok(!(item.description as string)?.includes('⏳'),
                 `description "${item.description}" should not contain loading indicator`);
         });
     });
@@ -2259,91 +2259,150 @@ suite('Git View Tests', () => {
         test('should export loading state methods', async () => {
             const { GitTreeDataProvider } = await import('../../shortcuts/git');
             const provider = new GitTreeDataProvider();
-            
-            assert.ok(typeof provider.setFileLoading === 'function', 
+
+            assert.ok(typeof provider.setFileLoading === 'function',
                 'Should have setFileLoading method');
-            assert.ok(typeof provider.clearFileLoading === 'function', 
+            assert.ok(typeof provider.clearFileLoading === 'function',
                 'Should have clearFileLoading method');
-            assert.ok(typeof provider.isFileLoading === 'function', 
+            assert.ok(typeof provider.isFileLoading === 'function',
                 'Should have isFileLoading method');
-            assert.ok(typeof provider.clearAllLoading === 'function', 
+            assert.ok(typeof provider.clearAllLoading === 'function',
                 'Should have clearAllLoading method');
-            
+
             provider.dispose();
         });
 
         test('setFileLoading should mark file as loading', async () => {
             const { GitTreeDataProvider } = await import('../../shortcuts/git');
             const provider = new GitTreeDataProvider();
-            
+
             const filePath = '/repo/test-file.ts';
-            
-            assert.strictEqual(provider.isFileLoading(filePath), false, 
+
+            assert.strictEqual(provider.isFileLoading(filePath), false,
                 'File should not be loading initially');
-            
+
             provider.setFileLoading(filePath);
-            
-            assert.strictEqual(provider.isFileLoading(filePath), true, 
+
+            assert.strictEqual(provider.isFileLoading(filePath), true,
                 'File should be loading after setFileLoading');
-            
+
             provider.dispose();
         });
 
         test('clearFileLoading should clear loading state', async () => {
             const { GitTreeDataProvider } = await import('../../shortcuts/git');
             const provider = new GitTreeDataProvider();
-            
+
             const filePath = '/repo/test-file.ts';
-            
+
             provider.setFileLoading(filePath);
             assert.strictEqual(provider.isFileLoading(filePath), true);
-            
+
             provider.clearFileLoading(filePath);
-            assert.strictEqual(provider.isFileLoading(filePath), false, 
+            assert.strictEqual(provider.isFileLoading(filePath), false,
                 'File should not be loading after clearFileLoading');
-            
+
             provider.dispose();
         });
 
         test('clearAllLoading should clear all loading states', async () => {
             const { GitTreeDataProvider } = await import('../../shortcuts/git');
             const provider = new GitTreeDataProvider();
-            
+
             const filePath1 = '/repo/file1.ts';
             const filePath2 = '/repo/file2.ts';
-            
+
             provider.setFileLoading(filePath1);
             provider.setFileLoading(filePath2);
-            
+
             assert.strictEqual(provider.isFileLoading(filePath1), true);
             assert.strictEqual(provider.isFileLoading(filePath2), true);
-            
+
             provider.clearAllLoading();
-            
-            assert.strictEqual(provider.isFileLoading(filePath1), false, 
+
+            assert.strictEqual(provider.isFileLoading(filePath1), false,
                 'File1 should not be loading after clearAllLoading');
-            assert.strictEqual(provider.isFileLoading(filePath2), false, 
+            assert.strictEqual(provider.isFileLoading(filePath2), false,
                 'File2 should not be loading after clearAllLoading');
-            
+
             provider.dispose();
         });
 
         test('multiple files can be loading simultaneously', async () => {
             const { GitTreeDataProvider } = await import('../../shortcuts/git');
             const provider = new GitTreeDataProvider();
-            
+
             const filePath1 = '/repo/file1.ts';
             const filePath2 = '/repo/file2.ts';
             const filePath3 = '/repo/file3.ts';
-            
+
             provider.setFileLoading(filePath1);
             provider.setFileLoading(filePath2);
-            
+
             assert.strictEqual(provider.isFileLoading(filePath1), true);
             assert.strictEqual(provider.isFileLoading(filePath2), true);
-            assert.strictEqual(provider.isFileLoading(filePath3), false, 
+            assert.strictEqual(provider.isFileLoading(filePath3), false,
                 'File3 should not be loading');
-            
+
+            provider.dispose();
+        });
+    });
+
+    // ============================================
+    // GitTreeDataProvider Commit Count Preservation Tests
+    // ============================================
+    suite('GitTreeDataProvider Commit Count Preservation', () => {
+        test('should have getCommitCount method', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            assert.ok(typeof provider.getCommitCount === 'function',
+                'Should have getCommitCount method');
+
+            provider.dispose();
+        });
+
+        test('should have getHasMoreCommits method', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            assert.ok(typeof provider.getHasMoreCommits === 'function',
+                'Should have getHasMoreCommits method');
+
+            provider.dispose();
+        });
+
+        test('should return 0 commit count when not initialized', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            assert.strictEqual(provider.getCommitCount(), 0,
+                'Should return 0 commits when not initialized');
+
+            provider.dispose();
+        });
+
+        test('should return false for hasMoreCommits when not initialized', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            assert.strictEqual(provider.getHasMoreCommits(), false,
+                'Should return false for hasMoreCommits when not initialized');
+
+            provider.dispose();
+        });
+
+        test('getViewCounts should include commitCount and hasMoreCommits', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const counts = provider.getViewCounts();
+
+            assert.ok('commitCount' in counts, 'Should have commitCount property');
+            assert.ok('hasMoreCommits' in counts, 'Should have hasMoreCommits property');
+            assert.strictEqual(typeof counts.commitCount, 'number', 'commitCount should be a number');
+            assert.strictEqual(typeof counts.hasMoreCommits, 'boolean', 'hasMoreCommits should be a boolean');
+
             provider.dispose();
         });
     });
