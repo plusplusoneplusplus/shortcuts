@@ -740,7 +740,14 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             return;
         }
 
-        const prompt = this.generatePromptText(comments, filePath, options);
+        // Use the unified PromptGenerator with comment IDs
+        const commentIds = comments.map(c => c.id);
+        const prompt = this.promptGenerator.generatePromptForComments(commentIds, {
+            outputFormat: options?.format || 'markdown',
+            includeFullFileContent: options?.includeFileContent || false,
+            groupByFile: true,
+            includeLineNumbers: true
+        });
 
         const doc = await vscode.workspace.openTextDocument({
             content: prompt,
@@ -766,7 +773,14 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             return;
         }
 
-        const prompt = this.generatePromptText(comments, filePath, options);
+        // Use the unified PromptGenerator with comment IDs
+        const commentIds = comments.map(c => c.id);
+        const prompt = this.promptGenerator.generatePromptForComments(commentIds, {
+            outputFormat: options?.format || 'markdown',
+            includeFullFileContent: options?.includeFileContent || false,
+            groupByFile: true,
+            includeLineNumbers: true
+        });
         await vscode.env.clipboard.writeText(prompt);
         vscode.window.showInformationMessage('AI prompt copied to clipboard!');
     }

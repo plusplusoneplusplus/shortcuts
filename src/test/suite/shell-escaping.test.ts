@@ -146,9 +146,162 @@ suite('Shell Argument Escaping Tests', () => {
         });
 
         test('should handle code snippets with quotes', () => {
+            // Note: exclamation marks are escaped with ^! for delayed expansion safety
             const prompt = 'Explain: console.log("Hello, World!")';
             const result = escapeShellArg(prompt, platform);
-            assert.strictEqual(result, '"Explain: console.log(""Hello, World!"")"');
+            assert.strictEqual(result, '"Explain: console.log(""Hello, World^!"")"');
+        });
+    });
+
+    suite('Windows Shell Escaping - Newlines', () => {
+        const platform: NodeJS.Platform = 'win32';
+
+        test('should convert Unix newlines to literal \\n', () => {
+            const result = escapeShellArg('line1\nline2', platform);
+            assert.strictEqual(result, '"line1\\nline2"');
+        });
+
+        test('should convert Windows CRLF to literal \\n', () => {
+            const result = escapeShellArg('line1\r\nline2', platform);
+            assert.strictEqual(result, '"line1\\nline2"');
+        });
+
+        test('should handle multiple newlines', () => {
+            const result = escapeShellArg('a\nb\nc\nd', platform);
+            assert.strictEqual(result, '"a\\nb\\nc\\nd"');
+        });
+
+        test('should handle mixed Windows and Unix newlines', () => {
+            const result = escapeShellArg('a\r\nb\nc\r\nd', platform);
+            assert.strictEqual(result, '"a\\nb\\nc\\nd"');
+        });
+
+        test('should remove standalone carriage returns', () => {
+            const result = escapeShellArg('a\rb\rc', platform);
+            assert.strictEqual(result, '"abc"');
+        });
+
+        test('should handle multiline code blocks', () => {
+            const code = 'function test() {\n  return true;\n}';
+            const result = escapeShellArg(code, platform);
+            assert.strictEqual(result, '"function test() {\\n  return true;\\n}"');
+        });
+
+        test('should handle prompt with code and newlines', () => {
+            const prompt = 'Explain this:\nconst x = "hello";\nconsole.log(x);';
+            const result = escapeShellArg(prompt, platform);
+            assert.strictEqual(result, '"Explain this:\\nconst x = ""hello"";\\nconsole.log(x);"');
+        });
+
+        test('should handle trailing newline', () => {
+            const result = escapeShellArg('hello\n', platform);
+            assert.strictEqual(result, '"hello\\n"');
+        });
+
+        test('should handle leading newline', () => {
+            const result = escapeShellArg('\nhello', platform);
+            assert.strictEqual(result, '"\\nhello"');
+        });
+
+        test('should handle only newlines', () => {
+            const result = escapeShellArg('\n\n\n', platform);
+            assert.strictEqual(result, '"\\n\\n\\n"');
+        });
+    });
+
+    suite('Windows Shell Escaping - Exclamation Marks (Delayed Expansion)', () => {
+        const platform: NodeJS.Platform = 'win32';
+
+        test('should escape single exclamation mark', () => {
+            const result = escapeShellArg('Hello!', platform);
+            assert.strictEqual(result, '"Hello^!"');
+        });
+
+        test('should escape multiple exclamation marks', () => {
+            const result = escapeShellArg('Hello!! How are you!', platform);
+            assert.strictEqual(result, '"Hello^!^! How are you^!"');
+        });
+
+        test('should escape exclamation marks in code', () => {
+            const result = escapeShellArg('if (!value) { return; }', platform);
+            assert.strictEqual(result, '"if (^!value) { return; }"');
+        });
+
+        test('should handle delayed expansion variable pattern', () => {
+            // This pattern could be misinterpreted if delayed expansion is enabled
+            const result = escapeShellArg('Use !PATH! variable', platform);
+            assert.strictEqual(result, '"Use ^!PATH^! variable"');
+        });
+
+        test('should handle exclamation with other special chars', () => {
+            const result = escapeShellArg('Say "Hello!" at 100%', platform);
+            assert.strictEqual(result, '"Say ""Hello^!"" at 100%%"');
+        });
+
+        test('should handle TypeScript non-null assertion', () => {
+            const result = escapeShellArg('const x = value!.property', platform);
+            assert.strictEqual(result, '"const x = value^!.property"');
+        });
+
+        test('should handle JavaScript negation', () => {
+            const result = escapeShellArg('!true === false', platform);
+            assert.strictEqual(result, '"^!true === false"');
+        });
+    });
+
+    suite('Windows Shell Escaping - Combined Edge Cases', () => {
+        const platform: NodeJS.Platform = 'win32';
+
+        test('should handle all special characters together', () => {
+            const prompt = 'Is "!PATH!" equal to 100%?\nCheck now!';
+            const result = escapeShellArg(prompt, platform);
+            assert.strictEqual(result, '"Is ""^!PATH^!"" equal to 100%%?\\nCheck now^!"');
+        });
+
+        test('should handle real-world code review prompt', () => {
+            const prompt = 'Review this code:\nfunction validate(x) {\n  if (!x) throw "Invalid!";\n  return x;\n}';
+            const result = escapeShellArg(prompt, platform);
+            assert.strictEqual(result, '"Review this code:\\nfunction validate(x) {\\n  if (^!x) throw ""Invalid^!"";\\n  return x;\\n}"');
+        });
+
+        test('should handle prompt with markdown code block', () => {
+            const prompt = 'Explain:\n```js\nconsole.log("Hello!");\n```';
+            const result = escapeShellArg(prompt, platform);
+            assert.strictEqual(result, '"Explain:\\n```js\\nconsole.log(""Hello^!"");\\n```"');
+        });
+
+        test('should handle complex JSON-like content with newlines', () => {
+            const prompt = '{\n  "message": "Hello!",\n  "progress": "100%"\n}';
+            const result = escapeShellArg(prompt, platform);
+            assert.strictEqual(result, '"{\\n  ""message"": ""Hello^!"",\\n  ""progress"": ""100%%""\\n}"');
+        });
+
+        test('should handle Windows file paths with newlines in prompt', () => {
+            const prompt = 'File at C:\\Users\\test\\file.txt\nContains "data!"';
+            const result = escapeShellArg(prompt, platform);
+            assert.strictEqual(result, '"File at C:\\Users\\test\\file.txt\\nContains ""data^!"""');
+        });
+
+        test('should preserve angle brackets as literals inside double quotes', () => {
+            // < and > are redirection operators in cmd.exe, but they are
+            // literal inside double quotes, so no escaping is needed
+            const prompt = 'Fix this HTML: <div class="test">Hello</div>';
+            const result = escapeShellArg(prompt, platform);
+            assert.strictEqual(result, '"Fix this HTML: <div class=""test"">Hello</div>"');
+        });
+
+        test('should handle all shell operators as literals inside double quotes', () => {
+            // These characters are special in cmd.exe outside quotes:
+            // < > | & ^ - but inside double quotes they are literal
+            const prompt = 'Operators: < > | & ^ should be literal';
+            const result = escapeShellArg(prompt, platform);
+            assert.strictEqual(result, '"Operators: < > | & ^ should be literal"');
+        });
+
+        test('should handle pipe and ampersand in code snippets', () => {
+            const prompt = 'Explain: cat file.txt | grep "test" && echo "done"';
+            const result = escapeShellArg(prompt, platform);
+            assert.strictEqual(result, '"Explain: cat file.txt | grep ""test"" && echo ""done"""');
         });
     });
 
@@ -192,10 +345,11 @@ suite('Shell Argument Escaping Tests', () => {
         test('should handle string with all special characters', () => {
             const special = '"\' % $ ` ! @ # ^ & * ( ) { } [ ] | \\ / < > ?';
 
-            // Windows: escape " and %
+            // Windows: escape ", %, and !
             const windowsResult = escapeShellArg(special, 'win32');
             assert.ok(windowsResult.includes('""'), 'Windows should escape double quotes');
             assert.ok(windowsResult.includes('%%'), 'Windows should escape percent signs');
+            assert.ok(windowsResult.includes('^!'), 'Windows should escape exclamation marks');
 
             // Unix: escape single quotes
             const unixResult = escapeShellArg(special, 'darwin');
@@ -211,14 +365,15 @@ suite('Shell Argument Escaping Tests', () => {
             assert.strictEqual(unixResult, `'${unicode}'`);
         });
 
-        test('should handle multiline strings', () => {
+        test('should handle multiline strings differently per platform', () => {
             const multiline = 'line1\nline2\nline3';
             const windowsResult = escapeShellArg(multiline, 'win32');
             const unixResult = escapeShellArg(multiline, 'darwin');
 
-            // Both should preserve newlines
-            assert.ok(windowsResult.includes('\n'), 'Windows should preserve newlines');
-            assert.ok(unixResult.includes('\n'), 'Unix should preserve newlines');
+            // Windows converts newlines to literal \n strings
+            assert.strictEqual(windowsResult, '"line1\\nline2\\nline3"');
+            // Unix preserves actual newlines
+            assert.ok(unixResult.includes('\n'), 'Unix should preserve actual newlines');
         });
 
         test('should handle string starting and ending with quotes', () => {
@@ -271,6 +426,10 @@ suite('Shell Argument Escaping Tests', () => {
 
             assert.ok(windowsResult.length > prompt.length, 'Windows result should include wrapper quotes');
             assert.ok(unixResult.length > prompt.length, 'Unix result should include wrapper quotes');
+
+            // Windows should convert newlines and escape exclamation
+            assert.ok(windowsResult.includes('\\n'), 'Windows should convert newlines to \\n');
+            assert.ok(windowsResult.includes('^!'), 'Windows should escape exclamation marks');
         });
 
         test('should handle prompts with SQL queries', () => {
@@ -289,6 +448,13 @@ suite('Shell Argument Escaping Tests', () => {
             const prompt = 'Explain this regex: /^"[^"]*"$/';
             const windowsResult = escapeShellArg(prompt, 'win32');
             assert.strictEqual(windowsResult, '"Explain this regex: /^""[^""]*""$/"');
+        });
+
+        test('should handle prompts with HTML and JavaScript events', () => {
+            const prompt = 'Fix this: <button onclick="alert(\'Hello!\')">Click</button>';
+            const windowsResult = escapeShellArg(prompt, 'win32');
+            // Note: ! is escaped with ^!
+            assert.strictEqual(windowsResult, '"Fix this: <button onclick=""alert(\'Hello^!\')\"">Click</button>"');
         });
     });
 });
