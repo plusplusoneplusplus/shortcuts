@@ -824,7 +824,8 @@ suite('Tasks Viewer Tests', () => {
             const item = new TaskItem(task);
 
             assert.ok(item.resourceUri, 'Should have resourceUri');
-            assert.strictEqual(item.resourceUri.fsPath, '/path/to/task.md');
+            // Use Uri.path for cross-platform comparison (always uses forward slashes)
+            assert.strictEqual(item.resourceUri.path, '/path/to/task.md');
         });
     });
 });

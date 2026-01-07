@@ -260,20 +260,24 @@ Total usage est:       1 Premium request`;
             }
         });
 
-        test('should preserve newlines', () => {
+        test('should handle newlines', () => {
             const result = escapeShellArg('line1\nline2');
             if (isWindows) {
-                assert.strictEqual(result, '"line1\nline2"');
+                // Windows: newlines are converted to literal \n since cmd.exe can't handle actual newlines
+                assert.strictEqual(result, '"line1\\nline2"');
             } else {
+                // Unix: newlines preserved in single quotes
                 assert.strictEqual(result, "'line1\nline2'");
             }
         });
 
-        test('should preserve tabs', () => {
+        test('should handle tabs', () => {
             const result = escapeShellArg('col1\tcol2');
             if (isWindows) {
+                // Windows: tabs preserved in double quotes
                 assert.strictEqual(result, '"col1\tcol2"');
             } else {
+                // Unix: tabs preserved in single quotes
                 assert.strictEqual(result, "'col1\tcol2'");
             }
         });
