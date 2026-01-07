@@ -310,11 +310,13 @@ function buildCopilotCommand(prompt: string): string {
     const escapedPrompt = escapeShellArg(prompt);
     const model = getAIModelSetting();
 
+    const baseFlags = '--allow-all-tools --allow-all-paths --disable-builtin-mcps';
+
     if (model) {
-        return `copilot --allow-all-tools --model ${model} -p ${escapedPrompt}`;
+        return `copilot ${baseFlags} --model ${model} -p ${escapedPrompt}`;
     }
 
-    return `copilot --allow-all-tools -p ${escapedPrompt}`;
+    return `copilot ${baseFlags} -p ${escapedPrompt}`;
 }
 
 /**
