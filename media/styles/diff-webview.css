@@ -771,9 +771,9 @@ html, body {
     background-color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c);
 }
 
-/* Modified marks (yellow/orange) - for adjacent add/delete */
+/* Modified marks (blue) - for lines changed on both sides (both addition and deletion) */
 .diff-indicator-mark.modified {
-    background-color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+    background-color: var(--vscode-textLink-foreground, #3794ff);
 }
 
 /* Comment marks (blue) - only for context lines with comments */
@@ -793,10 +793,10 @@ html, body {
     box-shadow: inset 0 0 0 2px var(--vscode-textLink-foreground, #3794ff);
 }
 
-/* Modified with comment - yellow with blue border */
+/* Modified with comment - blue with lighter blue border */
 .diff-indicator-mark.modified.comment {
-    background-color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
-    box-shadow: inset 0 0 0 2px var(--vscode-textLink-foreground, #3794ff);
+    background-color: var(--vscode-textLink-foreground, #3794ff);
+    box-shadow: inset 0 0 0 2px rgba(55, 148, 255, 0.5);
 }
 
 /* Current viewport indicator */

@@ -965,8 +965,11 @@ export function renderIndicatorBar(): void {
             continue;
         }
 
-        // Find consecutive lines of the same change type
+        // Find consecutive lines of the same change type and track what types are present
         let endIndex = i;
+        let hasAddition = lineInfo.type === 'addition';
+        let hasDeletion = lineInfo.type === 'deletion';
+        
         while (endIndex < alignedDiffInfo.length - 1) {
             const nextInfo = alignedDiffInfo[endIndex + 1];
             // Group additions and deletions together as "modified"
@@ -975,6 +978,9 @@ export function renderIndicatorBar(): void {
 
             if (currentIsChange && nextIsChange) {
                 endIndex++;
+                // Track what types are present in this group
+                if (nextInfo.type === 'addition') hasAddition = true;
+                if (nextInfo.type === 'deletion') hasDeletion = true;
             } else {
                 break;
             }
@@ -986,10 +992,15 @@ export function renderIndicatorBar(): void {
         const mark = document.createElement('div');
         mark.className = 'diff-indicator-mark';
 
-        // Determine the mark type
-        if (lineInfo.type === 'addition') {
+        // Determine the mark type:
+        // - If the group has both additions and deletions, it's a modification (blue)
+        // - If only additions, show green
+        // - If only deletions, show red
+        if (hasAddition && hasDeletion) {
+            mark.classList.add('modified');
+        } else if (hasAddition) {
             mark.classList.add('addition');
-        } else if (lineInfo.type === 'deletion') {
+        } else if (hasDeletion) {
             mark.classList.add('deletion');
         }
 

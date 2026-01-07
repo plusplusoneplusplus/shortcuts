@@ -24,7 +24,7 @@ suite('Diff Indicator Bar Tests', () => {
     interface MarkInfo {
         startIndex: number;
         endIndex: number;
-        type: 'addition' | 'deletion' | 'context';
+        type: 'addition' | 'deletion' | 'context' | 'modified';
         hasComment: boolean;
         topPosition: number;
         height: number;
@@ -113,6 +113,7 @@ suite('Diff Indicator Bar Tests', () => {
 
     /**
      * Pure function: Group consecutive diff lines for indicator marks
+     * Returns 'modified' type when a group contains both additions and deletions
      */
     function groupConsecutiveChanges(diffInfo: DiffLineInfo[]): MarkInfo[] {
         const marks: MarkInfo[] = [];
@@ -128,7 +129,11 @@ suite('Diff Indicator Bar Tests', () => {
             }
 
             // Find consecutive lines of the same type or consecutive changes
+            // Track what types are present in this group
             let endIndex = i;
+            let hasAddition = lineInfo.type === 'addition';
+            let hasDeletion = lineInfo.type === 'deletion';
+            
             while (endIndex < diffInfo.length - 1) {
                 const nextInfo = diffInfo[endIndex + 1];
                 const currentIsChange = lineInfo.type === 'addition' || lineInfo.type === 'deletion';
@@ -136,6 +141,9 @@ suite('Diff Indicator Bar Tests', () => {
 
                 if (currentIsChange && nextIsChange) {
                     endIndex++;
+                    // Track what types are present in this group
+                    if (nextInfo.type === 'addition') hasAddition = true;
+                    if (nextInfo.type === 'deletion') hasDeletion = true;
                 } else if (lineInfo.type === nextInfo.type) {
                     endIndex++;
                 } else {
@@ -152,10 +160,26 @@ suite('Diff Indicator Bar Tests', () => {
                 }
             }
 
+            // Determine the mark type:
+            // - If the group has both additions and deletions, it's a modification (blue)
+            // - If only additions, show green
+            // - If only deletions, show red
+            // - If context with comments, show as context
+            let markType: 'addition' | 'deletion' | 'context' | 'modified';
+            if (hasAddition && hasDeletion) {
+                markType = 'modified';
+            } else if (hasAddition) {
+                markType = 'addition';
+            } else if (hasDeletion) {
+                markType = 'deletion';
+            } else {
+                markType = lineInfo.type;
+            }
+
             marks.push({
                 startIndex: i,
                 endIndex: endIndex,
-                type: lineInfo.type,
+                type: markType,
                 hasComment: hasCommentInRange,
                 topPosition: 0, // Will be calculated separately
                 height: 0 // Will be calculated separately
@@ -379,7 +403,7 @@ suite('Diff Indicator Bar Tests', () => {
             assert.strictEqual(marks[0].type, 'deletion');
         });
 
-        test('should group mixed additions and deletions together', () => {
+        test('should group mixed additions and deletions together as modified', () => {
             const diffInfo: DiffLineInfo[] = [
                 { index: 0, type: 'context', hasComment: false },
                 { index: 1, type: 'deletion', hasComment: false },
@@ -390,10 +414,11 @@ suite('Diff Indicator Bar Tests', () => {
             ];
 
             const marks = groupConsecutiveChanges(diffInfo);
-            // Should be grouped as one mark (consecutive changes)
+            // Should be grouped as one mark (consecutive changes) with type 'modified'
             assert.strictEqual(marks.length, 1);
             assert.strictEqual(marks[0].startIndex, 1);
             assert.strictEqual(marks[0].endIndex, 4);
+            assert.strictEqual(marks[0].type, 'modified', 'Mixed additions and deletions should be marked as modified');
         });
 
         test('should create separate marks for non-consecutive changes', () => {
@@ -478,6 +503,106 @@ suite('Diff Indicator Bar Tests', () => {
             const marks = groupConsecutiveChanges(diffInfo);
             assert.strictEqual(marks.length, 3);
         });
+
+        test('should mark addition-only group as addition', () => {
+            const diffInfo: DiffLineInfo[] = [
+                { index: 0, type: 'addition', hasComment: false },
+                { index: 1, type: 'addition', hasComment: false },
+            ];
+
+            const marks = groupConsecutiveChanges(diffInfo);
+            assert.strictEqual(marks.length, 1);
+            assert.strictEqual(marks[0].type, 'addition');
+        });
+
+        test('should mark deletion-only group as deletion', () => {
+            const diffInfo: DiffLineInfo[] = [
+                { index: 0, type: 'deletion', hasComment: false },
+                { index: 1, type: 'deletion', hasComment: false },
+            ];
+
+            const marks = groupConsecutiveChanges(diffInfo);
+            assert.strictEqual(marks.length, 1);
+            assert.strictEqual(marks[0].type, 'deletion');
+        });
+
+        test('should mark deletion followed by addition as modified', () => {
+            const diffInfo: DiffLineInfo[] = [
+                { index: 0, type: 'deletion', hasComment: false },
+                { index: 1, type: 'addition', hasComment: false },
+            ];
+
+            const marks = groupConsecutiveChanges(diffInfo);
+            assert.strictEqual(marks.length, 1);
+            assert.strictEqual(marks[0].type, 'modified');
+        });
+
+        test('should mark addition followed by deletion as modified', () => {
+            const diffInfo: DiffLineInfo[] = [
+                { index: 0, type: 'addition', hasComment: false },
+                { index: 1, type: 'deletion', hasComment: false },
+            ];
+
+            const marks = groupConsecutiveChanges(diffInfo);
+            assert.strictEqual(marks.length, 1);
+            assert.strictEqual(marks[0].type, 'modified');
+        });
+
+        test('should mark interleaved additions and deletions as modified', () => {
+            const diffInfo: DiffLineInfo[] = [
+                { index: 0, type: 'deletion', hasComment: false },
+                { index: 1, type: 'addition', hasComment: false },
+                { index: 2, type: 'deletion', hasComment: false },
+                { index: 3, type: 'addition', hasComment: false },
+            ];
+
+            const marks = groupConsecutiveChanges(diffInfo);
+            assert.strictEqual(marks.length, 1);
+            assert.strictEqual(marks[0].type, 'modified');
+        });
+
+        test('should handle multiple separate change groups with different types', () => {
+            const diffInfo: DiffLineInfo[] = [
+                { index: 0, type: 'addition', hasComment: false },
+                { index: 1, type: 'addition', hasComment: false },
+                { index: 2, type: 'context', hasComment: false },
+                { index: 3, type: 'deletion', hasComment: false },
+                { index: 4, type: 'addition', hasComment: false },
+                { index: 5, type: 'context', hasComment: false },
+                { index: 6, type: 'deletion', hasComment: false },
+                { index: 7, type: 'deletion', hasComment: false },
+            ];
+
+            const marks = groupConsecutiveChanges(diffInfo);
+            assert.strictEqual(marks.length, 3);
+            assert.strictEqual(marks[0].type, 'addition', 'First group should be addition');
+            assert.strictEqual(marks[1].type, 'modified', 'Second group should be modified (deletion + addition)');
+            assert.strictEqual(marks[2].type, 'deletion', 'Third group should be deletion');
+        });
+
+        test('should handle single addition as addition type', () => {
+            const diffInfo: DiffLineInfo[] = [
+                { index: 0, type: 'context', hasComment: false },
+                { index: 1, type: 'addition', hasComment: false },
+                { index: 2, type: 'context', hasComment: false },
+            ];
+
+            const marks = groupConsecutiveChanges(diffInfo);
+            assert.strictEqual(marks.length, 1);
+            assert.strictEqual(marks[0].type, 'addition');
+        });
+
+        test('should handle single deletion as deletion type', () => {
+            const diffInfo: DiffLineInfo[] = [
+                { index: 0, type: 'context', hasComment: false },
+                { index: 1, type: 'deletion', hasComment: false },
+                { index: 2, type: 'context', hasComment: false },
+            ];
+
+            const marks = groupConsecutiveChanges(diffInfo);
+            assert.strictEqual(marks.length, 1);
+            assert.strictEqual(marks[0].type, 'deletion');
+        });
     });
 
     suite('Full Mark Calculation with Positions', () => {
@@ -558,15 +683,18 @@ suite('Diff Indicator Bar Tests', () => {
             assert.strictEqual(marks[0].startIndex, 10);
             assert.strictEqual(marks[0].endIndex, 14);
             assert.strictEqual(marks[0].hasComment, true);
+            assert.strictEqual(marks[0].type, 'deletion');
 
             // Second mark: additions
             assert.strictEqual(marks[1].startIndex, 50);
             assert.strictEqual(marks[1].endIndex, 59);
+            assert.strictEqual(marks[1].type, 'addition');
 
-            // Third mark: mixed changes (grouped together)
+            // Third mark: mixed changes (grouped together as modified)
             assert.strictEqual(marks[2].startIndex, 80);
             assert.strictEqual(marks[2].endIndex, 89);
             assert.strictEqual(marks[2].hasComment, true);
+            assert.strictEqual(marks[2].type, 'modified', 'Mixed deletions and additions should be marked as modified');
         });
     });
 
