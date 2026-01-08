@@ -1,8 +1,9 @@
 /**
  * Code Review Commands
- * 
+ *
  * Command handlers for the code review feature.
  * Registers and handles all code review related commands.
+ * Uses parallel execution - one AI process per rule file.
  */
 
 import * as vscode from 'vscode';
@@ -14,8 +15,8 @@ import { LookedUpCommitItem } from '../git/looked-up-commit-item';
 import { GitCommit } from '../git/types';
 import { CodeReviewService } from './code-review-service';
 import { CodeReviewViewer } from './code-review-viewer';
-import { formatCodeReviewResultAsMarkdown, parseCodeReviewResponse } from './response-parser';
-import { CodeReviewMetadata, serializeCodeReviewResult } from './types';
+import { aggregateReviewResults, formatAggregatedResultAsMarkdown, parseCodeReviewResponse } from './response-parser';
+import { CodeReviewMetadata, CodeRule, SingleRuleReviewResult } from './types';
 
 /**
  * Registers all code review commands
@@ -49,8 +50,73 @@ export function registerCodeReviewCommands(
     };
 
     /**
+     * Execute a single rule review
+     * @returns SingleRuleReviewResult with findings or error
+     */
+    async function executeSingleRuleReview(
+        rule: CodeRule,
+        metadata: CodeReviewMetadata,
+        workspaceRoot: string
+    ): Promise<SingleRuleReviewResult> {
+        const prompt = codeReviewService.buildSingleRulePrompt(rule, metadata);
+        const processId = processManager.registerCodeReviewProcess(
+            prompt,
+            {
+                reviewType: metadata.type,
+                commitSha: metadata.commitSha,
+                commitMessage: metadata.commitMessage,
+                rulesUsed: [rule.filename],
+                diffStats: metadata.diffStats
+            }
+        );
+
+        try {
+            const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager, processId);
+
+            if (result.success && result.response) {
+                // Parse the structured response for this single rule
+                const parsed = parseCodeReviewResponse(result.response, {
+                    ...metadata,
+                    rulesUsed: [rule.filename]
+                });
+
+                // Complete the process
+                processManager.completeProcess(processId, result.response);
+
+                return {
+                    rule,
+                    processId,
+                    success: true,
+                    findings: parsed.findings,
+                    rawResponse: result.response,
+                    assessment: parsed.summary.overallAssessment
+                };
+            } else {
+                processManager.updateProcess(processId, 'failed', undefined, result.error);
+                return {
+                    rule,
+                    processId,
+                    success: false,
+                    error: result.error || 'Unknown error',
+                    findings: []
+                };
+            }
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            processManager.updateProcess(processId, 'failed', undefined, errorMsg);
+            return {
+                rule,
+                processId,
+                success: false,
+                error: errorMsg,
+                findings: []
+            };
+        }
+    }
+
+    /**
      * Execute a code review with the given diff and metadata
-     * Uses reference-based prompts by default (commit ID, file paths) instead of embedding content
+     * Uses parallel execution - one AI process per rule file
      */
     async function executeReview(
         diff: string,
@@ -108,103 +174,117 @@ export function registerCodeReviewCommands(
             return;
         }
 
-        metadata.rulesUsed = rulesResult.rules.map(r => r.filename);
-        metadata.rulePaths = rulesResult.rules.map(r => r.path);
-
-        // Build reference-based prompt (uses commit ID and file paths instead of embedding content)
-        // This allows the AI to retrieve the content itself, reducing prompt size
-        const prompt = codeReviewService.buildReferencePrompt(rulesResult.rules, metadata, { mode: 'reference' });
         const config = codeReviewService.getConfig();
-        const title = codeReviewService.createProcessTitle(metadata);
+        const baseTitle = codeReviewService.createProcessTitle(metadata);
 
         // Execute based on output mode
         switch (config.outputMode) {
-            case 'clipboard':
-                await copyToClipboard(prompt);
+            case 'clipboard': {
+                // For clipboard mode, create prompts for all rules and copy them
+                const prompts: string[] = [];
+                for (const rule of rulesResult.rules) {
+                    prompts.push(`--- Rule: ${rule.filename} ---`);
+                    prompts.push(codeReviewService.buildSingleRulePrompt(rule, metadata));
+                    prompts.push('');
+                }
+                await copyToClipboard(prompts.join('\n'));
                 vscode.window.showInformationMessage(
-                    `Code review prompt copied to clipboard (${rulesResult.rules.length} rules, ${stats.files} files)`
+                    `Code review prompts copied to clipboard (${rulesResult.rules.length} rules, ${stats.files} files)`
                 );
                 break;
+            }
 
             case 'editor':
-                // Run through Copilot CLI and show result in editor
+            case 'aiProcess':
+            default: {
+                // Run parallel reviews through Copilot CLI
+                const aiTool = getAIToolSetting();
+                if (aiTool === 'clipboard') {
+                    // Fall back to clipboard if AI tool is configured as clipboard
+                    const prompts: string[] = [];
+                    for (const rule of rulesResult.rules) {
+                        prompts.push(`--- Rule: ${rule.filename} ---`);
+                        prompts.push(codeReviewService.buildSingleRulePrompt(rule, metadata));
+                        prompts.push('');
+                    }
+                    await copyToClipboard(prompts.join('\n'));
+                    vscode.window.showInformationMessage(
+                        `Code review prompts copied to clipboard (${rulesResult.rules.length} rules, ${stats.files} files)`
+                    );
+                    return;
+                }
+
+                // Show progress notification
                 await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
-                    title: `${title}...`,
-                    cancellable: true
+                    title: `${baseTitle}...`,
+                    cancellable: false
                 }, async (progress) => {
-                    progress.report({ message: `Reviewing against ${rulesResult.rules.length} rules...` });
+                    const startTime = Date.now();
+                    const totalRules = rulesResult.rules.length;
 
-                    const result = await invokeCopilotCLI(prompt, workspaceRoot);
+                    progress.report({
+                        message: `Starting parallel review against ${totalRules} rules...`
+                    });
 
-                    if (result.success && result.response) {
-                        // Parse the structured response
-                        const structuredResult = parseCodeReviewResponse(result.response, metadata);
+                    // Execute all rule reviews in parallel
+                    const reviewPromises = rulesResult.rules.map((rule, index) => {
+                        return executeSingleRuleReview(rule, metadata, workspaceRoot).then(result => {
+                            // Update progress as each rule completes
+                            const completed = index + 1;
+                            progress.report({
+                                message: `Completed ${completed}/${totalRules} rules...`,
+                                increment: (100 / totalRules)
+                            });
+                            return result;
+                        });
+                    });
 
+                    // Wait for all reviews to complete
+                    const ruleResults = await Promise.all(reviewPromises);
+                    const totalTimeMs = Date.now() - startTime;
+
+                    // Aggregate results
+                    const aggregatedResult = aggregateReviewResults(ruleResults, metadata, totalTimeMs);
+
+                    // Show results based on output mode
+                    if (config.outputMode === 'editor') {
                         // Format as markdown and open in editor
-                        const formattedResult = formatCodeReviewResultAsMarkdown(structuredResult);
+                        const formattedResult = formatAggregatedResultAsMarkdown(aggregatedResult);
                         const doc = await vscode.workspace.openTextDocument({
                             content: formattedResult,
                             language: 'markdown'
                         });
                         await vscode.window.showTextDocument(doc, { preview: true });
-                    } else if (result.error) {
-                        vscode.window.showErrorMessage(`Code review failed: ${result.error}`);
+                    } else {
+                        // Show the result in the viewer (convert to CodeReviewResult format)
+                        const viewerResult = {
+                            metadata: aggregatedResult.metadata,
+                            summary: aggregatedResult.summary,
+                            findings: aggregatedResult.findings,
+                            rawResponse: aggregatedResult.rawResponse,
+                            timestamp: aggregatedResult.timestamp
+                        };
+                        CodeReviewViewer.createOrShow(context.extensionUri, viewerResult);
+                    }
+
+                    // Show completion message
+                    const { successfulRules, failedRules } = aggregatedResult.executionStats;
+                    const totalFindings = aggregatedResult.summary.totalFindings;
+                    let message = `Review complete: ${totalFindings} issue(s) found across ${successfulRules} rules`;
+                    if (failedRules > 0) {
+                        message += ` (${failedRules} rule(s) failed)`;
+                    }
+                    message += ` in ${(totalTimeMs / 1000).toFixed(1)}s`;
+
+                    if (aggregatedResult.summary.overallAssessment === 'pass') {
+                        vscode.window.showInformationMessage(message);
+                    } else {
+                        vscode.window.showWarningMessage(message);
                     }
                 });
                 break;
-
-            case 'aiProcess':
-            default:
-                // Run through Copilot CLI and track in AI Processes view
-                const aiTool = getAIToolSetting();
-                if (aiTool === 'clipboard') {
-                    // Fall back to clipboard if AI tool is configured as clipboard
-                    await copyToClipboard(prompt);
-                    vscode.window.showInformationMessage(
-                        `Code review prompt copied to clipboard (${rulesResult.rules.length} rules, ${stats.files} files)`
-                    );
-                } else {
-                    // Register as a code review process with metadata
-                    const processId = processManager.registerCodeReviewProcess(
-                        prompt,
-                        {
-                            reviewType: metadata.type,
-                            commitSha: metadata.commitSha,
-                            commitMessage: metadata.commitMessage,
-                            rulesUsed: metadata.rulesUsed,
-                            diffStats: metadata.diffStats
-                        }
-                    );
-
-                    // Show status in notification
-                    vscode.window.withProgress({
-                        location: vscode.ProgressLocation.Notification,
-                        title: `${title}...`,
-                        cancellable: true
-                    }, async (progress) => {
-                        progress.report({ message: `Reviewing against ${rulesResult.rules.length} rules...` });
-
-                        const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager, processId);
-
-                        if (result.success && result.response) {
-                            // Parse the structured response
-                            const structuredResult = parseCodeReviewResponse(result.response, metadata);
-                            const serialized = JSON.stringify(serializeCodeReviewResult(structuredResult));
-
-                            // Complete the process with structured result
-                            processManager.completeCodeReviewProcess(processId, result.response, serialized);
-
-                            // Show the result in the viewer
-                            CodeReviewViewer.createOrShow(context.extensionUri, structuredResult);
-                        } else {
-                            // Mark as failed
-                            processManager.updateProcess(processId, 'failed', undefined, result.error);
-                            vscode.window.showErrorMessage(`Code review failed: ${result.error}`);
-                        }
-                    });
-                }
-                break;
+            }
         }
     }
 

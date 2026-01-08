@@ -18,8 +18,8 @@ import {
     DEFAULT_CODE_REVIEW_CONFIG,
     DiffStats,
     LARGE_DIFF_THRESHOLD,
-    PromptBuildOptions,
     RulesLoadResult,
+    SINGLE_RULE_PROMPT_TEMPLATE,
     STRUCTURED_RESPONSE_PROMPT
 } from './types';
 
@@ -208,37 +208,29 @@ export class CodeReviewService implements vscode.Disposable {
     }
 
     /**
-     * Build a reference-based prompt for code review.
-     * Instead of embedding the full diff and rule content, this provides references
-     * (commit ID, file paths) that the AI can use to retrieve the content.
-     * 
-     * @param rules The code rules to check against (only paths are used)
+     * Build a prompt for code review against a single rule.
+     * Each rule gets its own prompt for parallel execution.
+     *
+     * @param rule The single code rule to check against
      * @param metadata Metadata about the review (commit info, repository root, etc.)
-     * @param options Prompt build options
-     * @returns The constructed prompt string with references
+     * @returns The constructed prompt string for this single rule
      */
-    buildReferencePrompt(rules: CodeRule[], metadata: CodeReviewMetadata, options?: PromptBuildOptions): string {
-        const config = this.getConfig();
+    buildSingleRulePrompt(rule: CodeRule, metadata: CodeReviewMetadata): string {
         const parts: string[] = [];
 
-        // Add the prompt template
-        parts.push(config.promptTemplate);
+        // Add the single-rule prompt template
+        parts.push(SINGLE_RULE_PROMPT_TEMPLATE);
         parts.push('');
         parts.push('---');
         parts.push('');
 
-        // Add coding rules section with file paths
-        parts.push('# Coding Rules');
+        // Add the single coding rule with file path
+        parts.push('# Coding Rule');
         parts.push('');
-        parts.push('Please read and apply the following rule files:');
+        parts.push(`**Rule File:** ${rule.filename}`);
+        parts.push(`**Path:** \`${this.normalizePathForPrompt(rule.path)}\``);
         parts.push('');
-
-        for (const rule of rules) {
-            // Use forward slashes for cross-platform compatibility in prompts
-            const normalizedPath = this.normalizePathForPrompt(rule.path);
-            parts.push(`- ${rule.filename}: \`${normalizedPath}\``);
-        }
-
+        parts.push('Please read and apply this rule file to the code changes.');
         parts.push('');
         parts.push('---');
         parts.push('');
@@ -296,17 +288,30 @@ export class CodeReviewService implements vscode.Disposable {
     /**
      * Create a title for the AI process based on the review type
      * @param metadata Review metadata
+     * @param ruleFilename Optional rule filename for single-rule reviews
      * @returns A descriptive title
      */
-    createProcessTitle(metadata: CodeReviewMetadata): string {
+    createProcessTitle(metadata: CodeReviewMetadata, ruleFilename?: string): string {
+        let baseTitle: string;
         if (metadata.type === 'commit' && metadata.commitSha) {
             const shortHash = metadata.commitSha.substring(0, 7);
-            return `Review: ${shortHash}`;
+            baseTitle = `Review: ${shortHash}`;
         } else if (metadata.type === 'pending') {
-            return 'Review: pending';
+            baseTitle = 'Review: pending';
         } else {
-            return 'Review: staged';
+            baseTitle = 'Review: staged';
         }
+
+        // Add rule filename for single-rule reviews
+        if (ruleFilename) {
+            // Truncate rule filename if too long
+            const shortRuleName = ruleFilename.length > 20
+                ? ruleFilename.substring(0, 17) + '...'
+                : ruleFilename;
+            return `${baseTitle} (${shortRuleName})`;
+        }
+
+        return baseTitle;
     }
 
     /**

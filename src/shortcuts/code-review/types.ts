@@ -79,6 +79,65 @@ export interface CodeReviewMetadata {
 }
 
 /**
+ * Metadata for a single rule review (one rule per AI process)
+ */
+export interface SingleRuleReviewMetadata extends CodeReviewMetadata {
+    /** The specific rule being checked in this process */
+    ruleFilename: string;
+    /** Full path to the rule file */
+    rulePath: string;
+}
+
+/**
+ * Result from a single rule review process
+ */
+export interface SingleRuleReviewResult {
+    /** The rule that was checked */
+    rule: CodeRule;
+    /** Process ID for tracking */
+    processId: string;
+    /** Whether the process succeeded */
+    success: boolean;
+    /** Error message if failed */
+    error?: string;
+    /** Parsed findings from this rule */
+    findings: ReviewFinding[];
+    /** Raw AI response */
+    rawResponse?: string;
+    /** Overall assessment for this rule */
+    assessment?: 'pass' | 'needs-attention' | 'fail';
+}
+
+/**
+ * Aggregated result from multiple parallel rule reviews
+ */
+export interface AggregatedCodeReviewResult {
+    /** Combined metadata from all reviews */
+    metadata: CodeReviewMetadata;
+    /** Summary aggregated from all rule results */
+    summary: ReviewSummary;
+    /** All findings from all rules, tagged with source rule */
+    findings: ReviewFinding[];
+    /** Individual results per rule */
+    ruleResults: SingleRuleReviewResult[];
+    /** Combined raw responses */
+    rawResponse: string;
+    /** When the aggregated review was completed */
+    timestamp: Date;
+    /** Statistics about the parallel execution */
+    executionStats: {
+        /** Total number of rules processed */
+        totalRules: number;
+        /** Number of successful rule reviews */
+        successfulRules: number;
+        /** Number of failed rule reviews */
+        failedRules: number;
+        /** Total execution time in ms */
+        totalTimeMs: number;
+    };
+}
+
+/**
  * Result of loading rules from a folder
  */
 export interface RulesLoadResult {
@@ -237,6 +296,11 @@ Where SEVERITY is one of: ERROR, WARNING, INFO, SUGGESTION
 
 If no issues are found, state "No violations found." under Findings.
 `;
+
+/**
+ * Prompt template for single-rule code review
+ */
+export const SINGLE_RULE_PROMPT_TEMPLATE = `Review the following code changes against the specific coding rule provided below. Focus ONLY on violations of this single rule.`;
 
 /**
  * Configuration for prompt mode

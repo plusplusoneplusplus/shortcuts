@@ -6,12 +6,16 @@ import * as assert from 'assert';
 import {
     parseCodeReviewResponse,
     isStructuredResponse,
-    formatCodeReviewResultAsMarkdown
+    formatCodeReviewResultAsMarkdown,
+    aggregateReviewResults,
+    formatAggregatedResultAsMarkdown
 } from '../../shortcuts/code-review/response-parser';
 import {
+    AggregatedCodeReviewResult,
     CodeReviewMetadata,
     CodeReviewResult,
-    ReviewFinding
+    ReviewFinding,
+    SingleRuleReviewResult
 } from '../../shortcuts/code-review/types';
 
 suite('Code Review Response Parser', () => {
@@ -526,6 +530,326 @@ Overall: NEEDS_ATTENTION
             const uniqueIds = new Set(ids);
             assert.strictEqual(ids.length, uniqueIds.size, 'All finding IDs should be unique');
         });
+    });
+});
+
+suite('Aggregated Result Formatting', () => {
+    const defaultMetadata: CodeReviewMetadata = {
+        type: 'commit',
+        commitSha: 'abc1234567890',
+        commitMessage: 'Test commit message',
+        rulesUsed: ['rule1.md', 'rule2.md'],
+        diffStats: {
+            files: 3,
+            additions: 50,
+            deletions: 20
+        }
+    };
+
+    test('formatAggregatedResultAsMarkdown includes parallel execution header', () => {
+        const aggregatedResult: AggregatedCodeReviewResult = {
+            metadata: defaultMetadata,
+            summary: {
+                totalFindings: 0,
+                bySeverity: { error: 0, warning: 0, info: 0, suggestion: 0 },
+                byRule: {},
+                overallAssessment: 'pass',
+                summaryText: 'No issues found.'
+            },
+            findings: [],
+            ruleResults: [],
+            rawResponse: '',
+            timestamp: new Date(),
+            executionStats: {
+                totalRules: 2,
+                successfulRules: 2,
+                failedRules: 0,
+                totalTimeMs: 5000
+            }
+        };
+
+        const markdown = formatAggregatedResultAsMarkdown(aggregatedResult);
+
+        assert.ok(markdown.includes('Code Review Results (Parallel)'));
+        assert.ok(markdown.includes('**Rules Processed:**'));
+        assert.ok(markdown.includes('2 (2 passed'));
+        assert.ok(markdown.includes('**Total Time:**'));
+    });
+
+    test('formatAggregatedResultAsMarkdown shows execution stats', () => {
+        const aggregatedResult: AggregatedCodeReviewResult = {
+            metadata: defaultMetadata,
+            summary: {
+                totalFindings: 2,
+                bySeverity: { error: 1, warning: 1, info: 0, suggestion: 0 },
+                byRule: { 'naming.md': 1, 'security.md': 1 },
+                overallAssessment: 'fail',
+                summaryText: 'Found 2 issues.'
+            },
+            findings: [
+                { id: 'f1', severity: 'error', rule: 'naming.md', description: 'Bad name' },
+                { id: 'f2', severity: 'warning', rule: 'security.md', description: 'Potential issue' }
+            ],
+            ruleResults: [
+                {
+                    rule: { filename: 'naming.md', path: '/rules/naming.md', content: '' },
+                    processId: 'p1',
+                    success: true,
+                    findings: [{ id: 'f1', severity: 'error', rule: 'naming.md', description: 'Bad name' }],
+                    assessment: 'fail'
+                },
+                {
+                    rule: { filename: 'security.md', path: '/rules/security.md', content: '' },
+                    processId: 'p2',
+                    success: true,
+                    findings: [{ id: 'f2', severity: 'warning', rule: 'security.md', description: 'Potential issue' }],
+                    assessment: 'needs-attention'
+                }
+            ],
+            rawResponse: '',
+            timestamp: new Date(),
+            executionStats: {
+                totalRules: 2,
+                successfulRules: 2,
+                failedRules: 0,
+                totalTimeMs: 3500
+            }
+        };
+
+        const markdown = formatAggregatedResultAsMarkdown(aggregatedResult);
+
+        assert.ok(markdown.includes('2 passed'));
+        assert.ok(markdown.includes('0 failed'));
+        assert.ok(markdown.includes('3.5s'));
+    });
+
+    test('formatAggregatedResultAsMarkdown groups findings by rule', () => {
+        const aggregatedResult: AggregatedCodeReviewResult = {
+            metadata: defaultMetadata,
+            summary: {
+                totalFindings: 3,
+                bySeverity: { error: 2, warning: 1, info: 0, suggestion: 0 },
+                byRule: { 'naming.md': 2, 'security.md': 1 },
+                overallAssessment: 'fail',
+                summaryText: 'Found 3 issues.'
+            },
+            findings: [
+                { id: 'f1', severity: 'error', rule: 'naming.md', description: 'Issue 1' },
+                { id: 'f2', severity: 'error', rule: 'naming.md', description: 'Issue 2' },
+                { id: 'f3', severity: 'warning', rule: 'security.md', description: 'Issue 3' }
+            ],
+            ruleResults: [],
+            rawResponse: '',
+            timestamp: new Date(),
+            executionStats: {
+                totalRules: 2,
+                successfulRules: 2,
+                failedRules: 0,
+                totalTimeMs: 2000
+            }
+        };
+
+        const markdown = formatAggregatedResultAsMarkdown(aggregatedResult);
+
+        // Should have sections grouped by rule
+        assert.ok(markdown.includes('naming.md (2 issues)'));
+        assert.ok(markdown.includes('security.md (1 issue)'));
+    });
+
+    test('formatAggregatedResultAsMarkdown includes Rule Results table', () => {
+        const aggregatedResult: AggregatedCodeReviewResult = {
+            metadata: defaultMetadata,
+            summary: {
+                totalFindings: 0,
+                bySeverity: { error: 0, warning: 0, info: 0, suggestion: 0 },
+                byRule: {},
+                overallAssessment: 'pass',
+                summaryText: 'No issues found.'
+            },
+            findings: [],
+            ruleResults: [
+                {
+                    rule: { filename: 'naming.md', path: '/rules/naming.md', content: '' },
+                    processId: 'p1',
+                    success: true,
+                    findings: [],
+                    assessment: 'pass'
+                },
+                {
+                    rule: { filename: 'security.md', path: '/rules/security.md', content: '' },
+                    processId: 'p2',
+                    success: false,
+                    error: 'Timeout',
+                    findings: []
+                }
+            ],
+            rawResponse: '',
+            timestamp: new Date(),
+            executionStats: {
+                totalRules: 2,
+                successfulRules: 1,
+                failedRules: 1,
+                totalTimeMs: 10000
+            }
+        };
+
+        const markdown = formatAggregatedResultAsMarkdown(aggregatedResult);
+
+        assert.ok(markdown.includes('Rule Results'));
+        assert.ok(markdown.includes('naming.md'));
+        assert.ok(markdown.includes('security.md'));
+        assert.ok(markdown.includes('Success'));
+        assert.ok(markdown.includes('Failed'));
+        assert.ok(markdown.includes('Timeout'));
+    });
+
+    test('formatAggregatedResultAsMarkdown shows no findings message when empty', () => {
+        const aggregatedResult: AggregatedCodeReviewResult = {
+            metadata: defaultMetadata,
+            summary: {
+                totalFindings: 0,
+                bySeverity: { error: 0, warning: 0, info: 0, suggestion: 0 },
+                byRule: {},
+                overallAssessment: 'pass',
+                summaryText: 'No issues found.'
+            },
+            findings: [],
+            ruleResults: [],
+            rawResponse: '',
+            timestamp: new Date(),
+            executionStats: {
+                totalRules: 1,
+                successfulRules: 1,
+                failedRules: 0,
+                totalTimeMs: 1000
+            }
+        };
+
+        const markdown = formatAggregatedResultAsMarkdown(aggregatedResult);
+
+        assert.ok(markdown.includes('No issues found'));
+        assert.ok(markdown.includes('PASS'));
+    });
+});
+
+suite('aggregateReviewResults Function', () => {
+    const defaultMetadata: CodeReviewMetadata = {
+        type: 'commit',
+        commitSha: 'abc123',
+        rulesUsed: [],
+        repositoryRoot: '/repo'
+    };
+
+    test('tags findings with source rule if not already set', () => {
+        const ruleResults: SingleRuleReviewResult[] = [
+            {
+                rule: { filename: 'naming.md', path: '/rules/naming.md', content: '' },
+                processId: 'p1',
+                success: true,
+                findings: [
+                    { id: 'f1', severity: 'error', rule: 'Unknown Rule', description: 'Test issue' }
+                ]
+            }
+        ];
+
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
+
+        // The finding should be tagged with the rule filename
+        assert.strictEqual(result.findings[0].rule, 'naming.md');
+    });
+
+    test('preserves existing rule tags on findings', () => {
+        const ruleResults: SingleRuleReviewResult[] = [
+            {
+                rule: { filename: 'naming.md', path: '/rules/naming.md', content: '' },
+                processId: 'p1',
+                success: true,
+                findings: [
+                    { id: 'f1', severity: 'error', rule: 'custom-rule-name', description: 'Test issue' }
+                ]
+            }
+        ];
+
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
+
+        // Should preserve the original rule name
+        assert.strictEqual(result.findings[0].rule, 'custom-rule-name');
+    });
+
+    test('determines worst-case assessment from all rules', () => {
+        const ruleResults: SingleRuleReviewResult[] = [
+            {
+                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                processId: 'p1',
+                success: true,
+                findings: [],
+                assessment: 'pass'
+            },
+            {
+                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                processId: 'p2',
+                success: true,
+                findings: [],
+                assessment: 'needs-attention'
+            },
+            {
+                rule: { filename: 'rule3.md', path: '/rules/rule3.md', content: '' },
+                processId: 'p3',
+                success: true,
+                findings: [],
+                assessment: 'pass'
+            }
+        ];
+
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 3000);
+
+        // Should be needs-attention (worst case among the rules)
+        assert.strictEqual(result.summary.overallAssessment, 'needs-attention');
+    });
+
+    test('fail assessment takes precedence', () => {
+        const ruleResults: SingleRuleReviewResult[] = [
+            {
+                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                processId: 'p1',
+                success: true,
+                findings: [],
+                assessment: 'needs-attention'
+            },
+            {
+                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                processId: 'p2',
+                success: true,
+                findings: [{ id: 'f1', severity: 'error', rule: 'rule2.md', description: 'Critical' }],
+                assessment: 'fail'
+            }
+        ];
+
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 2000);
+
+        assert.strictEqual(result.summary.overallAssessment, 'fail');
+    });
+
+    test('updates rulesUsed and rulePaths in metadata', () => {
+        const ruleResults: SingleRuleReviewResult[] = [
+            {
+                rule: { filename: 'a.md', path: '/rules/a.md', content: '' },
+                processId: 'p1',
+                success: true,
+                findings: []
+            },
+            {
+                rule: { filename: 'b.md', path: '/rules/b.md', content: '' },
+                processId: 'p2',
+                success: true,
+                findings: []
+            }
+        ];
+
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
+
+        assert.deepStrictEqual(result.metadata.rulesUsed, ['a.md', 'b.md']);
+        assert.deepStrictEqual(result.metadata.rulePaths, ['/rules/a.md', '/rules/b.md']);
     });
 });
 
