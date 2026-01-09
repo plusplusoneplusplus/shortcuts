@@ -537,6 +537,19 @@ suite('Content Extraction Tests', () => {
             assert.strictEqual(result.lines.length, 3);
         });
 
+        test('should handle empty lines rendered as <br> placeholders', () => {
+            const br = createElementNode('br', []);
+            const lineContent = createElementNode('div', [br], ['line-content'], { 'data-line': '1' });
+            const lineNumber = createElementNode('div', [], ['line-number']);
+            const lineRow = createElementNode('div', [lineNumber, lineContent], ['line-row']);
+            const editor = createElementNode('div', [lineRow], ['editor-wrapper']);
+
+            const result = extractPlainTextContent(editor);
+            assert.strictEqual(result.content, '');
+            assert.strictEqual(result.lines.length, 1);
+            assert.strictEqual(result.lines[0], '');
+        });
+
         test('should handle empty lines with nbsp', () => {
             const textNode = createTextNode('\u00a0');
             const lineContent = createElementNode('div', [textNode], ['line-content'], { 'data-line': '1' });
@@ -545,6 +558,36 @@ suite('Content Extraction Tests', () => {
 
             const result = extractPlainTextContent(editor);
             assert.strictEqual(result.content, '');
+        });
+
+        test('should strip leading NBSP artifacts from extracted lines', () => {
+            const textNode = createTextNode('\u00a0Hello');
+            const lineContent = createElementNode('div', [textNode], ['line-content'], { 'data-line': '1' });
+            const lineRow = createElementNode('div', [lineContent], ['line-row']);
+            const editor = createElementNode('div', [lineRow], ['editor-wrapper']);
+
+            const result = extractPlainTextContent(editor);
+            assert.strictEqual(result.content, 'Hello');
+        });
+
+        test('should strip trailing NBSP artifacts from extracted lines', () => {
+            const textNode = createTextNode('Hello\u00a0');
+            const lineContent = createElementNode('div', [textNode], ['line-content'], { 'data-line': '1' });
+            const lineRow = createElementNode('div', [lineContent], ['line-row']);
+            const editor = createElementNode('div', [lineRow], ['editor-wrapper']);
+
+            const result = extractPlainTextContent(editor);
+            assert.strictEqual(result.content, 'Hello');
+        });
+
+        test('should preserve interior NBSP characters', () => {
+            const textNode = createTextNode('Hello\u00a0World');
+            const lineContent = createElementNode('div', [textNode], ['line-content'], { 'data-line': '1' });
+            const lineRow = createElementNode('div', [lineContent], ['line-row']);
+            const editor = createElementNode('div', [lineRow], ['editor-wrapper']);
+
+            const result = extractPlainTextContent(editor);
+            assert.strictEqual(result.content, 'Hello\u00a0World');
         });
 
         test('should skip comment bubbles', () => {

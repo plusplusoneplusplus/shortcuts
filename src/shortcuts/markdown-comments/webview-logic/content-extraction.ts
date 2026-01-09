@@ -23,6 +23,25 @@ export interface ContentExtractionResult {
 }
 
 /**
+ * Normalize an extracted line by removing placeholder NBSP artifacts.
+ *
+ * The editor historically used NBSP (`&nbsp;` / `\u00a0`) as a visual placeholder
+ * for empty lines. Depending on caret placement, those NBSP characters can end up
+ * being persisted at the start/end of lines. We treat NBSP at line boundaries as
+ * non-semantic editor artifacts and strip them.
+ *
+ * NOTE: We intentionally do NOT remove interior NBSP characters, as they could be
+ * user-authored content.
+ */
+export function normalizeExtractedLine(line: string): string {
+    if (!line) return line;
+    if (!line.includes('\u00a0')) return line;
+
+    // Strip NBSP at boundaries only (placeholder artifacts).
+    return line.replace(/^\u00a0+/, '').replace(/\u00a0+$/, '');
+}
+
+/**
  * Context for processing content extraction
  */
 export interface ExtractionContext {
@@ -328,13 +347,8 @@ export function extractPlainTextContent(
 
     processNode(editorWrapper, context, true);
 
-    // Post-process: handle nbsp placeholders for empty lines
-    const processedLines = context.lines.map(line => {
-        if (line === '\u00a0') {
-            return '';
-        }
-        return line;
-    });
+    // Post-process: strip editor placeholder artifacts (e.g. NBSP for empty lines)
+    const processedLines = context.lines.map(normalizeExtractedLine);
 
     return {
         content: processedLines.join('\n'),

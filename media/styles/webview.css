@@ -10,28 +10,41 @@
     --bg-color: var(--vscode-editor-background);
     --text-color: var(--vscode-editor-foreground);
     --border-color: var(--vscode-panel-border);
-    
+
     /* Comment highlight colors by type */
-    --highlight-open: rgba(255, 235, 59, 0.3);           /* Yellow for user comments */
-    --highlight-resolved: rgba(76, 175, 80, 0.2);        /* Green for resolved */
-    --highlight-hover: rgba(255, 235, 59, 0.5);          /* Yellow hover for user comments */
-    --highlight-ai-suggestion: rgba(33, 150, 243, 0.3);  /* Blue for AI suggestions */
+    --highlight-open: rgba(255, 235, 59, 0.3);
+    /* Yellow for user comments */
+    --highlight-resolved: rgba(76, 175, 80, 0.2);
+    /* Green for resolved */
+    --highlight-hover: rgba(255, 235, 59, 0.5);
+    /* Yellow hover for user comments */
+    --highlight-ai-suggestion: rgba(33, 150, 243, 0.3);
+    /* Blue for AI suggestions */
     --highlight-ai-suggestion-hover: rgba(33, 150, 243, 0.5);
-    --highlight-ai-clarification: rgba(156, 39, 176, 0.3); /* Purple for AI clarifications */
+    --highlight-ai-clarification: rgba(156, 39, 176, 0.3);
+    /* Purple for AI clarifications */
     --highlight-ai-clarification-hover: rgba(156, 39, 176, 0.5);
-    --highlight-ai-critique: rgba(255, 152, 0, 0.3);     /* Orange for AI critiques */
+    --highlight-ai-critique: rgba(255, 152, 0, 0.3);
+    /* Orange for AI critiques */
     --highlight-ai-critique-hover: rgba(255, 152, 0, 0.5);
-    --highlight-ai-question: rgba(0, 188, 212, 0.3);     /* Cyan for AI questions */
+    --highlight-ai-question: rgba(0, 188, 212, 0.3);
+    /* Cyan for AI questions */
     --highlight-ai-question-hover: rgba(0, 188, 212, 0.5);
-    
+
     /* Comment border colors by type */
-    --comment-border-user: #f9a825;       /* Yellow/amber */
-    --comment-border-ai-suggestion: #2196f3;   /* Blue */
-    --comment-border-ai-clarification: #9c27b0; /* Purple */
-    --comment-border-ai-critique: #ff9800;      /* Orange */
-    --comment-border-ai-question: #00bcd4;      /* Cyan */
-    --comment-border-resolved: #4caf50;         /* Green */
-    
+    --comment-border-user: #f9a825;
+    /* Yellow/amber */
+    --comment-border-ai-suggestion: #2196f3;
+    /* Blue */
+    --comment-border-ai-clarification: #9c27b0;
+    /* Purple */
+    --comment-border-ai-critique: #ff9800;
+    /* Orange */
+    --comment-border-ai-question: #00bcd4;
+    /* Cyan */
+    --comment-border-resolved: #4caf50;
+    /* Green */
+
     --comment-bg: var(--vscode-editorWidget-background);
     --comment-border: var(--vscode-editorWidget-border);
     --button-bg: var(--vscode-button-background);
@@ -42,7 +55,7 @@
     --input-border: var(--vscode-input-border);
     --line-number-color: var(--vscode-editorLineNumber-foreground);
     --gutter-icon-color: #FFC107;
-    
+
     /* Markdown syntax highlighting colors */
     --md-heading-color: var(--vscode-textPreformat-foreground, #569cd6);
     --md-bold-weight: 700;
@@ -553,8 +566,8 @@ body.source-mode .toolbar-review-only {
     margin-right: 0;
 }
 
-.context-menu-parent:hover > .context-submenu,
-.context-menu-parent.submenu-open > .context-submenu {
+.context-menu-parent:hover>.context-submenu,
+.context-menu-parent.submenu-open>.context-submenu {
     display: block;
 }
 
@@ -684,4 +697,3 @@ body.source-mode .toolbar-review-only {
     font-size: 11px;
     margin-left: 6px;
 }
-

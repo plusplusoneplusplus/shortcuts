@@ -305,8 +305,10 @@ function renderSourceMode(): void {
 
     lines.forEach((line, index) => {
         const lineNum = index + 1;
-        // Escape HTML entities for safe display
-        const escapedLine = escapeHtml(line) || '&nbsp;';
+        // Escape HTML entities for safe display.
+        // For empty lines, use <br> instead of &nbsp; to avoid persisting a
+        // leading "space" artifact when typing on a newly created line.
+        const escapedLine = line.length === 0 ? '<br>' : escapeHtml(line);
         
         html += '<div class="line-row">' +
             '<div class="line-number" contenteditable="false">' + lineNum + '</div>' +
@@ -551,7 +553,7 @@ export function render(isExternalChange: boolean = false): void {
                 // Render first empty line normally
                 html += '<div class="line-row">' +
                     '<div class="line-number" contenteditable="false">' + lineNum + '</div>' +
-                    '<div class="line-content" data-line="' + lineNum + '">&nbsp;</div>' +
+                    '<div class="line-content" data-line="' + lineNum + '"><br></div>' +
                     '</div>';
 
                 // Render collapsed empty lines indicator
@@ -570,7 +572,7 @@ export function render(isExternalChange: boolean = false): void {
                 // Render last empty line normally
                 html += '<div class="line-row">' +
                     '<div class="line-number" contenteditable="false">' + endLineNum + '</div>' +
-                    '<div class="line-content" data-line="' + endLineNum + '">&nbsp;</div>' +
+                    '<div class="line-content" data-line="' + endLineNum + '"><br></div>' +
                     '</div>';
 
                 skipUntilLine = endLineNum;
@@ -583,7 +585,9 @@ export function render(isExternalChange: boolean = false): void {
         inCodeBlock = result.inCodeBlock;
         currentCodeBlockLang = result.codeBlockLang;
 
-        let lineHtml = result.html || '&nbsp;';
+        // For empty lines, use <br> instead of &nbsp; to avoid persisting a
+        // leading "space" artifact when typing on a newly created line.
+        let lineHtml = result.html || '<br>';
 
         // Apply comment highlights to specific text ranges
         // Sort comments by startColumn descending to apply from right to left

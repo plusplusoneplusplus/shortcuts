@@ -6,7 +6,8 @@
 
 import {
     DEFAULT_SKIP_CLASSES,
-    ExtractionContext
+    ExtractionContext,
+    normalizeExtractedLine
 } from '../webview-logic/content-extraction';
 import {
     attachAISubmenuHandlers,
@@ -1660,13 +1661,8 @@ function getPlainTextContent(): string {
 
     processNode(editorWrapper, true);
 
-    // Post-process: handle nbsp placeholders for empty lines
-    return context.lines.map(line => {
-        if (line === '\u00a0') {
-            return '';
-        }
-        return line;
-    }).join('\n');
+    // Post-process: strip editor placeholder artifacts (e.g. NBSP for empty lines)
+    return context.lines.map(normalizeExtractedLine).join('\n');
 }
 
 /**

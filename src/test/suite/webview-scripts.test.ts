@@ -1043,13 +1043,14 @@ suite('Webview Scripts Tests', () => {
 
             processNode(editorWrapper, true, false);
 
-            // Clean up: handle nbsp placeholders for empty lines
-            return lines.map(line => {
-                if (line === '\u00a0') {
-                    return '';
-                }
-                return line;
-            }).join('\n');
+            // Clean up: strip editor placeholder artifacts (NBSP at boundaries)
+            function normalizeExtractedLine(line: string): string {
+                if (!line) return line;
+                if (!line.includes('\u00a0')) return line;
+                return line.replace(/^\u00a0+/, '').replace(/\u00a0+$/, '');
+            }
+
+            return lines.map(normalizeExtractedLine).join('\n');
         }
 
         /**
@@ -1113,6 +1114,53 @@ suite('Webview Scripts Tests', () => {
 
                 const result = getPlainTextContent(wrapper);
                 assert.strictEqual(result, 'Text\n');
+            });
+
+            test('should handle empty lines rendered as <br> placeholders', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Text')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row']),
+                    createElementNode('div', [
+                        createElementNode('div', [createElementNode('br', [])], ['line-content'], { 'data-line': '2' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.strictEqual(result, 'Text\n');
+            });
+
+            test('should strip leading NBSP artifacts from extracted lines', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('\u00a0Hello')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.strictEqual(result, 'Hello');
+            });
+
+            test('should strip trailing NBSP artifacts from extracted lines', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Hello\u00a0')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.strictEqual(result, 'Hello');
+            });
+
+            test('should preserve interior NBSP characters', () => {
+                const wrapper = createElementNode('div', [
+                    createElementNode('div', [
+                        createElementNode('div', [createTextNode('Hello\u00a0World')], ['line-content'], { 'data-line': '1' })
+                    ], ['line-row'])
+                ], ['editor-wrapper']);
+
+                const result = getPlainTextContent(wrapper);
+                assert.strictEqual(result, 'Hello\u00a0World');
             });
 
             test('should skip line-number elements', () => {
