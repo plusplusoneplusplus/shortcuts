@@ -296,6 +296,58 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Register command to run any VSCode command with custom parameters
+        const runCustomCommand = vscode.commands.registerCommand(
+            'debugPanel.runCustomCommand',
+            async () => {
+                // Step 1: Get command ID
+                const commandId = await vscode.window.showInputBox({
+                    prompt: 'Enter VSCode command ID',
+                    placeHolder: 'e.g., workbench.action.openSettings',
+                    ignoreFocusOut: true
+                });
+                if (!commandId) return;
+
+                // Step 2: Collect parameters
+                const args: Record<string, any> = {};
+                while (true) {
+                    const key = await vscode.window.showInputBox({
+                        prompt: 'Enter parameter key (leave empty to finish)',
+                        placeHolder: 'Parameter name',
+                        ignoreFocusOut: true
+                    });
+                    if (!key) break;
+
+                    const value = await vscode.window.showInputBox({
+                        prompt: `Enter value for "${key}"`,
+                        placeHolder: 'Parameter value',
+                        ignoreFocusOut: true
+                    });
+                    if (value === undefined) break; // User cancelled
+
+                    // Try to parse as JSON, fall back to string
+                    try {
+                        args[key] = JSON.parse(value);
+                    } catch {
+                        args[key] = value;
+                    }
+                }
+
+                // Step 3: Execute command
+                try {
+                    if (Object.keys(args).length > 0) {
+                        await vscode.commands.executeCommand(commandId, args);
+                    } else {
+                        await vscode.commands.executeCommand(commandId);
+                    }
+                    vscode.window.showInformationMessage(`Executed: ${commandId}`);
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Unknown error';
+                    vscode.window.showErrorMessage(`Failed to execute ${commandId}: ${message}`);
+                }
+            }
+        );
+
         // Initialize Git Diff Comments feature (must be before git tree provider)
         const diffCommentsManager = new DiffCommentsManager(workspaceRoot);
         await diffCommentsManager.initialize();
@@ -1204,7 +1256,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitUnstageAllCommand) disposables.push(gitUnstageAllCommand);
 
         // Add Debug Panel disposables
-        disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand);
+        disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand, runCustomCommand);
 
         // Register code review commands (requires git log service)
         if (gitInitialized) {

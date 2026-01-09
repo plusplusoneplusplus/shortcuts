@@ -35,9 +35,17 @@ suite('Debug Panel Tests', () => {
             assert.strictEqual(openChat?.commandId, 'workbench.panel.chat.view.copilot.focus');
         });
 
-        test('should have exactly 3 commands', () => {
+        test('should have exactly 5 commands', () => {
             const commands = getDefaultDebugCommands();
-            assert.strictEqual(commands.length, 3);
+            assert.strictEqual(commands.length, 5);
+        });
+
+        test('should include run-custom-command as first command', () => {
+            const commands = getDefaultDebugCommands();
+            const runCustomCommand = commands.find(c => c.id === 'run-custom-command');
+            assert.ok(runCustomCommand);
+            assert.strictEqual(runCustomCommand?.commandId, 'debugPanel.runCustomCommand');
+            assert.strictEqual(commands[0].id, 'run-custom-command');
         });
 
         test('should include new-chat-conversation command', () => {

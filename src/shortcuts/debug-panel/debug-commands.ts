@@ -20,6 +20,14 @@ export interface DebugCommand {
 export function getDefaultDebugCommands(): DebugCommand[] {
     return [
         {
+            id: 'run-custom-command',
+            label: 'Run Custom Command',
+            description: 'Execute any VSCode command',
+            tooltip: 'Run any VSCode command with custom parameters\n\nEnter command ID and optional key-value parameters',
+            icon: 'terminal',
+            commandId: 'debugPanel.runCustomCommand'
+        },
+        {
             id: 'new-chat-with-prompt',
             label: 'New Chat with Prompt',
             description: 'Ask something...',
