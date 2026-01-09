@@ -258,6 +258,44 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Register command to start a new background agent session with user prompt
+        const newBackgroundAgentCommand = vscode.commands.registerCommand(
+            'debugPanel.newBackgroundAgent',
+            async () => {
+                const userPrompt = await vscode.window.showInputBox({
+                    prompt: 'Enter your prompt for the background agent',
+                    placeHolder: 'Describe what you want the agent to do...',
+                    ignoreFocusOut: true
+                });
+
+                if (userPrompt) {
+                    try {
+                        // Try to open background agent with query parameter
+                        await vscode.commands.executeCommand(
+                            'workbench.action.chat.openNewSessionEditor.copilotcli',
+                            { query: userPrompt }
+                        );
+                    } catch {
+                        try {
+                            // Fallback: try passing prompt as string directly
+                            await vscode.commands.executeCommand(
+                                'workbench.action.chat.openNewSessionEditor.copilotcli',
+                                userPrompt
+                            );
+                        } catch {
+                            // Last fallback: open without args and show message
+                            await vscode.commands.executeCommand(
+                                'workbench.action.chat.openNewSessionEditor.copilotcli'
+                            );
+                            vscode.window.showInformationMessage(
+                                'Background agent opened. Your prompt: ' + userPrompt
+                            );
+                        }
+                    }
+                }
+            }
+        );
+
         // Initialize Git Diff Comments feature (must be before git tree provider)
         const diffCommentsManager = new DiffCommentsManager(workspaceRoot);
         await diffCommentsManager.initialize();
@@ -1166,7 +1204,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitUnstageAllCommand) disposables.push(gitUnstageAllCommand);
 
         // Add Debug Panel disposables
-        disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand);
+        disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand);
 
         // Register code review commands (requires git log service)
         if (gitInitialized) {

@@ -42,6 +42,14 @@ export function getDefaultDebugCommands(): DebugCommand[] {
             tooltip: 'Start a new chat conversation with a custom prompt\n\nCommand: workbench.action.chat.newChat',
             icon: 'comment-unresolved',
             commandId: 'debugPanel.newChatConversation'
+        },
+        {
+            id: 'new-background-agent',
+            label: 'New Background Agent',
+            description: 'Start background agent',
+            tooltip: 'Open a new Copilot CLI background agent session with a custom prompt\n\nCommand: workbench.action.chat.openNewSessionEditor.copilotcli',
+            icon: 'hubot',
+            commandId: 'debugPanel.newBackgroundAgent'
         }
     ];
 }
