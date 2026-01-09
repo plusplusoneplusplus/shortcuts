@@ -347,7 +347,7 @@
         },
         "workspaceShortcuts.discovery.aiTimeout": {
           "type": "number",
-          "default": 120,
+          "default": 300,
           "minimum": 30,
           "maximum": 600,
           "description": "Maximum time in seconds to wait for AI discovery to complete."

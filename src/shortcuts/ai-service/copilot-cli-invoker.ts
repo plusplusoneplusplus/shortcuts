@@ -12,7 +12,7 @@ import { getExtensionLogger } from './ai-service-logger';
 import { AIInvocationResult, AIModel, AIToolType, VALID_MODELS } from './types';
 
 /** Timeout for copilot CLI execution in milliseconds */
-const COPILOT_TIMEOUT_MS = 1200000; // 20 minutes
+const COPILOT_TIMEOUT_MS = 300000; // 5 minutes
 
 /** Cache for program existence checks to avoid repeated lookups */
 const programExistsCache = new Map<string, { exists: boolean; path?: string; error?: string }>();
@@ -472,7 +472,7 @@ export async function invokeCopilotCLI(
                     if (error) {
                         // Check if it's a timeout
                         if (error.killed) {
-                            const errorMsg = 'Copilot CLI timed out after 20 minutes. The process was force killed.';
+                            const errorMsg = 'Copilot CLI timed out after 5 minutes. The process was force killed.';
                             logger.logAIProcessLaunchFailure('Process timed out', error, {
                                 processId,
                                 durationMs,
