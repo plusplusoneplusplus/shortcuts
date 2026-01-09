@@ -17,9 +17,16 @@ export type WebviewMessageType =
     | 'deselectAll'
     | 'addToGroup'
     | 'filterByScore'
+    | 'filterByExtension'
     | 'refresh'
     | 'cancel'
     | 'showWarning';
+
+/**
+ * Extension filter state per result type
+ * Key is the DiscoverySourceType, value is the selected extension (empty string means "All")
+ */
+export type ExtensionFilters = Record<string, string>;
 
 /**
  * Message from webview to extension
@@ -38,7 +45,8 @@ export function getWebviewContent(
     process: DiscoveryProcess | undefined,
     groups: string[],
     minScore: number,
-    selectedTargetGroup: string = ''
+    selectedTargetGroup: string = '',
+    extensionFilters: ExtensionFilters = {}
 ): string {
     const nonce = getNonce();
     
@@ -62,7 +70,7 @@ export function getWebviewContent(
     <div class="container">
         ${getHeaderContent(process)}
         ${getFilterContent(minScore, groups, selectedTargetGroup)}
-        ${getResultsContent(process, minScore)}
+        ${getResultsContent(process, minScore, extensionFilters)}
         ${getActionsContent(process, groups)}
     </div>
     <script nonce="${nonce}">
@@ -261,6 +269,37 @@ function getStyles(): string {
         
         .result-group-icon {
             font-size: 14px;
+        }
+        
+        .result-group-label {
+            flex: 1;
+        }
+        
+        .extension-filter {
+            padding: 2px 6px;
+            font-size: 11px;
+            background-color: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 3px;
+            cursor: pointer;
+            min-width: 60px;
+        }
+        
+        .extension-filter:hover {
+            border-color: var(--vscode-focusBorder);
+        }
+        
+        .extension-filter:focus {
+            outline: 1px solid var(--vscode-focusBorder);
+            outline-offset: -1px;
+        }
+        
+        .result-item-empty {
+            padding: 12px 8px;
+            color: var(--vscode-descriptionForeground);
+            font-style: italic;
+            text-align: center;
         }
         
         .result-list {
@@ -475,7 +514,7 @@ function getFilterContent(minScore: number, groups: string[], selectedTargetGrou
 /**
  * Get results content
  */
-function getResultsContent(process: DiscoveryProcess | undefined, minScore: number): string {
+function getResultsContent(process: DiscoveryProcess | undefined, minScore: number, extensionFilters: ExtensionFilters = {}): string {
     if (!process) {
         return `
             <div class="empty-state">
@@ -504,8 +543,17 @@ function getResultsContent(process: DiscoveryProcess | undefined, minScore: numb
         `;
     }
     
-    // Filter and group results
-    const filteredResults = process.results.filter(r => r.relevanceScore >= minScore);
+    // Filter by min score first
+    const scoreFilteredResults = process.results.filter(r => r.relevanceScore >= minScore);
+    
+    // Group results by type (before extension filtering to collect all extensions)
+    const groupedByType = groupResultsByType(scoreFilteredResults);
+    
+    // Collect unique extensions per type and apply extension filters
+    const extensionsByType = collectExtensionsByType(scoreFilteredResults);
+    
+    // Apply extension filters to get final filtered results
+    const filteredResults = applyExtensionFilters(scoreFilteredResults, extensionFilters);
     const grouped = groupResultsByType(filteredResults);
     
     const selectedCount = filteredResults.filter(r => r.selected).length;
@@ -522,9 +570,12 @@ function getResultsContent(process: DiscoveryProcess | undefined, minScore: numb
             </div>
     `;
     
-    // Render each group
-    for (const [type, results] of grouped) {
-        html += renderResultGroup(type, results);
+    // Render each group with extension filter (use groupedByType to show all types even if filtered empty)
+    for (const [type, allResults] of groupedByType) {
+        const filteredTypeResults = grouped.get(type) || [];
+        const extensions = extensionsByType.get(type) || [];
+        const selectedExtension = extensionFilters[type] || '';
+        html += renderResultGroup(type, filteredTypeResults, extensions, selectedExtension, allResults.length);
     }
     
     html += '</div>';
@@ -534,21 +585,53 @@ function getResultsContent(process: DiscoveryProcess | undefined, minScore: numb
 /**
  * Render a result group
  */
-function renderResultGroup(type: DiscoverySourceType, results: DiscoveryResult[]): string {
+function renderResultGroup(
+    type: DiscoverySourceType,
+    results: DiscoveryResult[],
+    extensions: string[] = [],
+    selectedExtension: string = '',
+    totalCount?: number
+): string {
     const icon = getTypeIcon(type);
     const label = getTypeLabel(type);
     
+    // Show total count if filtered, otherwise just show results.length
+    const countDisplay = totalCount !== undefined && totalCount !== results.length
+        ? `${results.length}/${totalCount}`
+        : `${results.length}`;
+    
+    // Generate extension filter dropdown for file and doc types
+    let extensionFilter = '';
+    if ((type === 'file' || type === 'doc') && extensions.length > 0) {
+        const options = extensions.map(ext => {
+            const isSelected = ext === selectedExtension ? ' selected' : '';
+            return `<option value="${escapeHtml(ext)}"${isSelected}>${escapeHtml(ext)}</option>`;
+        }).join('');
+        
+        extensionFilter = `
+            <select class="extension-filter" data-type="${escapeHtml(type)}">
+                <option value=""${selectedExtension === '' ? ' selected' : ''}>All</option>
+                ${options}
+            </select>
+        `;
+    }
+    
     let html = `
-        <div class="result-group">
+        <div class="result-group" data-group-type="${escapeHtml(type)}">
             <div class="result-group-header">
                 <span class="result-group-icon">${icon}</span>
-                <span>${label} (${results.length})</span>
+                <span class="result-group-label">${label} (${countDisplay})</span>
+                ${extensionFilter}
             </div>
             <ul class="result-list">
     `;
     
-    for (const result of results) {
-        html += renderResultItem(result);
+    if (results.length === 0) {
+        html += `<li class="result-item-empty">No items match the current filter</li>`;
+    } else {
+        for (const result of results) {
+            html += renderResultItem(result);
+        }
     }
     
     html += '</ul></div>';
@@ -681,6 +764,21 @@ function getScript(): string {
                     vscode.postMessage({ type: 'filterByScore', payload: { minScore: parseInt(value, 10) } });
                 }
             });
+            
+            // Handle extension filter changes
+            document.addEventListener('change', function(e) {
+                const target = e.target;
+                if (target.classList.contains('extension-filter')) {
+                    const type = target.getAttribute('data-type');
+                    const extension = target.value;
+                    if (type) {
+                        vscode.postMessage({ 
+                            type: 'filterByExtension', 
+                            payload: { sourceType: type, extension: extension } 
+                        });
+                    }
+                }
+            });
         })();
     `;
 }
@@ -698,6 +796,87 @@ function groupResultsByType(results: DiscoveryResult[]): Map<DiscoverySourceType
     }
     
     return grouped;
+}
+
+/**
+ * Extract file extension from a path (cross-platform)
+ * Handles both Windows (backslash) and Unix (forward slash) paths
+ */
+export function getFileExtension(filePath: string): string {
+    if (!filePath) {
+        return '';
+    }
+    
+    // Normalize path separators for cross-platform support
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    
+    // Get the filename (last segment after the last slash)
+    const lastSlashIndex = normalizedPath.lastIndexOf('/');
+    const filename = lastSlashIndex >= 0 ? normalizedPath.slice(lastSlashIndex + 1) : normalizedPath;
+    
+    // Handle dotfiles (e.g., .gitignore) - return the whole name as extension
+    if (filename.startsWith('.') && filename.indexOf('.', 1) === -1) {
+        return filename;
+    }
+    
+    // Find the last dot for extension
+    const lastDotIndex = filename.lastIndexOf('.');
+    if (lastDotIndex <= 0) {
+        return ''; // No extension or starts with dot only
+    }
+    
+    return filename.slice(lastDotIndex).toLowerCase();
+}
+
+/**
+ * Collect unique file extensions per result type
+ * Only applicable for 'file' and 'doc' types which have paths
+ */
+export function collectExtensionsByType(results: DiscoveryResult[]): Map<DiscoverySourceType, string[]> {
+    const extensionsByType = new Map<DiscoverySourceType, Set<string>>();
+    
+    for (const result of results) {
+        // Only collect extensions for file and doc types
+        if ((result.type === 'file' || result.type === 'doc') && result.path) {
+            const ext = getFileExtension(result.path);
+            if (ext) {
+                const extSet = extensionsByType.get(result.type) || new Set<string>();
+                extSet.add(ext);
+                extensionsByType.set(result.type, extSet);
+            }
+        }
+    }
+    
+    // Convert sets to sorted arrays
+    const result = new Map<DiscoverySourceType, string[]>();
+    for (const [type, extSet] of extensionsByType) {
+        result.set(type, Array.from(extSet).sort());
+    }
+    
+    return result;
+}
+
+/**
+ * Apply extension filters to results
+ */
+export function applyExtensionFilters(results: DiscoveryResult[], extensionFilters: ExtensionFilters): DiscoveryResult[] {
+    return results.filter(result => {
+        const filter = extensionFilters[result.type];
+        
+        // No filter or "All" selected - include the result
+        if (!filter) {
+            return true;
+        }
+        
+        // Only apply extension filter to file and doc types
+        if ((result.type === 'file' || result.type === 'doc') && result.path) {
+            const ext = getFileExtension(result.path);
+            return ext === filter;
+        }
+        
+        // Other types (commit, folder) are not filtered by extension
+        return true;
+    });
 }
 
 /**

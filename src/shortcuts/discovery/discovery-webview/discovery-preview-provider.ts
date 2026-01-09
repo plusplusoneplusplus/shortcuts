@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 import { DiscoveryProcess, DiscoveryResult, DiscoverySourceType } from '../types';
 import { LogicalGroupItem, LogicalGroup, ShortcutsConfig } from '../../types';
 import { DiscoveryEngine } from '../discovery-engine';
-import { getWebviewContent, WebviewMessage } from './webview-content';
+import { getWebviewContent, WebviewMessage, ExtensionFilters } from './webview-content';
 import { ConfigurationManager } from '../../configuration-manager';
 import { getExtensionLogger, LogCategory } from '../../shared/extension-logger';
 
@@ -28,6 +28,7 @@ export class DiscoveryPreviewPanel {
     private _currentProcess: DiscoveryProcess | undefined;
     private _minScore: number = 30;
     private _selectedTargetGroup: string = '';
+    private _extensionFilters: ExtensionFilters = {};
     private _disposables: vscode.Disposable[] = [];
     
     /**
@@ -137,6 +138,8 @@ export class DiscoveryPreviewPanel {
      */
     public setProcess(process: DiscoveryProcess): void {
         this._currentProcess = process;
+        // Reset extension filters when a new process is set
+        this._extensionFilters = {};
         // Set the default target group from the process if available
         if (process.targetGroupPath && !this._selectedTargetGroup) {
             this._selectedTargetGroup = process.targetGroupPath;
@@ -168,6 +171,10 @@ export class DiscoveryPreviewPanel {
             case 'filterByScore':
                 this._minScore = message.payload.minScore;
                 this._update();
+                break;
+            
+            case 'filterByExtension':
+                this._setExtensionFilter(message.payload.sourceType, message.payload.extension);
                 break;
             
             case 'refresh':
@@ -221,6 +228,19 @@ export class DiscoveryPreviewPanel {
         
         for (const result of this._currentProcess.results) {
             result.selected = false;
+        }
+        this._update();
+    }
+    
+    /**
+     * Set extension filter for a source type
+     */
+    private _setExtensionFilter(sourceType: string, extension: string): void {
+        if (extension) {
+            this._extensionFilters[sourceType] = extension;
+        } else {
+            // Remove filter when "All" is selected
+            delete this._extensionFilters[sourceType];
         }
         this._update();
     }
@@ -462,7 +482,8 @@ export class DiscoveryPreviewPanel {
             processToShow,
             groups,
             this._minScore,
-            this._selectedTargetGroup
+            this._selectedTargetGroup,
+            this._extensionFilters
         );
     }
     

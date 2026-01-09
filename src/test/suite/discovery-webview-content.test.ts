@@ -7,6 +7,12 @@
 
 import * as assert from 'assert';
 import { DiscoveryResult, DiscoveryProcess, DiscoverySourceType } from '../../shortcuts/discovery/types';
+import { 
+    getFileExtension, 
+    collectExtensionsByType, 
+    applyExtensionFilters,
+    ExtensionFilters 
+} from '../../shortcuts/discovery/discovery-webview/webview-content';
 
 // Import the functions we want to test
 // Note: We need to extract testable functions from webview-content.ts
@@ -409,6 +415,265 @@ suite('Discovery Webview Content Tests', () => {
             
             assert.ok(option.includes('selected'), 'Should be selected');
             assert.ok(option.includes('&quot;'), 'Should escape quotes in value');
+        });
+    });
+    
+    suite('Extension Filter - getFileExtension', () => {
+        
+        test('should extract extension from Unix-style paths', () => {
+            assert.strictEqual(getFileExtension('src/components/Button.tsx'), '.tsx');
+            assert.strictEqual(getFileExtension('/Users/test/file.ts'), '.ts');
+            assert.strictEqual(getFileExtension('path/to/document.md'), '.md');
+        });
+        
+        test('should extract extension from Windows-style paths', () => {
+            assert.strictEqual(getFileExtension('C:\\Users\\test\\file.ts'), '.ts');
+            assert.strictEqual(getFileExtension('D:\\Projects\\src\\component.tsx'), '.tsx');
+            assert.strictEqual(getFileExtension('src\\components\\Button.tsx'), '.tsx');
+        });
+        
+        test('should handle mixed path separators (cross-platform)', () => {
+            assert.strictEqual(getFileExtension('src/components\\file.ts'), '.ts');
+            assert.strictEqual(getFileExtension('C:\\Users/test\\file.tsx'), '.tsx');
+        });
+        
+        test('should return lowercase extension', () => {
+            assert.strictEqual(getFileExtension('file.TS'), '.ts');
+            assert.strictEqual(getFileExtension('README.MD'), '.md');
+            assert.strictEqual(getFileExtension('Test.TSX'), '.tsx');
+        });
+        
+        test('should handle files with multiple dots', () => {
+            assert.strictEqual(getFileExtension('file.test.ts'), '.ts');
+            assert.strictEqual(getFileExtension('component.spec.tsx'), '.tsx');
+            assert.strictEqual(getFileExtension('my.file.name.md'), '.md');
+        });
+        
+        test('should handle dotfiles', () => {
+            assert.strictEqual(getFileExtension('.gitignore'), '.gitignore');
+            assert.strictEqual(getFileExtension('.eslintrc'), '.eslintrc');
+            assert.strictEqual(getFileExtension('path/to/.env'), '.env');
+        });
+        
+        test('should handle dotfiles with extension', () => {
+            assert.strictEqual(getFileExtension('.eslintrc.js'), '.js');
+            assert.strictEqual(getFileExtension('.babel.config.json'), '.json');
+        });
+        
+        test('should return empty string for files without extension', () => {
+            assert.strictEqual(getFileExtension('Makefile'), '');
+            assert.strictEqual(getFileExtension('LICENSE'), '');
+            assert.strictEqual(getFileExtension('path/to/Dockerfile'), '');
+        });
+        
+        test('should return empty string for empty or invalid paths', () => {
+            assert.strictEqual(getFileExtension(''), '');
+        });
+        
+        test('should handle filenames with trailing dots', () => {
+            // These are edge cases - a file ending in dot
+            assert.strictEqual(getFileExtension('file.'), '.');
+        });
+    });
+    
+    suite('Extension Filter - collectExtensionsByType', () => {
+        
+        test('should collect unique extensions for file type', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'file:1', type: 'file', path: 'src/test.ts' }),
+                createMockResult({ id: 'file:2', type: 'file', path: 'src/other.ts' }),
+                createMockResult({ id: 'file:3', type: 'file', path: 'src/component.tsx' }),
+            ];
+            
+            const extensions = collectExtensionsByType(results);
+            
+            assert.ok(extensions.has('file'), 'Should have file type');
+            const fileExts = extensions.get('file')!;
+            assert.strictEqual(fileExts.length, 2, 'Should have 2 unique extensions');
+            assert.ok(fileExts.includes('.ts'), 'Should include .ts');
+            assert.ok(fileExts.includes('.tsx'), 'Should include .tsx');
+        });
+        
+        test('should collect unique extensions for doc type', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'doc:1', type: 'doc', path: 'docs/README.md' }),
+                createMockResult({ id: 'doc:2', type: 'doc', path: 'docs/guide.md' }),
+                createMockResult({ id: 'doc:3', type: 'doc', path: 'docs/api.txt' }),
+            ];
+            
+            const extensions = collectExtensionsByType(results);
+            
+            assert.ok(extensions.has('doc'), 'Should have doc type');
+            const docExts = extensions.get('doc')!;
+            assert.strictEqual(docExts.length, 2, 'Should have 2 unique extensions');
+            assert.ok(docExts.includes('.md'), 'Should include .md');
+            assert.ok(docExts.includes('.txt'), 'Should include .txt');
+        });
+        
+        test('should not collect extensions for commit type', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ 
+                    id: 'commit:1', 
+                    type: 'commit', 
+                    commit: {
+                        hash: 'abc123',
+                        shortHash: 'abc123',
+                        subject: 'Test commit',
+                        authorName: 'Test',
+                        date: new Date().toISOString(),
+                        repositoryRoot: '/test'
+                    }
+                }),
+            ];
+            
+            const extensions = collectExtensionsByType(results);
+            
+            assert.ok(!extensions.has('commit'), 'Should not have commit type');
+        });
+        
+        test('should not collect extensions for folder type', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'folder:1', type: 'folder', path: 'src/components' }),
+            ];
+            
+            const extensions = collectExtensionsByType(results);
+            
+            assert.ok(!extensions.has('folder'), 'Should not have folder type');
+        });
+        
+        test('should return sorted extensions', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'file:1', type: 'file', path: 'src/test.tsx' }),
+                createMockResult({ id: 'file:2', type: 'file', path: 'src/other.js' }),
+                createMockResult({ id: 'file:3', type: 'file', path: 'src/component.ts' }),
+            ];
+            
+            const extensions = collectExtensionsByType(results);
+            const fileExts = extensions.get('file')!;
+            
+            assert.deepStrictEqual(fileExts, ['.js', '.ts', '.tsx'], 'Extensions should be sorted');
+        });
+        
+        test('should handle Windows-style paths', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'file:1', type: 'file', path: 'C:\\Users\\test\\file.ts' }),
+                createMockResult({ id: 'file:2', type: 'file', path: 'D:\\Projects\\component.tsx' }),
+            ];
+            
+            const extensions = collectExtensionsByType(results);
+            const fileExts = extensions.get('file')!;
+            
+            assert.ok(fileExts.includes('.ts'), 'Should include .ts from Windows path');
+            assert.ok(fileExts.includes('.tsx'), 'Should include .tsx from Windows path');
+        });
+    });
+    
+    suite('Extension Filter - applyExtensionFilters', () => {
+        
+        test('should return all results when no filters applied', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'file:1', type: 'file', path: 'src/test.ts' }),
+                createMockResult({ id: 'file:2', type: 'file', path: 'src/component.tsx' }),
+                createMockResult({ id: 'doc:1', type: 'doc', path: 'docs/README.md' }),
+            ];
+            
+            const filters: ExtensionFilters = {};
+            const filtered = applyExtensionFilters(results, filters);
+            
+            assert.strictEqual(filtered.length, 3, 'All results should be returned');
+        });
+        
+        test('should filter file results by extension', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'file:1', type: 'file', path: 'src/test.ts' }),
+                createMockResult({ id: 'file:2', type: 'file', path: 'src/other.ts' }),
+                createMockResult({ id: 'file:3', type: 'file', path: 'src/component.tsx' }),
+            ];
+            
+            const filters: ExtensionFilters = { file: '.ts' };
+            const filtered = applyExtensionFilters(results, filters);
+            
+            assert.strictEqual(filtered.length, 2, 'Should return 2 .ts files');
+            assert.ok(filtered.every(r => r.path?.endsWith('.ts')), 'All should be .ts files');
+        });
+        
+        test('should filter doc results by extension', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'doc:1', type: 'doc', path: 'docs/README.md' }),
+                createMockResult({ id: 'doc:2', type: 'doc', path: 'docs/guide.md' }),
+                createMockResult({ id: 'doc:3', type: 'doc', path: 'docs/api.txt' }),
+            ];
+            
+            const filters: ExtensionFilters = { doc: '.md' };
+            const filtered = applyExtensionFilters(results, filters);
+            
+            assert.strictEqual(filtered.length, 2, 'Should return 2 .md docs');
+            assert.ok(filtered.every(r => r.path?.endsWith('.md')), 'All should be .md files');
+        });
+        
+        test('should not filter commits even if commit filter is set', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ 
+                    id: 'commit:1', 
+                    type: 'commit', 
+                    commit: {
+                        hash: 'abc123',
+                        shortHash: 'abc123',
+                        subject: 'Test commit',
+                        authorName: 'Test',
+                        date: new Date().toISOString(),
+                        repositoryRoot: '/test'
+                    }
+                }),
+            ];
+            
+            const filters: ExtensionFilters = { commit: '.ts' };
+            const filtered = applyExtensionFilters(results, filters);
+            
+            assert.strictEqual(filtered.length, 1, 'Commit should not be filtered');
+        });
+        
+        test('should apply filters independently per type', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'file:1', type: 'file', path: 'src/test.ts' }),
+                createMockResult({ id: 'file:2', type: 'file', path: 'src/component.tsx' }),
+                createMockResult({ id: 'doc:1', type: 'doc', path: 'docs/README.md' }),
+                createMockResult({ id: 'doc:2', type: 'doc', path: 'docs/api.txt' }),
+            ];
+            
+            const filters: ExtensionFilters = { file: '.ts', doc: '.txt' };
+            const filtered = applyExtensionFilters(results, filters);
+            
+            assert.strictEqual(filtered.length, 2, 'Should return 1 .ts file and 1 .txt doc');
+            const fileResults = filtered.filter(r => r.type === 'file');
+            const docResults = filtered.filter(r => r.type === 'doc');
+            assert.strictEqual(fileResults.length, 1, 'Should have 1 file result');
+            assert.strictEqual(docResults.length, 1, 'Should have 1 doc result');
+        });
+        
+        test('should handle Windows-style paths when filtering', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'file:1', type: 'file', path: 'C:\\Users\\test\\file.ts' }),
+                createMockResult({ id: 'file:2', type: 'file', path: 'D:\\Projects\\component.tsx' }),
+            ];
+            
+            const filters: ExtensionFilters = { file: '.ts' };
+            const filtered = applyExtensionFilters(results, filters);
+            
+            assert.strictEqual(filtered.length, 1, 'Should return 1 .ts file');
+            assert.ok(filtered[0].path?.includes('file.ts'), 'Should be the .ts file');
+        });
+        
+        test('should handle empty extension filter as "All"', () => {
+            const results: DiscoveryResult[] = [
+                createMockResult({ id: 'file:1', type: 'file', path: 'src/test.ts' }),
+                createMockResult({ id: 'file:2', type: 'file', path: 'src/component.tsx' }),
+            ];
+            
+            const filters: ExtensionFilters = { file: '' };
+            const filtered = applyExtensionFilters(results, filters);
+            
+            assert.strictEqual(filtered.length, 2, 'All results should be returned when filter is empty');
         });
     });
 });
