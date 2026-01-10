@@ -3,6 +3,10 @@
  * 
  * Types and interfaces for the AI service module.
  * These are generic types used across different AI tool integrations.
+ * 
+ * IMPORTANT: This module should remain domain-agnostic. Feature-specific
+ * metadata types (like code review) should be defined in their own modules
+ * and use the generic metadata extensibility system here.
  */
 
 /**
@@ -41,12 +45,80 @@ export interface AIInvocationResult {
 }
 
 /**
- * Type of AI process
+ * Type of AI process - extensible via string union
+ * Core types: 'clarification' | 'discovery'
+ * Feature modules can register additional types via the generic metadata system
  */
-export type AIProcessType = 'clarification' | 'code-review' | 'discovery' | 'code-review-group';
+export type AIProcessType = 'clarification' | 'code-review' | 'discovery' | 'code-review-group' | string;
 
 /**
- * Code review specific metadata
+ * Generic metadata interface that feature modules can extend.
+ * This allows ai-service to remain decoupled from specific feature implementations.
+ */
+export interface GenericProcessMetadata {
+    /** Type identifier for the metadata (matches AIProcessType) */
+    type: string;
+    /** Feature-specific data stored as key-value pairs */
+    [key: string]: unknown;
+}
+
+/**
+ * Generic group metadata interface for grouped processes.
+ * Feature modules can extend this for specific group tracking needs.
+ */
+export interface GenericGroupMetadata extends GenericProcessMetadata {
+    /** Child process IDs in this group */
+    childProcessIds: string[];
+}
+
+/**
+ * Options for registering a generic typed process
+ */
+export interface TypedProcessOptions {
+    /** The process type identifier */
+    type: AIProcessType;
+    /** ID prefix for generated process IDs (e.g., 'review' -> 'review-1-timestamp') */
+    idPrefix?: string;
+    /** Feature-specific metadata */
+    metadata?: GenericProcessMetadata;
+    /** Parent process ID for grouped processes */
+    parentProcessId?: string;
+}
+
+/**
+ * Options for registering a generic process group
+ */
+export interface ProcessGroupOptions {
+    /** The group type identifier */
+    type: AIProcessType;
+    /** ID prefix for generated group IDs */
+    idPrefix?: string;
+    /** Feature-specific metadata (will have childProcessIds added) */
+    metadata?: Omit<GenericGroupMetadata, 'childProcessIds'>;
+}
+
+/**
+ * Options for completing a process group
+ */
+export interface CompleteGroupOptions {
+    /** Summary result text */
+    result: string;
+    /** Structured result as JSON string */
+    structuredResult: string;
+    /** Feature-specific execution statistics */
+    executionStats?: Record<string, unknown>;
+}
+
+// ============================================================================
+// LEGACY TYPES - Kept for backward compatibility
+// These types are deprecated and will be removed in a future version.
+// Feature modules should define their own metadata types.
+// ============================================================================
+
+/**
+ * @deprecated Use GenericProcessMetadata with type='code-review' instead.
+ * This type is kept for backward compatibility with existing code.
+ * Code review specific metadata - defined here temporarily for compatibility.
  */
 export interface CodeReviewProcessMetadata {
     /** Type of review */
@@ -87,6 +159,8 @@ export interface DiscoveryProcessMetadata {
 }
 
 /**
+ * @deprecated Use GenericGroupMetadata with type='code-review-group' instead.
+ * This type is kept for backward compatibility with existing code.
  * Metadata for grouped code review processes (master process)
  */
 export interface CodeReviewGroupMetadata {
@@ -141,11 +215,27 @@ export interface AIProcess {
     resultFilePath?: string;
     /** Path to the file containing raw stdout from the AI tool */
     rawStdoutFilePath?: string;
-    /** Code review specific metadata (if type is 'code-review') */
+    
+    // ========================================================================
+    // Generic metadata (preferred for new features)
+    // ========================================================================
+    
+    /** Generic feature-specific metadata. Feature modules should use this. */
+    metadata?: GenericProcessMetadata;
+    
+    /** Generic group metadata for grouped processes */
+    groupMetadata?: GenericGroupMetadata;
+    
+    // ========================================================================
+    // Legacy metadata fields (kept for backward compatibility)
+    // New features should use `metadata` and `groupMetadata` instead.
+    // ========================================================================
+    
+    /** @deprecated Use metadata with type='code-review' instead */
     codeReviewMetadata?: CodeReviewProcessMetadata;
     /** Discovery specific metadata (if type is 'discovery') */
     discoveryMetadata?: DiscoveryProcessMetadata;
-    /** Code review group metadata (if type is 'code-review-group') */
+    /** @deprecated Use groupMetadata with type='code-review-group' instead */
     codeReviewGroupMetadata?: CodeReviewGroupMetadata;
     /** Parsed structured result (for code reviews) */
     structuredResult?: string; // JSON string of CodeReviewResult
@@ -168,8 +258,14 @@ export interface SerializedAIProcess {
     result?: string;
     resultFilePath?: string;
     rawStdoutFilePath?: string;
+    /** Generic feature-specific metadata */
+    metadata?: GenericProcessMetadata;
+    /** Generic group metadata for grouped processes */
+    groupMetadata?: GenericGroupMetadata;
+    /** @deprecated Use metadata instead */
     codeReviewMetadata?: CodeReviewProcessMetadata;
     discoveryMetadata?: DiscoveryProcessMetadata;
+    /** @deprecated Use groupMetadata instead */
     codeReviewGroupMetadata?: CodeReviewGroupMetadata;
     structuredResult?: string;
     parentProcessId?: string;
@@ -191,6 +287,8 @@ export function serializeProcess(process: AIProcess): SerializedAIProcess {
         result: process.result,
         resultFilePath: process.resultFilePath,
         rawStdoutFilePath: process.rawStdoutFilePath,
+        metadata: process.metadata,
+        groupMetadata: process.groupMetadata,
         codeReviewMetadata: process.codeReviewMetadata,
         discoveryMetadata: process.discoveryMetadata,
         codeReviewGroupMetadata: process.codeReviewGroupMetadata,
@@ -215,6 +313,8 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         result: serialized.result,
         resultFilePath: serialized.resultFilePath,
         rawStdoutFilePath: serialized.rawStdoutFilePath,
+        metadata: serialized.metadata,
+        groupMetadata: serialized.groupMetadata,
         codeReviewMetadata: serialized.codeReviewMetadata,
         discoveryMetadata: serialized.discoveryMetadata,
         codeReviewGroupMetadata: serialized.codeReviewGroupMetadata,

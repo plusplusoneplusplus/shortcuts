@@ -12,7 +12,22 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
-import { AIProcess, AIProcessStatus, CodeReviewGroupMetadata, deserializeProcess, DiscoveryProcessMetadata, ProcessEvent, SerializedAIProcess, serializeProcess } from './types';
+import { 
+    AIProcess, 
+    AIProcessStatus, 
+    AIProcessType,
+    CodeReviewGroupMetadata, 
+    CompleteGroupOptions,
+    deserializeProcess, 
+    DiscoveryProcessMetadata, 
+    GenericGroupMetadata, 
+    GenericProcessMetadata, 
+    ProcessEvent, 
+    ProcessGroupOptions, 
+    SerializedAIProcess, 
+    serializeProcess,
+    TypedProcessOptions 
+} from './types';
 
 /**
  * Storage key for persisted processes
@@ -129,6 +144,8 @@ export class AIProcessManager implements vscode.Disposable {
                     result: p.result,
                     resultFilePath: p.resultFilePath,
                     rawStdoutFilePath: p.rawStdoutFilePath,
+                    metadata: p.metadata,
+                    groupMetadata: p.groupMetadata,
                     codeReviewMetadata: p.codeReviewMetadata,
                     discoveryMetadata: p.discoveryMetadata,
                     codeReviewGroupMetadata: p.codeReviewGroupMetadata,
@@ -169,7 +186,177 @@ export class AIProcessManager implements vscode.Disposable {
         return id;
     }
 
+    // ========================================================================
+    // Generic API Methods - Preferred for new feature integrations
+    // ========================================================================
+
     /**
+     * Register a typed process with generic metadata.
+     * This is the preferred API for new features to register processes.
+     * 
+     * @param prompt The full prompt being sent
+     * @param options Options including type, metadata, and parent process ID
+     * @param childProcess Optional child process reference for cancellation
+     * @returns The process ID
+     */
+    registerTypedProcess(
+        prompt: string,
+        options: TypedProcessOptions,
+        childProcess?: ChildProcess
+    ): string {
+        const prefix = options.idPrefix || options.type.replace(/[^a-z0-9]/gi, '-');
+        const id = `${prefix}-${++this.processCounter}-${Date.now()}`;
+        const promptPreview = this.createPromptPreview(prompt);
+
+        const process: TrackedProcess = {
+            id,
+            type: options.type,
+            promptPreview,
+            fullPrompt: prompt,
+            status: 'running',
+            startTime: new Date(),
+            childProcess,
+            metadata: options.metadata,
+            parentProcessId: options.parentProcessId
+        };
+
+        this.processes.set(id, process);
+        this._onDidChangeProcesses.fire({ type: 'process-added', process });
+
+        // If this is a child process, update the parent's child list
+        if (options.parentProcessId) {
+            this.addChildToParent(options.parentProcessId, id);
+        }
+
+        return id;
+    }
+
+    /**
+     * Register a process group with generic metadata.
+     * This is the preferred API for features that run parallel processes.
+     * 
+     * @param prompt Description or prompt for the group
+     * @param options Options including type and metadata
+     * @returns The group process ID
+     */
+    registerProcessGroup(
+        prompt: string,
+        options: ProcessGroupOptions
+    ): string {
+        const prefix = options.idPrefix || `${options.type.replace(/[^a-z0-9]/gi, '-')}-group`;
+        const id = `${prefix}-${++this.processCounter}-${Date.now()}`;
+        const promptPreview = this.createPromptPreview(prompt);
+
+        const groupMetadata: GenericGroupMetadata = {
+            ...(options.metadata || {}),
+            type: options.type,
+            childProcessIds: []
+        };
+
+        const process: TrackedProcess = {
+            id,
+            type: options.type,
+            promptPreview,
+            fullPrompt: prompt,
+            status: 'running',
+            startTime: new Date(),
+            groupMetadata
+        };
+
+        this.processes.set(id, process);
+        this._onDidChangeProcesses.fire({ type: 'process-added', process });
+
+        return id;
+    }
+
+    /**
+     * Complete a process group with results.
+     * This is the generic API for completing grouped processes.
+     * 
+     * @param id Group process ID
+     * @param options Completion options including result and stats
+     */
+    completeProcessGroup(id: string, options: CompleteGroupOptions): void {
+        const process = this.processes.get(id);
+        if (!process || !process.groupMetadata) {
+            return;
+        }
+
+        process.status = 'completed';
+        process.endTime = new Date();
+        process.result = options.result;
+        process.structuredResult = options.structuredResult;
+
+        // Store execution stats in group metadata if provided
+        if (options.executionStats) {
+            (process.groupMetadata as Record<string, unknown>).executionStats = options.executionStats;
+        }
+
+        // Save result to file
+        const filePath = this.saveResultToFile(process);
+        if (filePath) {
+            process.resultFilePath = filePath;
+        }
+
+        this._onDidChangeProcesses.fire({ type: 'process-updated', process });
+        this.saveToStorage();
+    }
+
+    /**
+     * Add a child process ID to a parent group
+     * @param parentId Parent process ID
+     * @param childId Child process ID
+     */
+    private addChildToParent(parentId: string, childId: string): void {
+        const parent = this.processes.get(parentId);
+        if (!parent) {
+            return;
+        }
+
+        // Try generic group metadata first
+        if (parent.groupMetadata) {
+            parent.groupMetadata.childProcessIds.push(childId);
+            return;
+        }
+
+        // Fall back to legacy code review group metadata
+        if (parent.codeReviewGroupMetadata) {
+            parent.codeReviewGroupMetadata.childProcessIds.push(childId);
+        }
+    }
+
+    /**
+     * Get child process IDs from a parent process
+     * Works with both generic and legacy group metadata
+     * @param parentId Parent process ID
+     * @returns Array of child process IDs
+     */
+    getChildProcessIds(parentId: string): string[] {
+        const parent = this.processes.get(parentId);
+        if (!parent) {
+            return [];
+        }
+
+        // Try generic group metadata first
+        if (parent.groupMetadata) {
+            return parent.groupMetadata.childProcessIds;
+        }
+
+        // Fall back to legacy code review group metadata
+        if (parent.codeReviewGroupMetadata) {
+            return parent.codeReviewGroupMetadata.childProcessIds;
+        }
+
+        return [];
+    }
+
+    // ========================================================================
+    // Legacy API Methods - Kept for backward compatibility
+    // New features should use the generic API above
+    // ========================================================================
+
+    /**
+     * @deprecated Use registerTypedProcess with type='code-review' instead.
      * Register a new code review process
      * @param prompt The full prompt being sent
      * @param metadata Code review metadata
@@ -231,6 +418,7 @@ export class AIProcessManager implements vscode.Disposable {
     }
 
     /**
+     * @deprecated Use registerProcessGroup with type='code-review-group' instead.
      * Register a new code review group (master process for parallel reviews)
      * @param metadata Group metadata including review type and rules
      * @returns The group process ID
@@ -272,6 +460,7 @@ export class AIProcessManager implements vscode.Disposable {
     }
 
     /**
+     * @deprecated Use completeProcessGroup instead.
      * Complete a code review group with aggregated results
      * @param id Group process ID
      * @param result Aggregated result summary
@@ -333,17 +522,14 @@ export class AIProcessManager implements vscode.Disposable {
     }
 
     /**
-     * Get child processes for a group
+     * Get child processes for a group.
+     * Supports both generic group metadata and legacy code review group metadata.
      * @param groupId The group process ID
      * @returns Array of child processes
      */
     getChildProcesses(groupId: string): AIProcess[] {
-        const group = this.processes.get(groupId);
-        if (!group || !group.codeReviewGroupMetadata) {
-            return [];
-        }
-
-        return group.codeReviewGroupMetadata.childProcessIds
+        const childIds = this.getChildProcessIds(groupId);
+        return childIds
             .map(id => this.getProcess(id))
             .filter((p): p is AIProcess => p !== undefined);
     }
@@ -639,6 +825,8 @@ export class AIProcessManager implements vscode.Disposable {
             result: p.result,
             resultFilePath: p.resultFilePath,
             rawStdoutFilePath: p.rawStdoutFilePath,
+            metadata: p.metadata,
+            groupMetadata: p.groupMetadata,
             codeReviewMetadata: p.codeReviewMetadata,
             discoveryMetadata: p.discoveryMetadata,
             codeReviewGroupMetadata: p.codeReviewGroupMetadata,
@@ -674,6 +862,8 @@ export class AIProcessManager implements vscode.Disposable {
             result: process.result,
             resultFilePath: process.resultFilePath,
             rawStdoutFilePath: process.rawStdoutFilePath,
+            metadata: process.metadata,
+            groupMetadata: process.groupMetadata,
             codeReviewMetadata: process.codeReviewMetadata,
             discoveryMetadata: process.discoveryMetadata,
             codeReviewGroupMetadata: process.codeReviewGroupMetadata,

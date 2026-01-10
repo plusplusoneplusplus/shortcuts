@@ -23,12 +23,15 @@ import {
     createExecutor,
     ExecutorOptions,
     MapReduceResult,
-    ProcessTracker,
     Rule,
     RuleReviewResult
 } from '../map-reduce';
 import { CodeReviewService } from './code-review-service';
 import { CodeReviewViewer } from './code-review-viewer';
+import { 
+    CodeReviewProcessAdapter, 
+    createCodeReviewProcessTracker 
+} from './process-adapter';
 import { formatAggregatedResultAsMarkdown } from './response-parser';
 import {
     AggregatedCodeReviewResult,
@@ -70,133 +73,8 @@ function adaptFinding(mrFinding: import('../map-reduce').ReviewFinding): ReviewF
     };
 }
 
-/**
- * Extended ProcessTracker that tracks the group ID for later updates
- */
-interface ExtendedProcessTracker extends ProcessTracker {
-    /** The group ID registered during execution, if any */
-    groupId?: string;
-    /** Update the group's structured result after aggregation */
-    updateGroupStructuredResult(structuredResult: string): void;
-}
-
-/**
- * Create a ProcessTracker adapter for the AIProcessManager
- */
-function createProcessTrackerAdapter(
-    processManager: AIProcessManager,
-    metadata: CodeReviewMetadata
-): ExtendedProcessTracker {
-    const tracker: ExtendedProcessTracker = {
-        groupId: undefined,
-
-        registerProcess(description: string, parentGroupId?: string): string {
-            return processManager.registerCodeReviewProcess(
-                description,
-                {
-                    reviewType: metadata.type,
-                    commitSha: metadata.commitSha,
-                    commitMessage: metadata.commitMessage,
-                    rulesUsed: [],
-                    diffStats: metadata.diffStats
-                },
-                undefined,
-                parentGroupId
-            );
-        },
-
-        updateProcess(
-            processId: string,
-            status: 'running' | 'completed' | 'failed',
-            response?: string,
-            error?: string,
-            structuredResult?: string
-        ): void {
-            processManager.updateProcess(processId, status, response, error);
-            
-            if (structuredResult && status === 'completed') {
-                // Transform RuleReviewResult into CodeReviewResult format for the viewer
-                try {
-                    const ruleResult = JSON.parse(structuredResult) as RuleReviewResult;
-                    const findings = ruleResult.findings?.map(adaptFinding) || [];
-                    
-                    // Create summary for this single rule
-                    const bySeverity = { error: 0, warning: 0, info: 0, suggestion: 0 };
-                    for (const f of findings) {
-                        bySeverity[f.severity]++;
-                    }
-                    
-                    const summary: ReviewSummary = {
-                        totalFindings: findings.length,
-                        bySeverity,
-                        byRule: { [ruleResult.rule?.filename || 'unknown']: findings.length },
-                        overallAssessment: ruleResult.assessment || 'pass',
-                        summaryText: findings.length === 0 
-                            ? 'No issues found.' 
-                            : `Found ${findings.length} issue(s).`
-                    };
-                    
-                    // Build CodeReviewResult-compatible format
-                    const codeReviewResult = {
-                        metadata: {
-                            type: metadata.type,
-                            commitSha: metadata.commitSha,
-                            commitMessage: metadata.commitMessage,
-                            rulesUsed: [ruleResult.rule?.filename || 'unknown'],
-                            diffStats: metadata.diffStats
-                        },
-                        summary,
-                        findings,
-                        rawResponse: ruleResult.rawResponse || '',
-                        timestamp: new Date().toISOString()
-                    };
-                    
-                    processManager.updateProcessStructuredResult(processId, JSON.stringify(codeReviewResult));
-                } catch {
-                    // If transformation fails, store the raw result
-                    processManager.updateProcessStructuredResult(processId, structuredResult);
-                }
-            }
-        },
-
-        registerGroup(description: string): string {
-            const id = processManager.registerCodeReviewGroup({
-                reviewType: metadata.type,
-                commitSha: metadata.commitSha,
-                commitMessage: metadata.commitMessage,
-                rulesUsed: [],
-                diffStats: metadata.diffStats
-            });
-            tracker.groupId = id;
-            return id;
-        },
-
-        completeGroup(
-            groupId: string,
-            summary: string,
-            stats: import('../map-reduce').ExecutionStats
-        ): void {
-            processManager.completeCodeReviewGroup(
-                groupId,
-                summary,
-                JSON.stringify(stats), // Placeholder - will be updated with full result later
-                {
-                    totalRules: stats.totalItems,
-                    successfulRules: stats.successfulMaps,
-                    failedRules: stats.failedMaps,
-                    totalTimeMs: stats.mapPhaseTimeMs + stats.reducePhaseTimeMs
-                }
-            );
-        },
-
-        updateGroupStructuredResult(structuredResult: string): void {
-            if (tracker.groupId) {
-                processManager.updateProcessStructuredResult(tracker.groupId, structuredResult);
-            }
-        }
-    };
-    return tracker;
-}
+// Note: ExtendedProcessTracker and createProcessTrackerAdapter have been moved 
+// to process-adapter.ts as createCodeReviewProcessTracker for better decoupling.
 
 /**
  * Convert MapReduceResult to AggregatedCodeReviewResult for compatibility
@@ -430,8 +308,9 @@ export function registerCodeReviewCommands(
                         );
                     };
 
-                    // Create process tracker adapter
-                    const processTracker = createProcessTrackerAdapter(processManager, metadata);
+                    // Create process tracker adapter using the decoupled adapter pattern
+                    const adapter = new CodeReviewProcessAdapter(processManager);
+                    const processTracker = createCodeReviewProcessTracker(adapter, metadata);
 
                     // Create executor options
                     const executorOptions: ExecutorOptions = {

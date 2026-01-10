@@ -13,6 +13,7 @@ export * from './code-review-service';
 export * from './code-review-viewer';
 export * from './concurrency-limiter';
 export * from './front-matter-parser';
+export * from './process-adapter';
 export * from './response-parser';
 export * from './types';
 

@@ -12,8 +12,17 @@ export {
     AIModel,
     AIProcess,
     AIProcessStatus,
+    AIProcessType,
     AIToolType,
+    // Generic metadata types (preferred for new features)
+    GenericProcessMetadata,
+    GenericGroupMetadata,
+    TypedProcessOptions,
+    ProcessGroupOptions,
+    CompleteGroupOptions,
+    // Legacy types (kept for backward compatibility)
     CodeReviewGroupMetadata,
+    CodeReviewProcessMetadata,
     DEFAULT_PROMPTS, deserializeProcess, DiscoveryProcessMetadata,
     ProcessEvent,
     ProcessEventType,
