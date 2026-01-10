@@ -21,11 +21,23 @@ interface Repository {
 }
 
 /**
+ * Branch cache entry with timestamp
+ */
+interface BranchCacheEntry {
+    branches: string[];
+    timestamp: number;
+}
+
+/**
  * Service for retrieving git commit history
  */
 export class GitLogService implements vscode.Disposable {
     private gitAPI?: GitAPI;
     private disposables: vscode.Disposable[] = [];
+
+    // Branch cache with TTL
+    private branchCache: Map<string, BranchCacheEntry> = new Map();
+    private static readonly BRANCH_CACHE_TTL = 180000; // 3 minutes
 
     /**
      * Initialize the git log service by getting the git extension API
@@ -310,22 +322,72 @@ export class GitLogService implements vscode.Disposable {
     }
 
     /**
-     * Get branch names for suggestions
+     * Get branch names for suggestions (cached, local branches only for speed)
      * @param repoRoot Repository root path
+     * @param forceRefresh Force cache refresh
      * @returns Array of branch names (limited to 10)
      */
-    getBranches(repoRoot: string): string[] {
+    getBranches(repoRoot: string, forceRefresh = false): string[] {
+        // Check cache first
+        if (!forceRefresh) {
+            const cached = this.branchCache.get(repoRoot);
+            if (cached && Date.now() - cached.timestamp < GitLogService.BRANCH_CACHE_TTL) {
+                return cached.branches;
+            }
+        }
+
         try {
-            const output = execSync('git branch -a --format="%(refname:short)"', {
+            // Use local branches only (no -a flag) for faster response
+            const output = execSync('git branch --format="%(refname:short)"', {
                 cwd: repoRoot,
                 encoding: 'utf-8',
                 timeout: 5000
             });
-            return output.trim().split('\n')
+            const branches = output.trim().split('\n')
                 .filter(b => b && !b.includes('HEAD'))
                 .slice(0, 10);
+
+            // Cache the result
+            this.branchCache.set(repoRoot, {
+                branches,
+                timestamp: Date.now()
+            });
+
+            return branches;
         } catch {
             return [];
+        }
+    }
+
+    /**
+     * Get branch names asynchronously (for non-blocking UI)
+     * @param repoRoot Repository root path
+     * @returns Promise resolving to array of branch names
+     */
+    async getBranchesAsync(repoRoot: string): Promise<string[]> {
+        // Return cached value immediately if available
+        const cached = this.branchCache.get(repoRoot);
+        if (cached && Date.now() - cached.timestamp < GitLogService.BRANCH_CACHE_TTL) {
+            return cached.branches;
+        }
+
+        // Run in next tick to avoid blocking
+        return new Promise((resolve) => {
+            setImmediate(() => {
+                resolve(this.getBranches(repoRoot, true));
+            });
+        });
+    }
+
+    /**
+     * Invalidate branch cache for a repository
+     * @param repoRoot Repository root path (optional, clears all if not provided)
+     */
+    invalidateBranchCache(repoRoot?: string): void {
+        if (repoRoot) {
+            this.branchCache.delete(repoRoot);
+        } else {
+            this.branchCache.clear();
         }
     }
 
@@ -609,6 +671,7 @@ export class GitLogService implements vscode.Disposable {
             disposable.dispose();
         }
         this.disposables = [];
+        this.branchCache.clear();
     }
 }
 

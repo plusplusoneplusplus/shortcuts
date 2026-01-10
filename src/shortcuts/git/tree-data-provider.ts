@@ -632,6 +632,7 @@ export class GitTreeDataProvider
 
     /**
      * Show the commit lookup quick pick UI
+     * Optimized to show dialog immediately and load branches asynchronously
      */
     async showCommitLookup(): Promise<void> {
         const repoRoot = this.gitService.getFirstRepositoryRoot();
@@ -644,21 +645,31 @@ export class GitTreeDataProvider
         quickPick.placeholder = 'Enter commit hash, branch, tag, or ref (e.g., HEAD~3)';
         quickPick.title = 'Lookup Commit';
 
-        // Default suggestions
+        // Default suggestions - show immediately
         const defaultItems: vscode.QuickPickItem[] = [
             { label: 'HEAD~1', description: 'Previous commit' },
             { label: 'HEAD~2', description: '2 commits ago' },
             { label: 'HEAD~5', description: '5 commits ago' },
         ];
 
-        // Get branch suggestions
-        const branches = this.gitLogService.getBranches(repoRoot);
-        const branchItems: vscode.QuickPickItem[] = branches.map(branch => ({
-            label: branch,
-            description: 'branch'
-        }));
+        // Show dialog immediately with default items
+        quickPick.items = defaultItems;
+        quickPick.show();
 
-        quickPick.items = [...defaultItems, ...branchItems];
+        // Track branch items for use in callbacks
+        let branchItems: vscode.QuickPickItem[] = [];
+
+        // Load branches asynchronously in the background
+        this.gitLogService.getBranchesAsync(repoRoot).then(branches => {
+            branchItems = branches.map(branch => ({
+                label: branch,
+                description: 'branch'
+            }));
+            // Update items if quickPick is still visible and no custom value entered
+            if (!quickPick.value) {
+                quickPick.items = [...defaultItems, ...branchItems];
+            }
+        });
 
         quickPick.onDidChangeValue(value => {
             if (value && !quickPick.items.some(i => i.label === value)) {
@@ -698,8 +709,6 @@ export class GitTreeDataProvider
         quickPick.onDidHide(() => {
             quickPick.dispose();
         });
-
-        quickPick.show();
     }
 
     /**
