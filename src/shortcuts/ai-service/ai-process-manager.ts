@@ -12,7 +12,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
-import { AIProcess, AIProcessStatus, deserializeProcess, DiscoveryProcessMetadata, ProcessEvent, SerializedAIProcess, serializeProcess } from './types';
+import { AIProcess, AIProcessStatus, CodeReviewGroupMetadata, deserializeProcess, DiscoveryProcessMetadata, ProcessEvent, SerializedAIProcess, serializeProcess } from './types';
 
 /**
  * Storage key for persisted processes
@@ -131,7 +131,9 @@ export class AIProcessManager implements vscode.Disposable {
                     rawStdoutFilePath: p.rawStdoutFilePath,
                     codeReviewMetadata: p.codeReviewMetadata,
                     discoveryMetadata: p.discoveryMetadata,
-                    structuredResult: p.structuredResult
+                    codeReviewGroupMetadata: p.codeReviewGroupMetadata,
+                    structuredResult: p.structuredResult,
+                    parentProcessId: p.parentProcessId
                 }));
 
             await this.context.globalState.update(STORAGE_KEY, toSave);
@@ -172,6 +174,7 @@ export class AIProcessManager implements vscode.Disposable {
      * @param prompt The full prompt being sent
      * @param metadata Code review metadata
      * @param childProcess Optional child process reference for cancellation
+     * @param parentProcessId Optional parent process ID for grouped reviews
      * @returns The process ID
      */
     registerCodeReviewProcess(
@@ -183,13 +186,17 @@ export class AIProcessManager implements vscode.Disposable {
             rulesUsed: string[];
             diffStats?: { files: number; additions: number; deletions: number };
         },
-        childProcess?: ChildProcess
+        childProcess?: ChildProcess,
+        parentProcessId?: string
     ): string {
         const id = `review-${++this.processCounter}-${Date.now()}`;
 
         // Create a more descriptive preview for code reviews
         let promptPreview: string;
-        if (metadata.reviewType === 'commit' && metadata.commitSha) {
+        if (metadata.rulesUsed.length === 1) {
+            // Single rule - show rule name
+            promptPreview = metadata.rulesUsed[0];
+        } else if (metadata.reviewType === 'commit' && metadata.commitSha) {
             promptPreview = `Review: ${metadata.commitSha.substring(0, 7)}`;
         } else if (metadata.reviewType === 'pending') {
             promptPreview = 'Review: pending changes';
@@ -205,13 +212,134 @@ export class AIProcessManager implements vscode.Disposable {
             status: 'running',
             startTime: new Date(),
             childProcess,
-            codeReviewMetadata: metadata
+            codeReviewMetadata: metadata,
+            parentProcessId
+        };
+
+        this.processes.set(id, process);
+        this._onDidChangeProcesses.fire({ type: 'process-added', process });
+
+        // If this is a child process, update the parent's child list
+        if (parentProcessId) {
+            const parent = this.processes.get(parentProcessId);
+            if (parent && parent.codeReviewGroupMetadata) {
+                parent.codeReviewGroupMetadata.childProcessIds.push(id);
+            }
+        }
+
+        return id;
+    }
+
+    /**
+     * Register a new code review group (master process for parallel reviews)
+     * @param metadata Group metadata including review type and rules
+     * @returns The group process ID
+     */
+    registerCodeReviewGroup(
+        metadata: Omit<CodeReviewGroupMetadata, 'childProcessIds' | 'executionStats'>
+    ): string {
+        const id = `review-group-${++this.processCounter}-${Date.now()}`;
+
+        // Create a descriptive preview for the group
+        let promptPreview: string;
+        if (metadata.reviewType === 'commit' && metadata.commitSha) {
+            promptPreview = `Review: ${metadata.commitSha.substring(0, 7)} (${metadata.rulesUsed.length} rules)`;
+        } else if (metadata.reviewType === 'pending') {
+            promptPreview = `Review: pending (${metadata.rulesUsed.length} rules)`;
+        } else {
+            promptPreview = `Review: staged (${metadata.rulesUsed.length} rules)`;
+        }
+
+        const groupMetadata: CodeReviewGroupMetadata = {
+            ...metadata,
+            childProcessIds: []
+        };
+
+        const process: TrackedProcess = {
+            id,
+            type: 'code-review-group',
+            promptPreview,
+            fullPrompt: `Code review group with ${metadata.rulesUsed.length} rules: ${metadata.rulesUsed.join(', ')}`,
+            status: 'running',
+            startTime: new Date(),
+            codeReviewGroupMetadata: groupMetadata
         };
 
         this.processes.set(id, process);
         this._onDidChangeProcesses.fire({ type: 'process-added', process });
 
         return id;
+    }
+
+    /**
+     * Complete a code review group with aggregated results
+     * @param id Group process ID
+     * @param result Aggregated result summary
+     * @param structuredResult Serialized aggregated result
+     * @param executionStats Execution statistics
+     */
+    completeCodeReviewGroup(
+        id: string,
+        result: string,
+        structuredResult: string,
+        executionStats: CodeReviewGroupMetadata['executionStats']
+    ): void {
+        const process = this.processes.get(id);
+        if (!process || process.type !== 'code-review-group') {
+            return;
+        }
+
+        process.status = 'completed';
+        process.endTime = new Date();
+        process.result = result;
+        process.structuredResult = structuredResult;
+
+        if (process.codeReviewGroupMetadata) {
+            process.codeReviewGroupMetadata.executionStats = executionStats;
+        }
+
+        // Save result to file
+        const filePath = this.saveResultToFile(process);
+        if (filePath) {
+            process.resultFilePath = filePath;
+        }
+
+        this._onDidChangeProcesses.fire({ type: 'process-updated', process });
+        this.saveToStorage();
+    }
+
+    /**
+     * Get child processes for a group
+     * @param groupId The group process ID
+     * @returns Array of child processes
+     */
+    getChildProcesses(groupId: string): AIProcess[] {
+        const group = this.processes.get(groupId);
+        if (!group || !group.codeReviewGroupMetadata) {
+            return [];
+        }
+
+        return group.codeReviewGroupMetadata.childProcessIds
+            .map(id => this.getProcess(id))
+            .filter((p): p is AIProcess => p !== undefined);
+    }
+
+    /**
+     * Check if a process is a child of a group
+     * @param processId Process ID to check
+     * @returns True if the process has a parent
+     */
+    isChildProcess(processId: string): boolean {
+        const process = this.processes.get(processId);
+        return !!process?.parentProcessId;
+    }
+
+    /**
+     * Get all top-level processes (processes without parents)
+     * @returns Array of top-level processes
+     */
+    getTopLevelProcesses(): AIProcess[] {
+        return this.getProcesses().filter(p => !p.parentProcessId);
     }
 
     /**
@@ -489,7 +617,9 @@ export class AIProcessManager implements vscode.Disposable {
             rawStdoutFilePath: p.rawStdoutFilePath,
             codeReviewMetadata: p.codeReviewMetadata,
             discoveryMetadata: p.discoveryMetadata,
-            structuredResult: p.structuredResult
+            codeReviewGroupMetadata: p.codeReviewGroupMetadata,
+            structuredResult: p.structuredResult,
+            parentProcessId: p.parentProcessId
         }));
     }
 
@@ -522,7 +652,9 @@ export class AIProcessManager implements vscode.Disposable {
             rawStdoutFilePath: process.rawStdoutFilePath,
             codeReviewMetadata: process.codeReviewMetadata,
             discoveryMetadata: process.discoveryMetadata,
-            structuredResult: process.structuredResult
+            codeReviewGroupMetadata: process.codeReviewGroupMetadata,
+            structuredResult: process.structuredResult,
+            parentProcessId: process.parentProcessId
         };
     }
 

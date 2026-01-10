@@ -56,7 +56,8 @@ export function registerCodeReviewCommands(
     async function executeSingleRuleReview(
         rule: CodeRule,
         metadata: CodeReviewMetadata,
-        workspaceRoot: string
+        workspaceRoot: string,
+        parentGroupId?: string
     ): Promise<SingleRuleReviewResult> {
         const prompt = codeReviewService.buildSingleRulePrompt(rule, metadata);
         const processId = processManager.registerCodeReviewProcess(
@@ -67,7 +68,9 @@ export function registerCodeReviewCommands(
                 commitMessage: metadata.commitMessage,
                 rulesUsed: [rule.filename],
                 diffStats: metadata.diffStats
-            }
+            },
+            undefined,
+            parentGroupId
         );
 
         // Get model from rule's front matter (if specified)
@@ -233,9 +236,21 @@ export function registerCodeReviewCommands(
                         message: `Starting parallel review against ${totalRules} rules...`
                     });
 
+                    // Create a group process if there are multiple rules
+                    let groupProcessId: string | undefined;
+                    if (totalRules > 1) {
+                        groupProcessId = processManager.registerCodeReviewGroup({
+                            reviewType: metadata.type,
+                            commitSha: metadata.commitSha,
+                            commitMessage: metadata.commitMessage,
+                            rulesUsed: rulesResult.rules.map(r => r.filename),
+                            diffStats: metadata.diffStats
+                        });
+                    }
+
                     // Execute all rule reviews in parallel
                     const reviewPromises = rulesResult.rules.map((rule, index) => {
-                        return executeSingleRuleReview(rule, metadata, workspaceRoot).then(result => {
+                        return executeSingleRuleReview(rule, metadata, workspaceRoot, groupProcessId).then(result => {
                             // Update progress as each rule completes
                             const completed = index + 1;
                             progress.report({
@@ -252,6 +267,33 @@ export function registerCodeReviewCommands(
 
                     // Aggregate results
                     const aggregatedResult = aggregateReviewResults(ruleResults, metadata, totalTimeMs);
+
+                    // Complete the group process if we created one
+                    if (groupProcessId) {
+                        const summaryText = aggregatedResult.summary.summaryText;
+                        const serializedResult = JSON.stringify({
+                            metadata: aggregatedResult.metadata,
+                            summary: aggregatedResult.summary,
+                            findings: aggregatedResult.findings,
+                            rawResponse: aggregatedResult.rawResponse,
+                            timestamp: aggregatedResult.timestamp.toISOString(),
+                            executionStats: aggregatedResult.executionStats,
+                            ruleResults: aggregatedResult.ruleResults.map(r => ({
+                                ruleFilename: r.rule.filename,
+                                processId: r.processId,
+                                success: r.success,
+                                error: r.error,
+                                findingsCount: r.findings.length,
+                                assessment: r.assessment
+                            }))
+                        });
+                        processManager.completeCodeReviewGroup(
+                            groupProcessId,
+                            summaryText,
+                            serializedResult,
+                            aggregatedResult.executionStats
+                        );
+                    }
 
                     // Show results based on output mode
                     if (config.outputMode === 'editor') {

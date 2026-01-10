@@ -1027,6 +1027,34 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Command to view aggregated code review group details in the structured viewer
+        const viewCodeReviewGroupDetailsCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.viewCodeReviewGroupDetails',
+            async (item: { process?: { structuredResult?: string } }) => {
+                if (!item?.process?.structuredResult) {
+                    vscode.window.showWarningMessage('No aggregated result available for this code review group.');
+                    return;
+                }
+
+                try {
+                    const { CodeReviewViewer } = await import('./shortcuts/code-review');
+                    const parsed = JSON.parse(item.process.structuredResult);
+                    // Convert the aggregated result back to CodeReviewResult format for the viewer
+                    const result = {
+                        metadata: parsed.metadata,
+                        summary: parsed.summary,
+                        findings: parsed.findings,
+                        rawResponse: parsed.rawResponse,
+                        timestamp: new Date(parsed.timestamp)
+                    };
+                    CodeReviewViewer.createOrShow(context.extensionUri, result);
+                } catch (error) {
+                    getExtensionLogger().error(LogCategory.AI, 'Failed to parse code review group result', error instanceof Error ? error : undefined);
+                    vscode.window.showErrorMessage('Failed to display aggregated code review result.');
+                }
+            }
+        );
+
         // Command to view raw response with markdown review editor
         const viewRawResponseCommand = vscode.commands.registerCommand(
             'clarificationProcesses.viewRawResponse',
@@ -1223,6 +1251,7 @@ export async function activate(context: vscode.ExtensionContext) {
             removeProcessCommand,
             viewProcessDetailsCommand,
             viewCodeReviewDetailsCommand,
+            viewCodeReviewGroupDetailsCommand,
             viewRawResponseCommand,
             viewDiscoveryResultsCommand,
             refreshProcessesCommand,

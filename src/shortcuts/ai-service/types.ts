@@ -43,7 +43,7 @@ export interface AIInvocationResult {
 /**
  * Type of AI process
  */
-export type AIProcessType = 'clarification' | 'code-review' | 'discovery';
+export type AIProcessType = 'clarification' | 'code-review' | 'discovery' | 'code-review-group';
 
 /**
  * Code review specific metadata
@@ -87,6 +87,35 @@ export interface DiscoveryProcessMetadata {
 }
 
 /**
+ * Metadata for grouped code review processes (master process)
+ */
+export interface CodeReviewGroupMetadata {
+    /** Type of review */
+    reviewType: 'commit' | 'pending' | 'staged';
+    /** Commit SHA (for commit reviews) */
+    commitSha?: string;
+    /** Commit message */
+    commitMessage?: string;
+    /** All rules being reviewed */
+    rulesUsed: string[];
+    /** Diff statistics */
+    diffStats?: {
+        files: number;
+        additions: number;
+        deletions: number;
+    };
+    /** Child process IDs (individual rule reviews) */
+    childProcessIds: string[];
+    /** Execution statistics */
+    executionStats?: {
+        totalRules: number;
+        successfulRules: number;
+        failedRules: number;
+        totalTimeMs: number;
+    };
+}
+
+/**
  * A tracked AI process
  */
 export interface AIProcess {
@@ -116,8 +145,12 @@ export interface AIProcess {
     codeReviewMetadata?: CodeReviewProcessMetadata;
     /** Discovery specific metadata (if type is 'discovery') */
     discoveryMetadata?: DiscoveryProcessMetadata;
+    /** Code review group metadata (if type is 'code-review-group') */
+    codeReviewGroupMetadata?: CodeReviewGroupMetadata;
     /** Parsed structured result (for code reviews) */
     structuredResult?: string; // JSON string of CodeReviewResult
+    /** Parent process ID (for child processes in a group) */
+    parentProcessId?: string;
 }
 
 /**
@@ -137,7 +170,9 @@ export interface SerializedAIProcess {
     rawStdoutFilePath?: string;
     codeReviewMetadata?: CodeReviewProcessMetadata;
     discoveryMetadata?: DiscoveryProcessMetadata;
+    codeReviewGroupMetadata?: CodeReviewGroupMetadata;
     structuredResult?: string;
+    parentProcessId?: string;
 }
 
 /**
@@ -158,7 +193,9 @@ export function serializeProcess(process: AIProcess): SerializedAIProcess {
         rawStdoutFilePath: process.rawStdoutFilePath,
         codeReviewMetadata: process.codeReviewMetadata,
         discoveryMetadata: process.discoveryMetadata,
-        structuredResult: process.structuredResult
+        codeReviewGroupMetadata: process.codeReviewGroupMetadata,
+        structuredResult: process.structuredResult,
+        parentProcessId: process.parentProcessId
     };
 }
 
@@ -180,7 +217,9 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         rawStdoutFilePath: serialized.rawStdoutFilePath,
         codeReviewMetadata: serialized.codeReviewMetadata,
         discoveryMetadata: serialized.discoveryMetadata,
-        structuredResult: serialized.structuredResult
+        codeReviewGroupMetadata: serialized.codeReviewGroupMetadata,
+        structuredResult: serialized.structuredResult,
+        parentProcessId: serialized.parentProcessId
     };
 }
 

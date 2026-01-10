@@ -2,6 +2,7 @@
  * Tree data provider for the AI Processes panel
  * 
  * Provides a tree view of running and completed AI processes.
+ * Supports hierarchical display for grouped code reviews.
  */
 
 import * as vscode from 'vscode';
@@ -15,15 +16,28 @@ export class AIProcessItem extends vscode.TreeItem {
     public readonly contextValue: string;
     public readonly process: AIProcess;
 
-    constructor(process: AIProcess) {
+    constructor(process: AIProcess, isChild: boolean = false) {
         const label = process.promptPreview;
-        super(label, vscode.TreeItemCollapsibleState.None);
+        
+        // Determine collapsible state based on process type
+        let collapsibleState = vscode.TreeItemCollapsibleState.None;
+        if (process.type === 'code-review-group') {
+            // Groups are always expandable
+            collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+        }
+        
+        super(label, collapsibleState);
 
         this.process = process;
 
         // Different context value for different process types
-        if (process.type === 'code-review') {
-            this.contextValue = `codeReviewProcess_${process.status}`;
+        if (process.type === 'code-review-group') {
+            this.contextValue = `codeReviewGroupProcess_${process.status}`;
+        } else if (process.type === 'code-review') {
+            // Add _child suffix for child processes
+            this.contextValue = isChild 
+                ? `codeReviewProcess_${process.status}_child`
+                : `codeReviewProcess_${process.status}`;
         } else if (process.type === 'discovery') {
             this.contextValue = `discoveryProcess_${process.status}`;
         } else {
@@ -39,8 +53,14 @@ export class AIProcessItem extends vscode.TreeItem {
         // Set tooltip with full details
         this.tooltip = this.createTooltip(process);
 
-        // Click to view full details - different command for code reviews
-        if (process.type === 'code-review' && process.status === 'completed') {
+        // Click to view full details - different command for different types
+        if (process.type === 'code-review-group' && process.status === 'completed') {
+            this.command = {
+                command: 'clarificationProcesses.viewCodeReviewGroupDetails',
+                title: 'View Aggregated Code Review',
+                arguments: [this]
+            };
+        } else if (process.type === 'code-review' && process.status === 'completed') {
             this.command = {
                 command: 'clarificationProcesses.viewCodeReviewDetails',
                 title: 'View Code Review',
@@ -76,7 +96,38 @@ export class AIProcessItem extends vscode.TreeItem {
      * Get icon based on status and type
      */
     private getStatusIcon(process: AIProcess): vscode.ThemeIcon {
-        // For code reviews, use checklist icon with status color
+        // For code review groups (master process)
+        if (process.type === 'code-review-group') {
+            switch (process.status) {
+                case 'running':
+                    return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.blue'));
+                case 'completed':
+                    // Check if we have structured result with assessment
+                    if (process.structuredResult) {
+                        try {
+                            const result = JSON.parse(process.structuredResult);
+                            if (result.summary?.overallAssessment === 'pass') {
+                                return new vscode.ThemeIcon('check-all', new vscode.ThemeColor('charts.green'));
+                            } else if (result.summary?.overallAssessment === 'fail') {
+                                return new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
+                            } else {
+                                return new vscode.ThemeIcon('warning', new vscode.ThemeColor('charts.orange'));
+                            }
+                        } catch {
+                            // Fall through to default
+                        }
+                    }
+                    return new vscode.ThemeIcon('check-all', new vscode.ThemeColor('charts.green'));
+                case 'failed':
+                    return new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
+                case 'cancelled':
+                    return new vscode.ThemeIcon('circle-slash', new vscode.ThemeColor('charts.orange'));
+                default:
+                    return new vscode.ThemeIcon('checklist');
+            }
+        }
+
+        // For individual code reviews
         if (process.type === 'code-review') {
             switch (process.status) {
                 case 'running':
@@ -145,7 +196,9 @@ export class AIProcessItem extends vscode.TreeItem {
         const lines: string[] = [];
 
         // Type indicator
-        if (process.type === 'code-review') {
+        if (process.type === 'code-review-group') {
+            lines.push('📋 **Code Review Group**');
+        } else if (process.type === 'code-review') {
             lines.push('📋 **Code Review**');
         } else if (process.type === 'discovery') {
             lines.push('🔍 **Auto Discovery**');
@@ -158,6 +211,45 @@ export class AIProcessItem extends vscode.TreeItem {
         const statusEmoji = this.getStatusEmoji(process.status);
         lines.push(`**Status:** ${statusEmoji} ${process.status}`);
         lines.push('');
+
+        // Code review group specific info
+        if (process.type === 'code-review-group' && process.codeReviewGroupMetadata) {
+            const meta = process.codeReviewGroupMetadata;
+            if (meta.commitSha) {
+                lines.push(`**Commit:** \`${meta.commitSha.substring(0, 7)}\``);
+                if (meta.commitMessage) {
+                    lines.push(`**Message:** ${meta.commitMessage}`);
+                }
+            } else {
+                lines.push(`**Type:** ${meta.reviewType === 'pending' ? 'Pending Changes' : 'Staged Changes'}`);
+            }
+            if (meta.diffStats) {
+                lines.push(`**Changes:** ${meta.diffStats.files} files, +${meta.diffStats.additions}/-${meta.diffStats.deletions}`);
+            }
+            lines.push(`**Rules:** ${meta.rulesUsed.length} rule(s)`);
+            if (meta.executionStats) {
+                const { successfulRules, failedRules, totalTimeMs } = meta.executionStats;
+                lines.push(`**Completed:** ${successfulRules} passed, ${failedRules} failed`);
+                lines.push(`**Time:** ${(totalTimeMs / 1000).toFixed(1)}s`);
+            }
+            lines.push('');
+
+            // Show summary if completed
+            if (process.structuredResult) {
+                try {
+                    const result = JSON.parse(process.structuredResult);
+                    if (result.summary) {
+                        const assessmentEmoji = result.summary.overallAssessment === 'pass' ? '✅' :
+                            result.summary.overallAssessment === 'fail' ? '❌' : '⚠️';
+                        lines.push(`**Result:** ${assessmentEmoji} ${result.summary.overallAssessment.toUpperCase()}`);
+                        lines.push(`**Total Findings:** ${result.summary.totalFindings} issue(s)`);
+                        lines.push('');
+                    }
+                } catch {
+                    // Ignore parse errors
+                }
+            }
+        }
 
         // Code review specific info
         if (process.type === 'code-review' && process.codeReviewMetadata) {
@@ -289,9 +381,9 @@ export class AIProcessItem extends vscode.TreeItem {
 /**
  * Tree data provider for AI processes
  */
-export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.Disposable {
-    private readonly _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProcessItem>, vscode.Disposable {
+    private readonly _onDidChangeTreeData = new vscode.EventEmitter<AIProcessItem | undefined | null | void>();
+    readonly onDidChangeTreeData: vscode.Event<AIProcessItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
     private processManager: AIProcessManager;
     private disposables: vscode.Disposable[] = [];
@@ -325,20 +417,39 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<vscode
     /**
      * Get tree item
      */
-    getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
+    getTreeItem(element: AIProcessItem): vscode.TreeItem {
         return element;
     }
 
     /**
-     * Get children - returns all processes (no hierarchy)
+     * Get children - supports hierarchical display for code review groups
      */
-    async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
-        // Only root level - no nested items
+    async getChildren(element?: AIProcessItem): Promise<AIProcessItem[]> {
+        // If we're getting children of a code review group, return its child processes
+        if (element && element.process.type === 'code-review-group') {
+            const childProcesses = this.processManager.getChildProcesses(element.process.id);
+            
+            // Sort child processes: running first, then by start time
+            childProcesses.sort((a, b) => {
+                if (a.status === 'running' && b.status !== 'running') {
+                    return -1;
+                }
+                if (a.status !== 'running' && b.status === 'running') {
+                    return 1;
+                }
+                return a.startTime.getTime() - b.startTime.getTime();
+            });
+            
+            return childProcesses.map(p => new AIProcessItem(p, true));
+        }
+
+        // For other elements or root level, return top-level processes only
         if (element) {
             return [];
         }
 
-        const processes = this.processManager.getProcesses();
+        // Get only top-level processes (those without parents)
+        const processes = this.processManager.getTopLevelProcesses();
 
         // Sort: running first, then by start time (newest first)
         processes.sort((a, b) => {
@@ -352,6 +463,19 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<vscode
         });
 
         return processes.map(p => new AIProcessItem(p));
+    }
+
+    /**
+     * Get parent for tree item (needed for reveal)
+     */
+    getParent(element: AIProcessItem): AIProcessItem | undefined {
+        if (element.process.parentProcessId) {
+            const parentProcess = this.processManager.getProcess(element.process.parentProcessId);
+            if (parentProcess) {
+                return new AIProcessItem(parentProcess);
+            }
+        }
+        return undefined;
     }
 
     /**

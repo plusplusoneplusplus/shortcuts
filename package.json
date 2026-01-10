@@ -742,6 +742,12 @@
         "icon": "$(checklist)"
       },
       {
+        "command": "clarificationProcesses.viewCodeReviewGroupDetails",
+        "title": "View Aggregated Code Review",
+        "category": "AI Processes",
+        "icon": "$(check-all)"
+      },
+      {
         "command": "clarificationProcesses.viewRawResponse",
         "title": "View Raw Response",
         "category": "AI Processes",
@@ -1446,23 +1452,38 @@
           "group": "process@1"
         },
         {
+          "command": "clarificationProcesses.cancel",
+          "when": "view == clarificationProcessesView && viewItem == codeReviewGroupProcess_running",
+          "group": "process@1"
+        },
+        {
           "command": "clarificationProcesses.viewDetails",
           "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_/",
           "group": "process@2"
         },
         {
           "command": "clarificationProcesses.viewCodeReviewDetails",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_completed$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_completed/",
+          "group": "process@2"
+        },
+        {
+          "command": "clarificationProcesses.viewCodeReviewGroupDetails",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewGroupProcess_completed$/",
           "group": "process@2"
         },
         {
           "command": "clarificationProcesses.viewRawResponse",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_completed$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_completed/",
           "group": "process@3"
         },
         {
           "command": "clarificationProcesses.viewDetails",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_(running|failed|cancelled)$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_(running|failed|cancelled)/",
+          "group": "process@2"
+        },
+        {
+          "command": "clarificationProcesses.viewDetails",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewGroupProcess_(running|failed|cancelled)$/",
           "group": "process@2"
         },
         {
@@ -1472,7 +1493,12 @@
         },
         {
           "command": "clarificationProcesses.remove",
-          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_(completed|failed|cancelled)$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewProcess_(completed|failed|cancelled)/",
+          "group": "process@3"
+        },
+        {
+          "command": "clarificationProcesses.remove",
+          "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewGroupProcess_(completed|failed|cancelled)$/",
           "group": "process@3"
         },
         {

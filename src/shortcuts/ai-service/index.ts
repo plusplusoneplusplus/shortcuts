@@ -13,6 +13,7 @@ export {
     AIProcess,
     AIProcessStatus,
     AIToolType,
+    CodeReviewGroupMetadata,
     DEFAULT_PROMPTS, deserializeProcess, DiscoveryProcessMetadata,
     ProcessEvent,
     ProcessEventType,
