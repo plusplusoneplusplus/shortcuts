@@ -3,7 +3,9 @@
  *
  * Command handlers for the code review feature.
  * Registers and handles all code review related commands.
- * Uses parallel execution - one AI process per rule file.
+ * Uses the map-reduce framework for parallel execution - one AI process per rule file.
+ *
+ * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as vscode from 'vscode';
@@ -13,11 +15,199 @@ import { GitCommitItem } from '../git/git-commit-item';
 import { GitLogService } from '../git/git-log-service';
 import { LookedUpCommitItem } from '../git/looked-up-commit-item';
 import { GitCommit } from '../git/types';
+import {
+    AIInvoker,
+    CodeReviewInput,
+    CodeReviewOutput,
+    createCodeReviewJob,
+    createExecutor,
+    ExecutorOptions,
+    MapReduceResult,
+    ProcessTracker,
+    Rule,
+    RuleReviewResult
+} from '../map-reduce';
 import { CodeReviewService } from './code-review-service';
 import { CodeReviewViewer } from './code-review-viewer';
-import { ConcurrencyLimiter } from './concurrency-limiter';
-import { aggregateReviewResultsAsync, formatAggregatedResultAsMarkdown, parseCodeReviewResponse } from './response-parser';
-import { CodeReviewMetadata, CodeRule, serializeCodeReviewResult, SingleRuleReviewResult } from './types';
+import { formatAggregatedResultAsMarkdown } from './response-parser';
+import {
+    AggregatedCodeReviewResult,
+    CodeReviewMetadata,
+    CodeRule,
+    ReviewFinding,
+    ReviewSummary
+} from './types';
+
+/**
+ * Adapter to convert CodeRule to Rule (map-reduce framework format)
+ */
+function codeRuleToRule(codeRule: CodeRule): Rule {
+    return {
+        id: codeRule.filename.replace(/\.[^/.]+$/, ''), // Remove extension for ID
+        filename: codeRule.filename,
+        path: codeRule.path,
+        content: codeRule.content,
+        frontMatter: codeRule.frontMatter as Record<string, unknown> | undefined
+    };
+}
+
+/**
+ * Adapter to convert map-reduce ReviewFinding to code-review ReviewFinding
+ * The types are compatible but may need mapping for certain fields
+ */
+function adaptFinding(mrFinding: import('../map-reduce').ReviewFinding): ReviewFinding {
+    return {
+        id: mrFinding.id,
+        severity: mrFinding.severity,
+        rule: mrFinding.rule,
+        ruleFile: mrFinding.ruleFile,
+        file: mrFinding.file,
+        line: mrFinding.line,
+        description: mrFinding.description,
+        codeSnippet: mrFinding.codeSnippet,
+        suggestion: mrFinding.suggestion,
+        explanation: mrFinding.explanation
+    };
+}
+
+/**
+ * Create a ProcessTracker adapter for the AIProcessManager
+ */
+function createProcessTrackerAdapter(
+    processManager: AIProcessManager,
+    metadata: CodeReviewMetadata
+): ProcessTracker {
+    return {
+        registerProcess(description: string, parentGroupId?: string): string {
+            return processManager.registerCodeReviewProcess(
+                description,
+                {
+                    reviewType: metadata.type,
+                    commitSha: metadata.commitSha,
+                    commitMessage: metadata.commitMessage,
+                    rulesUsed: [],
+                    diffStats: metadata.diffStats
+                },
+                undefined,
+                parentGroupId
+            );
+        },
+
+        updateProcess(
+            processId: string,
+            status: 'running' | 'completed' | 'failed',
+            response?: string,
+            error?: string
+        ): void {
+            processManager.updateProcess(processId, status, response, error);
+        },
+
+        registerGroup(description: string): string {
+            return processManager.registerCodeReviewGroup({
+                reviewType: metadata.type,
+                commitSha: metadata.commitSha,
+                commitMessage: metadata.commitMessage,
+                rulesUsed: [],
+                diffStats: metadata.diffStats
+            });
+        },
+
+        completeGroup(
+            groupId: string,
+            summary: string,
+            stats: import('../map-reduce').ExecutionStats
+        ): void {
+            processManager.completeCodeReviewGroup(
+                groupId,
+                summary,
+                JSON.stringify(stats),
+                {
+                    totalRules: stats.totalItems,
+                    successfulRules: stats.successfulMaps,
+                    failedRules: stats.failedMaps,
+                    totalTimeMs: stats.mapPhaseTimeMs + stats.reducePhaseTimeMs
+                }
+            );
+        }
+    };
+}
+
+/**
+ * Convert MapReduceResult to AggregatedCodeReviewResult for compatibility
+ */
+function convertToAggregatedResult(
+    mrResult: MapReduceResult<RuleReviewResult, CodeReviewOutput>,
+    metadata: CodeReviewMetadata,
+    rules: CodeRule[],
+    totalTimeMs: number
+): AggregatedCodeReviewResult {
+    const output = mrResult.output;
+    const findings = output ? output.findings.map(adaptFinding) : [];
+    const summary: ReviewSummary = output?.summary || {
+        totalFindings: 0,
+        bySeverity: { error: 0, warning: 0, info: 0, suggestion: 0 },
+        byRule: {},
+        overallAssessment: 'pass',
+        summaryText: 'No issues found.'
+    };
+
+    // Build raw responses from map results
+    const rawResponses: string[] = [];
+    for (const mapResult of mrResult.mapResults) {
+        if (mapResult.success && mapResult.output?.rawResponse) {
+            rawResponses.push(`--- Rule: ${mapResult.output.rule.filename} ---\n${mapResult.output.rawResponse}`);
+        }
+    }
+
+    // Build rule results for compatibility
+    const ruleResults = mrResult.mapResults.map((mapResult, index) => {
+        const rule = rules[index];
+        if (mapResult.success && mapResult.output) {
+            return {
+                rule,
+                processId: mapResult.processId || `rule-${index}`,
+                success: true,
+                findings: mapResult.output.findings.map(adaptFinding),
+                rawResponse: mapResult.output.rawResponse,
+                assessment: mapResult.output.assessment
+            };
+        } else {
+            return {
+                rule,
+                processId: mapResult.processId || `rule-${index}`,
+                success: false,
+                error: mapResult.error || 'Unknown error',
+                findings: []
+            };
+        }
+    });
+
+    return {
+        metadata: {
+            ...metadata,
+            rulesUsed: rules.map(r => r.filename),
+            rulePaths: rules.map(r => r.path)
+        },
+        summary,
+        findings,
+        ruleResults,
+        rawResponse: rawResponses.join('\n\n'),
+        timestamp: new Date(),
+        executionStats: {
+            totalRules: mrResult.executionStats.totalItems,
+            successfulRules: mrResult.executionStats.successfulMaps,
+            failedRules: mrResult.executionStats.failedMaps,
+            totalTimeMs
+        },
+        reduceStats: mrResult.reduceStats ? {
+            originalCount: mrResult.reduceStats.inputCount,
+            dedupedCount: mrResult.reduceStats.outputCount,
+            mergedCount: mrResult.reduceStats.mergedCount,
+            reduceTimeMs: mrResult.reduceStats.reduceTimeMs,
+            usedAIReduce: mrResult.reduceStats.usedAIReduce
+        } : undefined
+    };
+}
 
 /**
  * Registers all code review commands
@@ -51,82 +241,8 @@ export function registerCodeReviewCommands(
     };
 
     /**
-     * Execute a single rule review
-     * @returns SingleRuleReviewResult with findings or error
-     */
-    async function executeSingleRuleReview(
-        rule: CodeRule,
-        metadata: CodeReviewMetadata,
-        workspaceRoot: string,
-        parentGroupId?: string
-    ): Promise<SingleRuleReviewResult> {
-        const prompt = codeReviewService.buildSingleRulePrompt(rule, metadata);
-        const processId = processManager.registerCodeReviewProcess(
-            prompt,
-            {
-                reviewType: metadata.type,
-                commitSha: metadata.commitSha,
-                commitMessage: metadata.commitMessage,
-                rulesUsed: [rule.filename],
-                diffStats: metadata.diffStats
-            },
-            undefined,
-            parentGroupId
-        );
-
-        // Get model from rule's front matter (if specified)
-        const ruleModel = rule.frontMatter?.model;
-
-        try {
-            const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager, processId, ruleModel);
-
-            if (result.success && result.response) {
-                // Parse the structured response for this single rule
-                const parsed = parseCodeReviewResponse(result.response, {
-                    ...metadata,
-                    rulesUsed: [rule.filename]
-                });
-
-                // Serialize the parsed result for storage
-                const serializedResult = JSON.stringify(serializeCodeReviewResult(parsed));
-
-                // Complete the process with the structured result
-                processManager.completeCodeReviewProcess(processId, result.response, serializedResult);
-
-                return {
-                    rule,
-                    processId,
-                    success: true,
-                    findings: parsed.findings,
-                    rawResponse: result.response,
-                    assessment: parsed.summary.overallAssessment
-                };
-            } else {
-                processManager.updateProcess(processId, 'failed', undefined, result.error);
-                return {
-                    rule,
-                    processId,
-                    success: false,
-                    error: result.error || 'Unknown error',
-                    findings: []
-                };
-            }
-        } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            processManager.updateProcess(processId, 'failed', undefined, errorMsg);
-            return {
-                rule,
-                processId,
-                success: false,
-                error: errorMsg,
-                findings: []
-            };
-        }
-    }
-
-    /**
      * Execute a code review with the given diff and metadata
-     * Uses parallel execution - one AI process per rule file
+     * Uses the map-reduce framework for parallel execution
      */
     async function executeReview(
         diff: string,
@@ -207,7 +323,7 @@ export function registerCodeReviewCommands(
             case 'editor':
             case 'aiProcess':
             default: {
-                // Run parallel reviews through Copilot CLI
+                // Run parallel reviews through map-reduce framework
                 const aiTool = getAIToolSetting();
                 if (aiTool === 'clipboard') {
                     // Fall back to clipboard if AI tool is configured as clipboard
@@ -232,86 +348,77 @@ export function registerCodeReviewCommands(
                 }, async (progress) => {
                     const startTime = Date.now();
                     const totalRules = rulesResult.rules.length;
-                    let completedCount = 0;
-
-                    // Create concurrency limiter with configured max concurrency
-                    const limiter = new ConcurrencyLimiter(config.maxConcurrency);
 
                     progress.report({
                         message: `Starting parallel review against ${totalRules} rules (max ${config.maxConcurrency} concurrent)...`
                     });
 
-                    // Create a group process if there are multiple rules
-                    let groupProcessId: string | undefined;
-                    if (totalRules > 1) {
-                        groupProcessId = processManager.registerCodeReviewGroup({
-                            reviewType: metadata.type,
-                            commitSha: metadata.commitSha,
-                            commitMessage: metadata.commitMessage,
-                            rulesUsed: rulesResult.rules.map(r => r.filename),
-                            diffStats: metadata.diffStats
-                        });
-                    }
-
-                    // Create tasks for concurrency-limited execution
-                    const tasks = rulesResult.rules.map((rule) => {
-                        return () => executeSingleRuleReview(rule, metadata, workspaceRoot, groupProcessId).then(result => {
-                            // Update progress as each rule completes
-                            completedCount++;
-                            progress.report({
-                                message: `Completed ${completedCount}/${totalRules} rules...`,
-                                increment: (100 / totalRules)
-                            });
-                            return result;
-                        });
-                    });
-
-                    // Execute with concurrency limit
-                    const ruleResults = await limiter.all(tasks);
-                    const totalTimeMs = Date.now() - startTime;
-
-                    // Aggregate results with reduce phase
-                    // Create an AI invoker function for AI reduce mode
-                    const invokeAIForReduce = async (prompt: string) => {
-                        return invokeCopilotCLI(prompt, workspaceRoot, undefined, undefined, undefined);
+                    // Create AI invoker that wraps invokeCopilotCLI
+                    const aiInvoker: AIInvoker = async (prompt, options) => {
+                        return invokeCopilotCLI(
+                            prompt,
+                            workspaceRoot,
+                            undefined, // No process manager for individual invocations - handled by tracker
+                            undefined,
+                            options?.model
+                        );
                     };
 
-                    const aggregatedResult = await aggregateReviewResultsAsync(
-                        ruleResults,
-                        metadata,
-                        totalTimeMs,
-                        {
-                            reduceMode: config.reduceMode,
-                            invokeAI: config.reduceMode === 'ai' ? invokeAIForReduce : undefined
-                        }
-                    );
+                    // Create process tracker adapter
+                    const processTracker = createProcessTrackerAdapter(processManager, metadata);
 
-                    // Complete the group process if we created one
-                    if (groupProcessId) {
-                        const summaryText = aggregatedResult.summary.summaryText;
-                        const serializedResult = JSON.stringify({
-                            metadata: aggregatedResult.metadata,
-                            summary: aggregatedResult.summary,
-                            findings: aggregatedResult.findings,
-                            rawResponse: aggregatedResult.rawResponse,
-                            timestamp: aggregatedResult.timestamp.toISOString(),
-                            executionStats: aggregatedResult.executionStats,
-                            ruleResults: aggregatedResult.ruleResults.map(r => ({
-                                ruleFilename: r.rule.filename,
-                                processId: r.processId,
-                                success: r.success,
-                                error: r.error,
-                                findingsCount: r.findings.length,
-                                assessment: r.assessment
-                            }))
-                        });
-                        processManager.completeCodeReviewGroup(
-                            groupProcessId,
-                            summaryText,
-                            serializedResult,
-                            aggregatedResult.executionStats
-                        );
-                    }
+                    // Create executor options
+                    const executorOptions: ExecutorOptions = {
+                        aiInvoker,
+                        maxConcurrency: config.maxConcurrency,
+                        reduceMode: config.reduceMode === 'ai' ? 'ai' : 'deterministic',
+                        showProgress: true,
+                        retryOnFailure: false,
+                        processTracker,
+                        onProgress: (jobProgress) => {
+                            progress.report({
+                                message: jobProgress.message || `Processing ${jobProgress.completedItems}/${jobProgress.totalItems}...`,
+                                increment: jobProgress.phase === 'mapping'
+                                    ? (100 / totalRules) * (jobProgress.completedItems > 0 ? 1 : 0)
+                                    : 0
+                            });
+                        }
+                    };
+
+                    // Create executor and job
+                    const executor = createExecutor(executorOptions);
+                    const job = createCodeReviewJob({
+                        aiInvoker,
+                        useAIReduce: config.reduceMode === 'ai'
+                    });
+
+                    // Convert CodeRule[] to Rule[]
+                    const rules: Rule[] = rulesResult.rules.map(codeRuleToRule);
+
+                    // Create input for the job
+                    const input: CodeReviewInput = {
+                        diff,
+                        rules,
+                        context: {
+                            commitSha: metadata.commitSha,
+                            commitMessage: metadata.commitMessage,
+                            filesChanged: stats.files,
+                            isHotfix: false,
+                            repositoryRoot: metadata.repositoryRoot
+                        }
+                    };
+
+                    // Execute the job
+                    const mrResult = await executor.execute(job, input);
+                    const totalTimeMs = Date.now() - startTime;
+
+                    // Convert to aggregated result format for compatibility
+                    const aggregatedResult = convertToAggregatedResult(
+                        mrResult,
+                        metadata,
+                        rulesResult.rules,
+                        totalTimeMs
+                    );
 
                     // Show results based on output mode
                     if (config.outputMode === 'editor') {
@@ -323,7 +430,7 @@ export function registerCodeReviewCommands(
                         });
                         await vscode.window.showTextDocument(doc, { preview: true });
                     } else {
-                        // Show the result in the viewer (convert to CodeReviewResult format)
+                        // Show the result in the viewer
                         const viewerResult = {
                             metadata: aggregatedResult.metadata,
                             summary: aggregatedResult.summary,

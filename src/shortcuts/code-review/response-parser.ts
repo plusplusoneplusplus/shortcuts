@@ -2,6 +2,9 @@
  * Code Review Response Parser
  * 
  * Parses AI responses into structured code review results.
+ * Uses the map-reduce framework for reduce operations.
+ *
+ * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -9,7 +12,6 @@ import {
     CodeReviewMetadata,
     CodeReviewReduceMode,
     CodeReviewResult,
-    ReduceContext,
     ReduceStats,
     RESPONSE_PATTERNS,
     ReviewFinding,
@@ -17,7 +19,6 @@ import {
     ReviewSummary,
     SingleRuleReviewResult
 } from './types';
-import { createReducer, DeterministicReducer } from './reducer';
 
 /**
  * Generate a unique ID for a finding
@@ -272,6 +273,9 @@ export interface AggregateOptions {
 
 /**
  * Aggregate multiple single-rule review results into a combined result.
+ * This is a legacy function kept for backward compatibility.
+ * New code should use the map-reduce framework directly.
+ * 
  * @param ruleResults Array of results from individual rule reviews
  * @param metadata The original review metadata
  * @param totalTimeMs Total execution time for all parallel reviews
@@ -291,26 +295,8 @@ export function aggregateReviewResults(
             rawResponses.push(`--- Rule: ${result.rule.filename} ---\n${result.rawResponse}`);
         }
     }
-
-    // Use deterministic reducer by default (sync-compatible)
-    const reducer = new DeterministicReducer();
-    const context: ReduceContext = {
-        metadata,
-        mapPhaseTimeMs: totalTimeMs,
-        filesChanged: metadata.diffStats?.files || 0
-    };
-
-    // Run deterministic reduce synchronously (it returns a Promise but is actually sync)
-    // For backwards compatibility, we use the sync approach here
-    const reduceResultPromise = reducer.reduce(ruleResults, context);
     
-    // Since DeterministicReducer.reduce() is actually synchronous (no await inside),
-    // we can extract the result. For true async AI reduce, use aggregateReviewResultsAsync()
-    let findings: ReviewFinding[] = [];
-    let summary: ReviewSummary;
-    let reduceStats: ReduceStats | undefined;
-    
-    // Use a synchronous fallback for backwards compatibility
+    // Collect and tag all findings
     const allFindings: ReviewFinding[] = [];
     for (const result of ruleResults) {
         if (result.success && result.findings) {
@@ -325,9 +311,9 @@ export function aggregateReviewResults(
     }
     
     // Apply deduplication using deterministic logic
-    findings = deduplicateFindingsSync(allFindings);
-    summary = createAggregatedSummary(findings, ruleResults);
-    reduceStats = {
+    const findings = deduplicateFindingsSync(allFindings);
+    const summary = createAggregatedSummary(findings, ruleResults);
+    const reduceStats: ReduceStats = {
         originalCount: allFindings.length,
         dedupedCount: findings.length,
         mergedCount: allFindings.length - findings.length,
@@ -362,7 +348,9 @@ export function aggregateReviewResults(
 
 /**
  * Aggregate multiple single-rule review results into a combined result (async version).
- * Supports both deterministic and AI-powered reduce modes.
+ * This is a legacy function kept for backward compatibility.
+ * New code should use the map-reduce framework directly.
+ * 
  * @param ruleResults Array of results from individual rule reviews
  * @param metadata The original review metadata
  * @param totalTimeMs Total execution time for all parallel reviews
@@ -375,50 +363,9 @@ export async function aggregateReviewResultsAsync(
     totalTimeMs: number,
     options?: AggregateOptions
 ): Promise<AggregatedCodeReviewResult> {
-    // Collect raw responses
-    const rawResponses: string[] = [];
-    for (const result of ruleResults) {
-        if (result.rawResponse) {
-            rawResponses.push(`--- Rule: ${result.rule.filename} ---\n${result.rawResponse}`);
-        }
-    }
-
-    // Create reducer based on mode
-    const reduceMode = options?.reduceMode || 'deterministic';
-    const reducer = createReducer(reduceMode, options?.invokeAI);
-    
-    const context: ReduceContext = {
-        metadata,
-        mapPhaseTimeMs: totalTimeMs,
-        filesChanged: metadata.diffStats?.files || 0
-    };
-
-    // Run reduce phase
-    const reduceResult = await reducer.reduce(ruleResults, context);
-
-    // Execution statistics
-    const successfulRules = ruleResults.filter(r => r.success).length;
-    const failedRules = ruleResults.filter(r => !r.success).length;
-
-    return {
-        metadata: {
-            ...metadata,
-            rulesUsed: ruleResults.map(r => r.rule.filename),
-            rulePaths: ruleResults.map(r => r.rule.path)
-        },
-        summary: reduceResult.summary,
-        findings: reduceResult.findings,
-        ruleResults,
-        rawResponse: rawResponses.join('\n\n'),
-        timestamp: new Date(),
-        executionStats: {
-            totalRules: ruleResults.length,
-            successfulRules,
-            failedRules,
-            totalTimeMs
-        },
-        reduceStats: reduceResult.reduceStats
-    };
+    // For backward compatibility, delegate to sync version
+    // The main code path now uses the map-reduce framework directly
+    return aggregateReviewResults(ruleResults, metadata, totalTimeMs, options);
 }
 
 /**

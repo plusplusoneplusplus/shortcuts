@@ -1,57 +1,75 @@
 /**
  * Tests for Code Review Reducers
  * 
- * Tests both DeterministicReducer and AIReducer implementations.
+ * Tests the code review functionality using the map-reduce framework.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as assert from 'assert';
 import {
+    createCodeReviewJob,
     DeterministicReducer,
-    AIReducer,
-    createReducer,
-    Reducer
-} from '../../shortcuts/code-review/reducer';
+    createDeterministicReducer,
+    MapResult,
+    ReduceContext as MRReduceContext,
+    Rule,
+    RuleReviewResult,
+    ReviewFinding as MRReviewFinding,
+    ReviewSeverity,
+    CodeReviewInput,
+    CodeReviewOutput,
+    AIInvoker,
+    createExecutor
+} from '../../shortcuts/map-reduce';
+import { aggregateReviewResults } from '../../shortcuts/code-review/response-parser';
 import {
     CodeReviewMetadata,
-    CodeReviewReduceMode,
-    ReduceContext,
-    ReviewFinding,
-    SingleRuleReviewResult
+    SingleRuleReviewResult,
+    CodeRule,
+    ReviewFinding
 } from '../../shortcuts/code-review/types';
 
-suite('DeterministicReducer', () => {
-    let reducer: DeterministicReducer;
+// Helper to create test rules
+function createTestRule(filename: string, content: string = ''): CodeRule {
+    return {
+        filename,
+        path: `/rules/${filename}`,
+        content
+    };
+}
 
-    setup(() => {
-        reducer = new DeterministicReducer();
-    });
+// Helper to create test rule for map-reduce
+function createMRTestRule(filename: string, content: string = ''): Rule {
+    return {
+        id: filename.replace(/\.[^/.]+$/, ''),
+        filename,
+        path: `/rules/${filename}`,
+        content
+    };
+}
 
-    const defaultContext: ReduceContext = {
-        metadata: {
-            type: 'commit',
-            commitSha: 'abc123',
-            rulesUsed: []
-        },
-        mapPhaseTimeMs: 1000,
-        filesChanged: 3
+suite('Code Review aggregateReviewResults (Legacy)', () => {
+    const defaultMetadata: CodeReviewMetadata = {
+        type: 'commit',
+        commitSha: 'abc123',
+        rulesUsed: []
     };
 
-    test('returns empty result for empty rule results', async () => {
-        const result = await reducer.reduce([], defaultContext);
+    test('returns empty result for empty rule results', () => {
+        const result = aggregateReviewResults([], defaultMetadata, 1000);
 
         assert.strictEqual(result.findings.length, 0);
         assert.strictEqual(result.summary.totalFindings, 0);
         assert.strictEqual(result.summary.overallAssessment, 'pass');
-        assert.strictEqual(result.reduceStats.originalCount, 0);
-        assert.strictEqual(result.reduceStats.dedupedCount, 0);
-        assert.strictEqual(result.reduceStats.usedAIReduce, false);
+        assert.strictEqual(result.reduceStats?.originalCount, 0);
+        assert.strictEqual(result.reduceStats?.dedupedCount, 0);
+        assert.strictEqual(result.reduceStats?.usedAIReduce, false);
     });
 
-    test('collects findings from successful rule results', async () => {
+    test('collects findings from successful rule results', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -59,7 +77,7 @@ suite('DeterministicReducer', () => {
                 ]
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: true,
                 findings: [
@@ -68,18 +86,18 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.findings.length, 2);
-        assert.strictEqual(result.reduceStats.originalCount, 2);
-        assert.strictEqual(result.reduceStats.dedupedCount, 2);
-        assert.strictEqual(result.reduceStats.mergedCount, 0);
+        assert.strictEqual(result.reduceStats?.originalCount, 2);
+        assert.strictEqual(result.reduceStats?.dedupedCount, 2);
+        assert.strictEqual(result.reduceStats?.mergedCount, 0);
     });
 
-    test('ignores findings from failed rule results', async () => {
+    test('ignores findings from failed rule results', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -87,7 +105,7 @@ suite('DeterministicReducer', () => {
                 ]
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: false,
                 error: 'Failed',
@@ -97,16 +115,16 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.findings.length, 1);
         assert.strictEqual(result.findings[0].rule, 'rule1.md');
     });
 
-    test('deduplicates findings with same file, line, and description', async () => {
+    test('deduplicates findings with same file, line, and description', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -114,7 +132,7 @@ suite('DeterministicReducer', () => {
                 ]
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: true,
                 findings: [
@@ -123,18 +141,18 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         // Should deduplicate to 1 finding, keeping the more severe one
         assert.strictEqual(result.findings.length, 1);
         assert.strictEqual(result.findings[0].severity, 'error'); // Higher severity kept
-        assert.strictEqual(result.reduceStats.mergedCount, 1);
+        assert.strictEqual(result.reduceStats?.mergedCount, 1);
     });
 
-    test('does not deduplicate findings with different descriptions', async () => {
+    test('does not deduplicate findings with different descriptions', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -142,7 +160,7 @@ suite('DeterministicReducer', () => {
                 ]
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: true,
                 findings: [
@@ -151,15 +169,15 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.findings.length, 2);
     });
 
-    test('sorts findings by severity (errors first)', async () => {
+    test('sorts findings by severity (errors first)', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -171,7 +189,7 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.findings[0].severity, 'error');
         assert.strictEqual(result.findings[1].severity, 'warning');
@@ -179,10 +197,10 @@ suite('DeterministicReducer', () => {
         assert.strictEqual(result.findings[3].severity, 'suggestion');
     });
 
-    test('sorts findings by file then line within same severity', async () => {
+    test('sorts findings by file then line within same severity', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -193,7 +211,7 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.findings[0].file, 'src/a.ts');
         assert.strictEqual(result.findings[0].line, 10);
@@ -202,10 +220,10 @@ suite('DeterministicReducer', () => {
         assert.strictEqual(result.findings[2].file, 'src/b.ts');
     });
 
-    test('creates correct summary with errors', async () => {
+    test('creates correct summary with errors', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -216,7 +234,7 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.summary.totalFindings, 2);
         assert.strictEqual(result.summary.bySeverity.error, 1);
@@ -225,10 +243,10 @@ suite('DeterministicReducer', () => {
         assert.ok(result.summary.summaryText.includes('2 issue'));
     });
 
-    test('creates correct summary with warnings only', async () => {
+    test('creates correct summary with warnings only', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -238,15 +256,15 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.summary.overallAssessment, 'needs-attention');
     });
 
-    test('creates correct summary with no findings', async () => {
+    test('creates correct summary with no findings', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [],
@@ -254,17 +272,17 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.summary.totalFindings, 0);
         assert.strictEqual(result.summary.overallAssessment, 'pass');
         assert.ok(result.summary.summaryText.includes('No issues'));
     });
 
-    test('tags findings with rule file', async () => {
+    test('tags findings with rule file', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'naming.md', path: '/rules/naming.md', content: '' },
+                rule: createTestRule('naming.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -273,22 +291,22 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.findings[0].ruleFile, 'naming.md');
         assert.strictEqual(result.findings[0].rule, 'naming.md');
     });
 
-    test('includes failed rule count in summary', async () => {
+    test('includes failed rule count in summary', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: []
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: false,
                 error: 'Timeout',
@@ -296,15 +314,15 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.ok(result.summary.summaryText.includes('1 failed'));
     });
 
-    test('handles findings without file or line', async () => {
+    test('handles findings without file or line', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -313,17 +331,17 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.findings.length, 1);
         assert.strictEqual(result.findings[0].file, undefined);
         assert.strictEqual(result.findings[0].line, undefined);
     });
 
-    test('merges rule names when deduplicating', async () => {
+    test('merges rule names when deduplicating', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -331,7 +349,7 @@ suite('DeterministicReducer', () => {
                 ]
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: true,
                 findings: [
@@ -340,17 +358,17 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.findings.length, 1);
         // Rule should contain both names
         assert.ok(result.findings[0].rule.includes('naming') || result.findings[0].rule.includes('style'));
     });
 
-    test('keeps longer suggestion when merging', async () => {
+    test('keeps longer suggestion when merging', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -366,7 +384,7 @@ suite('DeterministicReducer', () => {
                 ]
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: true,
                 findings: [
@@ -383,282 +401,82 @@ suite('DeterministicReducer', () => {
             }
         ];
 
-        const result = await reducer.reduce(ruleResults, defaultContext);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
         assert.strictEqual(result.findings.length, 1);
         assert.ok(result.findings[0].suggestion!.length > 20);
     });
-
-    test('tracks reduce time in stats', async () => {
-        const ruleResults: SingleRuleReviewResult[] = [
-            {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
-                processId: 'p1',
-                success: true,
-                findings: [
-                    { id: 'f1', severity: 'info', rule: 'rule1', description: 'Issue' }
-                ]
-            }
-        ];
-
-        const result = await reducer.reduce(ruleResults, defaultContext);
-
-        assert.ok(result.reduceStats.reduceTimeMs >= 0);
-    });
 });
 
-suite('AIReducer', () => {
-    test('falls back to deterministic when AI returns error', async () => {
-        const mockInvokeAI = async () => ({
-            success: false,
-            error: 'Service unavailable'
-        });
-
-        const reducer = new AIReducer(mockInvokeAI);
-
-        const ruleResults: SingleRuleReviewResult[] = [
-            {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
-                processId: 'p1',
-                success: true,
-                findings: [
-                    { id: 'f1', severity: 'error', rule: 'rule1.md', description: 'Issue' }
-                ]
-            }
-        ];
-
-        const context: ReduceContext = {
-            metadata: { type: 'pending', rulesUsed: [] },
-            mapPhaseTimeMs: 1000,
-            filesChanged: 1
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
-
-        assert.strictEqual(result.findings.length, 1);
-        assert.strictEqual(result.reduceStats.usedAIReduce, false);
+suite('Map-Reduce Code Review Job', () => {
+    // Mock AI invoker that returns successful empty results
+    const mockAIInvoker: AIInvoker = async (prompt) => ({
+        success: true,
+        response: JSON.stringify({
+            assessment: 'pass',
+            findings: []
+        })
     });
 
-    test('falls back to deterministic when AI throws', async () => {
-        const mockInvokeAI = async () => {
-            throw new Error('Network error');
-        };
+    test('creates code review job with correct structure', () => {
+        const job = createCodeReviewJob({ aiInvoker: mockAIInvoker });
 
-        const reducer = new AIReducer(mockInvokeAI);
-
-        const ruleResults: SingleRuleReviewResult[] = [
-            {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
-                processId: 'p1',
-                success: true,
-                findings: [
-                    { id: 'f1', severity: 'warning', rule: 'rule1.md', description: 'Issue' }
-                ]
-            }
-        ];
-
-        const context: ReduceContext = {
-            metadata: { type: 'commit', commitSha: 'abc', rulesUsed: [] },
-            mapPhaseTimeMs: 500,
-            filesChanged: 2
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
-
-        assert.strictEqual(result.findings.length, 1);
-        assert.strictEqual(result.reduceStats.usedAIReduce, false);
+        assert.strictEqual(job.id, 'code-review');
+        assert.strictEqual(job.name, 'Code Review');
+        assert.ok(job.splitter);
+        assert.ok(job.mapper);
+        assert.ok(job.reducer);
     });
 
-    test('skips AI call when no findings', async () => {
-        let aiCalled = false;
-        const mockInvokeAI = async () => {
-            aiCalled = true;
-            return { success: true, response: '{}' };
-        };
-
-        const reducer = new AIReducer(mockInvokeAI);
-
-        const ruleResults: SingleRuleReviewResult[] = [
-            {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
-                processId: 'p1',
-                success: true,
-                findings: []
-            }
-        ];
-
-        const context: ReduceContext = {
-            metadata: { type: 'staged', rulesUsed: [] },
-            mapPhaseTimeMs: 100,
-            filesChanged: 0
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
-
-        assert.strictEqual(aiCalled, false);
-        assert.strictEqual(result.findings.length, 0);
-        assert.strictEqual(result.summary.overallAssessment, 'pass');
-    });
-
-    test('parses valid AI JSON response', async () => {
-        const mockResponse = JSON.stringify({
-            summary: 'Found some issues that need attention.',
-            overallSeverity: 'needs-work',
-            findings: [
-                {
-                    id: 'synth-1',
-                    severity: 'error',
-                    file: 'src/test.ts',
-                    line: 10,
-                    issue: 'Synthesized issue description',
-                    suggestion: 'Fix it this way',
-                    fromRules: ['rule1.md', 'rule2.md']
-                }
-            ],
-            stats: {
-                totalIssues: 1,
-                deduplicated: 1
-            }
-        });
-
-        const mockInvokeAI = async () => ({
+    test('code review job can be executed with executor', async () => {
+        // Create a mock AI invoker that returns findings
+        const mockInvokerWithFindings: AIInvoker = async (prompt) => ({
             success: true,
-            response: mockResponse
+            response: JSON.stringify({
+                assessment: 'needs-attention',
+                findings: [
+                    {
+                        severity: 'warning',
+                        file: 'test.ts',
+                        line: 10,
+                        description: 'Test issue',
+                        suggestion: 'Fix it'
+                    }
+                ]
+            })
         });
 
-        const reducer = new AIReducer(mockInvokeAI);
+        const job = createCodeReviewJob({ aiInvoker: mockInvokerWithFindings });
+        const executor = createExecutor({
+            aiInvoker: mockInvokerWithFindings,
+            maxConcurrency: 1,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false
+        });
 
-        const ruleResults: SingleRuleReviewResult[] = [
-            {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
-                processId: 'p1',
-                success: true,
-                findings: [
-                    { id: 'f1', severity: 'warning', rule: 'rule1.md', description: 'Original issue', file: 'src/test.ts', line: 10 }
-                ]
-            }
-        ];
-
-        const context: ReduceContext = {
-            metadata: { type: 'commit', commitSha: 'xyz', rulesUsed: [] },
-            mapPhaseTimeMs: 2000,
-            filesChanged: 1
+        const input: CodeReviewInput = {
+            diff: 'diff --git a/test.ts b/test.ts\n+const x = 1;',
+            rules: [createMRTestRule('test-rule.md', 'Test rule content')]
         };
 
-        const result = await reducer.reduce(ruleResults, context);
+        const result = await executor.execute(job, input);
 
-        assert.strictEqual(result.reduceStats.usedAIReduce, true);
-        assert.strictEqual(result.findings.length, 1);
-        assert.strictEqual(result.findings[0].description, 'Synthesized issue description');
-        assert.strictEqual(result.summary.overallAssessment, 'fail'); // needs-work maps to fail
-    });
-
-    test('handles malformed AI response gracefully', async () => {
-        const mockInvokeAI = async () => ({
-            success: true,
-            response: 'This is not valid JSON at all'
-        });
-
-        const reducer = new AIReducer(mockInvokeAI);
-
-        const ruleResults: SingleRuleReviewResult[] = [
-            {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
-                processId: 'p1',
-                success: true,
-                findings: [
-                    { id: 'f1', severity: 'info', rule: 'rule1.md', description: 'Original' }
-                ]
-            }
-        ];
-
-        const context: ReduceContext = {
-            metadata: { type: 'pending', rulesUsed: [] },
-            mapPhaseTimeMs: 1000,
-            filesChanged: 1
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
-
-        // Should fall back and still return findings
-        assert.strictEqual(result.findings.length, 1);
-    });
-
-    test('maps AI severity values correctly', async () => {
-        const mockResponse = JSON.stringify({
-            summary: 'Test',
-            overallSeverity: 'clean',
-            findings: [
-                { id: '1', severity: 'critical', issue: 'Critical issue' },
-                { id: '2', severity: 'major', issue: 'Major issue' },
-                { id: '3', severity: 'minor', issue: 'Minor issue' },
-                { id: '4', severity: 'nitpick', issue: 'Nitpick issue' }
-            ]
-        });
-
-        const mockInvokeAI = async () => ({
-            success: true,
-            response: mockResponse
-        });
-
-        const reducer = new AIReducer(mockInvokeAI);
-
-        const ruleResults: SingleRuleReviewResult[] = [
-            {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
-                processId: 'p1',
-                success: true,
-                findings: [
-                    { id: 'f1', severity: 'info', rule: 'rule1.md', description: 'Placeholder' }
-                ]
-            }
-        ];
-
-        const context: ReduceContext = {
-            metadata: { type: 'commit', commitSha: '123', rulesUsed: [] },
-            mapPhaseTimeMs: 500,
-            filesChanged: 1
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
-
-        assert.strictEqual(result.findings[0].severity, 'error'); // critical -> error
-        assert.strictEqual(result.findings[1].severity, 'warning'); // major -> warning
-        assert.strictEqual(result.findings[2].severity, 'info'); // minor -> info
-        assert.strictEqual(result.findings[3].severity, 'suggestion'); // nitpick -> suggestion
-    });
-});
-
-suite('createReducer factory', () => {
-    test('creates DeterministicReducer for deterministic mode', () => {
-        const reducer = createReducer('deterministic');
-        assert.ok(reducer instanceof DeterministicReducer);
-    });
-
-    test('creates DeterministicReducer when AI mode but no invokeAI provided', () => {
-        const reducer = createReducer('ai');
-        assert.ok(reducer instanceof DeterministicReducer);
-    });
-
-    test('creates AIReducer for AI mode with invokeAI', () => {
-        const mockInvokeAI = async () => ({ success: true, response: '' });
-        const reducer = createReducer('ai', mockInvokeAI);
-        assert.ok(reducer instanceof AIReducer);
-    });
-
-    test('creates DeterministicReducer by default', () => {
-        const reducer = createReducer('deterministic' as CodeReviewReduceMode);
-        assert.ok(reducer instanceof DeterministicReducer);
+        assert.ok(result.success || result.executionStats.failedMaps === 0);
+        assert.strictEqual(result.executionStats.totalItems, 1);
     });
 });
 
 suite('Reducer Edge Cases', () => {
-    test('handles findings with null/undefined values', async () => {
-        const reducer = new DeterministicReducer();
+    const defaultMetadata: CodeReviewMetadata = {
+        type: 'pending',
+        rulesUsed: []
+    };
 
+    test('handles findings with null/undefined values', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -674,26 +492,19 @@ suite('Reducer Edge Cases', () => {
             }
         ];
 
-        const context: ReduceContext = {
-            metadata: { type: 'pending', rulesUsed: [] },
-            mapPhaseTimeMs: 100,
-            filesChanged: 0
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 100);
 
         assert.strictEqual(result.findings.length, 1);
         // Should use rule filename as rule
         assert.strictEqual(result.findings[0].rule, 'rule1.md');
     });
 
-    test('handles very long descriptions for deduplication', async () => {
-        const reducer = new DeterministicReducer();
+    test('handles very long descriptions for deduplication', () => {
         const longDesc = 'A'.repeat(200);
 
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -701,7 +512,7 @@ suite('Reducer Edge Cases', () => {
                 ]
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: true,
                 findings: [
@@ -710,24 +521,16 @@ suite('Reducer Edge Cases', () => {
             }
         ];
 
-        const context: ReduceContext = {
-            metadata: { type: 'commit', commitSha: 'abc', rulesUsed: [] },
-            mapPhaseTimeMs: 100,
-            filesChanged: 1
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 100);
 
         // Should deduplicate based on first 100 chars
         assert.strictEqual(result.findings.length, 1);
     });
 
-    test('handles whitespace differences in descriptions', async () => {
-        const reducer = new DeterministicReducer();
-
+    test('handles whitespace differences in descriptions', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -735,7 +538,7 @@ suite('Reducer Edge Cases', () => {
                 ]
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: true,
                 findings: [
@@ -744,24 +547,16 @@ suite('Reducer Edge Cases', () => {
             }
         ];
 
-        const context: ReduceContext = {
-            metadata: { type: 'pending', rulesUsed: [] },
-            mapPhaseTimeMs: 100,
-            filesChanged: 1
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 100);
 
         // Should deduplicate because normalized descriptions match
         assert.strictEqual(result.findings.length, 1);
     });
 
-    test('handles case differences in descriptions', async () => {
-        const reducer = new DeterministicReducer();
-
+    test('handles case differences in descriptions', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -769,7 +564,7 @@ suite('Reducer Edge Cases', () => {
                 ]
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: true,
                 findings: [
@@ -778,24 +573,16 @@ suite('Reducer Edge Cases', () => {
             }
         ];
 
-        const context: ReduceContext = {
-            metadata: { type: 'staged', rulesUsed: [] },
-            mapPhaseTimeMs: 100,
-            filesChanged: 1
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 100);
 
         // Should deduplicate because lowercase descriptions match
         assert.strictEqual(result.findings.length, 1);
     });
 
-    test('handles special characters in file paths', async () => {
-        const reducer = new DeterministicReducer();
-
+    test('handles special characters in file paths', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -804,21 +591,13 @@ suite('Reducer Edge Cases', () => {
             }
         ];
 
-        const context: ReduceContext = {
-            metadata: { type: 'pending', rulesUsed: [] },
-            mapPhaseTimeMs: 100,
-            filesChanged: 1
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 100);
 
         assert.strictEqual(result.findings.length, 1);
         assert.strictEqual(result.findings[0].file, 'src/components/My Component.tsx');
     });
 
-    test('handles Windows-style paths in findings', async () => {
-        const reducer = new DeterministicReducer();
-
+    test('handles Windows-style paths in findings', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
                 rule: { filename: 'rule1.md', path: 'C:\\rules\\rule1.md', content: '' },
@@ -830,13 +609,7 @@ suite('Reducer Edge Cases', () => {
             }
         ];
 
-        const context: ReduceContext = {
-            metadata: { type: 'commit', commitSha: 'abc', rulesUsed: [] },
-            mapPhaseTimeMs: 100,
-            filesChanged: 1
-        };
-
-        const result = await reducer.reduce(ruleResults, context);
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 100);
 
         assert.strictEqual(result.findings.length, 1);
         // Path should be preserved as-is
@@ -845,12 +618,15 @@ suite('Reducer Edge Cases', () => {
 });
 
 suite('ReduceStats', () => {
-    test('correctly reports merge count', async () => {
-        const reducer = new DeterministicReducer();
+    const defaultMetadata: CodeReviewMetadata = {
+        type: 'pending',
+        rulesUsed: []
+    };
 
+    test('correctly reports merge count', () => {
         const ruleResults: SingleRuleReviewResult[] = [
             {
-                rule: { filename: 'rule1.md', path: '/rules/rule1.md', content: '' },
+                rule: createTestRule('rule1.md'),
                 processId: 'p1',
                 success: true,
                 findings: [
@@ -859,7 +635,7 @@ suite('ReduceStats', () => {
                 ]
             },
             {
-                rule: { filename: 'rule2.md', path: '/rules/rule2.md', content: '' },
+                rule: createTestRule('rule2.md'),
                 processId: 'p2',
                 success: true,
                 findings: [
@@ -869,16 +645,28 @@ suite('ReduceStats', () => {
             }
         ];
 
-        const context: ReduceContext = {
-            metadata: { type: 'pending', rulesUsed: [] },
-            mapPhaseTimeMs: 1000,
-            filesChanged: 2
-        };
+        const result = aggregateReviewResults(ruleResults, defaultMetadata, 1000);
 
-        const result = await reducer.reduce(ruleResults, context);
+        assert.strictEqual(result.reduceStats?.originalCount, 4);
+        assert.strictEqual(result.reduceStats?.dedupedCount, 3); // One duplicate merged
+        assert.strictEqual(result.reduceStats?.mergedCount, 1);
+    });
+});
 
-        assert.strictEqual(result.reduceStats.originalCount, 4);
-        assert.strictEqual(result.reduceStats.dedupedCount, 3); // One duplicate merged
-        assert.strictEqual(result.reduceStats.mergedCount, 1);
+suite('DeterministicReducer from Map-Reduce Framework', () => {
+    test('can be instantiated with custom options', () => {
+        interface TestItem {
+            id: string;
+            value: number;
+            [key: string]: unknown; // Index signature for Deduplicatable
+        }
+
+        const reducer = createDeterministicReducer<TestItem>({
+            getKey: (item) => item.id,
+            merge: (a, b) => a.value > b.value ? a : b,
+            sort: (a, b) => b.value - a.value
+        });
+
+        assert.ok(reducer);
     });
 });
