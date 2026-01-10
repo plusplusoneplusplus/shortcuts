@@ -1,0 +1,610 @@
+/**
+ * Tests for Pipeline Executor
+ *
+ * Comprehensive tests for pipeline execution including AI invocation mocking.
+ * Cross-platform compatible (Linux/Mac/Windows).
+ */
+
+import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import {
+    executePipeline,
+    createPipelineExecutor,
+    parsePipelineYAML,
+    parsePipelineYAMLSync,
+    PipelineExecutionError,
+    DEFAULT_PARALLEL_LIMIT
+} from '../../../shortcuts/yaml-pipeline/executor';
+import {
+    PipelineConfig,
+    PipelineProgress,
+    AIInvokerResult
+} from '../../../shortcuts/yaml-pipeline/types';
+
+suite('Pipeline Executor', () => {
+    let tempDir: string;
+
+    setup(async () => {
+        tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pipeline-test-'));
+    });
+
+    teardown(async () => {
+        await fs.promises.rm(tempDir, { recursive: true, force: true });
+    });
+
+    // Helper to create a mock AI invoker
+    function createMockAIInvoker(
+        responses: Map<string, string> | ((prompt: string) => AIInvokerResult)
+    ): (prompt: string) => Promise<AIInvokerResult> {
+        return async (prompt: string): Promise<AIInvokerResult> => {
+            if (typeof responses === 'function') {
+                return responses(prompt);
+            }
+
+            // Look for matching response based on content
+            for (const [key, response] of responses) {
+                if (prompt.includes(key)) {
+                    return { success: true, response };
+                }
+            }
+
+            return { success: true, response: '{"result": "default"}' };
+        };
+    }
+
+    // Helper to create test CSV
+    async function createTestCSV(filename: string, content: string): Promise<string> {
+        const filePath = path.join(tempDir, filename);
+        await fs.promises.writeFile(filePath, content);
+        return filePath;
+    }
+
+    suite('executePipeline', () => {
+        test('executes simple pipeline successfully', async () => {
+            await createTestCSV('data.csv', 'id,title\n1,Bug A\n2,Bug B');
+
+            const config: PipelineConfig = {
+                name: 'Test Pipeline',
+                input: { type: 'csv', path: './data.csv' },
+                map: {
+                    prompt: 'Analyze: {{title}}',
+                    output: ['severity']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const responses = new Map([
+                ['Bug A', '{"severity": "high"}'],
+                ['Bug B', '{"severity": "low"}']
+            ]);
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(responses),
+                workingDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.name, 'Test Pipeline');
+            assert.strictEqual(result.results.length, 2);
+
+            assert.strictEqual(result.results[0].success, true);
+            assert.strictEqual(result.results[0].output.severity, 'high');
+
+            assert.strictEqual(result.results[1].success, true);
+            assert.strictEqual(result.results[1].output.severity, 'low');
+        });
+
+        test('handles empty CSV', async () => {
+            await createTestCSV('empty.csv', 'id,title');
+
+            const config: PipelineConfig = {
+                name: 'Empty Test',
+                input: { type: 'csv', path: './empty.csv' },
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map()),
+                workingDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.results.length, 0);
+            assert.ok(result.formattedOutput.includes('0 items'));
+        });
+
+        test('handles AI failures gracefully', async () => {
+            await createTestCSV('data.csv', 'id,title\n1,Good\n2,Bad');
+
+            const config: PipelineConfig = {
+                name: 'Failure Test',
+                input: { type: 'csv', path: './data.csv' },
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const aiInvoker = async (prompt: string): Promise<AIInvokerResult> => {
+                if (prompt.includes('Bad')) {
+                    return { success: false, error: 'AI service unavailable' };
+                }
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                workingDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, false); // Has failures
+            assert.strictEqual(result.stats.successfulItems, 1);
+            assert.strictEqual(result.stats.failedItems, 1);
+
+            assert.strictEqual(result.results[0].success, true);
+            assert.strictEqual(result.results[1].success, false);
+            assert.ok(result.results[1].error?.includes('AI service unavailable'));
+        });
+
+        test('handles JSON parse failures', async () => {
+            await createTestCSV('data.csv', 'id,title\n1,Test');
+
+            const config: PipelineConfig = {
+                name: 'Parse Failure Test',
+                input: { type: 'csv', path: './data.csv' },
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const aiInvoker = async (): Promise<AIInvokerResult> => {
+                return { success: true, response: 'This is not JSON at all!' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                workingDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, false);
+            assert.strictEqual(result.results[0].success, false);
+            assert.ok(result.results[0].error?.includes('parse'));
+        });
+
+        test('respects parallel limit', async () => {
+            // Create CSV with many rows
+            const rows = Array.from({ length: 10 }, (_, i) => `${i},Item${i}`).join('\n');
+            await createTestCSV('data.csv', `id,title\n${rows}`);
+
+            const config: PipelineConfig = {
+                name: 'Parallel Test',
+                input: { type: 'csv', path: './data.csv' },
+                map: {
+                    prompt: '{{title}}',
+                    output: ['result'],
+                    parallel: 2 // Limit to 2 concurrent
+                },
+                reduce: { type: 'list' }
+            };
+
+            let maxConcurrent = 0;
+            let currentConcurrent = 0;
+
+            const aiInvoker = async (): Promise<AIInvokerResult> => {
+                currentConcurrent++;
+                maxConcurrent = Math.max(maxConcurrent, currentConcurrent);
+
+                // Simulate some work
+                await new Promise(resolve => setTimeout(resolve, 10));
+
+                currentConcurrent--;
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            await executePipeline(config, {
+                aiInvoker,
+                workingDirectory: tempDir
+            });
+
+            assert.ok(maxConcurrent <= 2, `Max concurrent was ${maxConcurrent}, expected <= 2`);
+        });
+
+        test('reports progress during execution', async () => {
+            await createTestCSV('data.csv', 'id,title\n1,A\n2,B\n3,C');
+
+            const config: PipelineConfig = {
+                name: 'Progress Test',
+                input: { type: 'csv', path: './data.csv' },
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const progressUpdates: PipelineProgress[] = [];
+
+            await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map()),
+                workingDirectory: tempDir,
+                onProgress: (progress) => progressUpdates.push({ ...progress })
+            });
+
+            // Verify progress phases
+            const phases = progressUpdates.map(p => p.phase);
+            assert.ok(phases.includes('loading'));
+            assert.ok(phases.includes('mapping'));
+            assert.ok(phases.includes('reducing'));
+            assert.ok(phases.includes('complete'));
+
+            // Verify final progress
+            const finalProgress = progressUpdates[progressUpdates.length - 1];
+            assert.strictEqual(finalProgress.phase, 'complete');
+            assert.strictEqual(finalProgress.percentage, 100);
+            assert.strictEqual(finalProgress.totalItems, 3);
+        });
+
+        test('handles multiple output fields', async () => {
+            await createTestCSV('data.csv', 'id,title,description\n1,Bug,Something broke');
+
+            const config: PipelineConfig = {
+                name: 'Multi-output Test',
+                input: { type: 'csv', path: './data.csv' },
+                map: {
+                    prompt: 'Title: {{title}}\nDescription: {{description}}',
+                    output: ['severity', 'category', 'effort_hours', 'needs_more_info']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const aiInvoker = async (): Promise<AIInvokerResult> => ({
+                success: true,
+                response: '{"severity": "high", "category": "backend", "effort_hours": 4, "needs_more_info": false}'
+            });
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                workingDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.deepStrictEqual(result.results[0].output, {
+                severity: 'high',
+                category: 'backend',
+                effort_hours: 4,
+                needs_more_info: false
+            });
+        });
+
+        test('uses custom delimiter', async () => {
+            await createTestCSV('data.csv', 'id;title;value\n1;Test;100');
+
+            const config: PipelineConfig = {
+                name: 'Delimiter Test',
+                input: { type: 'csv', path: './data.csv', delimiter: ';' },
+                map: { prompt: '{{title}} {{value}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map([['Test 100', '{"result": "ok"}']])),
+                workingDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.results[0].item.title, 'Test');
+            assert.strictEqual(result.results[0].item.value, '100');
+        });
+
+        test('records execution statistics', async () => {
+            await createTestCSV('data.csv', 'id,title\n1,A\n2,B\n3,C');
+
+            const config: PipelineConfig = {
+                name: 'Stats Test',
+                input: { type: 'csv', path: './data.csv' },
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map()),
+                workingDirectory: tempDir
+            });
+
+            assert.strictEqual(result.stats.totalItems, 3);
+            assert.strictEqual(result.stats.successfulItems, 3);
+            assert.strictEqual(result.stats.failedItems, 0);
+            assert.ok(result.stats.totalTimeMs >= 0);
+            assert.ok(result.stats.mapPhaseTimeMs >= 0);
+            assert.ok(result.stats.reducePhaseTimeMs >= 0);
+        });
+    });
+
+    suite('validation errors', () => {
+        test('throws for missing name', async () => {
+            const config = {
+                input: { type: 'csv', path: './data.csv' },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    workingDirectory: tempDir
+                }),
+                PipelineExecutionError
+            );
+        });
+
+        test('throws for unsupported input type', async () => {
+            const config = {
+                name: 'Test',
+                input: { type: 'json', path: './data.json' },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    workingDirectory: tempDir
+                }),
+                /Unsupported input type/
+            );
+        });
+
+        test('throws for missing input path', async () => {
+            const config = {
+                name: 'Test',
+                input: { type: 'csv' },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    workingDirectory: tempDir
+                }),
+                /missing.*path/i
+            );
+        });
+
+        test('throws for empty output fields', async () => {
+            const config: PipelineConfig = {
+                name: 'Test',
+                input: { type: 'csv', path: './data.csv' },
+                map: { prompt: '{{x}}', output: [] },
+                reduce: { type: 'list' }
+            };
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    workingDirectory: tempDir
+                }),
+                /non-empty array/
+            );
+        });
+
+        test('throws for unsupported reduce type', async () => {
+            const config = {
+                name: 'Test',
+                input: { type: 'csv', path: './data.csv' },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'table' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    workingDirectory: tempDir
+                }),
+                /Unsupported reduce type/
+            );
+        });
+
+        test('throws for missing CSV columns', async () => {
+            await createTestCSV('data.csv', 'id,name\n1,Test');
+
+            const config: PipelineConfig = {
+                name: 'Test',
+                input: { type: 'csv', path: './data.csv' },
+                map: { prompt: '{{title}} {{description}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    workingDirectory: tempDir
+                }),
+                /missing required columns.*title.*description/i
+            );
+        });
+
+        test('throws for missing CSV file', async () => {
+            const config: PipelineConfig = {
+                name: 'Test',
+                input: { type: 'csv', path: './nonexistent.csv' },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            };
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    workingDirectory: tempDir
+                }),
+                PipelineExecutionError
+            );
+        });
+    });
+
+    suite('createPipelineExecutor', () => {
+        test('creates bound executor function', async () => {
+            await createTestCSV('data.csv', 'id,title\n1,Test');
+
+            const executor = createPipelineExecutor({
+                aiInvoker: createMockAIInvoker(new Map()),
+                workingDirectory: tempDir
+            });
+
+            const config: PipelineConfig = {
+                name: 'Bound Test',
+                input: { type: 'csv', path: './data.csv' },
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executor(config);
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.name, 'Bound Test');
+        });
+    });
+
+    suite('parsePipelineYAML', () => {
+        test('parses valid YAML config', async () => {
+            const yaml = `
+name: "Bug Triage"
+input:
+  type: csv
+  path: "./bugs.csv"
+map:
+  prompt: |
+    Analyze: {{title}}
+  output: [severity, category]
+reduce:
+  type: list
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            assert.strictEqual(config.name, 'Bug Triage');
+            assert.strictEqual(config.input.type, 'csv');
+            assert.strictEqual(config.input.path, './bugs.csv');
+            assert.ok(config.map.prompt.includes('Analyze: {{title}}'));
+            assert.deepStrictEqual(config.map.output, ['severity', 'category']);
+            assert.strictEqual(config.reduce.type, 'list');
+        });
+
+        test('parses YAML with optional fields', async () => {
+            const yaml = `
+name: "Test"
+input:
+  type: csv
+  path: "./data.csv"
+  delimiter: ";"
+map:
+  prompt: "{{x}}"
+  output: [y]
+  parallel: 3
+reduce:
+  type: list
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            assert.strictEqual(config.input.delimiter, ';');
+            assert.strictEqual(config.map.parallel, 3);
+        });
+
+        test('throws on invalid YAML config', async () => {
+            const yaml = `
+name: "Test"
+input:
+  type: invalid
+`;
+
+            await assert.rejects(
+                async () => parsePipelineYAML(yaml),
+                PipelineExecutionError
+            );
+        });
+    });
+
+    suite('parsePipelineYAMLSync', () => {
+        test('parses valid YAML config synchronously', () => {
+            const yaml = `
+name: "Sync Test"
+input:
+  type: csv
+  path: "./data.csv"
+map:
+  prompt: "{{title}}"
+  output: [result]
+reduce:
+  type: list
+`;
+
+            const config = parsePipelineYAMLSync(yaml);
+
+            assert.strictEqual(config.name, 'Sync Test');
+            assert.strictEqual(config.input.type, 'csv');
+        });
+    });
+
+    suite('DEFAULT_PARALLEL_LIMIT', () => {
+        test('has reasonable default value', () => {
+            assert.strictEqual(DEFAULT_PARALLEL_LIMIT, 5);
+        });
+    });
+
+    suite('real-world scenario from design doc', () => {
+        test('executes bug triage pipeline', async () => {
+            const csvContent = `id,title,description,priority
+1,Login broken,Users can't login,high
+2,Slow search,Search takes 10s,medium
+3,UI glitch,"Button misaligned",low`;
+
+            await createTestCSV('bugs.csv', csvContent);
+
+            const config: PipelineConfig = {
+                name: 'Bug Triage',
+                input: { type: 'csv', path: './bugs.csv' },
+                map: {
+                    prompt: `Analyze this bug:
+
+Title: {{title}}
+Description: {{description}}
+Reporter Priority: {{priority}}
+
+Classify the severity (critical/high/medium/low), 
+category (ui/backend/database/infra),
+estimate effort in hours,
+and note if more info is needed.`,
+                    output: ['severity', 'category', 'effort_hours', 'needs_more_info'],
+                    parallel: 3
+                },
+                reduce: { type: 'list' }
+            };
+
+            const responses = new Map([
+                ['Login broken', '{"severity": "critical", "category": "backend", "effort_hours": 4, "needs_more_info": false}'],
+                ['Slow search', '{"severity": "medium", "category": "database", "effort_hours": 8, "needs_more_info": false}'],
+                ['UI glitch', '{"severity": "low", "category": "ui", "effort_hours": 2, "needs_more_info": true}']
+            ]);
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(responses),
+                workingDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.name, 'Bug Triage');
+            assert.strictEqual(result.results.length, 3);
+
+            // Verify first bug
+            const loginBug = result.results.find(r => r.item.title === 'Login broken');
+            assert.ok(loginBug);
+            assert.strictEqual(loginBug.output.severity, 'critical');
+            assert.strictEqual(loginBug.output.category, 'backend');
+            assert.strictEqual(loginBug.output.effort_hours, 4);
+            assert.strictEqual(loginBug.output.needs_more_info, false);
+
+            // Verify formatted output
+            assert.ok(result.formattedOutput.includes('## Results (3 items)'));
+            assert.ok(result.formattedOutput.includes('Login broken'));
+            assert.ok(result.formattedOutput.includes('critical'));
+        });
+    });
+});
