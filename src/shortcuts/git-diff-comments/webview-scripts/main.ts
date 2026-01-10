@@ -5,9 +5,9 @@
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
 import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
-import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setIsEditable, setSettings, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
+import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
-import { initVSCodeAPI, sendContentModified, sendCopyPath, sendOpenFile, sendReady, sendSaveContent } from './vscode-bridge';
+import { getPersistedViewMode, initVSCodeAPI, saveViewMode, sendContentModified, sendCopyPath, sendOpenFile, sendReady, sendSaveContent } from './vscode-bridge';
 
 // AbortController for managing event listeners
 let commentHandlersAbortController: AbortController | null = null;
@@ -21,8 +21,12 @@ function initialize(): void {
     // Initialize VSCode API
     initVSCodeAPI();
 
-    // Initialize state
-    const state = createInitialState();
+    // Get persisted view mode preference before creating initial state
+    const persistedViewMode = getPersistedViewMode();
+    console.log('[Diff Webview] Persisted view mode:', persistedViewMode);
+
+    // Initialize state with persisted view mode
+    const state = createInitialState(persistedViewMode);
     updateState(state);
 
     // Initialize UI elements
@@ -607,13 +611,28 @@ function setupViewModeToggle(): void {
         }
     };
 
-    // Initialize UI
-    updateToggleUI(getViewMode());
+    // Initialize UI with current view mode (which may have been restored from persisted state)
+    const currentMode = getViewMode();
+    updateToggleUI(currentMode);
+    
+    // If starting in inline mode, we need to re-render the diff
+    if (currentMode === 'inline') {
+        // Defer re-render to ensure DOM is ready
+        setTimeout(() => {
+            renderDiff();
+            setupCommentIndicatorHandlers();
+        }, 0);
+    }
 
     // Handle click
     toggleButton.addEventListener('click', () => {
         const newMode = toggleViewMode();
         updateToggleUI(newMode);
+        
+        // Persist the view mode preference
+        saveViewMode(newMode);
+        console.log('[Diff Webview] Saved view mode:', newMode);
+        
         renderDiff();
 
         // Re-setup comment indicator handlers for the new view

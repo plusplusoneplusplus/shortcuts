@@ -46,8 +46,9 @@ const DEFAULT_SETTINGS: DiffCommentsSettings = {
 
 /**
  * Create initial state from window data
+ * @param persistedViewMode Optional view mode from persisted webview state
  */
-export function createInitialState(): AppState {
+export function createInitialState(persistedViewMode?: ViewMode): AppState {
     const initialData = window.initialData || {
         filePath: '',
         oldContent: '',
@@ -72,7 +73,8 @@ export function createInitialState(): AppState {
         currentSelection: null,
         isCommentPanelOpen: false,
         editingCommentId: null,
-        viewMode: 'split' as ViewMode,
+        // Use persisted view mode if available, otherwise default to 'split'
+        viewMode: persistedViewMode || 'split' as ViewMode,
         ignoreWhitespace: false,
         isEditable: initialData.isEditable || false,
         isInteracting: false

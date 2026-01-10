@@ -10,6 +10,7 @@ import {
     postMessageToExtension
 } from '../../shared/webview/base-vscode-bridge';
 import { DiffSelection, VSCodeAPI, WebviewMessage } from './types';
+import { ViewMode } from './state';
 
 /**
  * VSCode API instance
@@ -17,17 +18,58 @@ import { DiffSelection, VSCodeAPI, WebviewMessage } from './types';
 let vscode: VSCodeAPI | null = null;
 
 /**
+ * Persisted webview state interface
+ */
+export interface PersistedWebviewState {
+    /** The view mode preference (split or inline) */
+    viewMode?: ViewMode;
+    /** Original initial data for restoration */
+    initialData?: any;
+}
+
+/**
  * Initialize the VSCode API and save state for restoration
  */
 export function initVSCodeAPI(): VSCodeAPI {
     if (!vscode) {
         vscode = window.acquireVsCodeApi();
-        // Save initial data for webview state restoration after VSCode restart
-        if (window.initialData) {
-            vscode.setState(window.initialData);
-        }
+        // Preserve existing state (like viewMode) while updating initialData
+        const existingState = vscode.getState() as PersistedWebviewState | null;
+        const newState: PersistedWebviewState = {
+            ...existingState,
+            initialData: window.initialData
+        };
+        vscode.setState(newState);
     }
     return vscode;
+}
+
+/**
+ * Get the persisted view mode preference
+ * @returns The persisted view mode, or undefined if not set
+ */
+export function getPersistedViewMode(): ViewMode | undefined {
+    if (!vscode) {
+        return undefined;
+    }
+    const state = vscode.getState() as PersistedWebviewState | null;
+    return state?.viewMode;
+}
+
+/**
+ * Save the view mode preference to persistent state
+ * @param viewMode The view mode to persist
+ */
+export function saveViewMode(viewMode: ViewMode): void {
+    if (!vscode) {
+        return;
+    }
+    const existingState = vscode.getState() as PersistedWebviewState | null;
+    const newState: PersistedWebviewState = {
+        ...existingState,
+        viewMode
+    };
+    vscode.setState(newState);
 }
 
 /**
