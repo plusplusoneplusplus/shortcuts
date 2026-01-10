@@ -316,11 +316,13 @@ export function parseCopilotOutput(output: string): string {
  * Build the Copilot CLI command with the given prompt and optional model.
  * 
  * @param prompt - The prompt to send to Copilot CLI
+ * @param overrideModel - Optional model to use instead of the configured default
  * @returns The complete command string
  */
-function buildCopilotCommand(prompt: string): string {
+function buildCopilotCommand(prompt: string, overrideModel?: string): string {
     const escapedPrompt = escapeShellArg(prompt);
-    const model = getAIModelSetting();
+    // Use override model if provided, otherwise use configured model from settings
+    const model = overrideModel || getAIModelSetting();
 
     const baseFlags = '--allow-all-tools --allow-all-paths --disable-builtin-mcps';
 
@@ -346,9 +348,10 @@ export async function copyToClipboard(text: string): Promise<void> {
  * 
  * @param prompt - The prompt to send to Copilot CLI
  * @param workspaceRoot - Optional workspace root for working directory configuration
+ * @param model - Optional model to use (overrides settings)
  * @returns True if the terminal was created successfully
  */
-export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: string): Promise<boolean> {
+export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: string, model?: string): Promise<boolean> {
     const logger = getExtensionLogger();
     
     // Check if copilot CLI is installed before attempting to run
@@ -371,7 +374,7 @@ export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: s
         const cwd = workspaceRoot ? getWorkingDirectory(workspaceRoot) : undefined;
 
         // Build the copilot command with escaped prompt and optional model
-        const command = buildCopilotCommand(prompt);
+        const command = buildCopilotCommand(prompt, model);
         
         logger.logAIProcessLaunch(prompt, cwd || 'default', command);
 
@@ -408,13 +411,16 @@ export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: s
  * @param prompt - The prompt to send to Copilot CLI
  * @param workspaceRoot - The workspace root directory (used for variable expansion)
  * @param processManager - Optional process manager for tracking
+ * @param existingProcessId - Optional existing process ID to use
+ * @param model - Optional model to use (overrides settings, e.g., from rule front matter)
  * @returns The invocation result with the AI response
  */
 export async function invokeCopilotCLI(
     prompt: string,
     workspaceRoot: string,
     processManager?: AIProcessManager,
-    existingProcessId?: string
+    existingProcessId?: string,
+    model?: string
 ): Promise<AIInvocationResult> {
     const logger = getExtensionLogger();
     let processId: string | undefined = existingProcessId;
@@ -444,7 +450,7 @@ export async function invokeCopilotCLI(
 
     try {
         // Build the copilot command with escaped prompt and optional model
-        const command = buildCopilotCommand(prompt);
+        const command = buildCopilotCommand(prompt, model);
 
         // Get the configured working directory
         const cwd = getWorkingDirectory(workspaceRoot);

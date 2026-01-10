@@ -17,11 +17,13 @@ import {
     DEFAULT_CODE_REVIEW_CONFIG,
     DiffStats,
     LARGE_DIFF_THRESHOLD,
+    RuleFrontMatter,
     SINGLE_RULE_PROMPT_TEMPLATE,
     SingleRuleReviewMetadata,
     SingleRuleReviewResult
 } from '../../shortcuts/code-review/types';
 import { aggregateReviewResults } from '../../shortcuts/code-review/response-parser';
+import { parseFrontMatter } from '../../shortcuts/code-review/front-matter-parser';
 import { glob, getFilesWithExtension } from '../../shortcuts/shared/glob-utils';
 
 suite('Code Review Types', () => {
@@ -430,6 +432,154 @@ suite('Rule Loading', () => {
         files.sort();
 
         assert.strictEqual(files.length, 2);
+    });
+});
+
+suite('Rule Loading with Front Matter', () => {
+    let testDir: string;
+
+    setup(() => {
+        testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'code-review-frontmatter-test-'));
+    });
+
+    teardown(() => {
+        if (testDir && fs.existsSync(testDir)) {
+            fs.rmSync(testDir, { recursive: true, force: true });
+        }
+    });
+
+    test('parses front matter with model field from rule file', () => {
+        const content = `---
+model: claude-sonnet-4-5
+---
+
+# Naming Conventions
+
+Use camelCase for variables.`;
+
+        fs.writeFileSync(path.join(testDir, 'naming.md'), content);
+
+        const files = glob('**/*.md', testDir);
+        assert.strictEqual(files.length, 1);
+
+        const rawContent = fs.readFileSync(files[0], 'utf-8');
+        const parseResult = parseFrontMatter(rawContent);
+
+        assert.strictEqual(parseResult.hasFrontMatter, true);
+        assert.strictEqual(parseResult.frontMatter.model, 'claude-sonnet-4-5');
+        assert.ok(parseResult.content.includes('# Naming Conventions'));
+        assert.ok(!parseResult.content.includes('---'));
+    });
+
+    test('handles rule file without front matter', () => {
+        const content = `# Security Rules
+
+Validate all user inputs.`;
+
+        fs.writeFileSync(path.join(testDir, 'security.md'), content);
+
+        const rawContent = fs.readFileSync(path.join(testDir, 'security.md'), 'utf-8');
+        const parseResult = parseFrontMatter(rawContent);
+
+        assert.strictEqual(parseResult.hasFrontMatter, false);
+        assert.strictEqual(parseResult.frontMatter.model, undefined);
+        assert.strictEqual(parseResult.content, content);
+    });
+
+    test('simulates CodeRule creation with front matter', () => {
+        const rawContent = `---
+model: gpt-4-turbo
+---
+
+# Error Handling Rule
+
+All errors must be caught.`;
+
+        fs.writeFileSync(path.join(testDir, 'error-handling.md'), rawContent);
+
+        const files = glob('**/*.md', testDir);
+        const file = files[0];
+        const fileContent = fs.readFileSync(file, 'utf-8');
+        const parseResult = parseFrontMatter(fileContent);
+
+        // Create CodeRule as the service would
+        const rule: CodeRule = {
+            filename: path.basename(file),
+            path: file,
+            content: parseResult.content,
+            rawContent: fileContent,
+            frontMatter: parseResult.hasFrontMatter ? parseResult.frontMatter : undefined
+        };
+
+        assert.strictEqual(rule.filename, 'error-handling.md');
+        assert.ok(rule.frontMatter);
+        assert.strictEqual(rule.frontMatter!.model, 'gpt-4-turbo');
+        assert.ok(rule.content.includes('# Error Handling Rule'));
+        assert.ok(!rule.content.includes('model:'));
+    });
+
+    test('handles multiple rules with different models', () => {
+        const rule1 = `---
+model: claude-sonnet-4-5
+---
+
+# Rule 1`;
+
+        const rule2 = `---
+model: gpt-4
+---
+
+# Rule 2`;
+
+        const rule3 = `# Rule 3 (no model)`;
+
+        fs.writeFileSync(path.join(testDir, '01-rule.md'), rule1);
+        fs.writeFileSync(path.join(testDir, '02-rule.md'), rule2);
+        fs.writeFileSync(path.join(testDir, '03-rule.md'), rule3);
+
+        const files = glob('**/*.md', testDir);
+        files.sort();
+
+        const rules: CodeRule[] = files.map(file => {
+            const rawContent = fs.readFileSync(file, 'utf-8');
+            const parseResult = parseFrontMatter(rawContent);
+            return {
+                filename: path.basename(file),
+                path: file,
+                content: parseResult.content,
+                rawContent,
+                frontMatter: parseResult.hasFrontMatter ? parseResult.frontMatter : undefined
+            };
+        });
+
+        assert.strictEqual(rules.length, 3);
+        assert.strictEqual(rules[0].frontMatter?.model, 'claude-sonnet-4-5');
+        assert.strictEqual(rules[1].frontMatter?.model, 'gpt-4');
+        assert.strictEqual(rules[2].frontMatter, undefined);
+    });
+
+    test('handles Windows line endings in front matter (CRLF)', () => {
+        const content = '---\r\nmodel: haiku\r\n---\r\n\r\n# Rule Content';
+
+        fs.writeFileSync(path.join(testDir, 'windows-rule.md'), content);
+
+        const rawContent = fs.readFileSync(path.join(testDir, 'windows-rule.md'), 'utf-8');
+        const parseResult = parseFrontMatter(rawContent);
+
+        assert.strictEqual(parseResult.hasFrontMatter, true);
+        assert.strictEqual(parseResult.frontMatter.model, 'haiku');
+    });
+
+    test('RuleFrontMatter type only has model field', () => {
+        const frontMatter: RuleFrontMatter = {
+            model: 'claude-sonnet-4-5'
+        };
+
+        assert.strictEqual(frontMatter.model, 'claude-sonnet-4-5');
+        // Verify that only model is a valid key
+        const keys = Object.keys(frontMatter);
+        assert.strictEqual(keys.length, 1);
+        assert.strictEqual(keys[0], 'model');
     });
 });
 

@@ -35,6 +35,14 @@ export const DEFAULT_CODE_REVIEW_CONFIG: CodeReviewConfig = {
 };
 
 /**
+ * Front matter metadata parsed from a rule file
+ */
+export interface RuleFrontMatter {
+    /** AI model to use for this rule (e.g., 'claude-sonnet-4-5', 'gpt-4', 'haiku') */
+    model?: string;
+}
+
+/**
  * A code rule loaded from a file
  */
 export interface CodeRule {
@@ -42,8 +50,12 @@ export interface CodeRule {
     filename: string;
     /** Full path to the rule file */
     path: string;
-    /** Content of the rule file */
+    /** Content of the rule file (without front matter if present) */
     content: string;
+    /** Raw content including front matter (defaults to content if not specified) */
+    rawContent?: string;
+    /** Parsed front matter metadata */
+    frontMatter?: RuleFrontMatter;
 }
 
 /**

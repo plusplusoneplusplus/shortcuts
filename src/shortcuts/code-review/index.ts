@@ -10,4 +10,5 @@ export * from './code-review-service';
 export * from './code-review-commands';
 export * from './response-parser';
 export * from './code-review-viewer';
+export * from './front-matter-parser';
 

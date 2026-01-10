@@ -70,8 +70,11 @@ export function registerCodeReviewCommands(
             }
         );
 
+        // Get model from rule's front matter (if specified)
+        const ruleModel = rule.frontMatter?.model;
+
         try {
-            const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager, processId);
+            const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager, processId, ruleModel);
 
             if (result.success && result.response) {
                 // Parse the structured response for this single rule

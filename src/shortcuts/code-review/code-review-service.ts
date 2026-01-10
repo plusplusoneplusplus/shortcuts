@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { glob } from '../shared/glob-utils';
+import { parseFrontMatter } from './front-matter-parser';
 import {
     CodeReviewConfig,
     CodeReviewMetadata,
@@ -140,11 +141,23 @@ export class CodeReviewService implements vscode.Disposable {
             // Load each file
             for (const file of files) {
                 try {
-                    const content = fs.readFileSync(file, 'utf-8');
+                    const rawContent = fs.readFileSync(file, 'utf-8');
+                    const filename = path.basename(file);
+                    
+                    // Parse front matter from the file
+                    const parseResult = parseFrontMatter(rawContent);
+                    
+                    // If there was a parsing error, log it but continue
+                    if (parseResult.error) {
+                        errors.push(`Warning: ${filename}: ${parseResult.error}`);
+                    }
+                    
                     rules.push({
-                        filename: path.basename(file),
+                        filename,
                         path: file,
-                        content
+                        content: parseResult.content,
+                        rawContent,
+                        frontMatter: parseResult.hasFrontMatter ? parseResult.frontMatter : undefined
                     });
                 } catch (error) {
                     const err = error instanceof Error ? error.message : String(error);
