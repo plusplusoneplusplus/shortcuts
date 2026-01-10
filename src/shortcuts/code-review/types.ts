@@ -22,6 +22,8 @@ export interface CodeReviewConfig {
     promptTemplate: string;
     /** Output mode for results */
     outputMode: CodeReviewOutputMode;
+    /** Maximum number of concurrent rule reviews (default: 5) */
+    maxConcurrency: number;
 }
 
 /**
@@ -31,7 +33,8 @@ export const DEFAULT_CODE_REVIEW_CONFIG: CodeReviewConfig = {
     rulesFolder: '.github/cr-rules',
     rulesPattern: '**/*.md',
     promptTemplate: 'Review the following code changes against the provided coding rules. Identify violations and suggest fixes.',
-    outputMode: 'aiProcess'
+    outputMode: 'aiProcess',
+    maxConcurrency: 5
 };
 
 /**

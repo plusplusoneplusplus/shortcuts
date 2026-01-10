@@ -325,6 +325,13 @@
           ],
           "markdownDescription": "Output mode for code review results."
         },
+        "workspaceShortcuts.codeReview.maxConcurrency": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20,
+          "markdownDescription": "Maximum number of concurrent rule reviews. Higher values may speed up reviews but could hit API rate limits. Default: 5"
+        },
         "workspaceShortcuts.discovery.enabled": {
           "type": "boolean",
           "default": false,

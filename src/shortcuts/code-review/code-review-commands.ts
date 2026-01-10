@@ -15,6 +15,7 @@ import { LookedUpCommitItem } from '../git/looked-up-commit-item';
 import { GitCommit } from '../git/types';
 import { CodeReviewService } from './code-review-service';
 import { CodeReviewViewer } from './code-review-viewer';
+import { ConcurrencyLimiter } from './concurrency-limiter';
 import { aggregateReviewResults, formatAggregatedResultAsMarkdown, parseCodeReviewResponse } from './response-parser';
 import { CodeReviewMetadata, CodeRule, serializeCodeReviewResult, SingleRuleReviewResult } from './types';
 
@@ -231,9 +232,13 @@ export function registerCodeReviewCommands(
                 }, async (progress) => {
                     const startTime = Date.now();
                     const totalRules = rulesResult.rules.length;
+                    let completedCount = 0;
+
+                    // Create concurrency limiter with configured max concurrency
+                    const limiter = new ConcurrencyLimiter(config.maxConcurrency);
 
                     progress.report({
-                        message: `Starting parallel review against ${totalRules} rules...`
+                        message: `Starting parallel review against ${totalRules} rules (max ${config.maxConcurrency} concurrent)...`
                     });
 
                     // Create a group process if there are multiple rules
@@ -248,21 +253,21 @@ export function registerCodeReviewCommands(
                         });
                     }
 
-                    // Execute all rule reviews in parallel
-                    const reviewPromises = rulesResult.rules.map((rule, index) => {
-                        return executeSingleRuleReview(rule, metadata, workspaceRoot, groupProcessId).then(result => {
+                    // Create tasks for concurrency-limited execution
+                    const tasks = rulesResult.rules.map((rule) => {
+                        return () => executeSingleRuleReview(rule, metadata, workspaceRoot, groupProcessId).then(result => {
                             // Update progress as each rule completes
-                            const completed = index + 1;
+                            completedCount++;
                             progress.report({
-                                message: `Completed ${completed}/${totalRules} rules...`,
+                                message: `Completed ${completedCount}/${totalRules} rules...`,
                                 increment: (100 / totalRules)
                             });
                             return result;
                         });
                     });
 
-                    // Wait for all reviews to complete
-                    const ruleResults = await Promise.all(reviewPromises);
+                    // Execute with concurrency limit
+                    const ruleResults = await limiter.all(tasks);
                     const totalTimeMs = Date.now() - startTime;
 
                     // Aggregate results

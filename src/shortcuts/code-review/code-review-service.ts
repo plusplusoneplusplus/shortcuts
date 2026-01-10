@@ -50,7 +50,8 @@ export class CodeReviewService implements vscode.Disposable {
             rulesFolder: config.get<string>('rulesFolder', DEFAULT_CODE_REVIEW_CONFIG.rulesFolder),
             rulesPattern: config.get<string>('rulesPattern', DEFAULT_CODE_REVIEW_CONFIG.rulesPattern),
             promptTemplate: config.get<string>('promptTemplate', DEFAULT_CODE_REVIEW_CONFIG.promptTemplate),
-            outputMode: config.get<string>('outputMode', DEFAULT_CODE_REVIEW_CONFIG.outputMode) as CodeReviewConfig['outputMode']
+            outputMode: config.get<string>('outputMode', DEFAULT_CODE_REVIEW_CONFIG.outputMode) as CodeReviewConfig['outputMode'],
+            maxConcurrency: config.get<number>('maxConcurrency', DEFAULT_CODE_REVIEW_CONFIG.maxConcurrency)
         };
     }
 

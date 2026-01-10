@@ -1,10 +1,27 @@
 # AI Code Review: Map-Reduce Architecture
 
+## Implementation Status
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| RuleRegistry / RulesLoader | ✅ Done | `code-review-service.ts` |
+| MapReduceReviewer (orchestration) | ✅ Done | `code-review-commands.ts` |
+| RuleMapper (per-rule execution) | ✅ Done | `code-review-commands.ts` |
+| Parallel execution | ✅ Done | `Promise.all()` in commands |
+| Front matter parsing | ✅ Done | `front-matter-parser.ts` |
+| Model override per rule | ✅ Done | via front matter `model` field |
+| Aggregation/synthesis | ✅ Done | `response-parser.ts` |
+| Process group tracking | ✅ Done | `ai-process-manager.ts` |
+| ConcurrencyLimiter | ✅ Done | `concurrency-limiter.ts` |
+| AI-powered reduce phase | ❌ Not Done | Uses programmatic aggregation |
+| Configurable maxConcurrency | ✅ Done | `package.json` setting |
+| Retry/timeout settings | ❌ Not Done | - |
+
 ## Overview
 
 This document describes a map-reduce architecture for AI-powered code review where:
-- **Map Phase**: Each coding rule reviews the full diff independently and in parallel
-- **Reduce Phase**: A single AI call synthesizes all findings into a coherent report
+- **Map Phase**: Each coding rule reviews the full diff independently and in parallel ✅
+- **Reduce Phase**: A single AI call synthesizes all findings into a coherent report ⚠️ (programmatic only)
 
 This approach provides better scalability, prompt specialization, and cleaner output than monolithic review.
 
@@ -55,38 +72,38 @@ Issues:
 ```
 
 Benefits:
-1. **Parallel execution**: All rule checks run simultaneously
-2. **Specialized prompts**: Each rule has optimized prompt and examples
-3. **Independent iteration**: Tune one rule without affecting others
-4. **Cost optimization**: Use cheaper models for map, best model for reduce
-5. **Clean output**: AI reduce eliminates duplicates and conflicts
+1. **Parallel execution**: All rule checks run simultaneously ✅
+2. **Specialized prompts**: Each rule has optimized prompt and examples ✅
+3. **Independent iteration**: Tune one rule without affecting others ✅
+4. **Cost optimization**: Use cheaper models for map, best model for reduce ✅
+5. **Clean output**: AI reduce eliminates duplicates and conflicts ⚠️ (programmatic only)
 
 ## Architecture
 
-### Components
+### Components ✅
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                          RuleRegistry                               │
-│  - Loads rules from .github/cr-rules/*.md                          │
-│  - Parses rule metadata (severity, category, applies-to)           │
-│  - Provides rule selection based on diff content                   │
+│                          RuleRegistry                    [✅ DONE]  │
+│  - Loads rules from .github/cr-rules/*.md                    ✅    │
+│  - Parses rule metadata (model field)                        ✅    │
+│  - Provides rule selection based on diff content             ❌    │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                          MapReduceReviewer                          │
-│  - Orchestrates the review pipeline                                │
-│  - Manages parallel rule execution                                 │
-│  - Invokes AI reduce                                               │
+│                          MapReduceReviewer               [✅ DONE]  │
+│  - Orchestrates the review pipeline                          ✅    │
+│  - Manages parallel rule execution (with concurrency limit)  ✅    │
+│  - Invokes AI reduce (programmatic only)                     ⚠️    │
 └─────────────────────────────────────────────────────────────────────┘
                           │                   │
                           ▼                   ▼
 ┌─────────────────────────────────┐ ┌─────────────────────────────────┐
-│          RuleMapper             │ │         AIReducer               │
-│  - Executes single rule review  │ │  - Deduplicates findings        │
-│  - Formats rule-specific prompt │ │  - Resolves conflicts           │
-│  - Parses rule violations       │ │  - Synthesizes final report     │
+│          RuleMapper      [✅]   │ │         AIReducer    [⚠️]       │
+│  - Executes single rule review  │ │  - Deduplicates (tags only) ⚠️  │
+│  - Formats rule-specific prompt │ │  - Resolves conflicts       ❌  │
+│  - Parses rule violations       │ │  - Synthesizes report       ✅  │
 └─────────────────────────────────┘ └─────────────────────────────────┘
 ```
 
@@ -142,9 +159,9 @@ interface Finding {
 }
 ```
 
-## Map Phase
+## Map Phase ✅ IMPLEMENTED
 
-### Rule Definition
+### Rule Definition ✅
 
 Rules are defined as markdown files in `.github/cr-rules/`:
 
@@ -268,7 +285,9 @@ If no violations, return: []`;
 }
 ```
 
-### Concurrency Control
+### Concurrency Control ✅ IMPLEMENTED
+
+> **Implementation:** `concurrency-limiter.ts` - Configurable via `workspaceShortcuts.codeReview.maxConcurrency` setting (default: 5).
 
 To avoid overwhelming the AI service with too many parallel requests, we use a concurrency limiter that caps the number of simultaneous rule executions.
 
@@ -415,15 +434,17 @@ class MapReduceReviewer {
 | Error recovery | Thundering herd on retry | Gradual recovery |
 | Observability | Hard to track progress | Clear batch progression |
 
-## Reduce Phase
+## Reduce Phase ⚠️ PARTIAL
 
-### Single-Pass AI Reduce
+> **Current Status:** Programmatic aggregation is implemented in `response-parser.ts`. AI-powered synthesis call is not implemented.
+
+### Single-Pass AI Reduce ❌ NOT IMPLEMENTED
 
 The reduce phase uses a single AI call to:
-1. Deduplicate semantically similar findings
-2. Resolve conflicting suggestions
-3. Prioritize by severity and impact
-4. Generate a coherent, actionable report
+1. Deduplicate semantically similar findings ⚠️ (tags only, no semantic dedup)
+2. Resolve conflicting suggestions ❌
+3. Prioritize by severity and impact ❌
+4. Generate a coherent, actionable report ✅ (programmatic)
 
 ```typescript
 class AIReducer {
@@ -580,7 +601,9 @@ private fallbackReduce(violations: RuleViolation[]): ReviewReport {
 }
 ```
 
-## Configuration
+## Configuration ⚠️ PARTIAL
+
+> **Current Status:** `rulesFolder`, `rulesPattern`, `outputMode`, and `maxConcurrency` are implemented. Other map/reduce phase settings are not configurable.
 
 ### Settings Schema
 
@@ -588,27 +611,27 @@ private fallbackReduce(violations: RuleViolation[]): ReviewReport {
 interface MapReduceReviewConfig {
   // Map phase settings
   map: {
-    defaultModel: string;        // Default model for rule mappers
-    maxConcurrency: number;      // Max concurrent rule executions (default: 5)
-    maxTokensPerRule: number;    // Token limit per rule call
-    timeoutMs: number;           // Timeout per rule execution
-    retryAttempts: number;       // Retry failed rules
+    defaultModel: string;        // ❌ Not configurable
+    maxConcurrency: number;      // ✅ Implemented
+    maxTokensPerRule: number;    // ❌ Not configurable
+    timeoutMs: number;           // ❌ Not configurable
+    retryAttempts: number;       // ❌ Not implemented
   };
 
   // Reduce phase settings
   reduce: {
-    model: string;               // Model for synthesis (use best)
-    maxTokens: number;           // Token limit for reduce call
-    timeoutMs: number;           // Timeout for reduce
-    fallbackEnabled: boolean;    // Use programmatic fallback on failure
+    model: string;               // ❌ Not separate from map
+    maxTokens: number;           // ❌ Not configurable
+    timeoutMs: number;           // ❌ Not configurable
+    fallbackEnabled: boolean;    // ❌ Not implemented
   };
 
   // General settings
   rules: {
-    folder: string;              // Path to rules folder
-    pattern: string;             // Glob pattern for rule files
-    enabledRules?: string[];     // Whitelist of rule IDs
-    disabledRules?: string[];    // Blacklist of rule IDs
+    folder: string;              // ✅ Implemented (rulesFolder)
+    pattern: string;             // ✅ Implemented (rulesPattern)
+    enabledRules?: string[];     // ❌ Not implemented
+    disabledRules?: string[];    // ❌ Not implemented
   };
 }
 ```
@@ -660,9 +683,11 @@ For a review with 10 rules and 500-line diff:
 
 **Result: ~80% cost reduction with better quality**
 
-## Error Handling
+## Error Handling ⚠️ PARTIAL
 
-### Rule Execution Failures
+> **Current Status:** Basic error handling exists (rule failures don't crash entire review). Retry logic and allSettled pattern are not implemented.
+
+### Rule Execution Failures ❌ (no retry logic)
 
 ```typescript
 async applyRule(rule: Rule, diff: string): Promise<RuleViolation[]> {
@@ -733,9 +758,11 @@ async allSettled<T>(
 }
 ```
 
-## Extension Points
+## Extension Points ❌ NOT IMPLEMENTED
 
-### Custom Rule Loaders
+> **Current Status:** These extension points are not yet implemented.
+
+### Custom Rule Loaders ❌
 
 ```typescript
 interface RuleLoader {
@@ -743,16 +770,16 @@ interface RuleLoader {
 }
 
 // Default: Load from markdown files
-class FileSystemRuleLoader implements RuleLoader { }
+class FileSystemRuleLoader implements RuleLoader { }  // ⚠️ Basic version exists in code-review-service.ts
 
 // Alternative: Load from remote config
-class RemoteRuleLoader implements RuleLoader { }
+class RemoteRuleLoader implements RuleLoader { }  // ❌
 
 // Alternative: Load from package.json
-class PackageJsonRuleLoader implements RuleLoader { }
+class PackageJsonRuleLoader implements RuleLoader { }  // ❌
 ```
 
-### Custom Reducers
+### Custom Reducers ❌
 
 ```typescript
 interface Reducer {
@@ -760,16 +787,16 @@ interface Reducer {
 }
 
 // Default: AI-powered reduce
-class AIReducer implements Reducer { }
+class AIReducer implements Reducer { }  // ❌
 
 // Alternative: Simple programmatic reduce
-class SimpleReducer implements Reducer { }
+class SimpleReducer implements Reducer { }  // ⚠️ Basic version in response-parser.ts
 
 // Alternative: Hybrid (AI for dedup, programmatic for rest)
-class HybridReducer implements Reducer { }
+class HybridReducer implements Reducer { }  // ❌
 ```
 
-### Pre/Post Hooks
+### Pre/Post Hooks ❌
 
 ```typescript
 interface ReviewHooks {
@@ -780,26 +807,28 @@ interface ReviewHooks {
 }
 ```
 
-## Future Considerations
+## Future Considerations ❌ NOT IMPLEMENTED
 
-### Caching
+These features are planned for future development.
+
+### Caching ❌
 
 - Rule prompts are stable; cache rule+diff hash → violations
 - Invalidate cache when rule file changes
 - Consider semantic caching for similar diffs
 
-### Streaming
+### Streaming ❌
 
 - Stream map phase results as they complete
 - Show incremental findings in UI before reduce completes
 
-### Adaptive Model Selection
+### Adaptive Model Selection ❌
 
 - Track rule accuracy per model
 - Auto-promote rules to better models if accuracy is low
 - Auto-demote rules to cheaper models if accuracy is high
 
-### Rule Learning
+### Rule Learning ❌
 
 - Track false positives/negatives
 - Auto-tune rule prompts based on user feedback
