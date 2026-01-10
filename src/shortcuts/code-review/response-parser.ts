@@ -7,13 +7,17 @@
 import {
     AggregatedCodeReviewResult,
     CodeReviewMetadata,
+    CodeReviewReduceMode,
     CodeReviewResult,
+    ReduceContext,
+    ReduceStats,
     RESPONSE_PATTERNS,
     ReviewFinding,
     ReviewSeverity,
     ReviewSummary,
     SingleRuleReviewResult
 } from './types';
+import { createReducer, DeterministicReducer } from './reducer';
 
 /**
  * Generate a unique ID for a finding
@@ -48,8 +52,12 @@ function parseOverallAssessment(text: string): 'pass' | 'needs-attention' | 'fai
     const match = text.match(RESPONSE_PATTERNS.overallAssessment);
     if (match) {
         const assessment = match[1].toLowerCase().replace('_', '-');
-        if (assessment === 'pass') return 'pass';
-        if (assessment === 'fail') return 'fail';
+        if (assessment === 'pass') {
+            return 'pass';
+        }
+        if (assessment === 'fail') {
+            return 'fail';
+        }
         return 'needs-attention';
     }
     return 'needs-attention';
@@ -253,41 +261,79 @@ export function isStructuredResponse(response: string): boolean {
 }
 
 /**
+ * Options for aggregating review results
+ */
+export interface AggregateOptions {
+    /** Mode for the reduce phase: 'deterministic' (default) or 'ai' */
+    reduceMode?: CodeReviewReduceMode;
+    /** Function to invoke AI for AI-powered reduce (required if reduceMode is 'ai') */
+    invokeAI?: (prompt: string) => Promise<{ success: boolean; response?: string; error?: string }>;
+}
+
+/**
  * Aggregate multiple single-rule review results into a combined result.
  * @param ruleResults Array of results from individual rule reviews
  * @param metadata The original review metadata
  * @param totalTimeMs Total execution time for all parallel reviews
+ * @param options Optional configuration for the reduce phase
  * @returns Aggregated code review result
  */
 export function aggregateReviewResults(
     ruleResults: SingleRuleReviewResult[],
     metadata: CodeReviewMetadata,
-    totalTimeMs: number
+    totalTimeMs: number,
+    options?: AggregateOptions
 ): AggregatedCodeReviewResult {
-    // Combine all findings from all rule results
-    const allFindings: ReviewFinding[] = [];
+    // Collect raw responses
     const rawResponses: string[] = [];
+    for (const result of ruleResults) {
+        if (result.rawResponse) {
+            rawResponses.push(`--- Rule: ${result.rule.filename} ---\n${result.rawResponse}`);
+        }
+    }
 
+    // Use deterministic reducer by default (sync-compatible)
+    const reducer = new DeterministicReducer();
+    const context: ReduceContext = {
+        metadata,
+        mapPhaseTimeMs: totalTimeMs,
+        filesChanged: metadata.diffStats?.files || 0
+    };
+
+    // Run deterministic reduce synchronously (it returns a Promise but is actually sync)
+    // For backwards compatibility, we use the sync approach here
+    const reduceResultPromise = reducer.reduce(ruleResults, context);
+    
+    // Since DeterministicReducer.reduce() is actually synchronous (no await inside),
+    // we can extract the result. For true async AI reduce, use aggregateReviewResultsAsync()
+    let findings: ReviewFinding[] = [];
+    let summary: ReviewSummary;
+    let reduceStats: ReduceStats | undefined;
+    
+    // Use a synchronous fallback for backwards compatibility
+    const allFindings: ReviewFinding[] = [];
     for (const result of ruleResults) {
         if (result.success && result.findings) {
-            // Tag each finding with the source rule file
             for (const finding of result.findings) {
-                // Always set the ruleFile to track which rule file generated this finding
                 finding.ruleFile = result.rule.filename;
-                // Ensure the rule field has a value
                 if (!finding.rule || finding.rule === 'Unknown Rule') {
                     finding.rule = result.rule.filename;
                 }
                 allFindings.push(finding);
             }
         }
-        if (result.rawResponse) {
-            rawResponses.push(`--- Rule: ${result.rule.filename} ---\n${result.rawResponse}`);
-        }
     }
-
-    // Create aggregated summary
-    const summary = createAggregatedSummary(allFindings, ruleResults);
+    
+    // Apply deduplication using deterministic logic
+    findings = deduplicateFindingsSync(allFindings);
+    summary = createAggregatedSummary(findings, ruleResults);
+    reduceStats = {
+        originalCount: allFindings.length,
+        dedupedCount: findings.length,
+        mergedCount: allFindings.length - findings.length,
+        reduceTimeMs: 0,
+        usedAIReduce: false
+    };
 
     // Execution statistics
     const successfulRules = ruleResults.filter(r => r.success).length;
@@ -300,7 +346,7 @@ export function aggregateReviewResults(
             rulePaths: ruleResults.map(r => r.rule.path)
         },
         summary,
-        findings: allFindings,
+        findings,
         ruleResults,
         rawResponse: rawResponses.join('\n\n'),
         timestamp: new Date(),
@@ -309,7 +355,146 @@ export function aggregateReviewResults(
             successfulRules,
             failedRules,
             totalTimeMs
+        },
+        reduceStats
+    };
+}
+
+/**
+ * Aggregate multiple single-rule review results into a combined result (async version).
+ * Supports both deterministic and AI-powered reduce modes.
+ * @param ruleResults Array of results from individual rule reviews
+ * @param metadata The original review metadata
+ * @param totalTimeMs Total execution time for all parallel reviews
+ * @param options Configuration for the reduce phase
+ * @returns Promise resolving to aggregated code review result
+ */
+export async function aggregateReviewResultsAsync(
+    ruleResults: SingleRuleReviewResult[],
+    metadata: CodeReviewMetadata,
+    totalTimeMs: number,
+    options?: AggregateOptions
+): Promise<AggregatedCodeReviewResult> {
+    // Collect raw responses
+    const rawResponses: string[] = [];
+    for (const result of ruleResults) {
+        if (result.rawResponse) {
+            rawResponses.push(`--- Rule: ${result.rule.filename} ---\n${result.rawResponse}`);
         }
+    }
+
+    // Create reducer based on mode
+    const reduceMode = options?.reduceMode || 'deterministic';
+    const reducer = createReducer(reduceMode, options?.invokeAI);
+    
+    const context: ReduceContext = {
+        metadata,
+        mapPhaseTimeMs: totalTimeMs,
+        filesChanged: metadata.diffStats?.files || 0
+    };
+
+    // Run reduce phase
+    const reduceResult = await reducer.reduce(ruleResults, context);
+
+    // Execution statistics
+    const successfulRules = ruleResults.filter(r => r.success).length;
+    const failedRules = ruleResults.filter(r => !r.success).length;
+
+    return {
+        metadata: {
+            ...metadata,
+            rulesUsed: ruleResults.map(r => r.rule.filename),
+            rulePaths: ruleResults.map(r => r.rule.path)
+        },
+        summary: reduceResult.summary,
+        findings: reduceResult.findings,
+        ruleResults,
+        rawResponse: rawResponses.join('\n\n'),
+        timestamp: new Date(),
+        executionStats: {
+            totalRules: ruleResults.length,
+            successfulRules,
+            failedRules,
+            totalTimeMs
+        },
+        reduceStats: reduceResult.reduceStats
+    };
+}
+
+/**
+ * Synchronous deduplication of findings for backwards compatibility
+ */
+function deduplicateFindingsSync(findings: ReviewFinding[]): ReviewFinding[] {
+    const seen = new Map<string, ReviewFinding>();
+    
+    for (const finding of findings) {
+        const key = getFindingKeySync(finding);
+        
+        if (seen.has(key)) {
+            const existing = seen.get(key)!;
+            const merged = mergeFindingSync(existing, finding);
+            seen.set(key, merged);
+        } else {
+            seen.set(key, finding);
+        }
+    }
+    
+    // Sort by severity
+    const result = Array.from(seen.values());
+    const severityOrder: Record<ReviewSeverity, number> = {
+        'error': 0,
+        'warning': 1,
+        'info': 2,
+        'suggestion': 3
+    };
+    
+    return result.sort((a, b) => {
+        const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
+        if (severityDiff !== 0) {
+            return severityDiff;
+        }
+        const fileA = a.file || '';
+        const fileB = b.file || '';
+        const fileDiff = fileA.localeCompare(fileB);
+        if (fileDiff !== 0) {
+            return fileDiff;
+        }
+        return (a.line || 0) - (b.line || 0);
+    });
+}
+
+function getFindingKeySync(finding: ReviewFinding): string {
+    const file = finding.file || 'global';
+    const line = finding.line || 0;
+    const descNormalized = (finding.description || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim()
+        .substring(0, 100);
+    return `${file}:${line}:${descNormalized}`;
+}
+
+function mergeFindingSync(existing: ReviewFinding, newFinding: ReviewFinding): ReviewFinding {
+    const severityRank: Record<ReviewSeverity, number> = {
+        'error': 4,
+        'warning': 3,
+        'info': 2,
+        'suggestion': 1
+    };
+    
+    const keepNew = severityRank[newFinding.severity] > severityRank[existing.severity];
+    const base = keepNew ? newFinding : existing;
+    const other = keepNew ? existing : newFinding;
+    
+    return {
+        ...base,
+        rule: base.rule === other.rule ? base.rule : `${base.rule}, ${other.rule}`,
+        suggestion: (base.suggestion?.length || 0) >= (other.suggestion?.length || 0)
+            ? base.suggestion
+            : other.suggestion,
+        explanation: (base.explanation?.length || 0) >= (other.explanation?.length || 0)
+            ? base.explanation
+            : other.explanation
     };
 }
 

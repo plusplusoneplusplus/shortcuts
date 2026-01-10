@@ -16,7 +16,7 @@ import { GitCommit } from '../git/types';
 import { CodeReviewService } from './code-review-service';
 import { CodeReviewViewer } from './code-review-viewer';
 import { ConcurrencyLimiter } from './concurrency-limiter';
-import { aggregateReviewResults, formatAggregatedResultAsMarkdown, parseCodeReviewResponse } from './response-parser';
+import { aggregateReviewResultsAsync, formatAggregatedResultAsMarkdown, parseCodeReviewResponse } from './response-parser';
 import { CodeReviewMetadata, CodeRule, serializeCodeReviewResult, SingleRuleReviewResult } from './types';
 
 /**
@@ -270,8 +270,21 @@ export function registerCodeReviewCommands(
                     const ruleResults = await limiter.all(tasks);
                     const totalTimeMs = Date.now() - startTime;
 
-                    // Aggregate results
-                    const aggregatedResult = aggregateReviewResults(ruleResults, metadata, totalTimeMs);
+                    // Aggregate results with reduce phase
+                    // Create an AI invoker function for AI reduce mode
+                    const invokeAIForReduce = async (prompt: string) => {
+                        return invokeCopilotCLI(prompt, workspaceRoot, undefined, undefined, undefined);
+                    };
+
+                    const aggregatedResult = await aggregateReviewResultsAsync(
+                        ruleResults,
+                        metadata,
+                        totalTimeMs,
+                        {
+                            reduceMode: config.reduceMode,
+                            invokeAI: config.reduceMode === 'ai' ? invokeAIForReduce : undefined
+                        }
+                    );
 
                     // Complete the group process if we created one
                     if (groupProcessId) {

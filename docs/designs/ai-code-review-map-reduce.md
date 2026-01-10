@@ -13,7 +13,9 @@
 | Aggregation/synthesis | ✅ Done | `response-parser.ts` |
 | Process group tracking | ✅ Done | `ai-process-manager.ts` |
 | ConcurrencyLimiter | ✅ Done | `concurrency-limiter.ts` |
-| AI-powered reduce phase | ❌ Not Done | Uses programmatic aggregation |
+| AI-powered reduce phase | ✅ Done | `reducer.ts` (AIReducer) |
+| Deterministic reduce phase | ✅ Done | `reducer.ts` (DeterministicReducer, default) |
+| Reduce mode setting | ✅ Done | `package.json` setting `reduceMode` |
 | Configurable maxConcurrency | ✅ Done | `package.json` setting |
 | Retry/timeout settings | ❌ Not Done | - |
 
@@ -24,6 +26,25 @@ This document describes a map-reduce architecture for AI-powered code review whe
 - **Reduce Phase**: A single AI call synthesizes all findings into a coherent report ⚠️ (programmatic only)
 
 This approach provides better scalability, prompt specialization, and cleaner output than monolithic review.
+
+## Reduce Phase Modes
+
+The reduce phase supports two modes, configurable via `workspaceShortcuts.codeReview.reduceMode`:
+
+### Deterministic Mode (Default)
+- Fast, code-based deduplication and aggregation
+- No additional API calls
+- Consistent, reproducible results
+- Deduplicates findings by file, line, and normalized description
+- Merges findings from multiple rules, keeping higher severity
+- Sorts findings by severity (errors first)
+
+### AI Mode
+- Uses an additional AI call to synthesize findings intelligently
+- Performs semantic deduplication across rules
+- Resolves conflicting suggestions
+- Prioritizes by impact and context
+- Falls back to deterministic mode on failure
 
 ## Motivation
 
@@ -76,7 +97,7 @@ Benefits:
 2. **Specialized prompts**: Each rule has optimized prompt and examples ✅
 3. **Independent iteration**: Tune one rule without affecting others ✅
 4. **Cost optimization**: Use cheaper models for map, best model for reduce ✅
-5. **Clean output**: AI reduce eliminates duplicates and conflicts ⚠️ (programmatic only)
+5. **Clean output**: Reduce phase eliminates duplicates and conflicts ✅
 
 ## Architecture
 
@@ -95,16 +116,18 @@ Benefits:
 │                          MapReduceReviewer               [✅ DONE]  │
 │  - Orchestrates the review pipeline                          ✅    │
 │  - Manages parallel rule execution (with concurrency limit)  ✅    │
-│  - Invokes AI reduce (programmatic only)                     ⚠️    │
+│  - Invokes reduce phase (deterministic or AI)                ✅    │
 └─────────────────────────────────────────────────────────────────────┘
                           │                   │
                           ▼                   ▼
 ┌─────────────────────────────────┐ ┌─────────────────────────────────┐
-│          RuleMapper      [✅]   │ │         AIReducer    [⚠️]       │
-│  - Executes single rule review  │ │  - Deduplicates (tags only) ⚠️  │
-│  - Formats rule-specific prompt │ │  - Resolves conflicts       ❌  │
-│  - Parses rule violations       │ │  - Synthesizes report       ✅  │
-└─────────────────────────────────┘ └─────────────────────────────────┘
+│          RuleMapper      [✅]   │ │         Reducer        [✅]     │
+│  - Executes single rule review  │ │  - DeterministicReducer   ✅    │
+│  - Formats rule-specific prompt │ │  - AIReducer              ✅    │
+│  - Parses rule violations       │ │  - Deduplication          ✅    │
+└─────────────────────────────────┘ │  - Conflict resolution    ✅    │
+                                    │  - Synthesizes report     ✅    │
+                                    └─────────────────────────────────┘
 ```
 
 ### Data Flow
@@ -434,17 +457,26 @@ class MapReduceReviewer {
 | Error recovery | Thundering herd on retry | Gradual recovery |
 | Observability | Hard to track progress | Clear batch progression |
 
-## Reduce Phase ⚠️ PARTIAL
+## Reduce Phase ✅ IMPLEMENTED
 
-> **Current Status:** Programmatic aggregation is implemented in `response-parser.ts`. AI-powered synthesis call is not implemented.
+> **Current Status:** Both deterministic and AI-powered reduce are implemented in `reducer.ts`. Deterministic mode is the default.
 
-### Single-Pass AI Reduce ❌ NOT IMPLEMENTED
+### Reduce Modes ✅ IMPLEMENTED
 
-The reduce phase uses a single AI call to:
-1. Deduplicate semantically similar findings ⚠️ (tags only, no semantic dedup)
-2. Resolve conflicting suggestions ❌
-3. Prioritize by severity and impact ❌
-4. Generate a coherent, actionable report ✅ (programmatic)
+The reduce phase supports two modes via the `workspaceShortcuts.codeReview.reduceMode` setting:
+
+**Deterministic Mode (Default):**
+1. Deduplicates findings by file, line, and normalized description ✅
+2. Merges findings keeping higher severity ✅
+3. Sorts by severity (errors first), then file, then line ✅
+4. Generates summary with statistics ✅
+
+**AI Mode:**
+1. Deduplicate semantically similar findings ✅
+2. Resolve conflicting suggestions ✅
+3. Prioritize by severity and impact ✅
+4. Generate a coherent, actionable report ✅
+5. Falls back to deterministic on failure ✅
 
 ```typescript
 class AIReducer {
@@ -601,9 +633,9 @@ private fallbackReduce(violations: RuleViolation[]): ReviewReport {
 }
 ```
 
-## Configuration ⚠️ PARTIAL
+## Configuration ✅ MOSTLY COMPLETE
 
-> **Current Status:** `rulesFolder`, `rulesPattern`, `outputMode`, and `maxConcurrency` are implemented. Other map/reduce phase settings are not configurable.
+> **Current Status:** `rulesFolder`, `rulesPattern`, `outputMode`, `maxConcurrency`, and `reduceMode` are implemented.
 
 ### Settings Schema
 
@@ -620,10 +652,11 @@ interface MapReduceReviewConfig {
 
   // Reduce phase settings
   reduce: {
+    mode: 'deterministic' | 'ai'; // ✅ Implemented (reduceMode)
     model: string;               // ❌ Not separate from map
     maxTokens: number;           // ❌ Not configurable
     timeoutMs: number;           // ❌ Not configurable
-    fallbackEnabled: boolean;    // ❌ Not implemented
+    fallbackEnabled: boolean;    // ✅ Implemented (AI mode auto-falls back)
   };
 
   // General settings
@@ -779,21 +812,21 @@ class RemoteRuleLoader implements RuleLoader { }  // ❌
 class PackageJsonRuleLoader implements RuleLoader { }  // ❌
 ```
 
-### Custom Reducers ❌
+### Custom Reducers ✅ IMPLEMENTED
 
 ```typescript
 interface Reducer {
-  reduce(violations: RuleViolation[], context: ReviewRequest): Promise<ReviewReport>;
+  reduce(ruleResults: SingleRuleReviewResult[], context: ReduceContext): Promise<ReduceResult>;
 }
 
-// Default: AI-powered reduce
-class AIReducer implements Reducer { }  // ❌
+// Default: Deterministic code-based reduce
+class DeterministicReducer implements Reducer { }  // ✅ reducer.ts
 
-// Alternative: Simple programmatic reduce
-class SimpleReducer implements Reducer { }  // ⚠️ Basic version in response-parser.ts
+// Alternative: AI-powered reduce
+class AIReducer implements Reducer { }  // ✅ reducer.ts
 
-// Alternative: Hybrid (AI for dedup, programmatic for rest)
-class HybridReducer implements Reducer { }  // ❌
+// Factory function to create reducers
+function createReducer(mode: CodeReviewReduceMode, invokeAI?: Function): Reducer { }  // ✅
 ```
 
 ### Pre/Post Hooks ❌

@@ -11,6 +11,11 @@
 export type CodeReviewOutputMode = 'aiProcess' | 'clipboard' | 'editor';
 
 /**
+ * Mode for the reduce phase of code review
+ */
+export type CodeReviewReduceMode = 'deterministic' | 'ai';
+
+/**
  * Configuration for code review feature
  */
 export interface CodeReviewConfig {
@@ -24,6 +29,8 @@ export interface CodeReviewConfig {
     outputMode: CodeReviewOutputMode;
     /** Maximum number of concurrent rule reviews (default: 5) */
     maxConcurrency: number;
+    /** Mode for aggregating results: 'deterministic' (code-based) or 'ai' (AI-powered) */
+    reduceMode: CodeReviewReduceMode;
 }
 
 /**
@@ -34,7 +41,8 @@ export const DEFAULT_CODE_REVIEW_CONFIG: CodeReviewConfig = {
     rulesPattern: '**/*.md',
     promptTemplate: 'Review the following code changes against the provided coding rules. Identify violations and suggest fixes.',
     outputMode: 'aiProcess',
-    maxConcurrency: 5
+    maxConcurrency: 5,
+    reduceMode: 'deterministic'
 };
 
 /**
@@ -150,6 +158,8 @@ export interface AggregatedCodeReviewResult {
         /** Total execution time in ms */
         totalTimeMs: number;
     };
+    /** Statistics about the reduce phase (optional for backwards compatibility) */
+    reduceStats?: ReduceStats;
 }
 
 /**
@@ -362,4 +372,138 @@ export const RESPONSE_PATTERNS = {
     findingSuggestion: /\*\*Suggestion:\*\*\s*([\s\S]*?)(?=\*\*Explanation:|$)/i,
     findingExplanation: /\*\*Explanation:\*\*\s*([\s\S]*?)$/i
 };
+
+/**
+ * Context for the reduce phase
+ */
+export interface ReduceContext {
+    /** Original review metadata */
+    metadata: CodeReviewMetadata;
+    /** Total execution time of map phase in ms */
+    mapPhaseTimeMs: number;
+    /** Number of files changed */
+    filesChanged: number;
+    /** Whether this is a hotfix review */
+    isHotfix?: boolean;
+}
+
+/**
+ * Result of the reduce phase
+ */
+export interface ReduceResult {
+    /** Deduplicated and prioritized findings */
+    findings: ReviewFinding[];
+    /** Generated summary */
+    summary: ReviewSummary;
+    /** Statistics about deduplication */
+    reduceStats: ReduceStats;
+}
+
+/**
+ * Statistics about the reduce phase
+ */
+export interface ReduceStats {
+    /** Number of findings before deduplication */
+    originalCount: number;
+    /** Number of findings after deduplication */
+    dedupedCount: number;
+    /** Number of findings merged */
+    mergedCount: number;
+    /** Time taken for reduce phase in ms */
+    reduceTimeMs: number;
+    /** Whether AI reduce was used */
+    usedAIReduce: boolean;
+}
+
+/**
+ * Prompt template for AI-powered reduce phase
+ */
+export const AI_REDUCE_PROMPT_TEMPLATE = `You are synthesizing a code review from multiple specialized reviewers.
+
+## Context
+- Files changed: {{filesChanged}}
+- Review type: {{reviewType}}
+
+## Raw Findings
+{{findingsCount}} findings from {{rulesCount}} rules:
+
+{{formattedFindings}}
+
+## Your Tasks
+
+### 1. Deduplicate
+Multiple rules may flag the same underlying issue differently. Merge findings that:
+- Point to the same code location AND describe the same problem
+- Are redundant (one finding is a subset of another)
+
+Keep the clearest, most actionable description.
+
+### 2. Resolve Conflicts
+When rules disagree:
+- Security > Correctness > Performance > Maintainability > Style
+- Consider the context (hot path vs. cold path, public API vs. internal)
+- Pick the better suggestion, explain briefly why
+
+### 3. Prioritize
+Order findings by:
+1. Critical: Bugs, security issues, data loss risks
+2. Major: Logic errors, missing error handling, breaking changes
+3. Minor: Performance improvements, better patterns
+4. Nitpick: Style, naming, minor cleanup
+
+### 4. Synthesize Report
+Create a clean, actionable review that a developer can work through.
+
+## Output Format
+Return JSON (and ONLY JSON, no markdown code fences):
+{
+  "summary": "2-3 sentence overall assessment",
+  "overallSeverity": "clean|minor-issues|needs-work|critical",
+  "mustFix": [
+    "Brief description of blocking issues (if any)"
+  ],
+  "findings": [
+    {
+      "id": "f1",
+      "severity": "error|warning|info|suggestion",
+      "category": "security|reliability|performance|maintainability|style",
+      "file": "path/to/file.ts",
+      "line": 42,
+      "issue": "Clear description of the problem",
+      "suggestion": "Specific fix recommendation",
+      "fromRules": ["rule-id-1", "rule-id-2"]
+    }
+  ],
+  "stats": {
+    "totalIssues": 5,
+    "deduplicated": 2,
+    "byCategory": {"reliability": 3, "style": 2},
+    "bySeverity": {"error": 2, "warning": 3}
+  }
+}`;
+
+/**
+ * Parsed result from AI reduce response
+ */
+export interface AIReduceResponse {
+    summary: string;
+    overallSeverity: 'clean' | 'minor-issues' | 'needs-work' | 'critical';
+    mustFix?: string[];
+    findings: Array<{
+        id: string;
+        severity: string;
+        category?: string;
+        file?: string;
+        line?: number;
+        issue: string;
+        suggestion?: string;
+        fromRules?: string[];
+    }>;
+    stats?: {
+        totalIssues: number;
+        deduplicated: number;
+        byCategory?: Record<string, number>;
+        bySeverity?: Record<string, number>;
+    };
+}
 

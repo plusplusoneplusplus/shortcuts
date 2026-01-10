@@ -332,6 +332,19 @@
           "maximum": 20,
           "markdownDescription": "Maximum number of concurrent rule reviews. Higher values may speed up reviews but could hit API rate limits. Default: 5"
         },
+        "workspaceShortcuts.codeReview.reduceMode": {
+          "type": "string",
+          "default": "deterministic",
+          "enum": [
+            "deterministic",
+            "ai"
+          ],
+          "enumDescriptions": [
+            "Use deterministic code-based reduction (faster, no API calls, consistent results)",
+            "Use AI-powered synthesis to deduplicate, resolve conflicts, and generate a coherent report"
+          ],
+          "markdownDescription": "Mode for aggregating results from multiple rule reviews. **Deterministic** uses programmatic deduplication and is the default. **AI** uses an additional AI call to synthesize findings intelligently."
+        },
         "workspaceShortcuts.discovery.enabled": {
           "type": "boolean",
           "default": false,
