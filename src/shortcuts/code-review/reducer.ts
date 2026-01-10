@@ -1,10 +1,16 @@
 /**
  * Code Review Reducer
- * 
- * Provides an interface and implementations for the reduce phase of code review.
+ *
+ * Provides code-review-specific reducer implementations.
  * Two modes are supported:
  * - Deterministic: Fast, code-based deduplication and aggregation (default)
  * - AI: Uses an AI call to intelligently synthesize findings
+ *
+ * Note: This module uses similar patterns to the generic map-reduce framework
+ * but is specialized for code review types. For generic map-reduce reducers,
+ * see src/shortcuts/map-reduce/reducers/.
+ *
+ * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
