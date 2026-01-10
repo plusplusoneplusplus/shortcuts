@@ -16,7 +16,7 @@ import { GitCommit } from '../git/types';
 import { CodeReviewService } from './code-review-service';
 import { CodeReviewViewer } from './code-review-viewer';
 import { aggregateReviewResults, formatAggregatedResultAsMarkdown, parseCodeReviewResponse } from './response-parser';
-import { CodeReviewMetadata, CodeRule, SingleRuleReviewResult } from './types';
+import { CodeReviewMetadata, CodeRule, serializeCodeReviewResult, SingleRuleReviewResult } from './types';
 
 /**
  * Registers all code review commands
@@ -83,8 +83,11 @@ export function registerCodeReviewCommands(
                     rulesUsed: [rule.filename]
                 });
 
-                // Complete the process
-                processManager.completeProcess(processId, result.response);
+                // Serialize the parsed result for storage
+                const serializedResult = JSON.stringify(serializeCodeReviewResult(parsed));
+
+                // Complete the process with the structured result
+                processManager.completeCodeReviewProcess(processId, result.response, serializedResult);
 
                 return {
                     rule,

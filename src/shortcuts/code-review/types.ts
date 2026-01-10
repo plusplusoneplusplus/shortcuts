@@ -306,7 +306,17 @@ For each issue found, use this format:
 
 Where SEVERITY is one of: ERROR, WARNING, INFO, SUGGESTION
 
-If no issues are found, state "No violations found." under Findings.
+## When No Violations Are Found
+
+If the code follows the rule and no issues are found, use this format:
+
+## Summary
+The code follows the provided rule. No violations detected.
+Overall: PASS
+
+## Findings
+
+No violations found.
 `;
 
 /**

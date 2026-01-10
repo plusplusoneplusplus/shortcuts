@@ -173,7 +173,16 @@ export class AIProcessItem extends vscode.TreeItem {
             if (meta.diffStats) {
                 lines.push(`**Changes:** ${meta.diffStats.files} files, +${meta.diffStats.additions}/-${meta.diffStats.deletions}`);
             }
-            lines.push(`**Rules:** ${meta.rulesUsed.length} rule(s)`);
+            if (meta.rulesUsed.length === 1) {
+                lines.push(`**Rule:** ${meta.rulesUsed[0]}`);
+            } else if (meta.rulesUsed.length <= 3) {
+                lines.push(`**Rules:** ${meta.rulesUsed.join(', ')}`);
+            } else {
+                // For many rules, show first 3 with count of remaining
+                const shown = meta.rulesUsed.slice(0, 3).join(', ');
+                const remaining = meta.rulesUsed.length - 3;
+                lines.push(`**Rules:** ${shown} (+${remaining} more)`);
+            }
             lines.push('');
 
             // Show summary if completed
