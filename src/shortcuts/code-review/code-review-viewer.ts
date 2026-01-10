@@ -4,8 +4,71 @@
  * A dedicated webview panel for displaying structured code review results.
  */
 
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { CodeReviewResult, ReviewFinding, ReviewSeverity } from './types';
+
+/**
+ * Virtual document provider for showing file content at a specific commit
+ */
+class GitSnapshotProvider implements vscode.TextDocumentContentProvider {
+    private static instance: GitSnapshotProvider | undefined;
+    private onDidChangeEmitter = new vscode.EventEmitter<vscode.Uri>();
+    public onDidChange = this.onDidChangeEmitter.event;
+    private disposable: vscode.Disposable | undefined;
+
+    private constructor() {}
+
+    public static getInstance(): GitSnapshotProvider {
+        if (!GitSnapshotProvider.instance) {
+            GitSnapshotProvider.instance = new GitSnapshotProvider();
+        }
+        return GitSnapshotProvider.instance;
+    }
+
+    public register(): vscode.Disposable {
+        if (!this.disposable) {
+            this.disposable = vscode.workspace.registerTextDocumentContentProvider('git-snapshot', this);
+        }
+        return this.disposable;
+    }
+
+    public provideTextDocumentContent(uri: vscode.Uri): string | Thenable<string> {
+        // URI format: git-snapshot:/{repoRoot}?commit={hash}&file={filePath}
+        const params = new URLSearchParams(uri.query);
+        const commitHash = params.get('commit');
+        const filePath = params.get('file');
+        const repoRoot = params.get('repo');
+
+        if (!commitHash || !filePath || !repoRoot) {
+            return '// Unable to retrieve file content: missing parameters';
+        }
+
+        return this.getFileContentAtCommit(repoRoot, commitHash, filePath);
+    }
+
+    private async getFileContentAtCommit(repoRoot: string, commitHash: string, filePath: string): Promise<string> {
+        try {
+            const { execSync } = await import('child_process');
+            // Normalize the file path (use forward slashes for git)
+            const normalizedPath = filePath.replace(/\\/g, '/');
+            
+            // Use git show to get file content at specific commit
+            const command = `git show "${commitHash}:${normalizedPath}"`;
+            const output = execSync(command, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+                timeout: 30000
+            });
+            
+            return output;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            return `// Unable to retrieve file content at commit ${commitHash}\n// Error: ${errorMessage}`;
+        }
+    }
+}
 
 /**
  * Manages the code review result viewer webview panel
@@ -14,9 +77,13 @@ export class CodeReviewViewer {
     public static currentPanel: CodeReviewViewer | undefined;
     private readonly panel: vscode.WebviewPanel;
     private disposables: vscode.Disposable[] = [];
+    private currentResult: CodeReviewResult | undefined;
 
     private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
         this.panel = panel;
+
+        // Register the git snapshot provider
+        this.disposables.push(GitSnapshotProvider.getInstance().register());
 
         // Handle panel disposal
         this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
@@ -68,6 +135,7 @@ export class CodeReviewViewer {
      * Update the webview content with new results
      */
     public updateContent(result: CodeReviewResult): void {
+        this.currentResult = result;
         this.panel.title = this.getTitle(result);
         this.panel.webview.html = this.getHtmlContent(result);
     }
@@ -92,17 +160,78 @@ export class CodeReviewViewer {
         switch (message.command) {
             case 'openFile':
                 if (message.file) {
-                    const uri = vscode.Uri.file(message.file);
-                    vscode.window.showTextDocument(uri, {
-                        selection: message.line 
-                            ? new vscode.Range(message.line - 1, 0, message.line - 1, 0)
-                            : undefined
-                    });
+                    this.openFileLocation(message.file, message.line);
                 }
                 break;
             case 'copyFinding':
                 // Handle copy to clipboard
                 break;
+        }
+    }
+
+    /**
+     * Open a file at the specified location.
+     * For commit reviews, opens a read-only snapshot of the file at that commit.
+     * For pending/staged reviews, opens the current working file.
+     */
+    private async openFileLocation(filePath: string, line?: number): Promise<void> {
+        const metadata = this.currentResult?.metadata;
+        
+        // Determine the full file path
+        let fullPath = filePath;
+        if (!path.isAbsolute(filePath) && metadata?.repositoryRoot) {
+            fullPath = path.join(metadata.repositoryRoot, filePath);
+        }
+
+        // For commit reviews, try to open a snapshot of the file at that commit
+        if (metadata?.type === 'commit' && metadata.commitSha && metadata.repositoryRoot) {
+            const repoRoot = metadata.repositoryRoot;
+            const commitSha = metadata.commitSha;
+            
+            // Create a URI for the git snapshot provider
+            // Use the relative path from repo root for git
+            // On Windows, paths are case-insensitive, so normalize for comparison
+            const normalizedFilePath = path.normalize(filePath).toLowerCase();
+            const normalizedRepoRoot = path.normalize(repoRoot).toLowerCase();
+            const isAbsolutePathInRepo = path.isAbsolute(filePath) && normalizedFilePath.startsWith(normalizedRepoRoot);
+            const relativePath = isAbsolutePathInRepo
+                ? path.relative(repoRoot, filePath)
+                : filePath;
+            
+            // Encode parameters properly
+            const query = new URLSearchParams({
+                commit: commitSha,
+                file: relativePath,
+                repo: repoRoot
+            }).toString();
+            
+            const snapshotUri = vscode.Uri.parse(`git-snapshot:/${path.basename(relativePath)}@${commitSha.substring(0, 7)}?${query}`);
+            
+            try {
+                const doc = await vscode.workspace.openTextDocument(snapshotUri);
+                await vscode.window.showTextDocument(doc, {
+                    preview: true,
+                    selection: line 
+                        ? new vscode.Range(line - 1, 0, line - 1, 0)
+                        : undefined
+                });
+                return;
+            } catch (error) {
+                // Fall back to opening the current file if snapshot fails
+                console.warn('Failed to open git snapshot, falling back to current file:', error);
+            }
+        }
+
+        // For pending/staged reviews or if snapshot failed, open the current file
+        try {
+            const uri = vscode.Uri.file(fullPath);
+            await vscode.window.showTextDocument(uri, {
+                selection: line 
+                    ? new vscode.Range(line - 1, 0, line - 1, 0)
+                    : undefined
+            });
+        } catch (error) {
+            vscode.window.showErrorMessage(`Unable to open file: ${filePath}`);
         }
     }
 
@@ -348,6 +477,15 @@ export class CodeReviewViewer {
             font-weight: 600;
         }
 
+        .finding-rule-file {
+            margin: 8px 0 12px 0;
+            padding: 6px 10px;
+            background-color: rgba(55, 148, 255, 0.1);
+            border-radius: 4px;
+            font-size: 0.85em;
+            color: var(--info-color);
+        }
+
         .no-findings {
             text-align: center;
             padding: 40px;
@@ -389,20 +527,33 @@ export class CodeReviewViewer {
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
 
-        function openFile(file, line) {
-            vscode.postMessage({
-                command: 'openFile',
-                file: file,
-                line: line
-            });
-        }
+        // Handle file link clicks
+        document.addEventListener('click', (event) => {
+            const link = event.target.closest('.file-link');
+            if (link) {
+                event.stopPropagation();
+                event.preventDefault();
+                
+                const file = link.getAttribute('data-file');
+                const line = parseInt(link.getAttribute('data-line') || '0', 10);
+                
+                vscode.postMessage({
+                    command: 'openFile',
+                    file: file,
+                    line: line
+                });
+            }
+        });
 
-        // Toggle finding details
+        // Toggle finding details (only when clicking on the header, not the file link)
         document.querySelectorAll('.finding-header').forEach(header => {
-            header.addEventListener('click', () => {
-                const body = header.nextElementSibling;
-                if (body) {
-                    body.style.display = body.style.display === 'none' ? 'block' : 'none';
+            header.addEventListener('click', (event) => {
+                // Only toggle if we didn't click on the file link
+                if (!event.target.closest('.finding-location')) {
+                    const body = header.nextElementSibling;
+                    if (body) {
+                        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+                    }
                 }
             });
         });
@@ -515,9 +666,10 @@ export class CodeReviewViewer {
      * Render a single finding
      */
     private renderFinding(finding: ReviewFinding): string {
+        // Use data attributes for file path to avoid escaping issues
         const locationHtml = finding.file
             ? `<span class="finding-location">
-                <a href="#" onclick="openFile('${this.escapeHtml(finding.file)}', ${finding.line || 0}); return false;">
+                <a href="#" class="file-link" data-file="${this.escapeHtml(finding.file)}" data-line="${finding.line || 0}">
                     📁 ${this.escapeHtml(finding.file)}${finding.line ? `:${finding.line}` : ''}
                 </a>
                </span>`
@@ -535,6 +687,11 @@ export class CodeReviewViewer {
             ? `<div class="finding-explanation">${this.escapeHtml(finding.explanation)}</div>`
             : '';
 
+        // Show the source rule file if available and different from the rule name
+        const ruleFileHtml = finding.ruleFile && finding.ruleFile !== finding.rule
+            ? `<div class="finding-rule-file">📄 From rule: <strong>${this.escapeHtml(finding.ruleFile)}</strong></div>`
+            : '';
+
         return `
         <div class="finding">
             <div class="finding-header">
@@ -543,6 +700,7 @@ export class CodeReviewViewer {
                 ${locationHtml}
             </div>
             <div class="finding-body">
+                ${ruleFileHtml}
                 <div class="finding-description">${this.escapeHtml(finding.description)}</div>
                 ${codeHtml}
                 ${suggestionHtml}
@@ -580,6 +738,19 @@ export class CodeReviewViewer {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    /**
+     * Escape a string for use in JavaScript code
+     * Handles backslashes (Windows paths), quotes, and other special characters
+     */
+    private escapeJsString(text: string): string {
+        return text
+            .replace(/\\/g, '\\\\')  // Escape backslashes first
+            .replace(/'/g, "\\'")    // Escape single quotes
+            .replace(/"/g, '\\"')    // Escape double quotes
+            .replace(/\n/g, '\\n')   // Escape newlines
+            .replace(/\r/g, '\\r');  // Escape carriage returns
     }
 
     /**

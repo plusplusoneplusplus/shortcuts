@@ -404,64 +404,118 @@ export function registerCodeReviewCommands(
         )
     );
 
-    // Command: Review pending changes against rules
+    /**
+     * Review pending changes against rules
+     * @param selectRules If true, show rule selection UI
+     */
+    async function reviewPendingChanges(selectRules: boolean = false): Promise<void> {
+        const repoRoot = getRepoRoot();
+        const workspaceRoot = getWorkspaceRoot();
+
+        if (!repoRoot || !workspaceRoot) {
+            vscode.window.showErrorMessage('No git repository found.');
+            return;
+        }
+
+        if (!gitLogService.hasPendingChanges(repoRoot)) {
+            vscode.window.showInformationMessage('No pending changes to review.');
+            return;
+        }
+
+        // Get selected rules if requested
+        let selectedRules: string[] | undefined;
+        if (selectRules) {
+            selectedRules = await codeReviewService.showRuleSelection(workspaceRoot);
+            if (!selectedRules) {
+                return; // User cancelled
+            }
+        }
+
+        const diff = gitLogService.getPendingChangesDiff(repoRoot);
+
+        const metadata: CodeReviewMetadata = {
+            type: 'pending',
+            rulesUsed: [],
+            repositoryRoot: repoRoot
+        };
+
+        await executeReview(diff, metadata, selectedRules);
+    }
+
+    /**
+     * Review staged changes against rules
+     * @param selectRules If true, show rule selection UI
+     */
+    async function reviewStagedChanges(selectRules: boolean = false): Promise<void> {
+        const repoRoot = getRepoRoot();
+        const workspaceRoot = getWorkspaceRoot();
+
+        if (!repoRoot || !workspaceRoot) {
+            vscode.window.showErrorMessage('No git repository found.');
+            return;
+        }
+
+        if (!gitLogService.hasStagedChanges(repoRoot)) {
+            vscode.window.showInformationMessage('No staged changes to review.');
+            return;
+        }
+
+        // Get selected rules if requested
+        let selectedRules: string[] | undefined;
+        if (selectRules) {
+            selectedRules = await codeReviewService.showRuleSelection(workspaceRoot);
+            if (!selectedRules) {
+                return; // User cancelled
+            }
+        }
+
+        const diff = gitLogService.getStagedChangesDiff(repoRoot);
+
+        const metadata: CodeReviewMetadata = {
+            type: 'staged',
+            rulesUsed: [],
+            repositoryRoot: repoRoot
+        };
+
+        await executeReview(diff, metadata, selectedRules);
+    }
+
+    // Command: Review pending changes against rules (all rules)
     disposables.push(
         vscode.commands.registerCommand(
             'shortcuts.reviewPendingAgainstRules',
             async () => {
-                const repoRoot = getRepoRoot();
-                const workspaceRoot = getWorkspaceRoot();
-
-                if (!repoRoot || !workspaceRoot) {
-                    vscode.window.showErrorMessage('No git repository found.');
-                    return;
-                }
-
-                if (!gitLogService.hasPendingChanges(repoRoot)) {
-                    vscode.window.showInformationMessage('No pending changes to review.');
-                    return;
-                }
-
-                const diff = gitLogService.getPendingChangesDiff(repoRoot);
-
-                const metadata: CodeReviewMetadata = {
-                    type: 'pending',
-                    rulesUsed: [],
-                    repositoryRoot: repoRoot
-                };
-
-                await executeReview(diff, metadata);
+                await reviewPendingChanges(false);
             }
         )
     );
 
-    // Command: Review staged changes against rules
+    // Command: Review pending changes against rules (with rule selection)
+    disposables.push(
+        vscode.commands.registerCommand(
+            'shortcuts.reviewPendingAgainstRulesSelect',
+            async () => {
+                await reviewPendingChanges(true);
+            }
+        )
+    );
+
+    // Command: Review staged changes against rules (all rules)
     disposables.push(
         vscode.commands.registerCommand(
             'shortcuts.reviewStagedAgainstRules',
             async () => {
-                const repoRoot = getRepoRoot();
-                const workspaceRoot = getWorkspaceRoot();
+                await reviewStagedChanges(false);
+            }
+        )
+    );
 
-                if (!repoRoot || !workspaceRoot) {
-                    vscode.window.showErrorMessage('No git repository found.');
-                    return;
-                }
-
-                if (!gitLogService.hasStagedChanges(repoRoot)) {
-                    vscode.window.showInformationMessage('No staged changes to review.');
-                    return;
-                }
-
-                const diff = gitLogService.getStagedChangesDiff(repoRoot);
-
-                const metadata: CodeReviewMetadata = {
-                    type: 'staged',
-                    rulesUsed: [],
-                    repositoryRoot: repoRoot
-                };
-
-                await executeReview(diff, metadata);
+    // Command: Review staged changes against rules (with rule selection)
+    disposables.push(
+        vscode.commands.registerCommand(
+            'shortcuts.reviewStagedAgainstRulesSelect',
+            async () => {
+                await reviewStagedChanges(true);
             }
         )
     );

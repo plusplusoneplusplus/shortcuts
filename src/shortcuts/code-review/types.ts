@@ -189,8 +189,10 @@ export interface ReviewFinding {
     id: string;
     /** Severity level */
     severity: ReviewSeverity;
-    /** The rule that was violated */
+    /** The rule that was violated (from AI response) */
     rule: string;
+    /** The source rule file that generated this finding */
+    ruleFile?: string;
     /** File path where the issue was found */
     file?: string;
     /** Line number (if applicable) */

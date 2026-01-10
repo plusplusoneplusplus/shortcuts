@@ -664,6 +664,61 @@ export class GitLogService implements vscode.Disposable {
     }
 
     /**
+     * Get file content at a specific commit
+     * @param repoRoot Repository root path
+     * @param commitHash Commit hash
+     * @param filePath File path relative to repo root
+     * @returns File content as string, or undefined if file doesn't exist at that commit
+     */
+    getFileContentAtCommit(repoRoot: string, commitHash: string, filePath: string): string | undefined {
+        try {
+            // Normalize the file path (use forward slashes for git)
+            const normalizedPath = filePath.replace(/\\/g, '/');
+            
+            // Use git show to get file content at specific commit
+            const command = `git show "${commitHash}:${normalizedPath}"`;
+            const output = execSync(command, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+                timeout: 30000
+            });
+            
+            return output;
+        } catch (error) {
+            getExtensionLogger().error(
+                LogCategory.GIT,
+                `Failed to get file content for ${filePath} at commit ${commitHash}`,
+                error instanceof Error ? error : undefined
+            );
+            return undefined;
+        }
+    }
+
+    /**
+     * Check if a file exists at a specific commit
+     * @param repoRoot Repository root path
+     * @param commitHash Commit hash
+     * @param filePath File path relative to repo root
+     * @returns true if the file exists at that commit
+     */
+    fileExistsAtCommit(repoRoot: string, commitHash: string, filePath: string): boolean {
+        try {
+            const normalizedPath = filePath.replace(/\\/g, '/');
+            // Use git cat-file to check if file exists
+            execSync(`git cat-file -e "${commitHash}:${normalizedPath}"`, {
+                cwd: repoRoot,
+                encoding: 'utf-8',
+                timeout: 5000,
+                stdio: ['pipe', 'pipe', 'pipe']
+            });
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
      * Dispose of all resources
      */
     dispose(): void {

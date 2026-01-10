@@ -270,9 +270,11 @@ export function aggregateReviewResults(
 
     for (const result of ruleResults) {
         if (result.success && result.findings) {
-            // Tag each finding with the source rule if not already set
+            // Tag each finding with the source rule file
             for (const finding of result.findings) {
-                // Ensure the rule field reflects the source rule
+                // Always set the ruleFile to track which rule file generated this finding
+                finding.ruleFile = result.rule.filename;
+                // Ensure the rule field has a value
                 if (!finding.rule || finding.rule === 'Unknown Rule') {
                     finding.rule = result.rule.filename;
                 }

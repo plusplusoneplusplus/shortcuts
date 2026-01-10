@@ -1120,6 +1120,10 @@ suite('Result Aggregation', () => {
         assert.strictEqual(result.executionStats.successfulRules, 2);
         assert.strictEqual(result.executionStats.failedRules, 0);
         assert.strictEqual(result.executionStats.totalTimeMs, 5000);
+        
+        // Verify ruleFile is set on each finding
+        assert.strictEqual(result.findings[0].ruleFile, 'naming.md');
+        assert.strictEqual(result.findings[1].ruleFile, 'security.md');
     });
 
     test('aggregates results with some failed rule reviews', () => {
@@ -1390,6 +1394,153 @@ suite('AggregatedCodeReviewResult Type', () => {
         assert.strictEqual(stats.totalRules, 5);
         assert.strictEqual(stats.successfulRules + stats.failedRules, stats.totalRules);
         assert.strictEqual(stats.totalTimeMs, 10000);
+    });
+});
+
+suite('Code Review Viewer Path Handling', () => {
+    /**
+     * Escape a string for use in JavaScript code
+     * Handles backslashes (Windows paths), quotes, and other special characters
+     */
+    function escapeJsString(text: string): string {
+        return text
+            .replace(/\\/g, '\\\\')  // Escape backslashes first
+            .replace(/'/g, "\\'")    // Escape single quotes
+            .replace(/"/g, '\\"')    // Escape double quotes
+            .replace(/\n/g, '\\n')   // Escape newlines
+            .replace(/\r/g, '\\r');  // Escape carriage returns
+    }
+
+    test('escapes Windows paths correctly', () => {
+        const windowsPath = 'C:\\Users\\user\\project\\src\\file.ts';
+        const escaped = escapeJsString(windowsPath);
+        
+        assert.strictEqual(escaped, 'C:\\\\Users\\\\user\\\\project\\\\src\\\\file.ts');
+        // Verify the escaped string can be used in JS without breaking
+        assert.ok(!escaped.includes("'") || escaped.includes("\\'"));
+    });
+
+    test('escapes Unix paths correctly', () => {
+        const unixPath = '/home/user/project/src/file.ts';
+        const escaped = escapeJsString(unixPath);
+        
+        // Unix paths should remain unchanged (no backslashes or special chars)
+        assert.strictEqual(escaped, unixPath);
+    });
+
+    test('escapes paths with single quotes', () => {
+        const pathWithQuotes = "/home/user/project/it's a file.ts";
+        const escaped = escapeJsString(pathWithQuotes);
+        
+        assert.strictEqual(escaped, "/home/user/project/it\\'s a file.ts");
+    });
+
+    test('escapes paths with double quotes', () => {
+        const pathWithDoubleQuotes = '/home/user/project/"special" file.ts';
+        const escaped = escapeJsString(pathWithDoubleQuotes);
+        
+        assert.strictEqual(escaped, '/home/user/project/\\"special\\" file.ts');
+    });
+
+    test('handles mixed path separators', () => {
+        const mixedPath = 'C:\\Users\\user/project\\src/file.ts';
+        const escaped = escapeJsString(mixedPath);
+        
+        assert.strictEqual(escaped, 'C:\\\\Users\\\\user/project\\\\src/file.ts');
+    });
+
+    test('handles UNC paths', () => {
+        const uncPath = '\\\\server\\share\\project\\file.ts';
+        const escaped = escapeJsString(uncPath);
+        
+        assert.strictEqual(escaped, '\\\\\\\\server\\\\share\\\\project\\\\file.ts');
+    });
+});
+
+suite('Code Review with Rule Selection', () => {
+    test('CodeReviewMetadata supports all review types', () => {
+        const commitMetadata: CodeReviewMetadata = {
+            type: 'commit',
+            commitSha: 'abc123',
+            commitMessage: 'test commit',
+            rulesUsed: ['rule1.md'],
+            repositoryRoot: '/repo'
+        };
+
+        const pendingMetadata: CodeReviewMetadata = {
+            type: 'pending',
+            rulesUsed: ['rule1.md'],
+            repositoryRoot: '/repo'
+        };
+
+        const stagedMetadata: CodeReviewMetadata = {
+            type: 'staged',
+            rulesUsed: ['rule1.md'],
+            repositoryRoot: '/repo'
+        };
+
+        assert.strictEqual(commitMetadata.type, 'commit');
+        assert.strictEqual(pendingMetadata.type, 'pending');
+        assert.strictEqual(stagedMetadata.type, 'staged');
+    });
+
+    test('rule selection can filter rules for any review type', () => {
+        const allRules = ['rule1.md', 'rule2.md', 'rule3.md'];
+        const selectedRules = ['rule1.md', 'rule3.md'];
+
+        const filteredRules = allRules.filter(r => selectedRules.includes(r));
+
+        assert.strictEqual(filteredRules.length, 2);
+        assert.ok(filteredRules.includes('rule1.md'));
+        assert.ok(filteredRules.includes('rule3.md'));
+        assert.ok(!filteredRules.includes('rule2.md'));
+    });
+});
+
+suite('Git Snapshot URI Construction', () => {
+    test('constructs valid git snapshot URI', () => {
+        const repoRoot = '/Users/user/project';
+        const commitSha = 'abc1234567890';
+        const filePath = 'src/file.ts';
+
+        const query = new URLSearchParams({
+            commit: commitSha,
+            file: filePath,
+            repo: repoRoot
+        }).toString();
+
+        const uri = `git-snapshot:/${path.basename(filePath)}@${commitSha.substring(0, 7)}?${query}`;
+
+        assert.ok(uri.startsWith('git-snapshot:/'));
+        assert.ok(uri.includes('file.ts@abc1234'));
+        assert.ok(uri.includes('commit=abc1234567890'));
+        assert.ok(uri.includes('file=src%2Ffile.ts'));
+        assert.ok(uri.includes('repo=%2FUsers%2Fuser%2Fproject'));
+    });
+
+    test('handles Windows paths in URI construction', () => {
+        const repoRoot = 'C:\\Users\\user\\project';
+        const commitSha = 'abc1234567890';
+        const filePath = 'src\\file.ts';
+
+        const query = new URLSearchParams({
+            commit: commitSha,
+            file: filePath,
+            repo: repoRoot
+        }).toString();
+
+        // URLSearchParams encodes backslashes properly
+        assert.ok(query.includes('file=src%5Cfile.ts'));
+        assert.ok(query.includes('repo=C%3A%5CUsers%5Cuser%5Cproject'));
+    });
+
+    test('parses git snapshot URI parameters', () => {
+        const query = 'commit=abc123&file=src%2Ffile.ts&repo=%2Fhome%2Fuser%2Fproject';
+        const params = new URLSearchParams(query);
+
+        assert.strictEqual(params.get('commit'), 'abc123');
+        assert.strictEqual(params.get('file'), 'src/file.ts');
+        assert.strictEqual(params.get('repo'), '/home/user/project');
     });
 });
 

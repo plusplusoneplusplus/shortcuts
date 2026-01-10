@@ -970,8 +970,20 @@
         "icon": "$(checklist)"
       },
       {
+        "command": "shortcuts.reviewPendingAgainstRulesSelect",
+        "title": "Review Pending Changes Against Rules...",
+        "category": "Code Review",
+        "icon": "$(checklist)"
+      },
+      {
         "command": "shortcuts.reviewStagedAgainstRules",
         "title": "Review Staged Changes Against Rules",
+        "category": "Code Review",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "shortcuts.reviewStagedAgainstRulesSelect",
+        "title": "Review Staged Changes Against Rules...",
         "category": "Code Review",
         "icon": "$(checklist)"
       },
@@ -1722,9 +1734,19 @@
           "group": "codeReview@1"
         },
         {
-          "command": "shortcuts.reviewStagedAgainstRules",
+          "command": "shortcuts.reviewPendingAgainstRulesSelect",
           "when": "view == gitView && viewItem == gitSection_changes",
           "group": "codeReview@2"
+        },
+        {
+          "command": "shortcuts.reviewStagedAgainstRules",
+          "when": "view == gitView && viewItem == gitSection_changes",
+          "group": "codeReview@3"
+        },
+        {
+          "command": "shortcuts.reviewStagedAgainstRulesSelect",
+          "when": "view == gitView && viewItem == gitSection_changes",
+          "group": "codeReview@4"
         },
         {
           "command": "gitView.stageAll",
