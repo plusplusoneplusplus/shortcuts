@@ -18,7 +18,7 @@ import {
     previewTemplate,
     TemplateError
 } from '../../../shortcuts/yaml-pipeline/template';
-import { PipelineItem } from '../../../shortcuts/yaml-pipeline/types';
+import { PromptItem } from '../../../shortcuts/yaml-pipeline/types';
 
 suite('Template Engine', () => {
     suite('substituteTemplate', () => {
@@ -447,7 +447,7 @@ category (ui/backend/database/infra),
 estimate effort in hours,
 and note if more info is needed.`;
 
-            const item: PipelineItem = {
+            const item: PromptItem = {
                 id: '1',
                 title: 'Login broken',
                 description: "Users can't login",

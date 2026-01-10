@@ -86,52 +86,9 @@ suite('YAML Pipeline Index Exports', () => {
         });
     });
 
-    suite('List Reducer exports', () => {
-        test('exports formatResultsAsList', () => {
-            assert.ok(typeof YamlPipeline.formatResultsAsList === 'function');
-        });
-
-        test('exports formatItem', () => {
-            assert.ok(typeof YamlPipeline.formatItem === 'function');
-        });
-
-        test('exports formatOutput', () => {
-            assert.ok(typeof YamlPipeline.formatOutput === 'function');
-        });
-
-        test('exports formatValue', () => {
-            assert.ok(typeof YamlPipeline.formatValue === 'function');
-        });
-
-        test('exports truncateValue', () => {
-            assert.ok(typeof YamlPipeline.truncateValue === 'function');
-        });
-
-        test('exports formatResultsAsTable', () => {
-            assert.ok(typeof YamlPipeline.formatResultsAsTable === 'function');
-        });
-
-        test('exports formatResultsAsJSON', () => {
-            assert.ok(typeof YamlPipeline.formatResultsAsJSON === 'function');
-        });
-
-        test('exports formatResultsAsCSV', () => {
-            assert.ok(typeof YamlPipeline.formatResultsAsCSV === 'function');
-        });
-
-        test('exports DEFAULT_LIST_FORMAT_OPTIONS', () => {
-            assert.ok(YamlPipeline.DEFAULT_LIST_FORMAT_OPTIONS);
-            assert.strictEqual(YamlPipeline.DEFAULT_LIST_FORMAT_OPTIONS.format, 'compact');
-        });
-    });
-
     suite('Executor exports', () => {
         test('exports executePipeline', () => {
             assert.ok(typeof YamlPipeline.executePipeline === 'function');
-        });
-
-        test('exports createPipelineExecutor', () => {
-            assert.ok(typeof YamlPipeline.createPipelineExecutor === 'function');
         });
 
         test('exports parsePipelineYAML', () => {
@@ -148,6 +105,16 @@ suite('YAML Pipeline Index Exports', () => {
 
         test('exports DEFAULT_PARALLEL_LIMIT', () => {
             assert.strictEqual(YamlPipeline.DEFAULT_PARALLEL_LIMIT, 5);
+        });
+    });
+
+    suite('Map-reduce job exports', () => {
+        test('exports createPromptMapJob', () => {
+            assert.ok(typeof YamlPipeline.createPromptMapJob === 'function');
+        });
+
+        test('exports createPromptMapInput', () => {
+            assert.ok(typeof YamlPipeline.createPromptMapInput === 'function');
         });
     });
 
@@ -172,29 +139,6 @@ suite('YAML Pipeline Index Exports', () => {
             const parsed = YamlPipeline.parseAIResponse(response, ['severity', 'category']);
 
             assert.deepStrictEqual(parsed, { severity: 'high', category: 'bug' });
-        });
-
-        test('can format results as list', () => {
-            const results = [{
-                item: { id: '1', title: 'Test' },
-                output: { severity: 'high' },
-                success: true
-            }];
-
-            const stats = {
-                totalItems: 1,
-                successfulItems: 1,
-                failedItems: 0,
-                totalTimeMs: 100,
-                mapPhaseTimeMs: 80,
-                reducePhaseTimeMs: 20
-            };
-
-            const output = YamlPipeline.formatResultsAsList(results, stats);
-
-            assert.ok(output.includes('## Results (1 items)'));
-            assert.ok(output.includes('Test'));
-            assert.ok(output.includes('severity=high'));
         });
     });
 });

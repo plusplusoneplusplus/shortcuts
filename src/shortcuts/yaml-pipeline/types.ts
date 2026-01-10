@@ -1,11 +1,34 @@
 /**
  * YAML Pipeline Framework Types
  *
- * Core types and interfaces for the YAML-based MapReduce pipeline framework.
- * Supports CSV input, prompt templates, and list output.
+ * Configuration types for YAML-based pipeline definitions.
+ * Execution types are re-exported from the map-reduce framework.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
+
+import type { OutputFormat as MROutputFormat, PromptItem as MRPromptItem } from '../map-reduce/jobs/prompt-map-job';
+
+// Re-export execution types from map-reduce framework
+export type {
+    AIInvoker,
+    AIInvokerOptions,
+    AIInvokerResult,
+    ProcessTracker,
+    ExecutorOptions,
+    JobProgress,
+    MapReduceResult
+} from '../map-reduce/types';
+
+export type {
+    PromptItem,
+    PromptMapResult,
+    PromptMapInput,
+    PromptMapOutput,
+    PromptMapSummary,
+    PromptMapJobOptions,
+    OutputFormat
+} from '../map-reduce/jobs/prompt-map-job';
 
 /**
  * Pipeline configuration as defined in YAML file
@@ -43,131 +66,16 @@ export interface MapConfig {
     output: string[];
     /** Maximum concurrent AI calls (default: 5) */
     parallel?: number;
+    /** Model to use for AI calls */
+    model?: string;
 }
 
 /**
  * Reduce phase configuration
  */
 export interface ReduceConfig {
-    /** Reduce type - currently only 'list' */
-    type: 'list';
-}
-
-/**
- * A single item from CSV input (one row)
- */
-export interface PipelineItem {
-    /** Column values from CSV row */
-    [column: string]: string;
-}
-
-/**
- * Result from AI processing a single item
- */
-export interface PipelineMapResult {
-    /** The original input item */
-    item: PipelineItem;
-    /** The AI-generated output (with declared fields) */
-    output: Record<string, unknown>;
-    /** Whether processing succeeded */
-    success: boolean;
-    /** Error message if failed */
-    error?: string;
-    /** Raw AI response */
-    rawResponse?: string;
-}
-
-/**
- * Overall pipeline execution result
- */
-export interface PipelineResult {
-    /** Pipeline name */
-    name: string;
-    /** Whether overall execution succeeded */
-    success: boolean;
-    /** Results from each item */
-    results: PipelineMapResult[];
-    /** Formatted output (from reduce phase) */
-    formattedOutput: string;
-    /** Execution statistics */
-    stats: PipelineStats;
-    /** Error message if pipeline failed */
-    error?: string;
-}
-
-/**
- * Pipeline execution statistics
- */
-export interface PipelineStats {
-    /** Total items processed */
-    totalItems: number;
-    /** Successfully processed items */
-    successfulItems: number;
-    /** Failed items */
-    failedItems: number;
-    /** Total execution time in ms */
-    totalTimeMs: number;
-    /** Map phase time in ms */
-    mapPhaseTimeMs: number;
-    /** Reduce phase time in ms */
-    reducePhaseTimeMs: number;
-}
-
-/**
- * Options for pipeline execution
- */
-export interface PipelineExecutorOptions {
-    /** AI invoker function */
-    aiInvoker: AIInvoker;
-    /** Working directory for resolving relative paths */
-    workingDirectory: string;
-    /** Progress callback */
-    onProgress?: (progress: PipelineProgress) => void;
-}
-
-/**
- * Progress information during pipeline execution
- */
-export interface PipelineProgress {
-    /** Current phase */
-    phase: 'loading' | 'mapping' | 'reducing' | 'complete';
-    /** Total items to process */
-    totalItems: number;
-    /** Completed items */
-    completedItems: number;
-    /** Failed items */
-    failedItems: number;
-    /** Progress percentage (0-100) */
-    percentage: number;
-    /** Optional message */
-    message?: string;
-}
-
-/**
- * AI invoker function type
- */
-export type AIInvoker = (prompt: string, options?: AIInvokerOptions) => Promise<AIInvokerResult>;
-
-/**
- * Options for AI invocation
- */
-export interface AIInvokerOptions {
-    /** Model to use */
-    model?: string;
-    /** Timeout in ms */
-    timeoutMs?: number;
-}
-
-/**
- * Result from AI invocation
- */
-export interface AIInvokerResult {
-    /** Whether invocation succeeded */
-    success: boolean;
-    /** AI response text */
-    response?: string;
-    /** Error message if failed */
-    error?: string;
+    /** Reduce type / output format */
+    type: MROutputFormat;
 }
 
 /**
@@ -187,7 +95,7 @@ export interface CSVParseOptions {
  */
 export interface CSVParseResult {
     /** Parsed items */
-    items: PipelineItem[];
+    items: MRPromptItem[];
     /** Column headers */
     headers: string[];
     /** Number of rows (excluding header) */

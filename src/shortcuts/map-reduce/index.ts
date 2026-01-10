@@ -131,7 +131,9 @@ export {
     createTemplateJob,
     createSimpleTemplateJob,
     createJsonTemplateJob,
-    createListProcessingJob
+    createListProcessingJob,
+    createPromptMapJob,
+    createPromptMapInput
 } from './jobs';
 export type {
     ReviewSeverity,
@@ -145,5 +147,13 @@ export type {
     TemplateJobInput,
     TemplateWorkItemData,
     TemplateItemResult,
-    TemplateJobOptions
+    TemplateJobOptions,
+    PromptItem,
+    PromptMapInput,
+    PromptWorkItemData,
+    PromptMapResult,
+    PromptMapOutput,
+    PromptMapSummary,
+    PromptMapJobOptions,
+    OutputFormat
 } from './jobs';

@@ -32,3 +32,19 @@ export type {
     TemplateItemResult,
     TemplateJobOptions
 } from './template-job';
+
+// Prompt map job (generic item + prompt template processing)
+export {
+    createPromptMapJob,
+    createPromptMapInput
+} from './prompt-map-job';
+export type {
+    PromptItem,
+    PromptMapInput,
+    PromptWorkItemData,
+    PromptMapResult,
+    PromptMapOutput,
+    PromptMapSummary,
+    PromptMapJobOptions,
+    OutputFormat
+} from './prompt-map-job';

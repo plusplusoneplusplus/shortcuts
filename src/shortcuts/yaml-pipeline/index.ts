@@ -1,32 +1,41 @@
 /**
  * YAML Pipeline Framework
  *
- * A simple YAML-based configuration for running AI MapReduce workflows.
- * Supports CSV input, prompt templates with variable substitution, and list output.
+ * A YAML-based configuration layer on top of the map-reduce framework.
+ * Provides easy configuration for AI MapReduce workflows via YAML files.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-// Types
+// Configuration types (YAML schema)
 export type {
     PipelineConfig,
     InputConfig,
     MapConfig,
     ReduceConfig,
-    PipelineItem,
-    PipelineMapResult,
-    PipelineResult,
-    PipelineStats,
-    PipelineExecutorOptions,
-    PipelineProgress,
-    AIInvoker,
-    AIInvokerOptions,
-    AIInvokerResult,
     CSVParseOptions,
     CSVParseResult
 } from './types';
 
-// CSV Reader
+// Re-export execution types from map-reduce (canonical source)
+export type {
+    AIInvoker,
+    AIInvokerOptions,
+    AIInvokerResult,
+    ProcessTracker,
+    ExecutorOptions,
+    JobProgress,
+    MapReduceResult,
+    PromptItem,
+    PromptMapResult,
+    PromptMapInput,
+    PromptMapOutput,
+    PromptMapSummary,
+    PromptMapJobOptions,
+    OutputFormat
+} from './types';
+
+// CSV Reader utilities
 export {
     parseCSVContent,
     readCSVFile,
@@ -38,7 +47,7 @@ export {
     DEFAULT_CSV_OPTIONS
 } from './csv-reader';
 
-// Template Engine
+// Template Engine utilities
 export {
     substituteTemplate,
     extractVariables,
@@ -52,26 +61,21 @@ export {
     TemplateError
 } from './template';
 
-// List Reducer
-export {
-    formatResultsAsList,
-    formatItem,
-    formatOutput,
-    formatValue,
-    truncateValue,
-    formatResultsAsTable,
-    formatResultsAsJSON,
-    formatResultsAsCSV,
-    DEFAULT_LIST_FORMAT_OPTIONS
-} from './list-reducer';
-export type { ListFormatOptions } from './list-reducer';
-
-// Executor
+// Executor (main API)
 export {
     executePipeline,
-    createPipelineExecutor,
     parsePipelineYAML,
     parsePipelineYAMLSync,
     PipelineExecutionError,
     DEFAULT_PARALLEL_LIMIT
 } from './executor';
+export type {
+    ExecutePipelineOptions,
+    PipelineExecutionResult
+} from './executor';
+
+// Re-export job creation from map-reduce for advanced usage
+export {
+    createPromptMapJob,
+    createPromptMapInput
+} from '../map-reduce/jobs/prompt-map-job';

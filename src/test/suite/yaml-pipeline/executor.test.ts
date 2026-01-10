@@ -1,7 +1,7 @@
 /**
  * Tests for Pipeline Executor
  *
- * Comprehensive tests for pipeline execution including AI invocation mocking.
+ * Comprehensive tests for pipeline execution using the map-reduce framework.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -11,7 +11,6 @@ import * as path from 'path';
 import * as os from 'os';
 import {
     executePipeline,
-    createPipelineExecutor,
     parsePipelineYAML,
     parsePipelineYAMLSync,
     PipelineExecutionError,
@@ -19,8 +18,8 @@ import {
 } from '../../../shortcuts/yaml-pipeline/executor';
 import {
     PipelineConfig,
-    PipelineProgress,
-    AIInvokerResult
+    AIInvokerResult,
+    JobProgress
 } from '../../../shortcuts/yaml-pipeline/types';
 
 suite('Pipeline Executor', () => {
@@ -86,14 +85,14 @@ suite('Pipeline Executor', () => {
             });
 
             assert.strictEqual(result.success, true);
-            assert.strictEqual(result.name, 'Test Pipeline');
-            assert.strictEqual(result.results.length, 2);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 2);
 
-            assert.strictEqual(result.results[0].success, true);
-            assert.strictEqual(result.results[0].output.severity, 'high');
+            assert.strictEqual(result.output.results[0].success, true);
+            assert.strictEqual(result.output.results[0].output.severity, 'high');
 
-            assert.strictEqual(result.results[1].success, true);
-            assert.strictEqual(result.results[1].output.severity, 'low');
+            assert.strictEqual(result.output.results[1].success, true);
+            assert.strictEqual(result.output.results[1].output.severity, 'low');
         });
 
         test('handles empty CSV', async () => {
@@ -112,8 +111,7 @@ suite('Pipeline Executor', () => {
             });
 
             assert.strictEqual(result.success, true);
-            assert.strictEqual(result.results.length, 0);
-            assert.ok(result.formattedOutput.includes('0 items'));
+            assert.strictEqual(result.executionStats.totalItems, 0);
         });
 
         test('handles AI failures gracefully', async () => {
@@ -139,12 +137,13 @@ suite('Pipeline Executor', () => {
             });
 
             assert.strictEqual(result.success, false); // Has failures
-            assert.strictEqual(result.stats.successfulItems, 1);
-            assert.strictEqual(result.stats.failedItems, 1);
+            assert.strictEqual(result.executionStats.successfulMaps, 1);
+            assert.strictEqual(result.executionStats.failedMaps, 1);
 
-            assert.strictEqual(result.results[0].success, true);
-            assert.strictEqual(result.results[1].success, false);
-            assert.ok(result.results[1].error?.includes('AI service unavailable'));
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results[0].success, true);
+            assert.strictEqual(result.output.results[1].success, false);
+            assert.ok(result.output.results[1].error?.includes('AI service unavailable'));
         });
 
         test('handles JSON parse failures', async () => {
@@ -167,8 +166,9 @@ suite('Pipeline Executor', () => {
             });
 
             assert.strictEqual(result.success, false);
-            assert.strictEqual(result.results[0].success, false);
-            assert.ok(result.results[0].error?.includes('parse'));
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results[0].success, false);
+            assert.ok(result.output.results[0].error?.includes('parse'));
         });
 
         test('respects parallel limit', async () => {
@@ -219,7 +219,7 @@ suite('Pipeline Executor', () => {
                 reduce: { type: 'list' }
             };
 
-            const progressUpdates: PipelineProgress[] = [];
+            const progressUpdates: JobProgress[] = [];
 
             await executePipeline(config, {
                 aiInvoker: createMockAIInvoker(new Map()),
@@ -227,18 +227,12 @@ suite('Pipeline Executor', () => {
                 onProgress: (progress) => progressUpdates.push({ ...progress })
             });
 
-            // Verify progress phases
-            const phases = progressUpdates.map(p => p.phase);
-            assert.ok(phases.includes('loading'));
-            assert.ok(phases.includes('mapping'));
-            assert.ok(phases.includes('reducing'));
-            assert.ok(phases.includes('complete'));
+            // Verify progress updates were received
+            assert.ok(progressUpdates.length > 0, 'Should have progress updates');
 
             // Verify final progress
             const finalProgress = progressUpdates[progressUpdates.length - 1];
-            assert.strictEqual(finalProgress.phase, 'complete');
             assert.strictEqual(finalProgress.percentage, 100);
-            assert.strictEqual(finalProgress.totalItems, 3);
         });
 
         test('handles multiple output fields', async () => {
@@ -265,7 +259,8 @@ suite('Pipeline Executor', () => {
             });
 
             assert.strictEqual(result.success, true);
-            assert.deepStrictEqual(result.results[0].output, {
+            assert.ok(result.output);
+            assert.deepStrictEqual(result.output.results[0].output, {
                 severity: 'high',
                 category: 'backend',
                 effort_hours: 4,
@@ -289,8 +284,9 @@ suite('Pipeline Executor', () => {
             });
 
             assert.strictEqual(result.success, true);
-            assert.strictEqual(result.results[0].item.title, 'Test');
-            assert.strictEqual(result.results[0].item.value, '100');
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results[0].item.title, 'Test');
+            assert.strictEqual(result.output.results[0].item.value, '100');
         });
 
         test('records execution statistics', async () => {
@@ -308,12 +304,12 @@ suite('Pipeline Executor', () => {
                 workingDirectory: tempDir
             });
 
-            assert.strictEqual(result.stats.totalItems, 3);
-            assert.strictEqual(result.stats.successfulItems, 3);
-            assert.strictEqual(result.stats.failedItems, 0);
-            assert.ok(result.stats.totalTimeMs >= 0);
-            assert.ok(result.stats.mapPhaseTimeMs >= 0);
-            assert.ok(result.stats.reducePhaseTimeMs >= 0);
+            assert.strictEqual(result.executionStats.totalItems, 3);
+            assert.strictEqual(result.executionStats.successfulMaps, 3);
+            assert.strictEqual(result.executionStats.failedMaps, 0);
+            assert.ok(result.totalTimeMs >= 0);
+            assert.ok(result.executionStats.mapPhaseTimeMs >= 0);
+            assert.ok(result.executionStats.reducePhaseTimeMs >= 0);
         });
     });
 
@@ -390,7 +386,7 @@ suite('Pipeline Executor', () => {
                 name: 'Test',
                 input: { type: 'csv', path: './data.csv' },
                 map: { prompt: '{{x}}', output: ['y'] },
-                reduce: { type: 'table' }
+                reduce: { type: 'invalid' }
             } as unknown as PipelineConfig;
 
             await assert.rejects(
@@ -436,29 +432,6 @@ suite('Pipeline Executor', () => {
                 }),
                 PipelineExecutionError
             );
-        });
-    });
-
-    suite('createPipelineExecutor', () => {
-        test('creates bound executor function', async () => {
-            await createTestCSV('data.csv', 'id,title\n1,Test');
-
-            const executor = createPipelineExecutor({
-                aiInvoker: createMockAIInvoker(new Map()),
-                workingDirectory: tempDir
-            });
-
-            const config: PipelineConfig = {
-                name: 'Bound Test',
-                input: { type: 'csv', path: './data.csv' },
-                map: { prompt: '{{title}}', output: ['result'] },
-                reduce: { type: 'list' }
-            };
-
-            const result = await executor(config);
-
-            assert.strictEqual(result.success, true);
-            assert.strictEqual(result.name, 'Bound Test');
         });
     });
 
@@ -590,11 +563,11 @@ and note if more info is needed.`,
             });
 
             assert.strictEqual(result.success, true);
-            assert.strictEqual(result.name, 'Bug Triage');
-            assert.strictEqual(result.results.length, 3);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 3);
 
             // Verify first bug
-            const loginBug = result.results.find(r => r.item.title === 'Login broken');
+            const loginBug = result.output.results.find((r) => r.item['title'] === 'Login broken');
             assert.ok(loginBug);
             assert.strictEqual(loginBug.output.severity, 'critical');
             assert.strictEqual(loginBug.output.category, 'backend');
@@ -602,9 +575,9 @@ and note if more info is needed.`,
             assert.strictEqual(loginBug.output.needs_more_info, false);
 
             // Verify formatted output
-            assert.ok(result.formattedOutput.includes('## Results (3 items)'));
-            assert.ok(result.formattedOutput.includes('Login broken'));
-            assert.ok(result.formattedOutput.includes('critical'));
+            assert.ok(result.output.formattedOutput.includes('## Results (3 items)'));
+            assert.ok(result.output.formattedOutput.includes('Login broken'));
+            assert.ok(result.output.formattedOutput.includes('critical'));
         });
     });
 });

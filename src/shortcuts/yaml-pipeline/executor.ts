@@ -1,24 +1,31 @@
 /**
  * Pipeline Executor
  *
- * Executes YAML-defined pipelines: reads CSV, runs AI map phase, formats results.
- * Uses concurrency limiting for parallel AI calls.
+ * Executes YAML-defined pipelines using the map-reduce framework.
+ * This is a thin wrapper that converts PipelineConfig to map-reduce job execution.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { ConcurrencyLimiter } from '../map-reduce/concurrency-limiter';
-import { readCSVFile, resolveCSVPath, validateCSVHeaders } from './csv-reader';
-import { formatResultsAsList } from './list-reducer';
-import { buildPromptFromTemplate, extractVariables, parseAIResponse } from './template';
 import {
+    createExecutor,
+    ExecutorOptions,
+    MapReduceResult,
+    JobProgress
+} from '../map-reduce';
+import {
+    createPromptMapJob,
+    createPromptMapInput,
+    PromptItem,
+    PromptMapResult,
+    PromptMapOutput
+} from '../map-reduce/jobs/prompt-map-job';
+import { readCSVFile, resolveCSVPath, validateCSVHeaders } from './csv-reader';
+import { extractVariables } from './template';
+import {
+    AIInvoker,
     PipelineConfig,
-    PipelineExecutorOptions,
-    PipelineItem,
-    PipelineMapResult,
-    PipelineProgress,
-    PipelineResult,
-    PipelineStats
+    ProcessTracker
 } from './types';
 
 /**
@@ -40,32 +47,40 @@ export class PipelineExecutionError extends Error {
 }
 
 /**
- * Execute a pipeline from a configuration
- * @param config Pipeline configuration
+ * Options for executing a pipeline
+ */
+export interface ExecutePipelineOptions {
+    /** AI invoker function */
+    aiInvoker: AIInvoker;
+    /** Working directory for resolving relative paths */
+    workingDirectory: string;
+    /** Optional process tracker for AI process manager integration */
+    processTracker?: ProcessTracker;
+    /** Progress callback */
+    onProgress?: (progress: JobProgress) => void;
+}
+
+/**
+ * Result type from pipeline execution
+ */
+export type PipelineExecutionResult = MapReduceResult<PromptMapResult, PromptMapOutput>;
+
+/**
+ * Execute a pipeline from a YAML configuration
+ * 
+ * @param config Pipeline configuration (parsed from YAML)
  * @param options Execution options
- * @returns Pipeline execution result
+ * @returns Map-reduce result containing pipeline output
  */
 export async function executePipeline(
     config: PipelineConfig,
-    options: PipelineExecutorOptions
-): Promise<PipelineResult> {
-    const startTime = Date.now();
-
+    options: ExecutePipelineOptions
+): Promise<PipelineExecutionResult> {
     // Validate config
     validatePipelineConfig(config);
 
-    // Report progress: loading
-    reportProgress(options, {
-        phase: 'loading',
-        totalItems: 0,
-        completedItems: 0,
-        failedItems: 0,
-        percentage: 0,
-        message: 'Loading input data...'
-    });
-
     // 1. Input Phase: Read CSV
-    let items: PipelineItem[];
+    let items: PromptItem[];
     try {
         const csvPath = resolveCSVPath(config.input.path, options.workingDirectory);
         const csvResult = await readCSVFile(csvPath, {
@@ -93,214 +108,43 @@ export async function executePipeline(
         );
     }
 
-    if (items.length === 0) {
-        return createEmptyResult(config.name, startTime);
-    }
-
-    // 2. Map Phase: Process each item with AI
+    // 2. Create and execute map-reduce job
     const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
-    const limiter = new ConcurrencyLimiter(parallelLimit);
+    const model = config.map.model;
 
-    reportProgress(options, {
-        phase: 'mapping',
-        totalItems: items.length,
-        completedItems: 0,
-        failedItems: 0,
-        percentage: 5,
-        message: `Processing ${items.length} items (max ${parallelLimit} concurrent)...`
+    const executorOptions: ExecutorOptions = {
+        aiInvoker: options.aiInvoker,
+        maxConcurrency: parallelLimit,
+        reduceMode: 'deterministic',
+        showProgress: true,
+        retryOnFailure: false,
+        processTracker: options.processTracker,
+        onProgress: options.onProgress,
+        jobName: config.name
+    };
+
+    const executor = createExecutor(executorOptions);
+    const job = createPromptMapJob({
+        aiInvoker: options.aiInvoker,
+        outputFormat: config.reduce.type,
+        model,
+        maxConcurrency: parallelLimit
     });
 
-    const mapStartTime = Date.now();
-    let completedCount = 0;
-    let failedCount = 0;
+    const jobInput = createPromptMapInput(
+        items,
+        config.map.prompt,
+        config.map.output
+    );
 
-    const mapTasks = items.map((item, index) => {
-        return () => processItem(
-            item,
-            config.map.prompt,
-            config.map.output,
-            options.aiInvoker
-        ).then(result => {
-            if (result.success) {
-                completedCount++;
-            } else {
-                failedCount++;
-            }
-
-            // Report progress
-            const progress = ((completedCount + failedCount) / items.length) * 85 + 5;
-            reportProgress(options, {
-                phase: 'mapping',
-                totalItems: items.length,
-                completedItems: completedCount,
-                failedItems: failedCount,
-                percentage: Math.round(progress),
-                message: `Processed ${completedCount + failedCount}/${items.length} items...`
-            });
-
-            return result;
-        });
-    });
-
-    let results: PipelineMapResult[];
     try {
-        results = await limiter.all(mapTasks);
+        return await executor.execute(job, jobInput);
     } catch (error) {
         throw new PipelineExecutionError(
-            `Map phase failed: ${error instanceof Error ? error.message : String(error)}`,
+            `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,
             'map'
         );
     }
-
-    const mapPhaseTimeMs = Date.now() - mapStartTime;
-
-    // 3. Reduce Phase: Format results
-    reportProgress(options, {
-        phase: 'reducing',
-        totalItems: items.length,
-        completedItems: completedCount,
-        failedItems: failedCount,
-        percentage: 90,
-        message: 'Formatting results...'
-    });
-
-    const reduceStartTime = Date.now();
-
-    const stats: PipelineStats = {
-        totalItems: items.length,
-        successfulItems: completedCount,
-        failedItems: failedCount,
-        totalTimeMs: 0, // Will be updated at the end
-        mapPhaseTimeMs,
-        reducePhaseTimeMs: 0 // Will be updated
-    };
-
-    let formattedOutput: string;
-    try {
-        formattedOutput = formatResultsAsList(results, stats);
-    } catch (error) {
-        throw new PipelineExecutionError(
-            `Reduce phase failed: ${error instanceof Error ? error.message : String(error)}`,
-            'reduce'
-        );
-    }
-
-    const reducePhaseTimeMs = Date.now() - reduceStartTime;
-    const totalTimeMs = Date.now() - startTime;
-
-    // Update stats with final times
-    stats.reducePhaseTimeMs = reducePhaseTimeMs;
-    stats.totalTimeMs = totalTimeMs;
-
-    // Report complete
-    reportProgress(options, {
-        phase: 'complete',
-        totalItems: items.length,
-        completedItems: completedCount,
-        failedItems: failedCount,
-        percentage: 100,
-        message: `Complete: ${completedCount} succeeded, ${failedCount} failed`
-    });
-
-    return {
-        name: config.name,
-        success: failedCount === 0,
-        results,
-        formattedOutput,
-        stats
-    };
-}
-
-/**
- * Process a single item through the AI
- * @param item Pipeline item
- * @param promptTemplate Prompt template
- * @param outputFields Expected output fields
- * @param aiInvoker AI invoker function
- * @returns Map result
- */
-async function processItem(
-    item: PipelineItem,
-    promptTemplate: string,
-    outputFields: string[],
-    aiInvoker: (prompt: string) => Promise<{ success: boolean; response?: string; error?: string }>
-): Promise<PipelineMapResult> {
-    try {
-        // Build prompt
-        const prompt = buildPromptFromTemplate(promptTemplate, item, outputFields);
-
-        // Invoke AI
-        const aiResult = await aiInvoker(prompt);
-
-        if (!aiResult.success || !aiResult.response) {
-            return {
-                item,
-                output: createEmptyOutput(outputFields),
-                success: false,
-                error: aiResult.error || 'AI invocation failed',
-                rawResponse: aiResult.response
-            };
-        }
-
-        // Parse response
-        try {
-            const output = parseAIResponse(aiResult.response, outputFields);
-            return {
-                item,
-                output,
-                success: true,
-                rawResponse: aiResult.response
-            };
-        } catch (parseError) {
-            return {
-                item,
-                output: createEmptyOutput(outputFields),
-                success: false,
-                error: `Failed to parse AI response: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-                rawResponse: aiResult.response
-            };
-        }
-    } catch (error) {
-        return {
-            item,
-            output: createEmptyOutput(outputFields),
-            success: false,
-            error: error instanceof Error ? error.message : String(error)
-        };
-    }
-}
-
-/**
- * Create an empty output object with null values for all fields
- */
-function createEmptyOutput(fields: string[]): Record<string, unknown> {
-    const output: Record<string, unknown> = {};
-    for (const field of fields) {
-        output[field] = null;
-    }
-    return output;
-}
-
-/**
- * Create an empty result for when there are no input items
- */
-function createEmptyResult(name: string, startTime: number): PipelineResult {
-    const totalTimeMs = Date.now() - startTime;
-
-    return {
-        name,
-        success: true,
-        results: [],
-        formattedOutput: '## Results (0 items)\n\nNo items to process.',
-        stats: {
-            totalItems: 0,
-            successfulItems: 0,
-            failedItems: 0,
-            totalTimeMs,
-            mapPhaseTimeMs: 0,
-            reducePhaseTimeMs: 0
-        }
-    };
 }
 
 /**
@@ -339,38 +183,16 @@ function validatePipelineConfig(config: PipelineConfig): void {
         throw new PipelineExecutionError('Pipeline config missing "reduce"');
     }
 
-    if (config.reduce.type !== 'list') {
-        throw new PipelineExecutionError(`Unsupported reduce type: ${config.reduce.type}. Only "list" is supported.`);
+    const validReduceTypes = ['list', 'table', 'json', 'csv'];
+    if (!validReduceTypes.includes(config.reduce.type)) {
+        throw new PipelineExecutionError(`Unsupported reduce type: ${config.reduce.type}. Supported types: ${validReduceTypes.join(', ')}`);
     }
 }
 
 /**
- * Report progress to the callback if provided
- */
-function reportProgress(
-    options: PipelineExecutorOptions,
-    progress: PipelineProgress
-): void {
-    if (options.onProgress) {
-        options.onProgress(progress);
-    }
-}
-
-/**
- * Create a pipeline executor with bound options
- */
-export function createPipelineExecutor(
-    options: PipelineExecutorOptions
-): (config: PipelineConfig) => Promise<PipelineResult> {
-    return (config: PipelineConfig) => executePipeline(config, options);
-}
-
-/**
- * Parse a YAML pipeline configuration (utility for integrations)
- * Note: This requires js-yaml to be available (already a project dependency)
+ * Parse a YAML pipeline configuration
  */
 export async function parsePipelineYAML(yamlContent: string): Promise<PipelineConfig> {
-    // Dynamic import to avoid dependency issues in testing
     const yaml = await import('js-yaml');
     const config = yaml.load(yamlContent) as PipelineConfig;
     validatePipelineConfig(config);

@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { PipelineItem } from './types';
+import { PromptItem } from './types';
 
 /**
  * Error thrown when a template variable is missing
@@ -36,7 +36,7 @@ const TEMPLATE_VARIABLE_REGEX = /\{\{(\w+)\}\}/g;
  */
 export function substituteTemplate(
     template: string,
-    item: PipelineItem,
+    item: PromptItem,
     strict: boolean = false
 ): string {
     return template.replace(TEMPLATE_VARIABLE_REGEX, (match, variableName) => {
@@ -80,7 +80,7 @@ export function extractVariables(template: string): string[] {
  */
 export function validateItemForTemplate(
     template: string,
-    item: PipelineItem
+    item: PromptItem
 ): { valid: boolean; missingVariables: string[] } {
     const requiredVariables = extractVariables(template);
     const missingVariables = requiredVariables.filter(v => !(v in item));
@@ -119,7 +119,7 @@ Return JSON with these fields: ${fieldsStr}`;
  */
 export function buildPromptFromTemplate(
     template: string,
-    item: PipelineItem,
+    item: PromptItem,
     outputFields: string[],
     strict: boolean = false
 ): string {
@@ -209,7 +209,7 @@ export function escapeTemplateValue(value: string): string {
  */
 export function previewTemplate(
     template: string,
-    item: PipelineItem,
+    item: PromptItem,
     maxLength: number = 200
 ): string {
     try {

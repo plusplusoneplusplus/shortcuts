@@ -9,7 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { CSVParseOptions, CSVParseResult, PipelineItem } from './types';
+import { CSVParseOptions, CSVParseResult, PromptItem } from './types';
 
 /**
  * Default CSV parsing options
@@ -85,8 +85,8 @@ export function parseCSVContent(content: string, options?: CSVParseOptions): CSV
     }
 
     // Convert rows to items
-    const items: PipelineItem[] = dataRows.map((row, rowIndex) => {
-        const item: PipelineItem = {};
+    const items: PromptItem[] = dataRows.map((row, rowIndex) => {
+        const item: PromptItem = {};
         for (let i = 0; i < headers.length; i++) {
             item[headers[i]] = row[i] !== undefined ? row[i] : '';
         }
@@ -265,6 +265,6 @@ export function validateCSVHeaders(
 export function getCSVPreview(
     result: CSVParseResult,
     maxRows: number = 5
-): PipelineItem[] {
+): PromptItem[] {
     return result.items.slice(0, maxRows);
 }
