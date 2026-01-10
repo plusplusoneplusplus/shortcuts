@@ -8,6 +8,7 @@ import * as path from 'path';
 import {
     isExternalUrl,
     isMarkdownFile,
+    parseLineFragment,
     resolveFilePath,
     ResolvedFilePath
 } from '../../shortcuts/markdown-comments/file-path-utils';
@@ -324,6 +325,121 @@ suite('File Path Utils Tests', () => {
             assert.strictEqual(result.exists, true);
             assert.strictEqual(result.resolution, 'relative-to-workspace');
             assert.strictEqual(isMarkdownFile(result.resolvedPath), true);
+        });
+    });
+
+    suite('parseLineFragment', () => {
+        test('should parse #L100 format', () => {
+            const result = parseLineFragment('src/file.ts#L100');
+            assert.strictEqual(result.filePath, 'src/file.ts');
+            assert.strictEqual(result.lineNumber, 100);
+        });
+
+        test('should parse #l100 lowercase format', () => {
+            const result = parseLineFragment('src/file.ts#l50');
+            assert.strictEqual(result.filePath, 'src/file.ts');
+            assert.strictEqual(result.lineNumber, 50);
+        });
+
+        test('should parse #100 format without L prefix', () => {
+            const result = parseLineFragment('src/file.ts#100');
+            assert.strictEqual(result.filePath, 'src/file.ts');
+            assert.strictEqual(result.lineNumber, 100);
+        });
+
+        test('should parse line range #L100-L200 and use start line', () => {
+            const result = parseLineFragment('src/file.ts#L100-L200');
+            assert.strictEqual(result.filePath, 'src/file.ts');
+            assert.strictEqual(result.lineNumber, 100);
+        });
+
+        test('should parse line range #L100-200 variant', () => {
+            const result = parseLineFragment('src/file.ts#L100-200');
+            assert.strictEqual(result.filePath, 'src/file.ts');
+            assert.strictEqual(result.lineNumber, 100);
+        });
+
+        test('should handle paths without fragments', () => {
+            const result = parseLineFragment('src/file.ts');
+            assert.strictEqual(result.filePath, 'src/file.ts');
+            assert.strictEqual(result.lineNumber, undefined);
+        });
+
+        test('should handle empty string', () => {
+            const result = parseLineFragment('');
+            assert.strictEqual(result.filePath, '');
+            assert.strictEqual(result.lineNumber, undefined);
+        });
+
+        test('should handle paths with special characters', () => {
+            const result = parseLineFragment('src/my-file_name.test.ts#L42');
+            assert.strictEqual(result.filePath, 'src/my-file_name.test.ts');
+            assert.strictEqual(result.lineNumber, 42);
+        });
+
+        test('should handle paths with spaces (URL encoded)', () => {
+            const result = parseLineFragment('src/my%20file.ts#L10');
+            assert.strictEqual(result.filePath, 'src/my%20file.ts');
+            assert.strictEqual(result.lineNumber, 10);
+        });
+
+        test('should handle Windows-style paths', () => {
+            const result = parseLineFragment('src\\folder\\file.ts#L100');
+            assert.strictEqual(result.filePath, 'src\\folder\\file.ts');
+            assert.strictEqual(result.lineNumber, 100);
+        });
+
+        test('should handle relative paths with fragments', () => {
+            const result = parseLineFragment('./relative/path.cpp#L25');
+            assert.strictEqual(result.filePath, './relative/path.cpp');
+            assert.strictEqual(result.lineNumber, 25);
+        });
+
+        test('should handle parent directory paths with fragments', () => {
+            const result = parseLineFragment('../parent/file.cpp#L1');
+            assert.strictEqual(result.filePath, '../parent/file.cpp');
+            assert.strictEqual(result.lineNumber, 1);
+        });
+
+        test('should handle absolute Unix paths with fragments', () => {
+            const result = parseLineFragment('/absolute/path/file.cpp#L999');
+            assert.strictEqual(result.filePath, '/absolute/path/file.cpp');
+            assert.strictEqual(result.lineNumber, 999);
+        });
+
+        test('should not parse invalid fragment with zero line number', () => {
+            const result = parseLineFragment('src/file.ts#L0');
+            // Line 0 is invalid, so should return original path
+            assert.strictEqual(result.filePath, 'src/file.ts#L0');
+            assert.strictEqual(result.lineNumber, undefined);
+        });
+
+        test('should not parse fragment that is not at the end', () => {
+            // This is an edge case - # in the middle of a path
+            const result = parseLineFragment('path/with#hash/file.ts');
+            assert.strictEqual(result.filePath, 'path/with#hash/file.ts');
+            assert.strictEqual(result.lineNumber, undefined);
+        });
+
+        test('should handle external URLs with fragments (no line extraction)', () => {
+            // URLs with fragments should not be parsed for line numbers
+            // This is handled by isExternalUrl check before calling parseLineFragment
+            const result = parseLineFragment('https://example.com/file#L100');
+            // It will still parse it, but the caller should check isExternalUrl first
+            assert.strictEqual(result.filePath, 'https://example.com/file');
+            assert.strictEqual(result.lineNumber, 100);
+        });
+
+        test('should handle paths with dots and extensions', () => {
+            const result = parseLineFragment('src/components/Button.test.tsx#L50');
+            assert.strictEqual(result.filePath, 'src/components/Button.test.tsx');
+            assert.strictEqual(result.lineNumber, 50);
+        });
+
+        test('should handle paths with underscores in directory names', () => {
+            const result = parseLineFragment('src/my_component/index.ts#L10');
+            assert.strictEqual(result.filePath, 'src/my_component/index.ts');
+            assert.strictEqual(result.lineNumber, 10);
         });
     });
 });

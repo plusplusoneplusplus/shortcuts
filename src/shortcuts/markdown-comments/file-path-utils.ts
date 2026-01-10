@@ -18,6 +18,48 @@ export interface ResolvedFilePath {
 }
 
 /**
+ * Result of parsing a file path with optional fragment
+ */
+export interface ParsedFilePath {
+    /** The file path without fragment */
+    filePath: string;
+    /** The line number from fragment (1-based), or undefined */
+    lineNumber?: number;
+}
+
+/**
+ * Parse a file path that may contain a line number fragment (e.g., "file.ts#L100")
+ * Supports formats: #L100, #100, #L100-L200 (uses start line)
+ * Works on all platforms (Linux, Mac, Windows)
+ * 
+ * @param pathWithFragment - The path that may contain a line fragment
+ * @returns ParsedFilePath with the path and optional line number
+ */
+export function parseLineFragment(pathWithFragment: string): ParsedFilePath {
+    if (!pathWithFragment) {
+        return { filePath: '' };
+    }
+
+    // Match common line fragment patterns:
+    // #L100, #l100, #100, #L100-L200, #L100-200
+    // The fragment is always at the end after the last #
+    const fragmentMatch = pathWithFragment.match(/^(.+?)#[Ll]?(\d+)(?:-[Ll]?\d+)?$/);
+    
+    if (fragmentMatch) {
+        const filePath = fragmentMatch[1];
+        const lineNumber = parseInt(fragmentMatch[2], 10);
+        
+        // Validate line number is positive
+        if (lineNumber > 0) {
+            return { filePath, lineNumber };
+        }
+    }
+    
+    // No valid fragment found, return the original path
+    return { filePath: pathWithFragment };
+}
+
+/**
  * Check if a path is an external URL (http, https, mailto, etc.)
  */
 export function isExternalUrl(filePath: string): boolean {

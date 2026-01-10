@@ -9,7 +9,7 @@ import { AIProcessManager, getAICommandRegistry } from '../ai-service';
 import { handleAIClarification } from './ai-clarification-handler';
 import { CodeBlockTheme } from './code-block-themes';
 import { CommentsManager } from './comments-manager';
-import { isExternalUrl, isMarkdownFile, resolveFilePath } from './file-path-utils';
+import { isExternalUrl, isMarkdownFile, parseLineFragment, resolveFilePath } from './file-path-utils';
 import { PromptGenerator } from './prompt-generator';
 import { ClarificationContext, isUserComment, MarkdownComment, MermaidContext } from './types';
 import { getWebviewContent, WebviewContentOptions } from './webview-content';
@@ -674,6 +674,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     /**
      * Open a file from a path in the markdown link
      * Supports absolute paths, paths relative to the file, and paths relative to workspace
+     * Supports line number fragments like #L100 or #100
      * For .md files, opens in Review Editor View; for other files, opens in text editor
      */
     private async openFileFromPath(
@@ -691,15 +692,18 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 return;
             }
 
-            // Resolve the file path
-            const resolved = resolveFilePath(filePath, fileDir, workspaceRoot);
+            // Parse line number fragment from path (e.g., file.ts#L100)
+            const { filePath: pathWithoutFragment, lineNumber } = parseLineFragment(filePath);
+
+            // Resolve the file path (without fragment)
+            const resolved = resolveFilePath(pathWithoutFragment, fileDir, workspaceRoot);
 
             if (resolved.exists) {
                 const fileUri = vscode.Uri.file(resolved.resolvedPath);
-                await this.openFileUri(fileUri);
+                await this.openFileUri(fileUri, lineNumber);
             } else {
                 // File not found
-                vscode.window.showWarningMessage(`File not found: ${filePath}`);
+                vscode.window.showWarningMessage(`File not found: ${pathWithoutFragment}`);
             }
         } catch (error) {
             vscode.window.showErrorMessage(`Error opening file: ${error}`);
@@ -708,10 +712,13 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
     /**
      * Open a file URI, using Review Editor View for markdown files
+     * @param fileUri - The URI of the file to open
+     * @param lineNumber - Optional 1-based line number to navigate to
      */
-    private async openFileUri(fileUri: vscode.Uri): Promise<void> {
+    private async openFileUri(fileUri: vscode.Uri, lineNumber?: number): Promise<void> {
         if (isMarkdownFile(fileUri.fsPath)) {
             // Open markdown files in Review Editor View
+            // Note: Line number navigation not supported for Review Editor View
             await vscode.commands.executeCommand(
                 'vscode.openWith',
                 fileUri,
@@ -719,7 +726,15 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             );
         } else {
             // Open other files in regular text editor
-            await vscode.window.showTextDocument(fileUri);
+            if (lineNumber !== undefined && lineNumber > 0) {
+                // Navigate to specific line (convert to 0-based index)
+                const line = lineNumber - 1;
+                const position = new vscode.Position(line, 0);
+                const selection = new vscode.Selection(position, position);
+                await vscode.window.showTextDocument(fileUri, { selection });
+            } else {
+                await vscode.window.showTextDocument(fileUri);
+            }
         }
     }
 

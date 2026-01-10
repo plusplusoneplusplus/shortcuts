@@ -74,7 +74,10 @@ export function applyInlineMarkdown(text: string): string {
     // Italic (*text* or _text_) - careful not to match inside bold
     // Use negative lookbehind/lookahead (note: these work in modern browsers and Node.js)
     html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<span class="md-italic"><span class="md-marker">*</span>$1<span class="md-marker">*</span></span>');
-    html = html.replace(/(?<!_)_([^_]+)_(?!_)/g, '<span class="md-italic"><span class="md-marker">_</span>$1<span class="md-marker">_</span></span>');
+    // For underscore italics, require word boundaries to avoid matching paths like folder_name/file.ts
+    // The underscore must be preceded by whitespace/start and followed by non-underscore, non-word chars
+    // This matches standard markdown behavior where _word_ works but not mid_word_text
+    html = html.replace(/(?<=^|[\s(]|\&gt;)_([^_\s][^_]*[^_\s]|[^_\s])_(?=$|[\s.,;:!?)\]]|\&lt;)/g, '<span class="md-italic"><span class="md-marker">_</span>$1<span class="md-marker">_</span></span>');
     
     // Strikethrough ~~text~~
     html = html.replace(/~~([^~]+)~~/g, '<span class="md-strike"><span class="md-marker">~~</span>$1<span class="md-marker">~~</span></span>');

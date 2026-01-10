@@ -975,6 +975,68 @@ suite('Webview Logic Tests', () => {
                 assert.ok(result.includes('md-italic'));
                 assert.ok(result.includes('md-inline-code'));
             });
+
+            // Tests for underscore handling in paths
+            test('should NOT render underscore italic in file paths', () => {
+                const result = applyInlineMarkdown('[link](src/folder_name/file.ts)');
+                // Should not have md-italic class - the underscore in folder_name should not be treated as italic
+                assert.ok(!result.includes('md-italic'), 'Underscores in paths should not create italic text');
+                // Should still have the link
+                assert.ok(result.includes('md-link'));
+                assert.ok(result.includes('folder_name'));
+            });
+
+            test('should NOT render underscore italic in paths with multiple underscores', () => {
+                const result = applyInlineMarkdown('See [file](src/my_component_test/index.ts)');
+                assert.ok(!result.includes('md-italic'), 'Multiple underscores in paths should not create italic');
+            });
+
+            test('should NOT render italic for mid-word underscores', () => {
+                const result = applyInlineMarkdown('snake_case_variable_name');
+                assert.ok(!result.includes('md-italic'), 'Underscores within words should not create italic');
+            });
+
+            test('should render underscore italic when properly delimited', () => {
+                const result = applyInlineMarkdown('This is _italic_ text');
+                assert.ok(result.includes('md-italic'), 'Properly delimited underscores should create italic');
+            });
+
+            test('should render underscore italic at start of line', () => {
+                const result = applyInlineMarkdown('_italic_ at the start');
+                assert.ok(result.includes('md-italic'), 'Italic at start of line should work');
+            });
+
+            test('should render underscore italic at end of line', () => {
+                const result = applyInlineMarkdown('text with _italic_');
+                assert.ok(result.includes('md-italic'), 'Italic at end of line should work');
+            });
+
+            test('should render underscore italic followed by punctuation', () => {
+                const result = applyInlineMarkdown('This is _italic_.');
+                assert.ok(result.includes('md-italic'), 'Italic followed by punctuation should work');
+            });
+
+            test('should render underscore italic in parentheses', () => {
+                const result = applyInlineMarkdown('text (_italic_) here');
+                assert.ok(result.includes('md-italic'), 'Italic in parentheses should work');
+            });
+
+            test('should NOT render italic for file extension like .ts_backup', () => {
+                const result = applyInlineMarkdown('file.ts_backup');
+                assert.ok(!result.includes('md-italic'));
+            });
+
+            test('should handle asterisk italic normally', () => {
+                const result = applyInlineMarkdown('This is *italic* with asterisks');
+                assert.ok(result.includes('md-italic'));
+            });
+
+            test('should handle path with line fragment correctly', () => {
+                const result = applyInlineMarkdown('[a.cpp](src/folder_name/a.cpp#L100)');
+                assert.ok(result.includes('md-link'));
+                assert.ok(!result.includes('md-italic'), 'Path with line fragment should not have italic');
+                assert.ok(result.includes('#L100'), 'Line fragment should be preserved');
+            });
         });
 
         suite('resolveImagePath', () => {
