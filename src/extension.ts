@@ -1027,7 +1027,7 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
-        // Command to view raw response as text file
+        // Command to view raw response with markdown review editor
         const viewRawResponseCommand = vscode.commands.registerCommand(
             'clarificationProcesses.viewRawResponse',
             async (item: { process?: { id: string; result?: string; resultFilePath?: string } }) => {
@@ -1036,12 +1036,18 @@ export async function activate(context: vscode.ExtensionContext) {
                     return;
                 }
 
-                // If there's a result file, open it directly
+                // If there's a result file, open it with markdown review editor
                 if (item.process.resultFilePath) {
                     try {
                         const uri = vscode.Uri.file(item.process.resultFilePath);
-                        const doc = await vscode.workspace.openTextDocument(uri);
-                        await vscode.window.showTextDocument(doc, { preview: true });
+                        // Check if file exists
+                        await vscode.workspace.fs.stat(uri);
+                        // Open with markdown review editor
+                        await vscode.commands.executeCommand(
+                            'vscode.openWith',
+                            uri,
+                            ReviewEditorViewProvider.viewType
+                        );
                         return;
                     } catch (error) {
                         // Fall back to document provider if file doesn't exist
@@ -1049,7 +1055,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     }
                 }
 
-                // Fall back to the document provider
+                // Fall back to the document provider (as plain text document)
                 await aiProcessDocumentProvider.openProcess(item.process.id);
             }
         );

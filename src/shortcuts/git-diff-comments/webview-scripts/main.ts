@@ -49,6 +49,9 @@ function initialize(): void {
     // Setup whitespace toggle
     setupWhitespaceToggle();
 
+    // Setup diff navigation buttons
+    setupDiffNavigation();
+
     // Setup file path click handler
     setupFilePathClickHandler();
 
@@ -229,6 +232,20 @@ function setupKeyboardShortcuts(): void {
             hideCommentPanel();
             hideCommentsList();
             closeActiveCommentBubble();
+        }
+
+        // Shift + Arrow key navigation to move between diff changes
+        if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            const activeElement = document.activeElement;
+            const isInInputOrTextarea = activeElement instanceof HTMLElement && 
+                (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+
+            // Don't interfere with input/textarea elements
+            if (!isInInputOrTextarea) {
+                e.preventDefault();
+                navigateToDiff(e.key === 'ArrowUp' ? 'prev' : 'next');
+                return;
+            }
         }
 
         // Arrow key navigation
@@ -646,6 +663,179 @@ function setupWhitespaceToggle(): void {
         // Re-setup comment indicator handlers after re-render
         setupCommentIndicatorHandlers();
     });
+}
+
+/**
+ * Setup diff navigation buttons (prev/next change)
+ */
+function setupDiffNavigation(): void {
+    const prevBtn = document.getElementById('prev-diff-btn');
+    const nextBtn = document.getElementById('next-diff-btn');
+
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => navigateToDiff('prev'));
+    }
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => navigateToDiff('next'));
+    }
+}
+
+/**
+ * Navigate to the previous or next diff change
+ * Groups consecutive changes together to navigate between change blocks
+ */
+function navigateToDiff(direction: 'prev' | 'next'): void {
+    const viewMode = getViewMode();
+    let container: HTMLElement | null;
+    let lineSelector: string;
+    let additionClass: string;
+    let deletionClass: string;
+
+    if (viewMode === 'inline') {
+        container = document.getElementById('inline-content');
+        lineSelector = '.inline-diff-line';
+        // Inline view uses inline-diff-line-addition and inline-diff-line-deletion
+        additionClass = 'inline-diff-line-addition';
+        deletionClass = 'inline-diff-line-deletion';
+    } else {
+        // For split view, use the new-content pane
+        container = document.getElementById('new-content');
+        lineSelector = '.diff-line';
+        // Split view uses diff-line-addition and diff-line-deletion (or line-added/line-deleted)
+        additionClass = 'line-added';
+        deletionClass = 'line-deleted';
+    }
+
+    if (!container) return;
+
+    const allLines = Array.from(container.querySelectorAll(lineSelector)) as HTMLElement[];
+    
+    // Check if there are any change lines
+    const hasChanges = allLines.some(line => 
+        line.classList.contains(additionClass) || line.classList.contains(deletionClass)
+    );
+    
+    if (!hasChanges) return;
+
+    // Group consecutive change lines into change blocks
+    const changeBlocks: { startIndex: number; endIndex: number; firstLine: HTMLElement }[] = [];
+    let currentBlockStart = -1;
+    let currentBlockEnd = -1;
+    let currentBlockFirstLine: HTMLElement | null = null;
+
+    for (let i = 0; i < allLines.length; i++) {
+        const line = allLines[i];
+        const isChange = line.classList.contains(additionClass) || line.classList.contains(deletionClass);
+
+        if (isChange) {
+            if (currentBlockStart === -1) {
+                // Start a new block
+                currentBlockStart = i;
+                currentBlockFirstLine = line;
+            }
+            currentBlockEnd = i;
+        } else {
+            // End of a change block
+            if (currentBlockStart !== -1 && currentBlockFirstLine) {
+                changeBlocks.push({
+                    startIndex: currentBlockStart,
+                    endIndex: currentBlockEnd,
+                    firstLine: currentBlockFirstLine
+                });
+                currentBlockStart = -1;
+                currentBlockEnd = -1;
+                currentBlockFirstLine = null;
+            }
+        }
+    }
+    
+    // Don't forget the last block if we're still in one
+    if (currentBlockStart !== -1 && currentBlockFirstLine) {
+        changeBlocks.push({
+            startIndex: currentBlockStart,
+            endIndex: currentBlockEnd,
+            firstLine: currentBlockFirstLine
+        });
+    }
+
+    if (changeBlocks.length === 0) return;
+
+    // Find the currently focused line or the first visible line
+    const focusedLine = container.querySelector(`${lineSelector}.keyboard-focused`) as HTMLElement;
+    let currentLineIndex = -1;
+
+    if (focusedLine) {
+        currentLineIndex = allLines.indexOf(focusedLine);
+    } else {
+        // Find the first visible line
+        const containerRect = container.getBoundingClientRect();
+        const scrollTop = container.scrollTop;
+
+        for (let i = 0; i < allLines.length; i++) {
+            const line = allLines[i];
+            const lineTop = line.offsetTop - scrollTop;
+            if (lineTop >= 0 && lineTop < containerRect.height) {
+                currentLineIndex = i;
+                break;
+            }
+        }
+    }
+
+    // Find the target change block
+    let targetBlockIndex = -1;
+    
+    if (direction === 'next') {
+        // Find the next change block after current position
+        for (let i = 0; i < changeBlocks.length; i++) {
+            if (changeBlocks[i].startIndex > currentLineIndex) {
+                targetBlockIndex = i;
+                break;
+            }
+        }
+        // If we're at the end, wrap to the first block
+        if (targetBlockIndex === -1 && changeBlocks.length > 0) {
+            targetBlockIndex = 0;
+        }
+    } else {
+        // Find the previous change block before current position
+        for (let i = changeBlocks.length - 1; i >= 0; i--) {
+            if (changeBlocks[i].startIndex < currentLineIndex) {
+                targetBlockIndex = i;
+                break;
+            }
+        }
+        // If we're at the beginning, wrap to the last block
+        if (targetBlockIndex === -1 && changeBlocks.length > 0) {
+            targetBlockIndex = changeBlocks.length - 1;
+        }
+    }
+
+    if (targetBlockIndex === -1) return;
+
+    const targetBlock = changeBlocks[targetBlockIndex];
+    const targetLine = targetBlock.firstLine;
+
+    // Remove keyboard focus from all lines
+    container.querySelectorAll(`${lineSelector}.keyboard-focused`).forEach(el => {
+        el.classList.remove('keyboard-focused');
+    });
+
+    // Add keyboard focus to the target line
+    targetLine.classList.add('keyboard-focused');
+
+    // Add a highlight flash effect to the entire change block
+    for (let i = targetBlock.startIndex; i <= targetBlock.endIndex; i++) {
+        const line = allLines[i];
+        if (line.classList.contains(additionClass) || line.classList.contains(deletionClass)) {
+            line.classList.add('highlight-flash');
+            setTimeout(() => {
+                line.classList.remove('highlight-flash');
+            }, 1500);
+        }
+    }
+
+    // Scroll to the target line with some context above
+    targetLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 /**

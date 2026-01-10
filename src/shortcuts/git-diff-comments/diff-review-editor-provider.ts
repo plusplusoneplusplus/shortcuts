@@ -752,6 +752,14 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             <div class="diff-info">
                 <span class="diff-repo">${escapeHtml(gitContext.repositoryName)}</span>
                 <span class="diff-refs">${escapeHtml(gitContext.oldRef)} → ${escapeHtml(gitContext.newRef)}</span>
+                <div class="diff-nav-buttons">
+                    <button class="diff-nav-btn" id="prev-diff-btn" title="Previous change (Shift+↑)">
+                        <span class="nav-icon">↑</span>
+                    </button>
+                    <button class="diff-nav-btn" id="next-diff-btn" title="Next change (Shift+↓)">
+                        <span class="nav-icon">↓</span>
+                    </button>
+                </div>
                 <button class="whitespace-toggle" id="whitespace-toggle" title="Toggle whitespace diff visibility">
                     <span class="toggle-icon" id="whitespace-icon">␣</span>
                     <span class="toggle-label" id="whitespace-label">Show Whitespace</span>

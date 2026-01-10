@@ -152,6 +152,47 @@ html, body {
     background-color: var(--vscode-button-hoverBackground);
 }
 
+/* Diff navigation buttons */
+.diff-nav-buttons {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.diff-nav-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 4px;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.diff-nav-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.diff-nav-btn:active {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.diff-nav-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.diff-nav-btn .nav-icon {
+    font-weight: bold;
+}
+
 .diff-repo {
     display: flex;
     align-items: center;
