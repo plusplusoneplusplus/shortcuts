@@ -71,13 +71,25 @@ function adaptFinding(mrFinding: import('../map-reduce').ReviewFinding): ReviewF
 }
 
 /**
+ * Extended ProcessTracker that tracks the group ID for later updates
+ */
+interface ExtendedProcessTracker extends ProcessTracker {
+    /** The group ID registered during execution, if any */
+    groupId?: string;
+    /** Update the group's structured result after aggregation */
+    updateGroupStructuredResult(structuredResult: string): void;
+}
+
+/**
  * Create a ProcessTracker adapter for the AIProcessManager
  */
 function createProcessTrackerAdapter(
     processManager: AIProcessManager,
     metadata: CodeReviewMetadata
-): ProcessTracker {
-    return {
+): ExtendedProcessTracker {
+    const tracker: ExtendedProcessTracker = {
+        groupId: undefined,
+
         registerProcess(description: string, parentGroupId?: string): string {
             return processManager.registerCodeReviewProcess(
                 description,
@@ -97,19 +109,66 @@ function createProcessTrackerAdapter(
             processId: string,
             status: 'running' | 'completed' | 'failed',
             response?: string,
-            error?: string
+            error?: string,
+            structuredResult?: string
         ): void {
             processManager.updateProcess(processId, status, response, error);
+            
+            if (structuredResult && status === 'completed') {
+                // Transform RuleReviewResult into CodeReviewResult format for the viewer
+                try {
+                    const ruleResult = JSON.parse(structuredResult) as RuleReviewResult;
+                    const findings = ruleResult.findings?.map(adaptFinding) || [];
+                    
+                    // Create summary for this single rule
+                    const bySeverity = { error: 0, warning: 0, info: 0, suggestion: 0 };
+                    for (const f of findings) {
+                        bySeverity[f.severity]++;
+                    }
+                    
+                    const summary: ReviewSummary = {
+                        totalFindings: findings.length,
+                        bySeverity,
+                        byRule: { [ruleResult.rule?.filename || 'unknown']: findings.length },
+                        overallAssessment: ruleResult.assessment || 'pass',
+                        summaryText: findings.length === 0 
+                            ? 'No issues found.' 
+                            : `Found ${findings.length} issue(s).`
+                    };
+                    
+                    // Build CodeReviewResult-compatible format
+                    const codeReviewResult = {
+                        metadata: {
+                            type: metadata.type,
+                            commitSha: metadata.commitSha,
+                            commitMessage: metadata.commitMessage,
+                            rulesUsed: [ruleResult.rule?.filename || 'unknown'],
+                            diffStats: metadata.diffStats
+                        },
+                        summary,
+                        findings,
+                        rawResponse: ruleResult.rawResponse || '',
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    processManager.updateProcessStructuredResult(processId, JSON.stringify(codeReviewResult));
+                } catch {
+                    // If transformation fails, store the raw result
+                    processManager.updateProcessStructuredResult(processId, structuredResult);
+                }
+            }
         },
 
         registerGroup(description: string): string {
-            return processManager.registerCodeReviewGroup({
+            const id = processManager.registerCodeReviewGroup({
                 reviewType: metadata.type,
                 commitSha: metadata.commitSha,
                 commitMessage: metadata.commitMessage,
                 rulesUsed: [],
                 diffStats: metadata.diffStats
             });
+            tracker.groupId = id;
+            return id;
         },
 
         completeGroup(
@@ -120,7 +179,7 @@ function createProcessTrackerAdapter(
             processManager.completeCodeReviewGroup(
                 groupId,
                 summary,
-                JSON.stringify(stats),
+                JSON.stringify(stats), // Placeholder - will be updated with full result later
                 {
                     totalRules: stats.totalItems,
                     successfulRules: stats.successfulMaps,
@@ -128,8 +187,15 @@ function createProcessTrackerAdapter(
                     totalTimeMs: stats.mapPhaseTimeMs + stats.reducePhaseTimeMs
                 }
             );
+        },
+
+        updateGroupStructuredResult(structuredResult: string): void {
+            if (tracker.groupId) {
+                processManager.updateProcessStructuredResult(tracker.groupId, structuredResult);
+            }
         }
     };
+    return tracker;
 }
 
 /**
@@ -419,6 +485,26 @@ export function registerCodeReviewCommands(
                         rulesResult.rules,
                         totalTimeMs
                     );
+
+                    // Update the group's structured result with the full aggregated result
+                    // This is needed because the executor completes the group before we have the full result
+                    const serializedResult = JSON.stringify({
+                        metadata: aggregatedResult.metadata,
+                        summary: aggregatedResult.summary,
+                        findings: aggregatedResult.findings,
+                        rawResponse: aggregatedResult.rawResponse,
+                        timestamp: aggregatedResult.timestamp.toISOString(),
+                        executionStats: aggregatedResult.executionStats,
+                        ruleResults: aggregatedResult.ruleResults.map(r => ({
+                            ruleFilename: r.rule.filename,
+                            processId: r.processId,
+                            success: r.success,
+                            error: r.error,
+                            findingsCount: r.findings.length,
+                            assessment: r.assessment
+                        }))
+                    });
+                    processTracker.updateGroupStructuredResult(serializedResult);
 
                     // Show results based on output mode
                     if (config.outputMode === 'editor') {

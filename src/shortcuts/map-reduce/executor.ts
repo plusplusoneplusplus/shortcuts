@@ -299,9 +299,16 @@ export class MapReduceExecutor {
 
                 const executionTimeMs = Date.now() - startTime;
 
-                // Update process status
+                // Update process status with structured result
                 if (this.options.processTracker && processId) {
-                    this.options.processTracker.updateProcess(processId, 'completed');
+                    // Serialize the output for structured result storage
+                    let structuredResult: string | undefined;
+                    try {
+                        structuredResult = JSON.stringify(output);
+                    } catch {
+                        // Ignore serialization errors
+                    }
+                    this.options.processTracker.updateProcess(processId, 'completed', undefined, undefined, structuredResult);
                 }
 
                 return {

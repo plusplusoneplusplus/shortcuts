@@ -326,12 +326,14 @@ export interface ProcessTracker {
      * @param status New status
      * @param response Optional response
      * @param error Optional error
+     * @param structuredResult Optional structured result (JSON string)
      */
     updateProcess(
         processId: string,
         status: 'running' | 'completed' | 'failed',
         response?: string,
-        error?: string
+        error?: string,
+        structuredResult?: string
     ): void;
 
     /**

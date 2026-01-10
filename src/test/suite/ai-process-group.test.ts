@@ -365,6 +365,52 @@ suite('AI Process Group Tests', () => {
             assert.ok(process);
             assert.strictEqual(process.status, 'running'); // Should not be affected
         });
+
+        test('should update process structured result', async () => {
+            const manager = new AIProcessManager();
+
+            const groupId = manager.registerCodeReviewGroup({
+                reviewType: 'commit',
+                commitSha: 'abc123',
+                commitMessage: 'Test commit',
+                rulesUsed: ['rule1.md']
+            });
+
+            // Complete the group with a placeholder structured result
+            manager.completeCodeReviewGroup(
+                groupId,
+                'Initial result',
+                '{"placeholder": true}',
+                { totalRules: 1, successfulRules: 1, failedRules: 0, totalTimeMs: 1000 }
+            );
+
+            // Update with the full structured result using the generic method
+            const fullStructuredResult = JSON.stringify({
+                metadata: { commitSha: 'abc123' },
+                summary: { totalFindings: 5, overallAssessment: 'needs-attention' },
+                findings: [{ severity: 'warning', description: 'Test finding' }]
+            });
+
+            manager.updateProcessStructuredResult(groupId, fullStructuredResult);
+
+            const group = manager.getProcess(groupId);
+            assert.ok(group);
+            assert.strictEqual(group.structuredResult, fullStructuredResult);
+        });
+
+        test('should update structured result for any process type', async () => {
+            const manager = new AIProcessManager();
+
+            // Test with a regular clarification process
+            const processId = manager.registerProcess('Regular process');
+            manager.completeProcess(processId, 'Some result');
+
+            manager.updateProcessStructuredResult(processId, '{"test": true}');
+
+            const process = manager.getProcess(processId);
+            assert.ok(process);
+            assert.strictEqual(process.structuredResult, '{"test": true}');
+        });
     });
 
     suite('Serialization with Group Metadata', () => {

@@ -309,6 +309,30 @@ export class AIProcessManager implements vscode.Disposable {
     }
 
     /**
+     * Update the structured result for a process
+     * This is a generic method to update the structured result after completion
+     * @param id Process ID
+     * @param structuredResult Serialized structured result (JSON string)
+     */
+    updateProcessStructuredResult(id: string, structuredResult: string): void {
+        const process = this.processes.get(id);
+        if (!process) {
+            return;
+        }
+
+        process.structuredResult = structuredResult;
+
+        // Update the result file with the new structured result
+        const filePath = this.saveResultToFile(process);
+        if (filePath) {
+            process.resultFilePath = filePath;
+        }
+
+        this._onDidChangeProcesses.fire({ type: 'process-updated', process });
+        this.saveToStorage();
+    }
+
+    /**
      * Get child processes for a group
      * @param groupId The group process ID
      * @returns Array of child processes
