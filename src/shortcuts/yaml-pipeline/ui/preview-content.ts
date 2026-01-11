@@ -283,6 +283,15 @@ export function getInputDetails(
 ): string {
     const headers = csvInfo?.headers || [];
     const rowCount = csvInfo?.rowCount || 0;
+    
+    // Determine input type and path based on new config structure
+    const hasInlineItems = config.input.items && config.input.items.length > 0;
+    const hasCSVSource = config.input.from?.type === 'csv';
+    const inputType = hasInlineItems ? 'INLINE' : (hasCSVSource ? 'CSV' : 'UNKNOWN');
+    const csvPath = config.input.from?.path || '';
+    const delimiter = config.input.from?.delimiter;
+    const itemCount = hasInlineItems ? config.input.items!.length : rowCount;
+    const limit = config.input.limit;
 
     return `
         <div class="detail-section ${initial ? 'active' : ''}">
@@ -290,12 +299,20 @@ export function getInputDetails(
             <div class="detail-grid">
                 <div class="detail-item">
                     <span class="detail-label">Type:</span>
-                    <span class="detail-value">${config.input.type.toUpperCase()}</span>
+                    <span class="detail-value">${inputType}</span>
                 </div>
+                ${hasCSVSource ? `
                 <div class="detail-item">
                     <span class="detail-label">File:</span>
-                    <span class="detail-value file-link" data-path="${escapeHtml(config.input.path)}">${escapeHtml(config.input.path)}</span>
+                    <span class="detail-value file-link" data-path="${escapeHtml(csvPath)}">${escapeHtml(csvPath)}</span>
                 </div>
+                ` : ''}
+                ${hasInlineItems ? `
+                <div class="detail-item">
+                    <span class="detail-label">Inline Items:</span>
+                    <span class="detail-value">${itemCount} items</span>
+                </div>
+                ` : ''}
                 ${csvInfo ? `
                 <div class="detail-item">
                     <span class="detail-label">Rows:</span>
@@ -306,10 +323,16 @@ export function getInputDetails(
                     <span class="detail-value">${headers.join(', ')}</span>
                 </div>
                 ` : ''}
-                ${config.input.delimiter && config.input.delimiter !== ',' ? `
+                ${delimiter && delimiter !== ',' ? `
                 <div class="detail-item">
                     <span class="detail-label">Delimiter:</span>
-                    <span class="detail-value">${escapeHtml(config.input.delimiter)}</span>
+                    <span class="detail-value">${escapeHtml(delimiter)}</span>
+                </div>
+                ` : ''}
+                ${limit ? `
+                <div class="detail-item">
+                    <span class="detail-label">Limit:</span>
+                    <span class="detail-value">${limit} items</span>
                 </div>
                 ` : ''}
             </div>

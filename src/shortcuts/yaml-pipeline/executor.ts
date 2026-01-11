@@ -20,10 +20,11 @@ import {
     PromptMapResult,
     PromptMapOutput
 } from '../map-reduce/jobs/prompt-map-job';
-import { readCSVFile, resolveCSVPath, validateCSVHeaders } from './csv-reader';
+import { readCSVFile, resolveCSVPath } from './csv-reader';
 import { extractVariables } from './template';
 import {
     AIInvoker,
+    CSVSource,
     PipelineConfig,
     ProcessTracker
 } from './types';
@@ -82,25 +83,38 @@ export async function executePipeline(
     // Validate config
     validatePipelineConfig(config);
 
-    // 1. Input Phase: Read CSV
-    // CSV paths are resolved relative to the pipeline package directory
+    // 1. Input Phase: Load items (either inline or from CSV)
     let items: PromptItem[];
     try {
-        const csvPath = resolveCSVPath(config.input.path, options.pipelineDirectory);
-        const csvResult = await readCSVFile(csvPath, {
-            delimiter: config.input.delimiter
-        });
+        if (config.input.items) {
+            // Direct inline items
+            items = config.input.items;
+        } else if (config.input.from) {
+            // Load from CSV
+            items = await loadFromCSV(config.input.from, options.pipelineDirectory);
+        } else {
+            // This should be caught by validation, but be defensive
+            throw new PipelineExecutionError('Input must have either "items" or "from"', 'input');
+        }
 
-        items = csvResult.items;
+        // Apply limit
+        const limit = config.input.limit ?? items.length;
+        items = items.slice(0, limit);
 
-        // Validate that CSV has required template variables
-        const templateVars = extractVariables(config.map.prompt);
-        const validation = validateCSVHeaders(csvResult.headers, templateVars);
-        if (!validation.valid) {
-            throw new PipelineExecutionError(
-                `CSV missing required columns: ${validation.missingColumns.join(', ')}`,
-                'input'
-            );
+        if (items.length === 0) {
+            // Allow empty input - results will just be empty
+            // This is consistent with the previous behavior for empty CSV
+        } else {
+            // Validate that items have required template variables
+            const templateVars = extractVariables(config.map.prompt);
+            const firstItem = items[0];
+            const missingVars = templateVars.filter(v => !(v in firstItem));
+            if (missingVars.length > 0) {
+                throw new PipelineExecutionError(
+                    `Items missing required fields: ${missingVars.join(', ')}`,
+                    'input'
+                );
+            }
         }
     } catch (error) {
         if (error instanceof PipelineExecutionError) {
@@ -152,6 +166,20 @@ export async function executePipeline(
 }
 
 /**
+ * Load items from CSV file
+ */
+async function loadFromCSV(
+    source: CSVSource,
+    baseDir: string
+): Promise<PromptItem[]> {
+    const csvPath = resolveCSVPath(source.path, baseDir);
+    const result = await readCSVFile(csvPath, {
+        delimiter: source.delimiter
+    });
+    return result.items;
+}
+
+/**
  * Validate pipeline configuration
  */
 function validatePipelineConfig(config: PipelineConfig): void {
@@ -163,12 +191,33 @@ function validatePipelineConfig(config: PipelineConfig): void {
         throw new PipelineExecutionError('Pipeline config missing "input"');
     }
 
-    if (config.input.type !== 'csv') {
-        throw new PipelineExecutionError(`Unsupported input type: ${config.input.type}. Only "csv" is supported.`);
+    // Must have either items or from
+    if (!config.input.items && !config.input.from) {
+        throw new PipelineExecutionError('Input must have either "items" or "from"');
     }
 
-    if (!config.input.path) {
-        throw new PipelineExecutionError('Pipeline config missing "input.path"');
+    // Cannot have both
+    if (config.input.items && config.input.from) {
+        throw new PipelineExecutionError('Input cannot have both "items" and "from"');
+    }
+
+    // Validate CSV source if present
+    if (config.input.from) {
+        if (config.input.from.type !== 'csv') {
+            throw new PipelineExecutionError(
+                `Unsupported source type: ${config.input.from.type}. Only "csv" is supported.`
+            );
+        }
+        if (!config.input.from.path) {
+            throw new PipelineExecutionError('Pipeline config missing "input.from.path"');
+        }
+    }
+
+    // Validate inline items if present
+    if (config.input.items) {
+        if (!Array.isArray(config.input.items)) {
+            throw new PipelineExecutionError('Pipeline config "input.items" must be an array');
+        }
     }
 
     if (!config.map) {

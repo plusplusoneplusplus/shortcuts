@@ -137,18 +137,29 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             let csvPreview: PromptItem[] | undefined;
 
             try {
-                if (config.input?.path) {
-                    const csvPath = resolveCSVPath(config.input.path, packagePath);
+                // Support both inline items and CSV source
+                if (config.input?.from?.path) {
+                    const csvPath = resolveCSVPath(config.input.from.path, packagePath);
 
                     if (fs.existsSync(csvPath)) {
                         csvInfo = await readCSVFile(csvPath, {
-                            delimiter: config.input.delimiter
+                            delimiter: config.input.from.delimiter
                         });
                         csvPreview = getCSVPreview(csvInfo, 5);
                     }
+                } else if (config.input?.items && config.input.items.length > 0) {
+                    // For inline items, we can create a pseudo-CSV info for preview
+                    const items = config.input.items;
+                    const headers = Object.keys(items[0]);
+                    csvInfo = {
+                        items: items,
+                        headers: headers,
+                        rowCount: items.length
+                    };
+                    csvPreview = items.slice(0, 5);
                 }
             } catch (csvError) {
-                console.warn('Failed to read CSV file:', csvError);
+                console.warn('Failed to read input:', csvError);
             }
 
             // Build preview data

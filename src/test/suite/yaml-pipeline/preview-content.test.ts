@@ -15,13 +15,15 @@ import { PipelineConfig, CSVParseResult } from '../../../shortcuts/yaml-pipeline
 import { ResourceFileInfo } from '../../../shortcuts/yaml-pipeline/ui/types';
 
 suite('Pipeline Preview Content Tests', () => {
-    // Sample pipeline config
+    // Sample pipeline config with CSV source
     const sampleConfig: PipelineConfig = {
         name: 'Test Pipeline',
         input: {
-            type: 'csv',
-            path: 'input.csv',
-            delimiter: ','
+            from: {
+                type: 'csv',
+                path: 'input.csv',
+                delimiter: ','
+            }
         },
         map: {
             prompt: 'Process: {{title}}\nDescription: {{description}}',
@@ -92,8 +94,11 @@ suite('Pipeline Preview Content Tests', () => {
             const configWithDelimiter: PipelineConfig = {
                 ...sampleConfig,
                 input: {
-                    ...sampleConfig.input,
-                    delimiter: ';'
+                    from: {
+                        type: 'csv',
+                        path: 'input.csv',
+                        delimiter: ';'
+                    }
                 }
             };
             
@@ -106,13 +111,50 @@ suite('Pipeline Preview Content Tests', () => {
             const configWithSpecialPath: PipelineConfig = {
                 ...sampleConfig,
                 input: {
-                    ...sampleConfig.input,
-                    path: 'data/<test>/input.csv'
+                    from: {
+                        type: 'csv',
+                        path: 'data/<test>/input.csv'
+                    }
                 }
             };
             
             const result = getInputDetails(configWithSpecialPath);
             assert.ok(result.includes('&lt;test&gt;'), 'Should escape angle brackets');
+        });
+
+        test('should show inline items when configured', () => {
+            const configWithInlineItems: PipelineConfig = {
+                name: 'Inline Test',
+                input: {
+                    items: [
+                        { title: 'Item 1', description: 'Desc 1' },
+                        { title: 'Item 2', description: 'Desc 2' }
+                    ]
+                },
+                map: sampleConfig.map,
+                reduce: sampleConfig.reduce
+            };
+            
+            const result = getInputDetails(configWithInlineItems);
+            assert.ok(result.includes('INLINE'), 'Should show INLINE type');
+            assert.ok(result.includes('2 items'), 'Should show item count');
+        });
+
+        test('should show limit when configured', () => {
+            const configWithLimit: PipelineConfig = {
+                ...sampleConfig,
+                input: {
+                    from: {
+                        type: 'csv',
+                        path: 'input.csv'
+                    },
+                    limit: 10
+                }
+            };
+            
+            const result = getInputDetails(configWithLimit);
+            assert.ok(result.includes('Limit:'), 'Should show limit label');
+            assert.ok(result.includes('10 items'), 'Should show limit value');
         });
     });
 
@@ -328,8 +370,10 @@ suite('Pipeline Preview Content Tests', () => {
             const minimalConfig: PipelineConfig = {
                 name: 'Minimal',
                 input: {
-                    type: 'csv',
-                    path: 'data.csv'
+                    from: {
+                        type: 'csv',
+                        path: 'data.csv'
+                    }
                 },
                 map: {
                     prompt: 'Process',

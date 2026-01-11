@@ -45,15 +45,35 @@ export interface PipelineConfig {
 }
 
 /**
- * Input configuration - currently only CSV supported
+ * CSV source configuration for loading items from a file
  */
-export interface InputConfig {
-    /** Input type - currently only 'csv' */
+export interface CSVSource {
+    /** Source type - currently only 'csv' */
     type: 'csv';
-    /** Path to input file (relative to workspace or absolute) */
+    /** Path to CSV file (relative to pipeline directory or absolute) */
     path: string;
     /** CSV delimiter (default: ",") */
     delimiter?: string;
+}
+
+/**
+ * Input configuration - supports inline items or CSV file
+ * 
+ * Input is always a list of items. You can either:
+ * - Provide the list inline in YAML via `items`
+ * - Load from CSV file via `from`
+ * 
+ * Must have exactly one of `items` or `from`.
+ */
+export interface InputConfig {
+    /** Direct list of items (inline) */
+    items?: MRPromptItem[];
+
+    /** Load items from CSV file */
+    from?: CSVSource;
+
+    /** Limit number of items to process (default: all) */
+    limit?: number;
 }
 
 /**

@@ -19,12 +19,14 @@ import { PipelineConfig, CSVParseResult } from '../../../shortcuts/yaml-pipeline
 import { ResourceFileInfo } from '../../../shortcuts/yaml-pipeline/ui/types';
 
 suite('Pipeline Preview Mermaid Tests', () => {
-    // Sample pipeline config for tests
+    // Sample pipeline config for tests (using new format)
     const sampleConfig: PipelineConfig = {
         name: 'Test Pipeline',
         input: {
-            type: 'csv',
-            path: 'input.csv'
+            from: {
+                type: 'csv',
+                path: 'input.csv'
+            }
         },
         map: {
             prompt: 'Process: {{title}}\nDescription: {{description}}',
@@ -364,9 +366,11 @@ suite('Pipeline Preview Mermaid Tests', () => {
             const config: PipelineConfig = {
                 name: 'Complex Pipeline',
                 input: {
-                    type: 'csv',
-                    path: 'data/input.csv',
-                    delimiter: ';'
+                    from: {
+                        type: 'csv',
+                        path: 'data/input.csv',
+                        delimiter: ';'
+                    }
                 },
                 map: {
                     prompt: 'Process {{field1}} and {{field2}}',

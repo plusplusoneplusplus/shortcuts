@@ -60,13 +60,155 @@ suite('Pipeline Executor', () => {
         return filePath;
     }
 
-    suite('executePipeline', () => {
+    suite('executePipeline - inline items', () => {
+        test('executes pipeline with inline items successfully', async () => {
+            const config: PipelineConfig = {
+                name: 'Test Pipeline',
+                input: {
+                    items: [
+                        { id: '1', title: 'Bug A' },
+                        { id: '2', title: 'Bug B' }
+                    ]
+                },
+                map: {
+                    prompt: 'Analyze: {{title}}',
+                    output: ['severity']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const responses = new Map([
+                ['Bug A', '{"severity": "high"}'],
+                ['Bug B', '{"severity": "low"}']
+            ]);
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(responses),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 2);
+
+            assert.strictEqual(result.output.results[0].success, true);
+            assert.strictEqual(result.output.results[0].output.severity, 'high');
+
+            assert.strictEqual(result.output.results[1].success, true);
+            assert.strictEqual(result.output.results[1].output.severity, 'low');
+        });
+
+        test('handles empty inline items', async () => {
+            const config: PipelineConfig = {
+                name: 'Empty Test',
+                input: { items: [] },
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map()),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.executionStats.totalItems, 0);
+        });
+
+        test('applies limit to inline items', async () => {
+            const config: PipelineConfig = {
+                name: 'Limit Test',
+                input: {
+                    items: [
+                        { id: '1', title: 'Item 1' },
+                        { id: '2', title: 'Item 2' },
+                        { id: '3', title: 'Item 3' },
+                        { id: '4', title: 'Item 4' },
+                        { id: '5', title: 'Item 5' }
+                    ],
+                    limit: 2
+                },
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map()),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.executionStats.totalItems, 2);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 2);
+            assert.strictEqual(result.output.results[0].item.title, 'Item 1');
+            assert.strictEqual(result.output.results[1].item.title, 'Item 2');
+        });
+
+        test('handles multiple output fields with inline items', async () => {
+            const config: PipelineConfig = {
+                name: 'Multi-output Test',
+                input: {
+                    items: [
+                        { id: '1', title: 'Bug', description: 'Something broke' }
+                    ]
+                },
+                map: {
+                    prompt: 'Title: {{title}}\nDescription: {{description}}',
+                    output: ['severity', 'category', 'effort_hours', 'needs_more_info']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const aiInvoker = async (): Promise<AIInvokerResult> => ({
+                success: true,
+                response: '{"severity": "high", "category": "backend", "effort_hours": 4, "needs_more_info": false}'
+            });
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.ok(result.output);
+            assert.deepStrictEqual(result.output.results[0].output, {
+                severity: 'high',
+                category: 'backend',
+                effort_hours: 4,
+                needs_more_info: false
+            });
+        });
+
+        test('validates inline items have required template variables', async () => {
+            const config: PipelineConfig = {
+                name: 'Validation Test',
+                input: {
+                    items: [
+                        { id: '1', name: 'Test' }  // Missing 'title' field
+                    ]
+                },
+                map: { prompt: '{{title}} {{description}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /missing required fields.*title.*description/i
+            );
+        });
+    });
+
+    suite('executePipeline - CSV from file', () => {
         test('executes simple pipeline successfully', async () => {
             await createTestCSV('data.csv', 'id,title\n1,Bug A\n2,Bug B');
 
             const config: PipelineConfig = {
                 name: 'Test Pipeline',
-                input: { type: 'csv', path: './data.csv' },
+                input: { from: { type: 'csv', path: './data.csv' } },
                 map: {
                     prompt: 'Analyze: {{title}}',
                     output: ['severity']
@@ -100,7 +242,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Empty Test',
-                input: { type: 'csv', path: './empty.csv' },
+                input: { from: { type: 'csv', path: './empty.csv' } },
                 map: { prompt: '{{title}}', output: ['result'] },
                 reduce: { type: 'list' }
             };
@@ -114,12 +256,36 @@ suite('Pipeline Executor', () => {
             assert.strictEqual(result.executionStats.totalItems, 0);
         });
 
+        test('applies limit to CSV items', async () => {
+            await createTestCSV('data.csv', 'id,title\n1,A\n2,B\n3,C\n4,D\n5,E');
+
+            const config: PipelineConfig = {
+                name: 'Limit Test',
+                input: {
+                    from: { type: 'csv', path: './data.csv' },
+                    limit: 3
+                },
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map()),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.executionStats.totalItems, 3);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 3);
+        });
+
         test('handles AI failures gracefully', async () => {
             await createTestCSV('data.csv', 'id,title\n1,Good\n2,Bad');
 
             const config: PipelineConfig = {
                 name: 'Failure Test',
-                input: { type: 'csv', path: './data.csv' },
+                input: { from: { type: 'csv', path: './data.csv' } },
                 map: { prompt: '{{title}}', output: ['result'] },
                 reduce: { type: 'list' }
             };
@@ -154,7 +320,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Parse Failure Test',
-                input: { type: 'csv', path: './data.csv' },
+                input: { from: { type: 'csv', path: './data.csv' } },
                 map: { prompt: '{{title}}', output: ['result'] },
                 reduce: { type: 'list' }
             };
@@ -183,7 +349,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Parallel Test',
-                input: { type: 'csv', path: './data.csv' },
+                input: { from: { type: 'csv', path: './data.csv' } },
                 map: {
                     prompt: '{{title}}',
                     output: ['result'],
@@ -219,7 +385,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Progress Test',
-                input: { type: 'csv', path: './data.csv' },
+                input: { from: { type: 'csv', path: './data.csv' } },
                 map: { prompt: '{{title}}', output: ['result'] },
                 reduce: { type: 'list' }
             };
@@ -245,7 +411,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Multi-output Test',
-                input: { type: 'csv', path: './data.csv' },
+                input: { from: { type: 'csv', path: './data.csv' } },
                 map: {
                     prompt: 'Title: {{title}}\nDescription: {{description}}',
                     output: ['severity', 'category', 'effort_hours', 'needs_more_info']
@@ -278,7 +444,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Delimiter Test',
-                input: { type: 'csv', path: './data.csv', delimiter: ';' },
+                input: { from: { type: 'csv', path: './data.csv', delimiter: ';' } },
                 map: { prompt: '{{title}} {{value}}', output: ['result'] },
                 reduce: { type: 'list' }
             };
@@ -299,7 +465,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Stats Test',
-                input: { type: 'csv', path: './data.csv' },
+                input: { from: { type: 'csv', path: './data.csv' } },
                 map: { prompt: '{{title}}', output: ['result'] },
                 reduce: { type: 'list' }
             };
@@ -328,7 +494,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Package Path Test',
-                input: { type: 'csv', path: 'input.csv' }, // Relative to package
+                input: { from: { type: 'csv', path: 'input.csv' } }, // Relative to package
                 map: { prompt: '{{title}}', output: ['result'] },
                 reduce: { type: 'list' }
             };
@@ -356,7 +522,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Nested Path Test',
-                input: { type: 'csv', path: 'data/input.csv' }, // Nested relative path
+                input: { from: { type: 'csv', path: 'data/input.csv' } }, // Nested relative path
                 map: { prompt: '{{title}}', output: ['result'] },
                 reduce: { type: 'list' }
             };
@@ -385,7 +551,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Shared Path Test',
-                input: { type: 'csv', path: '../shared/common.csv' }, // Parent directory reference
+                input: { from: { type: 'csv', path: '../shared/common.csv' } }, // Parent directory reference
                 map: { prompt: '{{title}}', output: ['result'] },
                 reduce: { type: 'list' }
             };
@@ -404,7 +570,7 @@ suite('Pipeline Executor', () => {
     suite('validation errors', () => {
         test('throws for missing name', async () => {
             const config = {
-                input: { type: 'csv', path: './data.csv' },
+                input: { items: [{ x: '1' }] },
                 map: { prompt: '{{x}}', output: ['y'] },
                 reduce: { type: 'list' }
             } as unknown as PipelineConfig;
@@ -418,10 +584,10 @@ suite('Pipeline Executor', () => {
             );
         });
 
-        test('throws for unsupported input type', async () => {
+        test('throws for missing input (neither items nor from)', async () => {
             const config = {
                 name: 'Test',
-                input: { type: 'json', path: './data.json' },
+                input: {},
                 map: { prompt: '{{x}}', output: ['y'] },
                 reduce: { type: 'list' }
             } as unknown as PipelineConfig;
@@ -431,14 +597,51 @@ suite('Pipeline Executor', () => {
                     aiInvoker: createMockAIInvoker(new Map()),
                     pipelineDirectory: tempDir
                 }),
-                /Unsupported input type/
+                /must have either "items" or "from"/
             );
         });
 
-        test('throws for missing input path', async () => {
+        test('throws for having both items and from', async () => {
             const config = {
                 name: 'Test',
-                input: { type: 'csv' },
+                input: {
+                    items: [{ x: '1' }],
+                    from: { type: 'csv', path: './data.csv' }
+                },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /cannot have both "items" and "from"/
+            );
+        });
+
+        test('throws for unsupported source type', async () => {
+            const config = {
+                name: 'Test',
+                input: { from: { type: 'json', path: './data.json' } },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /Unsupported source type/
+            );
+        });
+
+        test('throws for missing CSV path', async () => {
+            const config = {
+                name: 'Test',
+                input: { from: { type: 'csv' } },
                 map: { prompt: '{{x}}', output: ['y'] },
                 reduce: { type: 'list' }
             } as unknown as PipelineConfig;
@@ -455,7 +658,7 @@ suite('Pipeline Executor', () => {
         test('throws for empty output fields', async () => {
             const config: PipelineConfig = {
                 name: 'Test',
-                input: { type: 'csv', path: './data.csv' },
+                input: { items: [{ x: '1' }] },
                 map: { prompt: '{{x}}', output: [] },
                 reduce: { type: 'list' }
             };
@@ -472,7 +675,7 @@ suite('Pipeline Executor', () => {
         test('throws for unsupported reduce type', async () => {
             const config = {
                 name: 'Test',
-                input: { type: 'csv', path: './data.csv' },
+                input: { items: [{ x: '1' }] },
                 map: { prompt: '{{x}}', output: ['y'] },
                 reduce: { type: 'invalid' }
             } as unknown as PipelineConfig;
@@ -491,7 +694,7 @@ suite('Pipeline Executor', () => {
 
             const config: PipelineConfig = {
                 name: 'Test',
-                input: { type: 'csv', path: './data.csv' },
+                input: { from: { type: 'csv', path: './data.csv' } },
                 map: { prompt: '{{title}} {{description}}', output: ['result'] },
                 reduce: { type: 'list' }
             };
@@ -501,14 +704,14 @@ suite('Pipeline Executor', () => {
                     aiInvoker: createMockAIInvoker(new Map()),
                     pipelineDirectory: tempDir
                 }),
-                /missing required columns.*title.*description/i
+                /missing required fields.*title.*description/i
             );
         });
 
         test('throws for missing CSV file', async () => {
             const config: PipelineConfig = {
                 name: 'Test',
-                input: { type: 'csv', path: './nonexistent.csv' },
+                input: { from: { type: 'csv', path: './nonexistent.csv' } },
                 map: { prompt: '{{x}}', output: ['y'] },
                 reduce: { type: 'list' }
             };
@@ -524,12 +727,13 @@ suite('Pipeline Executor', () => {
     });
 
     suite('parsePipelineYAML', () => {
-        test('parses valid YAML config', async () => {
+        test('parses valid YAML config with CSV source', async () => {
             const yaml = `
 name: "Bug Triage"
 input:
-  type: csv
-  path: "./bugs.csv"
+  from:
+    type: csv
+    path: "./bugs.csv"
 map:
   prompt: |
     Analyze: {{title}}
@@ -541,20 +745,68 @@ reduce:
             const config = await parsePipelineYAML(yaml);
 
             assert.strictEqual(config.name, 'Bug Triage');
-            assert.strictEqual(config.input.type, 'csv');
-            assert.strictEqual(config.input.path, './bugs.csv');
+            assert.ok(config.input.from);
+            assert.strictEqual(config.input.from.type, 'csv');
+            assert.strictEqual(config.input.from.path, './bugs.csv');
             assert.ok(config.map.prompt.includes('Analyze: {{title}}'));
             assert.deepStrictEqual(config.map.output, ['severity', 'category']);
             assert.strictEqual(config.reduce.type, 'list');
         });
 
-        test('parses YAML with optional fields', async () => {
+        test('parses valid YAML config with inline items', async () => {
+            const yaml = `
+name: "Inline Test"
+input:
+  items:
+    - feature: "User Auth"
+      status: "in-progress"
+    - feature: "Payments"
+      status: "planned"
+map:
+  prompt: "{{feature}}: {{status}}"
+  output: [next_steps]
+reduce:
+  type: table
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            assert.strictEqual(config.name, 'Inline Test');
+            assert.ok(config.input.items);
+            assert.strictEqual(config.input.items.length, 2);
+            assert.strictEqual(config.input.items[0].feature, 'User Auth');
+            assert.strictEqual(config.input.items[1].status, 'planned');
+            assert.strictEqual(config.reduce.type, 'table');
+        });
+
+        test('parses YAML with limit option', async () => {
+            const yaml = `
+name: "Limit Test"
+input:
+  from:
+    type: csv
+    path: "./data.csv"
+  limit: 20
+map:
+  prompt: "{{x}}"
+  output: [y]
+reduce:
+  type: list
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            assert.strictEqual(config.input.limit, 20);
+        });
+
+        test('parses YAML with custom CSV delimiter', async () => {
             const yaml = `
 name: "Test"
 input:
-  type: csv
-  path: "./data.csv"
-  delimiter: ";"
+  from:
+    type: csv
+    path: "./data.csv"
+    delimiter: "\\t"
 map:
   prompt: "{{x}}"
   output: [y]
@@ -565,15 +817,20 @@ reduce:
 
             const config = await parsePipelineYAML(yaml);
 
-            assert.strictEqual(config.input.delimiter, ';');
+            assert.ok(config.input.from);
+            assert.strictEqual(config.input.from.delimiter, '\t');
             assert.strictEqual(config.map.parallel, 3);
         });
 
-        test('throws on invalid YAML config', async () => {
+        test('throws on invalid YAML config - missing input source', async () => {
             const yaml = `
 name: "Test"
-input:
-  type: invalid
+input: {}
+map:
+  prompt: "{{x}}"
+  output: [y]
+reduce:
+  type: list
 `;
 
             await assert.rejects(
@@ -584,12 +841,13 @@ input:
     });
 
     suite('parsePipelineYAMLSync', () => {
-        test('parses valid YAML config synchronously', () => {
+        test('parses valid YAML config synchronously with CSV', () => {
             const yaml = `
 name: "Sync Test"
 input:
-  type: csv
-  path: "./data.csv"
+  from:
+    type: csv
+    path: "./data.csv"
 map:
   prompt: "{{title}}"
   output: [result]
@@ -600,7 +858,30 @@ reduce:
             const config = parsePipelineYAMLSync(yaml);
 
             assert.strictEqual(config.name, 'Sync Test');
-            assert.strictEqual(config.input.type, 'csv');
+            assert.ok(config.input.from);
+            assert.strictEqual(config.input.from.type, 'csv');
+        });
+
+        test('parses valid YAML config synchronously with inline items', () => {
+            const yaml = `
+name: "Sync Inline Test"
+input:
+  items:
+    - title: "Item 1"
+    - title: "Item 2"
+map:
+  prompt: "{{title}}"
+  output: [result]
+reduce:
+  type: json
+`;
+
+            const config = parsePipelineYAMLSync(yaml);
+
+            assert.strictEqual(config.name, 'Sync Inline Test');
+            assert.ok(config.input.items);
+            assert.strictEqual(config.input.items.length, 2);
+            assert.strictEqual(config.reduce.type, 'json');
         });
     });
 
@@ -610,8 +891,8 @@ reduce:
         });
     });
 
-    suite('real-world scenario from design doc', () => {
-        test('executes bug triage pipeline', async () => {
+    suite('real-world scenarios from design doc', () => {
+        test('executes bug triage pipeline with CSV', async () => {
             const csvContent = `id,title,description,priority
 1,Login broken,Users can't login,high
 2,Slow search,Search takes 10s,medium
@@ -621,7 +902,7 @@ reduce:
 
             const config: PipelineConfig = {
                 name: 'Bug Triage',
-                input: { type: 'csv', path: './bugs.csv' },
+                input: { from: { type: 'csv', path: './bugs.csv' } },
                 map: {
                     prompt: `Analyze this bug:
 
@@ -666,6 +947,78 @@ and note if more info is needed.`,
             assert.ok(result.output.formattedOutput.includes('## Results (3 items)'));
             assert.ok(result.output.formattedOutput.includes('Login broken'));
             assert.ok(result.output.formattedOutput.includes('critical'));
+        });
+
+        test('executes feature review pipeline with inline items', async () => {
+            const config: PipelineConfig = {
+                name: 'Review Features',
+                input: {
+                    items: [
+                        { feature: 'User Authentication', status: 'in-progress', owner: 'john' },
+                        { feature: 'Payment Integration', status: 'planned', owner: 'jane' },
+                        { feature: 'Dashboard Redesign', status: 'complete', owner: 'bob' }
+                    ]
+                },
+                map: {
+                    prompt: `Feature: {{feature}}
+Status: {{status}}
+Owner: {{owner}}
+
+What are the next steps?`,
+                    output: ['next_steps', 'priority']
+                },
+                reduce: { type: 'table' }
+            };
+
+            const responses = new Map([
+                ['User Authentication', '{"next_steps": "Complete OAuth integration", "priority": "high"}'],
+                ['Payment Integration', '{"next_steps": "Setup Stripe account", "priority": "medium"}'],
+                ['Dashboard Redesign', '{"next_steps": "Gather feedback", "priority": "low"}']
+            ]);
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(responses),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 3);
+
+            // Verify results
+            const authFeature = result.output.results.find((r) => r.item['feature'] === 'User Authentication');
+            assert.ok(authFeature);
+            assert.strictEqual(authFeature.output.next_steps, 'Complete OAuth integration');
+            assert.strictEqual(authFeature.output.priority, 'high');
+        });
+
+        test('executes pipeline with CSV and limit', async () => {
+            // Create CSV with many rows
+            const rows = Array.from({ length: 100 }, (_, i) => `${i + 1},Item ${i + 1},Description ${i + 1}`).join('\n');
+            await createTestCSV('large.csv', `id,name,description\n${rows}`);
+
+            const config: PipelineConfig = {
+                name: 'Process CSV Data',
+                input: {
+                    from: { type: 'csv', path: './large.csv' },
+                    limit: 20
+                },
+                map: {
+                    prompt: 'Analyze: {{name}} - {{description}}',
+                    output: ['category', 'score']
+                },
+                reduce: { type: 'json' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: async () => ({ success: true, response: '{"category": "test", "score": 5}' }),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.executionStats.totalItems, 20);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 20);
         });
     });
 });
