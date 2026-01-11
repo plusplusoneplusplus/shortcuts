@@ -156,6 +156,9 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
         const { maxChunkSize, overlapSize, preserveBoundaries } = this.options;
         const chunks: Array<{ content: string; startOffset: number; endOffset: number }> = [];
 
+        // Ensure we make progress by limiting effective overlap
+        const effectiveOverlap = Math.min(overlapSize, Math.floor(maxChunkSize / 2));
+
         let startOffset = 0;
 
         while (startOffset < content.length) {
@@ -165,14 +168,19 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
             if (preserveBoundaries && endOffset < content.length) {
                 // Look for a good break point (newline, period, space)
                 const breakPoints = ['\n\n', '\n', '. ', ' '];
+                const searchStart = Math.max(startOffset + 1, endOffset - 200);
                 for (const breakPoint of breakPoints) {
-                    const searchStart = Math.max(startOffset, endOffset - 200);
                     const lastBreak = content.lastIndexOf(breakPoint, endOffset);
-                    if (lastBreak > searchStart) {
+                    if (lastBreak >= searchStart) {
                         endOffset = lastBreak + breakPoint.length;
                         break;
                     }
                 }
+            }
+
+            // Ensure we always make progress
+            if (endOffset <= startOffset) {
+                endOffset = Math.min(startOffset + maxChunkSize, content.length);
             }
 
             chunks.push({
@@ -181,11 +189,14 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
                 endOffset
             });
 
-            // Move to next chunk with overlap
-            startOffset = endOffset - overlapSize;
-            if (startOffset >= content.length) {
+            // If we've reached the end, stop
+            if (endOffset >= content.length) {
                 break;
             }
+
+            // Move to next chunk with overlap, ensuring we make progress
+            const nextStart = endOffset - effectiveOverlap;
+            startOffset = Math.max(nextStart, startOffset + 1);
         }
 
         return chunks;

@@ -106,6 +106,12 @@ suite('AI Raw Response Viewer Tests', () => {
 
     suite('View Raw Response command registration', () => {
         test('should have viewRawResponse command registered', async () => {
+            // Ensure extension is activated first
+            const extension = vscode.extensions.getExtension('yihengtao.workspace-shortcuts');
+            if (extension && !extension.isActive) {
+                await extension.activate();
+            }
+            
             const commands = await vscode.commands.getCommands(true);
             
             assert.ok(

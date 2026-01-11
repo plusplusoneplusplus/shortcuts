@@ -90,8 +90,10 @@ export function validateAndTruncatePromptBase(
         return { prompt, truncated: false };
     }
 
-    // If selected text is too long, truncate it and rebuild the prompt
-    const maxSelectedLength = MAX_PROMPT_SIZE - 200; // Leave more room for instruction text
+    // Calculate how much we need to reduce the selected text
+    // The overhead is the prompt length minus the selected text length
+    const overhead = prompt.length - selectedText.length;
+    const maxSelectedLength = Math.max(100, MAX_PROMPT_SIZE - overhead - 10); // Leave 10 chars for "..."
     const truncatedText = selectedText.substring(0, maxSelectedLength) + '...';
     const truncatedPrompt = rebuildPrompt(truncatedText);
 

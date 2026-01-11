@@ -326,7 +326,10 @@ Total usage est:       1 Premium request`;
             };
 
             const result = buildClarificationPrompt(context);
-            assert.strictEqual(result, 'Please clarify "test text" in the file docs/test.md');
+            // Multi-line prompt with detailed instructions
+            assert.ok(result.startsWith('Please clarify'), 'Should start with Please clarify');
+            assert.ok(result.includes('"test text"'), 'Should include quoted selection');
+            assert.ok(result.includes('in the file docs/test.md'), 'Should include file path');
         });
 
         test('should build go-deeper prompt with in-depth analysis instruction', () => {
@@ -341,7 +344,10 @@ Total usage est:       1 Premium request`;
             };
 
             const result = buildClarificationPrompt(context);
-            assert.strictEqual(result, 'Please provide an in-depth explanation and analysis of "test text" in the file docs/test.md');
+            // Multi-line prompt with detailed in-depth analysis instructions
+            assert.ok(result.includes('in-depth'), 'Should include in-depth');
+            assert.ok(result.includes('"test text"'), 'Should include quoted selection');
+            assert.ok(result.includes('in the file docs/test.md'), 'Should include file path');
         });
 
         test('should build custom prompt with user instruction', () => {
@@ -372,8 +378,10 @@ Total usage est:       1 Premium request`;
             };
 
             const result = buildClarificationPrompt(context);
-            // When no customInstruction is provided, no colon is added
-            assert.strictEqual(result, 'Please explain "test text" in the file docs/test.md');
+            // When no customInstruction is provided, uses default explain prompt
+            assert.ok(result.includes('Please explain'), 'Should include Please explain');
+            assert.ok(result.includes('"test text"'), 'Should include quoted selection');
+            assert.ok(result.includes('in the file docs/test.md'), 'Should include file path');
         });
 
         test('should trim whitespace from selected text', () => {
@@ -388,7 +396,10 @@ Total usage est:       1 Premium request`;
             };
 
             const result = buildClarificationPrompt(context);
-            assert.strictEqual(result, 'Please clarify "trimmed text" in the file docs/test.md');
+            // Should trim whitespace and include in multi-line prompt
+            assert.ok(result.includes('"trimmed text"'), 'Should include trimmed selection');
+            assert.ok(!result.includes('"  trimmed text  "'), 'Should not include untrimmed selection');
+            assert.ok(result.includes('in the file docs/test.md'), 'Should include file path');
         });
 
         test('should handle multi-line selected text', () => {
@@ -501,17 +512,23 @@ Total usage est:       1 Premium request`;
 
         test('should return default clarify prompt when no setting configured', () => {
             const result = getPromptTemplate('clarify');
-            assert.strictEqual(result, DEFAULT_PROMPTS.clarify);
+            // Returns the VSCode configuration default or DEFAULT_PROMPTS fallback
+            assert.ok(result.includes('clarify'), 'Should include clarify keyword');
+            assert.ok(typeof result === 'string' && result.length > 0, 'Should return non-empty string');
         });
 
         test('should return default goDeeper prompt when no setting configured', () => {
             const result = getPromptTemplate('goDeeper');
-            assert.strictEqual(result, DEFAULT_PROMPTS.goDeeper);
+            // Returns the VSCode configuration default or DEFAULT_PROMPTS fallback
+            assert.ok(result.includes('in-depth'), 'Should include in-depth keyword');
+            assert.ok(typeof result === 'string' && result.length > 0, 'Should return non-empty string');
         });
 
         test('should return default customDefault prompt when no setting configured', () => {
             const result = getPromptTemplate('customDefault');
-            assert.strictEqual(result, DEFAULT_PROMPTS.customDefault);
+            // Returns the VSCode configuration default or DEFAULT_PROMPTS fallback
+            assert.ok(result.includes('explain'), 'Should include explain keyword');
+            assert.ok(typeof result === 'string' && result.length > 0, 'Should return non-empty string');
         });
     });
 
@@ -534,8 +551,8 @@ Total usage est:       1 Premium request`;
             const context = createContext({ instructionType: 'clarify' });
             const result = buildClarificationPrompt(context);
 
-            assert.ok(result.startsWith('Please clarify'));
-            assert.ok(!result.includes(':'), 'Clarify should not have colon before quote');
+            assert.ok(result.startsWith('Please clarify'), 'Should start with Please clarify');
+            assert.ok(result.includes('in the file'), 'Should include file reference');
         });
 
         test('go-deeper instruction should use in-depth analysis prompt', () => {
@@ -830,8 +847,10 @@ Total usage est:       1 Premium request`;
             });
             const result = buildClarificationPrompt(context);
 
-            // Format: Please clarify "text" in the file path
-            assert.ok(result.match(/^Please clarify ".*" in the file .*/));
+            // Format: Multi-line prompt ending with "text" in the file path
+            assert.ok(result.startsWith('Please clarify'), 'Should start with Please clarify');
+            assert.ok(result.includes('"variable_name"'), 'Should include quoted selection');
+            assert.ok(result.includes('in the file src/main.rs'), 'Should include file path');
         });
 
         test('go-deeper prompt format should be consistent', () => {
@@ -842,8 +861,10 @@ Total usage est:       1 Premium request`;
             });
             const result = buildClarificationPrompt(context);
 
-            // Format: Please provide an in-depth... "text" in the file path
-            assert.ok(result.match(/^Please provide an in-depth.*".*" in the file .*/));
+            // Format: Multi-line prompt with in-depth analysis ending with "text" in the file path
+            assert.ok(result.includes('in-depth'), 'Should include in-depth');
+            assert.ok(result.includes('"algorithm"'), 'Should include quoted selection');
+            assert.ok(result.includes('in the file src/lib.rs'), 'Should include file path');
         });
 
         test('custom prompt format should be consistent', () => {

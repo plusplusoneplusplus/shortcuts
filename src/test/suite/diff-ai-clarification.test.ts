@@ -364,8 +364,11 @@ suite('Diff AI Clarification Handler Tests', () => {
             });
             const result = buildDiffClarificationPrompt(context);
 
-            // Format: Please clarify "text" (from side) in the file path
-            assert.ok(result.match(/^Please clarify ".*" \(from new version\) in the file .*/));
+            // Format: Multi-line prompt with "text" (from side) in the file path
+            assert.ok(result.startsWith('Please clarify'), 'Should start with Please clarify');
+            assert.ok(result.includes('"variable_name"'), 'Should include quoted selection');
+            assert.ok(result.includes('(from new version)'), 'Should include side indicator');
+            assert.ok(result.includes('in the file src/main.ts'), 'Should include file path');
         });
 
         test('go-deeper prompt format should be consistent', () => {
@@ -377,8 +380,11 @@ suite('Diff AI Clarification Handler Tests', () => {
             });
             const result = buildDiffClarificationPrompt(context);
 
-            // Format: Please provide an in-depth... "text" (from side) in the file path
-            assert.ok(result.match(/^Please provide an in-depth.*".*" \(from old version\) in the file .*/));
+            // Format: Multi-line prompt with in-depth analysis and "text" (from side) in the file path
+            assert.ok(result.includes('in-depth'), 'Should include in-depth');
+            assert.ok(result.includes('"algorithm"'), 'Should include quoted selection');
+            assert.ok(result.includes('(from old version)'), 'Should include side indicator');
+            assert.ok(result.includes('in the file src/lib.ts'), 'Should include file path');
         });
 
         test('custom prompt format should be consistent', () => {

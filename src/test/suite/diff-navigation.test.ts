@@ -171,6 +171,16 @@ suite('Git Diff Navigation Tests', () => {
         ): number {
             if (changeBlocks.length === 0) return -1;
 
+            // Find current block index (if we're inside one)
+            let currentBlockIndex = -1;
+            for (let i = 0; i < changeBlocks.length; i++) {
+                if (currentLineIndex >= changeBlocks[i].startIndex && 
+                    currentLineIndex <= changeBlocks[i].endIndex) {
+                    currentBlockIndex = i;
+                    break;
+                }
+            }
+
             let targetBlockIndex = -1;
             
             if (direction === 'next') {
@@ -187,8 +197,10 @@ suite('Git Diff Navigation Tests', () => {
                 }
             } else {
                 // Find the previous change block before current position
+                // If we're inside a block, skip it
                 for (let i = changeBlocks.length - 1; i >= 0; i--) {
-                    if (changeBlocks[i].startIndex < currentLineIndex) {
+                    if (i === currentBlockIndex) continue; // Skip current block
+                    if (changeBlocks[i].endIndex < currentLineIndex) {
                         targetBlockIndex = i;
                         break;
                     }

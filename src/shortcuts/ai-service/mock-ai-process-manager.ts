@@ -312,10 +312,16 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
             childProcessIds: []
         };
 
+        // Build preview that includes commit SHA for commit reviews
+        let promptPreview = `Review: ${metadata.reviewType} (${metadata.rulesUsed.length} rules)`;
+        if (metadata.reviewType === 'commit' && metadata.commitSha) {
+            promptPreview = `Review: ${metadata.commitSha.substring(0, 7)} (${metadata.rulesUsed.length} rules)`;
+        }
+
         const process: AIProcess = {
             id,
             type: 'code-review-group',
-            promptPreview: `Review: ${metadata.reviewType} (${metadata.rulesUsed.length} rules)`,
+            promptPreview,
             fullPrompt: `Code review group with ${metadata.rulesUsed.length} rules`,
             status: 'running',
             startTime: new Date(),

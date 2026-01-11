@@ -43,12 +43,16 @@ export interface FrontMatterParseResult {
  * 
  * Pattern breakdown:
  * - ^---[ \t]*   : Start with --- followed by optional whitespace (no newline chars)
- * - (?:\r?\n)    : Unix or Windows newline
- * - ([\s\S]*?)   : Front matter content (non-greedy)
- * - (?:\r?\n)---[ \t]* : Closing --- with optional whitespace before it
+ * - (?:\r?\n)    : Unix or Windows newline after opening ---
+ * - ([\s\S]*?)   : Front matter content (non-greedy, can be empty)
+ * - (?:\r?\n)?   : Optional newline before closing --- (allows empty content)
+ * - ---[ \t]*    : Closing --- with optional trailing whitespace
  * - (?:\r?\n|$)  : Followed by newline or end of string
+ * 
+ * Note: The pattern allows empty front matter (---\n---) by making the newline
+ * before the closing --- optional.
  */
-const FRONT_MATTER_REGEX = /^---[ \t]*(?:\r?\n)([\s\S]*?)(?:\r?\n)---[ \t]*(?:\r?\n|$)/;
+const FRONT_MATTER_REGEX = /^---[ \t]*(?:\r?\n)([\s\S]*?)(?:\r?\n)?---[ \t]*(?:\r?\n|$)/;
 
 /**
  * Parse front matter from a markdown file content.

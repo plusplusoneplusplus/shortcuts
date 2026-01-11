@@ -53,10 +53,17 @@ suite('Commit Lookup Tests', () => {
                 assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'search');
             });
 
-            test('should have contextValue of lookedUpCommit', () => {
+            test('should have contextValue of lookedUpCommit with index', () => {
                 const commit = createMockCommit();
                 const item = new LookedUpCommitItem(commit);
-                assert.strictEqual(item.contextValue, 'lookedUpCommit');
+                // Default index is 0
+                assert.strictEqual(item.contextValue, 'lookedUpCommit_0');
+            });
+
+            test('should include index in contextValue', () => {
+                const commit = createMockCommit();
+                const item = new LookedUpCommitItem(commit, 2);
+                assert.strictEqual(item.contextValue, 'lookedUpCommit_2');
             });
 
             test('should be expanded by default', () => {
@@ -755,7 +762,8 @@ suite('Commit Lookup Tests', () => {
 
             assert.notStrictEqual(gitCommitItem.contextValue, lookedUpItem.contextValue);
             assert.strictEqual(gitCommitItem.contextValue, 'gitCommit');
-            assert.strictEqual(lookedUpItem.contextValue, 'lookedUpCommit');
+            // contextValue includes index for multiple looked-up commits support
+            assert.strictEqual(lookedUpItem.contextValue, 'lookedUpCommit_0');
         });
 
         test('LookedUpCommitItem should have different icon than GitCommitItem', async () => {
