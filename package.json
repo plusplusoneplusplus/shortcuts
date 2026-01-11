@@ -808,6 +808,12 @@
         "icon": "$(check-all)"
       },
       {
+        "command": "clarificationProcesses.viewPipelineExecutionDetails",
+        "title": "View Details",
+        "category": "AI Processes",
+        "icon": "$(graph)"
+      },
+      {
         "command": "clarificationProcesses.viewRawResponse",
         "title": "View Raw Response",
         "category": "AI Processes",
@@ -1617,6 +1623,26 @@
           "command": "clarificationProcesses.viewCodeReviewGroupDetails",
           "when": "view == clarificationProcessesView && viewItem =~ /^codeReviewGroupProcess_completed$/",
           "group": "process@2"
+        },
+        {
+          "command": "clarificationProcesses.viewPipelineExecutionDetails",
+          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineExecutionProcess_completed$/",
+          "group": "process@2"
+        },
+        {
+          "command": "clarificationProcesses.viewDetails",
+          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineItemProcess_completed_child$/",
+          "group": "process@2"
+        },
+        {
+          "command": "clarificationProcesses.viewDetails",
+          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineExecutionProcess_(running|failed|cancelled)$/",
+          "group": "process@2"
+        },
+        {
+          "command": "clarificationProcesses.remove",
+          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineExecutionProcess_(completed|failed|cancelled)$/",
+          "group": "process@3"
         },
         {
           "command": "clarificationProcesses.viewRawResponse",

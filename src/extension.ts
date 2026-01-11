@@ -1122,6 +1122,42 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Command to view pipeline execution details in the enhanced result viewer
+        const viewPipelineExecutionDetailsCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.viewPipelineExecutionDetails',
+            async (item: { process?: { groupMetadata?: any; structuredResult?: string } }) => {
+                // Debug logging
+                getExtensionLogger().info(LogCategory.AI, 'View pipeline execution details called', {
+                    hasItem: !!item,
+                    hasProcess: !!item?.process,
+                    hasStructuredResult: !!item?.process?.structuredResult,
+                    hasGroupMetadata: !!item?.process?.groupMetadata,
+                    groupMetadata: item?.process?.groupMetadata
+                });
+
+                if (!item?.process?.structuredResult) {
+                    vscode.window.showWarningMessage('No result available for this pipeline execution.');
+                    return;
+                }
+
+                try {
+                    const { PipelineResultViewerProvider } = await import('./shortcuts/yaml-pipeline/ui/result-viewer-provider');
+                    const provider = new PipelineResultViewerProvider(context.extensionUri);
+                    const result = JSON.parse(item.process.structuredResult);
+                    const metadata = item.process.groupMetadata || {};
+                    
+                    await provider.showResults(
+                        result,
+                        metadata.pipelineName || 'Pipeline',
+                        metadata.packageName || ''
+                    );
+                } catch (error) {
+                    getExtensionLogger().error(LogCategory.AI, 'Failed to display pipeline execution result', error instanceof Error ? error : undefined);
+                    vscode.window.showErrorMessage('Failed to display pipeline execution result.');
+                }
+            }
+        );
+
         // Command to view raw response with markdown review editor
         const viewRawResponseCommand = vscode.commands.registerCommand(
             'clarificationProcesses.viewRawResponse',
@@ -1324,6 +1360,7 @@ export async function activate(context: vscode.ExtensionContext) {
             viewProcessDetailsCommand,
             viewCodeReviewDetailsCommand,
             viewCodeReviewGroupDetailsCommand,
+            viewPipelineExecutionDetailsCommand,
             viewRawResponseCommand,
             viewDiscoveryResultsCommand,
             refreshProcessesCommand,

@@ -21,7 +21,7 @@ export class AIProcessItem extends vscode.TreeItem {
         
         // Determine collapsible state based on process type
         let collapsibleState = vscode.TreeItemCollapsibleState.None;
-        if (process.type === 'code-review-group') {
+        if (process.type === 'code-review-group' || process.type === 'pipeline-execution') {
             // Groups are always expandable
             collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
         }
@@ -40,6 +40,12 @@ export class AIProcessItem extends vscode.TreeItem {
                 : `codeReviewProcess_${process.status}`;
         } else if (process.type === 'discovery') {
             this.contextValue = `discoveryProcess_${process.status}`;
+        } else if (process.type === 'pipeline-execution') {
+            this.contextValue = `pipelineExecutionProcess_${process.status}`;
+        } else if (process.type === 'pipeline-item') {
+            this.contextValue = isChild
+                ? `pipelineItemProcess_${process.status}_child`
+                : `pipelineItemProcess_${process.status}`;
         } else {
             this.contextValue = `clarificationProcess_${process.status}`;
         }
@@ -425,8 +431,8 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
      * Get children - supports hierarchical display for code review groups
      */
     async getChildren(element?: AIProcessItem): Promise<AIProcessItem[]> {
-        // If we're getting children of a code review group, return its child processes
-        if (element && element.process.type === 'code-review-group') {
+        // If we're getting children of a code review group or pipeline execution, return its child processes
+        if (element && (element.process.type === 'code-review-group' || element.process.type === 'pipeline-execution')) {
             const childProcesses = this.processManager.getChildProcesses(element.process.id);
             
             // Sort child processes: running first, then by start time

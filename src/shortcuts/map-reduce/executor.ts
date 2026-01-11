@@ -200,14 +200,35 @@ export class MapReduceExecutor {
             message: `Complete: ${successfulMaps} succeeded, ${failedMaps} failed`
         });
 
-        return {
-            success: failedMaps === 0,
+        // Build the result
+        const overallSuccess = failedMaps === 0;
+        const result: MapReduceResult<TMapOutput, TReduceOutput> = {
+            success: overallSuccess,
             output: reduceResult.output,
             mapResults,
             reduceStats: reduceResult.stats,
             totalTimeMs,
             executionStats
         };
+
+        // Add error message if there were failures
+        if (!overallSuccess) {
+            // Get error messages from failed items
+            const failedResults = mapResults.filter(r => !r.success);
+            if (failedResults.length === 1) {
+                result.error = `1 item failed: ${failedResults[0].error || 'Unknown error'}`;
+            } else {
+                // Collect unique error messages
+                const uniqueErrors = [...new Set(failedResults.map(r => r.error || 'Unknown error'))];
+                if (uniqueErrors.length === 1) {
+                    result.error = `${failedResults.length} items failed: ${uniqueErrors[0]}`;
+                } else {
+                    result.error = `${failedResults.length} items failed with ${uniqueErrors.length} different errors`;
+                }
+            }
+        }
+
+        return result;
     }
 
     /**

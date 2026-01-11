@@ -153,9 +153,10 @@ export async function executeVSCodePipeline(
             // Complete the process group
             if (processManager && groupProcessId) {
                 const summary = formatExecutionSummary(result);
+                // Store the full result for the enhanced viewer
                 processManager.completeProcessGroup(groupProcessId, {
                     result: summary,
-                    structuredResult: JSON.stringify(result.output || {}),
+                    structuredResult: JSON.stringify(result), // Store full result, not just output
                     executionStats: {
                         totalItems: result.executionStats.totalItems,
                         successfulMaps: result.executionStats.successfulMaps,

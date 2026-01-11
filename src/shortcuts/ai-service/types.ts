@@ -49,7 +49,7 @@ export interface AIInvocationResult {
  * Core types: 'clarification' | 'discovery'
  * Feature modules can register additional types via the generic metadata system
  */
-export type AIProcessType = 'clarification' | 'code-review' | 'discovery' | 'code-review-group' | string;
+export type AIProcessType = 'clarification' | 'code-review' | 'discovery' | 'code-review-group' | 'pipeline-execution' | 'pipeline-item' | string;
 
 /**
  * Generic metadata interface that feature modules can extend.
