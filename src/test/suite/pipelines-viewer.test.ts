@@ -527,29 +527,33 @@ reduce:
 
         suite('Path Resolution', () => {
             test('should resolve relative path from package directory', () => {
-                const packagePath = '/workspace/.vscode/pipelines/run-tests';
+                // Use platform-appropriate path for testing
+                const packagePath = path.join(path.sep, 'workspace', '.vscode', 'pipelines', 'run-tests');
 
                 const result = pipelineManager.resolveResourcePath('input.csv', packagePath);
                 assert.strictEqual(result, path.join(packagePath, 'input.csv'));
             });
 
             test('should resolve nested relative path', () => {
-                const packagePath = '/workspace/.vscode/pipelines/run-tests';
+                // Use platform-appropriate path for testing
+                const packagePath = path.join(path.sep, 'workspace', '.vscode', 'pipelines', 'run-tests');
 
                 const result = pipelineManager.resolveResourcePath('data/files.csv', packagePath);
                 assert.strictEqual(result, path.join(packagePath, 'data', 'files.csv'));
             });
 
             test('should resolve parent directory reference', () => {
-                const packagePath = '/workspace/.vscode/pipelines/run-tests';
+                // Use platform-appropriate path for testing
+                const packagePath = path.join(path.sep, 'workspace', '.vscode', 'pipelines', 'run-tests');
 
                 const result = pipelineManager.resolveResourcePath('../shared/common.csv', packagePath);
                 assert.strictEqual(result, path.resolve(packagePath, '../shared/common.csv'));
             });
 
             test('should preserve absolute paths', () => {
-                const packagePath = '/workspace/.vscode/pipelines/run-tests';
-                const absolutePath = '/absolute/path/to/file.csv';
+                // Use platform-appropriate paths for testing
+                const packagePath = path.join(path.sep, 'workspace', '.vscode', 'pipelines', 'run-tests');
+                const absolutePath = path.join(path.sep, 'absolute', 'path', 'to', 'file.csv');
 
                 const result = pipelineManager.resolveResourcePath(absolutePath, packagePath);
                 assert.strictEqual(result, absolutePath);

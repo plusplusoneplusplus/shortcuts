@@ -421,6 +421,8 @@ suite('GitSearchProvider Tests', () => {
         });
 
         test('should handle conventional commit format', async function() {
+            this.timeout(10000);  // Increase timeout for Windows CI
+
             if (!isGitRepo) {
                 this.skip();
                 return;
