@@ -46,6 +46,14 @@ export {
 // Export process manager
 export { AIProcessManager } from './ai-process-manager';
 
+// Export mock process manager for testing
+export { 
+    MockAIProcessManager, 
+    MockAIProcessManagerConfig,
+    ProcessCall,
+    createMockAIProcessManager 
+} from './mock-ai-process-manager';
+
 // Export tree data provider
 export { AIProcessItem, AIProcessTreeDataProvider } from './ai-process-tree-provider';
 
