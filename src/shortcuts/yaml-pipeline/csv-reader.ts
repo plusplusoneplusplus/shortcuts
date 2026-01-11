@@ -225,16 +225,25 @@ export function readCSVFileSync(
 }
 
 /**
- * Resolve a CSV file path relative to a working directory
+ * Resolve a CSV file path relative to a base directory.
+ * For pipeline packages, this should be the package directory (where pipeline.yaml lives).
+ * 
  * @param csvPath Path from config (may be relative)
- * @param workingDirectory Working directory for resolution
+ * @param baseDirectory Base directory for resolution (typically the pipeline package directory)
  * @returns Absolute file path
+ * 
+ * @example
+ * // Given packageDir = '/workspace/.vscode/pipelines/run-tests'
+ * resolveCSVPath('input.csv', packageDir) // => '/workspace/.vscode/pipelines/run-tests/input.csv'
+ * resolveCSVPath('data/files.csv', packageDir) // => '/workspace/.vscode/pipelines/run-tests/data/files.csv'
+ * resolveCSVPath('../shared/common.csv', packageDir) // => '/workspace/.vscode/pipelines/shared/common.csv'
+ * resolveCSVPath('/absolute/path.csv', packageDir) // => '/absolute/path.csv'
  */
-export function resolveCSVPath(csvPath: string, workingDirectory: string): string {
+export function resolveCSVPath(csvPath: string, baseDirectory: string): string {
     if (path.isAbsolute(csvPath)) {
         return csvPath;
     }
-    return path.resolve(workingDirectory, csvPath);
+    return path.resolve(baseDirectory, csvPath);
 }
 
 /**

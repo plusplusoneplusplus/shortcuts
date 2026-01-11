@@ -71,6 +71,13 @@ Test files are in `src/test/suite/` and include:
 - `RulesLoader` - Loads markdown rule files from `.github/cr-rules/`
 - `PromptBuilder` - Builds review prompts with rules and diff content
 
+**YAML Pipeline (`src/shortcuts/yaml-pipeline/`)**
+- `PipelineManager` - Manages pipeline packages (discovery, CRUD, validation)
+- `PipelinesTreeDataProvider` - Tree view for pipeline packages and resources
+- `executePipeline` - Executes pipeline from YAML configuration
+- Pipelines are organized as **packages**: directories containing `pipeline.yaml`
+- CSV paths are resolved relative to the pipeline package directory
+
 **Main Entry Point (`src/extension.ts`)**
 - Activates extension and registers the tree view
 - Initializes configuration management with workspace root detection
@@ -170,6 +177,64 @@ Review commits or pending changes against custom coding rules.
 **Settings:**
 - `workspaceShortcuts.codeReview.rulesFolder` - Path to rules folder
 - `workspaceShortcuts.codeReview.rulesPattern` - Glob pattern for rule files
+
+## YAML Pipeline Framework
+
+Define and execute AI-powered data processing pipelines via YAML configuration.
+
+**Pipeline Package Structure:**
+```
+.vscode/pipelines/
+├── run-tests/                  # Pipeline package (directory)
+│   ├── pipeline.yaml           # Required entry point
+│   ├── input.csv               # Resource files
+│   └── data/
+│       └── test-cases.csv      # Nested resources supported
+├── analyze-code/               # Another pipeline package
+│   ├── pipeline.yaml
+│   └── rules.csv
+└── shared/                     # Shared resources (not a pipeline)
+    └── common-mappings.csv
+```
+
+**Key Concepts:**
+- Each subdirectory in `.vscode/pipelines/` containing `pipeline.yaml` is a pipeline package
+- All paths in `pipeline.yaml` are resolved relative to the package directory
+- Use `../shared/file.csv` to reference shared resources across packages
+
+**Pipeline YAML Format:**
+```yaml
+name: "Bug Triage"
+description: "Analyze and categorize bugs"
+
+input:
+  type: csv
+  path: "input.csv"  # Relative to package directory
+
+map:
+  prompt: |
+    Analyze: {{title}}
+    Description: {{description}}
+    
+    Return JSON with severity and category.
+  output:
+    - severity
+    - category
+  parallel: 5
+
+reduce:
+  type: json
+```
+
+**Commands:**
+- Create pipeline: Opens wizard to create new pipeline package
+- Execute pipeline: Run the pipeline (placeholder for future)
+- Validate pipeline: Check YAML structure and resource files
+
+**Settings:**
+- `workspaceShortcuts.pipelinesViewer.enabled` - Enable/disable pipelines viewer
+- `workspaceShortcuts.pipelinesViewer.folderPath` - Path to pipelines folder
+- `workspaceShortcuts.pipelinesViewer.sortBy` - Sort by name or modified date
 - `workspaceShortcuts.codeReview.outputMode` - Where to show results
 
 ## Global Notes

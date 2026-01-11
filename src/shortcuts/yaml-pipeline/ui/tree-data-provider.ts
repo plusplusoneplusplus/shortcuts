@@ -1,23 +1,24 @@
 /**
  * Pipelines Tree Data Provider
  *
- * Provides pipeline items to the VSCode tree view.
+ * Provides pipeline package items to the VSCode tree view.
+ * Supports hierarchical display of pipeline packages and their resource files.
  */
 
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from '../../shared';
 import { PipelineManager } from './pipeline-manager';
-import { PipelineItem } from './pipeline-item';
+import { PipelineItem, ResourceItem, PipelineTreeItem } from './pipeline-item';
 import { PipelineInfo } from './types';
 
 /**
- * Tree data provider for the Pipelines Viewer
- * Displays pipeline YAML files from the configured pipelines folder
+ * Tree data provider for the Pipelines Viewer.
+ * Displays pipeline packages and their resource files from the configured pipelines folder.
  */
-export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<PipelineItem>, vscode.Disposable {
-    private _onDidChangeTreeData: vscode.EventEmitter<PipelineItem | undefined | null | void> =
-        new vscode.EventEmitter<PipelineItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<PipelineItem | undefined | null | void> =
+export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<PipelineTreeItem>, vscode.Disposable {
+    private _onDidChangeTreeData: vscode.EventEmitter<PipelineTreeItem | undefined | null | void> =
+        new vscode.EventEmitter<PipelineTreeItem | undefined | null | void>();
+    readonly onDidChangeTreeData: vscode.Event<PipelineTreeItem | undefined | null | void> =
         this._onDidChangeTreeData.event;
 
     private filterText: string = '';
@@ -28,22 +29,28 @@ export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<Pipeli
     /**
      * Get the tree item representation of an element
      */
-    getTreeItem(element: PipelineItem): vscode.TreeItem {
+    getTreeItem(element: PipelineTreeItem): vscode.TreeItem {
         return element;
     }
 
     /**
      * Get the children of an element or root elements if no element is provided
      */
-    async getChildren(element?: PipelineItem): Promise<PipelineItem[]> {
+    async getChildren(element?: PipelineTreeItem): Promise<PipelineTreeItem[]> {
         try {
-            if (element) {
-                // Pipelines have no children
-                return [];
+            if (!element) {
+                // Return root level - all pipeline packages
+                return await this.getRootItems();
             }
 
-            // Return root level - all pipelines
-            return await this.getRootItems();
+            // If element is a PipelineItem, return its resource files
+            if (element.itemType === 'package') {
+                const pipelineItem = element as PipelineItem;
+                return this.getResourceItems(pipelineItem);
+            }
+
+            // ResourceItems have no children
+            return [];
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             getExtensionLogger().error(LogCategory.EXTENSION, 'Error getting pipelines', err);
@@ -55,9 +62,27 @@ export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<Pipeli
     /**
      * Get the parent of an element
      */
-    getParent(_element: PipelineItem): vscode.ProviderResult<PipelineItem> {
-        // All pipelines are at root level, no parent
+    getParent(element: PipelineTreeItem): vscode.ProviderResult<PipelineTreeItem> {
+        if (element.itemType === 'resource') {
+            const resourceItem = element as ResourceItem;
+            // Find the parent pipeline item
+            const parentPipeline = this.cachedPipelines.find(
+                p => p.packageName === resourceItem.parentPipeline.packageName
+            );
+            if (parentPipeline) {
+                return new PipelineItem(parentPipeline);
+            }
+        }
+        // Pipeline packages are at root level
         return undefined;
+    }
+
+    /**
+     * Get resource items for a pipeline package
+     */
+    private getResourceItems(pipelineItem: PipelineItem): ResourceItem[] {
+        const resources = pipelineItem.pipeline.resourceFiles || [];
+        return resources.map(resource => new ResourceItem(resource, pipelineItem.pipeline));
     }
 
     /**
@@ -114,7 +139,7 @@ export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<Pipeli
         if (this.filterText) {
             pipelines = pipelines.filter(pipeline =>
                 pipeline.name.toLowerCase().includes(this.filterText) ||
-                pipeline.fileName.toLowerCase().includes(this.filterText) ||
+                pipeline.packageName.toLowerCase().includes(this.filterText) ||
                 (pipeline.description && pipeline.description.toLowerCase().includes(this.filterText))
             );
         }

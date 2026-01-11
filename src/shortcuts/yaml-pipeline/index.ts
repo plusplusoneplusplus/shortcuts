@@ -85,12 +85,19 @@ export {
     PipelineManager,
     PipelinesTreeDataProvider,
     PipelineItem,
+    ResourceItem,
     PipelineCommands
 } from './ui';
 
 export type {
+    PipelineTreeItem
+} from './ui';
+
+export type {
     PipelineInfo,
+    ResourceFileInfo,
     ValidationResult,
     PipelinesViewerSettings,
-    PipelineSortBy
+    PipelineSortBy,
+    TreeItemType
 } from './ui';

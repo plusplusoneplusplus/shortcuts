@@ -36,7 +36,7 @@ import {
     PipelineManager,
     PipelinesTreeDataProvider,
     PipelineCommands,
-    PipelineItem
+    PipelineTreeItem
 } from './shortcuts/yaml-pipeline';
 
 /**
@@ -193,7 +193,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Initialize Pipelines Viewer
         const pipelinesViewerEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.pipelinesViewer').get<boolean>('enabled', true);
-        let pipelinesTreeView: vscode.TreeView<PipelineItem> | undefined;
+        let pipelinesTreeView: vscode.TreeView<PipelineTreeItem> | undefined;
         let pipelineManager: PipelineManager | undefined;
         let pipelinesTreeDataProvider: PipelinesTreeDataProvider | undefined;
         let pipelinesCommands: PipelineCommands | undefined;

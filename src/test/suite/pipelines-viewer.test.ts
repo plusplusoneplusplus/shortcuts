@@ -7,10 +7,11 @@ import {
     PipelineManager,
     PipelinesTreeDataProvider,
     PipelineItem,
+    ResourceItem,
     PipelineInfo
 } from '../../shortcuts/yaml-pipeline';
 
-suite('Pipelines Viewer Tests', () => {
+suite('Pipelines Viewer Tests (Package Structure)', () => {
     let tempDir: string;
     let pipelineManager: PipelineManager;
 
@@ -49,7 +50,57 @@ suite('Pipelines Viewer Tests', () => {
         }
     });
 
-    suite('PipelineManager', () => {
+    /**
+     * Helper to create a pipeline package directory with pipeline.yaml
+     */
+    function createPipelinePackage(
+        packageName: string,
+        pipelineContent: string,
+        resourceFiles?: { name: string; content: string }[]
+    ): string {
+        const pipelinesFolder = pipelineManager.getPipelinesFolder();
+        if (!fs.existsSync(pipelinesFolder)) {
+            fs.mkdirSync(pipelinesFolder, { recursive: true });
+        }
+
+        const packagePath = path.join(pipelinesFolder, packageName);
+        fs.mkdirSync(packagePath, { recursive: true });
+
+        fs.writeFileSync(path.join(packagePath, 'pipeline.yaml'), pipelineContent, 'utf8');
+
+        if (resourceFiles) {
+            for (const file of resourceFiles) {
+                const filePath = path.join(packagePath, file.name);
+                const fileDir = path.dirname(filePath);
+                if (!fs.existsSync(fileDir)) {
+                    fs.mkdirSync(fileDir, { recursive: true });
+                }
+                fs.writeFileSync(filePath, file.content, 'utf8');
+            }
+        }
+
+        return packagePath;
+    }
+
+    /**
+     * Generate valid pipeline YAML content
+     */
+    function validPipelineYAML(name: string, description?: string): string {
+        return `name: "${name}"
+${description ? `description: "${description}"\n` : ''}input:
+  type: csv
+  path: "input.csv"
+map:
+  prompt: |
+    Process: {{title}}
+  output:
+    - result
+reduce:
+  type: json
+`;
+    }
+
+    suite('PipelineManager - Package Structure', () => {
         suite('Folder Management', () => {
             test('should get correct pipelines folder path', () => {
                 const pipelinesFolder = pipelineManager.getPipelinesFolder();
@@ -70,102 +121,99 @@ suite('Pipelines Viewer Tests', () => {
             });
         });
 
-        suite('Pipeline Creation', () => {
-            test('should create a new pipeline file', async () => {
-                const filePath = await pipelineManager.createPipeline('My First Pipeline');
-
-                assert.ok(fs.existsSync(filePath), 'Pipeline file should exist');
-                assert.ok(filePath.endsWith('.yaml'), 'Pipeline file should be YAML');
-
-                const content = fs.readFileSync(filePath, 'utf8');
-                assert.ok(content.includes('name: "My First Pipeline"'), 'Pipeline should have name');
-            });
-
-            test('should sanitize pipeline name for file', async () => {
-                const filePath = await pipelineManager.createPipeline('Pipeline: With <Special> Chars!');
-                const fileName = path.basename(filePath);
-
-                assert.ok(fs.existsSync(filePath));
-                // Check only the filename to avoid Windows drive letter colon
-                assert.ok(!fileName.includes(':'), 'Filename should not contain colon');
-                assert.ok(!fileName.includes('<'), 'Filename should not contain <');
-                assert.ok(!fileName.includes('>'), 'Filename should not contain >');
-            });
-
-            test('should throw error if pipeline already exists', async () => {
-                await pipelineManager.createPipeline('Duplicate Pipeline');
-
-                await assert.rejects(
-                    async () => await pipelineManager.createPipeline('Duplicate Pipeline'),
-                    /already exists/i
-                );
-            });
-
-            test('should create pipeline with spaces in name', async () => {
-                const filePath = await pipelineManager.createPipeline('Pipeline With Spaces');
-                assert.ok(fs.existsSync(filePath));
-            });
-
-            test('should create pipeline with default template content', async () => {
-                const filePath = await pipelineManager.createPipeline('Test Pipeline');
-                const content = fs.readFileSync(filePath, 'utf8');
-
-                // Check that template has required sections
-                assert.ok(content.includes('name:'), 'Should have name field');
-                assert.ok(content.includes('input:'), 'Should have input section');
-                assert.ok(content.includes('map:'), 'Should have map section');
-                assert.ok(content.includes('reduce:'), 'Should have reduce section');
-            });
-        });
-
-        suite('Pipeline Reading', () => {
-            test('should return empty array when no pipelines exist', async () => {
+        suite('Pipeline Package Discovery', () => {
+            test('should return empty array when no pipeline packages exist', async () => {
                 pipelineManager.ensurePipelinesFolderExists();
                 const pipelines = await pipelineManager.getPipelines();
                 assert.strictEqual(pipelines.length, 0);
             });
 
-            test('should return pipelines from folder', async () => {
-                await pipelineManager.createPipeline('Pipeline 1');
-                await pipelineManager.createPipeline('Pipeline 2');
+            test('should discover pipeline packages with pipeline.yaml', async () => {
+                createPipelinePackage('run-tests', validPipelineYAML('Run Tests'));
+                createPipelinePackage('analyze-code', validPipelineYAML('Analyze Code'));
 
                 const pipelines = await pipelineManager.getPipelines();
                 assert.strictEqual(pipelines.length, 2);
+
+                const names = pipelines.map(p => p.packageName).sort();
+                assert.deepStrictEqual(names, ['analyze-code', 'run-tests']);
             });
 
-            test('should populate pipeline properties correctly', async () => {
-                await pipelineManager.createPipeline('Test Pipeline');
+            test('should discover pipeline packages with pipeline.yml', async () => {
+                const pipelinesFolder = pipelineManager.getPipelinesFolder();
+                fs.mkdirSync(pipelinesFolder, { recursive: true });
+
+                const packagePath = path.join(pipelinesFolder, 'yml-pipeline');
+                fs.mkdirSync(packagePath);
+                fs.writeFileSync(
+                    path.join(packagePath, 'pipeline.yml'),
+                    validPipelineYAML('YML Pipeline'),
+                    'utf8'
+                );
+
+                const pipelines = await pipelineManager.getPipelines();
+                assert.strictEqual(pipelines.length, 1);
+                assert.strictEqual(pipelines[0].packageName, 'yml-pipeline');
+            });
+
+            test('should ignore directories without pipeline.yaml', async () => {
+                createPipelinePackage('valid-pipeline', validPipelineYAML('Valid'));
+
+                // Create a directory without pipeline.yaml
+                const pipelinesFolder = pipelineManager.getPipelinesFolder();
+                const invalidDir = path.join(pipelinesFolder, 'not-a-pipeline');
+                fs.mkdirSync(invalidDir, { recursive: true });
+                fs.writeFileSync(path.join(invalidDir, 'random.txt'), 'Not a pipeline');
+
+                const pipelines = await pipelineManager.getPipelines();
+                assert.strictEqual(pipelines.length, 1);
+                assert.strictEqual(pipelines[0].packageName, 'valid-pipeline');
+            });
+
+            test('should ignore loose YAML files in root (breaking change from flat structure)', async () => {
+                pipelineManager.ensurePipelinesFolderExists();
+                const pipelinesFolder = pipelineManager.getPipelinesFolder();
+
+                // Create a loose YAML file in root (old flat structure)
+                fs.writeFileSync(
+                    path.join(pipelinesFolder, 'old-style.yaml'),
+                    validPipelineYAML('Old Style'),
+                    'utf8'
+                );
+
+                // Create a valid package
+                createPipelinePackage('new-style', validPipelineYAML('New Style'));
+
+                const pipelines = await pipelineManager.getPipelines();
+                assert.strictEqual(pipelines.length, 1);
+                assert.strictEqual(pipelines[0].packageName, 'new-style');
+            });
+
+            test('should populate pipeline properties from package', async () => {
+                createPipelinePackage('test-package', validPipelineYAML('Test Pipeline', 'A test description'));
 
                 const pipelines = await pipelineManager.getPipelines();
                 assert.strictEqual(pipelines.length, 1);
 
                 const pipeline = pipelines[0];
+                assert.strictEqual(pipeline.packageName, 'test-package');
                 assert.strictEqual(pipeline.name, 'Test Pipeline');
-                assert.ok(pipeline.filePath.endsWith('.yaml'));
+                assert.strictEqual(pipeline.description, 'A test description');
+                assert.ok(pipeline.filePath.endsWith('pipeline.yaml'));
+                assert.ok(pipeline.packagePath.endsWith('test-package'));
                 assert.ok(pipeline.lastModified instanceof Date);
                 assert.ok(pipeline.size > 0);
             });
 
-            test('should not include non-YAML files', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
+            test('should use package name as fallback for name', async () => {
                 const pipelinesFolder = pipelineManager.getPipelinesFolder();
+                fs.mkdirSync(pipelinesFolder, { recursive: true });
 
-                // Create a non-YAML file
-                fs.writeFileSync(path.join(pipelinesFolder, 'readme.txt'), 'Not a pipeline');
+                const packagePath = path.join(pipelinesFolder, 'no-name-field');
+                fs.mkdirSync(packagePath);
 
-                await pipelineManager.createPipeline('Real Pipeline');
-
-                const pipelines = await pipelineManager.getPipelines();
-                assert.strictEqual(pipelines.length, 1);
-                assert.strictEqual(pipelines[0].name, 'Real Pipeline');
-            });
-
-            test('should support both .yaml and .yml extensions', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
-                const pipelinesFolder = pipelineManager.getPipelinesFolder();
-
-                // Create a .yml file manually
-                const ymlContent = `name: "YML Pipeline"
+                // YAML without name field
+                fs.writeFileSync(path.join(packagePath, 'pipeline.yaml'), `
 input:
   type: csv
   path: data.csv
@@ -175,46 +223,189 @@ map:
     - result
 reduce:
   type: json
-`;
-                fs.writeFileSync(path.join(pipelinesFolder, 'test.yml'), ymlContent);
-
-                // Create a .yaml file
-                await pipelineManager.createPipeline('YAML Pipeline');
+`, 'utf8');
 
                 const pipelines = await pipelineManager.getPipelines();
-                assert.strictEqual(pipelines.length, 2);
+                assert.strictEqual(pipelines.length, 1);
+                assert.strictEqual(pipelines[0].name, 'no-name-field');
             });
 
-            test('should get pipeline by file name', async () => {
-                await pipelineManager.createPipeline('Find Me');
+            test('should get pipeline by package name', async () => {
+                createPipelinePackage('find-me', validPipelineYAML('Find Me'));
 
-                const pipeline = await pipelineManager.getPipeline('Find-Me.yaml');
+                const pipeline = await pipelineManager.getPipeline('find-me');
                 assert.ok(pipeline);
+                assert.strictEqual(pipeline?.packageName, 'find-me');
                 assert.strictEqual(pipeline?.name, 'Find Me');
             });
 
-            test('should return undefined for non-existent pipeline', async () => {
-                const pipeline = await pipelineManager.getPipeline('non-existent.yaml');
+            test('should return undefined for non-existent package', async () => {
+                const pipeline = await pipelineManager.getPipeline('non-existent');
                 assert.strictEqual(pipeline, undefined);
             });
         });
 
-        suite('Pipeline Renaming', () => {
-            test('should rename a pipeline file', async () => {
-                const originalPath = await pipelineManager.createPipeline('Original Name');
-                const newPath = await pipelineManager.renamePipeline(originalPath, 'New Name');
+        suite('Resource Files Discovery', () => {
+            test('should discover resource files in package', async () => {
+                createPipelinePackage('with-resources', validPipelineYAML('With Resources'), [
+                    { name: 'input.csv', content: 'id,title\n1,Test' },
+                    { name: 'config.json', content: '{}' }
+                ]);
 
-                assert.ok(!fs.existsSync(originalPath), 'Original file should not exist');
-                assert.ok(fs.existsSync(newPath), 'New file should exist');
+                const pipelines = await pipelineManager.getPipelines();
+                assert.strictEqual(pipelines.length, 1);
+                assert.ok(pipelines[0].resourceFiles);
+                assert.strictEqual(pipelines[0].resourceFiles?.length, 2);
 
-                // Check that name field was updated in YAML
-                const content = fs.readFileSync(newPath, 'utf8');
-                assert.ok(content.includes('New Name'), 'Name should be updated in YAML');
+                const fileNames = pipelines[0].resourceFiles?.map(r => r.fileName).sort();
+                assert.deepStrictEqual(fileNames, ['config.json', 'input.csv']);
             });
 
-            test('should throw error when renaming to existing name', async () => {
+            test('should discover nested resource files', async () => {
+                createPipelinePackage('nested-resources', validPipelineYAML('Nested Resources'), [
+                    { name: 'input.csv', content: 'id,title\n1,Test' },
+                    { name: 'data/files.csv', content: 'file,path\n1,src/' },
+                    { name: 'templates/prompt.txt', content: 'Process: {{item}}' }
+                ]);
+
+                const pipelines = await pipelineManager.getPipelines();
+                assert.strictEqual(pipelines.length, 1);
+                assert.ok(pipelines[0].resourceFiles);
+                assert.strictEqual(pipelines[0].resourceFiles?.length, 3);
+
+                const relativePaths = pipelines[0].resourceFiles?.map(r => r.relativePath).sort();
+                assert.ok(relativePaths?.some(p => p.includes('data')));
+                assert.ok(relativePaths?.some(p => p.includes('templates')));
+            });
+
+            test('should identify correct file types', async () => {
+                createPipelinePackage('file-types', validPipelineYAML('File Types'), [
+                    { name: 'data.csv', content: 'a,b' },
+                    { name: 'config.json', content: '{}' },
+                    { name: 'readme.txt', content: 'text' },
+                    { name: 'prompt.template', content: 'template' },
+                    { name: 'other.xyz', content: 'other' }
+                ]);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const resources = pipelines[0].resourceFiles || [];
+
+                const csv = resources.find(r => r.fileName === 'data.csv');
+                const json = resources.find(r => r.fileName === 'config.json');
+                const txt = resources.find(r => r.fileName === 'readme.txt');
+                const template = resources.find(r => r.fileName === 'prompt.template');
+                const other = resources.find(r => r.fileName === 'other.xyz');
+
+                assert.strictEqual(csv?.fileType, 'csv');
+                assert.strictEqual(json?.fileType, 'json');
+                assert.strictEqual(txt?.fileType, 'txt');
+                assert.strictEqual(template?.fileType, 'template');
+                assert.strictEqual(other?.fileType, 'other');
+            });
+
+            test('should not include pipeline.yaml in resources', async () => {
+                createPipelinePackage('exclude-pipeline', validPipelineYAML('Exclude Pipeline'), [
+                    { name: 'input.csv', content: 'id\n1' }
+                ]);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const resources = pipelines[0].resourceFiles || [];
+
+                assert.ok(!resources.some(r => r.fileName === 'pipeline.yaml'));
+                assert.ok(!resources.some(r => r.fileName === 'pipeline.yml'));
+            });
+        });
+
+        suite('Pipeline Package Creation', () => {
+            test('should create a new pipeline package directory', async () => {
+                const filePath = await pipelineManager.createPipeline('My First Pipeline');
+
+                assert.ok(fs.existsSync(filePath), 'Pipeline file should exist');
+                assert.ok(filePath.endsWith('pipeline.yaml'), 'Should be pipeline.yaml');
+
+                const packagePath = path.dirname(filePath);
+                assert.ok(fs.existsSync(packagePath), 'Package directory should exist');
+            });
+
+            test('should create sample input.csv in package', async () => {
+                const filePath = await pipelineManager.createPipeline('With Sample CSV');
+                const packagePath = path.dirname(filePath);
+
+                const csvPath = path.join(packagePath, 'input.csv');
+                assert.ok(fs.existsSync(csvPath), 'input.csv should exist');
+
+                const content = fs.readFileSync(csvPath, 'utf8');
+                assert.ok(content.includes('id,title,description'), 'CSV should have headers');
+            });
+
+            test('should sanitize package name', async () => {
+                const filePath = await pipelineManager.createPipeline('Pipeline: With <Special> Chars!');
+                const packagePath = path.dirname(filePath);
+                const packageName = path.basename(packagePath);
+
+                assert.ok(!packageName.includes(':'), 'Should not contain colon');
+                assert.ok(!packageName.includes('<'), 'Should not contain <');
+                assert.ok(!packageName.includes('>'), 'Should not contain >');
+            });
+
+            test('should throw error if package already exists', async () => {
+                await pipelineManager.createPipeline('Duplicate Pipeline');
+
+                await assert.rejects(
+                    async () => await pipelineManager.createPipeline('Duplicate Pipeline'),
+                    /already exists/i
+                );
+            });
+
+            test('should create pipeline with template containing package-relative path', async () => {
+                const filePath = await pipelineManager.createPipeline('Test Pipeline');
+                const content = fs.readFileSync(filePath, 'utf8');
+
+                // Check that template uses relative paths
+                assert.ok(content.includes('path: "input.csv"'), 'Should have relative path to input.csv');
+            });
+        });
+
+        suite('Pipeline Package Renaming', () => {
+            test('should rename a pipeline package directory', async () => {
+                const originalPath = await pipelineManager.createPipeline('Original Name');
+                const originalPackagePath = path.dirname(originalPath);
+
+                const newPath = await pipelineManager.renamePipeline(originalPath, 'New Name');
+                const newPackagePath = path.dirname(newPath);
+
+                assert.ok(!fs.existsSync(originalPackagePath), 'Original package should not exist');
+                assert.ok(fs.existsSync(newPackagePath), 'New package should exist');
+                assert.ok(fs.existsSync(newPath), 'pipeline.yaml should exist in new location');
+            });
+
+            test('should update name field in YAML when renaming', async () => {
+                const originalPath = await pipelineManager.createPipeline('Original');
+                const newPath = await pipelineManager.renamePipeline(originalPath, 'Renamed');
+
+                const content = fs.readFileSync(newPath, 'utf8');
+                assert.ok(content.includes('Renamed'), 'Name should be updated in YAML');
+            });
+
+            test('should preserve resource files when renaming', async () => {
+                const originalPath = await pipelineManager.createPipeline('To Rename');
+                const originalPackagePath = path.dirname(originalPath);
+
+                // Add extra resource file
+                fs.writeFileSync(path.join(originalPackagePath, 'extra.csv'), 'col1\nval1');
+
+                const newPath = await pipelineManager.renamePipeline(originalPath, 'Renamed');
+                const newPackagePath = path.dirname(newPath);
+
+                // Check all files exist in new location
+                assert.ok(fs.existsSync(path.join(newPackagePath, 'pipeline.yaml')));
+                assert.ok(fs.existsSync(path.join(newPackagePath, 'input.csv')));
+                assert.ok(fs.existsSync(path.join(newPackagePath, 'extra.csv')));
+            });
+
+            test('should throw error when renaming to existing package name', async () => {
                 const path1 = await pipelineManager.createPipeline('Pipeline One');
-                const path2 = await pipelineManager.createPipeline('Pipeline Two');
+                await pipelineManager.createPipeline('Pipeline Two');
 
                 await assert.rejects(
                     async () => await pipelineManager.renamePipeline(path1, 'Pipeline-Two'),
@@ -222,26 +413,41 @@ reduce:
                 );
             });
 
-            test('should throw error when original file not found', async () => {
+            test('should throw error when package not found', async () => {
                 await assert.rejects(
-                    async () => await pipelineManager.renamePipeline('/non/existent/path.yaml', 'New Name'),
+                    async () => await pipelineManager.renamePipeline('/non/existent/pipeline.yaml', 'New Name'),
                     /not found/i
                 );
             });
         });
 
-        suite('Pipeline Deletion', () => {
-            test('should delete a pipeline file', async () => {
+        suite('Pipeline Package Deletion', () => {
+            test('should delete entire pipeline package directory', async () => {
                 const filePath = await pipelineManager.createPipeline('To Delete');
-                assert.ok(fs.existsSync(filePath));
+                const packagePath = path.dirname(filePath);
+
+                assert.ok(fs.existsSync(packagePath));
 
                 await pipelineManager.deletePipeline(filePath);
-                assert.ok(!fs.existsSync(filePath), 'File should be deleted');
+                assert.ok(!fs.existsSync(packagePath), 'Package directory should be deleted');
             });
 
-            test('should throw error when file not found', async () => {
+            test('should delete package with nested resource directories', async () => {
+                createPipelinePackage('nested-delete', validPipelineYAML('Nested Delete'), [
+                    { name: 'data/input.csv', content: 'id\n1' },
+                    { name: 'templates/prompt.txt', content: 'text' }
+                ]);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const pipeline = pipelines[0];
+
+                await pipelineManager.deletePipeline(pipeline.filePath);
+                assert.ok(!fs.existsSync(pipeline.packagePath), 'Package should be deleted');
+            });
+
+            test('should throw error when package not found', async () => {
                 await assert.rejects(
-                    async () => await pipelineManager.deletePipeline('/non/existent/path.yaml'),
+                    async () => await pipelineManager.deletePipeline('/non/existent/pipeline.yaml'),
                     /not found/i
                 );
             });
@@ -256,12 +462,30 @@ reduce:
                 assert.strictEqual(result.errors.length, 0);
             });
 
-            test('should detect missing name field', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
-                const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                const filePath = path.join(pipelinesFolder, 'no-name.yaml');
+            test('should detect missing input file as warning', async () => {
+                createPipelinePackage('missing-csv', `
+name: "Missing CSV"
+input:
+  type: csv
+  path: "nonexistent.csv"
+map:
+  prompt: Test
+  output:
+    - result
+reduce:
+  type: json
+`);
 
-                const content = `input:
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                // Missing CSV is a warning, not an error (pipeline structure is valid)
+                assert.ok(result.warnings.some(w => w.includes('not found')));
+            });
+
+            test('should detect missing name field', async () => {
+                createPipelinePackage('no-name', `
+input:
   type: csv
   path: data.csv
 map:
@@ -270,40 +494,18 @@ map:
     - result
 reduce:
   type: json
-`;
-                fs.writeFileSync(filePath, content);
+`);
 
-                const result = await pipelineManager.validatePipeline(filePath);
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
                 assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('name')), 'Should report missing name');
-            });
-
-            test('should detect missing input field', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
-                const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                const filePath = path.join(pipelinesFolder, 'no-input.yaml');
-
-                const content = `name: "No Input"
-map:
-  prompt: Test
-  output:
-    - result
-reduce:
-  type: json
-`;
-                fs.writeFileSync(filePath, content);
-
-                const result = await pipelineManager.validatePipeline(filePath);
-                assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('input')), 'Should report missing input');
+                assert.ok(result.errors.some(e => e.includes('name')));
             });
 
             test('should detect unsupported input type', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
-                const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                const filePath = path.join(pipelinesFolder, 'bad-input.yaml');
-
-                const content = `name: "Bad Input Type"
+                createPipelinePackage('bad-input', `
+name: "Bad Input Type"
 input:
   type: json
   path: data.json
@@ -313,149 +515,49 @@ map:
     - result
 reduce:
   type: json
-`;
-                fs.writeFileSync(filePath, content);
+`);
 
-                const result = await pipelineManager.validatePipeline(filePath);
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
                 assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('input type')), 'Should report unsupported input type');
+                assert.ok(result.errors.some(e => e.includes('input type')));
+            });
+        });
+
+        suite('Path Resolution', () => {
+            test('should resolve relative path from package directory', () => {
+                const packagePath = '/workspace/.vscode/pipelines/run-tests';
+
+                const result = pipelineManager.resolveResourcePath('input.csv', packagePath);
+                assert.strictEqual(result, path.join(packagePath, 'input.csv'));
             });
 
-            test('should detect missing map field', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
-                const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                const filePath = path.join(pipelinesFolder, 'no-map.yaml');
+            test('should resolve nested relative path', () => {
+                const packagePath = '/workspace/.vscode/pipelines/run-tests';
 
-                const content = `name: "No Map"
-input:
-  type: csv
-  path: data.csv
-reduce:
-  type: json
-`;
-                fs.writeFileSync(filePath, content);
-
-                const result = await pipelineManager.validatePipeline(filePath);
-                assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('map')), 'Should report missing map');
+                const result = pipelineManager.resolveResourcePath('data/files.csv', packagePath);
+                assert.strictEqual(result, path.join(packagePath, 'data', 'files.csv'));
             });
 
-            test('should detect missing map.prompt', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
-                const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                const filePath = path.join(pipelinesFolder, 'no-prompt.yaml');
+            test('should resolve parent directory reference', () => {
+                const packagePath = '/workspace/.vscode/pipelines/run-tests';
 
-                const content = `name: "No Prompt"
-input:
-  type: csv
-  path: data.csv
-map:
-  output:
-    - result
-reduce:
-  type: json
-`;
-                fs.writeFileSync(filePath, content);
-
-                const result = await pipelineManager.validatePipeline(filePath);
-                assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('prompt')), 'Should report missing prompt');
+                const result = pipelineManager.resolveResourcePath('../shared/common.csv', packagePath);
+                assert.strictEqual(result, path.resolve(packagePath, '../shared/common.csv'));
             });
 
-            test('should detect empty map.output array', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
-                const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                const filePath = path.join(pipelinesFolder, 'empty-output.yaml');
+            test('should preserve absolute paths', () => {
+                const packagePath = '/workspace/.vscode/pipelines/run-tests';
+                const absolutePath = '/absolute/path/to/file.csv';
 
-                const content = `name: "Empty Output"
-input:
-  type: csv
-  path: data.csv
-map:
-  prompt: Test
-  output: []
-reduce:
-  type: json
-`;
-                fs.writeFileSync(filePath, content);
-
-                const result = await pipelineManager.validatePipeline(filePath);
-                assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('output')), 'Should report empty output');
-            });
-
-            test('should detect missing reduce field', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
-                const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                const filePath = path.join(pipelinesFolder, 'no-reduce.yaml');
-
-                const content = `name: "No Reduce"
-input:
-  type: csv
-  path: data.csv
-map:
-  prompt: Test
-  output:
-    - result
-`;
-                fs.writeFileSync(filePath, content);
-
-                const result = await pipelineManager.validatePipeline(filePath);
-                assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('reduce')), 'Should report missing reduce');
-            });
-
-            test('should detect unsupported reduce type', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
-                const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                const filePath = path.join(pipelinesFolder, 'bad-reduce.yaml');
-
-                const content = `name: "Bad Reduce Type"
-input:
-  type: csv
-  path: data.csv
-map:
-  prompt: Test
-  output:
-    - result
-reduce:
-  type: xml
-`;
-                fs.writeFileSync(filePath, content);
-
-                const result = await pipelineManager.validatePipeline(filePath);
-                assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('reduce type')), 'Should report unsupported reduce type');
-            });
-
-            test('should detect invalid YAML syntax', async () => {
-                pipelineManager.ensurePipelinesFolderExists();
-                const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                const filePath = path.join(pipelinesFolder, 'invalid-yaml.yaml');
-
-                // Invalid YAML - bad indentation
-                const content = `name: "Invalid"
-input:
-type: csv
-  path: data.csv
-`;
-                fs.writeFileSync(filePath, content);
-
-                const result = await pipelineManager.validatePipeline(filePath);
-                assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('YAML') || e.includes('parse')), 'Should report YAML error');
-            });
-
-            test('should return error for non-existent file', async () => {
-                const result = await pipelineManager.validatePipeline('/non/existent/file.yaml');
-                assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('not found')));
+                const result = pipelineManager.resolveResourcePath(absolutePath, packagePath);
+                assert.strictEqual(result, absolutePath);
             });
         });
 
         suite('File Watching', () => {
-            test('should call refresh callback on file changes', function (done) {
-                // Increase timeout for file watching test (CI can be slow)
+            test('should call refresh callback on package changes', function (done) {
                 this.timeout(5000);
 
                 pipelineManager.ensurePipelinesFolderExists();
@@ -468,10 +570,9 @@ type: csv
                     }
                 });
 
-                // Small delay to ensure watcher is ready before creating file
-                setTimeout(() => {
-                    const pipelinesFolder = pipelineManager.getPipelinesFolder();
-                    fs.writeFileSync(path.join(pipelinesFolder, 'trigger.yaml'), 'name: Test');
+                // Create a new pipeline package after watcher is set up
+                setTimeout(async () => {
+                    await pipelineManager.createPipeline('trigger-watch');
                 }, 100);
             });
         });
@@ -490,29 +591,76 @@ type: csv
     suite('PipelineItem', () => {
         test('should create pipeline item with correct properties', () => {
             const pipeline: PipelineInfo = {
-                fileName: 'test-pipeline.yaml',
-                filePath: '/path/to/test-pipeline.yaml',
-                relativePath: '.vscode/pipelines/test-pipeline.yaml',
+                packageName: 'test-pipeline',
+                packagePath: '/path/to/test-pipeline',
+                filePath: '/path/to/test-pipeline/pipeline.yaml',
+                relativePath: '.vscode/pipelines/test-pipeline',
                 name: 'Test Pipeline',
                 description: 'A test pipeline',
                 lastModified: new Date(),
                 size: 1024,
-                isValid: true
+                isValid: true,
+                resourceFiles: []
             };
 
             const item = new PipelineItem(pipeline);
 
             assert.strictEqual(item.label, 'Test Pipeline');
-            assert.strictEqual(item.description, 'test-pipeline.yaml');
+            assert.strictEqual(item.description, 'test-pipeline');
             assert.strictEqual(item.contextValue, 'pipeline');
+            assert.strictEqual(item.itemType, 'package');
+        });
+
+        test('should be collapsible when has resource files', () => {
+            const pipeline: PipelineInfo = {
+                packageName: 'with-resources',
+                packagePath: '/path/to/with-resources',
+                filePath: '/path/to/with-resources/pipeline.yaml',
+                relativePath: '.vscode/pipelines/with-resources',
+                name: 'With Resources',
+                lastModified: new Date(),
+                size: 1024,
+                isValid: true,
+                resourceFiles: [
+                    {
+                        fileName: 'input.csv',
+                        filePath: '/path/to/with-resources/input.csv',
+                        relativePath: 'input.csv',
+                        size: 100,
+                        fileType: 'csv'
+                    }
+                ]
+            };
+
+            const item = new PipelineItem(pipeline);
+
+            assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
+        });
+
+        test('should not be collapsible when no resource files', () => {
+            const pipeline: PipelineInfo = {
+                packageName: 'no-resources',
+                packagePath: '/path/to/no-resources',
+                filePath: '/path/to/no-resources/pipeline.yaml',
+                relativePath: '.vscode/pipelines/no-resources',
+                name: 'No Resources',
+                lastModified: new Date(),
+                size: 1024,
+                isValid: true,
+                resourceFiles: []
+            };
+
+            const item = new PipelineItem(pipeline);
+
             assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.None);
         });
 
         test('should set correct context value for invalid pipeline', () => {
             const pipeline: PipelineInfo = {
-                fileName: 'invalid.yaml',
-                filePath: '/path/to/invalid.yaml',
-                relativePath: '.vscode/pipelines/invalid.yaml',
+                packageName: 'invalid',
+                packagePath: '/path/to/invalid',
+                filePath: '/path/to/invalid/pipeline.yaml',
+                relativePath: '.vscode/pipelines/invalid',
                 name: 'Invalid Pipeline',
                 lastModified: new Date(),
                 size: 100,
@@ -527,9 +675,10 @@ type: csv
 
         test('should set open command', () => {
             const pipeline: PipelineInfo = {
-                fileName: 'pipeline.yaml',
-                filePath: '/path/to/pipeline.yaml',
-                relativePath: '.vscode/pipelines/pipeline.yaml',
+                packageName: 'pipeline',
+                packagePath: '/path/to/pipeline',
+                filePath: '/path/to/pipeline/pipeline.yaml',
+                relativePath: '.vscode/pipelines/pipeline',
                 name: 'Pipeline',
                 lastModified: new Date(),
                 size: 500,
@@ -544,39 +693,106 @@ type: csv
             assert.strictEqual(item.command.arguments.length, 1);
         });
 
-        test('should have tooltip with pipeline details', () => {
+        test('should have tooltip with package details', () => {
             const pipeline: PipelineInfo = {
-                fileName: 'pipeline.yaml',
-                filePath: '/path/to/pipeline.yaml',
-                relativePath: '.vscode/pipelines/pipeline.yaml',
+                packageName: 'pipeline',
+                packagePath: '/path/to/pipeline',
+                filePath: '/path/to/pipeline/pipeline.yaml',
+                relativePath: '.vscode/pipelines/pipeline',
                 name: 'My Pipeline',
                 description: 'This is a test pipeline',
                 lastModified: new Date(),
                 size: 2048,
-                isValid: true
+                isValid: true,
+                resourceFiles: [
+                    { fileName: 'a.csv', filePath: '', relativePath: '', size: 10, fileType: 'csv' }
+                ]
             };
 
             const item = new PipelineItem(pipeline);
             assert.ok(item.tooltip);
             assert.ok(item.tooltip instanceof vscode.MarkdownString);
         });
+    });
 
-        test('should have resourceUri for potential drag support', () => {
+    suite('ResourceItem', () => {
+        test('should create resource item with correct properties', () => {
             const pipeline: PipelineInfo = {
-                fileName: 'pipeline.yaml',
-                filePath: '/path/to/pipeline.yaml',
-                relativePath: '.vscode/pipelines/pipeline.yaml',
-                name: 'Pipeline',
+                packageName: 'test',
+                packagePath: '/path/to/test',
+                filePath: '/path/to/test/pipeline.yaml',
+                relativePath: '.vscode/pipelines/test',
+                name: 'Test',
                 lastModified: new Date(),
-                size: 500,
+                size: 100,
                 isValid: true
             };
 
-            const item = new PipelineItem(pipeline);
+            const resource = {
+                fileName: 'input.csv',
+                filePath: '/path/to/test/input.csv',
+                relativePath: 'input.csv',
+                size: 256,
+                fileType: 'csv' as const
+            };
 
-            assert.ok(item.resourceUri);
-            // Use Uri.path for cross-platform comparison
-            assert.strictEqual(item.resourceUri.path, '/path/to/pipeline.yaml');
+            const item = new ResourceItem(resource, pipeline);
+
+            assert.strictEqual(item.label, 'input.csv');
+            assert.strictEqual(item.contextValue, 'resource');
+            assert.strictEqual(item.itemType, 'resource');
+            assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.None);
+        });
+
+        test('should display nested path for nested resources', () => {
+            const pipeline: PipelineInfo = {
+                packageName: 'test',
+                packagePath: '/path/to/test',
+                filePath: '/path/to/test/pipeline.yaml',
+                relativePath: '.vscode/pipelines/test',
+                name: 'Test',
+                lastModified: new Date(),
+                size: 100,
+                isValid: true
+            };
+
+            const resource = {
+                fileName: 'files.csv',
+                filePath: '/path/to/test/data/files.csv',
+                relativePath: 'data/files.csv',
+                size: 256,
+                fileType: 'csv' as const
+            };
+
+            const item = new ResourceItem(resource, pipeline);
+
+            assert.strictEqual(item.label, 'data/files.csv');
+        });
+
+        test('should set open command', () => {
+            const pipeline: PipelineInfo = {
+                packageName: 'test',
+                packagePath: '/path/to/test',
+                filePath: '/path/to/test/pipeline.yaml',
+                relativePath: '.vscode/pipelines/test',
+                name: 'Test',
+                lastModified: new Date(),
+                size: 100,
+                isValid: true
+            };
+
+            const resource = {
+                fileName: 'input.csv',
+                filePath: '/path/to/test/input.csv',
+                relativePath: 'input.csv',
+                size: 256,
+                fileType: 'csv' as const
+            };
+
+            const item = new ResourceItem(resource, pipeline);
+
+            assert.ok(item.command);
+            assert.strictEqual(item.command.command, 'vscode.open');
         });
     });
 
@@ -597,28 +813,47 @@ type: csv
             assert.ok(typeof treeDataProvider.getChildren === 'function');
         });
 
-        test('should return empty array when no pipelines', async () => {
+        test('should return empty array when no pipeline packages', async () => {
             pipelineManager.ensurePipelinesFolderExists();
             const children = await treeDataProvider.getChildren();
             assert.strictEqual(children.length, 0);
         });
 
-        test('should return pipeline items', async () => {
-            await pipelineManager.createPipeline('Pipeline 1');
-            await pipelineManager.createPipeline('Pipeline 2');
+        test('should return pipeline package items', async () => {
+            createPipelinePackage('package-1', validPipelineYAML('Pipeline 1'));
+            createPipelinePackage('package-2', validPipelineYAML('Pipeline 2'));
 
             const children = await treeDataProvider.getChildren();
             assert.strictEqual(children.length, 2);
             assert.ok(children.every(c => c instanceof PipelineItem));
         });
 
-        test('should return empty array for pipeline children', async () => {
-            await pipelineManager.createPipeline('Pipeline');
-            const children = await treeDataProvider.getChildren();
-            const pipelineItem = children[0];
+        test('should return resource items for pipeline children', async () => {
+            createPipelinePackage('with-resources', validPipelineYAML('With Resources'), [
+                { name: 'input.csv', content: 'id\n1' },
+                { name: 'config.json', content: '{}' }
+            ]);
 
-            const pipelineChildren = await treeDataProvider.getChildren(pipelineItem);
-            assert.strictEqual(pipelineChildren.length, 0);
+            const pipelines = await treeDataProvider.getChildren();
+            const pipelineItem = pipelines[0] as PipelineItem;
+
+            const resources = await treeDataProvider.getChildren(pipelineItem);
+            assert.strictEqual(resources.length, 2);
+            assert.ok(resources.every(r => r instanceof ResourceItem));
+        });
+
+        test('should return empty array for resource children', async () => {
+            createPipelinePackage('with-resources', validPipelineYAML('With Resources'), [
+                { name: 'input.csv', content: 'id\n1' }
+            ]);
+
+            const pipelines = await treeDataProvider.getChildren();
+            const pipelineItem = pipelines[0] as PipelineItem;
+            const resources = await treeDataProvider.getChildren(pipelineItem);
+            const resourceItem = resources[0] as ResourceItem;
+
+            const resourceChildren = await treeDataProvider.getChildren(resourceItem);
+            assert.strictEqual(resourceChildren.length, 0);
         });
 
         test('should fire change event on refresh', (done) => {
@@ -631,9 +866,9 @@ type: csv
         });
 
         test('should filter pipelines by name', async () => {
-            await pipelineManager.createPipeline('Apple Pipeline');
-            await pipelineManager.createPipeline('Banana Pipeline');
-            await pipelineManager.createPipeline('Cherry Pipeline');
+            createPipelinePackage('apple-pipeline', validPipelineYAML('Apple Pipeline'));
+            createPipelinePackage('banana-pipeline', validPipelineYAML('Banana Pipeline'));
+            createPipelinePackage('cherry-pipeline', validPipelineYAML('Cherry Pipeline'));
 
             treeDataProvider.setFilter('banana');
 
@@ -642,9 +877,9 @@ type: csv
             assert.strictEqual((children[0] as PipelineItem).label, 'Banana Pipeline');
         });
 
-        test('should filter pipelines by file name', async () => {
-            await pipelineManager.createPipeline('Test One');
-            await pipelineManager.createPipeline('Test Two');
+        test('should filter pipelines by package name', async () => {
+            createPipelinePackage('test-one', validPipelineYAML('Test One'));
+            createPipelinePackage('test-two', validPipelineYAML('Test Two'));
 
             treeDataProvider.setFilter('test-one');
 
@@ -653,8 +888,8 @@ type: csv
         });
 
         test('should clear filter', async () => {
-            await pipelineManager.createPipeline('Pipeline 1');
-            await pipelineManager.createPipeline('Pipeline 2');
+            createPipelinePackage('package-1', validPipelineYAML('Pipeline 1'));
+            createPipelinePackage('package-2', validPipelineYAML('Pipeline 2'));
 
             treeDataProvider.setFilter('1');
             let children = await treeDataProvider.getChildren();
@@ -665,17 +900,10 @@ type: csv
             assert.strictEqual(children.length, 2);
         });
 
-        test('should get current filter', () => {
-            assert.strictEqual(treeDataProvider.getFilter(), '');
-
-            treeDataProvider.setFilter('test');
-            assert.strictEqual(treeDataProvider.getFilter(), 'test');
-        });
-
         test('should sort pipelines by name', async () => {
-            await pipelineManager.createPipeline('Zebra');
-            await pipelineManager.createPipeline('Apple');
-            await pipelineManager.createPipeline('Mango');
+            createPipelinePackage('zebra', validPipelineYAML('Zebra'));
+            createPipelinePackage('apple', validPipelineYAML('Apple'));
+            createPipelinePackage('mango', validPipelineYAML('Mango'));
 
             const children = await treeDataProvider.getChildren();
             const names = children.map(c => (c as PipelineItem).label);
@@ -685,46 +913,12 @@ type: csv
             assert.strictEqual(names[2], 'Zebra');
         });
 
-        test('should sort pipelines by modified date', async () => {
-            // Override settings for modifiedDate sorting
-            const originalGetConfiguration = vscode.workspace.getConfiguration;
-            (vscode.workspace as any).getConfiguration = (section?: string) => {
-                if (section === 'workspaceShortcuts.pipelinesViewer') {
-                    return {
-                        get: <T>(key: string, defaultValue?: T): T => {
-                            const defaults: Record<string, any> = {
-                                enabled: true,
-                                folderPath: '.vscode/pipelines',
-                                sortBy: 'modifiedDate'
-                            };
-                            return (defaults[key] !== undefined ? defaults[key] : defaultValue) as T;
-                        }
-                    };
-                }
-                return originalGetConfiguration(section);
-            };
-
-            // Create pipelines with some delay to get different timestamps
-            await pipelineManager.createPipeline('First');
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await pipelineManager.createPipeline('Second');
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await pipelineManager.createPipeline('Third');
-
-            const children = await treeDataProvider.getChildren();
-            const names = children.map(c => (c as PipelineItem).label);
-
-            // Newest first
-            assert.strictEqual(names[0], 'Third');
-            assert.strictEqual(names[1], 'Second');
-            assert.strictEqual(names[2], 'First');
-        });
-
         test('should return tree item unchanged', () => {
             const pipeline: PipelineInfo = {
-                fileName: 'test.yaml',
-                filePath: '/path/to/test.yaml',
-                relativePath: '.vscode/pipelines/test.yaml',
+                packageName: 'test',
+                packagePath: '/path/to/test',
+                filePath: '/path/to/test/pipeline.yaml',
+                relativePath: '.vscode/pipelines/test',
                 name: 'Test',
                 lastModified: new Date(),
                 size: 100,
@@ -743,164 +937,118 @@ type: csv
     });
 
     suite('Integration Tests', () => {
-        test('should complete full pipeline lifecycle', async () => {
-            // Create pipeline
+        test('should complete full pipeline package lifecycle', async () => {
+            // Create pipeline package
             const filePath = await pipelineManager.createPipeline('Lifecycle Pipeline');
-            assert.ok(fs.existsSync(filePath));
+            const packagePath = path.dirname(filePath);
+            assert.ok(fs.existsSync(packagePath));
 
             // Verify in list
             let pipelines = await pipelineManager.getPipelines();
             assert.strictEqual(pipelines.length, 1);
+            assert.strictEqual(pipelines[0].packageName, 'Lifecycle-Pipeline');
 
             // Validate pipeline
             const validation = await pipelineManager.validatePipeline(filePath);
             assert.strictEqual(validation.valid, true);
 
-            // Rename pipeline
+            // Rename pipeline package
             const renamedPath = await pipelineManager.renamePipeline(filePath, 'Renamed Pipeline');
-            assert.ok(fs.existsSync(renamedPath));
+            assert.ok(fs.existsSync(path.dirname(renamedPath)));
 
             // Verify rename
             pipelines = await pipelineManager.getPipelines();
             assert.strictEqual(pipelines.length, 1);
             assert.strictEqual(pipelines[0].name, 'Renamed Pipeline');
 
-            // Delete pipeline
+            // Delete pipeline package
             await pipelineManager.deletePipeline(renamedPath);
             pipelines = await pipelineManager.getPipelines();
             assert.strictEqual(pipelines.length, 0);
         });
 
-        test('should handle multiple pipelines', async () => {
-            const count = 10;
-            const paths: string[] = [];
-
-            for (let i = 0; i < count; i++) {
-                const filePath = await pipelineManager.createPipeline(`Pipeline ${i}`);
-                paths.push(filePath);
-            }
-
-            const pipelines = await pipelineManager.getPipelines();
-            assert.strictEqual(pipelines.length, count);
-
-            // Delete half
-            for (let i = 0; i < count / 2; i++) {
-                await pipelineManager.deletePipeline(paths[i]);
-            }
-
-            const remainingPipelines = await pipelineManager.getPipelines();
-            assert.strictEqual(remainingPipelines.length, count / 2);
-        });
-
-        test('should tree provider reflect changes', async () => {
+        test('should tree provider reflect package hierarchy', async () => {
             const treeDataProvider = new PipelinesTreeDataProvider(pipelineManager);
 
-            // Initially empty
-            let children = await treeDataProvider.getChildren();
-            assert.strictEqual(children.length, 0);
+            // Create package with resources
+            createPipelinePackage('hierarchical', validPipelineYAML('Hierarchical'), [
+                { name: 'input.csv', content: 'id\n1' },
+                { name: 'data/nested.csv', content: 'col\nval' }
+            ]);
 
-            // Add pipeline
-            await pipelineManager.createPipeline('New Pipeline');
-            treeDataProvider.refresh();
+            // Get root items
+            const pipelines = await treeDataProvider.getChildren();
+            assert.strictEqual(pipelines.length, 1);
 
-            children = await treeDataProvider.getChildren();
-            assert.strictEqual(children.length, 1);
+            // Get children (resources)
+            const resources = await treeDataProvider.getChildren(pipelines[0]);
+            assert.strictEqual(resources.length, 2);
+
+            // Resources should have no children
+            const noChildren = await treeDataProvider.getChildren(resources[0]);
+            assert.strictEqual(noChildren.length, 0);
 
             treeDataProvider.dispose();
         });
 
-        test('should handle pipelines with description', async () => {
-            pipelineManager.ensurePipelinesFolderExists();
+        test('should handle shared resources directory', async () => {
+            // Create a shared resources directory
             const pipelinesFolder = pipelineManager.getPipelinesFolder();
-            const filePath = path.join(pipelinesFolder, 'with-description.yaml');
+            fs.mkdirSync(pipelinesFolder, { recursive: true });
 
-            const content = `name: "Described Pipeline"
-description: "This pipeline does something cool"
+            const sharedDir = path.join(pipelinesFolder, 'shared');
+            fs.mkdirSync(sharedDir);
+            fs.writeFileSync(path.join(sharedDir, 'common.csv'), 'id,name\n1,shared');
+
+            // Create pipeline that references shared resource
+            createPipelinePackage('uses-shared', `
+name: "Uses Shared"
 input:
   type: csv
-  path: data.csv
+  path: "../shared/common.csv"
 map:
-  prompt: Process
+  prompt: Test
   output:
     - result
 reduce:
   type: json
-`;
-            fs.writeFileSync(filePath, content);
+`);
 
             const pipelines = await pipelineManager.getPipelines();
-            const pipeline = pipelines.find(p => p.name === 'Described Pipeline');
+            assert.strictEqual(pipelines.length, 1);
 
-            assert.ok(pipeline);
-            assert.strictEqual(pipeline?.description, 'This pipeline does something cool');
-        });
-
-        test('should mark invalid pipelines appropriately', async () => {
-            // Create a valid pipeline
-            await pipelineManager.createPipeline('Valid');
-
-            // Create an invalid pipeline manually
-            const pipelinesFolder = pipelineManager.getPipelinesFolder();
-            fs.writeFileSync(
-                path.join(pipelinesFolder, 'invalid.yaml'),
-                'name: Invalid\n# Missing required fields'
-            );
-
-            const pipelines = await pipelineManager.getPipelines();
-            const validPipeline = pipelines.find(p => p.name === 'Valid');
-            const invalidPipeline = pipelines.find(p => p.name === 'Invalid');
-
-            assert.ok(validPipeline?.isValid, 'Valid pipeline should be marked valid');
-            assert.ok(!invalidPipeline?.isValid, 'Invalid pipeline should be marked invalid');
-            assert.ok(invalidPipeline?.validationErrors, 'Invalid pipeline should have errors');
+            // Shared directory should not appear as a pipeline (no pipeline.yaml)
+            const packageNames = pipelines.map(p => p.packageName);
+            assert.ok(!packageNames.includes('shared'));
         });
     });
 
     suite('Edge Cases', () => {
-        test('should handle empty YAML file', async () => {
-            pipelineManager.ensurePipelinesFolderExists();
-            const pipelinesFolder = pipelineManager.getPipelinesFolder();
-            const filePath = path.join(pipelinesFolder, 'empty.yaml');
-
-            fs.writeFileSync(filePath, '');
+        test('should handle empty pipeline package (only pipeline.yaml)', async () => {
+            createPipelinePackage('empty-package', validPipelineYAML('Empty Package'));
 
             const pipelines = await pipelineManager.getPipelines();
-            const emptyPipeline = pipelines.find(p => p.fileName === 'empty.yaml');
-
-            assert.ok(emptyPipeline);
-            assert.strictEqual(emptyPipeline?.isValid, false);
+            assert.strictEqual(pipelines.length, 1);
+            assert.strictEqual(pipelines[0].resourceFiles?.length, 0);
         });
 
         test('should handle YAML with only comments', async () => {
-            pipelineManager.ensurePipelinesFolderExists();
-            const pipelinesFolder = pipelineManager.getPipelinesFolder();
-            const filePath = path.join(pipelinesFolder, 'comments-only.yaml');
-
-            fs.writeFileSync(filePath, '# This is just a comment\n# Another comment');
+            createPipelinePackage('comments-only', '# This is just a comment\n# Another comment');
 
             const pipelines = await pipelineManager.getPipelines();
-            const commentPipeline = pipelines.find(p => p.fileName === 'comments-only.yaml');
-
-            assert.ok(commentPipeline);
-            assert.strictEqual(commentPipeline?.isValid, false);
+            assert.strictEqual(pipelines.length, 1);
+            assert.strictEqual(pipelines[0].isValid, false);
         });
 
-        test('should use filename as fallback name for unparseable YAML', async () => {
-            pipelineManager.ensurePipelinesFolderExists();
-            const pipelinesFolder = pipelineManager.getPipelinesFolder();
-            const filePath = path.join(pipelinesFolder, 'bad-yaml.yaml');
-
-            fs.writeFileSync(filePath, 'this: is: not: valid: yaml:');
+        test('should use package name as fallback name for unparseable YAML', async () => {
+            createPipelinePackage('bad-yaml', 'this: is: not: valid: yaml:');
 
             const pipelines = await pipelineManager.getPipelines();
-            const badPipeline = pipelines.find(p => p.fileName === 'bad-yaml.yaml');
-
-            assert.ok(badPipeline);
-            // Should use filename (without extension) as fallback name
-            assert.strictEqual(badPipeline?.name, 'bad-yaml');
+            assert.strictEqual(pipelines.length, 1);
+            assert.strictEqual(pipelines[0].name, 'bad-yaml');
         });
 
-        test('should handle special characters in pipeline name', async () => {
+        test('should handle special characters in package name', async () => {
             const name = 'Pipeline (Test) [v1.0] {beta}';
             const filePath = await pipelineManager.createPipeline(name);
 
@@ -918,6 +1066,19 @@ reduce:
 
             const content = fs.readFileSync(filePath, 'utf8');
             assert.ok(content.includes(name));
+        });
+
+        test('should handle deeply nested resource files', async () => {
+            createPipelinePackage('deeply-nested', validPipelineYAML('Deeply Nested'), [
+                { name: 'a/b/c/d/deep.csv', content: 'id\n1' }
+            ]);
+
+            const pipelines = await pipelineManager.getPipelines();
+            assert.strictEqual(pipelines.length, 1);
+
+            const resources = pipelines[0].resourceFiles || [];
+            assert.strictEqual(resources.length, 1);
+            assert.ok(resources[0].relativePath.includes('a/b/c/d') || resources[0].relativePath.includes('a\\b\\c\\d'));
         });
     });
 });

@@ -5,12 +5,15 @@
  */
 
 /**
- * Information about a pipeline file discovered in the workspace
+ * Information about a pipeline package discovered in the workspace.
+ * A pipeline package is a directory containing pipeline.yaml and resource files.
  */
 export interface PipelineInfo {
-    /** File name (e.g., "code-review.yaml") */
-    fileName: string;
-    /** Absolute path to the file */
+    /** Package name (directory name, e.g., "run-tests") */
+    packageName: string;
+    /** Absolute path to the package directory */
+    packagePath: string;
+    /** Absolute path to the pipeline.yaml file */
     filePath: string;
     /** Path relative to workspace root */
     relativePath: string;
@@ -29,6 +32,25 @@ export interface PipelineInfo {
     isValid: boolean;
     /** Validation error messages if invalid */
     validationErrors?: string[];
+
+    /** Resource files in the package (CSV, templates, etc.) */
+    resourceFiles?: ResourceFileInfo[];
+}
+
+/**
+ * Information about a resource file within a pipeline package
+ */
+export interface ResourceFileInfo {
+    /** File name (e.g., "input.csv") */
+    fileName: string;
+    /** Absolute path to the file */
+    filePath: string;
+    /** Path relative to the package directory */
+    relativePath: string;
+    /** File size in bytes */
+    size: number;
+    /** File type based on extension */
+    fileType: 'csv' | 'json' | 'txt' | 'template' | 'other';
 }
 
 /**
@@ -57,3 +79,8 @@ export interface PipelinesViewerSettings {
     /** How to sort pipelines in the view */
     sortBy: PipelineSortBy;
 }
+
+/**
+ * Tree item type enumeration for UI rendering
+ */
+export type TreeItemType = 'package' | 'resource';

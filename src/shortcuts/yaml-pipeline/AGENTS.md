@@ -2,12 +2,49 @@
 
 This module provides a YAML-based configuration layer on top of the map-reduce framework. It enables easy configuration of AI MapReduce workflows via YAML files.
 
+## Pipeline Package Structure
+
+Pipelines are organized as **packages** - directories containing a `pipeline.yaml` file and related resources:
+
+```
+.vscode/pipelines/
+├── run-tests/                  # Pipeline package
+│   ├── pipeline.yaml           # Standard entry point (required)
+│   ├── input.csv               # Data file referenced in pipeline
+│   └── data/
+│       └── test-cases.csv      # Nested resources supported
+├── analyze-code/               # Another pipeline package
+│   ├── pipeline.yaml
+│   ├── data/
+│   │   ├── files.csv
+│   │   └── rules.csv
+│   └── templates/
+│       └── prompt-template.txt
+└── shared/                     # Shared resources (not a pipeline)
+    ├── common-mappings.csv
+    └── reference-data.json
+```
+
+### Key Concepts
+
+1. **Package Directory**: Each subdirectory in `.vscode/pipelines/` with a `pipeline.yaml` or `pipeline.yml` is a pipeline package
+2. **Entry Point**: Only `pipeline.yaml` or `pipeline.yml` is recognized as the pipeline definition
+3. **Relative Paths**: All paths in `pipeline.yaml` are resolved relative to the package directory
+4. **Shared Resources**: Use `../shared/file.csv` to reference shared resources across packages
+
+### Path Resolution Examples
+
+Given package at `.vscode/pipelines/run-tests/`:
+- `path: "input.csv"` → `.vscode/pipelines/run-tests/input.csv`
+- `path: "data/files.csv"` → `.vscode/pipelines/run-tests/data/files.csv`
+- `path: "../shared/common.csv"` → `.vscode/pipelines/shared/common.csv`
+
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    YAML Pipeline File                           │
-│  (pipeline.yaml - Human-readable configuration)                 │
+│                  Pipeline Package Directory                     │
+│  (package-name/pipeline.yaml + resource files)                  │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               │ Parse
@@ -18,7 +55,7 @@ This module provides a YAML-based configuration layer on top of the map-reduce f
 │  │              parsePipelineYAML                              ││
 │  │  - Parses YAML config                                       ││
 │  │  - Validates structure                                      ││
-│  │  - Resolves file paths                                      ││
+│  │  - Resolves paths relative to package                       ││
 │  └─────────────────────────────────────────────────────────────┘│
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
 │  │  CSV Reader     │  │ Template Engine │  │   Executor      │ │
@@ -43,11 +80,15 @@ Main API for executing YAML-configured pipelines.
 ```typescript
 import { executePipeline, parsePipelineYAML } from '../yaml-pipeline';
 
-// Execute pipeline from YAML file
-const result = await executePipeline({
-    pipelineFile: './pipeline.yaml',
+// Execute pipeline from a package
+// pipelineDirectory is the package folder containing pipeline.yaml
+const pipelineDir = '/workspace/.vscode/pipelines/run-tests';
+const yamlContent = fs.readFileSync(path.join(pipelineDir, 'pipeline.yaml'), 'utf8');
+const config = await parsePipelineYAML(yamlContent);
+
+const result = await executePipeline(config, {
     aiInvoker: copilotInvoker,
-    workspaceRoot: '/path/to/workspace',
+    pipelineDirectory: pipelineDir,  // All paths resolved relative to this
     onProgress: (progress) => {
         console.log(`${progress.phase}: ${progress.percentage}%`);
     }
@@ -55,16 +96,8 @@ const result = await executePipeline({
 
 if (result.success) {
     console.log('Output:', result.output);
-    console.log('Stats:', result.stats);
+    console.log('Stats:', result.executionStats);
 }
-
-// Or parse and execute separately
-const config = await parsePipelineYAML('./pipeline.yaml', workspaceRoot);
-const result = await executePipeline({
-    config,
-    aiInvoker,
-    workspaceRoot
-});
 ```
 
 ### CSV Reader
@@ -157,91 +190,64 @@ const json = extractJSON('Some text {"result": true} more text');
 ### Basic Structure
 
 ```yaml
-# pipeline.yaml
+# pipeline.yaml (in package directory)
 name: "Code Analysis Pipeline"
 description: "Analyze code files for issues"
 
 input:
   type: csv
-  file: ./data.csv
-  options:
-    delimiter: ","
-    hasHeader: true
+  # Path is relative to this pipeline's package directory
+  path: "input.csv"
+  delimiter: ","
 
 map:
-  template: |
+  prompt: |
     Analyze this code:
     File: {{filename}}
     Content: {{content}}
     
     Focus on: {{focus_areas}}
-  
-  systemPrompt: "You are an expert code reviewer."
-  
-  parallelLimit: 5
+    
+    Return JSON with your analysis.
   
   output:
-    format: json
-    schema:
-      type: object
-      properties:
-        issues: { type: array }
-        score: { type: number }
+    - issues
+    - score
+  
+  parallel: 5
 
 reduce:
-  mode: deterministic
-  options:
-    deduplicateBy: file
-    sortBy: severity
+  type: json
 ```
 
-### Advanced Configuration
+### Advanced Configuration with Shared Resources
 
 ```yaml
+# Package: .vscode/pipelines/code-review/pipeline.yaml
 name: "Multi-stage Review Pipeline"
 
 input:
   type: csv
-  file: ./rules.csv
+  # Reference shared rules from sibling directory
+  path: "../shared/rules.csv"
 
 map:
-  template: |
+  prompt: |
     Review {{code_file}} against rule: {{rule_name}}
     
     Rule description: {{rule_description}}
     
     Respond with JSON: { "violations": [...], "passed": boolean }
   
-  systemPrompt: |
-    You are a code compliance checker.
-    Be thorough but avoid false positives.
-  
-  parallelLimit: 3
-  timeout: 60000
-  retryOnFailure: true
-  retryAttempts: 2
-  
   output:
-    format: json
+    - violations
+    - passed
+  
+  parallel: 3
+  model: gpt-4
 
 reduce:
-  mode: hybrid
-  deterministicOptions:
-    deduplicateBy: violation_id
-    sortBy: severity
-    aggregations:
-      - field: violations
-        operation: flatten
-  aiOptions:
-    enabled: true
-    template: |
-      Summarize these findings:
-      {{results}}
-      
-      Provide:
-      1. Executive summary
-      2. Top 5 critical issues
-      3. Recommendations
+  type: json
 ```
 
 ## Usage Examples
@@ -482,22 +488,126 @@ interface PipelineExecutionResult<T> {
 }
 ```
 
+## UI Components
+
+### Pipeline Manager
+
+Manages pipeline packages - discovery, CRUD operations, validation.
+
+```typescript
+import { PipelineManager } from '../yaml-pipeline';
+
+const manager = new PipelineManager(workspaceRoot);
+
+// Discover all pipeline packages
+const pipelines = await manager.getPipelines();
+// Returns PipelineInfo[] with packageName, packagePath, resourceFiles, etc.
+
+// Create new pipeline package
+const filePath = await manager.createPipeline('my-new-pipeline');
+// Creates: .vscode/pipelines/my-new-pipeline/
+//          .vscode/pipelines/my-new-pipeline/pipeline.yaml
+//          .vscode/pipelines/my-new-pipeline/input.csv
+
+// Rename pipeline package
+await manager.renamePipeline(oldFilePath, 'new-name');
+
+// Delete pipeline package (entire directory)
+await manager.deletePipeline(filePath);
+
+// Resolve resource path relative to package
+const csvPath = manager.resolveResourcePath('data/input.csv', packagePath);
+```
+
+### Tree View Components
+
+```typescript
+import {
+    PipelinesTreeDataProvider,
+    PipelineItem,
+    ResourceItem
+} from '../yaml-pipeline';
+
+// Tree data provider supports hierarchical display:
+// - PipelineItem: Represents a pipeline package (collapsible)
+// - ResourceItem: Represents resource files within a package
+
+const provider = new PipelinesTreeDataProvider(pipelineManager);
+
+// Get root items (pipeline packages)
+const packages = await provider.getChildren();
+
+// Get resources for a package
+const resources = await provider.getChildren(pipelineItem);
+```
+
+### PipelineInfo Type
+
+```typescript
+interface PipelineInfo {
+    /** Package name (directory name) */
+    packageName: string;
+    /** Absolute path to package directory */
+    packagePath: string;
+    /** Absolute path to pipeline.yaml */
+    filePath: string;
+    /** Pipeline name from YAML */
+    name: string;
+    /** Description from YAML */
+    description?: string;
+    /** Is pipeline valid */
+    isValid: boolean;
+    /** Validation errors if invalid */
+    validationErrors?: string[];
+    /** Resource files in package */
+    resourceFiles?: ResourceFileInfo[];
+}
+```
+
 ## Best Practices
 
-1. **Validate templates**: Use `extractVariables` to ensure CSV has required columns.
+1. **Use package structure**: Organize pipelines as packages with `pipeline.yaml` entry point.
 
-2. **Set reasonable limits**: Use `parallelLimit` to avoid API rate limits.
+2. **Keep resources together**: Store CSV files and templates in the same package directory.
 
-3. **Handle failures**: Enable `retryOnFailure` for resilience.
+3. **Use relative paths**: Reference files relative to the package directory.
 
-4. **Use appropriate reduce**: 
-   - `deterministic` for aggregation
-   - `ai` for synthesis
-   - `hybrid` for both
+4. **Shared resources**: Place common files in a `shared/` directory and reference with `../shared/`.
 
-5. **Preview CSV data**: Use `getCSVPreview` before running pipeline.
+5. **Validate templates**: Use `extractVariables` to ensure CSV has required columns.
 
-6. **Test incrementally**: Start with small datasets.
+6. **Set reasonable limits**: Use `parallel` to avoid API rate limits.
+
+7. **Preview CSV data**: Use `getCSVPreview` before running pipeline.
+
+8. **Test incrementally**: Start with small datasets.
+
+## Migration from Flat Structure
+
+If you have existing flat `.yaml` files in `.vscode/pipelines/`:
+
+1. Create a directory for each pipeline (e.g., `my-pipeline/`)
+2. Move the `.yaml` file into the directory and rename to `pipeline.yaml`
+3. Update CSV paths to be relative to the new package directory
+4. Move related CSV files into the package directory
+
+**Before:**
+```
+.vscode/pipelines/
+├── my-pipeline.yaml      # path: "../data/input.csv"
+└── other-pipeline.yaml
+```
+
+**After:**
+```
+.vscode/pipelines/
+├── my-pipeline/
+│   ├── pipeline.yaml     # path: "input.csv"
+│   └── input.csv
+└── other-pipeline/
+    ├── pipeline.yaml
+    └── data.csv
+```
 
 ## See Also
 

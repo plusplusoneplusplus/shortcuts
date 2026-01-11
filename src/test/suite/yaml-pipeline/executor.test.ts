@@ -81,7 +81,7 @@ suite('Pipeline Executor', () => {
 
             const result = await executePipeline(config, {
                 aiInvoker: createMockAIInvoker(responses),
-                workingDirectory: tempDir
+                pipelineDirectory: tempDir
             });
 
             assert.strictEqual(result.success, true);
@@ -107,7 +107,7 @@ suite('Pipeline Executor', () => {
 
             const result = await executePipeline(config, {
                 aiInvoker: createMockAIInvoker(new Map()),
-                workingDirectory: tempDir
+                pipelineDirectory: tempDir
             });
 
             assert.strictEqual(result.success, true);
@@ -133,7 +133,7 @@ suite('Pipeline Executor', () => {
 
             const result = await executePipeline(config, {
                 aiInvoker,
-                workingDirectory: tempDir
+                pipelineDirectory: tempDir
             });
 
             assert.strictEqual(result.success, false); // Has failures
@@ -162,7 +162,7 @@ suite('Pipeline Executor', () => {
 
             const result = await executePipeline(config, {
                 aiInvoker,
-                workingDirectory: tempDir
+                pipelineDirectory: tempDir
             });
 
             assert.strictEqual(result.success, false);
@@ -203,7 +203,7 @@ suite('Pipeline Executor', () => {
 
             await executePipeline(config, {
                 aiInvoker,
-                workingDirectory: tempDir
+                pipelineDirectory: tempDir
             });
 
             assert.ok(maxConcurrent <= 2, `Max concurrent was ${maxConcurrent}, expected <= 2`);
@@ -223,7 +223,7 @@ suite('Pipeline Executor', () => {
 
             await executePipeline(config, {
                 aiInvoker: createMockAIInvoker(new Map()),
-                workingDirectory: tempDir,
+                pipelineDirectory: tempDir,
                 onProgress: (progress) => progressUpdates.push({ ...progress })
             });
 
@@ -255,7 +255,7 @@ suite('Pipeline Executor', () => {
 
             const result = await executePipeline(config, {
                 aiInvoker,
-                workingDirectory: tempDir
+                pipelineDirectory: tempDir
             });
 
             assert.strictEqual(result.success, true);
@@ -280,7 +280,7 @@ suite('Pipeline Executor', () => {
 
             const result = await executePipeline(config, {
                 aiInvoker: createMockAIInvoker(new Map([['Test 100', '{"result": "ok"}']])),
-                workingDirectory: tempDir
+                pipelineDirectory: tempDir
             });
 
             assert.strictEqual(result.success, true);
@@ -301,7 +301,7 @@ suite('Pipeline Executor', () => {
 
             const result = await executePipeline(config, {
                 aiInvoker: createMockAIInvoker(new Map()),
-                workingDirectory: tempDir
+                pipelineDirectory: tempDir
             });
 
             assert.strictEqual(result.executionStats.totalItems, 3);
@@ -310,6 +310,89 @@ suite('Pipeline Executor', () => {
             assert.ok(result.totalTimeMs >= 0);
             assert.ok(result.executionStats.mapPhaseTimeMs >= 0);
             assert.ok(result.executionStats.reducePhaseTimeMs >= 0);
+        });
+
+        test('resolves CSV path relative to pipeline directory', async () => {
+            // Create a subdirectory structure mimicking a pipeline package
+            const packageDir = path.join(tempDir, 'my-pipeline');
+            await fs.promises.mkdir(packageDir, { recursive: true });
+
+            // Create CSV in the package directory
+            const csvContent = 'id,title\n1,PackageItem';
+            await fs.promises.writeFile(path.join(packageDir, 'input.csv'), csvContent);
+
+            const config: PipelineConfig = {
+                name: 'Package Path Test',
+                input: { type: 'csv', path: 'input.csv' }, // Relative to package
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map([['PackageItem', '{"result": "ok"}']])),
+                pipelineDirectory: packageDir // Pass package directory, not workspace root
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 1);
+            assert.strictEqual(result.output.results[0].item.title, 'PackageItem');
+        });
+
+        test('resolves nested CSV path relative to pipeline directory', async () => {
+            // Create package with nested data directory
+            const packageDir = path.join(tempDir, 'nested-package');
+            const dataDir = path.join(packageDir, 'data');
+            await fs.promises.mkdir(dataDir, { recursive: true });
+
+            // Create CSV in nested directory
+            const csvContent = 'id,title\n1,NestedItem';
+            await fs.promises.writeFile(path.join(dataDir, 'input.csv'), csvContent);
+
+            const config: PipelineConfig = {
+                name: 'Nested Path Test',
+                input: { type: 'csv', path: 'data/input.csv' }, // Nested relative path
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map([['NestedItem', '{"result": "ok"}']])),
+                pipelineDirectory: packageDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results[0].item.title, 'NestedItem');
+        });
+
+        test('resolves shared CSV path via parent directory reference', async () => {
+            // Create shared directory alongside package
+            const pipelinesDir = path.join(tempDir, 'pipelines');
+            const sharedDir = path.join(pipelinesDir, 'shared');
+            const packageDir = path.join(pipelinesDir, 'my-package');
+            await fs.promises.mkdir(sharedDir, { recursive: true });
+            await fs.promises.mkdir(packageDir, { recursive: true });
+
+            // Create CSV in shared directory
+            const csvContent = 'id,title\n1,SharedItem';
+            await fs.promises.writeFile(path.join(sharedDir, 'common.csv'), csvContent);
+
+            const config: PipelineConfig = {
+                name: 'Shared Path Test',
+                input: { type: 'csv', path: '../shared/common.csv' }, // Parent directory reference
+                map: { prompt: '{{title}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map([['SharedItem', '{"result": "ok"}']])),
+                pipelineDirectory: packageDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results[0].item.title, 'SharedItem');
         });
     });
 
@@ -324,7 +407,7 @@ suite('Pipeline Executor', () => {
             await assert.rejects(
                 async () => executePipeline(config, {
                     aiInvoker: createMockAIInvoker(new Map()),
-                    workingDirectory: tempDir
+                    pipelineDirectory: tempDir
                 }),
                 PipelineExecutionError
             );
@@ -341,7 +424,7 @@ suite('Pipeline Executor', () => {
             await assert.rejects(
                 async () => executePipeline(config, {
                     aiInvoker: createMockAIInvoker(new Map()),
-                    workingDirectory: tempDir
+                    pipelineDirectory: tempDir
                 }),
                 /Unsupported input type/
             );
@@ -358,7 +441,7 @@ suite('Pipeline Executor', () => {
             await assert.rejects(
                 async () => executePipeline(config, {
                     aiInvoker: createMockAIInvoker(new Map()),
-                    workingDirectory: tempDir
+                    pipelineDirectory: tempDir
                 }),
                 /missing.*path/i
             );
@@ -375,7 +458,7 @@ suite('Pipeline Executor', () => {
             await assert.rejects(
                 async () => executePipeline(config, {
                     aiInvoker: createMockAIInvoker(new Map()),
-                    workingDirectory: tempDir
+                    pipelineDirectory: tempDir
                 }),
                 /non-empty array/
             );
@@ -392,7 +475,7 @@ suite('Pipeline Executor', () => {
             await assert.rejects(
                 async () => executePipeline(config, {
                     aiInvoker: createMockAIInvoker(new Map()),
-                    workingDirectory: tempDir
+                    pipelineDirectory: tempDir
                 }),
                 /Unsupported reduce type/
             );
@@ -411,7 +494,7 @@ suite('Pipeline Executor', () => {
             await assert.rejects(
                 async () => executePipeline(config, {
                     aiInvoker: createMockAIInvoker(new Map()),
-                    workingDirectory: tempDir
+                    pipelineDirectory: tempDir
                 }),
                 /missing required columns.*title.*description/i
             );
@@ -428,7 +511,7 @@ suite('Pipeline Executor', () => {
             await assert.rejects(
                 async () => executePipeline(config, {
                     aiInvoker: createMockAIInvoker(new Map()),
-                    workingDirectory: tempDir
+                    pipelineDirectory: tempDir
                 }),
                 PipelineExecutionError
             );
@@ -559,7 +642,7 @@ and note if more info is needed.`,
 
             const result = await executePipeline(config, {
                 aiInvoker: createMockAIInvoker(responses),
-                workingDirectory: tempDir
+                pipelineDirectory: tempDir
             });
 
             assert.strictEqual(result.success, true);

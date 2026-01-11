@@ -1,32 +1,41 @@
 /**
  * Pipeline Item
  *
- * Tree item representing a pipeline in the Pipelines Viewer.
+ * Tree items representing pipelines and resources in the Pipelines Viewer.
  */
 
 import * as vscode from 'vscode';
-import { PipelineInfo } from './types';
+import { PipelineInfo, ResourceFileInfo } from './types';
 
 /**
- * Tree item representing a pipeline in the Pipelines Viewer
+ * Tree item representing a pipeline package in the Pipelines Viewer.
+ * A package is collapsible and contains the pipeline definition and resource files.
  */
 export class PipelineItem extends vscode.TreeItem {
     public readonly contextValue: string;
     public readonly pipeline: PipelineInfo;
+    public readonly itemType: 'package' = 'package';
 
     constructor(pipeline: PipelineInfo) {
-        super(pipeline.name, vscode.TreeItemCollapsibleState.None);
+        // Make collapsible if there are resource files
+        const hasResources = pipeline.resourceFiles && pipeline.resourceFiles.length > 0;
+        super(
+            pipeline.name,
+            hasResources
+                ? vscode.TreeItemCollapsibleState.Collapsed
+                : vscode.TreeItemCollapsibleState.None
+        );
 
         this.pipeline = pipeline;
         this.contextValue = pipeline.isValid ? 'pipeline' : 'pipeline_invalid';
-        this.description = pipeline.fileName;
+        this.description = pipeline.packageName;
         this.tooltip = this.buildTooltip(pipeline);
         this.iconPath = this.getIconPath(pipeline);
 
         // Set resourceUri for potential drag-and-drop support
         this.resourceUri = vscode.Uri.file(pipeline.filePath);
 
-        // Click to open the YAML file
+        // Click to open the pipeline.yaml file
         this.command = {
             command: 'vscode.open',
             title: 'Open Pipeline',
@@ -35,25 +44,29 @@ export class PipelineItem extends vscode.TreeItem {
     }
 
     /**
-     * Build a rich tooltip for the pipeline
+     * Build a rich tooltip for the pipeline package
      */
     private buildTooltip(pipeline: PipelineInfo): vscode.MarkdownString {
         const tooltip = new vscode.MarkdownString();
         tooltip.isTrusted = true;
 
         // Title
-        tooltip.appendMarkdown(`### 📋 ${pipeline.name}\n\n`);
+        tooltip.appendMarkdown(`### 📦 ${pipeline.name}\n\n`);
 
         // Description
         if (pipeline.description) {
             tooltip.appendMarkdown(`${pipeline.description}\n\n`);
         }
 
-        // File info
-        tooltip.appendMarkdown(`**File:** \`${pipeline.fileName}\`\n\n`);
+        // Package info
+        tooltip.appendMarkdown(`**Package:** \`${pipeline.packageName}\`\n\n`);
         tooltip.appendMarkdown(`**Path:** \`${pipeline.relativePath}\`\n\n`);
         tooltip.appendMarkdown(`**Modified:** ${this.formatModifiedTime(pipeline.lastModified)}\n\n`);
-        tooltip.appendMarkdown(`**Size:** ${this.formatFileSize(pipeline.size)}\n\n`);
+
+        // Resource files count
+        if (pipeline.resourceFiles && pipeline.resourceFiles.length > 0) {
+            tooltip.appendMarkdown(`**Resources:** ${pipeline.resourceFiles.length} file(s)\n\n`);
+        }
 
         // Validation status
         if (pipeline.isValid) {
@@ -72,13 +85,14 @@ export class PipelineItem extends vscode.TreeItem {
     }
 
     /**
-     * Get the icon for the pipeline item
+     * Get the icon for the pipeline package
      */
     private getIconPath(pipeline: PipelineInfo): vscode.ThemeIcon {
         if (!pipeline.isValid) {
             return new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
         }
-        return new vscode.ThemeIcon('symbol-method');
+        // Use folder icon with a color to indicate it's a pipeline package
+        return new vscode.ThemeIcon('package', new vscode.ThemeColor('charts.blue'));
     }
 
     /**
@@ -123,3 +137,82 @@ export class PipelineItem extends vscode.TreeItem {
         }
     }
 }
+
+/**
+ * Tree item representing a resource file within a pipeline package
+ */
+export class ResourceItem extends vscode.TreeItem {
+    public readonly contextValue: string = 'resource';
+    public readonly resource: ResourceFileInfo;
+    public readonly parentPipeline: PipelineInfo;
+    public readonly itemType: 'resource' = 'resource';
+
+    constructor(resource: ResourceFileInfo, parentPipeline: PipelineInfo) {
+        super(resource.relativePath, vscode.TreeItemCollapsibleState.None);
+
+        this.resource = resource;
+        this.parentPipeline = parentPipeline;
+        this.description = this.formatFileSize(resource.size);
+        this.tooltip = this.buildTooltip(resource);
+        this.iconPath = this.getIconPath(resource);
+
+        // Set resourceUri for file icon and drag-drop support
+        this.resourceUri = vscode.Uri.file(resource.filePath);
+
+        // Click to open the file
+        this.command = {
+            command: 'vscode.open',
+            title: 'Open File',
+            arguments: [vscode.Uri.file(resource.filePath)]
+        };
+    }
+
+    /**
+     * Build tooltip for resource file
+     */
+    private buildTooltip(resource: ResourceFileInfo): vscode.MarkdownString {
+        const tooltip = new vscode.MarkdownString();
+        tooltip.isTrusted = true;
+
+        tooltip.appendMarkdown(`### 📄 ${resource.fileName}\n\n`);
+        tooltip.appendMarkdown(`**Path:** \`${resource.relativePath}\`\n\n`);
+        tooltip.appendMarkdown(`**Size:** ${this.formatFileSize(resource.size)}\n\n`);
+        tooltip.appendMarkdown(`**Type:** ${resource.fileType}\n`);
+
+        return tooltip;
+    }
+
+    /**
+     * Get icon for resource file based on type
+     */
+    private getIconPath(resource: ResourceFileInfo): vscode.ThemeIcon {
+        switch (resource.fileType) {
+            case 'csv':
+                return new vscode.ThemeIcon('table');
+            case 'json':
+                return new vscode.ThemeIcon('json');
+            case 'txt':
+                return new vscode.ThemeIcon('file-text');
+            case 'template':
+                return new vscode.ThemeIcon('symbol-snippet');
+            default:
+                return new vscode.ThemeIcon('file');
+        }
+    }
+
+    /**
+     * Format file size for display
+     */
+    private formatFileSize(bytes: number): string {
+        if (bytes < 1024) {
+            return `${bytes} B`;
+        } else if (bytes < 1024 * 1024) {
+            return `${(bytes / 1024).toFixed(1)} KB`;
+        } else {
+            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        }
+    }
+}
+
+/** Union type for all tree item types */
+export type PipelineTreeItem = PipelineItem | ResourceItem;

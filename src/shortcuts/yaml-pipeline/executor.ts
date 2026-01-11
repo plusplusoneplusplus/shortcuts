@@ -52,8 +52,11 @@ export class PipelineExecutionError extends Error {
 export interface ExecutePipelineOptions {
     /** AI invoker function */
     aiInvoker: AIInvoker;
-    /** Working directory for resolving relative paths */
-    workingDirectory: string;
+    /** 
+     * Pipeline directory for resolving relative paths (package directory where pipeline.yaml lives).
+     * All CSV and resource paths in the pipeline config are resolved relative to this directory.
+     */
+    pipelineDirectory: string;
     /** Optional process tracker for AI process manager integration */
     processTracker?: ProcessTracker;
     /** Progress callback */
@@ -80,9 +83,10 @@ export async function executePipeline(
     validatePipelineConfig(config);
 
     // 1. Input Phase: Read CSV
+    // CSV paths are resolved relative to the pipeline package directory
     let items: PromptItem[];
     try {
-        const csvPath = resolveCSVPath(config.input.path, options.workingDirectory);
+        const csvPath = resolveCSVPath(config.input.path, options.pipelineDirectory);
         const csvResult = await readCSVFile(csvPath, {
             delimiter: config.input.delimiter
         });

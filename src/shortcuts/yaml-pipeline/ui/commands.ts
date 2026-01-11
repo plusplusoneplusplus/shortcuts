@@ -7,13 +7,13 @@
 import * as vscode from 'vscode';
 import { PipelineManager } from './pipeline-manager';
 import { PipelinesTreeDataProvider } from './tree-data-provider';
-import { PipelineItem } from './pipeline-item';
+import { PipelineItem, PipelineTreeItem } from './pipeline-item';
 
 /**
  * Command handlers for the Pipelines Viewer
  */
 export class PipelineCommands {
-    private pipelinesTreeView?: vscode.TreeView<PipelineItem>;
+    private pipelinesTreeView?: vscode.TreeView<PipelineTreeItem>;
 
     constructor(
         private pipelineManager: PipelineManager,
@@ -24,7 +24,7 @@ export class PipelineCommands {
     /**
      * Set the tree view for multi-selection support
      */
-    setTreeView(treeView: vscode.TreeView<PipelineItem>): void {
+    setTreeView(treeView: vscode.TreeView<PipelineTreeItem>): void {
         this.pipelinesTreeView = treeView;
     }
 
@@ -49,11 +49,12 @@ export class PipelineCommands {
     }
 
     /**
-     * Create a new pipeline
+     * Create a new pipeline package.
+     * Creates a package directory with pipeline.yaml and sample input.csv.
      */
     private async createPipeline(): Promise<void> {
         const name = await vscode.window.showInputBox({
-            prompt: 'Enter pipeline name',
+            prompt: 'Enter pipeline package name',
             placeHolder: 'my-pipeline',
             validateInput: (value) => {
                 if (!value || value.trim().length === 0) {
@@ -74,13 +75,15 @@ export class PipelineCommands {
             const filePath = await this.pipelineManager.createPipeline(name.trim());
             this.treeDataProvider.refresh();
 
-            // Open the new pipeline file
+            // Open the new pipeline.yaml file
             await vscode.commands.executeCommand(
                 'vscode.open',
                 vscode.Uri.file(filePath)
             );
 
-            vscode.window.showInformationMessage(`Pipeline "${name}" created`);
+            vscode.window.showInformationMessage(
+                `Pipeline package "${name}" created with pipeline.yaml and input.csv`
+            );
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to create pipeline: ${err.message}`);
@@ -137,16 +140,16 @@ export class PipelineCommands {
     }
 
     /**
-     * Rename a pipeline
+     * Rename a pipeline package
      */
     private async renamePipeline(item: PipelineItem): Promise<void> {
         if (!item?.pipeline) {
             return;
         }
 
-        const currentName = item.pipeline.name;
+        const currentName = item.pipeline.packageName;
         const newName = await vscode.window.showInputBox({
-            prompt: 'Enter new pipeline name',
+            prompt: 'Enter new pipeline package name',
             value: currentName,
             validateInput: (value) => {
                 if (!value || value.trim().length === 0) {
@@ -166,7 +169,7 @@ export class PipelineCommands {
         try {
             await this.pipelineManager.renamePipeline(item.pipeline.filePath, newName.trim());
             this.treeDataProvider.refresh();
-            vscode.window.showInformationMessage(`Pipeline renamed to "${newName}"`);
+            vscode.window.showInformationMessage(`Pipeline package renamed to "${newName}"`);
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to rename pipeline: ${err.message}`);
@@ -174,7 +177,7 @@ export class PipelineCommands {
     }
 
     /**
-     * Delete a pipeline
+     * Delete a pipeline package and all its contents
      */
     private async deletePipeline(item: PipelineItem): Promise<void> {
         if (!item?.pipeline) {
@@ -182,9 +185,14 @@ export class PipelineCommands {
         }
 
         const pipelineName = item.pipeline.name;
+        const resourceCount = item.pipeline.resourceFiles?.length || 0;
+        const detail = resourceCount > 0
+            ? `This will delete the package directory and ${resourceCount} resource file(s).`
+            : 'This will delete the package directory.';
+
         const confirm = await vscode.window.showWarningMessage(
             `Are you sure you want to delete "${pipelineName}"?`,
-            { modal: true },
+            { modal: true, detail },
             'Delete'
         );
 
@@ -195,7 +203,7 @@ export class PipelineCommands {
         try {
             await this.pipelineManager.deletePipeline(item.pipeline.filePath);
             this.treeDataProvider.refresh();
-            vscode.window.showInformationMessage(`Pipeline "${pipelineName}" deleted`);
+            vscode.window.showInformationMessage(`Pipeline package "${pipelineName}" deleted`);
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to delete pipeline: ${err.message}`);
