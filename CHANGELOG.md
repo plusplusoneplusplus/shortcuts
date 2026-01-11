@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-01-11
+
+### Added
+- YAML Pipeline Framework for map-reduce style AI workflows
+
+### Changed
+- Multiple improvements and bug fixes
+
 ## [2.16.5] - 2026-01-07
 
 ### Fixed
