@@ -13,7 +13,7 @@
  */
 
 import { ChildProcess } from 'child_process';
-import { AIProcessManager, AIProcess, GenericProcessMetadata, GenericGroupMetadata } from '../ai-service';
+import { AIProcess, GenericProcessMetadata, GenericGroupMetadata, IAIProcessManager } from '../ai-service';
 import type { RuleReviewResult, ReviewFinding as MRReviewFinding } from '../map-reduce';
 import { CodeReviewMetadata, DiffStats, ReviewFinding, ReviewSummary } from './types';
 
@@ -174,7 +174,7 @@ export class CodeReviewProcessAdapter implements ICodeReviewProcessAdapter {
     private readonly groupIds: Map<string, string> = new Map(); // Maps group ID to internal tracking
 
     constructor(
-        private readonly processManager: AIProcessManager,
+        private readonly processManager: IAIProcessManager,
         private readonly useGenericApi: boolean = false // Toggle for migration
     ) {}
 

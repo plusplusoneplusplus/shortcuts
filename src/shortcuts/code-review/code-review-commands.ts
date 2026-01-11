@@ -9,7 +9,7 @@
  */
 
 import * as vscode from 'vscode';
-import { AIProcessManager } from '../ai-service/ai-process-manager';
+import { IAIProcessManager } from '../ai-service/types';
 import { copyToClipboard, getAIToolSetting, invokeCopilotCLI } from '../ai-service/copilot-cli-invoker';
 import { GitCommitItem } from '../git/git-commit-item';
 import { GitLogService } from '../git/git-log-service';
@@ -157,13 +157,13 @@ function convertToAggregatedResult(
  * Registers all code review commands
  * @param context Extension context
  * @param gitLogService Git log service instance
- * @param processManager AI process manager instance
+ * @param processManager AI process manager instance (IAIProcessManager for testability)
  * @returns Array of disposables
  */
 export function registerCodeReviewCommands(
     context: vscode.ExtensionContext,
     gitLogService: GitLogService,
-    processManager: AIProcessManager
+    processManager: IAIProcessManager
 ): vscode.Disposable[] {
     const disposables: vscode.Disposable[] = [];
     const codeReviewService = new CodeReviewService();
