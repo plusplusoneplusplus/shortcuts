@@ -15,6 +15,7 @@ import {
     showPipelineResults,
     VSCodePipelineResult
 } from './pipeline-executor-service';
+import { PipelineResultViewerProvider } from './result-viewer-provider';
 
 /**
  * Command handlers for the Pipelines Viewer
@@ -23,6 +24,7 @@ export class PipelineCommands {
     private pipelinesTreeView?: vscode.TreeView<PipelineTreeItem>;
     private aiProcessManager?: IAIProcessManager;
     private workspaceRoot: string;
+    private resultViewerProvider?: PipelineResultViewerProvider;
 
     constructor(
         private pipelineManager: PipelineManager,
@@ -31,6 +33,9 @@ export class PipelineCommands {
     ) {
         // Get workspace root for pipeline execution
         this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        
+        // Initialize result viewer provider
+        this.resultViewerProvider = new PipelineResultViewerProvider(context.extensionUri);
     }
 
     /**
@@ -181,7 +186,17 @@ export class PipelineCommands {
                 );
 
                 if (action === 'View Results') {
-                    await showPipelineResults(executionResult.result, item.pipeline.name);
+                    // Use the enhanced result viewer with individual nodes
+                    if (this.resultViewerProvider) {
+                        await this.resultViewerProvider.showResults(
+                            executionResult.result,
+                            item.pipeline.name,
+                            item.pipeline.packageName
+                        );
+                    } else {
+                        // Fallback to basic viewer
+                        await showPipelineResults(executionResult.result, item.pipeline.name);
+                    }
                 } else if (action === 'Copy Results') {
                     const { copyPipelineResults } = await import('./pipeline-executor-service');
                     await copyPipelineResults(executionResult.result);

@@ -105,3 +105,26 @@ export type {
     PipelineSortBy,
     TreeItemType
 } from './ui';
+
+// Result Viewer (enhanced pipeline result display)
+export {
+    PipelineResultViewerProvider,
+    registerPipelineResultViewer,
+    PIPELINE_RESULTS_EXPORT_SCHEME,
+    getResultViewerContent,
+    getItemDetailContent,
+    mapResultToNode,
+    getItemPreview,
+    formatDuration as formatResultDuration,
+    getStatusIcon,
+    getStatusClass
+} from './ui';
+
+export type {
+    PipelineResultViewData,
+    PipelineItemResultNode,
+    ResultViewerMessage,
+    ResultViewerMessageType,
+    ResultViewerFilterState,
+    ResultNodeType
+} from './ui';

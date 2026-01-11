@@ -490,6 +490,53 @@ interface PipelineExecutionResult<T> {
 
 ## UI Components
 
+### Result Viewers
+
+#### Enhanced Result Viewer (Current)
+
+The primary result viewer providing detailed individual node inspection.
+
+```typescript
+import { PipelineResultViewerProvider } from '../yaml-pipeline/ui/result-viewer-provider';
+
+const provider = new PipelineResultViewerProvider(context.extensionUri);
+
+// Show results with detailed node view
+await provider.showResults(
+    executionResult.result,
+    pipelineName,
+    packageName
+);
+```
+
+**Features:**
+- Individual item nodes with input/output display
+- Success/failure status per item
+- Execution time tracking per item
+- Interactive webview with filtering (all/success/failed)
+- Export capabilities (JSON/CSV/Markdown)
+- Raw AI response inspection for debugging
+
+**When to use:**
+- Default for all pipeline executions
+- When users need to inspect individual items
+- For debugging and quality assurance
+
+#### Basic Result Viewer (Deprecated - Fallback Only)
+
+Legacy viewer showing aggregated output only. Located in `pipeline-executor-service.ts`.
+
+```typescript
+import { showPipelineResults } from '../yaml-pipeline/ui/pipeline-executor-service';
+
+// Only used as fallback if enhanced viewer fails
+await showPipelineResults(result, pipelineName);
+```
+
+**Status:** ⚠️ Deprecated - kept as fallback only, no longer in active use.
+
+**Reason:** Basic viewer lacks individual item inspection and detailed result breakdown. The enhanced viewer provides superior user experience with node-level details and interactive features.
+
 ### Pipeline Manager
 
 Manages pipeline packages - discovery, CRUD operations, validation.

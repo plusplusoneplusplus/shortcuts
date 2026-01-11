@@ -88,8 +88,9 @@ suite('Pipelines Viewer Tests (Package Structure)', () => {
     function validPipelineYAML(name: string, description?: string): string {
         return `name: "${name}"
 ${description ? `description: "${description}"\n` : ''}input:
-  type: csv
-  path: "input.csv"
+  from:
+    type: csv
+    path: "input.csv"
 map:
   prompt: |
     Process: {{title}}
@@ -466,8 +467,9 @@ reduce:
                 createPipelinePackage('missing-csv', `
 name: "Missing CSV"
 input:
-  type: csv
-  path: "nonexistent.csv"
+  from:
+    type: csv
+    path: "nonexistent.csv"
 map:
   prompt: Test
   output:
@@ -486,8 +488,9 @@ reduce:
             test('should detect missing name field', async () => {
                 createPipelinePackage('no-name', `
 input:
-  type: csv
-  path: data.csv
+  from:
+    type: csv
+    path: data.csv
 map:
   prompt: Test
   output:
@@ -507,8 +510,9 @@ reduce:
                 createPipelinePackage('bad-input', `
 name: "Bad Input Type"
 input:
-  type: json
-  path: data.json
+  from:
+    type: json
+    path: data.json
 map:
   prompt: Test
   output:
@@ -521,7 +525,73 @@ reduce:
                 const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
 
                 assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('input type')));
+                assert.ok(result.errors.some(e => e.includes('input') && e.includes('type')));
+            });
+
+            test('should detect old input format and provide helpful error', async () => {
+                createPipelinePackage('old-format', `
+name: "Old Format"
+input:
+  type: csv
+  path: data.csv
+map:
+  prompt: Test
+  output:
+    - result
+reduce:
+  type: json
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, false);
+                assert.ok(result.errors.some(e => e.includes('input.from')), 'Should mention correct format');
+            });
+
+            test('should validate inline items input', async () => {
+                createPipelinePackage('inline-items', `
+name: "Inline Items"
+input:
+  items:
+    - title: "Item 1"
+    - title: "Item 2"
+map:
+  prompt: "Process: {{title}}"
+  output:
+    - result
+reduce:
+  type: json
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, true);
+            });
+
+            test('should reject having both items and from', async () => {
+                createPipelinePackage('both-inputs', `
+name: "Both Inputs"
+input:
+  items:
+    - title: "Item 1"
+  from:
+    type: csv
+    path: data.csv
+map:
+  prompt: Test
+  output:
+    - result
+reduce:
+  type: json
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, false);
+                assert.ok(result.errors.some(e => e.includes('both')));
             });
         });
 

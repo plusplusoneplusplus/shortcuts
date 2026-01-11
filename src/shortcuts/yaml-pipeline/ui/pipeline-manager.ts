@@ -227,17 +227,41 @@ export class PipelineManager implements vscode.Disposable {
                 errors.push('Missing "input" field');
             } else {
                 const input = parsed.input as Record<string, unknown>;
-                if (input.type !== 'csv') {
-                    errors.push(`Unsupported input type: ${input.type}. Only "csv" is supported.`);
-                }
-                if (!input.path) {
-                    errors.push('Missing "input.path" field');
-                } else {
-                    // Validate that the CSV file exists relative to the package
-                    const csvPath = this.resolveResourcePath(input.path as string, packagePath);
-                    if (!fs.existsSync(csvPath)) {
-                        warnings.push(`Input file not found: ${input.path} (expected at ${csvPath})`);
+                
+                // Must have either "items" or "from"
+                const hasItems = Array.isArray(input.items);
+                const hasFrom = input.from !== undefined;
+                
+                if (!hasItems && !hasFrom) {
+                    errors.push('Input must have either "items" (inline array) or "from" (CSV source)');
+                } else if (hasItems && hasFrom) {
+                    errors.push('Input cannot have both "items" and "from" - use one or the other');
+                } else if (hasFrom) {
+                    // Validate CSV source
+                    const from = input.from as Record<string, unknown>;
+                    if (from.type !== 'csv') {
+                        errors.push(`Unsupported input source type: ${from.type}. Only "csv" is supported.`);
                     }
+                    if (!from.path) {
+                        errors.push('Missing "input.from.path" field');
+                    } else {
+                        // Validate that the CSV file exists relative to the package
+                        const csvPath = this.resolveResourcePath(from.path as string, packagePath);
+                        if (!fs.existsSync(csvPath)) {
+                            warnings.push(`Input file not found: ${from.path} (expected at ${csvPath})`);
+                        }
+                    }
+                } else if (hasItems) {
+                    // Validate inline items
+                    const items = input.items as unknown[];
+                    if (items.length === 0) {
+                        warnings.push('Input "items" array is empty');
+                    }
+                }
+                
+                // Check for old format and provide helpful error
+                if (input.type !== undefined || input.path !== undefined) {
+                    errors.push('Invalid input format: use "input.from.type" and "input.from.path" instead of "input.type" and "input.path"');
                 }
             }
 
@@ -476,16 +500,17 @@ name: "${name}"
 description: "Description of what this pipeline does"
 
 input:
-  type: csv
   # Path is relative to this pipeline's package directory
-  path: "input.csv"
+  from:
+    type: csv
+    path: "input.csv"
 
 map:
   prompt: |
     Process the following item:
     {{title}}
     {{description}}
-    
+
     Respond with JSON containing your analysis.
   output:
     - result
