@@ -506,6 +506,13 @@
           ],
           "default": "name",
           "description": "How to sort pipelines in the Pipelines Viewer"
+        },
+        "workspaceShortcuts.gitView.maxLookedUpCommits": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Maximum number of looked-up commits to keep in the Git panel. When this limit is reached, the oldest commit is removed when adding a new one."
         }
       }
     },
@@ -978,6 +985,12 @@
         "title": "Dismiss",
         "category": "Git",
         "icon": "$(close)"
+      },
+      {
+        "command": "gitView.clearAllLookedUpCommits",
+        "title": "Clear All Lookups",
+        "category": "Git",
+        "icon": "$(clear-all)"
       },
       {
         "command": "gitView.stageFile",
@@ -1665,23 +1678,28 @@
         },
         {
           "command": "gitView.clearLookedUpCommit",
-          "when": "view == gitView && viewItem == lookedUpCommit",
+          "when": "view == gitView && viewItem =~ /^lookedUpCommit_/",
           "group": "inline"
         },
         {
           "command": "gitView.copyCommitHash",
-          "when": "view == gitView && viewItem == lookedUpCommit",
+          "when": "view == gitView && viewItem =~ /^lookedUpCommit_/",
           "group": "lookedUpCommit@1"
         },
         {
           "command": "shortcuts.reviewCommitAgainstRules",
-          "when": "view == gitView && viewItem == lookedUpCommit",
+          "when": "view == gitView && viewItem =~ /^lookedUpCommit_/",
           "group": "lookedUpCommit@2"
         },
         {
           "command": "shortcuts.reviewCommitAgainstRulesSelect",
-          "when": "view == gitView && viewItem == lookedUpCommit",
+          "when": "view == gitView && viewItem =~ /^lookedUpCommit_/",
           "group": "lookedUpCommit@3"
+        },
+        {
+          "command": "gitView.clearAllLookedUpCommits",
+          "when": "view == gitView && viewItem =~ /^lookedUpCommit_/",
+          "group": "lookedUpCommit@9"
         },
         {
           "command": "gitView.stageFile",

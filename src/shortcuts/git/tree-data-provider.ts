@@ -37,9 +37,14 @@ const DEFAULT_COMMIT_DISPLAY_COUNT = 5;
 const DEFAULT_COMMIT_LOAD_COUNT = 20;
 
 /**
- * Storage key for persisting looked-up commit
+ * Storage key for persisting looked-up commits
  */
-const LOOKED_UP_COMMIT_KEY = 'gitView.lookedUpCommit';
+const LOOKED_UP_COMMITS_KEY = 'gitView.lookedUpCommits';
+
+/**
+ * Default maximum number of looked-up commits to keep
+ */
+const DEFAULT_MAX_LOOKED_UP_COMMITS = 10;
 
 /**
  * Tree data provider for the unified Git view
@@ -69,8 +74,8 @@ export class GitTreeDataProvider
     private diffCommentsManager?: DiffCommentsManager;
     private diffCommentsTreeProvider?: DiffCommentsTreeDataProvider;
 
-    // Looked-up commit (null = none shown)
-    private lookedUpCommit: GitCommit | null = null;
+    // Looked-up commits list (empty = none shown)
+    private lookedUpCommits: GitCommit[] = [];
 
     // Set of file paths currently being staged/unstaged (for loading state)
     private loadingFiles: Set<string> = new Set();
@@ -297,9 +302,9 @@ export class GitTreeDataProvider
             items.push(new SectionHeaderItem('comments', commentCount, false));
         }
 
-        // Looked-up commit at the bottom
-        if (this.lookedUpCommit) {
-            items.push(new LookedUpCommitItem(this.lookedUpCommit));
+        // Looked-up commits at the bottom (newest first)
+        for (let i = 0; i < this.lookedUpCommits.length; i++) {
+            items.push(new LookedUpCommitItem(this.lookedUpCommits[i], i));
         }
 
         return items;
@@ -565,69 +570,158 @@ export class GitTreeDataProvider
     }
 
     /**
-     * Set the looked-up commit (replaces any previous one)
-     * @param commit The commit to display, or null to clear
+     * Get the maximum number of looked-up commits from settings
+     */
+    private getMaxLookedUpCommits(): number {
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts.gitView');
+        return config.get<number>('maxLookedUpCommits', DEFAULT_MAX_LOOKED_UP_COMMITS);
+    }
+
+    /**
+     * Add a looked-up commit to the list (at the beginning)
+     * Removes duplicates and enforces the max limit
+     * @param commit The commit to add
+     */
+    addLookedUpCommit(commit: GitCommit): void {
+        // Remove if already exists (to move to front)
+        this.lookedUpCommits = this.lookedUpCommits.filter(c => c.hash !== commit.hash);
+        
+        // Add to the beginning (most recent first)
+        this.lookedUpCommits.unshift(commit);
+        
+        // Enforce max limit
+        const maxCommits = this.getMaxLookedUpCommits();
+        if (this.lookedUpCommits.length > maxCommits) {
+            this.lookedUpCommits = this.lookedUpCommits.slice(0, maxCommits);
+        }
+        
+        this.persistLookedUpCommits();
+        this.refresh();
+    }
+
+    /**
+     * Set the looked-up commit (for backwards compatibility - adds to list)
+     * @param commit The commit to display, or null to clear all
+     * @deprecated Use addLookedUpCommit() instead
      */
     setLookedUpCommit(commit: GitCommit | null): void {
-        this.lookedUpCommit = commit;
-        this.persistLookedUpCommit();
-        this.refresh();
+        if (commit) {
+            this.addLookedUpCommit(commit);
+        } else {
+            this.clearAllLookedUpCommits();
+        }
     }
 
     /**
-     * Get the current looked-up commit
+     * Get all looked-up commits
+     */
+    getLookedUpCommits(): GitCommit[] {
+        return [...this.lookedUpCommits];
+    }
+
+    /**
+     * Get the current looked-up commit (first one for backwards compatibility)
+     * @deprecated Use getLookedUpCommits() instead
      */
     getLookedUpCommit(): GitCommit | null {
-        return this.lookedUpCommit;
+        return this.lookedUpCommits.length > 0 ? this.lookedUpCommits[0] : null;
     }
 
     /**
-     * Clear the looked-up commit
+     * Clear a specific looked-up commit by index
+     * @param index The index of the commit to clear
      */
-    clearLookedUpCommit(): void {
-        this.lookedUpCommit = null;
-        this.persistLookedUpCommit();
+    clearLookedUpCommitByIndex(index: number): void {
+        if (index >= 0 && index < this.lookedUpCommits.length) {
+            this.lookedUpCommits.splice(index, 1);
+            this.persistLookedUpCommits();
+            this.refresh();
+        }
+    }
+
+    /**
+     * Clear a specific looked-up commit by hash
+     * @param hash The hash of the commit to clear
+     */
+    clearLookedUpCommitByHash(hash: string): void {
+        const index = this.lookedUpCommits.findIndex(c => c.hash === hash);
+        if (index >= 0) {
+            this.clearLookedUpCommitByIndex(index);
+        }
+    }
+
+    /**
+     * Clear all looked-up commits
+     */
+    clearAllLookedUpCommits(): void {
+        this.lookedUpCommits = [];
+        this.persistLookedUpCommits();
         this.refresh();
     }
 
     /**
-     * Persist the looked-up commit to workspace state
+     * Clear the looked-up commit (clears all for backwards compatibility)
+     * @deprecated Use clearAllLookedUpCommits() or clearLookedUpCommitByIndex() instead
      */
-    private persistLookedUpCommit(): void {
+    clearLookedUpCommit(): void {
+        this.clearAllLookedUpCommits();
+    }
+
+    /**
+     * Persist the looked-up commits to workspace state
+     */
+    private persistLookedUpCommits(): void {
         if (!this.context) {
             return;
         }
-        if (this.lookedUpCommit) {
-            // Store the commit hash and repo root for restoration
-            this.context.workspaceState.update(LOOKED_UP_COMMIT_KEY, {
-                hash: this.lookedUpCommit.hash,
-                repositoryRoot: this.lookedUpCommit.repositoryRoot
-            });
+        if (this.lookedUpCommits.length > 0) {
+            // Store the commit hashes and repo roots for restoration
+            const data = this.lookedUpCommits.map(commit => ({
+                hash: commit.hash,
+                repositoryRoot: commit.repositoryRoot
+            }));
+            this.context.workspaceState.update(LOOKED_UP_COMMITS_KEY, data);
         } else {
-            this.context.workspaceState.update(LOOKED_UP_COMMIT_KEY, undefined);
+            this.context.workspaceState.update(LOOKED_UP_COMMITS_KEY, undefined);
         }
     }
 
     /**
-     * Restore the looked-up commit from workspace state
+     * Restore the looked-up commits from workspace state
      * Should be called after initialization
      */
-    async restoreLookedUpCommit(): Promise<void> {
+    async restoreLookedUpCommits(): Promise<void> {
         if (!this.context) {
             return;
         }
-        const stored = this.context.workspaceState.get<{ hash: string; repositoryRoot: string }>(LOOKED_UP_COMMIT_KEY);
-        if (stored) {
-            // Validate the commit still exists and restore it
-            const commit = this.gitLogService.getCommit(stored.repositoryRoot, stored.hash);
-            if (commit) {
-                this.lookedUpCommit = commit;
+        
+        // Try to restore from new format first
+        const storedList = this.context.workspaceState.get<Array<{ hash: string; repositoryRoot: string }>>(LOOKED_UP_COMMITS_KEY);
+        if (storedList && Array.isArray(storedList)) {
+            const restoredCommits: GitCommit[] = [];
+            for (const stored of storedList) {
+                const commit = this.gitLogService.getCommit(stored.repositoryRoot, stored.hash);
+                if (commit) {
+                    restoredCommits.push(commit);
+                }
+            }
+            if (restoredCommits.length > 0) {
+                this.lookedUpCommits = restoredCommits;
                 this.refresh();
             } else {
-                // Commit no longer exists, clear the stored state
-                this.context.workspaceState.update(LOOKED_UP_COMMIT_KEY, undefined);
+                // No valid commits, clear the stored state
+                this.context.workspaceState.update(LOOKED_UP_COMMITS_KEY, undefined);
             }
+            return;
         }
+    }
+
+    /**
+     * Restore the looked-up commit from workspace state (deprecated, calls restoreLookedUpCommits)
+     * @deprecated Use restoreLookedUpCommits() instead
+     */
+    async restoreLookedUpCommit(): Promise<void> {
+        return this.restoreLookedUpCommits();
     }
 
     /**

@@ -2,10 +2,18 @@ import * as vscode from 'vscode';
 import { GitCommit } from './types';
 
 /**
- * Tree item for the looked-up commit (appears at bottom of Git View)
+ * Tree item for a looked-up commit (appears at bottom of Git View)
+ * Supports multiple looked-up commits with index-based identification
  */
 export class LookedUpCommitItem extends vscode.TreeItem {
-    constructor(public readonly commit: GitCommit) {
+    /**
+     * @param commit The git commit to display
+     * @param index The index of this commit in the looked-up commits list (0 = most recent)
+     */
+    constructor(
+        public readonly commit: GitCommit,
+        public readonly index: number = 0
+    ) {
         super(
             `${commit.shortHash} - ${commit.subject}`,
             vscode.TreeItemCollapsibleState.Expanded
@@ -14,7 +22,8 @@ export class LookedUpCommitItem extends vscode.TreeItem {
         this.iconPath = new vscode.ThemeIcon('search');
         this.description = commit.relativeDate;
         this.tooltip = this.buildTooltip();
-        this.contextValue = 'lookedUpCommit';
+        // Include index in contextValue for command handling
+        this.contextValue = `lookedUpCommit_${index}`;
     }
 
     private buildTooltip(): vscode.MarkdownString {

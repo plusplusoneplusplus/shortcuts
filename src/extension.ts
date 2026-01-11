@@ -434,6 +434,7 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitOpenCommitFileWithMarkdownPreviewCommand: vscode.Disposable | undefined;
         let gitLookupCommitCommand: vscode.Disposable | undefined;
         let gitClearLookedUpCommitCommand: vscode.Disposable | undefined;
+        let gitClearAllLookedUpCommitsCommand: vscode.Disposable | undefined;
         let gitDiffCommentsCleanupCommand: vscode.Disposable | undefined;
         let gitStageFileCommand: vscode.Disposable | undefined;
         let gitUnstageFileCommand: vscode.Disposable | undefined;
@@ -518,9 +519,20 @@ export async function activate(context: vscode.ExtensionContext) {
                 gitTreeDataProvider.showCommitLookup();
             });
 
-            // Clear looked-up commit command
-            gitClearLookedUpCommitCommand = vscode.commands.registerCommand('gitView.clearLookedUpCommit', () => {
-                gitTreeDataProvider.clearLookedUpCommit();
+            // Clear looked-up commit command (clears specific commit from context menu)
+            gitClearLookedUpCommitCommand = vscode.commands.registerCommand('gitView.clearLookedUpCommit', (item?: LookedUpCommitItem) => {
+                if (item instanceof LookedUpCommitItem) {
+                    // Clear specific commit by index
+                    gitTreeDataProvider.clearLookedUpCommitByIndex(item.index);
+                } else {
+                    // Clear all looked-up commits (fallback)
+                    gitTreeDataProvider.clearAllLookedUpCommits();
+                }
+            });
+
+            // Clear all looked-up commits command
+            gitClearAllLookedUpCommitsCommand = vscode.commands.registerCommand('gitView.clearAllLookedUpCommits', () => {
+                gitTreeDataProvider.clearAllLookedUpCommits();
             });
 
             // Register command to open commit file diff using extension's diff review
@@ -1340,6 +1352,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitOpenCommitFileWithMarkdownPreviewCommand) disposables.push(gitOpenCommitFileWithMarkdownPreviewCommand);
         if (gitLookupCommitCommand) disposables.push(gitLookupCommitCommand);
         if (gitClearLookedUpCommitCommand) disposables.push(gitClearLookedUpCommitCommand);
+        if (gitClearAllLookedUpCommitsCommand) disposables.push(gitClearAllLookedUpCommitsCommand);
         if (gitStageFileCommand) disposables.push(gitStageFileCommand);
         if (gitUnstageFileCommand) disposables.push(gitUnstageFileCommand);
         if (gitStageAllCommand) disposables.push(gitStageAllCommand);

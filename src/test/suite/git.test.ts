@@ -2406,5 +2406,311 @@ suite('Git View Tests', () => {
             provider.dispose();
         });
     });
+
+    // ============================================
+    // Looked-Up Commits List Tests
+    // ============================================
+    suite('Looked-Up Commits List', () => {
+        // Helper function to create a mock commit
+        function createMockCommit(hash: string, subject: string): GitCommit {
+            return {
+                hash,
+                shortHash: hash.substring(0, 7),
+                subject,
+                authorName: 'Test Author',
+                authorEmail: 'test@example.com',
+                date: '2024-01-15T10:30:00Z',
+                relativeDate: '2 hours ago',
+                parentHashes: 'parent123',
+                refs: [],
+                repositoryRoot: '/repo',
+                repositoryName: 'repo'
+            };
+        }
+
+        test('should initialize with empty looked-up commits list', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commits = provider.getLookedUpCommits();
+            assert.deepStrictEqual(commits, [], 'Should start with empty list');
+            assert.strictEqual(provider.getLookedUpCommit(), null, 'getLookedUpCommit should return null when empty');
+
+            provider.dispose();
+        });
+
+        test('should add looked-up commits to the list', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+            const commit2 = createMockCommit('def456ghi789012', 'Second commit');
+
+            provider.addLookedUpCommit(commit1);
+            assert.strictEqual(provider.getLookedUpCommits().length, 1, 'Should have 1 commit');
+            assert.strictEqual(provider.getLookedUpCommits()[0].hash, commit1.hash);
+
+            provider.addLookedUpCommit(commit2);
+            assert.strictEqual(provider.getLookedUpCommits().length, 2, 'Should have 2 commits');
+            // Newest first
+            assert.strictEqual(provider.getLookedUpCommits()[0].hash, commit2.hash, 'Most recent should be first');
+            assert.strictEqual(provider.getLookedUpCommits()[1].hash, commit1.hash);
+
+            provider.dispose();
+        });
+
+        test('should move duplicate commit to front of list', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+            const commit2 = createMockCommit('def456ghi789012', 'Second commit');
+            const commit3 = createMockCommit('ghi789jkl012345', 'Third commit');
+
+            provider.addLookedUpCommit(commit1);
+            provider.addLookedUpCommit(commit2);
+            provider.addLookedUpCommit(commit3);
+
+            // Re-add commit1 - should move to front
+            provider.addLookedUpCommit(commit1);
+
+            const commits = provider.getLookedUpCommits();
+            assert.strictEqual(commits.length, 3, 'Should still have 3 commits (no duplicate)');
+            assert.strictEqual(commits[0].hash, commit1.hash, 'Re-added commit should be first');
+            assert.strictEqual(commits[1].hash, commit3.hash);
+            assert.strictEqual(commits[2].hash, commit2.hash);
+
+            provider.dispose();
+        });
+
+        test('should clear specific commit by index', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+            const commit2 = createMockCommit('def456ghi789012', 'Second commit');
+            const commit3 = createMockCommit('ghi789jkl012345', 'Third commit');
+
+            provider.addLookedUpCommit(commit1);
+            provider.addLookedUpCommit(commit2);
+            provider.addLookedUpCommit(commit3);
+
+            // Clear the middle one (index 1, which is commit2)
+            provider.clearLookedUpCommitByIndex(1);
+
+            const commits = provider.getLookedUpCommits();
+            assert.strictEqual(commits.length, 2, 'Should have 2 commits after clearing one');
+            assert.strictEqual(commits[0].hash, commit3.hash, 'First should be commit3');
+            assert.strictEqual(commits[1].hash, commit1.hash, 'Second should be commit1');
+
+            provider.dispose();
+        });
+
+        test('should clear specific commit by hash', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+            const commit2 = createMockCommit('def456ghi789012', 'Second commit');
+
+            provider.addLookedUpCommit(commit1);
+            provider.addLookedUpCommit(commit2);
+
+            provider.clearLookedUpCommitByHash(commit1.hash);
+
+            const commits = provider.getLookedUpCommits();
+            assert.strictEqual(commits.length, 1, 'Should have 1 commit after clearing one');
+            assert.strictEqual(commits[0].hash, commit2.hash);
+
+            provider.dispose();
+        });
+
+        test('should clear all looked-up commits', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+            const commit2 = createMockCommit('def456ghi789012', 'Second commit');
+
+            provider.addLookedUpCommit(commit1);
+            provider.addLookedUpCommit(commit2);
+
+            provider.clearAllLookedUpCommits();
+
+            assert.deepStrictEqual(provider.getLookedUpCommits(), [], 'Should have empty list after clearing all');
+
+            provider.dispose();
+        });
+
+        test('clearLookedUpCommit should clear all (backwards compatibility)', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+            const commit2 = createMockCommit('def456ghi789012', 'Second commit');
+
+            provider.addLookedUpCommit(commit1);
+            provider.addLookedUpCommit(commit2);
+
+            provider.clearLookedUpCommit();
+
+            assert.deepStrictEqual(provider.getLookedUpCommits(), [], 'Should have empty list');
+
+            provider.dispose();
+        });
+
+        test('setLookedUpCommit should add to list (backwards compatibility)', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+
+            provider.setLookedUpCommit(commit1);
+
+            assert.strictEqual(provider.getLookedUpCommits().length, 1);
+            assert.strictEqual(provider.getLookedUpCommit()?.hash, commit1.hash);
+
+            provider.dispose();
+        });
+
+        test('setLookedUpCommit with null should clear all (backwards compatibility)', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+            provider.addLookedUpCommit(commit1);
+
+            provider.setLookedUpCommit(null);
+
+            assert.deepStrictEqual(provider.getLookedUpCommits(), []);
+
+            provider.dispose();
+        });
+
+        test('clearLookedUpCommitByIndex should handle out of bounds gracefully', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+            provider.addLookedUpCommit(commit1);
+
+            // Should not throw for out of bounds
+            provider.clearLookedUpCommitByIndex(-1);
+            provider.clearLookedUpCommitByIndex(100);
+
+            assert.strictEqual(provider.getLookedUpCommits().length, 1, 'Should still have 1 commit');
+
+            provider.dispose();
+        });
+
+        test('clearLookedUpCommitByHash should handle non-existent hash gracefully', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+            provider.addLookedUpCommit(commit1);
+
+            // Should not throw for non-existent hash
+            provider.clearLookedUpCommitByHash('nonexistenthash');
+
+            assert.strictEqual(provider.getLookedUpCommits().length, 1, 'Should still have 1 commit');
+
+            provider.dispose();
+        });
+
+        test('getLookedUpCommits should return a copy of the list', async () => {
+            const { GitTreeDataProvider } = await import('../../shortcuts/git');
+            const provider = new GitTreeDataProvider();
+
+            const commit1 = createMockCommit('abc123def456789', 'First commit');
+            provider.addLookedUpCommit(commit1);
+
+            const commits1 = provider.getLookedUpCommits();
+            const commits2 = provider.getLookedUpCommits();
+
+            // Should be different array instances
+            assert.notStrictEqual(commits1, commits2, 'Should return new array each time');
+            assert.deepStrictEqual(commits1, commits2, 'But with same contents');
+
+            provider.dispose();
+        });
+    });
+
+    // ============================================
+    // LookedUpCommitItem Tests
+    // ============================================
+    suite('LookedUpCommitItem', () => {
+        test('should create item with index in contextValue', async () => {
+            const { LookedUpCommitItem } = await import('../../shortcuts/git');
+            
+            const commit: GitCommit = {
+                hash: 'abc123def456789',
+                shortHash: 'abc123d',
+                subject: 'Test commit',
+                authorName: 'Test Author',
+                authorEmail: 'test@example.com',
+                date: '2024-01-15T10:30:00Z',
+                relativeDate: '2 hours ago',
+                parentHashes: 'parent123',
+                refs: [],
+                repositoryRoot: '/repo',
+                repositoryName: 'repo'
+            };
+
+            const item0 = new LookedUpCommitItem(commit, 0);
+            const item5 = new LookedUpCommitItem(commit, 5);
+
+            assert.strictEqual(item0.contextValue, 'lookedUpCommit_0');
+            assert.strictEqual(item5.contextValue, 'lookedUpCommit_5');
+            assert.strictEqual(item0.index, 0);
+            assert.strictEqual(item5.index, 5);
+        });
+
+        test('should default to index 0 if not specified', async () => {
+            const { LookedUpCommitItem } = await import('../../shortcuts/git');
+            
+            const commit: GitCommit = {
+                hash: 'abc123def456789',
+                shortHash: 'abc123d',
+                subject: 'Test commit',
+                authorName: 'Test Author',
+                authorEmail: 'test@example.com',
+                date: '2024-01-15T10:30:00Z',
+                relativeDate: '2 hours ago',
+                parentHashes: 'parent123',
+                refs: [],
+                repositoryRoot: '/repo',
+                repositoryName: 'repo'
+            };
+
+            const item = new LookedUpCommitItem(commit);
+            assert.strictEqual(item.contextValue, 'lookedUpCommit_0');
+            assert.strictEqual(item.index, 0);
+        });
+
+        test('should store commit reference correctly', async () => {
+            const { LookedUpCommitItem } = await import('../../shortcuts/git');
+            
+            const commit: GitCommit = {
+                hash: 'abc123def456789',
+                shortHash: 'abc123d',
+                subject: 'Test commit',
+                authorName: 'Test Author',
+                authorEmail: 'test@example.com',
+                date: '2024-01-15T10:30:00Z',
+                relativeDate: '2 hours ago',
+                parentHashes: 'parent123',
+                refs: ['main'],
+                repositoryRoot: '/repo',
+                repositoryName: 'repo'
+            };
+
+            const item = new LookedUpCommitItem(commit, 3);
+            
+            assert.strictEqual(item.commit.hash, commit.hash);
+            assert.strictEqual(item.commit.subject, commit.subject);
+            assert.deepStrictEqual(item.commit.refs, commit.refs);
+        });
+    });
 });
 
