@@ -35,11 +35,11 @@ suite('Pipeline Executor', () => {
 
     // Helper to create a mock AI invoker
     function createMockAIInvoker(
-        responses: Map<string, string> | ((prompt: string) => AIInvokerResult)
-    ): (prompt: string) => Promise<AIInvokerResult> {
-        return async (prompt: string): Promise<AIInvokerResult> => {
+        responses: Map<string, string> | ((prompt: string, options?: { model?: string }) => AIInvokerResult)
+    ): (prompt: string, options?: { model?: string }) => Promise<AIInvokerResult> {
+        return async (prompt: string, options?: { model?: string }): Promise<AIInvokerResult> => {
             if (typeof responses === 'function') {
-                return responses(prompt);
+                return responses(prompt, options);
             }
 
             // Look for matching response based on content
@@ -199,6 +199,66 @@ suite('Pipeline Executor', () => {
                 }),
                 /missing required fields.*title.*description/i
             );
+        });
+
+        test('passes model to AI invoker from map config', async () => {
+            const config: PipelineConfig = {
+                name: 'Model Test',
+                input: {
+                    items: [{ id: '1', title: 'Test Item' }]
+                },
+                map: {
+                    prompt: 'Analyze: {{title}}',
+                    output: ['result'],
+                    model: 'gpt-4'
+                },
+                reduce: { type: 'list' }
+            };
+
+            let receivedModel: string | undefined;
+
+            const aiInvoker = async (_prompt: string, options?: { model?: string }): Promise<AIInvokerResult> => {
+                receivedModel = options?.model;
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(receivedModel, 'gpt-4');
+        });
+
+        test('does not pass model if not specified in config', async () => {
+            const config: PipelineConfig = {
+                name: 'No Model Test',
+                input: {
+                    items: [{ id: '1', title: 'Test Item' }]
+                },
+                map: {
+                    prompt: 'Analyze: {{title}}',
+                    output: ['result']
+                    // No model specified
+                },
+                reduce: { type: 'list' }
+            };
+
+            let receivedModel: string | undefined = 'should-be-undefined';
+
+            const aiInvoker = async (_prompt: string, options?: { model?: string }): Promise<AIInvokerResult> => {
+                receivedModel = options?.model;
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(receivedModel, undefined);
         });
     });
 
@@ -820,6 +880,48 @@ reduce:
             assert.ok(config.input.from);
             assert.strictEqual(config.input.from.delimiter, '\t');
             assert.strictEqual(config.map.parallel, 3);
+        });
+
+        test('parses YAML with model option', async () => {
+            const yaml = `
+name: "Model Test"
+input:
+  items:
+    - title: "Item 1"
+map:
+  prompt: "{{title}}"
+  output: [result]
+  model: "gpt-4-turbo"
+reduce:
+  type: list
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            assert.strictEqual(config.map.model, 'gpt-4-turbo');
+        });
+
+        test('parses YAML with model and parallel options', async () => {
+            const yaml = `
+name: "Full Config Test"
+input:
+  from:
+    type: csv
+    path: "./data.csv"
+map:
+  prompt: "{{x}}"
+  output: [y]
+  model: "claude-3-opus"
+  parallel: 10
+reduce:
+  type: json
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            assert.strictEqual(config.map.model, 'claude-3-opus');
+            assert.strictEqual(config.map.parallel, 10);
+            assert.strictEqual(config.reduce.type, 'json');
         });
 
         test('throws on invalid YAML config - missing input source', async () => {
