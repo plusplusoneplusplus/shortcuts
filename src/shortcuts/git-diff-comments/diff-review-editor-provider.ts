@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AIProcessManager, getAICommandRegistry } from '../ai-service';
+import { IAIProcessManager, getAICommandRegistry } from '../ai-service';
 import { getExtensionLogger, LogCategory } from '../shared';
 import { DiffCommentsManager } from './diff-comments-manager';
 import {
@@ -54,12 +54,12 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     private originalTitles: Map<string, string> = new Map();
     private disposables: vscode.Disposable[] = [];
     /** AI process manager for tracking running AI processes */
-    private aiProcessManager?: AIProcessManager;
+    private aiProcessManager?: IAIProcessManager;
 
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly commentsManager: DiffCommentsManager,
-        aiProcessManager?: AIProcessManager
+        aiProcessManager?: IAIProcessManager
     ) {
         this.aiProcessManager = aiProcessManager;
         // Listen for comment changes to update all open webviews
@@ -76,7 +76,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     public static registerCommands(
         context: vscode.ExtensionContext,
         commentsManager: DiffCommentsManager,
-        aiProcessManager?: AIProcessManager
+        aiProcessManager?: IAIProcessManager
     ): vscode.Disposable[] {
         const provider = new DiffReviewEditorProvider(context, commentsManager, aiProcessManager);
         

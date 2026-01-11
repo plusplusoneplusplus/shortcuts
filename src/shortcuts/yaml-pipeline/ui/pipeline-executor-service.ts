@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AIProcessManager, invokeCopilotCLI, getAIModelSetting } from '../../ai-service';
+import { IAIProcessManager, invokeCopilotCLI, getAIModelSetting } from '../../ai-service';
 import {
     executePipeline,
     parsePipelineYAML,
@@ -32,7 +32,7 @@ export interface PipelineExecutionOptions {
     /** Workspace root for resolving paths */
     workspaceRoot: string;
     /** AI Process manager for tracking */
-    processManager?: AIProcessManager;
+    processManager?: IAIProcessManager;
     /** Optional progress callback */
     onProgress?: (progress: JobProgress) => void;
 }

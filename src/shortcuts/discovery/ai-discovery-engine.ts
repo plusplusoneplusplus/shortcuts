@@ -10,7 +10,6 @@
 import * as vscode from 'vscode';
 import { exec, ChildProcess } from 'child_process';
 import { escapeShellArg, getAIModelSetting, getWorkingDirectory } from '../ai-service/copilot-cli-invoker';
-import { AIProcessManager } from '../ai-service/ai-process-manager';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 import {
     DiscoveryRequest,

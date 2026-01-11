@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { AIProcess, AIProcessManager } from './';
+import { AIProcess, IAIProcessManager } from './';
 import { getExtensionLogger, LogCategory } from '../shared';
 
 /**
@@ -19,12 +19,12 @@ export const AI_PROCESS_SCHEME = 'ai-process';
  * Provides read-only content for AI process details
  */
 export class AIProcessDocumentProvider implements vscode.TextDocumentContentProvider {
-    private processManager: AIProcessManager;
+    private processManager: IAIProcessManager;
     private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
 
     readonly onDidChange = this._onDidChange.event;
 
-    constructor(processManager: AIProcessManager) {
+    constructor(processManager: IAIProcessManager) {
         this.processManager = processManager;
 
         // Listen for process changes to update documents

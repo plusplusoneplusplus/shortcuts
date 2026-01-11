@@ -6,7 +6,7 @@
  */
 
 import * as vscode from 'vscode';
-import { AIProcessManager } from '../../ai-service';
+import { IAIProcessManager } from '../../ai-service';
 import { PipelineManager } from './pipeline-manager';
 import { PipelinesTreeDataProvider } from './tree-data-provider';
 import { PipelineItem, PipelineTreeItem } from './pipeline-item';
@@ -21,7 +21,7 @@ import {
  */
 export class PipelineCommands {
     private pipelinesTreeView?: vscode.TreeView<PipelineTreeItem>;
-    private aiProcessManager?: AIProcessManager;
+    private aiProcessManager?: IAIProcessManager;
     private workspaceRoot: string;
 
     constructor(
@@ -36,7 +36,7 @@ export class PipelineCommands {
     /**
      * Set the AI process manager for execution tracking
      */
-    setAIProcessManager(manager: AIProcessManager): void {
+    setAIProcessManager(manager: IAIProcessManager): void {
         this.aiProcessManager = manager;
     }
 

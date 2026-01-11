@@ -6,7 +6,7 @@
  */
 
 import * as vscode from 'vscode';
-import { AIProcessManager } from './ai-process-manager';
+import { IAIProcessManager } from './types';
 import { AIProcess } from './types';
 
 /**
@@ -385,11 +385,11 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
     private readonly _onDidChangeTreeData = new vscode.EventEmitter<AIProcessItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<AIProcessItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
-    private processManager: AIProcessManager;
+    private processManager: IAIProcessManager;
     private disposables: vscode.Disposable[] = [];
     private refreshInterval?: NodeJS.Timeout;
 
-    constructor(processManager: AIProcessManager) {
+    constructor(processManager: IAIProcessManager) {
         this.processManager = processManager;
 
         // Listen for process changes

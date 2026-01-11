@@ -5,7 +5,7 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AIProcessManager, getAICommandRegistry } from '../ai-service';
+import { IAIProcessManager, getAICommandRegistry } from '../ai-service';
 import { handleAIClarification } from './ai-clarification-handler';
 import { CodeBlockTheme } from './code-block-themes';
 import { CommentsManager } from './comments-manager';
@@ -79,7 +79,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly commentsManager: CommentsManager,
-        private readonly aiProcessManager?: AIProcessManager
+        private readonly aiProcessManager?: IAIProcessManager
     ) {
         this.promptGenerator = new PromptGenerator(commentsManager);
     }
