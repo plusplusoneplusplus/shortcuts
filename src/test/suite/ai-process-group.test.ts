@@ -4,10 +4,11 @@
  */
 
 import * as assert from 'assert';
-import { AIProcessManager, AIProcess, serializeProcess, deserializeProcess, CodeReviewGroupMetadata } from '../../shortcuts/ai-service';
+import { AIProcessManager, AIProcess, serializeProcess, deserializeProcess, CodeReviewGroupMetadata, MockAIProcessManager } from '../../shortcuts/ai-service';
 
 /**
  * Mock ExtensionContext for testing persistence
+ * Only needed for persistence tests that use real AIProcessManager
  */
 class MockGlobalState {
     private storage: Map<string, unknown> = new Map();
@@ -33,10 +34,8 @@ suite('AI Process Group Tests', () => {
 
     suite('Code Review Group Registration', () => {
 
-        test('should create a code review group process', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('should create a code review group process', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'commit',
@@ -55,8 +54,8 @@ suite('AI Process Group Tests', () => {
             assert.strictEqual(group.codeReviewGroupMetadata.rulesUsed.length, 3);
         });
 
-        test('should generate correct preview for commit review group', async () => {
-            const manager = new AIProcessManager();
+        test('should generate correct preview for commit review group', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'commit',
@@ -71,8 +70,8 @@ suite('AI Process Group Tests', () => {
             assert.ok(group.promptPreview.includes('2 rules'));
         });
 
-        test('should generate correct preview for pending changes group', async () => {
-            const manager = new AIProcessManager();
+        test('should generate correct preview for pending changes group', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'pending',
@@ -85,8 +84,8 @@ suite('AI Process Group Tests', () => {
             assert.ok(group.promptPreview.includes('3 rules'));
         });
 
-        test('should generate correct preview for staged changes group', async () => {
-            const manager = new AIProcessManager();
+        test('should generate correct preview for staged changes group', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'staged',
@@ -102,10 +101,8 @@ suite('AI Process Group Tests', () => {
 
     suite('Child Process Registration', () => {
 
-        test('should link child process to parent group', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('should link child process to parent group', () => {
+            const manager = new MockAIProcessManager();
 
             // Create group
             const groupId = manager.registerCodeReviewGroup({
@@ -154,8 +151,8 @@ suite('AI Process Group Tests', () => {
             assert.strictEqual(child2.parentProcessId, groupId);
         });
 
-        test('should show rule filename as preview for single-rule child process', async () => {
-            const manager = new AIProcessManager();
+        test('should show rule filename as preview for single-rule child process', () => {
+            const manager = new MockAIProcessManager();
 
             const childId = manager.registerCodeReviewProcess(
                 'Review prompt',
@@ -174,10 +171,8 @@ suite('AI Process Group Tests', () => {
 
     suite('Get Child Processes', () => {
 
-        test('should return child processes for a group', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('should return child processes for a group', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'commit',
@@ -203,15 +198,15 @@ suite('AI Process Group Tests', () => {
             assert.strictEqual(children.length, 2);
         });
 
-        test('should return empty array for non-existent group', async () => {
-            const manager = new AIProcessManager();
+        test('should return empty array for non-existent group', () => {
+            const manager = new MockAIProcessManager();
 
             const children = manager.getChildProcesses('non-existent-id');
             assert.strictEqual(children.length, 0);
         });
 
-        test('should return empty array for non-group process', async () => {
-            const manager = new AIProcessManager();
+        test('should return empty array for non-group process', () => {
+            const manager = new MockAIProcessManager();
 
             const processId = manager.registerProcess('Regular process');
             const children = manager.getChildProcesses(processId);
@@ -221,10 +216,8 @@ suite('AI Process Group Tests', () => {
 
     suite('Top Level Processes', () => {
 
-        test('should return only processes without parents', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('should return only processes without parents', () => {
+            const manager = new MockAIProcessManager();
 
             // Create a group with children
             const groupId = manager.registerCodeReviewGroup({
@@ -257,7 +250,7 @@ suite('AI Process Group Tests', () => {
             // Get top-level processes only
             const topLevel = manager.getTopLevelProcesses();
             assert.strictEqual(topLevel.length, 2); // group + standalone
-            
+
             const topLevelIds = topLevel.map(p => p.id);
             assert.ok(topLevelIds.includes(groupId));
             assert.ok(topLevelIds.includes(standaloneId));
@@ -266,8 +259,8 @@ suite('AI Process Group Tests', () => {
 
     suite('Is Child Process', () => {
 
-        test('should return true for child processes', async () => {
-            const manager = new AIProcessManager();
+        test('should return true for child processes', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'commit',
@@ -285,8 +278,8 @@ suite('AI Process Group Tests', () => {
             assert.ok(manager.isChildProcess(childId));
         });
 
-        test('should return false for parent processes', async () => {
-            const manager = new AIProcessManager();
+        test('should return false for parent processes', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'commit',
@@ -297,8 +290,8 @@ suite('AI Process Group Tests', () => {
             assert.ok(!manager.isChildProcess(groupId));
         });
 
-        test('should return false for standalone processes', async () => {
-            const manager = new AIProcessManager();
+        test('should return false for standalone processes', () => {
+            const manager = new MockAIProcessManager();
 
             const processId = manager.registerProcess('Standalone');
             assert.ok(!manager.isChildProcess(processId));
@@ -307,10 +300,8 @@ suite('AI Process Group Tests', () => {
 
     suite('Complete Code Review Group', () => {
 
-        test('should complete group with execution stats', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('should complete group with execution stats', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'commit',
@@ -349,8 +340,8 @@ suite('AI Process Group Tests', () => {
             assert.deepStrictEqual(group.codeReviewGroupMetadata.executionStats, executionStats);
         });
 
-        test('should not complete non-group process', async () => {
-            const manager = new AIProcessManager();
+        test('should not complete non-group process', () => {
+            const manager = new MockAIProcessManager();
 
             const processId = manager.registerProcess('Regular process');
 
@@ -366,8 +357,8 @@ suite('AI Process Group Tests', () => {
             assert.strictEqual(process.status, 'running'); // Should not be affected
         });
 
-        test('should update process structured result', async () => {
-            const manager = new AIProcessManager();
+        test('should update process structured result', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'commit',
@@ -398,8 +389,8 @@ suite('AI Process Group Tests', () => {
             assert.strictEqual(group.structuredResult, fullStructuredResult);
         });
 
-        test('should update structured result for any process type', async () => {
-            const manager = new AIProcessManager();
+        test('should update structured result for any process type', () => {
+            const manager = new MockAIProcessManager();
 
             // Test with a regular clarification process
             const processId = manager.registerProcess('Regular process');
@@ -551,6 +542,8 @@ suite('AI Process Group Tests', () => {
     });
 
     suite('Persistence with Groups', () => {
+        // These tests require real AIProcessManager with MockExtensionContext
+        // because they test actual persistence behavior
 
         test('should persist group and children separately', async () => {
             const context = new MockExtensionContext();

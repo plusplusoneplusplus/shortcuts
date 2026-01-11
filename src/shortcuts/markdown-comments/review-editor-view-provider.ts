@@ -147,7 +147,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     public static register(
         context: vscode.ExtensionContext,
         commentsManager: CommentsManager,
-        aiProcessManager?: AIProcessManager
+        aiProcessManager?: IAIProcessManager
     ): vscode.Disposable {
         const provider = new ReviewEditorViewProvider(context, commentsManager, aiProcessManager);
 

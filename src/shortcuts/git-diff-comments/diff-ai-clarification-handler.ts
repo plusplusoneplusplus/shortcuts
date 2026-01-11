@@ -11,7 +11,7 @@
 
 import {
     AIModel,
-    AIProcessManager,
+    IAIProcessManager,
     DEFAULT_PROMPTS,
     escapeShellArg,
     getAICommandRegistry,
@@ -126,7 +126,7 @@ export function validateAndTruncateDiffPrompt(context: DiffClarificationContext)
 export async function handleDiffAIClarification(
     context: DiffClarificationContext,
     workspaceRoot: string,
-    processManager?: AIProcessManager
+    processManager?: IAIProcessManager
 ): Promise<DiffClarificationResult> {
     const { prompt, truncated } = validateAndTruncateDiffPrompt(context);
     return handleAIClarificationBase(prompt, truncated, workspaceRoot, processManager);

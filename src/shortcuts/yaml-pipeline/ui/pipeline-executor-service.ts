@@ -193,7 +193,7 @@ export async function executeVSCodePipeline(
  * Create a process tracker that bridges to the AI process manager
  */
 function createProcessTracker(
-    processManager: AIProcessManager,
+    processManager: IAIProcessManager,
     parentGroupId: string
 ): ProcessTracker {
     return {

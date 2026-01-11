@@ -7,7 +7,7 @@
 
 import { exec, execSync } from 'child_process';
 import * as vscode from 'vscode';
-import { AIProcessManager } from './ai-process-manager';
+import { IAIProcessManager } from './types';
 import { getExtensionLogger } from './ai-service-logger';
 import { AIInvocationResult, AIModel, AIToolType, VALID_MODELS } from './types';
 
@@ -418,7 +418,7 @@ export async function invokeCopilotCLITerminal(prompt: string, workspaceRoot?: s
 export async function invokeCopilotCLI(
     prompt: string,
     workspaceRoot: string,
-    processManager?: AIProcessManager,
+    processManager?: IAIProcessManager,
     existingProcessId?: string,
     model?: string
 ): Promise<AIInvocationResult> {

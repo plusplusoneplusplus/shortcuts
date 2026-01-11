@@ -12,7 +12,7 @@
 import * as vscode from 'vscode';
 import {
     AIInvocationResult,
-    AIProcessManager,
+    IAIProcessManager,
     copyToClipboard,
     getAICommandRegistry,
     getAIToolSetting,
@@ -113,7 +113,7 @@ export async function handleAIClarificationBase(
     prompt: string,
     truncated: boolean,
     workspaceRoot: string,
-    processManager?: AIProcessManager
+    processManager?: IAIProcessManager
 ): Promise<BaseClarificationResult> {
     // Show truncation warning if necessary
     if (truncated) {

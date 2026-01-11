@@ -11,7 +11,7 @@
 
 import {
     AIModel,
-    AIProcessManager,
+    IAIProcessManager,
     buildPrompt,
     DEFAULT_PROMPTS,
     escapeShellArg,
@@ -123,7 +123,7 @@ export function validateAndTruncatePrompt(context: ClarificationContext): { prom
 export async function handleAIClarification(
     context: ClarificationContext,
     workspaceRoot: string,
-    processManager?: AIProcessManager
+    processManager?: IAIProcessManager
 ): Promise<ClarificationResult> {
     const { prompt, truncated } = validateAndTruncatePrompt(context);
     return handleAIClarificationBase(prompt, truncated, workspaceRoot, processManager);

@@ -1,13 +1,13 @@
 /**
  * Integration tests for Code Review Structured Results
- * 
+ *
  * Tests the flow of structured results through the map-reduce framework
  * to prevent regressions where clicking on code review processes fails
  * to display results.
  */
 
 import * as assert from 'assert';
-import { AIProcessManager } from '../../shortcuts/ai-service';
+import { AIProcessManager, MockAIProcessManager } from '../../shortcuts/ai-service';
 import {
     CodeReviewInput,
     CodeReviewOutput,
@@ -29,6 +29,7 @@ import {
 
 /**
  * Mock ExtensionContext for testing persistence
+ * Only needed for persistence tests that use real AIProcessManager
  */
 class MockGlobalState {
     private storage: Map<string, unknown> = new Map();
@@ -50,10 +51,10 @@ class MockExtensionContext {
  * Adapter to convert RuleReviewResult to CodeReviewResult format
  * This mirrors the transformation done in code-review-commands.ts
  */
-function adaptFinding(mrFinding: { 
-    id: string; 
-    severity: 'error' | 'warning' | 'info' | 'suggestion'; 
-    rule: string; 
+function adaptFinding(mrFinding: {
+    id: string;
+    severity: 'error' | 'warning' | 'info' | 'suggestion';
+    rule: string;
     ruleFile?: string;
     file?: string;
     line?: number;
@@ -81,22 +82,22 @@ function transformRuleReviewResultToCodeReviewResult(
     metadata: CodeReviewMetadata
 ): string {
     const findings = ruleResult.findings?.map(adaptFinding) || [];
-    
+
     const bySeverity = { error: 0, warning: 0, info: 0, suggestion: 0 };
     for (const f of findings) {
         bySeverity[f.severity]++;
     }
-    
+
     const summary: ReviewSummary = {
         totalFindings: findings.length,
         bySeverity,
         byRule: { [ruleResult.rule?.filename || 'unknown']: findings.length },
         overallAssessment: ruleResult.assessment || 'pass',
-        summaryText: findings.length === 0 
-            ? 'No issues found.' 
+        summaryText: findings.length === 0
+            ? 'No issues found.'
             : `Found ${findings.length} issue(s).`
     };
-    
+
     const codeReviewResult = {
         metadata: {
             type: metadata.type,
@@ -110,7 +111,7 @@ function transformRuleReviewResultToCodeReviewResult(
         rawResponse: ruleResult.rawResponse || '',
         timestamp: new Date().toISOString()
     };
-    
+
     return JSON.stringify(codeReviewResult);
 }
 
@@ -118,10 +119,8 @@ suite('Code Review Structured Result Integration Tests', () => {
 
     suite('Individual Process Structured Result', () => {
 
-        test('should store and retrieve structured result for individual code review', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('should store and retrieve structured result for individual code review', () => {
+            const manager = new MockAIProcessManager();
 
             const metadata: CodeReviewMetadata = {
                 type: 'commit',
@@ -182,10 +181,8 @@ suite('Code Review Structured Result Integration Tests', () => {
             assert.strictEqual(parsed.summary.overallAssessment, 'needs-attention');
         });
 
-        test('should handle code review with no findings', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('should handle code review with no findings', () => {
+            const manager = new MockAIProcessManager();
 
             const metadata: CodeReviewMetadata = {
                 type: 'pending',
@@ -224,10 +221,8 @@ suite('Code Review Structured Result Integration Tests', () => {
 
     suite('Group Process Structured Result', () => {
 
-        test('should store and retrieve aggregated structured result for group', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('should store and retrieve aggregated structured result for group', () => {
+            const manager = new MockAIProcessManager();
 
             // Register a group
             const groupId = manager.registerCodeReviewGroup({
@@ -332,10 +327,8 @@ suite('Code Review Structured Result Integration Tests', () => {
             assert.strictEqual(parsed.summary.overallAssessment, 'fail');
         });
 
-        test('should retrieve children with structured results', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('should retrieve children with structured results', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'pending',
@@ -375,6 +368,8 @@ suite('Code Review Structured Result Integration Tests', () => {
     });
 
     suite('Structured Result Persistence', () => {
+        // These tests require real AIProcessManager with MockExtensionContext
+        // because they test actual persistence behavior
 
         test('should persist and restore structured results across reload', async () => {
             const context = new MockExtensionContext();
@@ -446,10 +441,8 @@ suite('Code Review Structured Result Integration Tests', () => {
 
     suite('ProcessTracker Integration', () => {
 
-        test('ProcessTracker updateProcess with structuredResult parameter', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('ProcessTracker updateProcess with structuredResult parameter', () => {
+            const manager = new MockAIProcessManager();
 
             const metadata: CodeReviewMetadata = {
                 type: 'staged',
@@ -459,7 +452,7 @@ suite('Code Review Structured Result Integration Tests', () => {
             // Simulate the ExtendedProcessTracker from code-review-commands.ts
             let trackedGroupId: string | undefined;
 
-            const tracker: ProcessTracker & { 
+            const tracker: ProcessTracker & {
                 groupId?: string;
                 updateGroupStructuredResult(result: string): void;
             } = {
@@ -482,7 +475,7 @@ suite('Code Review Structured Result Integration Tests', () => {
                     structuredResult?: string
                 ): void {
                     manager.updateProcess(processId, status, response, error);
-                    
+
                     if (structuredResult && status === 'completed') {
                         // Transform to CodeReviewResult format
                         try {
@@ -587,10 +580,8 @@ suite('Code Review Structured Result Integration Tests', () => {
 
     suite('Viewer Compatibility', () => {
 
-        test('structured result should be deserializable by viewer', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('structured result should be deserializable by viewer', () => {
+            const manager = new MockAIProcessManager();
 
             const processId = manager.registerCodeReviewProcess(
                 'test rule',
@@ -642,10 +633,8 @@ suite('Code Review Structured Result Integration Tests', () => {
             assert.ok(deserialized.timestamp instanceof Date);
         });
 
-        test('group structured result should be compatible with viewer', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+        test('group structured result should be compatible with viewer', () => {
+            const manager = new MockAIProcessManager();
 
             const groupId = manager.registerCodeReviewGroup({
                 reviewType: 'pending',

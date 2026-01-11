@@ -4,35 +4,14 @@
  */
 
 import * as assert from 'assert';
-import { AIProcessManager, AIProcessItem, AIProcessTreeDataProvider } from '../../shortcuts/ai-service';
-
-/**
- * Mock ExtensionContext for testing
- */
-class MockGlobalState {
-    private storage: Map<string, unknown> = new Map();
-
-    get<T>(key: string, defaultValue?: T): T {
-        return this.storage.has(key) ? this.storage.get(key) as T : defaultValue as T;
-    }
-
-    async update(key: string, value: unknown): Promise<void> {
-        this.storage.set(key, value);
-    }
-}
-
-class MockExtensionContext {
-    globalState = new MockGlobalState();
-}
+import { AIProcessItem, AIProcessTreeDataProvider, MockAIProcessManager } from '../../shortcuts/ai-service';
 
 suite('AI Process Tree Provider Tests', () => {
 
     suite('Hierarchical Display', () => {
 
         test('should show group at top level', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+            const manager = new MockAIProcessManager();
 
             const provider = new AIProcessTreeDataProvider(manager);
 
@@ -51,9 +30,7 @@ suite('AI Process Tree Provider Tests', () => {
         });
 
         test('should not show child processes at top level', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+            const manager = new MockAIProcessManager();
 
             const provider = new AIProcessTreeDataProvider(manager);
 
@@ -90,9 +67,7 @@ suite('AI Process Tree Provider Tests', () => {
         });
 
         test('should show child processes when expanding group', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+            const manager = new MockAIProcessManager();
 
             const provider = new AIProcessTreeDataProvider(manager);
 
@@ -123,7 +98,7 @@ suite('AI Process Tree Provider Tests', () => {
             // Get children of the group
             const children = await provider.getChildren(groupItem);
             assert.strictEqual(children.length, 2);
-            
+
             const childIds = children.map(c => c.process.id);
             assert.ok(childIds.includes(childId1));
             assert.ok(childIds.includes(childId2));
@@ -132,9 +107,7 @@ suite('AI Process Tree Provider Tests', () => {
         });
 
         test('should show standalone processes at top level', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+            const manager = new MockAIProcessManager();
 
             const provider = new AIProcessTreeDataProvider(manager);
 
@@ -190,7 +163,7 @@ suite('AI Process Tree Provider Tests', () => {
             };
 
             const item = new AIProcessItem(groupProcess);
-            
+
             // Groups should be expandable
             // TreeItemCollapsibleState.Expanded = 2
             assert.strictEqual(item.collapsibleState, 2);
@@ -207,7 +180,7 @@ suite('AI Process Tree Provider Tests', () => {
             };
 
             const item = new AIProcessItem(regularProcess);
-            
+
             // Regular processes should not be expandable
             // TreeItemCollapsibleState.None = 0
             assert.strictEqual(item.collapsibleState, 0);
@@ -231,7 +204,7 @@ suite('AI Process Tree Provider Tests', () => {
             };
 
             const item = new AIProcessItem(groupProcess);
-            
+
             assert.strictEqual(item.contextValue, 'codeReviewGroupProcess_completed');
         });
 
@@ -254,7 +227,7 @@ suite('AI Process Tree Provider Tests', () => {
 
             // Pass isChild = true
             const item = new AIProcessItem(childProcess, true);
-            
+
             assert.strictEqual(item.contextValue, 'codeReviewProcess_completed_child');
         });
 
@@ -277,7 +250,7 @@ suite('AI Process Tree Provider Tests', () => {
             };
 
             const item = new AIProcessItem(groupProcess);
-            
+
             assert.ok(item.command);
             assert.strictEqual(item.command.command, 'clarificationProcesses.viewCodeReviewGroupDetails');
         });
@@ -286,9 +259,7 @@ suite('AI Process Tree Provider Tests', () => {
     suite('Sorting', () => {
 
         test('should sort running processes first at top level', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+            const manager = new MockAIProcessManager();
 
             const provider = new AIProcessTreeDataProvider(manager);
 
@@ -308,7 +279,7 @@ suite('AI Process Tree Provider Tests', () => {
             });
 
             const topLevel = await provider.getChildren();
-            
+
             // Running should be first
             assert.strictEqual(topLevel[0].process.id, groupId2);
             assert.strictEqual(topLevel[0].process.status, 'running');
@@ -317,9 +288,7 @@ suite('AI Process Tree Provider Tests', () => {
         });
 
         test('should sort child processes by start time', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+            const manager = new MockAIProcessManager();
 
             const provider = new AIProcessTreeDataProvider(manager);
 
@@ -362,7 +331,7 @@ suite('AI Process Tree Provider Tests', () => {
 
             // Get children
             const children = await provider.getChildren(groupItem);
-            
+
             // Should be sorted by start time (oldest first for children)
             assert.strictEqual(children[0].process.id, childId1);
             assert.strictEqual(children[1].process.id, childId2);
@@ -375,9 +344,7 @@ suite('AI Process Tree Provider Tests', () => {
     suite('Get Parent', () => {
 
         test('should return parent for child process item', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+            const manager = new MockAIProcessManager();
 
             const provider = new AIProcessTreeDataProvider(manager);
 
@@ -402,7 +369,7 @@ suite('AI Process Tree Provider Tests', () => {
 
             // Get parent
             const parent = provider.getParent(childItem);
-            
+
             assert.ok(parent);
             assert.strictEqual(parent.process.id, groupId);
 
@@ -410,9 +377,7 @@ suite('AI Process Tree Provider Tests', () => {
         });
 
         test('should return undefined for top-level process', async () => {
-            const manager = new AIProcessManager();
-            const context = new MockExtensionContext();
-            await manager.initialize(context as never);
+            const manager = new MockAIProcessManager();
 
             const provider = new AIProcessTreeDataProvider(manager);
 
@@ -426,7 +391,7 @@ suite('AI Process Tree Provider Tests', () => {
             const groupItem = topLevel[0];
 
             const parent = provider.getParent(groupItem);
-            
+
             assert.strictEqual(parent, undefined);
 
             provider.dispose();
