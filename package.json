@@ -58,6 +58,11 @@
           "when": "true"
         },
         {
+          "id": "pipelinesView",
+          "name": "Pipelines",
+          "when": "config.workspaceShortcuts.pipelinesViewer.enabled"
+        },
+        {
           "id": "globalNotesView",
           "name": "Global Notes",
           "when": "config.workspaceShortcuts.globalNotes.enabled"
@@ -117,6 +122,10 @@
       {
         "view": "debugPanelView",
         "contents": "🐛 **Debug Commands**\n\nQuick access to Copilot Chat commands.\n\n**Available Commands:**\n• New Chat - Open Copilot Chat\n• Inline Chat - Start inline chat\n• Explain/Fix/Generate Tests/Docs"
+      },
+      {
+        "view": "pipelinesView",
+        "contents": "📋 **Pipelines**\n\n[Create First Pipeline](command:pipelinesViewer.create)\n\nManage YAML-based AI pipelines.\n\n**Features:**\n• Pipelines stored in `.vscode/pipelines/`\n• One-click execution\n• Validation and error checking\n• Template-based AI processing"
       }
     ],
     "configuration": {
@@ -474,6 +483,29 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the Debugging Panel for triggering Copilot Chat commands"
+        },
+        "workspaceShortcuts.pipelinesViewer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Pipelines Viewer panel"
+        },
+        "workspaceShortcuts.pipelinesViewer.folderPath": {
+          "type": "string",
+          "default": ".vscode/pipelines",
+          "description": "Path to pipelines folder relative to workspace root"
+        },
+        "workspaceShortcuts.pipelinesViewer.sortBy": {
+          "type": "string",
+          "enum": [
+            "name",
+            "modifiedDate"
+          ],
+          "enumDescriptions": [
+            "Sort pipelines alphabetically by name",
+            "Sort pipelines by last modified date (newest first)"
+          ],
+          "default": "name",
+          "description": "How to sort pipelines in the Pipelines Viewer"
         }
       }
     },
@@ -1107,6 +1139,54 @@
         "command": "debugPanel.executeCommand",
         "title": "Execute Debug Command",
         "category": "Debug Panel"
+      },
+      {
+        "command": "pipelinesViewer.create",
+        "title": "Create Pipeline",
+        "category": "Pipelines",
+        "icon": "$(add)"
+      },
+      {
+        "command": "pipelinesViewer.open",
+        "title": "Open Pipeline",
+        "category": "Pipelines",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "pipelinesViewer.execute",
+        "title": "Execute Pipeline",
+        "category": "Pipelines",
+        "icon": "$(run)"
+      },
+      {
+        "command": "pipelinesViewer.rename",
+        "title": "Rename Pipeline",
+        "category": "Pipelines",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "pipelinesViewer.delete",
+        "title": "Delete Pipeline",
+        "category": "Pipelines",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "pipelinesViewer.refresh",
+        "title": "Refresh Pipelines",
+        "category": "Pipelines",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "pipelinesViewer.openFolder",
+        "title": "Open Pipelines Folder",
+        "category": "Pipelines",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "pipelinesViewer.validate",
+        "title": "Validate Pipeline",
+        "category": "Pipelines",
+        "icon": "$(check)"
       }
     ],
     "menus": {
@@ -1209,6 +1289,21 @@
         {
           "command": "gitView.openInScm",
           "when": "view == gitView",
+          "group": "navigation"
+        },
+        {
+          "command": "pipelinesViewer.create",
+          "when": "view == pipelinesView",
+          "group": "navigation"
+        },
+        {
+          "command": "pipelinesViewer.refresh",
+          "when": "view == pipelinesView",
+          "group": "navigation"
+        },
+        {
+          "command": "pipelinesViewer.openFolder",
+          "when": "view == pipelinesView",
           "group": "navigation"
         }
       ],
@@ -1777,6 +1872,31 @@
           "command": "gitView.unstageAll",
           "when": "view == gitView && viewItem == gitSection_changes",
           "group": "inline@2"
+        },
+        {
+          "command": "pipelinesViewer.execute",
+          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "group": "pipeline@1"
+        },
+        {
+          "command": "pipelinesViewer.open",
+          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "group": "pipeline@2"
+        },
+        {
+          "command": "pipelinesViewer.validate",
+          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "group": "pipeline@3"
+        },
+        {
+          "command": "pipelinesViewer.rename",
+          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "group": "pipeline@4"
+        },
+        {
+          "command": "pipelinesViewer.delete",
+          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "group": "pipeline@5"
         }
       ],
       "explorer/context": [

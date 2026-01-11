@@ -32,6 +32,12 @@ import { NotificationManager } from './shortcuts/notification-manager';
 import { getExtensionLogger, LogCategory } from './shortcuts/shared';
 import { TaskManager, TasksCommands, TasksDragDropController, TasksTreeDataProvider } from './shortcuts/tasks-viewer';
 import { ThemeManager } from './shortcuts/theme-manager';
+import {
+    PipelineManager,
+    PipelinesTreeDataProvider,
+    PipelineCommands,
+    PipelineItem
+} from './shortcuts/yaml-pipeline';
 
 /**
  * Get a stable global configuration path when no workspace is open
@@ -183,6 +189,49 @@ export async function activate(context: vscode.ExtensionContext) {
             tasksCommands = new TasksCommands(taskManager, tasksTreeDataProvider);
             tasksCommands.setTreeView(tasksTreeView);
             tasksCommandDisposables = tasksCommands.registerCommands(context);
+        }
+
+        // Initialize Pipelines Viewer
+        const pipelinesViewerEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.pipelinesViewer').get<boolean>('enabled', true);
+        let pipelinesTreeView: vscode.TreeView<PipelineItem> | undefined;
+        let pipelineManager: PipelineManager | undefined;
+        let pipelinesTreeDataProvider: PipelinesTreeDataProvider | undefined;
+        let pipelinesCommands: PipelineCommands | undefined;
+        let pipelinesCommandDisposables: vscode.Disposable[] = [];
+
+        if (pipelinesViewerEnabled && workspaceFolder) {
+            pipelineManager = new PipelineManager(workspaceRoot);
+            pipelineManager.ensurePipelinesFolderExists();
+
+            pipelinesTreeDataProvider = new PipelinesTreeDataProvider(pipelineManager);
+
+            // Set up file watching for auto-refresh
+            const pipelinesWatcherDisposable = pipelineManager.watchPipelinesFolder(() => {
+                pipelinesTreeDataProvider?.refresh();
+            });
+
+            pipelinesTreeView = vscode.window.createTreeView('pipelinesView', {
+                treeDataProvider: pipelinesTreeDataProvider,
+                showCollapseAll: false
+            });
+
+            // Update view description with pipeline count
+            const updatePipelinesViewDescription = async () => {
+                if (pipelineManager && pipelinesTreeView) {
+                    const pipelines = await pipelineManager.getPipelines();
+                    const count = pipelines.length;
+                    pipelinesTreeView.description = `${count} pipeline${count !== 1 ? 's' : ''}`;
+                }
+            };
+            pipelinesTreeDataProvider.onDidChangeTreeData(updatePipelinesViewDescription);
+            updatePipelinesViewDescription();
+
+            pipelinesCommands = new PipelineCommands(pipelineManager, pipelinesTreeDataProvider, context);
+            pipelinesCommands.setTreeView(pipelinesTreeView);
+            pipelinesCommandDisposables = pipelinesCommands.registerCommands(context);
+
+            // Add watcher to disposables
+            pipelinesCommandDisposables.push(pipelinesWatcherDisposable);
         }
 
         // Initialize Debug Panel (always register, visibility controlled by when clause in package.json)
@@ -1222,6 +1271,11 @@ export async function activate(context: vscode.ExtensionContext) {
             ...(taskManager ? [taskManager] : []),
             ...(tasksTreeDataProvider ? [tasksTreeDataProvider] : []),
             ...tasksCommandDisposables,
+            // Pipelines Viewer disposables
+            ...(pipelinesTreeView ? [pipelinesTreeView] : []),
+            ...(pipelineManager ? [pipelineManager] : []),
+            ...(pipelinesTreeDataProvider ? [pipelinesTreeDataProvider] : []),
+            ...pipelinesCommandDisposables,
             treeDataProvider,
             globalNotesTreeDataProvider,
             configurationManager,

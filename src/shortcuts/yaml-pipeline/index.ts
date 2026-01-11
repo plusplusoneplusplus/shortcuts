@@ -79,3 +79,18 @@ export {
     createPromptMapJob,
     createPromptMapInput
 } from '../map-reduce/jobs/prompt-map-job';
+
+// UI Components for Pipelines Viewer
+export {
+    PipelineManager,
+    PipelinesTreeDataProvider,
+    PipelineItem,
+    PipelineCommands
+} from './ui';
+
+export type {
+    PipelineInfo,
+    ValidationResult,
+    PipelinesViewerSettings,
+    PipelineSortBy
+} from './ui';
