@@ -139,7 +139,8 @@ export class PromptGenerator extends PromptGeneratorBase<
             lines.push('');
             lines.push('1. For each comment above, modify the corresponding section in the file');
             lines.push('2. Preserve the overall document structure and formatting');
-            lines.push('3. After making changes, summarize what was modified');
+            lines.push('3. After addressing a comment, mark it as resolved');
+            lines.push('4. After making changes, summarize what was modified');
             lines.push('');
             lines.push('Please provide the updated content for each file.');
         }
