@@ -344,3 +344,283 @@ export interface ProcessEvent {
     type: ProcessEventType;
     process?: AIProcess;
 }
+
+// ============================================================================
+// AI Process Manager Interface
+// ============================================================================
+
+/**
+ * Process count statistics
+ */
+export interface ProcessCounts {
+    running: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+}
+
+/**
+ * Interface for AI Process Manager implementations.
+ *
+ * This interface defines the contract for managing AI processes, including
+ * registration, lifecycle management, and retrieval. Both the real
+ * AIProcessManager and MockAIProcessManager implement this interface.
+ *
+ * Usage:
+ * - Use this interface for dependency injection in tests
+ * - Prefer the generic API (registerTypedProcess, registerProcessGroup) for new features
+ * - Legacy methods are kept for backward compatibility
+ */
+export interface IAIProcessManager {
+    // ========================================================================
+    // Events
+    // ========================================================================
+
+    /**
+     * Event fired when processes change (added, updated, removed, cleared)
+     */
+    readonly onDidChangeProcesses: import('vscode').Event<ProcessEvent>;
+
+    // ========================================================================
+    // Initialization
+    // ========================================================================
+
+    /**
+     * Initialize the process manager with extension context for persistence
+     * @param context VSCode extension context for Memento storage
+     */
+    initialize(context: import('vscode').ExtensionContext): Promise<void>;
+
+    /**
+     * Check if the manager is initialized with persistence
+     */
+    isInitialized(): boolean;
+
+    // ========================================================================
+    // Generic API (Preferred for new features)
+    // ========================================================================
+
+    /**
+     * Register a typed process with generic metadata
+     * @param prompt The full prompt being sent
+     * @param options Options including type, metadata, and parent process ID
+     * @param childProcess Optional child process reference for cancellation
+     * @returns The process ID
+     */
+    registerTypedProcess(
+        prompt: string,
+        options: TypedProcessOptions,
+        childProcess?: import('child_process').ChildProcess
+    ): string;
+
+    /**
+     * Register a process group with generic metadata
+     * @param prompt Description or prompt for the group
+     * @param options Options including type and metadata
+     * @returns The group process ID
+     */
+    registerProcessGroup(
+        prompt: string,
+        options: ProcessGroupOptions
+    ): string;
+
+    /**
+     * Complete a process group with results
+     * @param id Group process ID
+     * @param options Completion options including result and stats
+     */
+    completeProcessGroup(id: string, options: CompleteGroupOptions): void;
+
+    // ========================================================================
+    // Legacy API (Kept for backward compatibility)
+    // ========================================================================
+
+    /**
+     * Register a new process
+     * @param prompt The full prompt being sent
+     * @param childProcess Optional child process reference for cancellation
+     * @returns The process ID
+     */
+    registerProcess(prompt: string, childProcess?: import('child_process').ChildProcess): string;
+
+    /**
+     * @deprecated Use registerTypedProcess with type='code-review' instead
+     */
+    registerCodeReviewProcess(
+        prompt: string,
+        metadata: {
+            reviewType: 'commit' | 'pending' | 'staged';
+            commitSha?: string;
+            commitMessage?: string;
+            rulesUsed: string[];
+            diffStats?: { files: number; additions: number; deletions: number };
+        },
+        childProcess?: import('child_process').ChildProcess,
+        parentProcessId?: string
+    ): string;
+
+    /**
+     * @deprecated Use registerProcessGroup with type='code-review-group' instead
+     */
+    registerCodeReviewGroup(
+        metadata: Omit<CodeReviewGroupMetadata, 'childProcessIds' | 'executionStats'>
+    ): string;
+
+    /**
+     * @deprecated Use completeProcessGroup instead
+     */
+    completeCodeReviewGroup(
+        id: string,
+        result: string,
+        structuredResult: string,
+        executionStats: CodeReviewGroupMetadata['executionStats']
+    ): void;
+
+    /**
+     * Register a new discovery process
+     * @param metadata Discovery process metadata
+     * @returns The process ID
+     */
+    registerDiscoveryProcess(metadata: DiscoveryProcessMetadata): string;
+
+    /**
+     * Complete a discovery process with results
+     */
+    completeDiscoveryProcess(
+        id: string,
+        resultCount: number,
+        resultSummary?: string,
+        serializedResults?: string
+    ): void;
+
+    /**
+     * Complete a code review process with structured result
+     */
+    completeCodeReviewProcess(id: string, result: string, structuredResult: string): void;
+
+    // ========================================================================
+    // Process Attachment
+    // ========================================================================
+
+    /**
+     * Attach a child process to an existing tracked process
+     */
+    attachChildProcess(id: string, childProcess: import('child_process').ChildProcess): void;
+
+    /**
+     * Save raw stdout to a temp file and attach it to the process
+     * @returns The file path if saved successfully, undefined otherwise
+     */
+    attachRawStdout(id: string, stdout: string): string | undefined;
+
+    // ========================================================================
+    // Process Lifecycle
+    // ========================================================================
+
+    /**
+     * Update process status
+     */
+    updateProcess(id: string, status: AIProcessStatus, result?: string, error?: string): void;
+
+    /**
+     * Mark a process as completed
+     */
+    completeProcess(id: string, result?: string): void;
+
+    /**
+     * Mark a process as failed
+     */
+    failProcess(id: string, error: string): void;
+
+    /**
+     * Cancel a running process
+     * @returns True if cancelled, false if process not found or not running
+     */
+    cancelProcess(id: string): boolean;
+
+    /**
+     * Update the structured result for a process
+     */
+    updateProcessStructuredResult(id: string, structuredResult: string): void;
+
+    // ========================================================================
+    // Process Removal
+    // ========================================================================
+
+    /**
+     * Remove a process from tracking
+     */
+    removeProcess(id: string): void;
+
+    /**
+     * Clear all completed, failed, and cancelled processes
+     */
+    clearCompletedProcesses(): void;
+
+    /**
+     * Clear all processes (including running ones)
+     */
+    clearAllProcesses(): void;
+
+    // ========================================================================
+    // Process Retrieval
+    // ========================================================================
+
+    /**
+     * Get all processes
+     */
+    getProcesses(): AIProcess[];
+
+    /**
+     * Get running processes only
+     */
+    getRunningProcesses(): AIProcess[];
+
+    /**
+     * Get a specific process by ID
+     */
+    getProcess(id: string): AIProcess | undefined;
+
+    /**
+     * Get all top-level processes (processes without parents)
+     */
+    getTopLevelProcesses(): AIProcess[];
+
+    /**
+     * Get child processes for a group
+     */
+    getChildProcesses(groupId: string): AIProcess[];
+
+    /**
+     * Get child process IDs from a parent process
+     */
+    getChildProcessIds(parentId: string): string[];
+
+    // ========================================================================
+    // Status Checks
+    // ========================================================================
+
+    /**
+     * Check if there are any running processes
+     */
+    hasRunningProcesses(): boolean;
+
+    /**
+     * Get count of processes by status
+     */
+    getProcessCounts(): ProcessCounts;
+
+    /**
+     * Check if a process is a child of a group
+     */
+    isChildProcess(processId: string): boolean;
+
+    // ========================================================================
+    // Cleanup
+    // ========================================================================
+
+    /**
+     * Dispose of resources
+     */
+    dispose(): void;
+}

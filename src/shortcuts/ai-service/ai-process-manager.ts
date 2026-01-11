@@ -12,21 +12,23 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
-import { 
-    AIProcess, 
-    AIProcessStatus, 
+import {
+    AIProcess,
+    AIProcessStatus,
     AIProcessType,
-    CodeReviewGroupMetadata, 
+    CodeReviewGroupMetadata,
     CompleteGroupOptions,
-    deserializeProcess, 
-    DiscoveryProcessMetadata, 
-    GenericGroupMetadata, 
-    GenericProcessMetadata, 
-    ProcessEvent, 
-    ProcessGroupOptions, 
-    SerializedAIProcess, 
+    deserializeProcess,
+    DiscoveryProcessMetadata,
+    GenericGroupMetadata,
+    GenericProcessMetadata,
+    IAIProcessManager,
+    ProcessCounts,
+    ProcessEvent,
+    ProcessGroupOptions,
+    SerializedAIProcess,
     serializeProcess,
-    TypedProcessOptions 
+    TypedProcessOptions
 } from './types';
 
 /**
@@ -55,7 +57,7 @@ interface TrackedProcess extends AIProcess {
 /**
  * Manages AI process tracking with persistence
  */
-export class AIProcessManager implements vscode.Disposable {
+export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
     private processes: Map<string, TrackedProcess> = new Map();
     private processCounter = 0;
     private context?: vscode.ExtensionContext;
@@ -887,8 +889,8 @@ export class AIProcessManager implements vscode.Disposable {
     /**
      * Get count of processes by status
      */
-    getProcessCounts(): { running: number; completed: number; failed: number; cancelled: number } {
-        const counts = { running: 0, completed: 0, failed: 0, cancelled: 0 };
+    getProcessCounts(): ProcessCounts {
+        const counts: ProcessCounts = { running: 0, completed: 0, failed: 0, cancelled: 0 };
         for (const process of this.processes.values()) {
             counts[process.status]++;
         }

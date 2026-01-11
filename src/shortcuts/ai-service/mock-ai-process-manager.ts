@@ -24,6 +24,8 @@ import {
     DiscoveryProcessMetadata,
     GenericGroupMetadata,
     GenericProcessMetadata,
+    IAIProcessManager,
+    ProcessCounts,
     ProcessEvent,
     ProcessGroupOptions,
     TypedProcessOptions
@@ -83,7 +85,7 @@ export interface ProcessCall {
 /**
  * Mock implementation of AIProcessManager
  */
-export class MockAIProcessManager implements vscode.Disposable {
+export class MockAIProcessManager implements IAIProcessManager, vscode.Disposable {
     private processes: Map<string, AIProcess> = new Map();
     private processCounter = 0;
     private calls: ProcessCall[] = [];
@@ -540,8 +542,8 @@ export class MockAIProcessManager implements vscode.Disposable {
         return false;
     }
 
-    getProcessCounts(): { running: number; completed: number; failed: number; cancelled: number } {
-        const counts = { running: 0, completed: 0, failed: 0, cancelled: 0 };
+    getProcessCounts(): ProcessCounts {
+        const counts: ProcessCounts = { running: 0, completed: 0, failed: 0, cancelled: 0 };
         for (const process of this.processes.values()) {
             counts[process.status]++;
         }

@@ -20,6 +20,9 @@ export {
     TypedProcessOptions,
     ProcessGroupOptions,
     CompleteGroupOptions,
+    // Interface for dependency injection
+    IAIProcessManager,
+    ProcessCounts,
     // Legacy types (kept for backward compatibility)
     CodeReviewGroupMetadata,
     CodeReviewProcessMetadata,
