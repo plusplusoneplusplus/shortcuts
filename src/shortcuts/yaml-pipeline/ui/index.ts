@@ -11,3 +11,6 @@ export * from './pipeline-item';
 export * from './tree-data-provider';
 export * from './commands';
 export * from './pipeline-executor-service';
+export * from './preview-mermaid';
+export * from './preview-content';
+export { registerPipelinePreview, PipelinePreviewEditorProvider } from './preview-provider';

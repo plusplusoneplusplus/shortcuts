@@ -88,7 +88,9 @@ export {
     ResourceItem,
     PipelineCommands,
     registerPipelineResultsProvider,
-    PIPELINE_RESULTS_SCHEME
+    PIPELINE_RESULTS_SCHEME,
+    registerPipelinePreview,
+    PipelinePreviewEditorProvider
 } from './ui';
 
 export type {

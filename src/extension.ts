@@ -37,7 +37,8 @@ import {
     PipelinesTreeDataProvider,
     PipelineCommands,
     PipelineTreeItem,
-    registerPipelineResultsProvider
+    registerPipelineResultsProvider,
+    registerPipelinePreview
 } from './shortcuts/yaml-pipeline';
 
 /**
@@ -230,6 +231,10 @@ export async function activate(context: vscode.ExtensionContext) {
             pipelinesCommands = new PipelineCommands(pipelineManager, pipelinesTreeDataProvider, context);
             pipelinesCommands.setTreeView(pipelinesTreeView);
             pipelinesCommandDisposables = pipelinesCommands.registerCommands(context);
+
+            // Register Pipeline Preview custom editor
+            const pipelinePreviewDisposable = registerPipelinePreview(context, pipelineManager);
+            pipelinesCommandDisposables.push(pipelinePreviewDisposable);
 
             // Add watcher to disposables
             pipelinesCommandDisposables.push(pipelinesWatcherDisposable);

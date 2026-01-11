@@ -37,6 +37,7 @@
     "onCommand:shortcuts.createLogicalGroup",
     "onCustomEditor:reviewEditorView",
     "onCustomEditor:gitDiffReviewEditor",
+    "onCustomEditor:pipelinePreviewEditor",
     "onViewContainer:shortcuts"
   ],
   "main": "./dist/extension.js",
@@ -1200,6 +1201,12 @@
         "title": "Validate Pipeline",
         "category": "Pipelines",
         "icon": "$(check)"
+      },
+      {
+        "command": "pipelinesViewer.preview",
+        "title": "Preview Pipeline",
+        "category": "Pipelines",
+        "icon": "$(preview)"
       }
     ],
     "menus": {
@@ -1897,24 +1904,29 @@
           "group": "pipeline@1"
         },
         {
-          "command": "pipelinesViewer.open",
+          "command": "pipelinesViewer.preview",
           "when": "view == pipelinesView && viewItem =~ /^pipeline/",
           "group": "pipeline@2"
         },
         {
-          "command": "pipelinesViewer.validate",
+          "command": "pipelinesViewer.open",
           "when": "view == pipelinesView && viewItem =~ /^pipeline/",
           "group": "pipeline@3"
         },
         {
-          "command": "pipelinesViewer.rename",
+          "command": "pipelinesViewer.validate",
           "when": "view == pipelinesView && viewItem =~ /^pipeline/",
           "group": "pipeline@4"
         },
         {
-          "command": "pipelinesViewer.delete",
+          "command": "pipelinesViewer.rename",
           "when": "view == pipelinesView && viewItem =~ /^pipeline/",
           "group": "pipeline@5"
+        },
+        {
+          "command": "pipelinesViewer.delete",
+          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "group": "pipeline@6"
         }
       ],
       "explorer/context": [
@@ -1952,6 +1964,19 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "pipelinePreviewEditor",
+        "displayName": "Pipeline Preview",
+        "selector": [
+          {
+            "filenamePattern": "**/pipeline.yaml"
+          },
+          {
+            "filenamePattern": "**/pipeline.yml"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "languageModelTools": [
