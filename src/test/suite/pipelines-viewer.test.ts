@@ -4,11 +4,11 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
+    PipelineInfo,
+    PipelineItem,
     PipelineManager,
     PipelinesTreeDataProvider,
-    PipelineItem,
-    ResourceItem,
-    PipelineInfo
+    ResourceItem
 } from '../../shortcuts/yaml-pipeline';
 
 suite('Pipelines Viewer Tests (Package Structure)', () => {
@@ -527,33 +527,34 @@ reduce:
 
         suite('Path Resolution', () => {
             test('should resolve relative path from package directory', () => {
-                // Use platform-appropriate path for testing
-                const packagePath = path.join(path.sep, 'workspace', '.vscode', 'pipelines', 'run-tests');
+                // Use tempDir which is fully qualified on all platforms
+                const packagePath = path.join(tempDir, '.vscode', 'pipelines', 'run-tests');
 
                 const result = pipelineManager.resolveResourcePath('input.csv', packagePath);
                 assert.strictEqual(result, path.join(packagePath, 'input.csv'));
             });
 
             test('should resolve nested relative path', () => {
-                // Use platform-appropriate path for testing
-                const packagePath = path.join(path.sep, 'workspace', '.vscode', 'pipelines', 'run-tests');
+                // Use tempDir which is fully qualified on all platforms
+                const packagePath = path.join(tempDir, '.vscode', 'pipelines', 'run-tests');
 
                 const result = pipelineManager.resolveResourcePath('data/files.csv', packagePath);
                 assert.strictEqual(result, path.join(packagePath, 'data', 'files.csv'));
             });
 
             test('should resolve parent directory reference', () => {
-                // Use platform-appropriate path for testing
-                const packagePath = path.join(path.sep, 'workspace', '.vscode', 'pipelines', 'run-tests');
+                // Use tempDir which is fully qualified on all platforms
+                const packagePath = path.join(tempDir, '.vscode', 'pipelines', 'run-tests');
 
                 const result = pipelineManager.resolveResourcePath('../shared/common.csv', packagePath);
                 assert.strictEqual(result, path.resolve(packagePath, '../shared/common.csv'));
             });
 
             test('should preserve absolute paths', () => {
-                // Use platform-appropriate paths for testing
-                const packagePath = path.join(path.sep, 'workspace', '.vscode', 'pipelines', 'run-tests');
-                const absolutePath = path.join(path.sep, 'absolute', 'path', 'to', 'file.csv');
+                // Use tempDir which is fully qualified on all platforms
+                const packagePath = path.join(tempDir, '.vscode', 'pipelines', 'run-tests');
+                // Create an absolute path using tempDir to ensure it's valid on all platforms
+                const absolutePath = path.join(tempDir, 'absolute', 'path', 'to', 'file.csv');
 
                 const result = pipelineManager.resolveResourcePath(absolutePath, packagePath);
                 assert.strictEqual(result, absolutePath);
