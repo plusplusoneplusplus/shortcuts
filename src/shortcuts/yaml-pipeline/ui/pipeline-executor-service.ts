@@ -191,7 +191,12 @@ export async function executeVSCodePipeline(
 }
 
 /**
- * Create a process tracker that bridges to the AI process manager
+ * Create a process tracker that bridges to the AI process manager.
+ * 
+ * The key insight here is that we already have a parent pipeline-execution group,
+ * so we don't need to create another nested group when the executor asks for one.
+ * Instead, we return the parent group ID, which ensures child processes are
+ * registered directly under the pipeline-execution process visible in the tree view.
  */
 function createProcessTracker(
     processManager: IAIProcessManager,
@@ -199,12 +204,16 @@ function createProcessTracker(
 ): ProcessTracker {
     return {
         registerProcess(description: string, parentId?: string): string {
+            // If parentId is provided and it's the same as parentGroupId, use parentGroupId
+            // Otherwise use the provided parentId or fall back to parentGroupId
+            const effectiveParentId = parentId === parentGroupId ? parentGroupId : (parentId || parentGroupId);
+            
             return processManager.registerTypedProcess(
                 description,
                 {
                     type: 'pipeline-item',
                     idPrefix: 'pipeline-item',
-                    parentProcessId: parentId || parentGroupId,
+                    parentProcessId: effectiveParentId,
                     metadata: { type: 'pipeline-item', description }
                 }
             );
@@ -228,26 +237,33 @@ function createProcessTracker(
             // 'running' status is set on registration
         },
 
-        registerGroup(description: string): string {
-            return processManager.registerProcessGroup(description, {
-                type: 'pipeline-batch',
-                idPrefix: 'pipeline-batch',
-                metadata: { description }
-            });
+        registerGroup(_description: string): string {
+            // Don't create a nested group - return the parent group ID so that
+            // child processes are registered directly under the pipeline-execution process.
+            // This ensures they appear in the tree view when the user expands the pipeline.
+            return parentGroupId;
         },
 
         completeGroup(
             groupId: string,
-            summary: string,
-            stats: { totalItems: number; successfulMaps: number; failedMaps: number }
+            _summary: string,
+            _stats: { totalItems: number; successfulMaps: number; failedMaps: number }
         ): void {
+            // If the groupId is the parentGroupId, don't complete it here
+            // because it will be completed by the main executor after the full pipeline finishes.
+            // This prevents early completion of the parent process.
+            if (groupId === parentGroupId) {
+                return;
+            }
+            // For any other group (shouldn't happen with current implementation),
+            // complete it normally
             processManager.completeProcessGroup(groupId, {
-                result: summary,
-                structuredResult: JSON.stringify(stats),
+                result: _summary,
+                structuredResult: JSON.stringify(_stats),
                 executionStats: {
-                    totalItems: stats.totalItems,
-                    successfulMaps: stats.successfulMaps,
-                    failedMaps: stats.failedMaps,
+                    totalItems: _stats.totalItems,
+                    successfulMaps: _stats.successfulMaps,
+                    failedMaps: _stats.failedMaps,
                     mapPhaseTimeMs: 0,
                     reducePhaseTimeMs: 0,
                     maxConcurrency: 5

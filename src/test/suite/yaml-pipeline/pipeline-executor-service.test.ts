@@ -9,10 +9,97 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { MockAIProcessManager } from '../../../shortcuts/ai-service/mock-ai-process-manager';
+import { ProcessTracker, ExecutionStats } from '../../../shortcuts/map-reduce/types';
+import { AIProcess } from '../../../shortcuts/ai-service/types';
 
 // Import the module under test
 // Note: These tests focus on the utility functions that don't require VSCode context
 // Full integration tests would require VSCode test runner
+
+/**
+ * Creates a process tracker that bridges to the AI process manager.
+ * This mirrors the implementation in pipeline-executor-service.ts for testing.
+ *
+ * The key insight here is that we already have a parent pipeline-execution group,
+ * so we don't need to create another nested group when the executor asks for one.
+ * Instead, we return the parent group ID, which ensures child processes are
+ * registered directly under the pipeline-execution process visible in the tree view.
+ */
+function createTestProcessTracker(
+    processManager: MockAIProcessManager,
+    parentGroupId: string
+): ProcessTracker {
+    return {
+        registerProcess(description: string, parentId?: string): string {
+            // If parentId is provided and it's the same as parentGroupId, use parentGroupId
+            // Otherwise use the provided parentId or fall back to parentGroupId
+            const effectiveParentId = parentId === parentGroupId ? parentGroupId : (parentId || parentGroupId);
+
+            return processManager.registerTypedProcess(
+                description,
+                {
+                    type: 'pipeline-item',
+                    idPrefix: 'pipeline-item',
+                    parentProcessId: effectiveParentId,
+                    metadata: { type: 'pipeline-item', description }
+                }
+            );
+        },
+
+        updateProcess(
+            processId: string,
+            status: 'running' | 'completed' | 'failed',
+            response?: string,
+            error?: string,
+            structuredResult?: string
+        ): void {
+            if (status === 'completed') {
+                processManager.completeProcess(processId, response);
+                if (structuredResult) {
+                    processManager.updateProcessStructuredResult(processId, structuredResult);
+                }
+            } else if (status === 'failed') {
+                processManager.failProcess(processId, error || 'Unknown error');
+            }
+            // 'running' status is set on registration
+        },
+
+        registerGroup(_description: string): string {
+            // Don't create a nested group - return the parent group ID so that
+            // child processes are registered directly under the pipeline-execution process.
+            // This ensures they appear in the tree view when the user expands the pipeline.
+            return parentGroupId;
+        },
+
+        completeGroup(
+            groupId: string,
+            _summary: string,
+            _stats: ExecutionStats
+        ): void {
+            // If the groupId is the parentGroupId, don't complete it here
+            // because it will be completed by the main executor after the full pipeline finishes.
+            // This prevents early completion of the parent process.
+            if (groupId === parentGroupId) {
+                return;
+            }
+            // For any other group (shouldn't happen with current implementation),
+            // complete it normally
+            processManager.completeProcessGroup(groupId, {
+                result: _summary,
+                structuredResult: JSON.stringify(_stats),
+                executionStats: {
+                    totalItems: _stats.totalItems,
+                    successfulMaps: _stats.successfulMaps,
+                    failedMaps: _stats.failedMaps,
+                    mapPhaseTimeMs: 0,
+                    reducePhaseTimeMs: 0,
+                    maxConcurrency: 5
+                }
+            });
+        }
+    };
+}
 
 suite('Pipeline Executor Service', () => {
     let tempDir: string;
@@ -345,6 +432,728 @@ input:
             // Should be a valid path string
             assert.ok(typeof normalized === 'string');
             assert.ok(normalized.length > 0);
+        });
+    });
+
+    suite('Pipeline Process Tracker - Tree View Integration', () => {
+        let processManager: MockAIProcessManager;
+
+        setup(() => {
+            processManager = new MockAIProcessManager();
+        });
+
+        teardown(() => {
+            processManager.dispose();
+        });
+
+        suite('Parent Group Reuse', () => {
+            test('registerGroup returns parent group ID instead of creating new group', () => {
+                // Create parent pipeline-execution group
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test Pipeline',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: {
+                            type: 'pipeline-execution',
+                            pipelineName: 'Test Pipeline'
+                        }
+                    }
+                );
+
+                // Create tracker with parent group
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // When executor calls registerGroup, it should return the parent ID
+                const returnedGroupId = tracker.registerGroup('Internal batch group');
+
+                assert.strictEqual(returnedGroupId, parentGroupId,
+                    'registerGroup should return parent group ID, not create a new group');
+            });
+
+            test('no nested pipeline-batch groups are created', () => {
+                // Create parent pipeline-execution group
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test Pipeline',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                // Create tracker
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // Call registerGroup multiple times (simulating executor behavior)
+                tracker.registerGroup('Batch 1');
+                tracker.registerGroup('Batch 2');
+
+                // Should only have the original parent group, no pipeline-batch groups
+                const allProcesses = processManager.getProcesses();
+                const pipelineBatchGroups = allProcesses.filter((p: AIProcess) => p.type === 'pipeline-batch');
+
+                assert.strictEqual(pipelineBatchGroups.length, 0,
+                    'No pipeline-batch groups should be created');
+                assert.strictEqual(allProcesses.length, 1,
+                    'Only the parent pipeline-execution process should exist');
+            });
+        });
+
+        suite('Child Process Registration', () => {
+            test('child processes are registered under parent pipeline-execution group', () => {
+                // Create parent group
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test Pipeline',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                // Create tracker
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // Simulate executor: register group then register processes under it
+                const groupId = tracker.registerGroup('Batch group');
+                const processId1 = tracker.registerProcess('Processing item 1/3', groupId);
+                const processId2 = tracker.registerProcess('Processing item 2/3', groupId);
+                const processId3 = tracker.registerProcess('Processing item 3/3', groupId);
+
+                // Verify children are under parent
+                const children = processManager.getChildProcesses(parentGroupId);
+                assert.strictEqual(children.length, 3,
+                    'All child processes should be under parent pipeline-execution group');
+
+                const childIds = children.map((c: AIProcess) => c.id);
+                assert.ok(childIds.includes(processId1), 'Child 1 should be found');
+                assert.ok(childIds.includes(processId2), 'Child 2 should be found');
+                assert.ok(childIds.includes(processId3), 'Child 3 should be found');
+            });
+
+            test('child processes have correct parentProcessId', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const groupId = tracker.registerGroup('Batch');
+                const processId = tracker.registerProcess('Test item', groupId);
+
+                const process = processManager.getProcess(processId);
+                assert.ok(process, 'Process should exist');
+                assert.strictEqual(process?.parentProcessId, parentGroupId,
+                    'Child process should have parentProcessId pointing to pipeline-execution group');
+            });
+
+            test('child processes have type pipeline-item', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const groupId = tracker.registerGroup('Batch');
+                const processId = tracker.registerProcess('Test item', groupId);
+
+                const process = processManager.getProcess(processId);
+                assert.strictEqual(process?.type, 'pipeline-item',
+                    'Child process should have type pipeline-item');
+            });
+
+            test('child processes without explicit parentId use parentGroupId', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // Register process without parentId
+                const processId = tracker.registerProcess('Test item');
+
+                const process = processManager.getProcess(processId);
+                assert.strictEqual(process?.parentProcessId, parentGroupId,
+                    'Process without explicit parentId should use parentGroupId');
+            });
+        });
+
+        suite('Group Completion Behavior', () => {
+            test('completeGroup does not complete parent group prematurely', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const groupId = tracker.registerGroup('Batch');
+
+                // Simulate executor completing the "internal" group
+                const stats: ExecutionStats = {
+                    totalItems: 3,
+                    successfulMaps: 3,
+                    failedMaps: 0,
+                    mapPhaseTimeMs: 1000,
+                    reducePhaseTimeMs: 100,
+                    maxConcurrency: 5
+                };
+                tracker.completeGroup(groupId, 'Completed 3 items', stats);
+
+                // Parent group should still be running
+                const parentProcess = processManager.getProcess(parentGroupId);
+                assert.strictEqual(parentProcess?.status, 'running',
+                    'Parent group should still be running after internal completeGroup');
+            });
+
+            test('parent group can be completed separately via processManager', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // Simulate executor flow
+                const groupId = tracker.registerGroup('Batch');
+                tracker.registerProcess('Item 1', groupId);
+                tracker.registerProcess('Item 2', groupId);
+
+                // Executor's internal completeGroup (should be no-op for parent)
+                tracker.completeGroup(groupId, 'Internal complete', {
+                    totalItems: 2,
+                    successfulMaps: 2,
+                    failedMaps: 0,
+                    mapPhaseTimeMs: 500,
+                    reducePhaseTimeMs: 50,
+                    maxConcurrency: 5
+                });
+
+                // Parent still running
+                assert.strictEqual(processManager.getProcess(parentGroupId)?.status, 'running');
+
+                // Now complete via processManager (simulating executeVSCodePipeline completion)
+                processManager.completeProcessGroup(parentGroupId, {
+                    result: 'Pipeline completed successfully',
+                    structuredResult: JSON.stringify({ success: true }),
+                    executionStats: {
+                        totalItems: 2,
+                        successfulMaps: 2,
+                        failedMaps: 0,
+                        mapPhaseTimeMs: 500,
+                        reducePhaseTimeMs: 50,
+                        maxConcurrency: 5
+                    }
+                });
+
+                // Now parent should be completed
+                const parentProcess = processManager.getProcess(parentGroupId);
+                assert.strictEqual(parentProcess?.status, 'completed',
+                    'Parent group should be completed after explicit completeProcessGroup');
+            });
+        });
+
+        suite('Process Update Behavior', () => {
+            test('updateProcess completes process with result', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const processId = tracker.registerProcess('Test item');
+
+                tracker.updateProcess(processId, 'completed', 'Success result', undefined, '{"output": "test"}');
+
+                const process = processManager.getProcess(processId);
+                assert.strictEqual(process?.status, 'completed');
+                assert.strictEqual(process?.result, 'Success result');
+                assert.strictEqual(process?.structuredResult, '{"output": "test"}');
+            });
+
+            test('updateProcess fails process with error', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const processId = tracker.registerProcess('Test item');
+
+                tracker.updateProcess(processId, 'failed', undefined, 'Something went wrong');
+
+                const process = processManager.getProcess(processId);
+                assert.strictEqual(process?.status, 'failed');
+                assert.strictEqual(process?.error, 'Something went wrong');
+            });
+
+            test('updateProcess with failed status uses default error if none provided', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const processId = tracker.registerProcess('Test item');
+
+                tracker.updateProcess(processId, 'failed');
+
+                const process = processManager.getProcess(processId);
+                assert.strictEqual(process?.status, 'failed');
+                assert.strictEqual(process?.error, 'Unknown error');
+            });
+        });
+
+        suite('Tree View Compatibility', () => {
+            test('getTopLevelProcesses returns only pipeline-execution, not children', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const groupId = tracker.registerGroup('Batch');
+                tracker.registerProcess('Item 1', groupId);
+                tracker.registerProcess('Item 2', groupId);
+                tracker.registerProcess('Item 3', groupId);
+
+                const topLevel = processManager.getTopLevelProcesses();
+                assert.strictEqual(topLevel.length, 1,
+                    'Only parent pipeline-execution should be top-level');
+                assert.strictEqual(topLevel[0].type, 'pipeline-execution');
+            });
+
+            test('getChildProcesses returns all pipeline-item children', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const groupId = tracker.registerGroup('Batch');
+                tracker.registerProcess('Item 1', groupId);
+                tracker.registerProcess('Item 2', groupId);
+                tracker.registerProcess('Item 3', groupId);
+
+                const children = processManager.getChildProcesses(parentGroupId);
+                assert.strictEqual(children.length, 3);
+                assert.ok(children.every((c: AIProcess) => c.type === 'pipeline-item'));
+            });
+
+            test('isChildProcess returns true for pipeline-item processes', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const processId = tracker.registerProcess('Test item');
+
+                assert.strictEqual(processManager.isChildProcess(processId), true);
+                assert.strictEqual(processManager.isChildProcess(parentGroupId), false);
+            });
+
+            test('childProcessIds array is correctly populated in groupMetadata', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const groupId = tracker.registerGroup('Batch');
+                const id1 = tracker.registerProcess('Item 1', groupId);
+                const id2 = tracker.registerProcess('Item 2', groupId);
+
+                const parentProcess = processManager.getProcess(parentGroupId);
+                assert.ok(parentProcess?.groupMetadata, 'Parent should have groupMetadata');
+                assert.ok(parentProcess?.groupMetadata?.childProcessIds.includes(id1),
+                    'childProcessIds should include first child');
+                assert.ok(parentProcess?.groupMetadata?.childProcessIds.includes(id2),
+                    'childProcessIds should include second child');
+            });
+        });
+
+        suite('Full Pipeline Execution Simulation', () => {
+            test('simulates complete pipeline execution with multiple items', () => {
+                // 1. Create pipeline-execution group (like executeVSCodePipeline does)
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Bug Triage',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: {
+                            type: 'pipeline-execution',
+                            pipelineName: 'Bug Triage',
+                            pipelinePath: '.vscode/pipelines/bug-triage'
+                        }
+                    }
+                );
+
+                // 2. Create tracker
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // 3. Executor registers internal group (returns parent ID)
+                const executorGroupId = tracker.registerGroup('Bug Triage batch');
+                assert.strictEqual(executorGroupId, parentGroupId);
+
+                // 4. Executor registers individual items
+                const itemIds: string[] = [];
+                for (let i = 1; i <= 5; i++) {
+                    const id = tracker.registerProcess(`Processing item ${i}/5`, executorGroupId);
+                    itemIds.push(id);
+                }
+
+                // 5. Verify all items are children of parent
+                let children = processManager.getChildProcesses(parentGroupId);
+                assert.strictEqual(children.length, 5);
+                assert.ok(children.every((c: AIProcess) => c.status === 'running'));
+
+                // 6. Complete some items
+                tracker.updateProcess(itemIds[0], 'completed', undefined, undefined, '{"severity": "high"}');
+                tracker.updateProcess(itemIds[1], 'completed', undefined, undefined, '{"severity": "low"}');
+                tracker.updateProcess(itemIds[2], 'failed', undefined, 'AI service timeout');
+                tracker.updateProcess(itemIds[3], 'completed', undefined, undefined, '{"severity": "medium"}');
+                tracker.updateProcess(itemIds[4], 'completed', undefined, undefined, '{"severity": "high"}');
+
+                // 7. Executor calls completeGroup (should be no-op)
+                tracker.completeGroup(executorGroupId, 'Completed 4/5', {
+                    totalItems: 5,
+                    successfulMaps: 4,
+                    failedMaps: 1,
+                    mapPhaseTimeMs: 2000,
+                    reducePhaseTimeMs: 100,
+                    maxConcurrency: 5
+                });
+
+                // 8. Parent still running
+                assert.strictEqual(processManager.getProcess(parentGroupId)?.status, 'running');
+
+                // 9. Main executor completes the group
+                processManager.completeProcessGroup(parentGroupId, {
+                    result: '# Pipeline Results\n\n4/5 items processed successfully',
+                    structuredResult: JSON.stringify({
+                        success: true,
+                        results: [
+                            { severity: 'high' },
+                            { severity: 'low' },
+                            { error: 'AI service timeout' },
+                            { severity: 'medium' },
+                            { severity: 'high' }
+                        ]
+                    }),
+                    executionStats: {
+                        totalItems: 5,
+                        successfulMaps: 4,
+                        failedMaps: 1,
+                        mapPhaseTimeMs: 2000,
+                        reducePhaseTimeMs: 100,
+                        maxConcurrency: 5
+                    }
+                });
+
+                // 10. Verify final state
+                const parentProcess = processManager.getProcess(parentGroupId);
+                assert.strictEqual(parentProcess?.status, 'completed');
+                assert.ok(parentProcess?.result?.includes('4/5 items'));
+
+                children = processManager.getChildProcesses(parentGroupId);
+                assert.strictEqual(children.length, 5);
+
+                const completed = children.filter((c: AIProcess) => c.status === 'completed');
+                const failed = children.filter((c: AIProcess) => c.status === 'failed');
+                assert.strictEqual(completed.length, 4);
+                assert.strictEqual(failed.length, 1);
+
+                // 11. Verify tree view sees correct structure
+                const topLevel = processManager.getTopLevelProcesses();
+                assert.strictEqual(topLevel.length, 1);
+                assert.strictEqual(topLevel[0].id, parentGroupId);
+            });
+
+            test('simulates pipeline with single item (no internal group created by executor)', () => {
+                // When there's only 1 item, executor doesn't create a group
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Single Item',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // Executor might not call registerGroup for single item
+                // Just registers the process directly
+                const processId = tracker.registerProcess('Processing item 1/1');
+
+                // Complete the item
+                tracker.updateProcess(processId, 'completed', undefined, undefined, '{"result": "ok"}');
+
+                // Verify child is under parent
+                const children = processManager.getChildProcesses(parentGroupId);
+                assert.strictEqual(children.length, 1);
+                assert.strictEqual(children[0].status, 'completed');
+            });
+
+            test('simulates pipeline with all failures', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Failing Pipeline',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const groupId = tracker.registerGroup('Batch');
+
+                const ids: string[] = [];
+                for (let i = 1; i <= 3; i++) {
+                    ids.push(tracker.registerProcess(`Item ${i}`, groupId));
+                }
+
+                // All items fail
+                ids.forEach((id, i) => {
+                    tracker.updateProcess(id, 'failed', undefined, `Error on item ${i + 1}`);
+                });
+
+                // Complete group
+                tracker.completeGroup(groupId, 'All failed', {
+                    totalItems: 3,
+                    successfulMaps: 0,
+                    failedMaps: 3,
+                    mapPhaseTimeMs: 500,
+                    reducePhaseTimeMs: 0,
+                    maxConcurrency: 5
+                });
+
+                // Verify
+                const children = processManager.getChildProcesses(parentGroupId);
+                assert.strictEqual(children.length, 3);
+                assert.ok(children.every((c: AIProcess) => c.status === 'failed'));
+
+                // Parent should still be running (not completed by tracker)
+                assert.strictEqual(processManager.getProcess(parentGroupId)?.status, 'running');
+            });
+        });
+
+        suite('Edge Cases', () => {
+            test('handles empty pipeline (no items)', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Empty',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // Executor calls registerGroup but doesn't register any processes
+                const groupId = tracker.registerGroup('Empty batch');
+                tracker.completeGroup(groupId, 'No items', {
+                    totalItems: 0,
+                    successfulMaps: 0,
+                    failedMaps: 0,
+                    mapPhaseTimeMs: 0,
+                    reducePhaseTimeMs: 0,
+                    maxConcurrency: 5
+                });
+
+                // Verify no children
+                const children = processManager.getChildProcesses(parentGroupId);
+                assert.strictEqual(children.length, 0);
+
+                // Parent still running
+                assert.strictEqual(processManager.getProcess(parentGroupId)?.status, 'running');
+            });
+
+            test('handles multiple sequential registerGroup calls', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // Multiple registerGroup calls should all return parent ID
+                const id1 = tracker.registerGroup('Group 1');
+                const id2 = tracker.registerGroup('Group 2');
+                const id3 = tracker.registerGroup('Group 3');
+
+                assert.strictEqual(id1, parentGroupId);
+                assert.strictEqual(id2, parentGroupId);
+                assert.strictEqual(id3, parentGroupId);
+            });
+
+            test('processes registered with different parentId values work correctly', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // Register with explicit parentGroupId
+                const id1 = tracker.registerProcess('Item 1', parentGroupId);
+                // Register without parentId (should default to parentGroupId)
+                const id2 = tracker.registerProcess('Item 2');
+                // Register with same parentGroupId from registerGroup
+                const groupId = tracker.registerGroup('Batch');
+                const id3 = tracker.registerProcess('Item 3', groupId);
+
+                // All should be children of parent
+                const children = processManager.getChildProcesses(parentGroupId);
+                assert.strictEqual(children.length, 3);
+
+                const childIds = children.map((c: AIProcess) => c.id);
+                assert.ok(childIds.includes(id1));
+                assert.ok(childIds.includes(id2));
+                assert.ok(childIds.includes(id3));
+            });
+
+            test('structured results are preserved on child processes', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const processId = tracker.registerProcess('Test item');
+
+                const structuredResult = JSON.stringify({
+                    severity: 'high',
+                    category: 'bug',
+                    effort_hours: 4
+                });
+
+                tracker.updateProcess(processId, 'completed', 'Done', undefined, structuredResult);
+
+                const process = processManager.getProcess(processId);
+                assert.strictEqual(process?.structuredResult, structuredResult);
+
+                // Verify it can be parsed back
+                const parsed = JSON.parse(process?.structuredResult || '{}');
+                assert.strictEqual(parsed.severity, 'high');
+                assert.strictEqual(parsed.effort_hours, 4);
+            });
+        });
+
+        suite('Method Call Recording', () => {
+            test('records registerTypedProcess calls correctly', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                tracker.registerProcess('Test item', parentGroupId);
+
+                const calls = processManager.getCallsForMethod('registerTypedProcess');
+                assert.strictEqual(calls.length, 1);
+                assert.strictEqual(calls[0].args[0], 'Test item');
+                assert.strictEqual(calls[0].args[1].type, 'pipeline-item');
+                assert.strictEqual(calls[0].args[1].parentProcessId, parentGroupId);
+            });
+
+            test('does not record completeProcessGroup for skipped parent completion', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const groupId = tracker.registerGroup('Batch');
+
+                // Clear calls to isolate completeGroup behavior
+                processManager.clearCalls();
+
+                // This should be a no-op since groupId === parentGroupId
+                tracker.completeGroup(groupId, 'Summary', {
+                    totalItems: 1,
+                    successfulMaps: 1,
+                    failedMaps: 0,
+                    mapPhaseTimeMs: 100,
+                    reducePhaseTimeMs: 10,
+                    maxConcurrency: 5
+                });
+
+                const completeCalls = processManager.getCallsForMethod('completeProcessGroup');
+                assert.strictEqual(completeCalls.length, 0,
+                    'completeProcessGroup should not be called when groupId equals parentGroupId');
+            });
         });
     });
 });
