@@ -9,7 +9,7 @@ import { exec, execSync } from 'child_process';
 import * as vscode from 'vscode';
 import { IAIProcessManager } from './types';
 import { getExtensionLogger } from './ai-service-logger';
-import { AIInvocationResult, AIModel, AIToolType, VALID_MODELS } from './types';
+import { AIInvocationResult, AIModel, AIToolType, DEFAULT_PROMPTS, VALID_MODELS } from './types';
 
 /** Timeout for copilot CLI execution in milliseconds */
 const COPILOT_TIMEOUT_MS = 300000; // 5 minutes
@@ -238,14 +238,7 @@ export function getPromptTemplate(promptType: 'clarify' | 'goDeeper' | 'customDe
         return prompt.trim();
     }
 
-    // Default prompts
-    const defaults: Record<string, string> = {
-        clarify: 'Please clarify',
-        goDeeper: 'Please provide an in-depth explanation and analysis of',
-        customDefault: 'Please explain'
-    };
-
-    return defaults[promptType];
+    return DEFAULT_PROMPTS[promptType];
 }
 
 /**

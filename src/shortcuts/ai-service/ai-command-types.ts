@@ -4,6 +4,8 @@
  * Type definitions for configurable AI commands.
  */
 
+import { DEFAULT_PROMPTS } from './types';
+
 /**
  * An AI command that can be invoked from the review editor
  */
@@ -54,7 +56,7 @@ export const DEFAULT_AI_COMMANDS: AICommand[] = [
         id: 'clarify',
         label: 'Clarify',
         icon: '💡',
-        prompt: 'Please clarify',
+        prompt: DEFAULT_PROMPTS.clarify,
         order: 1,
         commentType: 'ai-clarification',
         responseLabel: '🤖 **AI Clarification:**'
@@ -63,7 +65,7 @@ export const DEFAULT_AI_COMMANDS: AICommand[] = [
         id: 'go-deeper',
         label: 'Go Deeper',
         icon: '🔍',
-        prompt: 'Please provide an in-depth explanation and analysis of',
+        prompt: DEFAULT_PROMPTS.goDeeper,
         order: 2,
         commentType: 'ai-clarification',
         responseLabel: '🔍 **AI Deep Analysis:**'
@@ -72,7 +74,7 @@ export const DEFAULT_AI_COMMANDS: AICommand[] = [
         id: 'custom',
         label: 'Custom...',
         icon: '💬',
-        prompt: 'Please explain',
+        prompt: DEFAULT_PROMPTS.customDefault,
         order: 99,
         isCustomInput: true,
         responseLabel: '🤖 **AI Response:**'

@@ -327,9 +327,28 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
  * Default prompt templates for different instruction types
  */
 export const DEFAULT_PROMPTS = {
-    clarify: 'Please clarify',
-    goDeeper: 'Please provide an in-depth explanation and analysis of',
-    customDefault: 'Please explain'
+    clarify: `Please clarify the following snippet with more depth.
+
+- Explain what it does in plain language.
+- Walk through the key steps, including control flow and data flow.
+- State any assumptions you are making from limited context.
+- Call out ambiguities and ask up to 3 targeted questions.
+- Suggest 2 to 3 concrete next checks, such as what to inspect or test next.
+
+Snippet`,
+    goDeeper: `Please provide an in-depth explanation and analysis of the following snippet.
+
+Go beyond a summary and explore the surrounding implications.
+
+- Intent and responsibilities in the broader system.
+- Step-by-step control flow and data flow.
+- Edge cases and failure modes, including correctness, security, and performance.
+- Likely dependencies and impacts, and what else to inspect.
+- Concrete improvements or refactors with tradeoffs.
+- How to validate, including focused tests, repro steps, or logs.
+
+Snippet`,
+    customDefault: 'Please explain the following snippet'
 } as const;
 
 /**

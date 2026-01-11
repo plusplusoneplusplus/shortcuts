@@ -7,6 +7,7 @@
 
 import * as vscode from 'vscode';
 import { AICommand, DEFAULT_AI_COMMANDS, serializeCommands, SerializedAICommand } from './ai-command-types';
+import { DEFAULT_PROMPTS } from './types';
 
 /**
  * Singleton registry for AI commands
@@ -159,7 +160,7 @@ export class AICommandRegistry {
         const command = this.getCommand(commandId);
         if (!command) {
             // Fallback to default clarify prompt
-            return 'Please clarify';
+            return DEFAULT_PROMPTS.clarify;
         }
 
         // For custom input commands, use the provided custom instruction
