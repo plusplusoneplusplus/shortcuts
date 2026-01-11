@@ -86,7 +86,9 @@ export {
     PipelinesTreeDataProvider,
     PipelineItem,
     ResourceItem,
-    PipelineCommands
+    PipelineCommands,
+    registerPipelineResultsProvider,
+    PIPELINE_RESULTS_SCHEME
 } from './ui';
 
 export type {

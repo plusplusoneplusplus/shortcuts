@@ -36,7 +36,8 @@ import {
     PipelineManager,
     PipelinesTreeDataProvider,
     PipelineCommands,
-    PipelineTreeItem
+    PipelineTreeItem,
+    registerPipelineResultsProvider
 } from './shortcuts/yaml-pipeline';
 
 /**
@@ -1367,6 +1368,15 @@ export async function activate(context: vscode.ExtensionContext) {
             aiProcessManager
         );
         disposables.push(discoveryEngine, ...discoveryDisposables);
+
+        // Connect AI process manager to pipelines for execution tracking
+        if (pipelinesCommands) {
+            pipelinesCommands.setAIProcessManager(aiProcessManager);
+        }
+
+        // Register pipeline results document provider for readonly result viewing
+        const pipelineResultsDisposable = registerPipelineResultsProvider(context);
+        disposables.push(pipelineResultsDisposable);
 
         // Add all disposables to context subscriptions
         context.subscriptions.push(...disposables);
