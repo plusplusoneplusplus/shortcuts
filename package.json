@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Markdown Review & Workspace Shortcuts",
   "description": "Add inline comments and annotations to markdown files with a powerful review editor. Review git diffs, organize files into groups, and generate AI prompts from comments.",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
@@ -194,14 +194,33 @@
         "workspaceShortcuts.markdownComments.predefinedComments": {
           "type": "array",
           "default": [
-            { "id": "reuse", "label": "Check Existing", "text": "[Check Existing] Before implementing this, explore the codebase for existing utilities or patterns that can be reused. ", "order": 1 },
-            { "id": "verify-ref", "label": "Verify Reference", "text": "[Verify Reference] This reference may not exist in the codebase. Please verify it exists or clarify that it needs to be created: ", "order": 2 },
-            { "id": "more-detail", "label": "More Detail", "text": "[More Detail] This lacks sufficient detail for implementation. Please specify: ", "order": 3 }
+            {
+              "id": "reuse",
+              "label": "Check Existing",
+              "text": "[Check Existing] Before implementing this, explore the codebase for existing utilities or patterns that can be reused. ",
+              "order": 1
+            },
+            {
+              "id": "verify-ref",
+              "label": "Verify Reference",
+              "text": "[Verify Reference] This reference may not exist in the codebase. Please verify it exists or clarify that it needs to be created: ",
+              "order": 2
+            },
+            {
+              "id": "more-detail",
+              "label": "More Detail",
+              "text": "[More Detail] This lacks sufficient detail for implementation. Please specify: ",
+              "order": 3
+            }
           ],
           "markdownDescription": "Predefined comment templates for Markdown Review Editor. Each template appears in the right-click context menu under 'Add Predefined Comment'.",
           "items": {
             "type": "object",
-            "required": ["id", "label", "text"],
+            "required": [
+              "id",
+              "label",
+              "text"
+            ],
             "properties": {
               "id": {
                 "type": "string",
@@ -229,14 +248,33 @@
         "workspaceShortcuts.diffComments.predefinedComments": {
           "type": "array",
           "default": [
-            { "id": "todo", "label": "TODO", "text": "TODO: ", "order": 1 },
-            { "id": "fixme", "label": "FIXME", "text": "FIXME: ", "order": 2 },
-            { "id": "question", "label": "Question", "text": "Question: ", "order": 3 }
+            {
+              "id": "todo",
+              "label": "TODO",
+              "text": "TODO: ",
+              "order": 1
+            },
+            {
+              "id": "fixme",
+              "label": "FIXME",
+              "text": "FIXME: ",
+              "order": 2
+            },
+            {
+              "id": "question",
+              "label": "Question",
+              "text": "Question: ",
+              "order": 3
+            }
           ],
           "markdownDescription": "Predefined comment templates for Git Diff Review Editor. Each template appears in the right-click context menu under 'Add Predefined Comment'.",
           "items": {
             "type": "object",
-            "required": ["id", "label", "text"],
+            "required": [
+              "id",
+              "label",
+              "text"
+            ],
             "properties": {
               "id": {
                 "type": "string",
