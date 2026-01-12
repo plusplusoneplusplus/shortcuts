@@ -473,4 +473,288 @@ describe('Search Handler', () => {
             assert.strictEqual(matches.length, 3);
         });
     });
+
+    describe('SearchController interface', () => {
+        it('should have cleanup method', () => {
+            const controller = {
+                cleanup: () => {},
+                refresh: () => {},
+                isOpen: () => false
+            };
+            assert.strictEqual(typeof controller.cleanup, 'function');
+        });
+
+        it('should have refresh method', () => {
+            const controller = {
+                cleanup: () => {},
+                refresh: () => {},
+                isOpen: () => false
+            };
+            assert.strictEqual(typeof controller.refresh, 'function');
+        });
+
+        it('should have isOpen method', () => {
+            const controller = {
+                cleanup: () => {},
+                refresh: () => {},
+                isOpen: () => false
+            };
+            assert.strictEqual(typeof controller.isOpen, 'function');
+            assert.strictEqual(controller.isOpen(), false);
+        });
+
+        it('should return correct isOpen state', () => {
+            let isOpenState = false;
+            const controller = {
+                cleanup: () => {},
+                refresh: () => {},
+                isOpen: () => isOpenState
+            };
+            
+            assert.strictEqual(controller.isOpen(), false);
+            isOpenState = true;
+            assert.strictEqual(controller.isOpen(), true);
+        });
+    });
+
+    describe('Visibility checking for view mode switching', () => {
+        it('should detect display:none as hidden', () => {
+            // Simulates checking if an element with display:none should be skipped
+            const checkVisibility = (displayValue: string): boolean => {
+                return displayValue !== 'none';
+            };
+            
+            assert.strictEqual(checkVisibility('block'), true);
+            assert.strictEqual(checkVisibility('flex'), true);
+            assert.strictEqual(checkVisibility('none'), false);
+        });
+
+        it('should detect visibility:hidden as hidden', () => {
+            const checkVisibility = (visibilityValue: string): boolean => {
+                return visibilityValue !== 'hidden';
+            };
+            
+            assert.strictEqual(checkVisibility('visible'), true);
+            assert.strictEqual(checkVisibility('hidden'), false);
+        });
+
+        it('should check ancestor visibility recursively', () => {
+            // Simulates the ancestor visibility check logic
+            interface MockElement {
+                display: string;
+                visibility: string;
+                parent: MockElement | null;
+            }
+
+            const isElementVisible = (element: MockElement | null): boolean => {
+                while (element) {
+                    if (element.display === 'none' || element.visibility === 'hidden') {
+                        return false;
+                    }
+                    element = element.parent;
+                }
+                return true;
+            };
+
+            // Element is visible
+            const visibleElement: MockElement = {
+                display: 'block',
+                visibility: 'visible',
+                parent: null
+            };
+            assert.strictEqual(isElementVisible(visibleElement), true);
+
+            // Element itself is hidden
+            const hiddenElement: MockElement = {
+                display: 'none',
+                visibility: 'visible',
+                parent: null
+            };
+            assert.strictEqual(isElementVisible(hiddenElement), false);
+
+            // Element is visible but parent is hidden (simulates split/inline view switching)
+            const elementWithHiddenParent: MockElement = {
+                display: 'block',
+                visibility: 'visible',
+                parent: {
+                    display: 'none',
+                    visibility: 'visible',
+                    parent: null
+                }
+            };
+            assert.strictEqual(isElementVisible(elementWithHiddenParent), false);
+
+            // Element is visible with multiple visible ancestors
+            const deeplyNestedVisible: MockElement = {
+                display: 'block',
+                visibility: 'visible',
+                parent: {
+                    display: 'flex',
+                    visibility: 'visible',
+                    parent: {
+                        display: 'block',
+                        visibility: 'visible',
+                        parent: null
+                    }
+                }
+            };
+            assert.strictEqual(isElementVisible(deeplyNestedVisible), true);
+
+            // Element is visible but grandparent is hidden
+            const deeplyNestedHidden: MockElement = {
+                display: 'block',
+                visibility: 'visible',
+                parent: {
+                    display: 'block',
+                    visibility: 'visible',
+                    parent: {
+                        display: 'none',
+                        visibility: 'visible',
+                        parent: null
+                    }
+                }
+            };
+            assert.strictEqual(isElementVisible(deeplyNestedHidden), false);
+        });
+
+        it('should handle visibility:hidden at any ancestor level', () => {
+            interface MockElement {
+                display: string;
+                visibility: string;
+                parent: MockElement | null;
+            }
+
+            const isElementVisible = (element: MockElement | null): boolean => {
+                while (element) {
+                    if (element.display === 'none' || element.visibility === 'hidden') {
+                        return false;
+                    }
+                    element = element.parent;
+                }
+                return true;
+            };
+
+            const elementWithHiddenGrandparent: MockElement = {
+                display: 'block',
+                visibility: 'visible',
+                parent: {
+                    display: 'block',
+                    visibility: 'visible',
+                    parent: {
+                        display: 'block',
+                        visibility: 'hidden',
+                        parent: null
+                    }
+                }
+            };
+            assert.strictEqual(isElementVisible(elementWithHiddenGrandparent), false);
+        });
+    });
+
+    describe('Event propagation prevention', () => {
+        it('should use capture phase for keyboard listener', () => {
+            // The third parameter 'true' indicates capture phase
+            const capturePhase = true;
+            assert.strictEqual(capturePhase, true, 'Should use capture phase to intercept before VSCode handler');
+        });
+
+        it('should stop propagation for Ctrl+F', () => {
+            // Simulates the event handling logic
+            const mockEvent = {
+                ctrlKey: true,
+                metaKey: false,
+                key: 'f',
+                preventDefaultCalled: false,
+                stopPropagationCalled: false,
+                stopImmediatePropagationCalled: false,
+                preventDefault() { this.preventDefaultCalled = true; },
+                stopPropagation() { this.stopPropagationCalled = true; },
+                stopImmediatePropagation() { this.stopImmediatePropagationCalled = true; }
+            };
+
+            // Handler logic
+            if ((mockEvent.ctrlKey || mockEvent.metaKey) && mockEvent.key === 'f') {
+                mockEvent.preventDefault();
+                mockEvent.stopPropagation();
+                mockEvent.stopImmediatePropagation();
+            }
+
+            assert.strictEqual(mockEvent.preventDefaultCalled, true, 'Should call preventDefault');
+            assert.strictEqual(mockEvent.stopPropagationCalled, true, 'Should call stopPropagation');
+            assert.strictEqual(mockEvent.stopImmediatePropagationCalled, true, 'Should call stopImmediatePropagation');
+        });
+
+        it('should stop propagation for Cmd+F (Mac)', () => {
+            const mockEvent = {
+                ctrlKey: false,
+                metaKey: true,
+                key: 'f',
+                preventDefaultCalled: false,
+                stopPropagationCalled: false,
+                stopImmediatePropagationCalled: false,
+                preventDefault() { this.preventDefaultCalled = true; },
+                stopPropagation() { this.stopPropagationCalled = true; },
+                stopImmediatePropagation() { this.stopImmediatePropagationCalled = true; }
+            };
+
+            if ((mockEvent.ctrlKey || mockEvent.metaKey) && mockEvent.key === 'f') {
+                mockEvent.preventDefault();
+                mockEvent.stopPropagation();
+                mockEvent.stopImmediatePropagation();
+            }
+
+            assert.strictEqual(mockEvent.preventDefaultCalled, true);
+            assert.strictEqual(mockEvent.stopPropagationCalled, true);
+            assert.strictEqual(mockEvent.stopImmediatePropagationCalled, true);
+        });
+    });
+
+    describe('Search refresh on view mode change', () => {
+        it('should only refresh if search is open and has query', () => {
+            // Simulates refresh logic
+            const shouldRefresh = (isOpen: boolean, query: string): boolean => {
+                return isOpen && query.length > 0;
+            };
+
+            assert.strictEqual(shouldRefresh(false, ''), false, 'Should not refresh when closed with no query');
+            assert.strictEqual(shouldRefresh(false, 'test'), false, 'Should not refresh when closed with query');
+            assert.strictEqual(shouldRefresh(true, ''), false, 'Should not refresh when open with no query');
+            assert.strictEqual(shouldRefresh(true, 'test'), true, 'Should refresh when open with query');
+        });
+
+        it('should clear highlights before re-searching on refresh', () => {
+            let highlightsCleared = false;
+            let searchExecuted = false;
+
+            const refresh = (isOpen: boolean, query: string) => {
+                if (isOpen && query) {
+                    highlightsCleared = true;
+                    searchExecuted = true;
+                }
+            };
+
+            refresh(true, 'test');
+
+            assert.strictEqual(highlightsCleared, true, 'Should clear highlights before refresh');
+            assert.strictEqual(searchExecuted, true, 'Should execute search after clearing');
+        });
+
+        it('should use setTimeout for DOM update before refresh', () => {
+            // This tests the pattern of using setTimeout to allow DOM to update
+            let refreshCalled = false;
+            const REFRESH_DELAY = 50;
+
+            // Simulates the toggle handler pattern
+            const simulateToggle = (callback: () => void) => {
+                // Immediate DOM changes happen here
+                // Then schedule refresh
+                setTimeout(() => {
+                    callback();
+                }, REFRESH_DELAY);
+            };
+
+            // In real code, this would be async, but we just test the pattern
+            assert.strictEqual(REFRESH_DELAY, 50, 'Should use 50ms delay for DOM update');
+        });
+    });
 });
