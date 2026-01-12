@@ -28,12 +28,44 @@ html, body {
 
 /* Header */
 .diff-header {
-    padding: 12px 16px;
+    padding: 6px 12px;
     border-bottom: 1px solid var(--vscode-panel-border);
     background-color: var(--vscode-sideBar-background);
     flex-shrink: 0;
 }
 
+.diff-header-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.diff-header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.diff-header-center {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    flex-shrink: 0;
+}
+
+.diff-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+/* Legacy support */
 .diff-title-row {
     display: flex;
     align-items: center;
@@ -43,9 +75,12 @@ html, body {
 
 .diff-title {
     margin: 0;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--vscode-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Clickable file path */
@@ -64,16 +99,17 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     padding: 0;
     border: none;
-    border-radius: 4px;
+    border-radius: 3px;
     background-color: transparent;
     color: var(--vscode-foreground);
     cursor: pointer;
     opacity: 0.6;
     transition: opacity 0.15s, background-color 0.15s;
+    flex-shrink: 0;
 }
 
 .copy-path-btn:hover {
@@ -86,7 +122,7 @@ html, body {
 }
 
 .copy-path-btn .copy-icon {
-    font-size: 14px;
+    font-size: 12px;
 }
 
 .copy-path-btn.copied {
@@ -115,17 +151,17 @@ html, body {
     gap: 4px;
     background-color: var(--vscode-button-secondaryBackground);
     border: 1px solid var(--vscode-button-border, transparent);
-    border-radius: 4px;
-    padding: 4px 10px;
+    border-radius: 3px;
+    padding: 3px 8px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--vscode-button-secondaryForeground);
     transition: background-color 0.15s, border-color 0.15s, opacity 0.3s;
 }
 
 /* Pin tab button specific styles */
 .pin-tab-btn {
-    margin-left: 8px;
+    margin-left: 0;
 }
 
 .pin-tab-btn:hover {
@@ -133,7 +169,7 @@ html, body {
 }
 
 .pin-tab-btn .pin-icon {
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .pin-tab-btn .pin-label {
@@ -152,7 +188,7 @@ html, body {
 }
 
 .whitespace-toggle {
-    margin-left: auto;
+    margin-left: 0;
 }
 
 .view-mode-toggle:hover,
@@ -162,7 +198,7 @@ html, body {
 
 .view-mode-toggle .toggle-icon,
 .whitespace-toggle .toggle-icon {
-    font-size: 14px;
+    font-size: 12px;
 }
 
 .view-mode-toggle .toggle-label,
@@ -184,23 +220,23 @@ html, body {
 /* Diff navigation buttons */
 .diff-nav-buttons {
     display: flex;
-    gap: 4px;
-    margin-left: auto;
+    gap: 2px;
+    margin-left: 0;
 }
 
 .diff-nav-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 22px;
+    height: 22px;
     padding: 0;
     border: 1px solid var(--vscode-button-border, transparent);
-    border-radius: 4px;
+    border-radius: 3px;
     background-color: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 12px;
     transition: background-color 0.15s, border-color 0.15s;
 }
 

@@ -904,35 +904,39 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 <body>
     <div id="diff-container">
         <div class="diff-header">
-            <div class="diff-title-row">
-                <h2 class="diff-title clickable-file" id="file-path-link" title="Click to open file">${escapeHtml(filePath)}</h2>
-                <button class="copy-path-btn" id="copy-path-btn" title="Copy file path">
-                    <span class="copy-icon">📋</span>
-                </button>
-            </div>
-            <div class="diff-info">
-                <span class="diff-repo">${escapeHtml(gitContext.repositoryName)}</span>
-                <span class="diff-refs">${escapeHtml(gitContext.oldRef)} → ${escapeHtml(gitContext.newRef)}</span>
-                <div class="diff-nav-buttons">
-                    <button class="diff-nav-btn" id="prev-diff-btn" title="Previous change (Shift+↑)">
-                        <span class="nav-icon">↑</span>
-                    </button>
-                    <button class="diff-nav-btn" id="next-diff-btn" title="Next change (Shift+↓)">
-                        <span class="nav-icon">↓</span>
+            <div class="diff-header-row">
+                <div class="diff-header-left">
+                    <h2 class="diff-title clickable-file" id="file-path-link" title="Click to open file">${escapeHtml(filePath)}</h2>
+                    <button class="copy-path-btn" id="copy-path-btn" title="Copy file path">
+                        <span class="copy-icon">📋</span>
                     </button>
                 </div>
-                <button class="pin-tab-btn" id="pin-tab-btn" title="Pin this tab (keep it open when viewing other files)">
-                    <span class="pin-icon">📌</span>
-                    <span class="pin-label">Keep Open</span>
-                </button>
-                <button class="whitespace-toggle" id="whitespace-toggle" title="Toggle whitespace diff visibility">
-                    <span class="toggle-icon" id="whitespace-icon">␣</span>
-                    <span class="toggle-label" id="whitespace-label">Show Whitespace</span>
-                </button>
-                <button class="view-mode-toggle" id="view-mode-toggle" title="Toggle between split and inline view">
-                    <span class="toggle-icon" id="toggle-icon">⫼</span>
-                    <span class="toggle-label" id="toggle-label">Split</span>
-                </button>
+                <div class="diff-header-center">
+                    <span class="diff-repo">${escapeHtml(gitContext.repositoryName)}</span>
+                    <span class="diff-refs">${escapeHtml(gitContext.oldRef)} → ${escapeHtml(gitContext.newRef)}</span>
+                </div>
+                <div class="diff-header-right">
+                    <div class="diff-nav-buttons">
+                        <button class="diff-nav-btn" id="prev-diff-btn" title="Previous change (Shift+↑)">
+                            <span class="nav-icon">↑</span>
+                        </button>
+                        <button class="diff-nav-btn" id="next-diff-btn" title="Next change (Shift+↓)">
+                            <span class="nav-icon">↓</span>
+                        </button>
+                    </div>
+                    <button class="pin-tab-btn" id="pin-tab-btn" title="Pin this tab (keep it open when viewing other files)">
+                        <span class="pin-icon">📌</span>
+                        <span class="pin-label">Keep Open</span>
+                    </button>
+                    <button class="whitespace-toggle" id="whitespace-toggle" title="Toggle whitespace diff visibility">
+                        <span class="toggle-icon" id="whitespace-icon">␣</span>
+                        <span class="toggle-label" id="whitespace-label">Show Whitespace</span>
+                    </button>
+                    <button class="view-mode-toggle" id="view-mode-toggle" title="Toggle between split and inline view">
+                        <span class="toggle-icon" id="toggle-icon">⫼</span>
+                        <span class="toggle-label" id="toggle-label">Split</span>
+                    </button>
+                </div>
             </div>
         </div>
         <div class="diff-view-wrapper">
