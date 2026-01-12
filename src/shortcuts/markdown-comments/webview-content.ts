@@ -225,6 +225,11 @@ export function getWebviewContent(
         </div>
     </div>
 
+    <!-- Hover preview tooltip for predefined comments -->
+    <div class="predefined-comment-preview" id="predefinedPreview" style="display: none;">
+        <div class="preview-content"></div>
+    </div>
+
     <!-- Custom AI instruction input dialog -->
     <div class="custom-instruction-dialog" id="customInstructionDialog" style="display: none;">
         <div class="custom-instruction-header">

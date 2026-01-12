@@ -580,6 +580,27 @@ body.source-mode .toolbar-review-only {
     margin: 4px 8px;
 }
 
+/* Predefined Comment Preview Tooltip */
+.predefined-comment-preview {
+    position: fixed;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    padding: 8px 12px;
+    max-width: 300px;
+    z-index: 2002;
+    pointer-events: none;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-color);
+}
+
+.preview-content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
 /* Custom Instruction Dialog */
 .custom-instruction-dialog {
     position: fixed;

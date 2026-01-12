@@ -42,6 +42,9 @@ let askAISubmenu: HTMLElement;
 // Predefined comments submenu elements
 let contextMenuPredefined: HTMLElement;
 let predefinedSubmenu: HTMLElement;
+// Predefined comment preview tooltip
+let predefinedPreview: HTMLElement;
+let previewContent: HTMLElement;
 // Custom instruction dialog elements
 let customInstructionDialog: HTMLElement;
 let customInstructionClose: HTMLElement;
@@ -70,6 +73,9 @@ export function initDomHandlers(): void {
     // Predefined comments submenu elements
     contextMenuPredefined = document.getElementById('contextMenuPredefined')!;
     predefinedSubmenu = document.getElementById('predefinedSubmenu')!;
+    // Preview tooltip elements
+    predefinedPreview = document.getElementById('predefinedPreview')!;
+    previewContent = predefinedPreview.querySelector('.preview-content')!;
     // Custom instruction dialog elements
     customInstructionDialog = document.getElementById('customInstructionDialog')!;
     customInstructionClose = document.getElementById('customInstructionClose')!;
@@ -127,16 +133,54 @@ export function rebuildPredefinedSubmenu(): void {
         </div>`;
     }).join('');
 
-    // Attach click handlers
+    // Attach click and hover handlers
     predefinedSubmenu.querySelectorAll('.predefined-item').forEach(item => {
-        item.addEventListener('click', (e) => {
+        const el = item as HTMLElement;
+        
+        // Click handler
+        el.addEventListener('click', (e) => {
             e.stopPropagation();
-            const el = item as HTMLElement;
             const text = decodeURIComponent(el.dataset.text || '');
+            hidePreview();
             hideContextMenu();
             handlePredefinedCommentFromContextMenu(text);
         });
+        
+        // Hover handlers for preview
+        el.addEventListener('mouseenter', (e) => {
+            const text = decodeURIComponent(el.dataset.text || '');
+            showPreview(text, el);
+        });
+        
+        el.addEventListener('mouseleave', () => {
+            hidePreview();
+        });
     });
+}
+
+/**
+ * Show preview tooltip for predefined comment
+ */
+function showPreview(text: string, anchorElement: HTMLElement): void {
+    if (!predefinedPreview || !previewContent) return;
+    
+    // Set the preview text
+    previewContent.textContent = text;
+    
+    // Position the preview to the right of the submenu item
+    const rect = anchorElement.getBoundingClientRect();
+    predefinedPreview.style.left = `${rect.right + 8}px`;
+    predefinedPreview.style.top = `${rect.top}px`;
+    predefinedPreview.style.display = 'block';
+}
+
+/**
+ * Hide preview tooltip
+ */
+function hidePreview(): void {
+    if (predefinedPreview) {
+        predefinedPreview.style.display = 'none';
+    }
 }
 
 /**
@@ -553,6 +597,7 @@ function handleContextMenu(e: MouseEvent): void {
  */
 function hideContextMenu(): void {
     contextMenu.style.display = 'none';
+    hidePreview(); // Also hide preview tooltip
     // Reset submenu positioning
     [askAISubmenu, predefinedSubmenu].forEach(submenu => {
         if (submenu) {
