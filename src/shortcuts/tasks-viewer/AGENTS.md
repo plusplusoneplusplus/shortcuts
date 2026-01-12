@@ -330,6 +330,40 @@ interface TaskGroup {
 type TaskFilter = 'all' | 'incomplete' | 'complete';
 ```
 
+### TaskDocument
+
+```typescript
+interface TaskDocument {
+    /** Base name without doc type suffix (e.g., "task1" from "task1.plan.md") */
+    baseName: string;
+    /** Document type suffix (e.g., "plan" from "task1.plan.md") */
+    docType?: string;
+    /** Full filename (e.g., "task1.plan.md") */
+    fileName: string;
+    /** Absolute path to the .md file */
+    filePath: string;
+    /** Last modified time for sorting */
+    modifiedTime: Date;
+    /** Whether document is in archive folder */
+    isArchived: boolean;
+}
+```
+
+### TaskDocumentGroup
+
+```typescript
+interface TaskDocumentGroup {
+    /** Base name shared by all documents in the group */
+    baseName: string;
+    /** All documents in this group */
+    documents: TaskDocument[];
+    /** Whether this group is archived */
+    isArchived: boolean;
+    /** Most recent modified time among all documents */
+    latestModifiedTime: Date;
+}
+```
+
 ## Commands
 
 | Command | Description |
@@ -343,19 +377,45 @@ type TaskFilter = 'all' | 'incomplete' | 'complete';
 
 ## Tree View Structure
 
+### Standard View (flat list of tasks)
+
 ```
 Tasks
 ├── 📄 TODO.md
-│   ├── ☐ Implement authentication
-│   ├── ☑ Set up database
-│   └── ☐ Add API endpoints
 ├── 📄 BUGS.md
-│   ├── ☐ Fix login timeout
-│   └── ☑ Resolve memory leak
 └── 📄 docs/TASKS.md
-    ├── ☐ Write documentation
-    └── ☐ Update README
 ```
+
+### Document Grouping (when enabled)
+
+When `groupRelatedDocuments` setting is enabled (default: true), related task documents are grouped under a parent node. Files are grouped if they share the same base name with different document type suffixes.
+
+**Example:** Files `task1.md`, `task1.plan.md`, `task1.test.md` are grouped under `task1`:
+
+```
+Tasks
+├── 📁 task1 (3 docs: md, plan, test)
+│   ├── 📄 task1 (base document)
+│   ├── 📋 plan
+│   └── 🧪 test
+├── 📄 standalone.md (single doc, no grouping)
+└── 📁 feature-auth (2 docs: spec, design)
+    ├── 📝 spec
+    └── 💡 design
+```
+
+**Recognized Document Type Suffixes:**
+- `plan`, `spec`, `test`, `notes`, `todo`, `readme`
+- `design`, `impl`, `implementation`, `review`, `checklist`
+- `requirements`, `analysis`, `research`, `summary`, `log`
+- `draft`, `final`, `v1`, `v2`, `v3`, `old`, `new`, `backup`
+
+### Key Components for Document Grouping
+
+- `TaskDocumentGroupItem` - Tree item for grouped documents
+- `TaskDocumentItem` - Tree item for individual documents within a group
+- `TaskDocument` - Interface representing a parsed document
+- `TaskDocumentGroup` - Interface for a group of related documents
 
 ## Best Practices
 

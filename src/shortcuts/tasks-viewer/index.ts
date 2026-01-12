@@ -6,6 +6,8 @@ export * from './types';
 export * from './task-manager';
 export * from './task-item';
 export * from './task-group-item';
+export * from './task-document-group-item';
+export * from './task-document-item';
 export * from './tree-data-provider';
 export * from './commands';
 export * from './tasks-drag-drop-controller';

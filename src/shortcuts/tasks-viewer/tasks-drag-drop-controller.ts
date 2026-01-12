@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { TaskItem } from './task-item';
+import { TaskDocumentItem } from './task-document-item';
+import { TaskDocumentGroupItem } from './task-document-group-item';
 
 /**
  * Drag and drop controller for the Tasks tree view
@@ -36,6 +38,16 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
             // Handle TaskItem (task files)
             if (item instanceof TaskItem) {
                 uris.push(vscode.Uri.file(item.filePath));
+            }
+            // Handle TaskDocumentItem (document within a group)
+            else if (item instanceof TaskDocumentItem) {
+                uris.push(vscode.Uri.file(item.filePath));
+            }
+            // Handle TaskDocumentGroupItem (all documents in the group)
+            else if (item instanceof TaskDocumentGroupItem) {
+                for (const doc of item.documents) {
+                    uris.push(vscode.Uri.file(doc.filePath));
+                }
             }
             // Handle any item with resourceUri (fallback)
             else if (item.resourceUri) {

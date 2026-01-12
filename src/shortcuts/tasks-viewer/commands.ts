@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { TaskManager } from './task-manager';
 import { TasksTreeDataProvider } from './tree-data-provider';
 import { TaskItem } from './task-item';
+import { TaskDocumentItem } from './task-document-item';
+import { TaskDocumentGroupItem } from './task-document-group-item';
 
 /**
  * Command handlers for the Tasks Viewer
@@ -230,43 +232,25 @@ export class TasksCommands {
      * @param item The task item to copy the path from
      * @param absolute Whether to copy absolute or relative path
      */
-    private async copyPath(item: TaskItem, absolute: boolean): Promise<void> {
+    private async copyPath(item: TaskItem | TaskDocumentItem | TaskDocumentGroupItem, absolute: boolean): Promise<void> {
         try {
             // Get selected items from tree view for multi-selection support
             const selectedItems = this.tasksTreeView?.selection || [item];
 
-            // Filter to only TaskItem instances
-            const taskItems = selectedItems.filter(i => i instanceof TaskItem) as TaskItem[];
-
-            if (taskItems.length === 0) {
-                vscode.window.showErrorMessage('No valid task items selected');
-                return;
-            }
-
-            // Collect all paths
+            // Collect all paths from supported item types
             const paths: string[] = [];
-            for (const taskItem of taskItems) {
-                const fsPath = taskItem.filePath;
-                if (!fsPath) {
-                    continue;
-                }
-
-                let pathToCopy: string;
-                if (absolute) {
-                    // Use absolute path
-                    pathToCopy = fsPath;
-                } else {
-                    // Calculate relative path from workspace root
-                    const uri = vscode.Uri.file(fsPath);
-                    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-                    if (workspaceFolder) {
-                        pathToCopy = vscode.workspace.asRelativePath(uri, false);
-                    } else {
-                        // Fallback to absolute path if not in workspace
-                        pathToCopy = fsPath;
+            
+            for (const selectedItem of selectedItems) {
+                if (selectedItem instanceof TaskItem) {
+                    paths.push(...this.getPathsFromItem(selectedItem.filePath, absolute));
+                } else if (selectedItem instanceof TaskDocumentItem) {
+                    paths.push(...this.getPathsFromItem(selectedItem.filePath, absolute));
+                } else if (selectedItem instanceof TaskDocumentGroupItem) {
+                    // Add all document paths from the group
+                    for (const doc of selectedItem.documents) {
+                        paths.push(...this.getPathsFromItem(doc.filePath, absolute));
                     }
                 }
-                paths.push(pathToCopy);
             }
 
             if (paths.length === 0) {
@@ -289,5 +273,28 @@ export class TasksCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to copy path: ${err.message}`);
         }
+    }
+
+    /**
+     * Helper to get paths from a file path
+     */
+    private getPathsFromItem(fsPath: string, absolute: boolean): string[] {
+        if (!fsPath) {
+            return [];
+        }
+
+        let pathToCopy: string;
+        if (absolute) {
+            pathToCopy = fsPath;
+        } else {
+            const uri = vscode.Uri.file(fsPath);
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+            if (workspaceFolder) {
+                pathToCopy = vscode.workspace.asRelativePath(uri, false);
+            } else {
+                pathToCopy = fsPath;
+            }
+        }
+        return [pathToCopy];
     }
 }

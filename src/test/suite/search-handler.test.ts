@@ -4,9 +4,9 @@
 
 import * as assert from 'assert';
 
-describe('Search Handler', () => {
-    describe('createSearchState', () => {
-        it('should create initial search state with default values', () => {
+suite('Search Handler', () => {
+    suite('createSearchState', () => {
+        test('should create initial search state with default values', () => {
             // Test the structure of the initial state
             const expectedState = {
                 query: '',
@@ -25,8 +25,8 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('getSearchBarHtml', () => {
-        it('should generate search bar HTML with all required elements', () => {
+    suite('getSearchBarHtml', () => {
+        test('should generate search bar HTML with all required elements', () => {
             // Expected HTML structure elements
             const requiredIds = [
                 'searchBar',
@@ -69,7 +69,7 @@ describe('Search Handler', () => {
             }
         });
 
-        it('should have proper accessibility attributes', () => {
+        test('should have proper accessibility attributes', () => {
             const html = `<input type="text" class="search-input" id="searchInput" placeholder="Find in document..." autocomplete="off" />`;
             
             assert.ok(html.includes('placeholder='), 'Input should have placeholder');
@@ -77,8 +77,8 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('Search state manipulation', () => {
-        it('should track open/close state', () => {
+    suite('Search state manipulation', () => {
+        test('should track open/close state', () => {
             const state = {
                 query: '',
                 matches: [] as unknown[],
@@ -97,7 +97,7 @@ describe('Search Handler', () => {
             assert.strictEqual(state.isOpen, false);
         });
 
-        it('should track case sensitivity toggle', () => {
+        test('should track case sensitivity toggle', () => {
             const state = {
                 query: '',
                 matches: [] as unknown[],
@@ -114,7 +114,7 @@ describe('Search Handler', () => {
             assert.strictEqual(state.caseSensitive, false);
         });
 
-        it('should track regex toggle', () => {
+        test('should track regex toggle', () => {
             const state = {
                 query: '',
                 matches: [] as unknown[],
@@ -132,8 +132,8 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('Search navigation logic', () => {
-        it('should calculate next match index correctly', () => {
+    suite('Search navigation logic', () => {
+        test('should calculate next match index correctly', () => {
             const totalMatches = 5;
             let currentIndex = 0;
 
@@ -145,7 +145,7 @@ describe('Search Handler', () => {
             assert.strictEqual(currentIndex, 2);
         });
 
-        it('should wrap around when navigating past last match', () => {
+        test('should wrap around when navigating past last match', () => {
             const totalMatches = 5;
             let currentIndex = 4; // Last match
 
@@ -153,7 +153,7 @@ describe('Search Handler', () => {
             assert.strictEqual(currentIndex, 0, 'Should wrap to first match');
         });
 
-        it('should calculate previous match index correctly', () => {
+        test('should calculate previous match index correctly', () => {
             const totalMatches = 5;
             let currentIndex = 2;
 
@@ -162,7 +162,7 @@ describe('Search Handler', () => {
             assert.strictEqual(currentIndex, 1);
         });
 
-        it('should wrap around when navigating before first match', () => {
+        test('should wrap around when navigating before first match', () => {
             const totalMatches = 5;
             let currentIndex = 0; // First match
 
@@ -171,22 +171,22 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('Search count display', () => {
-        it('should format count as "current/total"', () => {
+    suite('Search count display', () => {
+        test('should format count as "current/total"', () => {
             const currentIndex = 2;
             const totalMatches = 10;
             const display = `${currentIndex + 1}/${totalMatches}`;
             assert.strictEqual(display, '3/10');
         });
 
-        it('should show "No results" when no matches', () => {
+        test('should show "No results" when no matches', () => {
             const totalMatches = 0;
             const query = 'test';
             const display = totalMatches === 0 && query ? 'No results' : '';
             assert.strictEqual(display, 'No results');
         });
 
-        it('should show empty string when no query', () => {
+        test('should show empty string when no query', () => {
             const totalMatches = 0;
             const query = '';
             const display = totalMatches === 0 ? (query ? 'No results' : '') : '';
@@ -194,8 +194,8 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('Regex escaping', () => {
-        it('should escape special regex characters for literal search', () => {
+    suite('Regex escaping', () => {
+        test('should escape special regex characters for literal search', () => {
             const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
             assert.strictEqual(escapeRegex('hello.world'), 'hello\\.world');
@@ -211,44 +211,44 @@ describe('Search Handler', () => {
             assert.strictEqual(escapeRegex('^start'), '\\^start');
         });
 
-        it('should handle multiple special characters', () => {
+        test('should handle multiple special characters', () => {
             const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             assert.strictEqual(escapeRegex('function() { return true; }'), 'function\\(\\) \\{ return true; \\}');
         });
     });
 
-    describe('Keyboard shortcuts', () => {
-        it('should recognize Ctrl+F for opening search', () => {
+    suite('Keyboard shortcuts', () => {
+        test('should recognize Ctrl+F for opening search', () => {
             const event = { ctrlKey: true, metaKey: false, key: 'f' };
             const shouldOpen = (event.ctrlKey || event.metaKey) && event.key === 'f';
             assert.strictEqual(shouldOpen, true);
         });
 
-        it('should recognize Cmd+F for opening search (Mac)', () => {
+        test('should recognize Cmd+F for opening search (Mac)', () => {
             const event = { ctrlKey: false, metaKey: true, key: 'f' };
             const shouldOpen = (event.ctrlKey || event.metaKey) && event.key === 'f';
             assert.strictEqual(shouldOpen, true);
         });
 
-        it('should recognize Escape for closing search', () => {
+        test('should recognize Escape for closing search', () => {
             const event = { key: 'Escape' };
             const shouldClose = event.key === 'Escape';
             assert.strictEqual(shouldClose, true);
         });
 
-        it('should recognize Enter for next match', () => {
+        test('should recognize Enter for next match', () => {
             const event = { key: 'Enter', shiftKey: false };
             const direction = event.shiftKey ? 'prev' : 'next';
             assert.strictEqual(direction, 'next');
         });
 
-        it('should recognize Shift+Enter for previous match', () => {
+        test('should recognize Shift+Enter for previous match', () => {
             const event = { key: 'Enter', shiftKey: true };
             const direction = event.shiftKey ? 'prev' : 'next';
             assert.strictEqual(direction, 'prev');
         });
 
-        it('should recognize F3 for next match', () => {
+        test('should recognize F3 for next match', () => {
             const event = { key: 'F3', shiftKey: false };
             const isF3 = event.key === 'F3';
             const direction = event.shiftKey ? 'prev' : 'next';
@@ -256,7 +256,7 @@ describe('Search Handler', () => {
             assert.strictEqual(direction, 'next');
         });
 
-        it('should recognize Shift+F3 for previous match', () => {
+        test('should recognize Shift+F3 for previous match', () => {
             const event = { key: 'F3', shiftKey: true };
             const isF3 = event.key === 'F3';
             const direction = event.shiftKey ? 'prev' : 'next';
@@ -264,21 +264,21 @@ describe('Search Handler', () => {
             assert.strictEqual(direction, 'prev');
         });
 
-        it('should recognize Alt+C for case sensitivity toggle', () => {
+        test('should recognize Alt+C for case sensitivity toggle', () => {
             const event = { altKey: true, key: 'c' };
             const shouldToggle = event.altKey && event.key.toLowerCase() === 'c';
             assert.strictEqual(shouldToggle, true);
         });
 
-        it('should recognize Alt+R for regex toggle', () => {
+        test('should recognize Alt+R for regex toggle', () => {
             const event = { altKey: true, key: 'r' };
             const shouldToggle = event.altKey && event.key.toLowerCase() === 'r';
             assert.strictEqual(shouldToggle, true);
         });
     });
 
-    describe('Search matching logic', () => {
-        it('should perform case-insensitive search by default', () => {
+    suite('Search matching logic', () => {
+        test('should perform case-insensitive search by default', () => {
             const text = 'Hello World HELLO world';
             const query = 'hello';
             const caseSensitive = false;
@@ -288,7 +288,7 @@ describe('Search Handler', () => {
             assert.strictEqual(matches.length, 2);
         });
 
-        it('should perform case-sensitive search when enabled', () => {
+        test('should perform case-sensitive search when enabled', () => {
             const text = 'Hello World HELLO world';
             const query = 'hello';
             const caseSensitive = true;
@@ -298,7 +298,7 @@ describe('Search Handler', () => {
             assert.strictEqual(matches.length, 0);
         });
 
-        it('should perform case-sensitive search with exact match', () => {
+        test('should perform case-sensitive search with exact match', () => {
             const text = 'Hello World HELLO world';
             const query = 'Hello';
             const caseSensitive = true;
@@ -308,7 +308,7 @@ describe('Search Handler', () => {
             assert.strictEqual(matches.length, 1);
         });
 
-        it('should support regex patterns when enabled', () => {
+        test('should support regex patterns when enabled', () => {
             const text = 'foo123 bar456 baz789';
             const query = '\\d+';
             try {
@@ -320,7 +320,7 @@ describe('Search Handler', () => {
             }
         });
 
-        it('should handle invalid regex gracefully', () => {
+        test('should handle invalid regex gracefully', () => {
             const query = '[invalid';
             let isValid = true;
             try {
@@ -331,7 +331,7 @@ describe('Search Handler', () => {
             assert.strictEqual(isValid, false);
         });
 
-        it('should find overlapping matches with proper regex', () => {
+        test('should find overlapping matches with proper regex', () => {
             const text = 'aaa';
             const query = 'aa';
             const regex = new RegExp(query, 'g');
@@ -345,8 +345,8 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('Search state reset', () => {
-        it('should clear state when closing search', () => {
+    suite('Search state reset', () => {
+        test('should clear state when closing search', () => {
             const state = {
                 query: 'test',
                 matches: [{ textNode: null, startOffset: 0, endOffset: 4 }],
@@ -370,33 +370,33 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('CSS class logic', () => {
-        it('should apply search-highlight class to matches', () => {
+    suite('CSS class logic', () => {
+        test('should apply search-highlight class to matches', () => {
             const className = 'search-highlight';
             assert.strictEqual(className, 'search-highlight');
         });
 
-        it('should apply search-highlight-current class to current match', () => {
+        test('should apply search-highlight-current class to current match', () => {
             const className = 'search-highlight-current';
             assert.strictEqual(className, 'search-highlight-current');
         });
 
-        it('should apply no-results class when no matches found', () => {
+        test('should apply no-results class when no matches found', () => {
             const hasMatches = false;
             const hasQuery = true;
             const className = !hasMatches && hasQuery ? 'no-results' : '';
             assert.strictEqual(className, 'no-results');
         });
 
-        it('should apply active class to toggle buttons when enabled', () => {
+        test('should apply active class to toggle buttons when enabled', () => {
             const isActive = true;
             const className = isActive ? 'active' : '';
             assert.strictEqual(className, 'active');
         });
     });
 
-    describe('Container selector', () => {
-        it('should support different container selectors', () => {
+    suite('Container selector', () => {
+        test('should support different container selectors', () => {
             const markdownSelector = '#editorWrapper';
             const diffSelector = '.diff-view-container';
             
@@ -405,8 +405,8 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('Debounce logic', () => {
-        it('should debounce with appropriate delay', async () => {
+    suite('Debounce logic', () => {
+        test('should debounce with appropriate delay', async () => {
             const DEBOUNCE_DELAY = 150;
             let callCount = 0;
             
@@ -434,14 +434,14 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('Edge cases', () => {
-        it('should handle empty query', () => {
+    suite('Edge cases', () => {
+        test('should handle empty query', () => {
             const query = '';
             const shouldSearch = query.length > 0;
             assert.strictEqual(shouldSearch, false);
         });
 
-        it('should handle whitespace-only query', () => {
+        test('should handle whitespace-only query', () => {
             const query = '   ';
             const trimmedQuery = query.trim();
             // Whitespace search is technically valid
@@ -449,7 +449,7 @@ describe('Search Handler', () => {
             assert.strictEqual(trimmedQuery.length, 0);
         });
 
-        it('should handle very long query', () => {
+        test('should handle very long query', () => {
             const longQuery = 'a'.repeat(1000);
             assert.strictEqual(longQuery.length, 1000);
             // Should not throw when creating regex
@@ -457,7 +457,7 @@ describe('Search Handler', () => {
             assert.ok(regex);
         });
 
-        it('should handle special unicode characters', () => {
+        test('should handle special unicode characters', () => {
             const text = 'Hello 世界 🌍';
             const query = '世界';
             const regex = new RegExp(query, 'gi');
@@ -465,7 +465,7 @@ describe('Search Handler', () => {
             assert.strictEqual(matches.length, 1);
         });
 
-        it('should handle newlines in text', () => {
+        test('should handle newlines in text', () => {
             const text = 'line1\nline2\nline3';
             const query = 'line';
             const regex = new RegExp(query, 'gi');
@@ -474,8 +474,8 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('SearchController interface', () => {
-        it('should have cleanup method', () => {
+    suite('SearchController interface', () => {
+        test('should have cleanup method', () => {
             const controller = {
                 cleanup: () => {},
                 refresh: () => {},
@@ -484,7 +484,7 @@ describe('Search Handler', () => {
             assert.strictEqual(typeof controller.cleanup, 'function');
         });
 
-        it('should have refresh method', () => {
+        test('should have refresh method', () => {
             const controller = {
                 cleanup: () => {},
                 refresh: () => {},
@@ -493,7 +493,7 @@ describe('Search Handler', () => {
             assert.strictEqual(typeof controller.refresh, 'function');
         });
 
-        it('should have isOpen method', () => {
+        test('should have isOpen method', () => {
             const controller = {
                 cleanup: () => {},
                 refresh: () => {},
@@ -503,7 +503,7 @@ describe('Search Handler', () => {
             assert.strictEqual(controller.isOpen(), false);
         });
 
-        it('should return correct isOpen state', () => {
+        test('should return correct isOpen state', () => {
             let isOpenState = false;
             const controller = {
                 cleanup: () => {},
@@ -517,8 +517,8 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('Visibility checking for view mode switching', () => {
-        it('should detect display:none as hidden', () => {
+    suite('Visibility checking for view mode switching', () => {
+        test('should detect display:none as hidden', () => {
             // Simulates checking if an element with display:none should be skipped
             const checkVisibility = (displayValue: string): boolean => {
                 return displayValue !== 'none';
@@ -529,7 +529,7 @@ describe('Search Handler', () => {
             assert.strictEqual(checkVisibility('none'), false);
         });
 
-        it('should detect visibility:hidden as hidden', () => {
+        test('should detect visibility:hidden as hidden', () => {
             const checkVisibility = (visibilityValue: string): boolean => {
                 return visibilityValue !== 'hidden';
             };
@@ -538,7 +538,7 @@ describe('Search Handler', () => {
             assert.strictEqual(checkVisibility('hidden'), false);
         });
 
-        it('should check ancestor visibility recursively', () => {
+        test('should check ancestor visibility recursively', () => {
             // Simulates the ancestor visibility check logic
             interface MockElement {
                 display: string;
@@ -617,7 +617,7 @@ describe('Search Handler', () => {
             assert.strictEqual(isElementVisible(deeplyNestedHidden), false);
         });
 
-        it('should handle visibility:hidden at any ancestor level', () => {
+        test('should handle visibility:hidden at any ancestor level', () => {
             interface MockElement {
                 display: string;
                 visibility: string;
@@ -651,14 +651,14 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('Event propagation prevention', () => {
-        it('should use capture phase for keyboard listener', () => {
+    suite('Event propagation prevention', () => {
+        test('should use capture phase for keyboard listener', () => {
             // The third parameter 'true' indicates capture phase
             const capturePhase = true;
             assert.strictEqual(capturePhase, true, 'Should use capture phase to intercept before VSCode handler');
         });
 
-        it('should stop propagation for Ctrl+F', () => {
+        test('should stop propagation for Ctrl+F', () => {
             // Simulates the event handling logic
             const mockEvent = {
                 ctrlKey: true,
@@ -684,7 +684,7 @@ describe('Search Handler', () => {
             assert.strictEqual(mockEvent.stopImmediatePropagationCalled, true, 'Should call stopImmediatePropagation');
         });
 
-        it('should stop propagation for Cmd+F (Mac)', () => {
+        test('should stop propagation for Cmd+F (Mac)', () => {
             const mockEvent = {
                 ctrlKey: false,
                 metaKey: true,
@@ -709,8 +709,8 @@ describe('Search Handler', () => {
         });
     });
 
-    describe('Search refresh on view mode change', () => {
-        it('should only refresh if search is open and has query', () => {
+    suite('Search refresh on view mode change', () => {
+        test('should only refresh if search is open and has query', () => {
             // Simulates refresh logic
             const shouldRefresh = (isOpen: boolean, query: string): boolean => {
                 return isOpen && query.length > 0;
@@ -722,7 +722,7 @@ describe('Search Handler', () => {
             assert.strictEqual(shouldRefresh(true, 'test'), true, 'Should refresh when open with query');
         });
 
-        it('should clear highlights before re-searching on refresh', () => {
+        test('should clear highlights before re-searching on refresh', () => {
             let highlightsCleared = false;
             let searchExecuted = false;
 
@@ -739,7 +739,7 @@ describe('Search Handler', () => {
             assert.strictEqual(searchExecuted, true, 'Should execute search after clearing');
         });
 
-        it('should use setTimeout for DOM update before refresh', () => {
+        test('should use setTimeout for DOM update before refresh', () => {
             // This tests the pattern of using setTimeout to allow DOM to update
             let refreshCalled = false;
             const REFRESH_DELAY = 50;

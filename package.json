@@ -573,6 +573,11 @@
           "default": "modifiedDate",
           "description": "How to sort tasks in the Tasks Viewer"
         },
+        "workspaceShortcuts.tasksViewer.groupRelatedDocuments": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Group related task documents under a single parent node. For example, `task1.md`, `task1.plan.md`, and `task1.test.md` would be grouped under `task1`."
+        },
         "workspaceShortcuts.markdownComments.codeBlockTheme": {
           "type": "string",
           "enum": [

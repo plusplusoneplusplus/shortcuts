@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { Task, TasksViewerSettings, TaskSortBy } from './types';
+import { Task, TasksViewerSettings, TaskSortBy, TaskDocument, TaskDocumentGroup } from './types';
 
 /**
  * Manages task files stored in the tasks folder
@@ -254,8 +254,155 @@ export class TaskManager implements vscode.Disposable {
             enabled: config.get<boolean>('enabled', true),
             folderPath: config.get<string>('folderPath', '.vscode/tasks'),
             showArchived: config.get<boolean>('showArchived', false),
-            sortBy: config.get<TaskSortBy>('sortBy', 'modifiedDate')
+            sortBy: config.get<TaskSortBy>('sortBy', 'modifiedDate'),
+            groupRelatedDocuments: config.get<boolean>('groupRelatedDocuments', true)
         };
+    }
+
+    /**
+     * Parse a filename to extract base name and document type
+     * Examples:
+     *   "task1.md" -> { baseName: "task1", docType: undefined }
+     *   "task1.plan.md" -> { baseName: "task1", docType: "plan" }
+     *   "task1.test.spec.md" -> { baseName: "task1.test", docType: "spec" }
+     */
+    parseFileName(fileName: string): { baseName: string; docType?: string } {
+        // Remove .md extension
+        const withoutMd = fileName.replace(/\.md$/i, '');
+        
+        // Split by dot to find potential doc type suffix
+        const parts = withoutMd.split('.');
+        
+        if (parts.length >= 2) {
+            // Check if the last part looks like a doc type (common types)
+            const lastPart = parts[parts.length - 1].toLowerCase();
+            const commonDocTypes = [
+                'plan', 'spec', 'test', 'notes', 'todo', 'readme', 
+                'design', 'impl', 'implementation', 'review', 'checklist',
+                'requirements', 'analysis', 'research', 'summary', 'log',
+                'draft', 'final', 'v1', 'v2', 'v3', 'old', 'new', 'backup'
+            ];
+            
+            if (commonDocTypes.includes(lastPart) || /^v\d+$/.test(lastPart)) {
+                return {
+                    baseName: parts.slice(0, -1).join('.'),
+                    docType: parts[parts.length - 1]
+                };
+            }
+        }
+        
+        // No doc type suffix found
+        return { baseName: withoutMd, docType: undefined };
+    }
+
+    /**
+     * Get all task documents from the tasks folder
+     */
+    async getTaskDocuments(): Promise<TaskDocument[]> {
+        const documents: TaskDocument[] = [];
+        const settings = this.getSettings();
+
+        // Read active documents
+        const tasksFolder = this.getTasksFolder();
+        if (fs.existsSync(tasksFolder)) {
+            const files = fs.readdirSync(tasksFolder);
+            for (const file of files) {
+                if (file.endsWith('.md')) {
+                    const filePath = path.join(tasksFolder, file);
+                    try {
+                        const stats = fs.statSync(filePath);
+                        if (stats.isFile()) {
+                            const { baseName, docType } = this.parseFileName(file);
+                            documents.push({
+                                baseName,
+                                docType,
+                                fileName: file,
+                                filePath,
+                                modifiedTime: stats.mtime,
+                                isArchived: false
+                            });
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to read task file ${filePath}:`, error);
+                    }
+                }
+            }
+        }
+
+        // Read archived documents if setting enabled
+        if (settings.showArchived) {
+            const archiveFolder = this.getArchiveFolder();
+            if (fs.existsSync(archiveFolder)) {
+                const files = fs.readdirSync(archiveFolder);
+                for (const file of files) {
+                    if (file.endsWith('.md')) {
+                        const filePath = path.join(archiveFolder, file);
+                        try {
+                            const stats = fs.statSync(filePath);
+                            if (stats.isFile()) {
+                                const { baseName, docType } = this.parseFileName(file);
+                                documents.push({
+                                    baseName,
+                                    docType,
+                                    fileName: file,
+                                    filePath,
+                                    modifiedTime: stats.mtime,
+                                    isArchived: true
+                                });
+                            }
+                        } catch (error) {
+                            console.warn(`Failed to read archived task file ${filePath}:`, error);
+                        }
+                    }
+                }
+            }
+        }
+
+        return documents;
+    }
+
+    /**
+     * Group task documents by base name
+     * Returns groups only for base names that have multiple documents
+     * Single documents are returned as-is (not grouped)
+     */
+    async getTaskDocumentGroups(): Promise<{ groups: TaskDocumentGroup[]; singles: TaskDocument[] }> {
+        const documents = await this.getTaskDocuments();
+        
+        // Group by baseName and isArchived status
+        const groupMap = new Map<string, TaskDocument[]>();
+        
+        for (const doc of documents) {
+            // Create key combining baseName and archived status
+            const key = `${doc.baseName}|${doc.isArchived ? 'archived' : 'active'}`;
+            const existing = groupMap.get(key) || [];
+            existing.push(doc);
+            groupMap.set(key, existing);
+        }
+
+        const groups: TaskDocumentGroup[] = [];
+        const singles: TaskDocument[] = [];
+
+        for (const [key, docs] of groupMap) {
+            if (docs.length > 1) {
+                // Multiple documents with same base name - create a group
+                const latestModifiedTime = docs.reduce(
+                    (latest, doc) => doc.modifiedTime > latest ? doc.modifiedTime : latest,
+                    docs[0].modifiedTime
+                );
+                groups.push({
+                    baseName: docs[0].baseName,
+                    documents: docs,
+                    isArchived: docs[0].isArchived,
+                    latestModifiedTime
+                });
+            } else {
+                // Single document - don't group
+                singles.push(docs[0]);
+            }
+        }
+
+        return { groups, singles };
     }
 
     /**

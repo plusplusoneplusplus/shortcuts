@@ -3,7 +3,18 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { TaskManager, TasksTreeDataProvider, TaskItem, Task, TaskGroupItem, TasksDragDropController } from '../../shortcuts/tasks-viewer';
+import { 
+    TaskManager, 
+    TasksTreeDataProvider, 
+    TaskItem, 
+    Task, 
+    TaskGroupItem, 
+    TasksDragDropController,
+    TaskDocument,
+    TaskDocumentGroup,
+    TaskDocumentGroupItem,
+    TaskDocumentItem
+} from '../../shortcuts/tasks-viewer';
 
 suite('Tasks Viewer Tests', () => {
     let tempDir: string;
@@ -826,6 +837,564 @@ suite('Tasks Viewer Tests', () => {
             assert.ok(item.resourceUri, 'Should have resourceUri');
             // Use Uri.path for cross-platform comparison (always uses forward slashes)
             assert.strictEqual(item.resourceUri.path, '/path/to/task.md');
+        });
+    });
+
+    suite('TaskManager parseFileName', () => {
+        test('should parse simple filename without doc type', () => {
+            const result = taskManager.parseFileName('task1.md');
+            assert.strictEqual(result.baseName, 'task1');
+            assert.strictEqual(result.docType, undefined);
+        });
+
+        test('should parse filename with plan doc type', () => {
+            const result = taskManager.parseFileName('task1.plan.md');
+            assert.strictEqual(result.baseName, 'task1');
+            assert.strictEqual(result.docType, 'plan');
+        });
+
+        test('should parse filename with spec doc type', () => {
+            const result = taskManager.parseFileName('task1.spec.md');
+            assert.strictEqual(result.baseName, 'task1');
+            assert.strictEqual(result.docType, 'spec');
+        });
+
+        test('should parse filename with test doc type', () => {
+            const result = taskManager.parseFileName('task1.test.md');
+            assert.strictEqual(result.baseName, 'task1');
+            assert.strictEqual(result.docType, 'test');
+        });
+
+        test('should parse filename with notes doc type', () => {
+            const result = taskManager.parseFileName('my-feature.notes.md');
+            assert.strictEqual(result.baseName, 'my-feature');
+            assert.strictEqual(result.docType, 'notes');
+        });
+
+        test('should parse filename with version doc type (v1)', () => {
+            const result = taskManager.parseFileName('design.v1.md');
+            assert.strictEqual(result.baseName, 'design');
+            assert.strictEqual(result.docType, 'v1');
+        });
+
+        test('should parse filename with version doc type (v10)', () => {
+            const result = taskManager.parseFileName('design.v10.md');
+            assert.strictEqual(result.baseName, 'design');
+            assert.strictEqual(result.docType, 'v10');
+        });
+
+        test('should not treat arbitrary suffix as doc type', () => {
+            const result = taskManager.parseFileName('task1.feature.md');
+            assert.strictEqual(result.baseName, 'task1.feature');
+            assert.strictEqual(result.docType, undefined);
+        });
+
+        test('should handle multi-part base name with doc type', () => {
+            const result = taskManager.parseFileName('task1.feature.plan.md');
+            assert.strictEqual(result.baseName, 'task1.feature');
+            assert.strictEqual(result.docType, 'plan');
+        });
+
+        test('should handle case-insensitive .md extension', () => {
+            const result = taskManager.parseFileName('task1.plan.MD');
+            assert.strictEqual(result.baseName, 'task1');
+            assert.strictEqual(result.docType, 'plan');
+        });
+
+        test('should preserve doc type case in result', () => {
+            const result = taskManager.parseFileName('task1.PLAN.md');
+            assert.strictEqual(result.baseName, 'task1');
+            assert.strictEqual(result.docType, 'PLAN');
+        });
+    });
+
+    suite('TaskManager getTaskDocuments', () => {
+        test('should return empty array when no documents exist', async () => {
+            taskManager.ensureFoldersExist();
+            const documents = await taskManager.getTaskDocuments();
+            assert.strictEqual(documents.length, 0);
+        });
+
+        test('should return documents with parsed baseName and docType', async () => {
+            taskManager.ensureFoldersExist();
+            const tasksFolder = taskManager.getTasksFolder();
+
+            // Create test files
+            fs.writeFileSync(path.join(tasksFolder, 'task1.md'), '# Task 1');
+            fs.writeFileSync(path.join(tasksFolder, 'task1.plan.md'), '# Task 1 Plan');
+            fs.writeFileSync(path.join(tasksFolder, 'task1.test.md'), '# Task 1 Test');
+
+            const documents = await taskManager.getTaskDocuments();
+            assert.strictEqual(documents.length, 3);
+
+            const task1 = documents.find(d => d.fileName === 'task1.md');
+            assert.ok(task1);
+            assert.strictEqual(task1.baseName, 'task1');
+            assert.strictEqual(task1.docType, undefined);
+
+            const task1Plan = documents.find(d => d.fileName === 'task1.plan.md');
+            assert.ok(task1Plan);
+            assert.strictEqual(task1Plan.baseName, 'task1');
+            assert.strictEqual(task1Plan.docType, 'plan');
+
+            const task1Test = documents.find(d => d.fileName === 'task1.test.md');
+            assert.ok(task1Test);
+            assert.strictEqual(task1Test.baseName, 'task1');
+            assert.strictEqual(task1Test.docType, 'test');
+        });
+
+        test('should set isArchived correctly', async () => {
+            // Override settings to show archived
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            (vscode.workspace as any).getConfiguration = (section?: string) => {
+                if (section === 'workspaceShortcuts.tasksViewer') {
+                    return {
+                        get: <T>(key: string, defaultValue?: T): T => {
+                            const defaults: Record<string, any> = {
+                                enabled: true,
+                                folderPath: '.vscode/tasks',
+                                showArchived: true,
+                                sortBy: 'modifiedDate',
+                                groupRelatedDocuments: true
+                            };
+                            return (defaults[key] !== undefined ? defaults[key] : defaultValue) as T;
+                        }
+                    };
+                }
+                return originalGetConfiguration(section);
+            };
+
+            taskManager.ensureFoldersExist();
+            const tasksFolder = taskManager.getTasksFolder();
+            const archiveFolder = taskManager.getArchiveFolder();
+
+            fs.writeFileSync(path.join(tasksFolder, 'active.md'), '# Active');
+            fs.writeFileSync(path.join(archiveFolder, 'archived.md'), '# Archived');
+
+            const documents = await taskManager.getTaskDocuments();
+            assert.strictEqual(documents.length, 2);
+
+            const active = documents.find(d => d.fileName === 'active.md');
+            assert.ok(active);
+            assert.strictEqual(active.isArchived, false);
+
+            const archived = documents.find(d => d.fileName === 'archived.md');
+            assert.ok(archived);
+            assert.strictEqual(archived.isArchived, true);
+        });
+    });
+
+    suite('TaskManager getTaskDocumentGroups', () => {
+        test('should group documents with same base name', async () => {
+            taskManager.ensureFoldersExist();
+            const tasksFolder = taskManager.getTasksFolder();
+
+            // Create test files
+            fs.writeFileSync(path.join(tasksFolder, 'task1.md'), '# Task 1');
+            fs.writeFileSync(path.join(tasksFolder, 'task1.plan.md'), '# Task 1 Plan');
+            fs.writeFileSync(path.join(tasksFolder, 'task1.test.md'), '# Task 1 Test');
+            fs.writeFileSync(path.join(tasksFolder, 'task2.md'), '# Task 2');
+
+            const { groups, singles } = await taskManager.getTaskDocumentGroups();
+
+            // task1 should be grouped (3 docs)
+            assert.strictEqual(groups.length, 1);
+            assert.strictEqual(groups[0].baseName, 'task1');
+            assert.strictEqual(groups[0].documents.length, 3);
+
+            // task2 should be a single (1 doc)
+            assert.strictEqual(singles.length, 1);
+            assert.strictEqual(singles[0].baseName, 'task2');
+        });
+
+        test('should separate groups by archive status', async () => {
+            // Override settings to show archived
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            (vscode.workspace as any).getConfiguration = (section?: string) => {
+                if (section === 'workspaceShortcuts.tasksViewer') {
+                    return {
+                        get: <T>(key: string, defaultValue?: T): T => {
+                            const defaults: Record<string, any> = {
+                                enabled: true,
+                                folderPath: '.vscode/tasks',
+                                showArchived: true,
+                                sortBy: 'modifiedDate',
+                                groupRelatedDocuments: true
+                            };
+                            return (defaults[key] !== undefined ? defaults[key] : defaultValue) as T;
+                        }
+                    };
+                }
+                return originalGetConfiguration(section);
+            };
+
+            taskManager.ensureFoldersExist();
+            const tasksFolder = taskManager.getTasksFolder();
+            const archiveFolder = taskManager.getArchiveFolder();
+
+            // Create active documents
+            fs.writeFileSync(path.join(tasksFolder, 'task1.md'), '# Task 1');
+            fs.writeFileSync(path.join(tasksFolder, 'task1.plan.md'), '# Task 1 Plan');
+
+            // Create archived documents with same base name
+            fs.writeFileSync(path.join(archiveFolder, 'task1.md'), '# Task 1 Archived');
+            fs.writeFileSync(path.join(archiveFolder, 'task1.notes.md'), '# Task 1 Notes Archived');
+
+            const { groups, singles } = await taskManager.getTaskDocumentGroups();
+
+            // Should have 2 groups: one active, one archived
+            assert.strictEqual(groups.length, 2);
+            
+            const activeGroup = groups.find(g => !g.isArchived);
+            assert.ok(activeGroup);
+            assert.strictEqual(activeGroup.baseName, 'task1');
+            assert.strictEqual(activeGroup.documents.length, 2);
+            assert.ok(activeGroup.documents.every(d => !d.isArchived));
+
+            const archivedGroup = groups.find(g => g.isArchived);
+            assert.ok(archivedGroup);
+            assert.strictEqual(archivedGroup.baseName, 'task1');
+            assert.strictEqual(archivedGroup.documents.length, 2);
+            assert.ok(archivedGroup.documents.every(d => d.isArchived));
+
+            // No singles
+            assert.strictEqual(singles.length, 0);
+        });
+
+        test('should calculate latestModifiedTime correctly', async () => {
+            taskManager.ensureFoldersExist();
+            const tasksFolder = taskManager.getTasksFolder();
+
+            // Create files with different timestamps
+            fs.writeFileSync(path.join(tasksFolder, 'task1.md'), '# Task 1');
+            
+            // Wait a bit and create another file
+            await new Promise(resolve => setTimeout(resolve, 50));
+            fs.writeFileSync(path.join(tasksFolder, 'task1.plan.md'), '# Task 1 Plan');
+
+            const { groups } = await taskManager.getTaskDocumentGroups();
+
+            assert.strictEqual(groups.length, 1);
+            
+            // The latest modified time should be from task1.plan.md
+            const planDoc = groups[0].documents.find(d => d.docType === 'plan');
+            assert.ok(planDoc);
+            assert.strictEqual(
+                groups[0].latestModifiedTime.getTime(),
+                planDoc.modifiedTime.getTime()
+            );
+        });
+    });
+
+    suite('TaskDocumentGroupItem', () => {
+        test('should create active document group item', () => {
+            const documents: TaskDocument[] = [
+                { baseName: 'task1', docType: undefined, fileName: 'task1.md', filePath: '/path/task1.md', modifiedTime: new Date(), isArchived: false },
+                { baseName: 'task1', docType: 'plan', fileName: 'task1.plan.md', filePath: '/path/task1.plan.md', modifiedTime: new Date(), isArchived: false },
+            ];
+
+            const item = new TaskDocumentGroupItem('task1', documents, false);
+
+            assert.strictEqual(item.label, 'task1');
+            assert.strictEqual(item.baseName, 'task1');
+            assert.strictEqual(item.documents.length, 2);
+            assert.strictEqual(item.isArchived, false);
+            assert.strictEqual(item.contextValue, 'taskDocumentGroup');
+            assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
+        });
+
+        test('should create archived document group item', () => {
+            const documents: TaskDocument[] = [
+                { baseName: 'task1', docType: 'spec', fileName: 'task1.spec.md', filePath: '/path/task1.spec.md', modifiedTime: new Date(), isArchived: true },
+            ];
+
+            const item = new TaskDocumentGroupItem('task1', documents, true);
+
+            assert.strictEqual(item.isArchived, true);
+            assert.strictEqual(item.contextValue, 'archivedTaskDocumentGroup');
+        });
+
+        test('should have description with doc count and types', () => {
+            const documents: TaskDocument[] = [
+                { baseName: 'task1', docType: undefined, fileName: 'task1.md', filePath: '/path/task1.md', modifiedTime: new Date(), isArchived: false },
+                { baseName: 'task1', docType: 'plan', fileName: 'task1.plan.md', filePath: '/path/task1.plan.md', modifiedTime: new Date(), isArchived: false },
+                { baseName: 'task1', docType: 'test', fileName: 'task1.test.md', filePath: '/path/task1.test.md', modifiedTime: new Date(), isArchived: false },
+            ];
+
+            const item = new TaskDocumentGroupItem('task1', documents, false);
+
+            const description = item.description as string;
+            assert.ok(description.includes('3 docs'));
+            assert.ok(description.includes('md'));
+            assert.ok(description.includes('plan'));
+            assert.ok(description.includes('test'));
+        });
+
+        test('should set folder path from first document', () => {
+            const documents: TaskDocument[] = [
+                { baseName: 'task1', docType: 'plan', fileName: 'task1.plan.md', filePath: '/path/to/tasks/task1.plan.md', modifiedTime: new Date(), isArchived: false },
+            ];
+
+            const item = new TaskDocumentGroupItem('task1', documents, false);
+
+            // Use path.dirname for cross-platform check
+            assert.strictEqual(item.folderPath, path.dirname('/path/to/tasks/task1.plan.md'));
+        });
+    });
+
+    suite('TaskDocumentItem', () => {
+        test('should create document item with docType as label', () => {
+            const doc: TaskDocument = {
+                baseName: 'task1',
+                docType: 'plan',
+                fileName: 'task1.plan.md',
+                filePath: '/path/task1.plan.md',
+                modifiedTime: new Date(),
+                isArchived: false
+            };
+
+            const item = new TaskDocumentItem(doc);
+
+            assert.strictEqual(item.label, 'plan');
+            assert.strictEqual(item.docType, 'plan');
+            assert.strictEqual(item.baseName, 'task1');
+            assert.strictEqual(item.filePath, '/path/task1.plan.md');
+            assert.strictEqual(item.contextValue, 'taskDocument');
+        });
+
+        test('should use baseName as label when no docType', () => {
+            const doc: TaskDocument = {
+                baseName: 'task1',
+                docType: undefined,
+                fileName: 'task1.md',
+                filePath: '/path/task1.md',
+                modifiedTime: new Date(),
+                isArchived: false
+            };
+
+            const item = new TaskDocumentItem(doc);
+
+            assert.strictEqual(item.label, 'task1');
+        });
+
+        test('should set archived context value', () => {
+            const doc: TaskDocument = {
+                baseName: 'task1',
+                docType: 'notes',
+                fileName: 'task1.notes.md',
+                filePath: '/path/task1.notes.md',
+                modifiedTime: new Date(),
+                isArchived: true
+            };
+
+            const item = new TaskDocumentItem(doc);
+
+            assert.strictEqual(item.isArchived, true);
+            assert.strictEqual(item.contextValue, 'archivedTaskDocument');
+        });
+
+        test('should have resourceUri for drag-and-drop', () => {
+            const doc: TaskDocument = {
+                baseName: 'task1',
+                docType: 'spec',
+                fileName: 'task1.spec.md',
+                filePath: '/path/task1.spec.md',
+                modifiedTime: new Date(),
+                isArchived: false
+            };
+
+            const item = new TaskDocumentItem(doc);
+
+            assert.ok(item.resourceUri);
+            assert.strictEqual(item.resourceUri.path, '/path/task1.spec.md');
+        });
+
+        test('should have open command', () => {
+            const doc: TaskDocument = {
+                baseName: 'task1',
+                docType: 'plan',
+                fileName: 'task1.plan.md',
+                filePath: '/path/task1.plan.md',
+                modifiedTime: new Date(),
+                isArchived: false
+            };
+
+            const item = new TaskDocumentItem(doc);
+
+            assert.ok(item.command);
+            assert.strictEqual(item.command.command, 'vscode.openWith');
+            assert.ok(item.command.arguments);
+            assert.strictEqual(item.command.arguments[1], 'reviewEditorView');
+        });
+    });
+
+    suite('Drag and Drop with Document Groups', () => {
+        let dragDropController: TasksDragDropController;
+
+        setup(() => {
+            dragDropController = new TasksDragDropController();
+        });
+
+        test('should handle drag with TaskDocumentItem', async () => {
+            const doc: TaskDocument = {
+                baseName: 'task1',
+                docType: 'plan',
+                fileName: 'task1.plan.md',
+                filePath: '/path/task1.plan.md',
+                modifiedTime: new Date(),
+                isArchived: false
+            };
+            const docItem = new TaskDocumentItem(doc);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const token = new vscode.CancellationTokenSource().token;
+
+            await dragDropController.handleDrag([docItem], dataTransfer, token);
+
+            const uriList = dataTransfer.get('text/uri-list');
+            assert.ok(uriList, 'Should have uri-list in data transfer');
+            assert.ok(uriList.value.includes('file://'), 'Should contain file URI');
+        });
+
+        test('should handle drag with TaskDocumentGroupItem (all docs)', async () => {
+            const documents: TaskDocument[] = [
+                { baseName: 'task1', docType: undefined, fileName: 'task1.md', filePath: '/path/task1.md', modifiedTime: new Date(), isArchived: false },
+                { baseName: 'task1', docType: 'plan', fileName: 'task1.plan.md', filePath: '/path/task1.plan.md', modifiedTime: new Date(), isArchived: false },
+            ];
+            const groupItem = new TaskDocumentGroupItem('task1', documents, false);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const token = new vscode.CancellationTokenSource().token;
+
+            await dragDropController.handleDrag([groupItem], dataTransfer, token);
+
+            const uriList = dataTransfer.get('text/uri-list');
+            assert.ok(uriList, 'Should have uri-list in data transfer');
+            
+            // Should have 2 URIs (one for each document)
+            const uris = uriList.value.split('\r\n');
+            assert.strictEqual(uris.length, 2, 'Should have 2 URIs');
+        });
+    });
+
+    suite('TreeDataProvider with Document Grouping', () => {
+        let treeDataProvider: TasksTreeDataProvider;
+
+        setup(() => {
+            // Override settings to enable document grouping
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            (vscode.workspace as any).getConfiguration = (section?: string) => {
+                if (section === 'workspaceShortcuts.tasksViewer') {
+                    return {
+                        get: <T>(key: string, defaultValue?: T): T => {
+                            const defaults: Record<string, any> = {
+                                enabled: true,
+                                folderPath: '.vscode/tasks',
+                                showArchived: false,
+                                sortBy: 'modifiedDate',
+                                groupRelatedDocuments: true
+                            };
+                            return (defaults[key] !== undefined ? defaults[key] : defaultValue) as T;
+                        }
+                    };
+                }
+                return originalGetConfiguration(section);
+            };
+
+            treeDataProvider = new TasksTreeDataProvider(taskManager);
+        });
+
+        teardown(() => {
+            treeDataProvider.dispose();
+        });
+
+        test('should return document group items for related docs', async () => {
+            taskManager.ensureFoldersExist();
+            const tasksFolder = taskManager.getTasksFolder();
+
+            // Create related documents
+            fs.writeFileSync(path.join(tasksFolder, 'task1.md'), '# Task 1');
+            fs.writeFileSync(path.join(tasksFolder, 'task1.plan.md'), '# Task 1 Plan');
+            fs.writeFileSync(path.join(tasksFolder, 'task1.test.md'), '# Task 1 Test');
+
+            const children = await treeDataProvider.getChildren();
+
+            // Should have 1 group for task1
+            assert.strictEqual(children.length, 1);
+            assert.ok(children[0] instanceof TaskDocumentGroupItem);
+
+            const groupItem = children[0] as TaskDocumentGroupItem;
+            assert.strictEqual(groupItem.baseName, 'task1');
+            assert.strictEqual(groupItem.documents.length, 3);
+        });
+
+        test('should return TaskItem for single docs', async () => {
+            taskManager.ensureFoldersExist();
+            const tasksFolder = taskManager.getTasksFolder();
+
+            // Create a single document (no related docs)
+            fs.writeFileSync(path.join(tasksFolder, 'standalone.md'), '# Standalone');
+
+            const children = await treeDataProvider.getChildren();
+
+            assert.strictEqual(children.length, 1);
+            assert.ok(children[0] instanceof TaskItem);
+            assert.strictEqual((children[0] as TaskItem).label, 'standalone');
+        });
+
+        test('should return document items as children of group', async () => {
+            taskManager.ensureFoldersExist();
+            const tasksFolder = taskManager.getTasksFolder();
+
+            fs.writeFileSync(path.join(tasksFolder, 'task1.md'), '# Task 1');
+            fs.writeFileSync(path.join(tasksFolder, 'task1.plan.md'), '# Task 1 Plan');
+
+            const rootChildren = await treeDataProvider.getChildren();
+            assert.strictEqual(rootChildren.length, 1);
+            assert.ok(rootChildren[0] instanceof TaskDocumentGroupItem);
+
+            // Get children of the group
+            const groupChildren = await treeDataProvider.getChildren(rootChildren[0]);
+            assert.strictEqual(groupChildren.length, 2);
+            assert.ok(groupChildren.every(c => c instanceof TaskDocumentItem));
+        });
+
+        test('should filter document groups by name', async () => {
+            taskManager.ensureFoldersExist();
+            const tasksFolder = taskManager.getTasksFolder();
+
+            fs.writeFileSync(path.join(tasksFolder, 'apple.md'), '# Apple');
+            fs.writeFileSync(path.join(tasksFolder, 'apple.plan.md'), '# Apple Plan');
+            fs.writeFileSync(path.join(tasksFolder, 'banana.md'), '# Banana');
+            fs.writeFileSync(path.join(tasksFolder, 'banana.plan.md'), '# Banana Plan');
+
+            treeDataProvider.setFilter('apple');
+
+            const children = await treeDataProvider.getChildren();
+            assert.strictEqual(children.length, 1);
+            assert.ok(children[0] instanceof TaskDocumentGroupItem);
+            assert.strictEqual((children[0] as TaskDocumentGroupItem).baseName, 'apple');
+        });
+
+        test('should mix groups and singles', async () => {
+            taskManager.ensureFoldersExist();
+            const tasksFolder = taskManager.getTasksFolder();
+
+            // Create a group
+            fs.writeFileSync(path.join(tasksFolder, 'task1.md'), '# Task 1');
+            fs.writeFileSync(path.join(tasksFolder, 'task1.plan.md'), '# Task 1 Plan');
+
+            // Create a single
+            fs.writeFileSync(path.join(tasksFolder, 'standalone.md'), '# Standalone');
+
+            const children = await treeDataProvider.getChildren();
+            assert.strictEqual(children.length, 2);
+
+            const hasGroup = children.some(c => c instanceof TaskDocumentGroupItem);
+            const hasSingle = children.some(c => c instanceof TaskItem);
+
+            assert.ok(hasGroup, 'Should have document group');
+            assert.ok(hasSingle, 'Should have single task item');
         });
     });
 });
