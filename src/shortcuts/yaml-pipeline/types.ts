@@ -104,6 +104,8 @@ export interface MapConfig {
     parallel?: number;
     /** Model to use for AI calls */
     model?: string;
+    /** Timeout for each AI call in milliseconds (default: 300000 = 5 minutes) */
+    timeoutMs?: number;
 }
 
 /**

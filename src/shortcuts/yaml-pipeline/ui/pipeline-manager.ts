@@ -515,6 +515,8 @@ map:
   output:
     - result
     - confidence
+  # Timeout for each AI call in milliseconds (default: 300000 = 5 minutes)
+  timeoutMs: 300000
 
 reduce:
   type: json

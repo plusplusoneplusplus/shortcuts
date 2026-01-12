@@ -260,6 +260,69 @@ suite('Pipeline Executor', () => {
             assert.strictEqual(result.success, true);
             assert.strictEqual(receivedModel, undefined);
         });
+
+        test('uses custom timeout from map config', async () => {
+            const config: PipelineConfig = {
+                name: 'Timeout Test',
+                input: {
+                    items: [{ id: '1', title: 'Test Item' }]
+                },
+                map: {
+                    prompt: 'Analyze: {{title}}',
+                    output: ['result'],
+                    timeoutMs: 100 // Very short timeout to trigger timeout
+                },
+                reduce: { type: 'list' }
+            };
+
+            const aiInvoker = async (): Promise<AIInvokerResult> => {
+                // Simulate a slow AI response that exceeds timeout
+                await new Promise(resolve => setTimeout(resolve, 500));
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            // When a timeout occurs, the overall job is marked as failed
+            assert.strictEqual(result.success, false);
+            assert.strictEqual(result.executionStats.failedMaps, 1);
+            assert.ok(result.mapResults);
+            assert.ok(result.mapResults[0].error?.includes('timed out'), 'Error should mention timeout');
+        });
+
+        test('uses default timeout (5 minutes) when not specified', async () => {
+            const config: PipelineConfig = {
+                name: 'Default Timeout Test',
+                input: {
+                    items: [{ id: '1', title: 'Test Item' }]
+                },
+                map: {
+                    prompt: 'Analyze: {{title}}',
+                    output: ['result']
+                    // No timeout specified - should default to 300000ms (5 minutes)
+                },
+                reduce: { type: 'list' }
+            };
+
+            const aiInvoker = async (): Promise<AIInvokerResult> => {
+                // Simulate a reasonably fast response
+                await new Promise(resolve => setTimeout(resolve, 10));
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            // Should succeed with default timeout
+            assert.strictEqual(result.success, true);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results[0].success, true);
+        });
     });
 
     suite('executePipeline - CSV from file', () => {

@@ -136,6 +136,7 @@ export async function executePipeline(
     // 2. Create and execute map-reduce job
     const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
     const model = config.map.model;
+    const timeoutMs = config.map.timeoutMs ?? 300000; // Default to 5 minutes
 
     const executorOptions: ExecutorOptions = {
         aiInvoker: options.aiInvoker,
@@ -145,7 +146,8 @@ export async function executePipeline(
         retryOnFailure: false,
         processTracker: options.processTracker,
         onProgress: options.onProgress,
-        jobName: config.name
+        jobName: config.name,
+        timeoutMs
     };
 
     const executor = createExecutor(executorOptions);
