@@ -420,6 +420,8 @@ export function setupSearchKeyboardShortcuts(
         // Ctrl/Cmd + F to open search
         if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
             e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
             openSearchBar(elements, state);
             return;
         }
@@ -430,6 +432,7 @@ export function setupSearchKeyboardShortcuts(
         // Escape to close
         if (e.key === 'Escape') {
             e.preventDefault();
+            e.stopPropagation();
             closeSearchBar(elements, state);
             return;
         }
@@ -485,7 +488,8 @@ export function setupSearchKeyboardShortcuts(
     const handleRegexClick = () => toggleRegex(elements, state);
 
     // Attach event listeners
-    document.addEventListener('keydown', handleKeydown);
+    // Use capture phase to intercept before VSCode's default webview search handler
+    document.addEventListener('keydown', handleKeydown, true);
     elements.searchInput.addEventListener('input', handleInput);
     elements.prevButton.addEventListener('click', handlePrevClick);
     elements.nextButton.addEventListener('click', handleNextClick);
@@ -495,7 +499,7 @@ export function setupSearchKeyboardShortcuts(
 
     // Return cleanup function
     return () => {
-        document.removeEventListener('keydown', handleKeydown);
+        document.removeEventListener('keydown', handleKeydown, true);
         elements.searchInput.removeEventListener('input', handleInput);
         elements.prevButton.removeEventListener('click', handlePrevClick);
         elements.nextButton.removeEventListener('click', handleNextClick);
