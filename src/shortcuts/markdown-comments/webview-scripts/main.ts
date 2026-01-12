@@ -6,7 +6,7 @@
  * with the VS Code extension.
  */
 
-import { initDomHandlers, rebuildAISubmenu } from './dom-handlers';
+import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu } from './dom-handlers';
 import { updateResolvedImage } from './image-handlers';
 import { initPanelManager, scrollToComment } from './panel-manager';
 import { render } from './render';
@@ -79,6 +79,10 @@ function handleMessage(message: ExtensionMessage): void {
                 // Rebuild AI submenu if commands changed
                 if (message.settings.aiCommands) {
                     rebuildAISubmenu();
+                }
+                // Rebuild predefined comments submenu if changed
+                if (message.settings.predefinedComments) {
+                    rebuildPredefinedSubmenu();
                 }
             }
 

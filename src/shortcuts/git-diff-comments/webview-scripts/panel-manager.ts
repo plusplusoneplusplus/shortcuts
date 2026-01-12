@@ -5,7 +5,7 @@
  * functionality like drag, resize, positioning, and date formatting.
  */
 
-import { AskAIContext, DiffAIInstructionType, DiffComment, DiffSide, SelectionState, SerializedAICommand } from './types';
+import { AskAIContext, DiffAIInstructionType, DiffComment, DiffSide, SelectionState, SerializedAICommand, SerializedPredefinedComment } from './types';
 import { endInteraction, getState, setCommentPanelOpen, setEditingCommentId, startInteraction } from './state';
 import { clearSelection, toDiffSelection } from './selection-handler';
 import { sendAddComment, sendAskAI, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
@@ -29,6 +29,15 @@ const DEFAULT_AI_COMMANDS: SerializedAICommand[] = [
 ];
 
 /**
+ * Default predefined comments when none are configured
+ */
+const DEFAULT_PREDEFINED_COMMENTS: SerializedPredefinedComment[] = [
+    { id: 'todo', label: 'TODO', text: 'TODO: ', order: 1 },
+    { id: 'fixme', label: 'FIXME', text: 'FIXME: ', order: 2 },
+    { id: 'question', label: 'Question', text: 'Question: ', order: 3 }
+];
+
+/**
  * DOM element references
  */
 let commentPanel: HTMLElement | null = null;
@@ -45,6 +54,9 @@ let contextMenuAddComment: HTMLElement | null = null;
 // Ask AI context menu elements
 let contextMenuAskAI: HTMLElement | null = null;
 let askAISubmenu: HTMLElement | null = null;
+// Predefined comments submenu elements
+let contextMenuPredefined: HTMLElement | null = null;
+let predefinedSubmenu: HTMLElement | null = null;
 // Custom instruction dialog elements
 let customInstructionDialog: HTMLElement | null = null;
 let customInstructionClose: HTMLElement | null = null;
@@ -123,6 +135,62 @@ export function rebuildAISubmenu(): void {
 }
 
 /**
+ * Get the predefined comments to display in menus
+ */
+function getPredefinedComments(): SerializedPredefinedComment[] {
+    const state = getState();
+    const comments = state.settings.predefinedComments;
+    if (comments && comments.length > 0) {
+        return [...comments].sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+    }
+    return DEFAULT_PREDEFINED_COMMENTS;
+}
+
+/**
+ * Build the predefined comments submenu HTML
+ */
+function buildPredefinedSubmenuHTML(comments: SerializedPredefinedComment[]): string {
+    return comments.map(c => {
+        const title = c.description ? `title="${c.description}"` : '';
+        return `<div class="context-menu-item predefined-item" data-id="${c.id}" data-text="${encodeURIComponent(c.text)}" ${title}>
+            ${c.label}
+        </div>`;
+    }).join('');
+}
+
+/**
+ * Rebuild the predefined comments submenu based on current settings
+ */
+export function rebuildPredefinedSubmenu(): void {
+    if (!predefinedSubmenu) return;
+
+    const comments = getPredefinedComments();
+    predefinedSubmenu.innerHTML = buildPredefinedSubmenuHTML(comments);
+
+    // Attach click handlers to all predefined items
+    predefinedSubmenu.querySelectorAll('.predefined-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const element = item as HTMLElement;
+            const text = decodeURIComponent(element.dataset.text || '');
+
+            hideContextMenu();
+            handlePredefinedComment(text);
+        });
+    });
+}
+
+/**
+ * Handle predefined comment selection
+ * Opens the comment panel with the predefined text pre-filled
+ */
+function handlePredefinedComment(predefinedText: string): void {
+    if (currentPanelSelection) {
+        showCommentPanel(currentPanelSelection, predefinedText);
+    }
+}
+
+/**
  * Initialize panel elements
  */
 export function initPanelElements(): void {
@@ -141,6 +209,10 @@ export function initPanelElements(): void {
     // Ask AI context menu elements
     contextMenuAskAI = document.getElementById('context-menu-ask-ai');
     askAISubmenu = document.getElementById('ask-ai-submenu');
+
+    // Predefined comments submenu elements
+    contextMenuPredefined = document.getElementById('context-menu-predefined');
+    predefinedSubmenu = document.getElementById('predefined-submenu');
 
     // Custom instruction dialog elements
     customInstructionDialog = document.getElementById('custom-instruction-dialog');
@@ -181,8 +253,16 @@ export function initPanelElements(): void {
         contextMenuAskAI.addEventListener('mouseenter', positionAskAISubmenu);
     }
 
+    // Predefined comments submenu event listeners
+    if (contextMenuPredefined) {
+        contextMenuPredefined.addEventListener('mouseenter', positionPredefinedSubmenu);
+    }
+
     // Build initial AI submenu with default commands
     rebuildAISubmenu();
+
+    // Build initial predefined comments submenu
+    rebuildPredefinedSubmenu();
 
     // Custom instruction dialog event listeners
     setupCustomInstructionDialogListeners();
@@ -219,8 +299,10 @@ export function initPanelElements(): void {
 
 /**
  * Show the comment panel for adding a new comment
+ * @param selection - The selection state
+ * @param prefilledText - Optional text to pre-fill in the comment input
  */
-export function showCommentPanel(selection: SelectionState): void {
+export function showCommentPanel(selection: SelectionState, prefilledText?: string): void {
     if (!commentPanel || !commentInput || !selectedTextPreview) {
         console.error('Comment panel elements not found');
         return;
@@ -236,8 +318,8 @@ export function showCommentPanel(selection: SelectionState): void {
         : selection.selectedText;
     selectedTextPreview.textContent = previewText;
 
-    // Clear input
-    commentInput.value = '';
+    // Set input value (prefilled or empty)
+    commentInput.value = prefilledText || '';
 
     // Update panel title
     const titleEl = commentPanel.querySelector('.comment-panel-title');
@@ -256,8 +338,11 @@ export function showCommentPanel(selection: SelectionState): void {
     // Position panel near selection
     positionPanelNearSelection();
 
-    // Focus input
+    // Focus input and place cursor at end of prefilled text
     commentInput.focus();
+    if (prefilledText) {
+        commentInput.setSelectionRange(prefilledText.length, prefilledText.length);
+    }
 }
 
 /**
@@ -1031,6 +1116,47 @@ function positionAskAISubmenu(): void {
         askAISubmenu.style.top = `${-overflow - 5}px`;
     } else {
         askAISubmenu.style.top = '-1px';
+    }
+}
+
+/**
+ * Position predefined comments submenu based on available viewport space
+ */
+function positionPredefinedSubmenu(): void {
+    if (!predefinedSubmenu || !contextMenuPredefined || !contextMenu) return;
+
+    const parentRect = contextMenuPredefined.getBoundingClientRect();
+    const menuRect = contextMenu.getBoundingClientRect();
+
+    // Temporarily show submenu to get its dimensions
+    const originalDisplay = predefinedSubmenu.style.display;
+    predefinedSubmenu.style.display = 'block';
+    predefinedSubmenu.style.visibility = 'hidden';
+    const submenuRect = predefinedSubmenu.getBoundingClientRect();
+    predefinedSubmenu.style.visibility = '';
+    predefinedSubmenu.style.display = originalDisplay;
+
+    // Check horizontal space
+    const spaceOnRight = window.innerWidth - menuRect.right;
+    const spaceOnLeft = menuRect.left;
+
+    if (spaceOnRight < submenuRect.width && spaceOnLeft > submenuRect.width) {
+        // Show on left side
+        predefinedSubmenu.style.left = 'auto';
+        predefinedSubmenu.style.right = '100%';
+    } else {
+        // Show on right side (default)
+        predefinedSubmenu.style.left = '100%';
+        predefinedSubmenu.style.right = 'auto';
+    }
+
+    // Check vertical space
+    const submenuBottomIfAlignedToTop = parentRect.top + submenuRect.height;
+    if (submenuBottomIfAlignedToTop > window.innerHeight) {
+        const overflow = submenuBottomIfAlignedToTop - window.innerHeight;
+        predefinedSubmenu.style.top = `${-overflow - 5}px`;
+    } else {
+        predefinedSubmenu.style.top = '-1px';
     }
 }
 

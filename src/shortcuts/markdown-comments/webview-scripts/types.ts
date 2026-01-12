@@ -37,6 +37,17 @@ export interface SerializedAICommand {
 }
 
 /**
+ * Serialized predefined comment for webview
+ */
+export interface SerializedPredefinedComment {
+    id: string;
+    label: string;
+    text: string;
+    order: number;
+    description?: string;
+}
+
+/**
  * Webview settings
  */
 export interface WebviewSettings {
@@ -45,6 +56,8 @@ export interface WebviewSettings {
     askAIEnabled?: boolean;
     /** Configurable AI commands */
     aiCommands?: SerializedAICommand[];
+    /** Predefined comment templates */
+    predefinedComments?: SerializedPredefinedComment[];
 }
 
 /**

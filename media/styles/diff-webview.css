@@ -976,6 +976,35 @@ html, body {
     margin: 4px 8px;
 }
 
+/* Predefined comments submenu */
+.predefined-submenu {
+    display: none;
+    position: absolute;
+    top: -1px;
+    left: 100%;
+    min-width: 150px;
+    background-color: var(--vscode-menu-background, var(--vscode-dropdown-background));
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    z-index: 10001;
+    padding: 4px 0;
+    margin-left: 2px;
+}
+
+.context-menu-item.has-submenu:hover .predefined-submenu {
+    display: block;
+}
+
+.predefined-submenu .context-menu-item {
+    padding: 6px 12px;
+    cursor: pointer;
+}
+
+.predefined-submenu .context-menu-item:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
 /* ======================== */
 /* Custom Instruction Dialog */
 /* ======================== */

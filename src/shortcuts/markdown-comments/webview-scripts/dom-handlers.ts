@@ -24,8 +24,9 @@ import {
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
-import { SerializedAICommand } from './types';
+import { SerializedAICommand, SerializedPredefinedComment } from './types';
 import { openFile, requestAskAI, requestCopyPrompt, requestDeleteAll, requestResolveAll, requestSendToChat, updateContent } from './vscode-bridge';
+import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 
 // DOM element references
 let editorWrapper: HTMLElement;
@@ -38,6 +39,9 @@ let contextMenuAddComment: HTMLElement;
 let contextMenuAskAI: HTMLElement;
 // Ask AI submenu element (dynamically populated)
 let askAISubmenu: HTMLElement;
+// Predefined comments submenu elements
+let contextMenuPredefined: HTMLElement;
+let predefinedSubmenu: HTMLElement;
 // Custom instruction dialog elements
 let customInstructionDialog: HTMLElement;
 let customInstructionClose: HTMLElement;
@@ -63,6 +67,9 @@ export function initDomHandlers(): void {
     contextMenuAskAI = document.getElementById('contextMenuAskAI')!;
     // Ask AI submenu element (dynamically populated)
     askAISubmenu = document.getElementById('askAISubmenu')!;
+    // Predefined comments submenu elements
+    contextMenuPredefined = document.getElementById('contextMenuPredefined')!;
+    predefinedSubmenu = document.getElementById('predefinedSubmenu')!;
     // Custom instruction dialog elements
     customInstructionDialog = document.getElementById('customInstructionDialog')!;
     customInstructionClose = document.getElementById('customInstructionClose')!;
@@ -80,6 +87,9 @@ export function initDomHandlers(): void {
 
     // Build initial AI submenu with default commands
     rebuildAISubmenu();
+
+    // Build initial predefined comments submenu
+    rebuildPredefinedSubmenu();
 }
 
 /**
@@ -89,6 +99,44 @@ export function rebuildAISubmenu(): void {
     const commands = getAICommands(state.settings.aiCommands);
     updateAISubmenu(askAISubmenu, commands);
     attachAISubmenuHandlers(askAISubmenu, handleAICommandClick);
+}
+
+/**
+ * Get the predefined comments from settings or defaults
+ */
+function getPredefinedComments(): SerializedPredefinedComment[] {
+    const comments = state.settings.predefinedComments;
+    if (comments && comments.length > 0) {
+        return [...comments].sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+    }
+    // Default predefined comments from shared constants
+    return serializePredefinedComments(DEFAULT_MARKDOWN_PREDEFINED_COMMENTS);
+}
+
+/**
+ * Rebuild the predefined comments submenu based on current settings
+ */
+export function rebuildPredefinedSubmenu(): void {
+    if (!predefinedSubmenu) return;
+
+    const comments = getPredefinedComments();
+    predefinedSubmenu.innerHTML = comments.map(c => {
+        const title = c.description ? `title="${c.description}"` : '';
+        return `<div class="context-menu-item predefined-item" data-id="${c.id}" data-text="${encodeURIComponent(c.text)}" ${title}>
+            <span class="context-menu-label">${c.label}</span>
+        </div>`;
+    }).join('');
+
+    // Attach click handlers
+    predefinedSubmenu.querySelectorAll('.predefined-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const el = item as HTMLElement;
+            const text = decodeURIComponent(el.dataset.text || '');
+            hideContextMenu();
+            handlePredefinedCommentFromContextMenu(text);
+        });
+    });
 }
 
 /**
@@ -344,10 +392,16 @@ function setupContextMenuEventListeners(): void {
 
     // Ask AI parent - reposition submenu on hover
     contextMenuAskAI.addEventListener('mouseenter', () => {
-        positionSubmenu();
+        positionSubmenu(askAISubmenu, contextMenuAskAI);
+    });
+
+    // Predefined comments parent - reposition submenu on hover
+    contextMenuPredefined.addEventListener('mouseenter', () => {
+        positionSubmenu(predefinedSubmenu, contextMenuPredefined);
     });
 
     // Note: AI submenu items are handled dynamically via rebuildAISubmenu()
+    // Note: Predefined submenu items are handled dynamically via rebuildPredefinedSubmenu()
 
     // Hide context menu on click outside
     document.addEventListener('click', (e) => {
@@ -426,6 +480,7 @@ function handleContextMenu(e: MouseEvent): void {
         contextMenuCut.classList.remove('disabled');
         contextMenuCopy.classList.remove('disabled');
         contextMenuAddComment.classList.remove('disabled');
+        contextMenuPredefined.classList.remove('disabled');
         // Only enable Ask AI if the feature is enabled in settings
         if (state.settings.askAIEnabled) {
             contextMenuAskAI.classList.remove('disabled');
@@ -436,6 +491,7 @@ function handleContextMenu(e: MouseEvent): void {
         contextMenuCut.classList.add('disabled');
         contextMenuCopy.classList.add('disabled');
         contextMenuAddComment.classList.add('disabled');
+        contextMenuPredefined.classList.add('disabled');
         contextMenuAskAI.classList.add('disabled');
     }
     // Paste is always enabled
@@ -488,9 +544,8 @@ function handleContextMenu(e: MouseEvent): void {
     
     contextMenu.style.left = x + 'px';
     contextMenu.style.top = y + 'px';
-    
-    // Position submenu based on available space
-    positionSubmenu();
+
+    // Note: Submenus are positioned on hover via mouseenter events
 }
 
 /**
@@ -499,29 +554,29 @@ function handleContextMenu(e: MouseEvent): void {
 function hideContextMenu(): void {
     contextMenu.style.display = 'none';
     // Reset submenu positioning
-    const submenu = document.getElementById('askAISubmenu');
-    if (submenu) {
-        submenu.style.left = '';
-        submenu.style.right = '';
-        submenu.style.top = '';
-        submenu.style.bottom = '';
-    }
+    [askAISubmenu, predefinedSubmenu].forEach(submenu => {
+        if (submenu) {
+            submenu.style.left = '';
+            submenu.style.right = '';
+            submenu.style.top = '';
+            submenu.style.bottom = '';
+        }
+    });
 }
 
 /**
  * Position submenu based on available viewport space
  * Adjusts left/right and top/bottom positioning to keep submenu visible
+ * @param submenu - The submenu element to position
+ * @param parentItem - The parent menu item element
  */
-function positionSubmenu(): void {
-    const submenu = document.getElementById('askAISubmenu');
-    const parentItem = contextMenuAskAI;
-    
+function positionSubmenu(submenu: HTMLElement, parentItem: HTMLElement): void {
     if (!submenu || !parentItem) return;
-    
+
     // Get parent item position
     const parentRect = parentItem.getBoundingClientRect();
     const menuRect = contextMenu.getBoundingClientRect();
-    
+
     // Temporarily show submenu to get its dimensions
     const originalDisplay = submenu.style.display;
     submenu.style.display = 'block';
@@ -529,11 +584,11 @@ function positionSubmenu(): void {
     const submenuRect = submenu.getBoundingClientRect();
     submenu.style.visibility = '';
     submenu.style.display = originalDisplay;
-    
+
     // Check horizontal space - can we show submenu on the right?
     const spaceOnRight = window.innerWidth - menuRect.right;
     const spaceOnLeft = menuRect.left;
-    
+
     if (spaceOnRight < submenuRect.width && spaceOnLeft > submenuRect.width) {
         // Not enough space on right, but enough on left - flip to left side
         submenu.style.left = 'auto';
@@ -547,11 +602,10 @@ function positionSubmenu(): void {
         submenu.style.marginLeft = '2px';
         submenu.style.marginRight = '0';
     }
-    
+
     // Check vertical space - position submenu so it doesn't go off-screen
-    const parentTopRelativeToMenu = parentRect.top - menuRect.top;
     const submenuBottomIfAlignedToTop = parentRect.top + submenuRect.height;
-    
+
     if (submenuBottomIfAlignedToTop > window.innerHeight) {
         // Submenu would go below viewport - align to bottom instead
         const overflow = submenuBottomIfAlignedToTop - window.innerHeight;
@@ -678,6 +732,30 @@ function handleAddCommentFromContextMenu(): void {
     });
 
     showFloatingPanel(saved.rect, saved.selectedText);
+    state.setSavedSelectionForContextMenu(null);
+}
+
+/**
+ * Handle predefined comment from context menu
+ * Opens the floating panel with the predefined text pre-filled
+ * @param predefinedText - The predefined text to pre-fill in the comment input
+ */
+function handlePredefinedCommentFromContextMenu(predefinedText: string): void {
+    const saved = state.savedSelectionForContextMenu;
+    if (!saved) {
+        alert('Please select some text first to add a comment.');
+        return;
+    }
+
+    state.setPendingSelection({
+        startLine: saved.startLine,
+        startColumn: saved.startColumn,
+        endLine: saved.endLine,
+        endColumn: saved.endColumn,
+        selectedText: saved.selectedText
+    });
+
+    showFloatingPanel(saved.rect, saved.selectedText, predefinedText);
     state.setSavedSelectionForContextMenu(null);
 }
 

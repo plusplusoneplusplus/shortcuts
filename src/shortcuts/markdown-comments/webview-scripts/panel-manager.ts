@@ -85,10 +85,13 @@ function setupInlineEditPanelEvents(): void {
 /**
  * Show floating panel for new comment
  * Enhanced to handle edge positioning (edges are typically wider than nodes)
+ * @param selectionRect - The bounding rect of the selection
+ * @param selectedText - The selected text to display
+ * @param prefilledText - Optional text to pre-fill in the comment input
  */
-export function showFloatingPanel(selectionRect: DOMRect, selectedText: string): void {
+export function showFloatingPanel(selectionRect: DOMRect, selectedText: string, prefilledText?: string): void {
     floatingSelection.textContent = selectedText;
-    floatingInput.value = '';
+    floatingInput.value = prefilledText || '';
 
     // Position the panel near the selection
     const panelWidth = 380;
@@ -151,7 +154,13 @@ export function showFloatingPanel(selectionRect: DOMRect, selectedText: string):
     floatingPanel.style.top = top + 'px';
     floatingPanel.style.display = 'block';
 
-    setTimeout(() => floatingInput.focus(), 50);
+    setTimeout(() => {
+        floatingInput.focus();
+        // Place cursor at the end of prefilled text
+        if (prefilledText) {
+            floatingInput.setSelectionRange(prefilledText.length, prefilledText.length);
+        }
+    }, 50);
 }
 
 /**

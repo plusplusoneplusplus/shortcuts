@@ -194,6 +194,14 @@ export function getWebviewContent(
             <span class="context-menu-label">Add Comment</span>
             <span class="context-menu-shortcut">Ctrl+Shift+M</span>
         </div>
+        <div class="context-menu-item context-menu-parent" id="contextMenuPredefined">
+            <span class="context-menu-icon">📋</span>
+            <span class="context-menu-label">Add Predefined Comment</span>
+            <span class="context-menu-arrow">▶</span>
+            <div class="context-submenu" id="predefinedSubmenu">
+                <!-- Dynamically populated from settings -->
+            </div>
+        </div>
         <div class="context-menu-separator"></div>
         <div class="context-menu-item context-menu-parent" id="contextMenuAskAI">
             <span class="context-menu-icon">🤖</span>

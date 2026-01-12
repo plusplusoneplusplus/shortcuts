@@ -73,6 +73,17 @@ export interface SerializedAICommand {
 }
 
 /**
+ * Serialized predefined comment for webview
+ */
+export interface SerializedPredefinedComment {
+    id: string;
+    label: string;
+    text: string;
+    order: number;
+    description?: string;
+}
+
+/**
  * Settings for display
  */
 export interface DiffCommentsSettings {
@@ -83,6 +94,8 @@ export interface DiffCommentsSettings {
     askAIEnabled?: boolean;
     /** Configurable AI commands */
     aiCommands?: SerializedAICommand[];
+    /** Predefined comment templates */
+    predefinedComments?: SerializedPredefinedComment[];
 }
 
 /**

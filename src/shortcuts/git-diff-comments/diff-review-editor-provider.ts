@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { IAIProcessManager, getAICommandRegistry } from '../ai-service';
 import { getExtensionLogger, LogCategory } from '../shared';
+import { getPredefinedCommentRegistry } from '../shared/predefined-comment-registry';
 import { DiffCommentsManager } from './diff-comments-manager';
 import {
     createCommittedGitContext,
@@ -802,12 +803,14 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         const aiConfig = vscode.workspace.getConfiguration('workspaceShortcuts.aiService');
         const askAIEnabled = aiConfig.get<boolean>('enabled', false);
         const aiCommands = getAICommandRegistry().getSerializedCommands();
+        const predefinedComments = getPredefinedCommentRegistry().getSerializedDiffComments();
 
-        // Extend settings with AI enabled flag and commands
+        // Extend settings with AI enabled flag, commands, and predefined comments
         const settings = {
             ...baseSettings,
             askAIEnabled,
-            aiCommands
+            aiCommands,
+            predefinedComments
         };
 
         const message: DiffExtensionMessage = {
@@ -831,16 +834,18 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         const aiConfig = vscode.workspace.getConfiguration('workspaceShortcuts.aiService');
         const askAIEnabled = aiConfig.get<boolean>('enabled', false);
         const aiCommands = getAICommandRegistry().getSerializedCommands();
+        const predefinedComments = getPredefinedCommentRegistry().getSerializedDiffComments();
 
         for (const [filePath, panel] of this.activeWebviews) {
             const comments = this.commentsManager.getCommentsForFile(filePath);
             const baseSettings = this.commentsManager.getSettings();
 
-            // Extend settings with AI enabled flag and commands
+            // Extend settings with AI enabled flag, commands, and predefined comments
             const settings = {
                 ...baseSettings,
                 askAIEnabled,
-                aiCommands
+                aiCommands,
+                predefinedComments
             };
 
             const message: DiffExtensionMessage = {
@@ -990,6 +995,12 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     <!-- Context Menu (hidden by default) -->
     <div id="custom-context-menu" class="context-menu hidden">
         <div class="context-menu-item" id="context-menu-add-comment">Add Comment</div>
+        <div class="context-menu-item has-submenu" id="context-menu-predefined">
+            Add Predefined Comment
+            <div class="predefined-submenu" id="predefined-submenu">
+                <!-- Dynamically populated from settings -->
+            </div>
+        </div>
         <div class="context-menu-separator"></div>
         <div class="context-menu-item has-submenu" id="context-menu-ask-ai">
             Ask AI

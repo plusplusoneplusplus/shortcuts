@@ -3,7 +3,7 @@
  */
 
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
-import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
+import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, rebuildPredefinedSubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
@@ -114,6 +114,10 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
                 // Rebuild AI submenu if commands changed
                 if (message.settings.aiCommands) {
                     rebuildAISubmenu();
+                }
+                // Rebuild predefined submenu if changed
+                if (message.settings.predefinedComments) {
+                    rebuildPredefinedSubmenu();
                 }
             }
             break;
