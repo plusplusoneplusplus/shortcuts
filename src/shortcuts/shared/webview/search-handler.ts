@@ -229,6 +229,18 @@ export function findTextMatches(
         return matches;
     }
 
+    // Helper function to check if an element or any ancestor is hidden
+    const isElementVisible = (element: Element | null): boolean => {
+        while (element) {
+            const style = window.getComputedStyle(element);
+            if (style.display === 'none' || style.visibility === 'hidden') {
+                return false;
+            }
+            element = element.parentElement;
+        }
+        return true;
+    };
+
     // Walk through all text nodes
     const walker = document.createTreeWalker(
         container,
@@ -240,8 +252,8 @@ export function findTextMatches(
                 if (!parent) return NodeFilter.FILTER_REJECT;
                 if (parent.closest('.search-bar')) return NodeFilter.FILTER_REJECT;
                 if (parent.closest('.search-highlight')) return NodeFilter.FILTER_REJECT;
-                const style = window.getComputedStyle(parent);
-                if (style.display === 'none' || style.visibility === 'hidden') {
+                // Check if this element or any ancestor is hidden
+                if (!isElementVisible(parent)) {
                     return NodeFilter.FILTER_REJECT;
                 }
                 return NodeFilter.FILTER_ACCEPT;
@@ -513,10 +525,22 @@ export function setupSearchKeyboardShortcuts(
 }
 
 /**
- * Initialize search functionality
- * Returns cleanup function or null if initialization failed
+ * Search controller interface returned by initSearch
  */
-export function initSearch(containerSelector: string): (() => void) | null {
+export interface SearchController {
+    /** Cleanup function to remove event listeners */
+    cleanup: () => void;
+    /** Refresh search results (call when content or view changes) */
+    refresh: () => void;
+    /** Check if search is currently open */
+    isOpen: () => boolean;
+}
+
+/**
+ * Initialize search functionality
+ * Returns a SearchController or null if initialization failed
+ */
+export function initSearch(containerSelector: string): SearchController | null {
     setSearchContainerSelector(containerSelector);
     
     const elements = initSearchElements();
@@ -528,5 +552,18 @@ export function initSearch(containerSelector: string): (() => void) | null {
     const state = createSearchState();
     const cleanup = setupSearchKeyboardShortcuts(elements, state, getSearchContainer);
 
-    return cleanup;
+    // Refresh function to re-execute search (e.g., when view mode changes)
+    const refresh = () => {
+        if (state.isOpen && state.query) {
+            // Clear existing highlights and re-search
+            clearHighlights(state);
+            executeSearch(elements, state, getSearchContainer());
+        }
+    };
+
+    return {
+        cleanup,
+        refresh,
+        isOpen: () => state.isOpen
+    };
 }

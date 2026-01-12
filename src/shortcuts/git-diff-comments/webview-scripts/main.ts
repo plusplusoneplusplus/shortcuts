@@ -8,12 +8,12 @@ import { getCurrentSelection, hasValidSelection, setupSelectionListener } from '
 import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
 import { getPersistedViewMode, initVSCodeAPI, saveViewMode, sendContentModified, sendCopyPath, sendOpenFile, sendPinTab, sendReady, sendSaveContent } from './vscode-bridge';
-import { initSearch } from '../../shared/webview/search-handler';
+import { initSearch, SearchController } from '../../shared/webview/search-handler';
 
 // AbortController for managing event listeners
 let commentHandlersAbortController: AbortController | null = null;
-// Search cleanup function
-let searchCleanup: (() => void) | null = null;
+// Search controller
+let searchController: SearchController | null = null;
 
 /**
  * Initialize the webview
@@ -72,7 +72,7 @@ function initialize(): void {
     setupDoubleClickToPinTab();
 
     // Initialize search functionality (Ctrl+F)
-    searchCleanup = initSearch('.diff-view-container');
+    searchController = initSearch('.diff-view-container');
 
     // Setup message listener
     window.addEventListener('message', handleMessage);
@@ -691,6 +691,11 @@ function setupViewModeToggle(): void {
 
         // Re-setup comment indicator handlers for the new view
         setupCommentIndicatorHandlers();
+        
+        // Refresh search results for the new view (after a short delay to let DOM update)
+        setTimeout(() => {
+            searchController?.refresh();
+        }, 50);
     });
 }
 

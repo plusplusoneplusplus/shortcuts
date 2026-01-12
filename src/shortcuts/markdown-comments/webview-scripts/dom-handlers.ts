@@ -27,7 +27,7 @@ import { state } from './state';
 import { SerializedAICommand, SerializedPredefinedComment } from './types';
 import { openFile, requestAskAI, requestCopyPrompt, requestDeleteAll, requestResolveAll, requestSendToChat, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
-import { initSearch } from '../../shared/webview/search-handler';
+import { initSearch, SearchController } from '../../shared/webview/search-handler';
 
 // DOM element references
 let editorWrapper: HTMLElement;
@@ -56,8 +56,8 @@ let customInstructionSubmitBtn: HTMLElement;
 let customInstructionOverlay: HTMLElement | null = null;
 // Current command ID for custom instruction dialog
 let pendingCustomCommandId: string = 'custom';
-// Search cleanup function
-let searchCleanup: (() => void) | null = null;
+// Search controller
+let searchController: SearchController | null = null;
 
 /**
  * Initialize DOM handlers
@@ -95,7 +95,7 @@ export function initDomHandlers(): void {
     setupCustomInstructionDialogEventListeners();
     
     // Initialize search functionality (Ctrl+F)
-    searchCleanup = initSearch('#editorWrapper');
+    searchController = initSearch('#editorWrapper');
 
     // Build initial AI submenu with default commands
     rebuildAISubmenu();
