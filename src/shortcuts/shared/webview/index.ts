@@ -24,3 +24,5 @@ export * from './selection-utils';
 // Markdown rendering utilities for comment bubbles
 export * from './markdown-renderer';
 
+// Search functionality for webview editors
+export * from './search-handler';

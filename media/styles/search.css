@@ -1,0 +1,173 @@
+/**
+ * Search bar styles for Review Editors
+ * Provides Ctrl+F search functionality styling
+ */
+
+/* ==============================
+ * Search Bar Container
+ * ============================== */
+.search-bar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: var(--vscode-editorWidget-background, #252526);
+    border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+    padding: 6px 12px;
+    display: none;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.search-bar-inner {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 600px;
+    width: 100%;
+}
+
+/* ==============================
+ * Search Icon
+ * ============================== */
+.search-icon {
+    font-size: 14px;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+/* ==============================
+ * Search Input
+ * ============================== */
+.search-input {
+    flex: 1;
+    min-width: 150px;
+    padding: 4px 8px;
+    font-size: 13px;
+    border: 1px solid var(--vscode-input-border, #3c3c3c);
+    border-radius: 3px;
+    background: var(--vscode-input-background, #3c3c3c);
+    color: var(--vscode-input-foreground, #cccccc);
+    outline: none;
+}
+
+.search-input:focus {
+    border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.search-input::placeholder {
+    color: var(--vscode-input-placeholderForeground, #a0a0a0);
+}
+
+/* ==============================
+ * Search Count
+ * ============================== */
+.search-count {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground, #a0a0a0);
+    min-width: 60px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.search-count.no-results {
+    color: var(--vscode-errorForeground, #f48771);
+}
+
+/* ==============================
+ * Search Buttons
+ * ============================== */
+.search-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-foreground, #cccccc);
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+}
+
+.search-btn:hover {
+    background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.search-btn:active {
+    background: var(--vscode-toolbar-activeBackground, rgba(99, 102, 103, 0.31));
+}
+
+.search-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.search-btn-icon {
+    font-size: 12px;
+}
+
+.search-btn-text {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* Toggle buttons (case sensitive, regex) */
+.search-toggle-btn {
+    width: 28px;
+    border: 1px solid transparent;
+}
+
+.search-toggle-btn.active {
+    background: var(--vscode-button-background, #0e639c);
+    color: var(--vscode-button-foreground, #ffffff);
+    border-color: var(--vscode-button-background, #0e639c);
+}
+
+.search-toggle-btn.active:hover {
+    background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+/* Close button */
+.search-close-btn {
+    margin-left: 4px;
+}
+
+.search-close-btn:hover {
+    background: var(--vscode-errorBackground, rgba(244, 135, 113, 0.2));
+    color: var(--vscode-errorForeground, #f48771);
+}
+
+/* ==============================
+ * Search Highlights
+ * ============================== */
+.search-highlight {
+    background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+    border-radius: 2px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+.search-highlight-current {
+    background-color: var(--vscode-editor-findMatchBackground, rgba(81, 92, 106, 0.7));
+    outline: 1px solid var(--vscode-editor-findMatchBorder, #515c6a);
+}
+
+/* ==============================
+ * Responsive adjustments
+ * ============================== */
+@media (max-width: 500px) {
+    .search-bar-inner {
+        flex-wrap: wrap;
+    }
+    
+    .search-input {
+        min-width: 120px;
+    }
+    
+    .search-count {
+        min-width: 50px;
+    }
+}

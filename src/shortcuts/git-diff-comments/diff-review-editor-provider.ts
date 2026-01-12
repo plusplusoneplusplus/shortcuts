@@ -879,6 +879,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             vscode.Uri.joinPath(this.context.extensionUri, 'media', 'styles', 'diff-comments.css')
         );
 
+        const searchStyleUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this.context.extensionUri, 'media', 'styles', 'search.css')
+        );
+
         // Get URI for script
         const scriptUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'diff-webview.js')
@@ -904,9 +908,34 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https://cdnjs.cloudflare.com; script-src 'nonce-${nonce}' https://cdnjs.cloudflare.com;">
     <link href="${styleUri}" rel="stylesheet">
     <link href="${commentsStyleUri}" rel="stylesheet">
+    <link href="${searchStyleUri}" rel="stylesheet">
     <title>Diff Review: ${escapeHtml(filePath)}</title>
 </head>
 <body>
+    <!-- Search bar (Ctrl+F) -->
+    <div class="search-bar" id="searchBar" style="display: none;">
+        <div class="search-bar-inner">
+            <span class="search-icon">🔍</span>
+            <input type="text" class="search-input" id="searchInput" placeholder="Find in diff..." autocomplete="off" />
+            <span class="search-count" id="searchCount"></span>
+            <button class="search-btn" id="searchPrevBtn" title="Previous match (Shift+Enter)">
+                <span class="search-btn-icon">◀</span>
+            </button>
+            <button class="search-btn" id="searchNextBtn" title="Next match (Enter)">
+                <span class="search-btn-icon">▶</span>
+            </button>
+            <button class="search-btn search-toggle-btn" id="searchCaseSensitiveBtn" title="Match case (Alt+C)">
+                <span class="search-btn-text">Aa</span>
+            </button>
+            <button class="search-btn search-toggle-btn" id="searchRegexBtn" title="Use regular expression (Alt+R)">
+                <span class="search-btn-text">.*</span>
+            </button>
+            <button class="search-btn search-close-btn" id="searchCloseBtn" title="Close (Escape)">
+                <span class="search-btn-icon">✕</span>
+            </button>
+        </div>
+    </div>
+
     <div id="diff-container">
         <div class="diff-header">
             <div class="diff-header-row">

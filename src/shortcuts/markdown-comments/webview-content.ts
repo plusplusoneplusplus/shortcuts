@@ -23,13 +23,15 @@ function getStylesheetUris(webview: vscode.Webview, extensionUri: vscode.Uri): {
     markdownCss: vscode.Uri;
     commentsCss: vscode.Uri;
     componentsCss: vscode.Uri;
+    searchCss: vscode.Uri;
 } {
     const stylesPath = vscode.Uri.joinPath(extensionUri, 'media', 'styles');
     return {
         webviewCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'webview.css')),
         markdownCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'markdown.css')),
         commentsCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'comments.css')),
-        componentsCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'components.css'))
+        componentsCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'components.css')),
+        searchCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'search.css'))
     };
 }
 
@@ -83,9 +85,34 @@ export function getWebviewContent(
     <link rel="stylesheet" href="${styles.markdownCss}">
     <link rel="stylesheet" href="${styles.commentsCss}">
     <link rel="stylesheet" href="${styles.componentsCss}">
+    <link rel="stylesheet" href="${styles.searchCss}">
     ${codeBlockThemeStyle}
 </head>
 <body>
+    <!-- Search bar (Ctrl+F) -->
+    <div class="search-bar" id="searchBar" style="display: none;">
+        <div class="search-bar-inner">
+            <span class="search-icon">🔍</span>
+            <input type="text" class="search-input" id="searchInput" placeholder="Find in document..." autocomplete="off" />
+            <span class="search-count" id="searchCount"></span>
+            <button class="search-btn" id="searchPrevBtn" title="Previous match (Shift+Enter)">
+                <span class="search-btn-icon">◀</span>
+            </button>
+            <button class="search-btn" id="searchNextBtn" title="Next match (Enter)">
+                <span class="search-btn-icon">▶</span>
+            </button>
+            <button class="search-btn search-toggle-btn" id="searchCaseSensitiveBtn" title="Match case (Alt+C)">
+                <span class="search-btn-text">Aa</span>
+            </button>
+            <button class="search-btn search-toggle-btn" id="searchRegexBtn" title="Use regular expression (Alt+R)">
+                <span class="search-btn-text">.*</span>
+            </button>
+            <button class="search-btn search-close-btn" id="searchCloseBtn" title="Close (Escape)">
+                <span class="search-btn-icon">✕</span>
+            </button>
+        </div>
+    </div>
+
     <div class="toolbar">
         <div class="toolbar-group">
             <div class="mode-toggle" id="modeToggle" title="Switch between Review and Source modes">

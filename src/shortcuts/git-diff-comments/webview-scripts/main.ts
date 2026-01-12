@@ -8,9 +8,12 @@ import { getCurrentSelection, hasValidSelection, setupSelectionListener } from '
 import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
 import { getPersistedViewMode, initVSCodeAPI, saveViewMode, sendContentModified, sendCopyPath, sendOpenFile, sendPinTab, sendReady, sendSaveContent } from './vscode-bridge';
+import { initSearch } from '../../shared/webview/search-handler';
 
 // AbortController for managing event listeners
 let commentHandlersAbortController: AbortController | null = null;
+// Search cleanup function
+let searchCleanup: (() => void) | null = null;
 
 /**
  * Initialize the webview
@@ -67,6 +70,9 @@ function initialize(): void {
 
     // Setup double-click handler to pin the preview tab
     setupDoubleClickToPinTab();
+
+    // Initialize search functionality (Ctrl+F)
+    searchCleanup = initSearch('.diff-view-container');
 
     // Setup message listener
     window.addEventListener('message', handleMessage);
