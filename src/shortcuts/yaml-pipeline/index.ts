@@ -14,7 +14,8 @@ export type {
     MapConfig,
     ReduceConfig,
     CSVParseOptions,
-    CSVParseResult
+    CSVParseResult,
+    PipelineParameter
 } from './types';
 
 // Re-export execution types from map-reduce (canonical source)

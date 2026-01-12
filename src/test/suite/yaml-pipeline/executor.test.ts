@@ -784,6 +784,265 @@ suite('Pipeline Executor', () => {
                 PipelineExecutionError
             );
         });
+
+        test('throws for invalid parameters (not array)', async () => {
+            const config = {
+                name: 'Test',
+                input: {
+                    items: [{ x: '1' }],
+                    parameters: 'not-an-array'
+                },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /parameters.*must be an array/i
+            );
+        });
+
+        test('throws for parameter without name', async () => {
+            const config = {
+                name: 'Test',
+                input: {
+                    items: [{ x: '1' }],
+                    parameters: [{ value: 'test' }]
+                },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /must have a "name"/
+            );
+        });
+
+        test('throws for parameter without value', async () => {
+            const config = {
+                name: 'Test',
+                input: {
+                    items: [{ x: '1' }],
+                    parameters: [{ name: 'test' }]
+                },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /must have a "value"/
+            );
+        });
+    });
+
+    suite('executePipeline - parameters', () => {
+        test('uses parameters in template substitution', async () => {
+            const config: PipelineConfig = {
+                name: 'Parameters Test',
+                input: {
+                    items: [
+                        { title: 'Bug A' },
+                        { title: 'Bug B' }
+                    ],
+                    parameters: [
+                        { name: 'project', value: 'MyProject' },
+                        { name: 'version', value: '1.0.0' }
+                    ]
+                },
+                map: {
+                    prompt: 'Project: {{project}} v{{version}}, Bug: {{title}}',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            let capturedPrompts: string[] = [];
+            const aiInvoker = async (prompt: string) => {
+                capturedPrompts.push(prompt);
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(capturedPrompts.length, 2);
+            assert.ok(capturedPrompts[0].includes('Project: MyProject v1.0.0'));
+            assert.ok(capturedPrompts[0].includes('Bug: Bug A'));
+            assert.ok(capturedPrompts[1].includes('Project: MyProject v1.0.0'));
+            assert.ok(capturedPrompts[1].includes('Bug: Bug B'));
+        });
+
+        test('item fields take precedence over parameters', async () => {
+            const config: PipelineConfig = {
+                name: 'Override Test',
+                input: {
+                    items: [
+                        { title: 'Bug Title', project: 'ItemProject' }
+                    ],
+                    parameters: [
+                        { name: 'project', value: 'ParamProject' }
+                    ]
+                },
+                map: {
+                    prompt: '{{project}}: {{title}}',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            let capturedPrompt = '';
+            const aiInvoker = async (prompt: string) => {
+                capturedPrompt = prompt;
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            // Item's 'project' should override parameter's 'project'
+            assert.ok(capturedPrompt.includes('ItemProject: Bug Title'));
+            assert.ok(!capturedPrompt.includes('ParamProject'));
+        });
+
+        test('parameters work with CSV input', async () => {
+            await createTestCSV('bugs.csv', 'id,title\n1,Bug One\n2,Bug Two');
+
+            const config: PipelineConfig = {
+                name: 'CSV Parameters Test',
+                input: {
+                    from: { type: 'csv', path: './bugs.csv' },
+                    parameters: [
+                        { name: 'env', value: 'production' }
+                    ]
+                },
+                map: {
+                    prompt: 'Env: {{env}}, ID: {{id}}, Title: {{title}}',
+                    output: ['severity']
+                },
+                reduce: { type: 'list' }
+            };
+
+            let capturedPrompts: string[] = [];
+            const aiInvoker = async (prompt: string) => {
+                capturedPrompts.push(prompt);
+                return { success: true, response: '{"severity": "low"}' };
+            };
+
+            await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(capturedPrompts.length, 2);
+            assert.ok(capturedPrompts[0].includes('Env: production'));
+            assert.ok(capturedPrompts[0].includes('ID: 1'));
+            assert.ok(capturedPrompts[1].includes('Env: production'));
+            assert.ok(capturedPrompts[1].includes('ID: 2'));
+        });
+
+        test('parameters satisfy missing template variables', async () => {
+            // This tests that parameters can provide values that items don't have
+            const config: PipelineConfig = {
+                name: 'Satisfy Variables Test',
+                input: {
+                    items: [{ title: 'Test Bug' }],
+                    parameters: [
+                        { name: 'system_prompt', value: 'You are a helpful assistant' }
+                    ]
+                },
+                map: {
+                    prompt: '{{system_prompt}}\n\nAnalyze: {{title}}',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            let capturedPrompt = '';
+            const aiInvoker = async (prompt: string) => {
+                capturedPrompt = prompt;
+                return { success: true, response: '{"result": "done"}' };
+            };
+
+            // Should not throw - parameters provide the missing 'system_prompt'
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.ok(capturedPrompt.includes('You are a helpful assistant'));
+            assert.ok(capturedPrompt.includes('Analyze: Test Bug'));
+        });
+
+        test('empty parameters array is valid', async () => {
+            const config: PipelineConfig = {
+                name: 'Empty Params Test',
+                input: {
+                    items: [{ title: 'Bug' }],
+                    parameters: []
+                },
+                map: {
+                    prompt: '{{title}}',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map()),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+        });
+
+        test('parameters with limit', async () => {
+            const config: PipelineConfig = {
+                name: 'Params with Limit',
+                input: {
+                    items: [
+                        { title: 'A' },
+                        { title: 'B' },
+                        { title: 'C' }
+                    ],
+                    parameters: [{ name: 'prefix', value: 'TEST' }],
+                    limit: 2
+                },
+                map: {
+                    prompt: '{{prefix}}: {{title}}',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            let callCount = 0;
+            const aiInvoker = async () => {
+                callCount++;
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(callCount, 2);
+        });
     });
 
     suite('parsePipelineYAML', () => {
@@ -939,6 +1198,60 @@ reduce:
                 async () => parsePipelineYAML(yaml),
                 PipelineExecutionError
             );
+        });
+
+        test('parses YAML with parameters', async () => {
+            const yaml = `
+name: "Parameters Test"
+input:
+  items:
+    - title: "Bug A"
+  parameters:
+    - name: project
+      value: MyProject
+    - name: version
+      value: "2.0"
+map:
+  prompt: "{{project}} v{{version}}: {{title}}"
+  output: [result]
+reduce:
+  type: list
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            assert.ok(config.input.parameters);
+            assert.strictEqual(config.input.parameters.length, 2);
+            assert.strictEqual(config.input.parameters[0].name, 'project');
+            assert.strictEqual(config.input.parameters[0].value, 'MyProject');
+            assert.strictEqual(config.input.parameters[1].name, 'version');
+            assert.strictEqual(config.input.parameters[1].value, '2.0');
+        });
+
+        test('parses YAML with parameters and CSV', async () => {
+            const yaml = `
+name: "CSV with Params"
+input:
+  from:
+    type: csv
+    path: "./data.csv"
+  parameters:
+    - name: env
+      value: production
+map:
+  prompt: "{{env}}: {{title}}"
+  output: [result]
+reduce:
+  type: list
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            assert.ok(config.input.from);
+            assert.ok(config.input.parameters);
+            assert.strictEqual(config.input.parameters.length, 1);
+            assert.strictEqual(config.input.parameters[0].name, 'env');
+            assert.strictEqual(config.input.parameters[0].value, 'production');
         });
     });
 

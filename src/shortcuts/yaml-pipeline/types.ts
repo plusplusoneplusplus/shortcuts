@@ -57,6 +57,16 @@ export interface CSVSource {
 }
 
 /**
+ * Parameter definition for pipeline input
+ */
+export interface PipelineParameter {
+    /** Parameter name (used as {{name}} in templates) */
+    name: string;
+    /** Parameter value */
+    value: string;
+}
+
+/**
  * Input configuration - supports inline items or CSV file
  * 
  * Input is always a list of items. You can either:
@@ -64,6 +74,9 @@ export interface CSVSource {
  * - Load from CSV file via `from`
  * 
  * Must have exactly one of `items` or `from`.
+ * 
+ * Optional `parameters` can define static values available to all items
+ * in the map phase template (e.g., {{paramName}}).
  */
 export interface InputConfig {
     /** Direct list of items (inline) */
@@ -74,6 +87,9 @@ export interface InputConfig {
 
     /** Limit number of items to process (default: all) */
     limit?: number;
+
+    /** Static parameters available to all items in the map template */
+    parameters?: PipelineParameter[];
 }
 
 /**

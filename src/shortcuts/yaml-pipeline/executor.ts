@@ -26,6 +26,7 @@ import {
     AIInvoker,
     CSVSource,
     PipelineConfig,
+    PipelineParameter,
     ProcessTracker
 } from './types';
 
@@ -100,6 +101,12 @@ export async function executePipeline(
         // Apply limit
         const limit = config.input.limit ?? items.length;
         items = items.slice(0, limit);
+
+        // Merge parameters into each item (parameters take lower precedence than item fields)
+        if (config.input.parameters && config.input.parameters.length > 0) {
+            const paramValues = convertParametersToObject(config.input.parameters);
+            items = items.map(item => ({ ...paramValues, ...item }));
+        }
 
         if (items.length === 0) {
             // Allow empty input - results will just be empty
@@ -180,6 +187,17 @@ async function loadFromCSV(
 }
 
 /**
+ * Convert parameters array to object for merging with items
+ */
+function convertParametersToObject(parameters: PipelineParameter[]): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const param of parameters) {
+        result[param.name] = param.value;
+    }
+    return result;
+}
+
+/**
  * Validate pipeline configuration
  */
 function validatePipelineConfig(config: PipelineConfig): void {
@@ -217,6 +235,21 @@ function validatePipelineConfig(config: PipelineConfig): void {
     if (config.input.items) {
         if (!Array.isArray(config.input.items)) {
             throw new PipelineExecutionError('Pipeline config "input.items" must be an array');
+        }
+    }
+
+    // Validate parameters if present
+    if (config.input.parameters) {
+        if (!Array.isArray(config.input.parameters)) {
+            throw new PipelineExecutionError('Pipeline config "input.parameters" must be an array');
+        }
+        for (const param of config.input.parameters) {
+            if (!param.name || typeof param.name !== 'string') {
+                throw new PipelineExecutionError('Each parameter must have a "name" string');
+            }
+            if (param.value === undefined || param.value === null) {
+                throw new PipelineExecutionError(`Parameter "${param.name}" must have a "value"`);
+            }
         }
     }
 
