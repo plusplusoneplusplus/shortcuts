@@ -742,6 +742,7 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
 
     /**
      * Cancel a running process
+     * If the process is a group (has child processes), also cancels all children
      */
     cancelProcess(id: string): boolean {
         const process = this.processes.get(id);
@@ -749,7 +750,22 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             return false;
         }
 
-        // Kill the child process if available
+        // If this is a group process, cancel all child processes first
+        const childIds = this.getChildProcessIds(id);
+        if (childIds.length > 0) {
+            for (const childId of childIds) {
+                const child = this.processes.get(childId);
+                if (child && child.status === 'running') {
+                    // Kill child process if available
+                    if (child.childProcess) {
+                        child.childProcess.kill();
+                    }
+                    this.updateProcess(childId, 'cancelled', undefined, 'Cancelled by user (parent cancelled)');
+                }
+            }
+        }
+
+        // Kill the parent's child process if available
         if (process.childProcess) {
             process.childProcess.kill();
         }

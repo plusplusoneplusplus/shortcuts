@@ -1718,6 +1718,11 @@
           "group": "process@1"
         },
         {
+          "command": "clarificationProcesses.cancel",
+          "when": "view == clarificationProcessesView && viewItem == pipelineExecutionProcess_running",
+          "group": "process@1"
+        },
+        {
           "command": "clarificationProcesses.viewDetails",
           "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_/",
           "group": "process@2"

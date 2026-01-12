@@ -473,6 +473,17 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
             return false;
         }
 
+        // If this is a group process, cancel all child processes first
+        const childIds = this.getChildProcessIds(id);
+        if (childIds.length > 0) {
+            for (const childId of childIds) {
+                const child = this.processes.get(childId);
+                if (child && child.status === 'running') {
+                    this.updateProcess(childId, 'cancelled', undefined, 'Cancelled by user (parent cancelled)');
+                }
+            }
+        }
+
         this.updateProcess(id, 'cancelled', undefined, 'Cancelled by user');
         this.recordCall('cancelProcess', id, [id]);
         return true;

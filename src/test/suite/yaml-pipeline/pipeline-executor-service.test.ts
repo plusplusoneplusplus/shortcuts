@@ -1155,5 +1155,173 @@ input:
                     'completeProcessGroup should not be called when groupId equals parentGroupId');
             });
         });
+
+        suite('Pipeline Execution Cancellation', () => {
+            test('cancelProcess cancels parent pipeline-execution process', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                // Process should be running
+                const parent = processManager.getProcess(parentGroupId);
+                assert.strictEqual(parent?.status, 'running');
+
+                // Cancel it
+                const cancelled = processManager.cancelProcess(parentGroupId);
+                assert.strictEqual(cancelled, true, 'Should return true when cancelling running process');
+
+                // Verify it's cancelled
+                const cancelledParent = processManager.getProcess(parentGroupId);
+                assert.strictEqual(cancelledParent?.status, 'cancelled');
+                assert.strictEqual(cancelledParent?.error, 'Cancelled by user');
+            });
+
+            test('cancelProcess cascades to child pipeline-item processes', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // Register 3 child processes (simulating map phase items)
+                const child1 = tracker.registerProcess('Item 1');
+                const child2 = tracker.registerProcess('Item 2');
+                const child3 = tracker.registerProcess('Item 3');
+
+                // Complete one child to test it doesn't get cancelled
+                tracker.updateProcess(child3, 'completed', 'Done');
+
+                // Verify initial state
+                assert.strictEqual(processManager.getProcess(child1)?.status, 'running');
+                assert.strictEqual(processManager.getProcess(child2)?.status, 'running');
+                assert.strictEqual(processManager.getProcess(child3)?.status, 'completed');
+
+                // Cancel parent
+                processManager.cancelProcess(parentGroupId);
+
+                // Verify parent is cancelled
+                assert.strictEqual(processManager.getProcess(parentGroupId)?.status, 'cancelled');
+
+                // Verify running children are cancelled
+                const cancelledChild1 = processManager.getProcess(child1);
+                assert.strictEqual(cancelledChild1?.status, 'cancelled');
+                assert.strictEqual(cancelledChild1?.error, 'Cancelled by user (parent cancelled)');
+
+                const cancelledChild2 = processManager.getProcess(child2);
+                assert.strictEqual(cancelledChild2?.status, 'cancelled');
+                assert.strictEqual(cancelledChild2?.error, 'Cancelled by user (parent cancelled)');
+
+                // Verify completed child is NOT cancelled
+                assert.strictEqual(processManager.getProcess(child3)?.status, 'completed');
+            });
+
+            test('cancelProcess returns false for already completed pipeline', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                // Complete the pipeline
+                processManager.completeProcessGroup(parentGroupId, {
+                    result: 'Done',
+                    structuredResult: '{}',
+                    executionStats: {}
+                });
+
+                // Try to cancel - should return false
+                const cancelled = processManager.cancelProcess(parentGroupId);
+                assert.strictEqual(cancelled, false, 'Should return false when process is not running');
+
+                // Status should still be completed
+                assert.strictEqual(processManager.getProcess(parentGroupId)?.status, 'completed');
+            });
+
+            test('cancelProcess returns false for non-existent process', () => {
+                const cancelled = processManager.cancelProcess('non-existent-id');
+                assert.strictEqual(cancelled, false, 'Should return false for non-existent process');
+            });
+
+            test('cancelProcess handles pipeline with no children', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                // Cancel without any children
+                const cancelled = processManager.cancelProcess(parentGroupId);
+                assert.strictEqual(cancelled, true);
+                assert.strictEqual(processManager.getProcess(parentGroupId)?.status, 'cancelled');
+            });
+
+            test('cancelProcess handles mixed child statuses correctly', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+
+                // Create children with different statuses
+                const runningChild = tracker.registerProcess('Running item');
+                const completedChild = tracker.registerProcess('Completed item');
+                const failedChild = tracker.registerProcess('Failed item');
+
+                tracker.updateProcess(completedChild, 'completed', 'Success');
+                tracker.updateProcess(failedChild, 'failed', undefined, 'Error occurred');
+
+                // Cancel parent
+                processManager.cancelProcess(parentGroupId);
+
+                // Only running child should be cancelled
+                assert.strictEqual(processManager.getProcess(runningChild)?.status, 'cancelled');
+                assert.strictEqual(processManager.getProcess(completedChild)?.status, 'completed');
+                assert.strictEqual(processManager.getProcess(failedChild)?.status, 'failed');
+            });
+
+            test('getChildProcesses returns all children after cancellation', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const child1 = tracker.registerProcess('Item 1');
+                const child2 = tracker.registerProcess('Item 2');
+
+                // Cancel parent
+                processManager.cancelProcess(parentGroupId);
+
+                // getChildProcesses should still return all children
+                const children = processManager.getChildProcesses(parentGroupId);
+                assert.strictEqual(children.length, 2);
+                assert.ok(children.every((c: AIProcess) => c.status === 'cancelled'));
+            });
+        });
     });
 });
