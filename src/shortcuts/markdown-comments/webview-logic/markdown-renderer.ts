@@ -14,6 +14,41 @@ export interface MarkdownLineResult {
     codeBlockLang: string | null;
     isCodeFenceStart?: boolean;
     isCodeFenceEnd?: boolean;
+    /** Anchor ID for headings (used for ToC navigation) */
+    anchorId?: string;
+}
+
+/**
+ * Generate a URL-safe anchor ID from heading text.
+ * This follows GitHub-style anchor generation:
+ * - Lowercase all text
+ * - Remove all punctuation except hyphens and spaces
+ * - Replace spaces with hyphens
+ * - Collapse multiple hyphens into one
+ * 
+ * Works consistently across Windows, macOS, and Linux.
+ * 
+ * @param text - The heading text to convert
+ * @returns A URL-safe anchor ID
+ */
+export function generateAnchorId(text: string): string {
+    if (!text) return '';
+    
+    return text
+        // Convert to lowercase
+        .toLowerCase()
+        // Remove any markdown formatting markers (e.g., **, *, ~~, etc.)
+        .replace(/[*_~`]/g, '')
+        // Remove all characters except alphanumeric, spaces, hyphens, and unicode letters/numbers
+        // This regex uses unicode-aware matching for international text support
+        .replace(/[^\p{L}\p{N}\s-]/gu, '')
+        // Replace spaces with hyphens
+        .replace(/\s+/g, '-')
+        // Collapse multiple hyphens into one
+        .replace(/-+/g, '-')
+        // Remove leading/trailing hyphens
+        .replace(/^-|-$/g, '')
+        .trim();
 }
 
 /**
@@ -60,8 +95,13 @@ export function applyInlineMarkdown(text: string): string {
     });
     
     // Links [text](url)
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, 
-        '<span class="md-link"><span class="md-link-text">[$1]</span><span class="md-link-url">($2)</span></span>');
+    // Add special class for anchor links (starting with #) to enable ToC navigation
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+        const isAnchorLink = url.startsWith('#');
+        const linkClass = isAnchorLink ? 'md-link md-anchor-link' : 'md-link';
+        const dataAttr = isAnchorLink ? ` data-anchor="${escapeHtml(url.substring(1))}"` : '';
+        return `<span class="${linkClass}"${dataAttr}><span class="md-link-text">[${text}]</span><span class="md-link-url">(${url})</span></span>`;
+    });
     
     // Bold + Italic (***text*** or ___text___)
     html = html.replace(/\*\*\*([^*]+)\*\*\*/g, '<span class="md-bold-italic"><span class="md-marker">***</span>$1<span class="md-marker">***</span></span>');
@@ -170,9 +210,11 @@ export function applyMarkdownHighlighting(
     if (headingMatch) {
         const level = headingMatch[1].length;
         const hashes = escapeHtml(headingMatch[1]);
-        const content = applyInlineMarkdown(headingMatch[2]);
-        html = `<span class="md-h${level}"><span class="md-hash">${hashes}</span> ${content}</span>`;
-        return { html, inCodeBlock: false, codeBlockLang: null };
+        const headingText = headingMatch[2];
+        const content = applyInlineMarkdown(headingText);
+        const anchorId = generateAnchorId(headingText);
+        html = `<span class="md-h${level}" data-anchor-id="${anchorId}"><span class="md-hash">${hashes}</span> ${content}</span>`;
+        return { html, inCodeBlock: false, codeBlockLang: null, anchorId };
     }
 
     // Blockquotes

@@ -110,6 +110,16 @@
     opacity: 0.7;
 }
 
+/* Anchor links (ToC navigation) */
+.md-anchor-link {
+    cursor: pointer;
+}
+
+.md-anchor-link:hover {
+    text-decoration: underline;
+    color: var(--md-link-color);
+}
+
 /* ==============================
  * Images
  * ============================== */

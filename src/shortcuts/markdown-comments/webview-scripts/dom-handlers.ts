@@ -1862,5 +1862,66 @@ export function setupCommentInteractions(): void {
         // Add visual hint that links are ctrl+clickable
         (linkEl as HTMLElement).title = 'Ctrl+Click to open file';
     });
+
+    // Click on anchor links (ToC navigation) to jump to the target heading
+    setupAnchorLinkNavigation();
+}
+
+/**
+ * Setup click handlers for anchor links (Table of Contents navigation).
+ * Clicking on a link like [Section](#section-name) will scroll to the heading
+ * with the matching anchor ID.
+ * 
+ * Works consistently across Windows, macOS, and Linux.
+ */
+function setupAnchorLinkNavigation(): void {
+    document.querySelectorAll('.md-anchor-link').forEach(linkEl => {
+        linkEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const anchorTarget = (linkEl as HTMLElement).dataset.anchor;
+            if (!anchorTarget) return;
+
+            // Find the heading with the matching anchor ID
+            const targetHeading = document.querySelector(`[data-anchor-id="${anchorTarget}"]`);
+            if (targetHeading) {
+                // Scroll to the heading
+                targetHeading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                // Add a temporary highlight effect to make the target visible
+                const lineRow = targetHeading.closest('.line-row');
+                if (lineRow) {
+                    lineRow.classList.add('anchor-highlight');
+                    setTimeout(() => {
+                        lineRow.classList.remove('anchor-highlight');
+                    }, 2000);
+                }
+            } else {
+                // If target not found, try to match with normalized anchor
+                // This handles cases where the link might have different casing
+                const allHeadings = document.querySelectorAll('[data-anchor-id]');
+                for (const heading of allHeadings) {
+                    const headingAnchor = (heading as HTMLElement).dataset.anchorId || '';
+                    // Case-insensitive comparison for better compatibility
+                    if (headingAnchor.toLowerCase() === anchorTarget.toLowerCase()) {
+                        heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                        const lineRow = heading.closest('.line-row');
+                        if (lineRow) {
+                            lineRow.classList.add('anchor-highlight');
+                            setTimeout(() => {
+                                lineRow.classList.remove('anchor-highlight');
+                            }, 2000);
+                        }
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Add visual hint that anchor links are clickable for navigation
+        (linkEl as HTMLElement).title = 'Click to jump to section';
+    });
 }
 

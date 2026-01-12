@@ -21,7 +21,7 @@ export {
 
 // Markdown rendering
 export {
-    MarkdownLineResult, applyInlineMarkdown, applyMarkdownHighlighting, escapeHtml, resolveImagePath
+    generateAnchorId, MarkdownLineResult, applyInlineMarkdown, applyMarkdownHighlighting, escapeHtml, resolveImagePath
 } from './markdown-renderer';
 
 // Cursor management

@@ -718,3 +718,19 @@ body.source-mode .toolbar-review-only {
     font-size: 11px;
     margin-left: 6px;
 }
+
+/* ==============================
+ * Anchor Link Navigation Highlight
+ * ============================== */
+.anchor-highlight {
+    animation: anchor-highlight-pulse 2s ease-out;
+}
+
+@keyframes anchor-highlight-pulse {
+    0% {
+        background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 235, 59, 0.4));
+    }
+    100% {
+        background-color: transparent;
+    }
+}

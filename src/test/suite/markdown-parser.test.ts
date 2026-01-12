@@ -12,6 +12,7 @@ import {
     extractImages,
     extractInlineCode,
     extractLinks,
+    generateAnchorId,
     getLanguageDisplayName,
     hasMermaidBlocks,
     isBlockquote,
@@ -902,6 +903,84 @@ Check [this link](https://example.com) for more info.`;
             const simpleBold = '**bold text here**';
             const emphasis = detectEmphasis(simpleBold);
             assert.ok(emphasis.bold.length >= 1, 'Should detect simple bold text');
+        });
+    });
+
+    suite('generateAnchorId', () => {
+        test('should generate simple anchor from heading', () => {
+            assert.strictEqual(generateAnchorId('Getting Started'), 'getting-started');
+        });
+
+        test('should handle heading with numbers', () => {
+            assert.strictEqual(generateAnchorId('Step 1 Configuration'), 'step-1-configuration');
+        });
+
+        test('should remove punctuation', () => {
+            assert.strictEqual(generateAnchorId('Hello, World!'), 'hello-world');
+            assert.strictEqual(generateAnchorId('What\'s New?'), 'whats-new');
+            assert.strictEqual(generateAnchorId('Section (Beta)'), 'section-beta');
+        });
+
+        test('should handle markdown formatting markers', () => {
+            assert.strictEqual(generateAnchorId('**Bold** Heading'), 'bold-heading');
+            assert.strictEqual(generateAnchorId('*Italic* Text'), 'italic-text');
+            assert.strictEqual(generateAnchorId('`Code` Example'), 'code-example');
+            assert.strictEqual(generateAnchorId('~~Strikethrough~~ Text'), 'strikethrough-text');
+        });
+
+        test('should collapse multiple spaces and hyphens', () => {
+            assert.strictEqual(generateAnchorId('Multiple   Spaces'), 'multiple-spaces');
+            assert.strictEqual(generateAnchorId('Hyphen---Test'), 'hyphen-test');
+            assert.strictEqual(generateAnchorId('Mixed - - Separators'), 'mixed-separators');
+        });
+
+        test('should remove leading and trailing hyphens', () => {
+            assert.strictEqual(generateAnchorId('- Leading Hyphen'), 'leading-hyphen');
+            assert.strictEqual(generateAnchorId('Trailing Hyphen -'), 'trailing-hyphen');
+            assert.strictEqual(generateAnchorId('- Both Ends -'), 'both-ends');
+        });
+
+        test('should handle empty and whitespace-only strings', () => {
+            assert.strictEqual(generateAnchorId(''), '');
+            assert.strictEqual(generateAnchorId('   '), '');
+        });
+
+        test('should handle unicode characters (cross-platform)', () => {
+            // German umlauts
+            assert.strictEqual(generateAnchorId('Über uns'), 'über-uns');
+            // French accents
+            assert.strictEqual(generateAnchorId('Café Menu'), 'café-menu');
+            // Spanish
+            assert.strictEqual(generateAnchorId('Información'), 'información');
+            // Japanese (hiragana and katakana are preserved)
+            assert.strictEqual(generateAnchorId('こんにちは World'), 'こんにちは-world');
+            // Chinese
+            assert.strictEqual(generateAnchorId('中文 Section'), '中文-section');
+        });
+
+        test('should work consistently across platforms (Windows/Mac/Linux)', () => {
+            // Test various special characters that might behave differently
+            const testCases = [
+                { input: 'Path\\Like\\Windows', expected: 'pathlikewindows' },
+                { input: 'Path/Like/Unix', expected: 'pathlikeunix' },
+                { input: 'Line\nBreak', expected: 'line-break' },
+                { input: 'Tab\tCharacter', expected: 'tab-character' },
+                { input: 'Carriage\rReturn', expected: 'carriage-return' },
+            ];
+
+            for (const { input, expected } of testCases) {
+                assert.strictEqual(generateAnchorId(input), expected, `Failed for input: ${JSON.stringify(input)}`);
+            }
+        });
+
+        test('should handle real-world ToC examples', () => {
+            // Common heading patterns from documentation
+            assert.strictEqual(generateAnchorId('Table of Contents'), 'table-of-contents');
+            assert.strictEqual(generateAnchorId('API Reference'), 'api-reference');
+            assert.strictEqual(generateAnchorId('1. Introduction'), '1-introduction');
+            assert.strictEqual(generateAnchorId('2.1 Sub-section'), '21-sub-section');
+            assert.strictEqual(generateAnchorId('Q&A / FAQ'), 'qa-faq');
+            assert.strictEqual(generateAnchorId('v1.0.0 Release Notes'), 'v100-release-notes');
         });
     });
 });

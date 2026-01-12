@@ -461,3 +461,36 @@ export function getLanguageDisplayName(language: string): string {
 
     return displayNames[language.toLowerCase()] || language.toUpperCase();
 }
+
+/**
+ * Generate a URL-safe anchor ID from heading text.
+ * This follows GitHub-style anchor generation:
+ * - Lowercase all text
+ * - Remove all punctuation except hyphens and spaces
+ * - Replace spaces with hyphens
+ * - Collapse multiple hyphens into one
+ * 
+ * Works consistently across Windows, macOS, and Linux.
+ * 
+ * @param text - The heading text to convert
+ * @returns A URL-safe anchor ID
+ */
+export function generateAnchorId(text: string): string {
+    if (!text) return '';
+    
+    return text
+        // Convert to lowercase
+        .toLowerCase()
+        // Remove any markdown formatting markers (e.g., **, *, ~~, etc.)
+        .replace(/[*_~`]/g, '')
+        // Remove all characters except alphanumeric, spaces, hyphens, and unicode letters/numbers
+        // This regex uses unicode-aware matching for international text support
+        .replace(/[^\p{L}\p{N}\s-]/gu, '')
+        // Replace spaces with hyphens
+        .replace(/\s+/g, '-')
+        // Collapse multiple hyphens into one
+        .replace(/-+/g, '-')
+        // Remove leading/trailing hyphens
+        .replace(/^-|-$/g, '')
+        .trim();
+}
