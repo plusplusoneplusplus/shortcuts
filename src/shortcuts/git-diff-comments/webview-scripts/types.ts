@@ -140,7 +140,7 @@ export interface AskAIContext {
  */
 export interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'saveContent' | 'contentModified';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'saveContent' | 'contentModified' | 'pinTab';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;

@@ -55,6 +55,16 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     private disposables: vscode.Disposable[] = [];
     /** AI process manager for tracking running AI processes */
     private aiProcessManager?: IAIProcessManager;
+    
+    /** 
+     * Preview panel - single tab that gets reused when clicking between files
+     * Similar to VS Code's preview mode (italic title) behavior
+     */
+    private previewPanel: vscode.WebviewPanel | undefined;
+    /** File path currently shown in the preview panel */
+    private previewPanelFilePath: string | undefined;
+    /** Track if preview panel is in preview mode (not yet pinned) */
+    private isPreviewMode: boolean = false;
 
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -176,8 +186,9 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
      * Open a diff review for a git change item
      * @param item The git change item, commit file, or comment item
      * @param scrollToCommentId Optional comment ID to scroll to after opening
+     * @param pinTab If true, force the tab to be pinned (not in preview mode)
      */
-    async openDiffReview(item?: any, scrollToCommentId?: string): Promise<void> {
+    async openDiffReview(item?: any, scrollToCommentId?: string, pinTab: boolean = false): Promise<void> {
         if (!item) {
             vscode.window.showWarningMessage('Please select a git change to review.');
             return;
@@ -229,10 +240,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             return;
         }
 
-        // Check if a webview panel already exists for this file
+        // Check if a pinned (non-preview) webview panel already exists for this file
         const existingPanel = this.activeWebviews.get(filePath);
-        if (existingPanel) {
-            // Reveal the existing panel
+        if (existingPanel && existingPanel !== this.previewPanel) {
+            // Reveal the existing pinned panel
             existingPanel.reveal(vscode.ViewColumn.One);
             
             // Refresh the diff content in case the file has been updated externally
@@ -287,8 +298,68 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             return;
         }
 
-        // Create webview panel
         const fileName = path.basename(filePath);
+        const isEditable = isEditableDiff(gitContext);
+
+        // If scrollToCommentId is provided, we should pin the tab
+        // (user is navigating from comments tree, which implies intent to stay)
+        if (scrollToCommentId) {
+            pinTab = true;
+        }
+
+        // Check if we should reuse the preview panel
+        if (!pinTab && this.previewPanel && this.isPreviewMode) {
+            // Reuse the existing preview panel for a different file
+            const panel = this.previewPanel;
+            
+            // Clean up old file path tracking
+            if (this.previewPanelFilePath) {
+                this.activeWebviews.delete(this.previewPanelFilePath);
+                this.webviewStates.delete(this.previewPanelFilePath);
+                this.dirtyStates.delete(this.previewPanelFilePath);
+                this.originalTitles.delete(this.previewPanelFilePath);
+            }
+            
+            // Update to new file
+            this.previewPanelFilePath = filePath;
+            this.activeWebviews.set(filePath, panel);
+            
+            // Update title - preview tabs are indicated by the reuse behavior
+            // VS Code doesn't support italic titles for webview panels
+            panel.title = `[Diff Review] ${fileName}`;
+            
+            const webviewState: DiffWebviewState = {
+                filePath: relativePath,
+                gitContext,
+                oldContent: diffResult.oldContent,
+                newContent: diffResult.newContent,
+                isEditable
+            };
+            this.webviewStates.set(filePath, webviewState);
+            
+            // Update webview content
+            panel.webview.html = this.getWebviewContent(
+                panel.webview,
+                relativePath,
+                diffResult.oldContent,
+                diffResult.newContent,
+                gitContext,
+                isEditable
+            );
+            
+            // Reveal the panel
+            panel.reveal(vscode.ViewColumn.One);
+            return;
+        }
+
+        // Pin the current preview panel if it exists and we're opening a new pinned tab
+        if (pinTab && this.previewPanel && this.isPreviewMode && this.previewPanelFilePath) {
+            this.pinPreviewPanel();
+        }
+
+        // Create webview panel
+        // Note: VS Code doesn't support italic preview titles for webview panels,
+        // so we rely on the reuse behavior to indicate preview mode
         const panel = vscode.window.createWebviewPanel(
             DiffReviewEditorProvider.viewType,
             `[Diff Review] ${fileName}`,
@@ -305,7 +376,6 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
         // Store reference and state for serialization
         this.activeWebviews.set(filePath, panel);
-        const isEditable = isEditableDiff(gitContext);
         const webviewState: DiffWebviewState = {
             filePath: relativePath,
             gitContext,
@@ -314,6 +384,13 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             isEditable
         };
         this.webviewStates.set(filePath, webviewState);
+
+        // Track as preview panel if not pinned
+        if (!pinTab) {
+            this.previewPanel = panel;
+            this.previewPanelFilePath = filePath;
+            this.isPreviewMode = true;
+        }
 
         // Set webview content
         panel.webview.html = this.getWebviewContent(
@@ -328,16 +405,27 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         // Handle messages from webview
         panel.webview.onDidReceiveMessage(
             async (message: DiffWebviewMessage) => {
+                // Get current state for this panel (may have changed if reused)
+                const currentFilePath = this.previewPanel === panel && this.previewPanelFilePath 
+                    ? this.previewPanelFilePath 
+                    : filePath;
+                const currentState = this.webviewStates.get(currentFilePath);
+                const currentRelativePath = currentState?.filePath || relativePath;
+                const currentGitContext = currentState?.gitContext || gitContext;
+                const currentOldContent = currentState?.oldContent || diffResult.oldContent;
+                const currentNewContent = currentState?.newContent || diffResult.newContent;
+                const currentIsEditable = currentState?.isEditable ?? isEditable;
+                
                 await this.handleWebviewMessage(
                     message,
-                    filePath,
-                    relativePath,
-                    gitContext,
-                    diffResult.oldContent,
-                    diffResult.newContent,
+                    currentFilePath,
+                    currentRelativePath,
+                    currentGitContext,
+                    currentOldContent,
+                    currentNewContent,
                     panel,
                     scrollToCommentId,
-                    isEditable
+                    currentIsEditable
                 );
             },
             undefined,
@@ -346,11 +434,61 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
         // Clean up when panel is closed
         panel.onDidDispose(() => {
-            this.activeWebviews.delete(filePath);
-            this.webviewStates.delete(filePath);
-            this.dirtyStates.delete(filePath);
-            this.originalTitles.delete(filePath);
+            // Clean up the file path that was associated with this panel
+            if (this.previewPanel === panel) {
+                if (this.previewPanelFilePath) {
+                    this.activeWebviews.delete(this.previewPanelFilePath);
+                    this.webviewStates.delete(this.previewPanelFilePath);
+                    this.dirtyStates.delete(this.previewPanelFilePath);
+                    this.originalTitles.delete(this.previewPanelFilePath);
+                }
+                this.previewPanel = undefined;
+                this.previewPanelFilePath = undefined;
+                this.isPreviewMode = false;
+            } else {
+                this.activeWebviews.delete(filePath);
+                this.webviewStates.delete(filePath);
+                this.dirtyStates.delete(filePath);
+                this.originalTitles.delete(filePath);
+            }
         });
+
+        // If we need to scroll to a specific comment, send the message
+        if (scrollToCommentId) {
+            setTimeout(() => {
+                panel.webview.postMessage({
+                    type: 'scrollToComment',
+                    scrollToCommentId
+                });
+            }, 100);
+        }
+    }
+
+    /**
+     * Pin the current preview panel, converting it from preview mode to a regular pinned tab.
+     * This is called when the user performs an action that should "keep" the tab open
+     * (e.g., adding a comment, editing content, double-clicking the tab).
+     */
+    pinPreviewPanel(): void {
+        if (!this.previewPanel || !this.isPreviewMode || !this.previewPanelFilePath) {
+            return;
+        }
+
+        // Update title to remove preview indicators
+        const fileName = path.basename(this.previewPanelFilePath);
+        this.previewPanel.title = `[Diff Review] ${fileName}`;
+        
+        // Clear preview tracking but keep the panel in activeWebviews
+        this.previewPanel = undefined;
+        this.previewPanelFilePath = undefined;
+        this.isPreviewMode = false;
+    }
+
+    /**
+     * Check if the given panel is the current preview panel
+     */
+    isPreviewPanel(panel: vscode.WebviewPanel): boolean {
+        return this.previewPanel === panel && this.isPreviewMode;
     }
 
     /**
@@ -384,6 +522,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
             case 'addComment':
                 if (message.selection && message.comment && message.selectedText) {
+                    // Pin the preview panel when adding a comment - user is engaging with the file
+                    if (this.isPreviewPanel(panel)) {
+                        this.pinPreviewPanel();
+                    }
                     const content = message.selection.side === 'old' ? oldContent : newContent;
                     await this.commentsManager.addComment(
                         relativeFilePath,
@@ -398,9 +540,20 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
             case 'editComment':
                 if (message.commentId && message.comment !== undefined) {
+                    // Pin the preview panel when editing a comment
+                    if (this.isPreviewPanel(panel)) {
+                        this.pinPreviewPanel();
+                    }
                     await this.commentsManager.updateComment(message.commentId, {
                         comment: message.comment
                     });
+                }
+                break;
+            
+            case 'pinTab':
+                // User double-clicked on the tab or performed another action to pin it
+                if (this.isPreviewPanel(panel)) {
+                    this.pinPreviewPanel();
                 }
                 break;
 
@@ -473,12 +626,20 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
             case 'saveContent':
                 if (message.newContent !== undefined && isEditable) {
+                    // Pin the preview panel when saving content - user is editing the file
+                    if (this.isPreviewPanel(panel)) {
+                        this.pinPreviewPanel();
+                    }
                     await this.handleSaveContent(absoluteFilePath, message.newContent, panel, gitContext);
                 }
                 break;
 
             case 'contentModified':
                 if (message.isDirty !== undefined) {
+                    // Pin the preview panel when content is modified
+                    if (message.isDirty && this.isPreviewPanel(panel)) {
+                        this.pinPreviewPanel();
+                    }
                     this.updateTabTitle(absoluteFilePath, message.isDirty);
                 }
                 break;
@@ -760,6 +921,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                         <span class="nav-icon">↓</span>
                     </button>
                 </div>
+                <button class="pin-tab-btn" id="pin-tab-btn" title="Pin this tab (keep it open when viewing other files)">
+                    <span class="pin-icon">📌</span>
+                    <span class="pin-label">Keep Open</span>
+                </button>
                 <button class="whitespace-toggle" id="whitespace-toggle" title="Toggle whitespace diff visibility">
                     <span class="toggle-icon" id="whitespace-icon">␣</span>
                     <span class="toggle-label" id="whitespace-label">Show Whitespace</span>
@@ -902,6 +1067,9 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         this.webviewStates.clear();
         this.dirtyStates.clear();
         this.originalTitles.clear();
+        this.previewPanel = undefined;
+        this.previewPanelFilePath = undefined;
+        this.isPreviewMode = false;
         this._onDidChangeCustomDocument.dispose();
     }
 }

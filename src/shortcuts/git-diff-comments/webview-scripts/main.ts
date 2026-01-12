@@ -7,7 +7,7 @@ import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanel
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
-import { getPersistedViewMode, initVSCodeAPI, saveViewMode, sendContentModified, sendCopyPath, sendOpenFile, sendReady, sendSaveContent } from './vscode-bridge';
+import { getPersistedViewMode, initVSCodeAPI, saveViewMode, sendContentModified, sendCopyPath, sendOpenFile, sendPinTab, sendReady, sendSaveContent } from './vscode-bridge';
 
 // AbortController for managing event listeners
 let commentHandlersAbortController: AbortController | null = null;
@@ -59,8 +59,14 @@ function initialize(): void {
     // Setup file path click handler
     setupFilePathClickHandler();
 
+    // Setup pin tab button
+    setupPinTabButton();
+
     // Setup editable content (for uncommitted changes)
     setupEditableContent();
+
+    // Setup double-click handler to pin the preview tab
+    setupDoubleClickToPinTab();
 
     // Setup message listener
     window.addEventListener('message', handleMessage);
@@ -533,6 +539,44 @@ function setupClickOutsideToDismiss(): void {
 }
 
 /**
+ * Setup double-click handler to pin the preview tab.
+ * Similar to VS Code's behavior where double-clicking on a preview tab pins it.
+ * Double-clicking anywhere in the diff content area will pin the tab.
+ */
+function setupDoubleClickToPinTab(): void {
+    // Use document-level listener to catch double-clicks anywhere in the webview
+    // This ensures we capture the event even if text selection occurs
+    document.addEventListener('dblclick', (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        
+        // Don't pin if double-clicking on interactive elements like buttons or inputs
+        if (target.tagName === 'BUTTON' || 
+            target.tagName === 'INPUT' || 
+            target.tagName === 'TEXTAREA' ||
+            target.closest('button') ||
+            target.closest('input') ||
+            target.closest('textarea') ||
+            target.closest('.comment-panel') ||
+            target.closest('.comments-list') ||
+            target.closest('.custom-context-menu') ||
+            target.closest('#custom-context-menu')) {
+            return;
+        }
+
+        // Only pin if the double-click is within the diff view container or header
+        const diffViewContainer = document.getElementById('diff-view-container');
+        const header = document.querySelector('.diff-header');
+        
+        if ((diffViewContainer && diffViewContainer.contains(target)) || 
+            (header && header.contains(target))) {
+            // Send message to extension to pin the tab
+            console.log('[Diff Webview] Double-click detected, pinning tab');
+            sendPinTab();
+        }
+    }, true); // Use capture phase to get the event before text selection
+}
+
+/**
  * Handle the add comment keyboard shortcut
  */
 function handleAddCommentShortcut(): void {
@@ -697,6 +741,36 @@ function setupDiffNavigation(): void {
     if (nextBtn) {
         nextBtn.addEventListener('click', () => navigateToDiff('next'));
     }
+}
+
+/**
+ * Setup pin tab button to keep the current tab open when viewing other files.
+ * This converts the preview tab to a pinned tab.
+ */
+function setupPinTabButton(): void {
+    const pinBtn = document.getElementById('pin-tab-btn');
+    if (!pinBtn) {
+        console.warn('[Diff Webview] Pin tab button not found');
+        return;
+    }
+
+    pinBtn.addEventListener('click', () => {
+        console.log('[Diff Webview] Pin tab button clicked');
+        sendPinTab();
+        
+        // Update button to show it's been pinned
+        pinBtn.classList.add('pinned');
+        const label = pinBtn.querySelector('.pin-label');
+        if (label) {
+            label.textContent = 'Pinned';
+        }
+        pinBtn.title = 'This tab is pinned (will not be replaced)';
+        
+        // Optionally hide the button after pinning since it's no longer needed
+        setTimeout(() => {
+            pinBtn.style.display = 'none';
+        }, 1000);
+    });
 }
 
 /**

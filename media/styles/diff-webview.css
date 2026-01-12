@@ -108,7 +108,8 @@ html, body {
 
 /* View mode toggle button */
 .view-mode-toggle,
-.whitespace-toggle {
+.whitespace-toggle,
+.pin-tab-btn {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -119,7 +120,35 @@ html, body {
     cursor: pointer;
     font-size: 12px;
     color: var(--vscode-button-secondaryForeground);
-    transition: background-color 0.15s, border-color 0.15s;
+    transition: background-color 0.15s, border-color 0.15s, opacity 0.3s;
+}
+
+/* Pin tab button specific styles */
+.pin-tab-btn {
+    margin-left: 8px;
+}
+
+.pin-tab-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.pin-tab-btn .pin-icon {
+    font-size: 12px;
+}
+
+.pin-tab-btn .pin-label {
+    font-weight: 500;
+}
+
+.pin-tab-btn.pinned {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-background);
+    opacity: 0.7;
+}
+
+.pin-tab-btn.pinned:hover {
+    opacity: 1;
 }
 
 .whitespace-toggle {

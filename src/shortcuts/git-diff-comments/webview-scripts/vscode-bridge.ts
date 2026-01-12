@@ -228,3 +228,14 @@ export function sendContentModified(isDirty: boolean): void {
     });
 }
 
+/**
+ * Send pin tab request to convert preview tab to a regular pinned tab.
+ * This is called when user double-clicks on the webview content or performs
+ * an action that should "keep" the tab open.
+ */
+export function sendPinTab(): void {
+    postMessage({
+        type: 'pinTab'
+    });
+}
+
