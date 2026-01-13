@@ -281,9 +281,19 @@ export class PipelineManager implements vscode.Disposable {
                 errors.push('Missing "reduce" field');
             } else {
                 const reduce = parsed.reduce as Record<string, unknown>;
-                const validReduceTypes = ['list', 'table', 'json', 'csv'];
+                const validReduceTypes = ['list', 'table', 'json', 'csv', 'ai'];
                 if (!validReduceTypes.includes(reduce.type as string)) {
                     errors.push(`Unsupported reduce type: ${reduce.type}. Supported: ${validReduceTypes.join(', ')}`);
+                }
+
+                // Validate AI reduce configuration
+                if (reduce.type === 'ai') {
+                    if (!reduce.prompt || typeof reduce.prompt !== 'string') {
+                        errors.push('reduce.prompt is required when reduce.type is "ai"');
+                    }
+                    if (!reduce.output || !Array.isArray(reduce.output) || reduce.output.length === 0) {
+                        errors.push('reduce.output must be a non-empty array when reduce.type is "ai"');
+                    }
                 }
             }
 

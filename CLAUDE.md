@@ -223,8 +223,31 @@ map:
   parallel: 5
 
 reduce:
-  type: json
+  type: json  # Options: list, table, json, csv, ai
 ```
+
+**AI-Powered Reduce:**
+Use AI to synthesize, deduplicate, or prioritize map results.
+
+```yaml
+reduce:
+  type: ai
+  prompt: |
+    You analyzed {{count}} bugs:
+    {{results}}
+    
+    Create executive summary with top priorities.
+  output:
+    - summary
+    - priorities
+  model: gpt-4  # Optional
+```
+
+Available template variables in reduce.prompt:
+- `{{results}}` - All successful map outputs as JSON
+- `{{count}}` - Total results count
+- `{{successCount}}` - Successful items
+- `{{failureCount}}` - Failed items
 
 **Commands:**
 - Create pipeline: Opens wizard to create new pipeline package

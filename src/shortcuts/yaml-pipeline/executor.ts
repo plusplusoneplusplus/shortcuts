@@ -155,7 +155,12 @@ export async function executePipeline(
         aiInvoker: options.aiInvoker,
         outputFormat: config.reduce.type,
         model,
-        maxConcurrency: parallelLimit
+        maxConcurrency: parallelLimit,
+        ...(config.reduce.type === 'ai' && {
+            aiReducePrompt: config.reduce.prompt,
+            aiReduceOutput: config.reduce.output,
+            aiReduceModel: config.reduce.model
+        })
     });
 
     const jobInput = createPromptMapInput(
@@ -271,9 +276,19 @@ function validatePipelineConfig(config: PipelineConfig): void {
         throw new PipelineExecutionError('Pipeline config missing "reduce"');
     }
 
-    const validReduceTypes = ['list', 'table', 'json', 'csv'];
+    const validReduceTypes = ['list', 'table', 'json', 'csv', 'ai'];
     if (!validReduceTypes.includes(config.reduce.type)) {
         throw new PipelineExecutionError(`Unsupported reduce type: ${config.reduce.type}. Supported types: ${validReduceTypes.join(', ')}`);
+    }
+
+    // Validate AI reduce configuration
+    if (config.reduce.type === 'ai') {
+        if (!config.reduce.prompt) {
+            throw new PipelineExecutionError('Pipeline config "reduce.prompt" is required when reduce.type is "ai"');
+        }
+        if (!config.reduce.output || !Array.isArray(config.reduce.output) || config.reduce.output.length === 0) {
+            throw new PipelineExecutionError('Pipeline config "reduce.output" must be a non-empty array when reduce.type is "ai"');
+        }
     }
 }
 

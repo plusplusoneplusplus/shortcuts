@@ -75,7 +75,7 @@ export interface PromptMapResult {
 /**
  * Output format for the reduce phase
  */
-export type OutputFormat = 'list' | 'table' | 'json' | 'csv';
+export type OutputFormat = 'list' | 'table' | 'json' | 'csv' | 'ai';
 
 /**
  * Final aggregated output from reduce phase
@@ -115,6 +115,12 @@ export interface PromptMapJobOptions {
     model?: string;
     /** Maximum concurrent AI calls */
     maxConcurrency?: number;
+    /** AI reduce prompt template (required if outputFormat is 'ai') */
+    aiReducePrompt?: string;
+    /** AI reduce output fields (required if outputFormat is 'ai') */
+    aiReduceOutput?: string[];
+    /** Model to use for AI reduce (optional, defaults to job model) */
+    aiReduceModel?: string;
 }
 
 // ============================================================================
@@ -345,7 +351,11 @@ function formatAsCSV(results: PromptMapResult[]): string {
 class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
     constructor(
         private outputFormat: OutputFormat = 'list',
-        private outputFields: string[] = []
+        private outputFields: string[] = [],
+        private aiInvoker?: AIInvoker,
+        private aiReducePrompt?: string,
+        private aiReduceOutput?: string[],
+        private aiReduceModel?: string
     ) {
         super();
     }
@@ -367,6 +377,12 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
             outputFields: this.outputFields
         };
 
+        // Handle AI reduce
+        if (this.outputFormat === 'ai') {
+            return await this.performAIReduce(itemResults, summary, results.length, startTime);
+        }
+
+        // Handle deterministic reduce
         let formattedOutput: string;
         switch (this.outputFormat) {
             case 'table': formattedOutput = formatAsTable(itemResults); break;
@@ -383,6 +399,65 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
                 mergedCount: 0,
                 reduceTimeMs: Date.now() - startTime,
                 usedAIReduce: false
+            }
+        };
+    }
+
+    private async performAIReduce(
+        itemResults: PromptMapResult[],
+        summary: PromptMapSummary,
+        inputCount: number,
+        startTime: number
+    ): Promise<ReduceResult<PromptMapOutput>> {
+        if (!this.aiInvoker || !this.aiReducePrompt || !this.aiReduceOutput) {
+            throw new Error('AI reduce requires aiInvoker, aiReducePrompt, and aiReduceOutput');
+        }
+
+        // Build prompt with template substitution
+        const successfulResults = itemResults.filter(r => r.success);
+        const resultsJSON = JSON.stringify(successfulResults.map(r => r.output), null, 2);
+        
+        const prompt = this.aiReducePrompt
+            .replace(/\{\{results\}\}/g, resultsJSON)
+            .replace(/\{\{count\}\}/g, String(summary.totalItems))
+            .replace(/\{\{successCount\}\}/g, String(summary.successfulItems))
+            .replace(/\{\{failureCount\}\}/g, String(summary.failedItems));
+
+        const fullPrompt = buildFullPrompt(prompt, this.aiReduceOutput);
+
+        // Call AI
+        const aiResult = await this.aiInvoker(fullPrompt, { model: this.aiReduceModel });
+
+        if (!aiResult.success || !aiResult.response) {
+            throw new Error(`AI reduce failed: ${aiResult.error || 'Unknown error'}`);
+        }
+
+        // Parse AI response
+        let aiOutput: Record<string, unknown>;
+        try {
+            aiOutput = parseAIResponse(aiResult.response, this.aiReduceOutput);
+        } catch (parseError) {
+            throw new Error(`Failed to parse AI reduce response: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+        }
+
+        // Format output as JSON string
+        const formattedOutput = JSON.stringify(aiOutput, null, 2);
+
+        return {
+            output: {
+                results: itemResults,
+                formattedOutput,
+                summary: {
+                    ...summary,
+                    outputFields: this.aiReduceOutput
+                }
+            },
+            stats: {
+                inputCount,
+                outputCount: 1, // AI reduce produces single synthesized output
+                mergedCount: summary.successfulItems,
+                reduceTimeMs: Date.now() - startTime,
+                usedAIReduce: true
             }
         };
     }
@@ -403,7 +478,14 @@ export function createPromptMapJob(
         name: 'Prompt Map',
         splitter: new PromptMapSplitter(),
         mapper: new PromptMapMapper(options.aiInvoker, options.model),
-        reducer: new PromptMapReducer(options.outputFormat || 'list'),
+        reducer: new PromptMapReducer(
+            options.outputFormat || 'list',
+            [],
+            options.aiInvoker,
+            options.aiReducePrompt,
+            options.aiReduceOutput,
+            options.aiReduceModel
+        ),
         options: {
             maxConcurrency: options.maxConcurrency || 5,
             reduceMode: 'deterministic',

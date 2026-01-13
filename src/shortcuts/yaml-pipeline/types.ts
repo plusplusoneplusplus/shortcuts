@@ -114,6 +114,12 @@ export interface MapConfig {
 export interface ReduceConfig {
     /** Reduce type / output format */
     type: MROutputFormat;
+    /** AI prompt template (required if type is 'ai') */
+    prompt?: string;
+    /** AI output fields (required if type is 'ai') */
+    output?: string[];
+    /** Model to use for AI reduce (optional) */
+    model?: string;
 }
 
 /**

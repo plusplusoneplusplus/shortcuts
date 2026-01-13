@@ -250,6 +250,109 @@ reduce:
   type: json
 ```
 
+### AI-Powered Reduce
+
+Use AI to synthesize, deduplicate, or prioritize results from the map phase.
+
+```yaml
+# Package: .vscode/pipelines/bug-synthesis/pipeline.yaml
+name: "Bug Analysis with AI Synthesis"
+
+input:
+  type: csv
+  path: "bugs.csv"
+
+map:
+  prompt: |
+    Analyze this bug report:
+    Title: {{title}}
+    Description: {{description}}
+    
+    Categorize and assess severity.
+    Return JSON: { "category": "...", "severity": "high|medium|low", "impact": "..." }
+  
+  output:
+    - category
+    - severity
+    - impact
+  
+  parallel: 10
+
+reduce:
+  type: ai
+  prompt: |
+    You analyzed {{count}} bug reports with these results:
+    
+    {{results}}
+    
+    Successful: {{successCount}}
+    Failed: {{failureCount}}
+    
+    Task:
+    1. Identify common patterns across bugs
+    2. Prioritize top 5 critical issues
+    3. Provide actionable recommendations
+    
+    Return JSON with: { "summary": "...", "criticalIssues": [...], "recommendations": [...] }
+  
+  output:
+    - summary
+    - criticalIssues
+    - recommendations
+  
+  model: gpt-4  # Optional: override default model
+```
+
+#### AI Reduce Template Variables
+
+Available in `reduce.prompt`:
+- `{{results}}` - All successful map outputs as JSON array
+- `{{count}}` - Total number of results
+- `{{successCount}}` - Number of successful map operations
+- `{{failureCount}}` - Number of failed map operations
+
+#### Common AI Reduce Use Cases
+
+**1. Synthesize into Executive Summary**
+```yaml
+reduce:
+  type: ai
+  prompt: |
+    Analyzed {{count}} items:
+    {{results}}
+    
+    Create a 2-3 sentence executive summary highlighting key trends.
+  output:
+    - summary
+```
+
+**2. Deduplicate Similar Findings**
+```yaml
+reduce:
+  type: ai
+  prompt: |
+    {{count}} code review findings:
+    {{results}}
+    
+    Deduplicate similar issues. Group by root cause and list affected files.
+    Return JSON: { "uniqueFindings": [{ "issue": "...", "files": [...] }] }
+  output:
+    - uniqueFindings
+```
+
+**3. Prioritize and Rank**
+```yaml
+reduce:
+  type: ai
+  prompt: |
+    {{count}} technical debt items:
+    {{results}}
+    
+    Rank by ROI (impact/effort). Return top 10 with reasoning.
+  output:
+    - topItems
+```
+
 ## Usage Examples
 
 ### Example 1: Simple Text Processing
@@ -449,23 +552,36 @@ interface MapConfig {
 
 ```typescript
 interface ReduceConfig {
-    /** Reduce mode */
-    mode: 'deterministic' | 'ai' | 'hybrid' | 'none';
-    /** Deterministic options */
-    deterministicOptions?: {
-        deduplicateBy?: string;
-        sortBy?: string;
-        aggregations?: Array<{
-            field: string;
-            operation: 'flatten' | 'sum' | 'count' | 'collect';
-        }>;
-    };
-    /** AI reduce options */
-    aiOptions?: {
-        enabled: boolean;
-        template?: string;
-    };
+    /** Output format type */
+    type: 'list' | 'table' | 'json' | 'csv' | 'ai';
+    
+    // Required for type: 'ai'
+    /** AI prompt template (required if type is 'ai') */
+    prompt?: string;
+    /** Expected output fields from AI (required if type is 'ai') */
+    output?: string[];
+    /** Model to use for AI reduce (optional) */
+    model?: string;
 }
+```
+
+**Deterministic Reduce Types:**
+- `list` - Bullet-point list format
+- `table` - Markdown table format
+- `json` - JSON array format
+- `csv` - CSV format
+
+**AI Reduce Type:**
+- `ai` - AI-powered synthesis with custom prompt
+  - Requires `prompt` field with template variables
+  - Requires `output` array of expected fields
+  - Optional `model` to override default
+
+**AI Reduce Template Variables:**
+- `{{results}}` - All successful map outputs (JSON array)
+- `{{count}}` - Total number of results
+- `{{successCount}}` - Number of successful items
+- `{{failureCount}}` - Number of failed items
 ```
 
 ### PipelineExecutionResult
