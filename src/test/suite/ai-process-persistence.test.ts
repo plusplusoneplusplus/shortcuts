@@ -678,3 +678,120 @@ suite('AI Process View Details Tests', () => {
     });
 });
 
+suite('AI Process Document Provider - Structured Result Display', () => {
+    
+    test('should format pipeline item structured result with rawResponse', async () => {
+        const { AIProcessDocumentProvider } = await import('../../shortcuts/ai-service');
+        const { createMockAIProcessManager } = await import('../../shortcuts/ai-service');
+        
+        const mockManager = createMockAIProcessManager();
+        
+        // Create a process with pipeline item structured result
+        const structuredResult = JSON.stringify({
+            item: { id: '1', title: 'Test Bug', description: 'Login fails' },
+            output: { severity: 'high', category: 'backend' },
+            success: true,
+            rawResponse: '{"severity": "high", "category": "backend", "extra": "metadata"}'
+        });
+        
+        // Register a process and then update its structured result
+        const processId = mockManager.registerTypedProcess(
+            'Processing item 1/2',
+            {
+                type: 'pipeline-item',
+                idPrefix: 'pipeline-item',
+                metadata: { type: 'pipeline-item', description: 'Processing item 1/2' }
+            }
+        );
+        mockManager.mockCompleteProcess(processId, 'Completed', structuredResult);
+        
+        const provider = new AIProcessDocumentProvider(mockManager);
+        const uri = provider.createUri(processId);
+        const content = provider.provideTextDocumentContent(uri);
+        
+        // Verify structured result sections are present
+        assert.ok(content.includes('## Structured Result'), 'Should have Structured Result section');
+        assert.ok(content.includes('### Input'), 'Should have Input subsection');
+        assert.ok(content.includes('### Output'), 'Should have Output subsection');
+        assert.ok(content.includes('### Raw AI Response'), 'Should have Raw AI Response subsection');
+        
+        // Verify content is displayed
+        assert.ok(content.includes('Test Bug'), 'Should show input title');
+        assert.ok(content.includes('"severity": "high"'), 'Should show output');
+        assert.ok(content.includes('"extra": "metadata"'), 'Should show raw response content');
+    });
+    
+    test('should format failed pipeline item with error', async () => {
+        const { AIProcessDocumentProvider } = await import('../../shortcuts/ai-service');
+        const { createMockAIProcessManager } = await import('../../shortcuts/ai-service');
+        
+        const mockManager = createMockAIProcessManager();
+        
+        // Create a failed process with error in structured result
+        const structuredResult = JSON.stringify({
+            item: { id: '2', title: 'Task 2' },
+            output: {},
+            success: false,
+            error: 'Failed to parse AI response: Unexpected token',
+            rawResponse: 'This is not valid JSON { broken'
+        });
+        
+        // Register and complete with structured result
+        const processId = mockManager.registerTypedProcess(
+            'Processing item 2/2',
+            {
+                type: 'pipeline-item',
+                idPrefix: 'pipeline-item',
+                metadata: { type: 'pipeline-item', description: 'Processing item 2/2' }
+            }
+        );
+        mockManager.mockCompleteProcess(processId, 'Failed', structuredResult);
+        
+        const provider = new AIProcessDocumentProvider(mockManager);
+        const uri = provider.createUri(processId);
+        const content = provider.provideTextDocumentContent(uri);
+        
+        // Verify error section is present
+        assert.ok(content.includes('### Error'), 'Should have Error subsection');
+        assert.ok(content.includes('Failed to parse AI response'), 'Should show error message');
+        assert.ok(content.includes('### Raw AI Response'), 'Should have Raw AI Response even for errors');
+        assert.ok(content.includes('broken'), 'Should show raw response that caused the error');
+    });
+    
+    test('should format generic structured result as JSON', async () => {
+        const { AIProcessDocumentProvider } = await import('../../shortcuts/ai-service');
+        const { createMockAIProcessManager } = await import('../../shortcuts/ai-service');
+        
+        const mockManager = createMockAIProcessManager();
+        
+        // Create a process with generic structured result (no rawResponse)
+        const structuredResult = JSON.stringify({
+            summary: 'Pipeline completed',
+            stats: { total: 10, passed: 8, failed: 2 }
+        });
+        
+        // Register and complete with structured result
+        const processId = mockManager.registerTypedProcess(
+            'Run Tests Pipeline',
+            {
+                type: 'pipeline-execution',
+                idPrefix: 'pipeline-exec',
+                metadata: { type: 'pipeline-execution', description: 'Run Tests Pipeline' }
+            }
+        );
+        mockManager.mockCompleteProcess(processId, 'Completed', structuredResult);
+        
+        const provider = new AIProcessDocumentProvider(mockManager);
+        const uri = provider.createUri(processId);
+        const content = provider.provideTextDocumentContent(uri);
+        
+        // Verify generic JSON display
+        assert.ok(content.includes('## Structured Result'), 'Should have Structured Result section');
+        assert.ok(content.includes('"summary"'), 'Should show JSON keys');
+        assert.ok(content.includes('Pipeline completed'), 'Should show JSON values');
+        // Should NOT have special sections for generic result
+        assert.ok(!content.includes('### Input'), 'Should NOT have Input subsection for generic result');
+        assert.ok(!content.includes('### Raw AI Response'), 'Should NOT have Raw AI Response for generic result');
+    });
+});
+

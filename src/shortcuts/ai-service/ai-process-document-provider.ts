@@ -136,6 +136,66 @@ export class AIProcessDocumentProvider implements vscode.TextDocumentContentProv
             lines.push('');
         }
 
+        // Structured Result section (for pipeline map items with detailed output)
+        if (process.structuredResult) {
+            lines.push(`## Structured Result`);
+            lines.push('');
+            try {
+                const parsed = JSON.parse(process.structuredResult);
+                
+                // Check if this is a pipeline item result with rawResponse
+                if (parsed.rawResponse !== undefined) {
+                    // Show input
+                    if (parsed.item) {
+                        lines.push('### Input');
+                        lines.push('```json');
+                        lines.push(JSON.stringify(parsed.item, null, 2));
+                        lines.push('```');
+                        lines.push('');
+                    }
+                    
+                    // Show output
+                    if (parsed.output) {
+                        lines.push('### Output');
+                        lines.push('```json');
+                        lines.push(JSON.stringify(parsed.output, null, 2));
+                        lines.push('```');
+                        lines.push('');
+                    }
+                    
+                    // Show success/error status
+                    if (parsed.success === false && parsed.error) {
+                        lines.push('### Error');
+                        lines.push('```');
+                        lines.push(parsed.error);
+                        lines.push('```');
+                        lines.push('');
+                    }
+                    
+                    // Show raw AI response
+                    if (parsed.rawResponse) {
+                        lines.push('### Raw AI Response');
+                        lines.push('```');
+                        lines.push(parsed.rawResponse);
+                        lines.push('```');
+                        lines.push('');
+                    }
+                } else {
+                    // Generic structured result - show as formatted JSON
+                    lines.push('```json');
+                    lines.push(JSON.stringify(parsed, null, 2));
+                    lines.push('```');
+                    lines.push('');
+                }
+            } catch {
+                // If parsing fails, show raw string
+                lines.push('```');
+                lines.push(process.structuredResult);
+                lines.push('```');
+                lines.push('');
+            }
+        }
+
         // Error section
         if (process.error) {
             lines.push(`## Error`);

@@ -108,6 +108,57 @@ suite('Pipeline Result Viewer Tests', () => {
             assert.strictEqual(node.executionTimeMs, 500);
         });
 
+        test('should preserve rawResponse for failed results', () => {
+            const node = mapResultToNode(sampleFailedResult, 1, 500);
+
+            assert.strictEqual(node.rawResponse, 'Error: connection timeout');
+        });
+
+        test('should handle undefined rawResponse gracefully', () => {
+            const resultWithoutRaw: PromptMapResult = {
+                item: { id: '3', title: 'Bug C' },
+                output: {},
+                success: false,
+                error: 'Timeout before AI response',
+                rawResponse: undefined
+            };
+
+            const node = mapResultToNode(resultWithoutRaw, 2);
+            
+            assert.strictEqual(node.rawResponse, undefined);
+            assert.strictEqual(node.error, 'Timeout before AI response');
+        });
+
+        test('should preserve rawResponse for parse errors', () => {
+            const parseErrorResult: PromptMapResult = {
+                item: { id: '4', title: 'Bug D' },
+                output: {},
+                success: false,
+                error: 'Failed to parse AI response: Unexpected token',
+                rawResponse: 'This is not valid JSON { broken'
+            };
+
+            const node = mapResultToNode(parseErrorResult, 3, 1200);
+            
+            assert.strictEqual(node.success, false);
+            assert.strictEqual(node.rawResponse, 'This is not valid JSON { broken');
+            assert.ok(node.error?.includes('parse'));
+        });
+
+        test('should preserve multiline rawResponse', () => {
+            const multilineResult: PromptMapResult = {
+                item: { id: '5', title: 'Bug E' },
+                output: { status: 'analyzed' },
+                success: true,
+                rawResponse: '{\n  "status": "analyzed",\n  "details": "line1\\nline2"\n}'
+            };
+
+            const node = mapResultToNode(multilineResult, 4);
+            
+            assert.ok(node.rawResponse?.includes('\n'));
+            assert.strictEqual(node.success, true);
+        });
+
         test('should handle missing executionTimeMs', () => {
             const node = mapResultToNode(sampleSuccessResult, 0);
 
@@ -289,6 +340,43 @@ suite('Pipeline Result Viewer Tests', () => {
             const html = getItemDetailContent(nodeWithoutRaw);
 
             assert.ok(!html.includes('Raw AI Response'), 'Should not have raw response section');
+        });
+
+        test('should include raw response section for failed results when available', () => {
+            const failedNodeWithRaw: PipelineItemResultNode = {
+                ...sampleFailedNode,
+                rawResponse: 'Connection error: ECONNREFUSED'
+            };
+
+            const html = getItemDetailContent(failedNodeWithRaw);
+
+            assert.ok(html.includes('Raw AI Response'), 'Should have raw response section for failed item');
+            assert.ok(html.includes('ECONNREFUSED'), 'Should include the raw response content');
+        });
+
+        test('should escape HTML in raw response', () => {
+            const nodeWithHtmlInRaw: PipelineItemResultNode = {
+                ...sampleSuccessNode,
+                rawResponse: '<script>malicious()</script>{"data": true}'
+            };
+
+            const html = getItemDetailContent(nodeWithHtmlInRaw);
+
+            assert.ok(html.includes('&lt;script&gt;'), 'Should escape HTML in raw response');
+            assert.ok(!html.includes('<script>malicious'), 'Should not have unescaped script in raw response');
+        });
+
+        test('should handle special characters in raw response', () => {
+            const nodeWithSpecialChars: PipelineItemResultNode = {
+                ...sampleSuccessNode,
+                rawResponse: '{"message": "Hello & goodbye < world > test \'quoted\' \"double\"}'
+            };
+
+            const html = getItemDetailContent(nodeWithSpecialChars);
+
+            assert.ok(html.includes('&amp;'), 'Should escape ampersand');
+            assert.ok(html.includes('&lt;'), 'Should escape less than');
+            assert.ok(html.includes('&gt;'), 'Should escape greater than');
         });
 
         test('should escape HTML in input values', () => {
@@ -497,6 +585,30 @@ suite('Pipeline Result Viewer Tests', () => {
             const html = getItemDetailContent(nodeWithUnixPath);
             assert.ok(html.includes('/home/user/data/file.csv'), 'Should include Unix path');
         });
+
+        test('should handle Windows-style paths in rawResponse', () => {
+            const windowsRaw = '{"file": "C:\\\\Users\\\\test\\\\output.json"}';
+            const nodeWithWindowsRaw: PipelineItemResultNode = {
+                ...sampleSuccessNode,
+                rawResponse: windowsRaw
+            };
+
+            const html = getItemDetailContent(nodeWithWindowsRaw);
+            assert.ok(html.includes('Raw AI Response'), 'Should show raw response section');
+            assert.ok(html.includes('output.json'), 'Should include filename from raw response');
+        });
+
+        test('should handle Unix-style paths in rawResponse', () => {
+            const unixRaw = '{"file": "/var/log/output.json", "path": "/tmp/data"}';
+            const nodeWithUnixRaw: PipelineItemResultNode = {
+                ...sampleSuccessNode,
+                rawResponse: unixRaw
+            };
+
+            const html = getItemDetailContent(nodeWithUnixRaw);
+            assert.ok(html.includes('Raw AI Response'), 'Should show raw response section');
+            assert.ok(html.includes('/var/log/'), 'Should include Unix path');
+        });
     });
 
     suite('ResultViewerFilterState', () => {
@@ -554,6 +666,90 @@ suite('Pipeline Result Viewer Integration Tests', () => {
             assert.ok(html.length > 0, 'Should generate HTML content');
             assert.ok(html.includes(`Item #${node.index + 1}`), 'Should include item number');
         });
+    });
+
+    test('should preserve rawResponse through complete workflow', () => {
+        // Simulate results with various rawResponse scenarios
+        const results: PromptMapResult[] = [
+            {
+                item: { id: '1', title: 'Success with raw' },
+                output: { result: 'ok' },
+                success: true,
+                rawResponse: '{"result": "ok", "extra": "metadata"}'
+            },
+            {
+                item: { id: '2', title: 'Parse error with raw' },
+                output: {},
+                success: false,
+                error: 'Failed to parse JSON',
+                rawResponse: 'Invalid JSON: {broken'
+            },
+            {
+                item: { id: '3', title: 'Timeout - no raw' },
+                output: {},
+                success: false,
+                error: 'Timeout',
+                rawResponse: undefined
+            }
+        ];
+
+        // Convert to nodes
+        const nodes = results.map((r, i) => mapResultToNode(r, i));
+
+        // Verify rawResponse preservation
+        assert.strictEqual(nodes[0].rawResponse, '{"result": "ok", "extra": "metadata"}');
+        assert.strictEqual(nodes[1].rawResponse, 'Invalid JSON: {broken');
+        assert.strictEqual(nodes[2].rawResponse, undefined);
+
+        // Verify HTML generation handles all cases
+        nodes.forEach((node, i) => {
+            const html = getItemDetailContent(node);
+            
+            if (node.rawResponse) {
+                assert.ok(html.includes('Raw AI Response'), `Node ${i} should have raw response section`);
+                assert.ok(html.includes('raw-response'), `Node ${i} should have raw-response class`);
+            } else {
+                assert.ok(!html.includes('Raw AI Response'), `Node ${i} should NOT have raw response section`);
+            }
+        });
+    });
+
+    test('should handle rawResponse with special content', () => {
+        const results: PromptMapResult[] = [
+            {
+                item: { id: '1', title: 'Multiline' },
+                output: { data: 'test' },
+                success: true,
+                rawResponse: 'Line 1\nLine 2\n{\n  "nested": true\n}'
+            },
+            {
+                item: { id: '2', title: 'Unicode' },
+                output: { emoji: '🚀' },
+                success: true,
+                rawResponse: '{"emoji": "🚀", "text": "日本語"}'
+            },
+            {
+                item: { id: '3', title: 'Large response' },
+                output: { count: 100 },
+                success: true,
+                rawResponse: 'x'.repeat(10000)
+            }
+        ];
+
+        const nodes = results.map((r, i) => mapResultToNode(r, i));
+
+        // All should have rawResponse preserved
+        nodes.forEach((node, i) => {
+            assert.ok(node.rawResponse, `Node ${i} should have rawResponse`);
+            
+            const html = getItemDetailContent(node);
+            assert.ok(html.includes('Raw AI Response'), `Node ${i} should have raw response section`);
+        });
+
+        // Verify specific content is preserved
+        assert.ok(nodes[0].rawResponse?.includes('\n'), 'Multiline should be preserved');
+        assert.ok(nodes[1].rawResponse?.includes('🚀'), 'Unicode should be preserved');
+        assert.strictEqual(nodes[2].rawResponse?.length, 10000, 'Large response should be fully preserved');
     });
 
     test('should calculate statistics correctly', () => {

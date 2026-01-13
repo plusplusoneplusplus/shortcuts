@@ -127,7 +127,9 @@ export class PipelineResultViewerProvider {
                         mapResultToNode(mapResult.output, index, mapResult.executionTimeMs)
                     );
                 } else {
-                    // Handle case where output is missing (failed map)
+                    // Handle case where output is missing (e.g., executor timeout)
+                    // Note: rawResponse is not available in this case because the AI call
+                    // never completed (timeout occurred before mapper returned)
                     itemResults.push({
                         id: mapResult.workItemId || `item-${index}`,
                         index,
@@ -135,7 +137,8 @@ export class PipelineResultViewerProvider {
                         output: {},
                         success: false,
                         error: mapResult.error || 'Unknown error',
-                        executionTimeMs: mapResult.executionTimeMs
+                        executionTimeMs: mapResult.executionTimeMs,
+                        rawResponse: undefined
                     });
                 }
             });

@@ -236,7 +236,8 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
                 item,
                 output: this.emptyOutput(workItem.data.outputFields),
                 success: false,
-                error: error instanceof Error ? error.message : String(error)
+                error: error instanceof Error ? error.message : String(error),
+                rawResponse: undefined // No AI response available when exception occurs before AI call
             };
         }
     }
