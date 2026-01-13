@@ -470,6 +470,22 @@ body.vscode-light .hljs-type {
     min-width: 60%;
 }
 
+/* Fix for long entity names wrapping - ensure foreignObject shows all lines */
+.mermaid-preview foreignObject {
+    overflow: visible !important;
+}
+
+.mermaid-preview .nodeLabel,
+.mermaid-preview .label foreignObject {
+    overflow: visible !important;
+}
+
+.mermaid-preview foreignObject > div {
+    overflow: visible !important;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 /* Make mermaid nodes clickable for comments */
 .mermaid-preview .node,
 .mermaid-preview .cluster,
