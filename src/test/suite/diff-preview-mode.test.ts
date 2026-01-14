@@ -258,12 +258,12 @@ suite('Diff Preview Mode Tests', () => {
 
         test('should normalize paths for comparison', () => {
             // Paths should be normalized for consistent comparison
-            const path1 = '/repo/src/file.ts';
-            const path2 = '/repo/src/file.ts';
-            const path3 = '/repo/src/../src/file.ts';
+            // Use platform-specific paths for testing path.normalize
+            const basePath = path.join('repo', 'src', 'file.ts');
+            const pathWithParent = path.join('repo', 'src', '..', 'src', 'file.ts');
 
-            assert.strictEqual(path1, path2);
-            assert.strictEqual(path.normalize(path3), path1);
+            // path.normalize should resolve the parent directory reference
+            assert.strictEqual(path.normalize(pathWithParent), basePath);
         });
     });
 

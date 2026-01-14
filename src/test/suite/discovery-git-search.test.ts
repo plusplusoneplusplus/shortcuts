@@ -148,6 +148,9 @@ suite('GitSearchProvider Tests', () => {
         });
 
         test('should respect maxCommits limit', async function() {
+            // Increase timeout since creating multiple commits is slow on Windows
+            this.timeout(30000);
+            
             if (!isGitRepo) {
                 this.skip();
                 return;
