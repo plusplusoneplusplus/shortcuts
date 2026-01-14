@@ -529,7 +529,14 @@ map:
   timeoutMs: 300000
 
 reduce:
-  type: json
+  type: ai
+  prompt: |
+    You analyzed {{count}} items:
+    {{results}}
+    
+    Create a summary with key insights.
+  output:
+    - summary
 `;
     }
 

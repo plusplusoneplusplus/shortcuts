@@ -22,6 +22,10 @@ import {
     WorkItem
 } from '../types';
 import { BaseReducer } from '../reducers';
+import { 
+    extractJSON as sharedExtractJSON, 
+    parseAIResponse as sharedParseAIResponse 
+} from '../../shared/ai-response-parser';
 
 /**
  * A generic item with string key-value pairs for template substitution
@@ -144,29 +148,18 @@ function buildFullPrompt(userPrompt: string, outputFields: string[]): string {
 Return JSON with these fields: ${outputFields.join(', ')}`;
 }
 
+/**
+ * Extract JSON from response - delegates to shared utility
+ */
 function extractJSON(response: string): string | null {
-    const codeBlockMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) return codeBlockMatch[1].trim();
-
-    const objectMatch = response.match(/\{[\s\S]*\}/);
-    if (objectMatch) return objectMatch[0];
-
-    const arrayMatch = response.match(/\[[\s\S]*\]/);
-    if (arrayMatch) return arrayMatch[0];
-
-    return null;
+    return sharedExtractJSON(response);
 }
 
+/**
+ * Parse AI response - delegates to shared utility
+ */
 function parseAIResponse(response: string, outputFields: string[]): Record<string, unknown> {
-    const jsonStr = extractJSON(response);
-    if (!jsonStr) throw new Error('No JSON found in AI response');
-
-    const parsed = JSON.parse(jsonStr);
-    const result: Record<string, unknown> = {};
-    for (const field of outputFields) {
-        result[field] = field in parsed ? parsed[field] : null;
-    }
-    return result;
+    return sharedParseAIResponse(response, outputFields);
 }
 
 // ============================================================================

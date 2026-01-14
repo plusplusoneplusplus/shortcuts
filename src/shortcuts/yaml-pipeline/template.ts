@@ -8,6 +8,10 @@
  */
 
 import { PromptItem } from './types';
+import { 
+    extractJSON as sharedExtractJSON, 
+    parseAIResponse as sharedParseAIResponse 
+} from '../shared/ai-response-parser';
 
 /**
  * Error thrown when a template variable is missing
@@ -129,6 +133,7 @@ export function buildPromptFromTemplate(
 
 /**
  * Parse JSON response from AI, extracting only the declared fields
+ * Wrapper that adds TemplateError for backward compatibility
  * @param response AI response string
  * @param outputFields Expected field names
  * @returns Object with extracted fields (missing fields become null)
@@ -137,55 +142,21 @@ export function parseAIResponse(
     response: string,
     outputFields: string[]
 ): Record<string, unknown> {
-    // Try to extract JSON from the response
-    const jsonStr = extractJSON(response);
-
-    if (!jsonStr) {
-        throw new TemplateError('No JSON found in AI response');
-    }
-
-    let parsed: Record<string, unknown>;
     try {
-        parsed = JSON.parse(jsonStr);
-    } catch {
-        throw new TemplateError(`Invalid JSON in AI response: ${jsonStr.substring(0, 100)}...`);
+        return sharedParseAIResponse(response, outputFields);
+    } catch (error) {
+        throw new TemplateError(error instanceof Error ? error.message : String(error));
     }
-
-    // Extract only declared fields
-    const result: Record<string, unknown> = {};
-    for (const field of outputFields) {
-        result[field] = field in parsed ? parsed[field] : null;
-    }
-
-    return result;
 }
 
 /**
  * Extract JSON from a response string
- * Handles JSON in markdown code blocks or inline
+ * Re-exported from shared utilities
  * @param response Response string
  * @returns Extracted JSON string or null
  */
 export function extractJSON(response: string): string | null {
-    // Try markdown code block first
-    const codeBlockMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) {
-        return codeBlockMatch[1].trim();
-    }
-
-    // Try to find a JSON object
-    const objectMatch = response.match(/\{[\s\S]*\}/);
-    if (objectMatch) {
-        return objectMatch[0];
-    }
-
-    // Try to find a JSON array
-    const arrayMatch = response.match(/\[[\s\S]*\]/);
-    if (arrayMatch) {
-        return arrayMatch[0];
-    }
-
-    return null;
+    return sharedExtractJSON(response);
 }
 
 /**
