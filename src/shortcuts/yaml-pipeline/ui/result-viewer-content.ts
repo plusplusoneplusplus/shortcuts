@@ -61,6 +61,7 @@ function getContentWithData(data: PipelineResultViewData, isDark: boolean): stri
         ${getToolbar(data)}
         ${getHeader(data)}
         ${getSummarySection(data)}
+        ${getReduceResultSection(data)}
         ${getResultsGrid(data)}
         ${getDetailsPanel(data)}
     `;
@@ -181,6 +182,69 @@ function getSummarySection(data: PipelineResultViewData): string {
                     <div class="stat-value">${stats.maxConcurrency}</div>
                     <div class="stat-label">Concurrency</div>
                 </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Format output for display - pretty-print JSON if possible
+ */
+function formatOutputForDisplay(output: string): string {
+    // Try to parse as JSON and pretty-print with indentation
+    try {
+        const parsed = JSON.parse(output);
+        return JSON.stringify(parsed, null, 2);
+    } catch {
+        // Not JSON, return as-is
+        return output;
+    }
+}
+
+/**
+ * Generate reduce result section (shown when AI reduce was used)
+ */
+export function getReduceResultSection(data: PipelineResultViewData): string {
+    // Only show if reduce was used and there's output
+    if (!data.reduceStats?.usedAIReduce && !data.output?.formattedOutput) {
+        return '';
+    }
+
+    const reduceStats = data.reduceStats;
+    const hasAIReduce = reduceStats?.usedAIReduce ?? false;
+    const formattedOutput = data.output?.formattedOutput || '';
+
+    // If no formatted output, don't show section
+    if (!formattedOutput) {
+        return '';
+    }
+
+    // Pretty-print the output for better readability
+    const displayOutput = formatOutputForDisplay(formattedOutput);
+
+    return `
+        <div class="reduce-section">
+            <h3 class="section-title">
+                ${hasAIReduce ? '🤖 AI Reduce Result' : '📋 Reduce Result'}
+            </h3>
+            ${reduceStats ? `
+                <div class="reduce-stats">
+                    <span class="reduce-stat">
+                        <span class="reduce-stat-label">Inputs:</span>
+                        <span class="reduce-stat-value">${reduceStats.inputCount}</span>
+                    </span>
+                    <span class="reduce-stat">
+                        <span class="reduce-stat-label">Merged:</span>
+                        <span class="reduce-stat-value">${reduceStats.mergedCount}</span>
+                    </span>
+                    <span class="reduce-stat">
+                        <span class="reduce-stat-label">Duration:</span>
+                        <span class="reduce-stat-value">${formatDuration(reduceStats.reduceTimeMs)}</span>
+                    </span>
+                </div>
+            ` : ''}
+            <div class="reduce-output">
+                <pre class="reduce-output-content">${escapeHtml(displayOutput)}</pre>
             </div>
         </div>
     `;
@@ -586,6 +650,67 @@ function getStyles(isDark: boolean): string {
             font-size: 11px;
             color: ${isDark ? '#9d9d9d' : '#666666'};
             margin-top: 4px;
+        }
+
+        /* Reduce Section */
+        .reduce-section {
+            margin-bottom: 20px;
+            padding: 16px;
+            background: ${isDark ? 'rgba(86, 156, 214, 0.1)' : 'rgba(0, 102, 204, 0.05)'};
+            border: 1px solid ${isDark ? 'rgba(86, 156, 214, 0.3)' : 'rgba(0, 102, 204, 0.2)'};
+            border-radius: 8px;
+        }
+
+        .reduce-section .section-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .reduce-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            background: var(--card-bg);
+            border-radius: 4px;
+        }
+
+        .reduce-stat {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .reduce-stat-label {
+            font-size: 11px;
+            color: ${isDark ? '#9d9d9d' : '#666666'};
+        }
+
+        .reduce-stat-value {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
+        .reduce-output {
+            background: var(--code-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .reduce-output-content {
+            margin: 0;
+            padding: 12px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 300px;
+            overflow-y: auto;
+            color: var(--text-color);
         }
 
         /* Results Grid */

@@ -150,6 +150,7 @@ export class PipelineResultViewerProvider {
             success: result.success,
             totalTimeMs: result.totalTimeMs,
             executionStats: result.executionStats,
+            reduceStats: result.reduceStats,
             output: result.output as PromptMapOutput | undefined,
             itemResults,
             error: result.error,

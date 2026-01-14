@@ -72,6 +72,12 @@ export class AIProcessItem extends vscode.TreeItem {
                 title: 'View Code Review',
                 arguments: [this]
             };
+        } else if (process.type === 'pipeline-execution' && process.status === 'completed') {
+            this.command = {
+                command: 'clarificationProcesses.viewPipelineExecutionDetails',
+                title: 'View Pipeline Results',
+                arguments: [this]
+            };
         } else {
             this.command = {
                 command: 'clarificationProcesses.viewDetails',

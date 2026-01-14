@@ -676,6 +676,114 @@ suite('AI Process View Details Tests', () => {
         assert.ok(item.command.arguments);
         assert.strictEqual(item.command.arguments[0], item);
     });
+
+    test('should use viewCodeReviewDetails command for completed code-review process', async () => {
+        const { AIProcessItem } = await import('../../shortcuts/ai-service');
+        
+        const process: AIProcess = {
+            id: 'test-cr-1',
+            type: 'code-review',
+            promptPreview: 'Code Review',
+            fullPrompt: 'Review code',
+            status: 'completed',
+            startTime: new Date(),
+            endTime: new Date(),
+            result: 'Review result',
+            structuredResult: '{}'
+        };
+
+        const item = new AIProcessItem(process);
+
+        assert.ok(item.command);
+        assert.strictEqual(item.command.command, 'clarificationProcesses.viewCodeReviewDetails');
+        assert.strictEqual(item.command.title, 'View Code Review');
+    });
+
+    test('should use viewCodeReviewGroupDetails command for completed code-review-group process', async () => {
+        const { AIProcessItem } = await import('../../shortcuts/ai-service');
+        
+        const process: AIProcess = {
+            id: 'test-crg-1',
+            type: 'code-review-group',
+            promptPreview: 'Code Review Group',
+            fullPrompt: 'Review code group',
+            status: 'completed',
+            startTime: new Date(),
+            endTime: new Date(),
+            result: 'Group result',
+            structuredResult: '{}'
+        };
+
+        const item = new AIProcessItem(process);
+
+        assert.ok(item.command);
+        assert.strictEqual(item.command.command, 'clarificationProcesses.viewCodeReviewGroupDetails');
+        assert.strictEqual(item.command.title, 'View Aggregated Code Review');
+    });
+
+    test('should use viewPipelineExecutionDetails command for completed pipeline-execution process', async () => {
+        const { AIProcessItem } = await import('../../shortcuts/ai-service');
+        
+        const process: AIProcess = {
+            id: 'test-pe-1',
+            type: 'pipeline-execution',
+            promptPreview: 'Pipeline: test-pipeline',
+            fullPrompt: 'Execute pipeline',
+            status: 'completed',
+            startTime: new Date(),
+            endTime: new Date(),
+            result: 'Pipeline result',
+            structuredResult: '{"results":[]}'
+        };
+
+        const item = new AIProcessItem(process);
+
+        assert.ok(item.command);
+        assert.strictEqual(item.command.command, 'clarificationProcesses.viewPipelineExecutionDetails');
+        assert.strictEqual(item.command.title, 'View Pipeline Results');
+    });
+
+    test('should use viewDetails command for running pipeline-execution process', async () => {
+        const { AIProcessItem } = await import('../../shortcuts/ai-service');
+        
+        const process: AIProcess = {
+            id: 'test-pe-2',
+            type: 'pipeline-execution',
+            promptPreview: 'Pipeline: running-pipeline',
+            fullPrompt: 'Execute pipeline',
+            status: 'running',
+            startTime: new Date()
+        };
+
+        const item = new AIProcessItem(process);
+
+        assert.ok(item.command);
+        // Running pipeline should use generic viewDetails (text-based)
+        assert.strictEqual(item.command.command, 'clarificationProcesses.viewDetails');
+        assert.strictEqual(item.command.title, 'View Details');
+    });
+
+    test('should use viewDetails command for failed pipeline-execution process', async () => {
+        const { AIProcessItem } = await import('../../shortcuts/ai-service');
+        
+        const process: AIProcess = {
+            id: 'test-pe-3',
+            type: 'pipeline-execution',
+            promptPreview: 'Pipeline: failed-pipeline',
+            fullPrompt: 'Execute pipeline',
+            status: 'failed',
+            startTime: new Date(),
+            endTime: new Date(),
+            error: 'Pipeline failed'
+        };
+
+        const item = new AIProcessItem(process);
+
+        assert.ok(item.command);
+        // Failed pipeline should use generic viewDetails (text-based)
+        assert.strictEqual(item.command.command, 'clarificationProcesses.viewDetails');
+        assert.strictEqual(item.command.title, 'View Details');
+    });
 });
 
 suite('AI Process Document Provider - Structured Result Display', () => {

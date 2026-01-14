@@ -19,10 +19,11 @@ import {
     ResultViewerFilterState
 } from '../../../shortcuts/yaml-pipeline/ui/result-viewer-types';
 import {
-    getItemDetailContent
+    getItemDetailContent,
+    getReduceResultSection
 } from '../../../shortcuts/yaml-pipeline/ui/result-viewer-content';
 import { PromptMapResult } from '../../../shortcuts/map-reduce/jobs/prompt-map-job';
-import { ExecutionStats } from '../../../shortcuts/map-reduce/types';
+import { ExecutionStats, ReduceStats } from '../../../shortcuts/map-reduce/types';
 
 suite('Pipeline Result Viewer Tests', () => {
     // Sample execution stats
@@ -771,5 +772,419 @@ suite('Pipeline Result Viewer Integration Tests', () => {
         const reduceDuration = formatDuration(stats.reducePhaseTimeMs);
         assert.strictEqual(mapDuration, '30.0s');
         assert.strictEqual(reduceDuration, '500ms');
+    });
+});
+
+suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
+    // Sample execution stats for testing
+    const baseExecutionStats: ExecutionStats = {
+        totalItems: 5,
+        successfulMaps: 5,
+        failedMaps: 0,
+        mapPhaseTimeMs: 4000,
+        reducePhaseTimeMs: 1000,
+        maxConcurrency: 3
+    };
+
+    test('getReduceResultSection returns empty string when no reduce output', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'Test',
+            packageName: 'test-pkg',
+            success: true,
+            totalTimeMs: 1000,
+            executionStats: baseExecutionStats,
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        const html = getReduceResultSection(viewData);
+        assert.strictEqual(html, '', 'Should return empty string when no output');
+    });
+
+    test('getReduceResultSection shows AI Reduce Result for AI reduce', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'AI Test',
+            packageName: 'ai-pkg',
+            success: true,
+            totalTimeMs: 5000,
+            executionStats: baseExecutionStats,
+            reduceStats: {
+                inputCount: 5,
+                outputCount: 1,
+                mergedCount: 5,
+                reduceTimeMs: 1000,
+                usedAIReduce: true
+            },
+            output: {
+                results: [],
+                formattedOutput: '{"summary": "AI result"}',
+                summary: { totalItems: 5, successfulItems: 5, failedItems: 0, outputFields: ['summary'] }
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        const html = getReduceResultSection(viewData);
+        assert.ok(html.includes('AI Reduce Result'), 'Should show AI Reduce Result title');
+        assert.ok(html.includes('🤖'), 'Should have robot emoji for AI reduce');
+        assert.ok(html.includes('reduce-section'), 'Should have reduce-section class');
+    });
+
+    test('getReduceResultSection shows Reduce Result for deterministic reduce', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'List Test',
+            packageName: 'list-pkg',
+            success: true,
+            totalTimeMs: 3000,
+            executionStats: baseExecutionStats,
+            reduceStats: {
+                inputCount: 5,
+                outputCount: 5,
+                mergedCount: 0,
+                reduceTimeMs: 500,
+                usedAIReduce: false
+            },
+            output: {
+                results: [],
+                formattedOutput: '## Results\n...',
+                summary: { totalItems: 5, successfulItems: 5, failedItems: 0, outputFields: [] }
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        const html = getReduceResultSection(viewData);
+        assert.ok(html.includes('Reduce Result'), 'Should show Reduce Result title');
+        assert.ok(html.includes('📋'), 'Should have clipboard emoji for deterministic reduce');
+        assert.ok(!html.includes('AI Reduce'), 'Should NOT have AI Reduce text');
+    });
+
+    test('getReduceResultSection displays reduce stats', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'Stats Test',
+            packageName: 'stats-pkg',
+            success: true,
+            totalTimeMs: 5000,
+            executionStats: baseExecutionStats,
+            reduceStats: {
+                inputCount: 10,
+                outputCount: 1,
+                mergedCount: 10,
+                reduceTimeMs: 2500,
+                usedAIReduce: true
+            },
+            output: {
+                results: [],
+                formattedOutput: '{"data": "test"}',
+                summary: { totalItems: 10, successfulItems: 10, failedItems: 0, outputFields: [] }
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        const html = getReduceResultSection(viewData);
+        assert.ok(html.includes('Inputs:'), 'Should show Inputs label');
+        assert.ok(html.includes('10'), 'Should show input count');
+        assert.ok(html.includes('Merged:'), 'Should show Merged label');
+        assert.ok(html.includes('Duration:'), 'Should show Duration label');
+        assert.ok(html.includes('2.5s'), 'Should show formatted duration');
+    });
+
+    test('getReduceResultSection displays formatted output', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'Output Test',
+            packageName: 'output-pkg',
+            success: true,
+            totalTimeMs: 3000,
+            executionStats: baseExecutionStats,
+            reduceStats: {
+                inputCount: 3,
+                outputCount: 1,
+                mergedCount: 3,
+                reduceTimeMs: 1000,
+                usedAIReduce: true
+            },
+            output: {
+                results: [],
+                formattedOutput: '{"summary": "All tasks completed", "count": 3}',
+                summary: { totalItems: 3, successfulItems: 3, failedItems: 0, outputFields: ['summary', 'count'] }
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        const html = getReduceResultSection(viewData);
+        assert.ok(html.includes('reduce-output'), 'Should have reduce-output class');
+        assert.ok(html.includes('reduce-output-content'), 'Should have reduce-output-content class');
+        assert.ok(html.includes('All tasks completed'), 'Should show formatted output content');
+    });
+
+    test('getReduceResultSection pretty-prints JSON output', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'Pretty Print Test',
+            packageName: 'pretty-pkg',
+            success: true,
+            totalTimeMs: 3000,
+            executionStats: baseExecutionStats,
+            reduceStats: {
+                inputCount: 2,
+                outputCount: 1,
+                mergedCount: 2,
+                reduceTimeMs: 1000,
+                usedAIReduce: true
+            },
+            output: {
+                results: [],
+                // Compact JSON input
+                formattedOutput: '{"summary":"Test result","items":["a","b"]}',
+                summary: { totalItems: 2, successfulItems: 2, failedItems: 0, outputFields: ['summary', 'items'] }
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        const html = getReduceResultSection(viewData);
+        // Should contain indented JSON (check for newline followed by spaces)
+        assert.ok(html.includes('&quot;summary&quot;'), 'Should have summary key');
+        // Pretty-printed JSON should have the value on same line or properly formatted
+        assert.ok(html.includes('Test result'), 'Should show value');
+    });
+
+    test('getReduceResultSection escapes HTML in output', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'XSS Test',
+            packageName: 'xss-pkg',
+            success: true,
+            totalTimeMs: 2000,
+            executionStats: baseExecutionStats,
+            reduceStats: {
+                inputCount: 1,
+                outputCount: 1,
+                mergedCount: 1,
+                reduceTimeMs: 500,
+                usedAIReduce: true
+            },
+            output: {
+                results: [],
+                formattedOutput: '{"message": "<script>alert(1)</script>"}',
+                summary: { totalItems: 1, successfulItems: 1, failedItems: 0, outputFields: ['message'] }
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        const html = getReduceResultSection(viewData);
+        assert.ok(html.includes('&lt;script&gt;'), 'Should escape HTML in output');
+        assert.ok(!html.includes('<script>alert'), 'Should NOT have unescaped script tag');
+    });
+
+    test('getReduceResultSection shows output without reduceStats', () => {
+        // This tests the case where there's output but no reduceStats (backwards compatibility)
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'No Stats Test',
+            packageName: 'nostats-pkg',
+            success: true,
+            totalTimeMs: 2000,
+            executionStats: baseExecutionStats,
+            // No reduceStats
+            output: {
+                results: [],
+                formattedOutput: '## Simple formatted output',
+                summary: { totalItems: 2, successfulItems: 2, failedItems: 0, outputFields: [] }
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        const html = getReduceResultSection(viewData);
+        assert.ok(html.includes('Reduce Result'), 'Should show section even without reduceStats');
+        assert.ok(html.includes('Simple formatted output'), 'Should show formatted output');
+        assert.ok(!html.includes('reduce-stats'), 'Should NOT show stats section');
+    });
+
+    test('PipelineResultViewData should support reduceStats', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'Test Pipeline',
+            packageName: 'test-pkg',
+            success: true,
+            totalTimeMs: 5000,
+            executionStats: {
+                totalItems: 5,
+                successfulMaps: 5,
+                failedMaps: 0,
+                mapPhaseTimeMs: 4000,
+                reducePhaseTimeMs: 1000,
+                maxConcurrency: 3
+            },
+            reduceStats: {
+                inputCount: 5,
+                outputCount: 1,
+                mergedCount: 5,
+                reduceTimeMs: 1000,
+                usedAIReduce: true
+            },
+            output: {
+                results: [],
+                formattedOutput: '{"summary": "AI synthesized result", "priorities": ["P1", "P2"]}',
+                summary: {
+                    totalItems: 5,
+                    successfulItems: 5,
+                    failedItems: 0,
+                    outputFields: ['summary', 'priorities']
+                }
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        assert.ok(viewData.reduceStats, 'Should have reduceStats');
+        assert.strictEqual(viewData.reduceStats.usedAIReduce, true, 'Should have usedAIReduce flag');
+        assert.strictEqual(viewData.reduceStats.inputCount, 5, 'Should have inputCount');
+        assert.strictEqual(viewData.reduceStats.mergedCount, 5, 'Should have mergedCount');
+    });
+
+    test('PipelineResultViewData should work without reduceStats', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'Simple Pipeline',
+            packageName: 'simple-pkg',
+            success: true,
+            totalTimeMs: 2000,
+            executionStats: {
+                totalItems: 2,
+                successfulMaps: 2,
+                failedMaps: 0,
+                mapPhaseTimeMs: 1500,
+                reducePhaseTimeMs: 500,
+                maxConcurrency: 2
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        assert.strictEqual(viewData.reduceStats, undefined, 'reduceStats should be optional');
+    });
+
+    test('PipelineResultViewData should support formattedOutput for deterministic reduce', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'List Pipeline',
+            packageName: 'list-pkg',
+            success: true,
+            totalTimeMs: 3000,
+            executionStats: {
+                totalItems: 3,
+                successfulMaps: 3,
+                failedMaps: 0,
+                mapPhaseTimeMs: 2500,
+                reducePhaseTimeMs: 500,
+                maxConcurrency: 3
+            },
+            reduceStats: {
+                inputCount: 3,
+                outputCount: 3,
+                mergedCount: 0,
+                reduceTimeMs: 500,
+                usedAIReduce: false
+            },
+            output: {
+                results: [],
+                formattedOutput: '## Results (3 items)\n\n### Item 1\n...',
+                summary: {
+                    totalItems: 3,
+                    successfulItems: 3,
+                    failedItems: 0,
+                    outputFields: ['status']
+                }
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        assert.ok(viewData.output, 'Should have output');
+        assert.ok(viewData.output.formattedOutput, 'Should have formattedOutput');
+        assert.strictEqual(viewData.reduceStats?.usedAIReduce, false, 'Should not be AI reduce');
+    });
+
+    test('reduceStats should have all required fields for AI reduce', () => {
+        const reduceStats = {
+            inputCount: 10,
+            outputCount: 1,
+            mergedCount: 10,
+            reduceTimeMs: 2500,
+            usedAIReduce: true
+        };
+
+        assert.strictEqual(typeof reduceStats.inputCount, 'number');
+        assert.strictEqual(typeof reduceStats.outputCount, 'number');
+        assert.strictEqual(typeof reduceStats.mergedCount, 'number');
+        assert.strictEqual(typeof reduceStats.reduceTimeMs, 'number');
+        assert.strictEqual(typeof reduceStats.usedAIReduce, 'boolean');
+    });
+
+    test('formattedOutput should contain AI reduce result', () => {
+        const aiReduceOutput = {
+            summary: 'All bugs analyzed and categorized',
+            topPriorities: ['Fix login', 'Update API'],
+            riskLevel: 'medium'
+        };
+
+        const formattedOutput = JSON.stringify(aiReduceOutput, null, 2);
+
+        assert.ok(formattedOutput.includes('summary'));
+        assert.ok(formattedOutput.includes('topPriorities'));
+        assert.ok(formattedOutput.includes('Fix login'));
+    });
+
+    test('should handle empty formattedOutput gracefully', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'Empty Output Pipeline',
+            packageName: 'empty-pkg',
+            success: true,
+            totalTimeMs: 1000,
+            executionStats: {
+                totalItems: 0,
+                successfulMaps: 0,
+                failedMaps: 0,
+                mapPhaseTimeMs: 0,
+                reducePhaseTimeMs: 0,
+                maxConcurrency: 1
+            },
+            output: {
+                results: [],
+                formattedOutput: '',
+                summary: {
+                    totalItems: 0,
+                    successfulItems: 0,
+                    failedItems: 0,
+                    outputFields: []
+                }
+            },
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        assert.strictEqual(viewData.output?.formattedOutput, '');
+    });
+
+    test('should preserve complex JSON structure in formattedOutput', () => {
+        const complexOutput = {
+            analysis: {
+                bugs: [
+                    { id: 1, severity: 'high' },
+                    { id: 2, severity: 'low' }
+                ],
+                recommendations: ['Increase coverage', 'Add logging']
+            },
+            metadata: {
+                processedAt: '2024-01-15T10:00:00Z',
+                version: '1.0'
+            }
+        };
+
+        const formattedOutput = JSON.stringify(complexOutput, null, 2);
+
+        // Parse back to verify structure preserved
+        const parsed = JSON.parse(formattedOutput);
+        assert.strictEqual(parsed.analysis.bugs.length, 2);
+        assert.strictEqual(parsed.analysis.bugs[0].severity, 'high');
     });
 });

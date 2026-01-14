@@ -922,7 +922,7 @@
       },
       {
         "command": "clarificationProcesses.viewPipelineExecutionDetails",
-        "title": "View Details",
+        "title": "View Pipeline Results",
         "category": "AI Processes",
         "icon": "$(graph)"
       },

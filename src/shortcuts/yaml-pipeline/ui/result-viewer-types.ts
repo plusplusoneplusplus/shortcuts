@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { ExecutionStats } from '../../map-reduce/types';
+import { ExecutionStats, ReduceStats } from '../../map-reduce/types';
 import { PromptMapResult, PromptMapOutput, PromptMapSummary, PromptItem } from '../../map-reduce/jobs/prompt-map-job';
 
 /**
@@ -24,6 +24,8 @@ export interface PipelineResultViewData {
     totalTimeMs: number;
     /** Execution statistics */
     executionStats: ExecutionStats;
+    /** Reduce phase statistics */
+    reduceStats?: ReduceStats;
     /** Output from reduce phase */
     output?: PromptMapOutput;
     /** Individual item results for node display */
