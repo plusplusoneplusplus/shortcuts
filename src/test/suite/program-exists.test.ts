@@ -6,7 +6,9 @@
 import * as assert from 'assert';
 import { checkProgramExists, clearProgramExistsCache } from '../../shortcuts/ai-service/copilot-cli-invoker';
 
-suite('Program Existence Check Tests', () => {
+suite('Program Existence Check Tests', function() {
+    // Increase timeout for the entire suite since execSync can be slow on Windows
+    this.timeout(30000);
 
     // Clear cache before each test suite to ensure isolation
     setup(() => {

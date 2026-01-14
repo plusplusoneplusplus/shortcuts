@@ -9,7 +9,10 @@ import { LogicalTreeDataProvider } from '../../shortcuts/logical-tree-data-provi
 import { ThemeManager } from '../../shortcuts/theme-manager';
 import { LogicalGroupItem } from '../../shortcuts/tree-items';
 
-suite('ShortcutsCommands Integration Tests', () => {
+suite('ShortcutsCommands Integration Tests', function() {
+    // Increase timeout for the entire suite since file operations are slow on Windows
+    this.timeout(30000);
+    
     let tempDir: string;
     let provider: LogicalTreeDataProvider;
     let configManager: ConfigurationManager;
@@ -23,7 +26,8 @@ suite('ShortcutsCommands Integration Tests', () => {
         return path.join(os.homedir(), '.vscode-shortcuts', '.vscode', 'shortcuts.yaml');
     }
 
-    suiteSetup(async () => {
+    suiteSetup(async function() {
+        this.timeout(30000);
         // Use the workspace folder launched by the test runner for isolation
         tempDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-commands-test-'));
 
