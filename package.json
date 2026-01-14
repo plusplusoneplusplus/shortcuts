@@ -2,7 +2,7 @@
   "name": "workspace-shortcuts",
   "displayName": "Markdown Review & Workspace Shortcuts",
   "description": "Add inline comments and annotations to markdown files with a powerful review editor. Review git diffs, organize files into groups, and generate AI prompts from comments.",
-  "version": "3.0.5",
+  "version": "3.0.6",
   "publisher": "yihengtao",
   "repository": {
     "type": "git",
