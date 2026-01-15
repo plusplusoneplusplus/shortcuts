@@ -369,7 +369,7 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
     registerCodeReviewProcess(
         prompt: string,
         metadata: {
-            reviewType: 'commit' | 'pending' | 'staged';
+            reviewType: 'commit' | 'pending' | 'staged' | 'range';
             commitSha?: string;
             commitMessage?: string;
             rulesUsed: string[];
@@ -389,6 +389,8 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             promptPreview = `Review: ${metadata.commitSha.substring(0, 7)}`;
         } else if (metadata.reviewType === 'pending') {
             promptPreview = 'Review: pending changes';
+        } else if (metadata.reviewType === 'range') {
+            promptPreview = 'Review: commit range';
         } else {
             promptPreview = 'Review: staged changes';
         }

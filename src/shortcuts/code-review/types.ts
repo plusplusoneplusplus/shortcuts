@@ -85,8 +85,8 @@ export interface DiffStats {
  * Metadata for a code review process
  */
 export interface CodeReviewMetadata {
-    /** Type of review (commit or pending) */
-    type: 'commit' | 'pending' | 'staged';
+    /** Type of review (commit, pending, staged, or range) */
+    type: 'commit' | 'pending' | 'staged' | 'range';
     /** Commit SHA (for commit reviews) */
     commitSha?: string;
     /** Commit message (for commit reviews) */

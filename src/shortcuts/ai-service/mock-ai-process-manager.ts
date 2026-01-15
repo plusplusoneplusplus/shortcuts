@@ -263,7 +263,7 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
     registerCodeReviewProcess(
         prompt: string,
         metadata: {
-            reviewType: 'commit' | 'pending' | 'staged';
+            reviewType: 'commit' | 'pending' | 'staged' | 'range';
             commitSha?: string;
             commitMessage?: string;
             rulesUsed: string[];

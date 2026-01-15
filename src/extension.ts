@@ -445,6 +445,9 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitUnstageFileCommand: vscode.Disposable | undefined;
         let gitStageAllCommand: vscode.Disposable | undefined;
         let gitUnstageAllCommand: vscode.Disposable | undefined;
+        let gitRefreshCommitRangeCommand: vscode.Disposable | undefined;
+        let gitCopyRangeRefCommand: vscode.Disposable | undefined;
+        let gitCopyRangeSummaryCommand: vscode.Disposable | undefined;
 
         // Create Git drag and drop controller for Copilot Chat integration
         const gitDragDropController = new GitDragDropController();
@@ -857,6 +860,47 @@ export async function activate(context: vscode.ExtensionContext) {
                     } finally {
                         // Clear all loading states
                         gitTreeDataProvider.clearAllLoading();
+                    }
+                }
+            );
+
+            // Register commit range commands
+            gitRefreshCommitRangeCommand = vscode.commands.registerCommand(
+                'gitView.refreshCommitRange',
+                () => {
+                    gitTreeDataProvider.refreshCommitRange();
+                }
+            );
+
+            gitCopyRangeRefCommand = vscode.commands.registerCommand(
+                'gitView.copyRangeRef',
+                async (item?: any) => {
+                    const range = item?.range || gitTreeDataProvider.getCommitRange();
+                    if (range) {
+                        const rangeRef = `${range.baseRef}...${range.headRef}`;
+                        await vscode.env.clipboard.writeText(rangeRef);
+                        vscode.window.showInformationMessage(`Copied: ${rangeRef}`);
+                    }
+                }
+            );
+
+            gitCopyRangeSummaryCommand = vscode.commands.registerCommand(
+                'gitView.copyRangeSummary',
+                async (item?: any) => {
+                    const range = item?.range || gitTreeDataProvider.getCommitRange();
+                    if (range) {
+                        const branchDisplay = range.branchName || 'HEAD';
+                        const summary = [
+                            `Branch: ${branchDisplay}`,
+                            `Commits: ${range.commitCount} ahead of ${range.baseRef}`,
+                            `Files changed: ${range.files.length}`,
+                            `Changes: +${range.additions}/-${range.deletions}`,
+                            '',
+                            'Files:',
+                            ...range.files.map((f: { status: string; path: string }) => `  ${f.status.charAt(0).toUpperCase()} ${f.path}`)
+                        ].join('\n');
+                        await vscode.env.clipboard.writeText(summary);
+                        vscode.window.showInformationMessage('Copied range summary to clipboard');
                     }
                 }
             );
@@ -1399,6 +1443,9 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitUnstageFileCommand) disposables.push(gitUnstageFileCommand);
         if (gitStageAllCommand) disposables.push(gitStageAllCommand);
         if (gitUnstageAllCommand) disposables.push(gitUnstageAllCommand);
+        if (gitRefreshCommitRangeCommand) disposables.push(gitRefreshCommitRangeCommand);
+        if (gitCopyRangeRefCommand) disposables.push(gitCopyRangeRefCommand);
+        if (gitCopyRangeSummaryCommand) disposables.push(gitCopyRangeSummaryCommand);
 
         // Add Debug Panel disposables
         disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand, runCustomCommand);

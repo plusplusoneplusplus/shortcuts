@@ -627,6 +627,33 @@
           "minimum": 1,
           "maximum": 50,
           "description": "Maximum number of looked-up commits to keep in the Git panel. When this limit is reached, the oldest commit is removed when adding a new one."
+        },
+        "workspaceShortcuts.git.commitRange.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Branch Changes feature that shows commits ahead of the remote default branch"
+        },
+        "workspaceShortcuts.git.commitRange.autoDetect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically detect and show the commit range when on a feature branch"
+        },
+        "workspaceShortcuts.git.commitRange.defaultBaseBranch": {
+          "type": "string",
+          "default": "main",
+          "description": "Default base branch name to use if remote default branch cannot be detected"
+        },
+        "workspaceShortcuts.git.commitRange.maxFiles": {
+          "type": "number",
+          "default": 100,
+          "minimum": 10,
+          "maximum": 500,
+          "description": "Maximum number of files to show in a commit range"
+        },
+        "workspaceShortcuts.git.commitRange.showOnDefaultBranch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show commit range even when on the default branch (for unpushed commits)"
         }
       }
     },
@@ -1135,6 +1162,30 @@
         "title": "Unstage All Changes",
         "category": "Git",
         "icon": "$(remove)"
+      },
+      {
+        "command": "gitView.refreshCommitRange",
+        "title": "Refresh Branch Changes",
+        "category": "Git",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gitView.copyRangeRef",
+        "title": "Copy Range Reference",
+        "category": "Git",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "gitView.copyRangeSummary",
+        "title": "Copy Range Summary",
+        "category": "Git",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "shortcuts.reviewRangeAgainstRules",
+        "title": "Review Range Against Rules",
+        "category": "Code Review",
+        "icon": "$(checklist)"
       },
       {
         "command": "shortcuts.reviewCommitAgainstRules",
@@ -1851,6 +1902,31 @@
           "command": "gitView.clearAllLookedUpCommits",
           "when": "view == gitView && viewItem =~ /^lookedUpCommit_/",
           "group": "lookedUpCommit@9"
+        },
+        {
+          "command": "shortcuts.reviewRangeAgainstRules",
+          "when": "view == gitView && viewItem == gitCommitRange",
+          "group": "gitCommitRange@1"
+        },
+        {
+          "command": "gitView.copyRangeRef",
+          "when": "view == gitView && viewItem == gitCommitRange",
+          "group": "gitCommitRange@2"
+        },
+        {
+          "command": "gitView.refreshCommitRange",
+          "when": "view == gitView && viewItem == gitCommitRange",
+          "group": "gitCommitRange@3"
+        },
+        {
+          "command": "gitView.copyRangeSummary",
+          "when": "view == gitView && viewItem == gitCommitRange",
+          "group": "gitCommitRange@4"
+        },
+        {
+          "command": "gitDiffComments.openWithReview",
+          "when": "view == gitView && viewItem =~ /^gitRangeFile/",
+          "group": "navigation@10"
         },
         {
           "command": "gitView.stageFile",

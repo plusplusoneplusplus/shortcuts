@@ -12,10 +12,12 @@ import { getPredefinedCommentRegistry } from '../shared/predefined-comment-regis
 import { DiffCommentsManager } from './diff-comments-manager';
 import {
     createCommittedGitContext,
+    createRangeGitContext,
     createStagedGitContext,
     createUnstagedGitContext,
     createUntrackedGitContext,
-    getDiffContent
+    getDiffContent,
+    getRangeDiffContent
 } from './diff-content-provider';
 import { handleDiffAIClarification } from './diff-ai-clarification-handler';
 import {
@@ -199,6 +201,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         let filePath: string;
         let gitContext: DiffGitContext;
 
+        // Track if this is a range file for special handling
+        let isRangeFile = false;
+        let rangeInfo: { baseRef: string; headRef: string } | undefined;
+
         // Handle different item types
         if (item.change) {
             // GitChangeItem from our tree view
@@ -216,17 +222,32 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 gitContext = createUnstagedGitContext(repoRoot, repoName);
             }
         } else if (item.commitFile) {
-            // GitCommitFile from commit tree view
+            // GitCommitFile from commit tree view (or GitRangeFileItem)
             const file = item.commitFile;
             filePath = path.join(file.repositoryRoot, file.path);
             const repoName = path.basename(file.repositoryRoot);
             
-            gitContext = createCommittedGitContext(
-                file.repositoryRoot,
-                repoName,
-                file.commitHash,
-                file.parentHash
-            );
+            // Check if this is a range file
+            if (file.isRangeFile && file.range) {
+                isRangeFile = true;
+                rangeInfo = {
+                    baseRef: file.range.baseRef,
+                    headRef: file.range.headRef
+                };
+                gitContext = createRangeGitContext(
+                    file.repositoryRoot,
+                    repoName,
+                    file.range.baseRef,
+                    file.range.headRef
+                );
+            } else {
+                gitContext = createCommittedGitContext(
+                    file.repositoryRoot,
+                    repoName,
+                    file.commitHash,
+                    file.parentHash
+                );
+            }
         } else if (item.resourceUri) {
             // VSCode SCM resource
             filePath = item.resourceUri.fsPath;
@@ -287,7 +308,9 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
         // Get diff content
         const relativePath = path.relative(gitContext.repositoryRoot, filePath);
-        const diffResult = getDiffContent(relativePath, gitContext);
+        const diffResult = isRangeFile && rangeInfo
+            ? getRangeDiffContent(relativePath, rangeInfo.baseRef, rangeInfo.headRef, gitContext.repositoryRoot)
+            : getDiffContent(relativePath, gitContext);
 
         if (diffResult.isBinary) {
             vscode.window.showWarningMessage('Cannot review binary files.');

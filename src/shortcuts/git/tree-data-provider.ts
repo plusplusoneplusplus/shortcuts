@@ -6,16 +6,20 @@ import {
     DiffCommentsTreeDataProvider
 } from '../git-diff-comments/diff-comments-tree-provider';
 import { getExtensionLogger, LogCategory } from '../shared';
+import { BranchChangesSectionItem } from './branch-changes-section-item';
 import { GitChangeItem } from './git-change-item';
 import { GitCommitFileItem } from './git-commit-file-item';
 import { GitCommitItem } from './git-commit-item';
+import { GitCommitRangeItem } from './git-commit-range-item';
 import { GitLogService } from './git-log-service';
+import { GitRangeFileItem } from './git-range-file-item';
+import { GitRangeService } from './git-range-service';
 import { GitService } from './git-service';
 import { LoadMoreItem } from './load-more-item';
 import { LookedUpCommitItem } from './looked-up-commit-item';
 import { SectionHeaderItem } from './section-header-item';
 import { StageSectionItem } from './stage-section-item';
-import { GitChange, GitChangeCounts, GitChangeStage, GitCommentCounts, GitCommit, GitViewCounts } from './types';
+import { GitChange, GitChangeCounts, GitChangeStage, GitCommentCounts, GitCommit, GitCommitRange, GitViewCounts } from './types';
 
 /**
  * Stage priority for sorting (lower = higher priority)
@@ -80,9 +84,14 @@ export class GitTreeDataProvider
     // Set of file paths currently being staged/unstaged (for loading state)
     private loadingFiles: Set<string> = new Set();
 
+    // Commit range service and cached range
+    private gitRangeService: GitRangeService;
+    private cachedCommitRange: GitCommitRange | null = null;
+
     constructor() {
         this.gitService = new GitService();
         this.gitLogService = new GitLogService();
+        this.gitRangeService = new GitRangeService();
     }
 
     /**
@@ -134,6 +143,7 @@ export class GitTreeDataProvider
             this.gitService.onDidChangeChanges(() => {
                 // When changes occur, also reload commits (HEAD might have changed)
                 this.reloadCommits();
+                this.reloadCommitRange();
                 this.refresh();
             })
         );
@@ -142,6 +152,9 @@ export class GitTreeDataProvider
 
         // Load initial commits
         await this.loadInitialCommits();
+
+        // Load initial commit range
+        this.reloadCommitRange();
 
         return true;
     }
@@ -188,6 +201,28 @@ export class GitTreeDataProvider
 
         this.loadedCommits = result.commits;
         this.hasMoreCommits = result.hasMore;
+    }
+
+    /**
+     * Reload the commit range for the current branch
+     */
+    private reloadCommitRange(): void {
+        // Check if feature is enabled
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts.git.commitRange');
+        const enabled = config.get<boolean>('enabled', true);
+        
+        if (!enabled) {
+            this.cachedCommitRange = null;
+            return;
+        }
+
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            this.cachedCommitRange = null;
+            return;
+        }
+
+        this.cachedCommitRange = this.gitRangeService.detectCommitRange(repoRoot);
     }
 
     /**
@@ -251,6 +286,16 @@ export class GitTreeDataProvider
                 }
             }
 
+            // Branch changes section - return commit range items
+            if (element instanceof BranchChangesSectionItem) {
+                return this.getCommitRangeItems();
+            }
+
+            // Commit range item - return files changed in this range
+            if (element instanceof GitCommitRangeItem) {
+                return this.getCommitRangeFileItems(element.range);
+            }
+
             // Stage section - return change items for that stage
             if (element instanceof StageSectionItem) {
                 return this.getChangeItemsForStage(element.stageType);
@@ -293,9 +338,15 @@ export class GitTreeDataProvider
         const commentCount = this.getCommentCount();
 
         const items: vscode.TreeItem[] = [
-            new SectionHeaderItem('changes', changeCounts.total, false),
-            new SectionHeaderItem('commits', commitCount, this.hasMoreCommits)
+            new SectionHeaderItem('changes', changeCounts.total, false)
         ];
+
+        // Add Branch Changes section if there's a commit range
+        if (this.cachedCommitRange) {
+            items.push(new BranchChangesSectionItem(1));
+        }
+
+        items.push(new SectionHeaderItem('commits', commitCount, this.hasMoreCommits));
 
         // Only show comments section if there are comments
         if (commentCount > 0) {
@@ -308,6 +359,25 @@ export class GitTreeDataProvider
         }
 
         return items;
+    }
+
+    /**
+     * Get commit range items for the Branch Changes section
+     */
+    private getCommitRangeItems(): vscode.TreeItem[] {
+        if (!this.cachedCommitRange) {
+            return [];
+        }
+        return [new GitCommitRangeItem(this.cachedCommitRange)];
+    }
+
+    /**
+     * Get file items for a commit range
+     * @param range The commit range to get files for
+     * @returns Array of file tree items
+     */
+    private getCommitRangeFileItems(range: GitCommitRange): vscode.TreeItem[] {
+        return range.files.map(file => new GitRangeFileItem(file, range));
     }
 
     /**
@@ -806,12 +876,35 @@ export class GitTreeDataProvider
     }
 
     /**
+     * Get the current commit range (if any)
+     */
+    getCommitRange(): GitCommitRange | null {
+        return this.cachedCommitRange;
+    }
+
+    /**
+     * Get the git range service
+     */
+    getGitRangeService(): GitRangeService {
+        return this.gitRangeService;
+    }
+
+    /**
+     * Refresh the commit range
+     */
+    refreshCommitRange(): void {
+        this.reloadCommitRange();
+        this.refresh();
+    }
+
+    /**
      * Dispose of resources
      */
     dispose(): void {
         this._onDidChangeTreeData.dispose();
         this.gitService.dispose();
         this.gitLogService.dispose();
+        this.gitRangeService.dispose();
         for (const disposable of this.disposables) {
             disposable.dispose();
         }

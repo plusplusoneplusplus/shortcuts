@@ -23,7 +23,7 @@ import { CodeReviewMetadata, DiffStats, ReviewFinding, ReviewSummary } from './t
  */
 export interface CodeReviewProcessData {
     /** Type of review */
-    reviewType: 'commit' | 'pending' | 'staged';
+    reviewType: 'commit' | 'pending' | 'staged' | 'range';
     /** Commit SHA (for commit reviews) */
     commitSha?: string;
     /** Commit message */

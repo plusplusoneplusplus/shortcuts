@@ -379,6 +379,73 @@ export function createCommittedGitContext(
 }
 
 /**
+ * Create a git context for a commit range change
+ * Uses three-dot notation for merge-base comparison
+ */
+export function createRangeGitContext(
+    repositoryRoot: string,
+    repositoryName: string,
+    baseRef: string,
+    headRef: string
+): DiffGitContext {
+    return {
+        repositoryRoot,
+        repositoryName,
+        oldRef: baseRef,
+        newRef: headRef,
+        wasStaged: true
+    };
+}
+
+/**
+ * Get diff content for a file in a commit range
+ * Uses three-dot notation to get the cumulative diff from merge base
+ */
+export function getRangeDiffContent(
+    filePath: string,
+    baseRef: string,
+    headRef: string,
+    repositoryRoot: string
+): DiffContentResult {
+    if (isBinaryFile(filePath, repositoryRoot)) {
+        return {
+            oldContent: '',
+            newContent: '',
+            isBinary: true
+        };
+    }
+
+    try {
+        // Get the merge base first
+        let mergeBase: string;
+        try {
+            mergeBase = execGit(['merge-base', baseRef, headRef], repositoryRoot);
+        } catch {
+            // If merge-base fails, use baseRef directly
+            mergeBase = baseRef;
+        }
+
+        // Get content at merge base (old version)
+        const oldContent = getFileAtRef(filePath, mergeBase, repositoryRoot);
+        // Get content at HEAD (new version)
+        const newContent = getFileAtRef(filePath, headRef, repositoryRoot);
+
+        return {
+            oldContent,
+            newContent,
+            isBinary: false
+        };
+    } catch (error: any) {
+        return {
+            oldContent: '',
+            newContent: '',
+            isBinary: false,
+            error: error.message
+        };
+    }
+}
+
+/**
  * Get the unified diff output for display
  */
 export function getUnifiedDiff(

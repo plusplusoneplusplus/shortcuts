@@ -12,9 +12,11 @@ import * as vscode from 'vscode';
 import { IAIProcessManager } from '../ai-service/types';
 import { copyToClipboard, getAIToolSetting, invokeCopilotCLI } from '../ai-service/copilot-cli-invoker';
 import { GitCommitItem } from '../git/git-commit-item';
+import { GitCommitRangeItem } from '../git/git-commit-range-item';
 import { GitLogService } from '../git/git-log-service';
+import { GitRangeService } from '../git/git-range-service';
 import { LookedUpCommitItem } from '../git/looked-up-commit-item';
-import { GitCommit } from '../git/types';
+import { GitCommit, GitCommitRange } from '../git/types';
 import {
     AIInvoker,
     CodeReviewInput,
@@ -619,6 +621,64 @@ export function registerCodeReviewCommands(
                     'workbench.action.openSettings',
                     'workspaceShortcuts.codeReview'
                 );
+            }
+        )
+    );
+
+    /**
+     * Review a commit range against rules
+     * @param range The commit range to review
+     * @param selectRules If true, show rule selection UI
+     */
+    async function reviewCommitRange(range: GitCommitRange, selectRules: boolean = false): Promise<void> {
+        const repoRoot = range.repositoryRoot;
+        const workspaceRoot = getWorkspaceRoot();
+
+        if (!workspaceRoot) {
+            vscode.window.showErrorMessage('No workspace folder found.');
+            return;
+        }
+
+        // Get diff for the commit range
+        const gitRangeService = new GitRangeService();
+        const diff = gitRangeService.getRangeDiff(repoRoot, range.baseRef, range.headRef);
+        gitRangeService.dispose();
+
+        if (!diff || diff.trim() === '') {
+            vscode.window.showInformationMessage('No changes in this commit range.');
+            return;
+        }
+
+        // Get selected rules if requested
+        let selectedRules: string[] | undefined;
+        if (selectRules) {
+            selectedRules = await codeReviewService.showRuleSelection(workspaceRoot);
+            if (!selectedRules) {
+                return; // User cancelled
+            }
+        }
+
+        const branchDisplay = range.branchName || 'HEAD';
+        const metadata: CodeReviewMetadata = {
+            type: 'range',
+            commitMessage: `${range.commitCount} commits on ${branchDisplay} (${range.baseRef}...${range.headRef})`,
+            rulesUsed: [],
+            repositoryRoot: repoRoot
+        };
+
+        await executeReview(diff, metadata, selectedRules);
+    }
+
+    // Command: Review commit range against rules
+    disposables.push(
+        vscode.commands.registerCommand(
+            'shortcuts.reviewRangeAgainstRules',
+            async (item: GitCommitRangeItem) => {
+                if (!item || !item.range) {
+                    vscode.window.showErrorMessage('No commit range selected.');
+                    return;
+                }
+                await reviewCommitRange(item.range, false);
             }
         )
     );

@@ -122,7 +122,7 @@ export interface CompleteGroupOptions {
  */
 export interface CodeReviewProcessMetadata {
     /** Type of review */
-    reviewType: 'commit' | 'pending' | 'staged';
+    reviewType: 'commit' | 'pending' | 'staged' | 'range';
     /** Commit SHA (for commit reviews) */
     commitSha?: string;
     /** Commit message */
@@ -165,7 +165,7 @@ export interface DiscoveryProcessMetadata {
  */
 export interface CodeReviewGroupMetadata {
     /** Type of review */
-    reviewType: 'commit' | 'pending' | 'staged';
+    reviewType: 'commit' | 'pending' | 'staged' | 'range';
     /** Commit SHA (for commit reviews) */
     commitSha?: string;
     /** Commit message */
@@ -468,7 +468,7 @@ export interface IAIProcessManager {
     registerCodeReviewProcess(
         prompt: string,
         metadata: {
-            reviewType: 'commit' | 'pending' | 'staged';
+            reviewType: 'commit' | 'pending' | 'staged' | 'range';
             commitSha?: string;
             commitMessage?: string;
             rulesUsed: string[];

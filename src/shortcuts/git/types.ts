@@ -144,3 +144,47 @@ export interface GitViewCounts {
     comments: GitCommentCounts;
 }
 
+/**
+ * Represents a range of commits (e.g., feature branch changes vs origin/main)
+ */
+export interface GitCommitRange {
+    /** Base reference (usually origin/main or origin/master) */
+    baseRef: string;
+    /** Head reference (usually HEAD or branch name) */
+    headRef: string;
+    /** Number of commits in range */
+    commitCount: number;
+    /** Files changed in range */
+    files: GitCommitRangeFile[];
+    /** Total line additions */
+    additions: number;
+    /** Total line deletions */
+    deletions: number;
+    /** Merge base commit hash */
+    mergeBase: string;
+    /** Current branch name (if any) */
+    branchName?: string;
+    /** Repository root path */
+    repositoryRoot: string;
+    /** Repository display name */
+    repositoryName: string;
+}
+
+/**
+ * File within a commit range
+ */
+export interface GitCommitRangeFile {
+    /** File path relative to repository root */
+    path: string;
+    /** Change status */
+    status: GitChangeStatus;
+    /** Line additions for this file */
+    additions: number;
+    /** Line deletions for this file */
+    deletions: number;
+    /** Old path (for renames) */
+    oldPath?: string;
+    /** Repository root path */
+    repositoryRoot: string;
+}
+
