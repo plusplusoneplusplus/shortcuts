@@ -593,6 +593,61 @@ reduce:
                 assert.strictEqual(result.valid, false);
                 assert.ok(result.errors.some(e => e.includes('both')));
             });
+
+            test('should validate inline array in from (multi-model fanout)', async () => {
+                createPipelinePackage('multi-model', `
+name: "Multi-Model Fanout"
+input:
+  from:
+    - model: gpt-4
+    - model: claude-sonnet
+    - model: gemini-pro
+  parameters:
+    - name: code
+      value: "const x = 1;"
+map:
+  prompt: "Review: {{code}}"
+  output:
+    - verdict
+    - reasoning
+  model: "{{model}}"
+reduce:
+  type: ai
+  prompt: |
+    Models responded:
+    {{results}}
+    Identify consensus.
+  output:
+    - consensus
+    - conflicts
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, true, `Validation errors: ${result.errors.join(', ')}`);
+                assert.strictEqual(result.errors.length, 0);
+            });
+
+            test('should warn for empty inline array in from', async () => {
+                createPipelinePackage('empty-from', `
+name: "Empty From Array"
+input:
+  from: []
+map:
+  prompt: "Test"
+  output:
+    - result
+reduce:
+  type: list
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, true);
+                assert.ok(result.warnings.some(w => w.includes('empty')));
+            });
         });
 
         suite('Path Resolution', () => {

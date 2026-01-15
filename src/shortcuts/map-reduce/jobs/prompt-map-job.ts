@@ -213,9 +213,12 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
             const prompt = buildFullPrompt(substituted, outputFields);
             
             // Support template substitution in model (e.g., "{{model}}" reads from item.model)
-            const model = this.modelTemplate 
-                ? substituteTemplate(this.modelTemplate, item) || undefined
-                : undefined;
+            // Ensure modelTemplate is a string before substitution
+            let model: string | undefined;
+            if (this.modelTemplate && typeof this.modelTemplate === 'string') {
+                const substitutedModel = substituteTemplate(this.modelTemplate, item);
+                model = substitutedModel || undefined;
+            }
             
             const result = await this.aiInvoker(prompt, { model });
 

@@ -258,6 +258,7 @@ export class PipelineResultViewerProvider {
                 index: r.index,
                 input: r.input,
                 output: r.output,
+                rawText: r.rawText,
                 success: r.success,
                 error: r.error
             }))
@@ -275,20 +276,25 @@ export class PipelineResultViewerProvider {
         // Collect all input and output keys
         const inputKeys = new Set<string>();
         const outputKeys = new Set<string>();
+        let hasRawText = false;
 
         for (const result of data.itemResults) {
             Object.keys(result.input).forEach(k => inputKeys.add(k));
             Object.keys(result.output).forEach(k => outputKeys.add(k));
+            if (result.rawText) {
+                hasRawText = true;
+            }
         }
 
         const inputKeysList = Array.from(inputKeys);
         const outputKeysList = Array.from(outputKeys);
 
-        // Build headers
+        // Build headers - include rawText column if any result has text mode output
         const headers = [
             'index',
             ...inputKeysList.map(k => `input_${k}`),
             ...outputKeysList.map(k => `output_${k}`),
+            ...(hasRawText ? ['rawText'] : []),
             'success',
             'error'
         ];
@@ -299,6 +305,7 @@ export class PipelineResultViewerProvider {
                 String(r.index + 1),
                 ...inputKeysList.map(k => escapeCSV(String(r.input[k] || ''))),
                 ...outputKeysList.map(k => escapeCSV(formatValue(r.output[k]))),
+                ...(hasRawText ? [escapeCSV(r.rawText || '')] : []),
                 r.success ? 'true' : 'false',
                 escapeCSV(r.error || '')
             ];
@@ -346,8 +353,17 @@ export class PipelineResultViewerProvider {
 
             if (result.success) {
                 lines.push('**Output:**');
-                for (const [key, value] of Object.entries(result.output)) {
-                    lines.push(`- ${key}: ${formatValue(value)}`);
+                const outputEntries = Object.entries(result.output);
+                if (outputEntries.length > 0) {
+                    // Structured mode - show key-value pairs
+                    for (const [key, value] of outputEntries) {
+                        lines.push(`- ${key}: ${formatValue(value)}`);
+                    }
+                } else if (result.rawText) {
+                    // Text mode - show raw text response
+                    lines.push(result.rawText);
+                } else {
+                    lines.push('(empty)');
                 }
             } else {
                 lines.push(`**Error:** ${result.error || 'Unknown error'}`);

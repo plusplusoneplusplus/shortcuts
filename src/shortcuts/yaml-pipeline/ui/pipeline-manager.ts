@@ -233,22 +233,31 @@ export class PipelineManager implements vscode.Disposable {
                 const hasFrom = input.from !== undefined;
                 
                 if (!hasItems && !hasFrom) {
-                    errors.push('Input must have either "items" (inline array) or "from" (CSV source)');
+                    errors.push('Input must have either "items" (inline array) or "from" (CSV source or inline array)');
                 } else if (hasItems && hasFrom) {
                     errors.push('Input cannot have both "items" and "from" - use one or the other');
                 } else if (hasFrom) {
-                    // Validate CSV source
-                    const from = input.from as Record<string, unknown>;
-                    if (from.type !== 'csv') {
-                        errors.push(`Unsupported input source type: ${from.type}. Only "csv" is supported.`);
-                    }
-                    if (!from.path) {
-                        errors.push('Missing "input.from.path" field');
+                    // "from" can be either a CSV source object or an inline array
+                    if (Array.isArray(input.from)) {
+                        // Inline array in "from" - valid for multi-model fanout patterns
+                        const fromArray = input.from as unknown[];
+                        if (fromArray.length === 0) {
+                            warnings.push('Input "from" array is empty');
+                        }
                     } else {
-                        // Validate that the CSV file exists relative to the package
-                        const csvPath = this.resolveResourcePath(from.path as string, packagePath);
-                        if (!fs.existsSync(csvPath)) {
-                            warnings.push(`Input file not found: ${from.path} (expected at ${csvPath})`);
+                        // Should be a CSV source object
+                        const from = input.from as Record<string, unknown>;
+                        if (from.type !== 'csv') {
+                            errors.push(`Unsupported input source type: ${from.type}. Only "csv" is supported for file sources.`);
+                        }
+                        if (!from.path) {
+                            errors.push('Missing "input.from.path" field for CSV source');
+                        } else {
+                            // Validate that the CSV file exists relative to the package
+                            const csvPath = this.resolveResourcePath(from.path as string, packagePath);
+                            if (!fs.existsSync(csvPath)) {
+                                warnings.push(`Input file not found: ${from.path} (expected at ${csvPath})`);
+                            }
                         }
                     }
                 } else if (hasItems) {

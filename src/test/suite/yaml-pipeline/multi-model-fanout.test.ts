@@ -674,5 +674,33 @@ reduce:
             const models = new Set(calls.map(c => c.model));
             assert.strictEqual(models.size, 5);
         });
+
+        test('handles non-string model gracefully', async () => {
+            // This can happen if YAML parsing produces an unexpected type
+            const config = {
+                name: 'Non-String Model Test',
+                input: {
+                    items: [{ title: 'Test' }]
+                },
+                map: {
+                    prompt: '{{title}}',
+                    output: ['result'],
+                    model: { invalid: 'object' }  // Invalid model config
+                },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            const { invoker, getModelCalls } = createModelTrackingInvoker();
+
+            const result = await executePipeline(config, {
+                aiInvoker: invoker,
+                pipelineDirectory: tempDir
+            });
+
+            // Should still succeed, just with undefined model
+            assert.strictEqual(result.success, true);
+            const calls = getModelCalls();
+            assert.strictEqual(calls[0].model, undefined);
+        });
     });
 });

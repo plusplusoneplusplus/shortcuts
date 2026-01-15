@@ -46,8 +46,10 @@ export interface PipelineItemResultNode {
     index: number;
     /** The original input item */
     input: PromptItem;
-    /** The AI-generated output */
+    /** The AI-generated output (structured mode) */
     output: Record<string, unknown>;
+    /** Raw text output when in text mode (no output fields specified) */
+    rawText?: string;
     /** Whether processing succeeded */
     success: boolean;
     /** Error message if failed */
@@ -113,6 +115,7 @@ export function mapResultToNode(
         index,
         input: result.item,
         output: result.output,
+        rawText: result.rawText,
         success: result.success,
         error: result.error,
         rawResponse: result.rawResponse,

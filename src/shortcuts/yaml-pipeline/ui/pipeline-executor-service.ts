@@ -90,13 +90,18 @@ export async function executeVSCodePipeline(
     }
 
     // Create AI invoker that uses Copilot CLI
-    const aiInvoker: AIInvoker = async (prompt: string): Promise<AIInvokerResult> => {
+    // The invoker receives per-item model from options (resolved from template like {{model}})
+    const defaultModel = getAIModelSetting();
+    const aiInvoker: AIInvoker = async (prompt: string, options?: { model?: string }): Promise<AIInvokerResult> => {
+        // Use per-item model from options, fall back to default setting
+        const model = options?.model || defaultModel;
+        
         const result = await invokeCopilotCLI(
             prompt,
             workspaceRoot,
             undefined, // Don't track individual prompts - the group tracks them
             undefined,
-            config.map.model || getAIModelSetting()
+            model
         );
 
         return {
