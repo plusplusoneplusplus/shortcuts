@@ -125,6 +125,8 @@ export interface PromptMapJobOptions {
     aiReduceOutput?: string[];
     /** Model to use for AI reduce (optional, defaults to job model) */
     aiReduceModel?: string;
+    /** Parameters for AI reduce prompt substitution (from input.parameters) */
+    aiReduceParameters?: Record<string, string>;
 }
 
 // ============================================================================
@@ -349,7 +351,8 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         private aiInvoker?: AIInvoker,
         private aiReducePrompt?: string,
         private aiReduceOutput?: string[],
-        private aiReduceModel?: string
+        private aiReduceModel?: string,
+        private aiReduceParameters?: Record<string, string>
     ) {
         super();
     }
@@ -410,12 +413,19 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         // Build prompt with template substitution
         const successfulResults = itemResults.filter(r => r.success);
         const resultsJSON = JSON.stringify(successfulResults.map(r => r.output), null, 2);
-        
-        const prompt = this.aiReducePrompt
+
+        let prompt = this.aiReducePrompt
             .replace(/\{\{results\}\}/g, resultsJSON)
             .replace(/\{\{count\}\}/g, String(summary.totalItems))
             .replace(/\{\{successCount\}\}/g, String(summary.successfulItems))
             .replace(/\{\{failureCount\}\}/g, String(summary.failedItems));
+
+        // Substitute input parameters
+        if (this.aiReduceParameters) {
+            for (const [key, value] of Object.entries(this.aiReduceParameters)) {
+                prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+            }
+        }
 
         const fullPrompt = buildFullPrompt(prompt, this.aiReduceOutput);
 
@@ -478,7 +488,8 @@ export function createPromptMapJob(
             options.aiInvoker,
             options.aiReducePrompt,
             options.aiReduceOutput,
-            options.aiReduceModel
+            options.aiReduceModel,
+            options.aiReduceParameters
         ),
         options: {
             maxConcurrency: options.maxConcurrency || 5,

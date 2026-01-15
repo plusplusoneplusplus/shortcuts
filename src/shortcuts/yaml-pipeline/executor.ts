@@ -151,6 +151,12 @@ export async function executePipeline(
     };
 
     const executor = createExecutor(executorOptions);
+
+    // Convert parameters to object for reduce phase
+    const reduceParameters = config.input.parameters
+        ? convertParametersToObject(config.input.parameters)
+        : undefined;
+
     const job = createPromptMapJob({
         aiInvoker: options.aiInvoker,
         outputFormat: config.reduce.type,
@@ -159,7 +165,8 @@ export async function executePipeline(
         ...(config.reduce.type === 'ai' && {
             aiReducePrompt: config.reduce.prompt,
             aiReduceOutput: config.reduce.output,
-            aiReduceModel: config.reduce.model
+            aiReduceModel: config.reduce.model,
+            aiReduceParameters: reduceParameters
         })
     });
 

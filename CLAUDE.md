@@ -248,6 +248,7 @@ Available template variables in reduce.prompt:
 - `{{count}}` - Total results count
 - `{{successCount}}` - Successful items
 - `{{failureCount}}` - Failed items
+- `{{paramName}}` - Any parameter defined in `input.parameters` (e.g., `{{projectName}}`, `{{reviewer}}`)
 
 **Commands:**
 - Create pipeline: Opens wizard to create new pipeline package
