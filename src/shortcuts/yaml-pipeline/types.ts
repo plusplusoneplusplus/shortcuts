@@ -98,8 +98,8 @@ export interface InputConfig {
 export interface MapConfig {
     /** Prompt template with {{column}} placeholders */
     prompt: string;
-    /** Output field names expected from AI */
-    output: string[];
+    /** Output field names expected from AI. If omitted, text mode is used (raw AI response) */
+    output?: string[];
     /** Maximum concurrent AI calls (default: 5) */
     parallel?: number;
     /** Model to use for AI calls */
@@ -112,11 +112,11 @@ export interface MapConfig {
  * Reduce phase configuration
  */
 export interface ReduceConfig {
-    /** Reduce type / output format */
+    /** Reduce type / output format (includes 'text' for pure text concatenation) */
     type: MROutputFormat;
     /** AI prompt template (required if type is 'ai') */
     prompt?: string;
-    /** AI output fields (required if type is 'ai') */
+    /** AI output fields. If omitted with type 'ai', returns raw AI text response */
     output?: string[];
     /** Model to use for AI reduce (optional) */
     model?: string;

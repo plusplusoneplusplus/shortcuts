@@ -134,7 +134,8 @@ export function generatePipelineMermaid(
         : 'data';
     lines.push(`    INPUT -->|"${inputLinkLabel}"| MAP`);
 
-    const mapLinkLabel = `${config.map.output.length} fields`;
+    const outputFields = config.map.output || [];
+    const mapLinkLabel = outputFields.length > 0 ? `${outputFields.length} fields` : 'text';
     lines.push(`    MAP -->|"${mapLinkLabel}"| REDUCE`);
 
     // Add resource links

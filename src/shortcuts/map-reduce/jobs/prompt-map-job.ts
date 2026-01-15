@@ -66,8 +66,10 @@ export interface PromptWorkItemData {
 export interface PromptMapResult {
     /** The original input item */
     item: PromptItem;
-    /** The AI-generated output (with declared fields) */
+    /** The AI-generated output (with declared fields) - empty object in text mode */
     output: Record<string, unknown>;
+    /** Raw text output when in text mode (no output fields specified) */
+    rawText?: string;
     /** Whether processing succeeded */
     success: boolean;
     /** Error message if failed */
@@ -78,8 +80,14 @@ export interface PromptMapResult {
 
 /**
  * Output format for the reduce phase
+ * - 'list': Markdown formatted list
+ * - 'table': Markdown table
+ * - 'json': JSON array of results
+ * - 'csv': CSV format
+ * - 'ai': AI-powered synthesis of results
+ * - 'text': Pure text concatenation (for non-structured AI responses)
  */
-export type OutputFormat = 'list' | 'table' | 'json' | 'csv' | 'ai';
+export type OutputFormat = 'list' | 'table' | 'json' | 'csv' | 'ai' | 'text';
 
 /**
  * Final aggregated output from reduce phase
@@ -198,6 +206,7 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
         _context: MapContext
     ): Promise<PromptMapResult> {
         const { item, promptTemplate, outputFields } = workItem.data;
+        const isTextMode = !outputFields || outputFields.length === 0;
 
         try {
             const substituted = substituteTemplate(promptTemplate, item);
@@ -205,6 +214,18 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
             const result = await this.aiInvoker(prompt, { model: this.model });
 
             if (result.success && result.response) {
+                // Text mode - return raw response without JSON parsing
+                if (isTextMode) {
+                    return {
+                        item,
+                        output: {},
+                        rawText: result.response,
+                        success: true,
+                        rawResponse: result.response
+                    };
+                }
+
+                // Structured mode - parse JSON response
                 try {
                     const output = parseAIResponse(result.response, outputFields);
                     return { item, output, success: true, rawResponse: result.response };
@@ -221,7 +242,7 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
 
             return {
                 item,
-                output: this.emptyOutput(outputFields),
+                output: isTextMode ? {} : this.emptyOutput(outputFields),
                 success: false,
                 error: result.error || 'AI invocation failed',
                 rawResponse: result.response
@@ -229,7 +250,7 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
         } catch (error) {
             return {
                 item,
-                output: this.emptyOutput(workItem.data.outputFields),
+                output: isTextMode ? {} : this.emptyOutput(workItem.data.outputFields),
                 success: false,
                 error: error instanceof Error ? error.message : String(error),
                 rawResponse: undefined // No AI response available when exception occurs before AI call
@@ -340,6 +361,31 @@ function formatAsCSV(results: PromptMapResult[]): string {
     return lines.join('\n');
 }
 
+/**
+ * Format results as pure text - concatenates rawText or stringified output
+ * Used for text mode where AI responses are not structured JSON
+ */
+function formatAsText(results: PromptMapResult[]): string {
+    const successfulResults = results.filter(r => r.success);
+    if (successfulResults.length === 0) {
+        return 'No successful results.';
+    }
+
+    // For single result, return just the text without separators
+    if (successfulResults.length === 1) {
+        const r = successfulResults[0];
+        return r.rawText || JSON.stringify(r.output, null, 2);
+    }
+
+    // For multiple results, add separators
+    return successfulResults
+        .map((r, i) => {
+            const text = r.rawText || JSON.stringify(r.output, null, 2);
+            return `--- Item ${i + 1} ---\n${text}`;
+        })
+        .join('\n\n');
+}
+
 // ============================================================================
 // Reducer
 // ============================================================================
@@ -385,6 +431,7 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
             case 'table': formattedOutput = formatAsTable(itemResults); break;
             case 'json': formattedOutput = formatAsJSON(itemResults); break;
             case 'csv': formattedOutput = formatAsCSV(itemResults); break;
+            case 'text': formattedOutput = formatAsText(itemResults); break;
             default: formattedOutput = formatAsList(itemResults, summary);
         }
 
@@ -406,16 +453,26 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         inputCount: number,
         startTime: number
     ): Promise<ReduceResult<PromptMapOutput>> {
-        if (!this.aiInvoker || !this.aiReducePrompt || !this.aiReduceOutput) {
-            throw new Error('AI reduce requires aiInvoker, aiReducePrompt, and aiReduceOutput');
+        if (!this.aiInvoker || !this.aiReducePrompt) {
+            throw new Error('AI reduce requires aiInvoker and aiReducePrompt');
         }
+
+        const isTextMode = !this.aiReduceOutput || this.aiReduceOutput.length === 0;
 
         // Build prompt with template substitution
         const successfulResults = itemResults.filter(r => r.success);
-        const resultsJSON = JSON.stringify(successfulResults.map(r => r.output), null, 2);
+
+        // For text mode map results, use rawText; otherwise use structured output
+        const resultsForPrompt = successfulResults.map(r => {
+            if (r.rawText !== undefined) {
+                return r.rawText;
+            }
+            return r.output;
+        });
+        const resultsString = JSON.stringify(resultsForPrompt, null, 2);
 
         let prompt = this.aiReducePrompt
-            .replace(/\{\{results\}\}/g, resultsJSON)
+            .replace(/\{\{results\}\}/g, resultsString)
             .replace(/\{\{count\}\}/g, String(summary.totalItems))
             .replace(/\{\{successCount\}\}/g, String(summary.successfulItems))
             .replace(/\{\{failureCount\}\}/g, String(summary.failedItems));
@@ -427,7 +484,8 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
             }
         }
 
-        const fullPrompt = buildFullPrompt(prompt, this.aiReduceOutput);
+        // In text mode, don't append JSON format instruction
+        const fullPrompt = isTextMode ? prompt : buildFullPrompt(prompt, this.aiReduceOutput!);
 
         // Call AI
         const aiResult = await this.aiInvoker(fullPrompt, { model: this.aiReduceModel });
@@ -436,10 +494,31 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
             throw new Error(`AI reduce failed: ${aiResult.error || 'Unknown error'}`);
         }
 
-        // Parse AI response
+        // Text mode - return raw AI response without JSON parsing
+        if (isTextMode) {
+            return {
+                output: {
+                    results: itemResults,
+                    formattedOutput: aiResult.response,
+                    summary: {
+                        ...summary,
+                        outputFields: []
+                    }
+                },
+                stats: {
+                    inputCount,
+                    outputCount: 1,
+                    mergedCount: summary.successfulItems,
+                    reduceTimeMs: Date.now() - startTime,
+                    usedAIReduce: true
+                }
+            };
+        }
+
+        // Structured mode - parse AI response as JSON
         let aiOutput: Record<string, unknown>;
         try {
-            aiOutput = parseAIResponse(aiResult.response, this.aiReduceOutput);
+            aiOutput = parseAIResponse(aiResult.response, this.aiReduceOutput!);
         } catch (parseError) {
             throw new Error(`Failed to parse AI reduce response: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
         }
@@ -453,7 +532,7 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
                 formattedOutput,
                 summary: {
                     ...summary,
-                    outputFields: this.aiReduceOutput
+                    outputFields: this.aiReduceOutput!
                 }
             },
             stats: {

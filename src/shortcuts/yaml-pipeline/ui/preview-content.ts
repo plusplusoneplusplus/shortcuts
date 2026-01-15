@@ -394,7 +394,9 @@ export function getMapDetails(config: PipelineConfig, csvHeaders?: string[]): st
                 ` : ''}
                 <div class="detail-item">
                     <span class="detail-label">Output Fields:</span>
-                    <span class="detail-value output-fields">${config.map.output.map(o => `<span class="field-tag">${escapeHtml(o)}</span>`).join('')}</span>
+                    <span class="detail-value output-fields">${(config.map.output || []).length > 0
+                        ? (config.map.output || []).map(o => `<span class="field-tag">${escapeHtml(o)}</span>`).join('')
+                        : '<span class="field-tag text-mode">text (raw)</span>'}</span>
                 </div>
             </div>
             
@@ -465,8 +467,14 @@ export function getReduceDetails(config: PipelineConfig, rowCount?: number): str
  * Generate output schema preview
  */
 function getOutputSchemaPreview(config: PipelineConfig): string {
+    const outputFields = config.map.output || [];
+    if (outputFields.length === 0) {
+        // Text mode - no structured schema
+        return '"raw text output"';
+    }
+
     const schema: Record<string, string> = {};
-    for (const field of config.map.output) {
+    for (const field of outputFields) {
         schema[field] = 'string | number';
     }
 

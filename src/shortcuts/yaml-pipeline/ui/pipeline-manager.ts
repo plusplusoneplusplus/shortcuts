@@ -272,8 +272,9 @@ export class PipelineManager implements vscode.Disposable {
                 if (!map.prompt) {
                     errors.push('Missing "map.prompt" field');
                 }
-                if (!map.output || !Array.isArray(map.output) || (map.output as unknown[]).length === 0) {
-                    errors.push('"map.output" must be a non-empty array');
+                // map.output is optional - if omitted, text mode is used (raw AI response)
+                if (map.output !== undefined && !Array.isArray(map.output)) {
+                    errors.push('"map.output" must be an array if provided');
                 }
             }
 
@@ -281,7 +282,7 @@ export class PipelineManager implements vscode.Disposable {
                 errors.push('Missing "reduce" field');
             } else {
                 const reduce = parsed.reduce as Record<string, unknown>;
-                const validReduceTypes = ['list', 'table', 'json', 'csv', 'ai'];
+                const validReduceTypes = ['list', 'table', 'json', 'csv', 'ai', 'text'];
                 if (!validReduceTypes.includes(reduce.type as string)) {
                     errors.push(`Unsupported reduce type: ${reduce.type}. Supported: ${validReduceTypes.join(', ')}`);
                 }
@@ -291,8 +292,9 @@ export class PipelineManager implements vscode.Disposable {
                     if (!reduce.prompt || typeof reduce.prompt !== 'string') {
                         errors.push('reduce.prompt is required when reduce.type is "ai"');
                     }
-                    if (!reduce.output || !Array.isArray(reduce.output) || reduce.output.length === 0) {
-                        errors.push('reduce.output must be a non-empty array when reduce.type is "ai"');
+                    // reduce.output is optional for AI reduce - if omitted, returns raw text
+                    if (reduce.output !== undefined && !Array.isArray(reduce.output)) {
+                        errors.push('reduce.output must be an array if provided');
                     }
                 }
             }
@@ -514,6 +516,10 @@ input:
   from:
     type: csv
     path: "input.csv"
+  # Optional: Define parameters accessible in reduce.prompt via {{paramName}}
+  # parameters:
+  #   - name: projectName
+  #     value: "My Project"
 
 map:
   prompt: |
@@ -522,21 +528,44 @@ map:
     {{description}}
 
     Respond with JSON containing your analysis.
+  # Output fields expected from AI (structured mode)
   output:
     - result
     - confidence
+  # Text mode: Omit 'output' to get raw AI response without JSON parsing
+  # (useful for interactive conversations)
+  #
+  # Parallel execution: Number of concurrent AI calls (default: 5)
+  # parallel: 5
+  #
+  # Model: Override the default AI model
+  # model: gpt-4
+  #
   # Timeout for each AI call in milliseconds (default: 300000 = 5 minutes)
-  timeoutMs: 300000
+  # timeoutMs: 300000
 
 reduce:
+  # Reduce types:
+  #   - list: Markdown formatted list
+  #   - table: Markdown table
+  #   - json: JSON array
+  #   - csv: CSV format
+  #   - text: Pure text concatenation (for text mode map results)
+  #   - ai: AI-powered synthesis
   type: ai
   prompt: |
     You analyzed {{count}} items:
     {{results}}
-    
+
     Create a summary with key insights.
+  # Output fields for structured AI reduce
   output:
     - summary
+  # Text mode AI reduce: Omit 'output' to get raw AI response
+  # (useful when you want natural language output, not JSON)
+  #
+  # Model: Override the default AI model for reduce
+  # model: gpt-4
 `;
     }
 

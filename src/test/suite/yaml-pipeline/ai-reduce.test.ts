@@ -79,9 +79,10 @@ suite('AI Reduce Phase', () => {
             );
         });
 
-        test('rejects AI reduce without output', async () => {
+        test('accepts AI reduce without output (text mode)', async () => {
+            // AI reduce without output field is now valid - returns raw text
             const config: PipelineConfig = {
-                name: 'Invalid Pipeline',
+                name: 'Text Mode AI Reduce',
                 input: {
                     items: [{ id: '1' }]
                 },
@@ -92,25 +93,24 @@ suite('AI Reduce Phase', () => {
                 reduce: {
                     type: 'ai',
                     prompt: 'Summarize: {{results}}'
-                    // Missing output
+                    // No output - text mode
                 }
             };
 
-            const aiInvoker = createMockAIInvoker(new Map());
+            const aiInvoker = createMockAIInvoker((prompt) => {
+                if (prompt.includes('Process')) return '{"result": "ok"}';
+                return 'Raw text summary';
+            });
 
-            await assert.rejects(
-                async () => await executePipeline(config, { aiInvoker, pipelineDirectory: tempDir }),
-                (err: Error) => {
-                    assert.ok(err instanceof PipelineExecutionError);
-                    assert.ok(err.message.includes('reduce.output'));
-                    return true;
-                }
-            );
+            const result = await executePipeline(config, { aiInvoker, pipelineDirectory: tempDir });
+            assert.ok(result.success);
+            assert.strictEqual(result.output!.formattedOutput, 'Raw text summary');
         });
 
-        test('rejects AI reduce with empty output array', async () => {
+        test('accepts AI reduce with empty output array (text mode)', async () => {
+            // AI reduce with empty output array is now valid - returns raw text
             const config: PipelineConfig = {
-                name: 'Invalid Pipeline',
+                name: 'Empty Output AI Reduce',
                 input: {
                     items: [{ id: '1' }]
                 },
@@ -121,20 +121,18 @@ suite('AI Reduce Phase', () => {
                 reduce: {
                     type: 'ai',
                     prompt: 'Summarize: {{results}}',
-                    output: []
+                    output: []  // Empty array - text mode
                 }
             };
 
-            const aiInvoker = createMockAIInvoker(new Map());
+            const aiInvoker = createMockAIInvoker((prompt) => {
+                if (prompt.includes('Process')) return '{"result": "ok"}';
+                return 'Raw text from AI';
+            });
 
-            await assert.rejects(
-                async () => await executePipeline(config, { aiInvoker, pipelineDirectory: tempDir }),
-                (err: Error) => {
-                    assert.ok(err instanceof PipelineExecutionError);
-                    assert.ok(err.message.includes('reduce.output'));
-                    return true;
-                }
-            );
+            const result = await executePipeline(config, { aiInvoker, pipelineDirectory: tempDir });
+            assert.ok(result.success);
+            assert.strictEqual(result.output!.formattedOutput, 'Raw text from AI');
         });
 
         test('accepts valid AI reduce configuration', async () => {
@@ -488,7 +486,7 @@ Provide a summary with key findings.`,
                     ]
                 },
                 map: {
-                    prompt: 'Analyze {{bug}}',
+                    prompt: 'MapAnalyzeBug {{bug}}',
                     output: ['severity']
                 },
                 reduce: {
@@ -496,7 +494,7 @@ Provide a summary with key findings.`,
                     prompt: `Project: {{projectName}}
 Reviewer: {{reviewer}}
 
-Analyzed {{count}} bugs:
+ReduceProcessed {{count}} bugs:
 {{results}}
 
 Provide summary.`,
@@ -507,7 +505,7 @@ Provide summary.`,
             let reducePromptReceived = '';
 
             const aiInvoker = createMockAIInvoker((prompt) => {
-                if (prompt.includes('Analyze')) {
+                if (prompt.includes('MapAnalyzeBug')) {
                     return '{"severity": "high"}';
                 }
                 if (prompt.includes('Project:')) {
@@ -523,7 +521,7 @@ Provide summary.`,
             assert.ok(reducePromptReceived.includes('Project: MyProject'));
             assert.ok(reducePromptReceived.includes('Reviewer: Team Lead'));
             // Also verify built-in variables still work
-            assert.ok(reducePromptReceived.includes('Analyzed 2 bugs'));
+            assert.ok(reducePromptReceived.includes('ReduceProcessed 2 bugs'));
         });
 
         test('handles multiple occurrences of same parameter', async () => {

@@ -173,7 +173,7 @@ export async function executePipeline(
     const jobInput = createPromptMapInput(
         items,
         config.map.prompt,
-        config.map.output
+        config.map.output || []  // Empty array for text mode
     );
 
     try {
@@ -275,15 +275,20 @@ function validatePipelineConfig(config: PipelineConfig): void {
         throw new PipelineExecutionError('Pipeline config missing "map.prompt"');
     }
 
-    if (!config.map.output || !Array.isArray(config.map.output) || config.map.output.length === 0) {
-        throw new PipelineExecutionError('Pipeline config "map.output" must be a non-empty array of field names');
+    // map.output is optional - if omitted, text mode is used (raw AI response)
+    // If provided, must be a non-empty array
+    if (config.map.output !== undefined) {
+        if (!Array.isArray(config.map.output)) {
+            throw new PipelineExecutionError('Pipeline config "map.output" must be an array if provided');
+        }
+        // Empty array is allowed - equivalent to text mode
     }
 
     if (!config.reduce) {
         throw new PipelineExecutionError('Pipeline config missing "reduce"');
     }
 
-    const validReduceTypes = ['list', 'table', 'json', 'csv', 'ai'];
+    const validReduceTypes = ['list', 'table', 'json', 'csv', 'ai', 'text'];
     if (!validReduceTypes.includes(config.reduce.type)) {
         throw new PipelineExecutionError(`Unsupported reduce type: ${config.reduce.type}. Supported types: ${validReduceTypes.join(', ')}`);
     }
@@ -293,8 +298,9 @@ function validatePipelineConfig(config: PipelineConfig): void {
         if (!config.reduce.prompt) {
             throw new PipelineExecutionError('Pipeline config "reduce.prompt" is required when reduce.type is "ai"');
         }
-        if (!config.reduce.output || !Array.isArray(config.reduce.output) || config.reduce.output.length === 0) {
-            throw new PipelineExecutionError('Pipeline config "reduce.output" must be a non-empty array when reduce.type is "ai"');
+        // reduce.output is optional for AI reduce - if omitted, returns raw text response
+        if (config.reduce.output !== undefined && !Array.isArray(config.reduce.output)) {
+            throw new PipelineExecutionError('Pipeline config "reduce.output" must be an array if provided');
         }
     }
 }

@@ -778,21 +778,22 @@ suite('Pipeline Executor', () => {
             );
         });
 
-        test('throws for empty output fields', async () => {
+        test('accepts empty output fields (text mode)', async () => {
+            // Empty output fields are now valid - enables text mode
             const config: PipelineConfig = {
                 name: 'Test',
                 input: { items: [{ x: '1' }] },
                 map: { prompt: '{{x}}', output: [] },
-                reduce: { type: 'list' }
+                reduce: { type: 'text' }
             };
 
-            await assert.rejects(
-                async () => executePipeline(config, {
-                    aiInvoker: createMockAIInvoker(new Map()),
-                    pipelineDirectory: tempDir
-                }),
-                /non-empty array/
-            );
+            const result = await executePipeline(config, {
+                aiInvoker: createMockAIInvoker(new Map([['1', 'Raw text response']])),
+                pipelineDirectory: tempDir
+            });
+
+            assert.ok(result.success);
+            assert.ok(result.output!.formattedOutput.includes('Raw text response'));
         });
 
         test('throws for unsupported reduce type', async () => {
