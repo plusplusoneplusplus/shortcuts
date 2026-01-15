@@ -203,17 +203,23 @@ export function executeSearch(
     updateSearchCount(elements, state);
 }
 
+// Import the search skip selectors from the shared module (no DOM dependencies)
+import { SEARCH_SKIP_SELECTORS } from '../search-skip-selectors';
+
+// Re-export for convenience
+export { SEARCH_SKIP_SELECTORS };
+
 /**
  * Find all text matches in container
  */
 export function findTextMatches(
-    container: HTMLElement, 
-    query: string, 
+    container: HTMLElement,
+    query: string,
     caseSensitive: boolean,
     useRegex: boolean
 ): SearchMatch[] {
     const matches: SearchMatch[] = [];
-    
+
     // Create regex for matching
     let regex: RegExp;
     try {
@@ -241,21 +247,36 @@ export function findTextMatches(
         return true;
     };
 
+    // Helper function to check if element is inside display-only UI
+    const isDisplayOnlyContent = (element: Element | null): boolean => {
+        if (!element) return false;
+        for (const selector of SEARCH_SKIP_SELECTORS) {
+            if (element.closest(selector)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     // Walk through all text nodes
     const walker = document.createTreeWalker(
         container,
         NodeFilter.SHOW_TEXT,
         {
             acceptNode: (node) => {
-                // Skip hidden elements and search bar
                 const parent = node.parentElement;
                 if (!parent) return NodeFilter.FILTER_REJECT;
-                if (parent.closest('.search-bar')) return NodeFilter.FILTER_REJECT;
-                if (parent.closest('.search-highlight')) return NodeFilter.FILTER_REJECT;
+
+                // Skip display-only UI elements (line numbers, comments, etc.)
+                if (isDisplayOnlyContent(parent)) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+
                 // Check if this element or any ancestor is hidden
                 if (!isElementVisible(parent)) {
                     return NodeFilter.FILTER_REJECT;
                 }
+
                 return NodeFilter.FILTER_ACCEPT;
             }
         }

@@ -3,6 +3,7 @@
  */
 
 import * as assert from 'assert';
+import { SEARCH_SKIP_SELECTORS } from '../../shortcuts/shared/search-skip-selectors';
 
 suite('Search Handler', () => {
     suite('createSearchState', () => {
@@ -755,6 +756,281 @@ suite('Search Handler', () => {
 
             // In real code, this would be async, but we just test the pattern
             assert.strictEqual(REFRESH_DELAY, 50, 'Should use 50ms delay for DOM update');
+        });
+    });
+
+    suite('SEARCH_SKIP_SELECTORS', () => {
+        test('should include search UI elements', () => {
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.search-bar'), 'should skip search-bar');
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.search-highlight'), 'should skip search-highlight');
+        });
+
+        test('should include line number elements', () => {
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.line-number'), 'should skip line-number');
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.line-number-column'), 'should skip line-number-column');
+        });
+
+        test('should include gutter icons', () => {
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.gutter-icon'), 'should skip gutter-icon');
+        });
+
+        test('should include collapsed/truncated indicators', () => {
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.collapsed-hint'), 'should skip collapsed-hint');
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.collapsed-range'), 'should skip collapsed-range');
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.collapsed-indicator'), 'should skip collapsed-indicator');
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.truncated-indicator'), 'should skip truncated-indicator');
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.line-number-truncated'), 'should skip line-number-truncated');
+        });
+
+        test('should include comment bubbles', () => {
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.inline-comment-bubble'), 'should skip inline-comment-bubble');
+        });
+
+        test('should include toolbar elements', () => {
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.toolbar'), 'should skip toolbar');
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('.editor-toolbar'), 'should skip editor-toolbar');
+        });
+
+        test('should include contenteditable=false elements', () => {
+            assert.ok(SEARCH_SKIP_SELECTORS.includes('[contenteditable="false"]'), 'should skip contenteditable=false');
+        });
+
+        test('should be an array of strings', () => {
+            assert.ok(Array.isArray(SEARCH_SKIP_SELECTORS), 'should be an array');
+            for (const selector of SEARCH_SKIP_SELECTORS) {
+                assert.strictEqual(typeof selector, 'string', 'each selector should be a string');
+            }
+        });
+
+        test('should have no duplicate selectors', () => {
+            const uniqueSelectors = new Set(SEARCH_SKIP_SELECTORS);
+            assert.strictEqual(uniqueSelectors.size, SEARCH_SKIP_SELECTORS.length, 'should have no duplicates');
+        });
+    });
+
+    suite('Display-only content filtering logic', () => {
+        /**
+         * Mock implementation mirroring the isDisplayOnlyContent function
+         * from search-handler.ts for testing purposes.
+         */
+        function isDisplayOnlyContent(element: { closest: (selector: string) => boolean }): boolean {
+            for (const selector of SEARCH_SKIP_SELECTORS) {
+                if (element.closest(selector)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Helper to create mock element with specific parent classes
+         */
+        function createMockElement(matchingSelectors: string[]): { closest: (selector: string) => boolean } {
+            return {
+                closest: (selector: string) => matchingSelectors.includes(selector)
+            };
+        }
+
+        test('should return true for element inside line-number', () => {
+            const mockElement = createMockElement(['.line-number']);
+            assert.strictEqual(isDisplayOnlyContent(mockElement), true);
+        });
+
+        test('should return true for element inside gutter-icon', () => {
+            const mockElement = createMockElement(['.gutter-icon']);
+            assert.strictEqual(isDisplayOnlyContent(mockElement), true);
+        });
+
+        test('should return true for element inside inline-comment-bubble', () => {
+            const mockElement = createMockElement(['.inline-comment-bubble']);
+            assert.strictEqual(isDisplayOnlyContent(mockElement), true);
+        });
+
+        test('should return true for element with contenteditable=false ancestor', () => {
+            const mockElement = createMockElement(['[contenteditable="false"]']);
+            assert.strictEqual(isDisplayOnlyContent(mockElement), true);
+        });
+
+        test('should return true for element inside collapsed-hint', () => {
+            const mockElement = createMockElement(['.collapsed-hint']);
+            assert.strictEqual(isDisplayOnlyContent(mockElement), true);
+        });
+
+        test('should return true for element inside search-bar', () => {
+            const mockElement = createMockElement(['.search-bar']);
+            assert.strictEqual(isDisplayOnlyContent(mockElement), true);
+        });
+
+        test('should return true for element inside toolbar', () => {
+            const mockElement = createMockElement(['.toolbar']);
+            assert.strictEqual(isDisplayOnlyContent(mockElement), true);
+        });
+
+        test('should return false for element in document content', () => {
+            const mockElement = createMockElement(['.line-content', '.editor-wrapper']);
+            assert.strictEqual(isDisplayOnlyContent(mockElement), false);
+        });
+
+        test('should return false for element with no matching ancestors', () => {
+            const mockElement = createMockElement([]);
+            assert.strictEqual(isDisplayOnlyContent(mockElement), false);
+        });
+
+        test('should return true if any selector matches', () => {
+            // Element is inside both line-content (not skipped) and line-number (skipped)
+            const mockElement = createMockElement(['.line-content', '.line-number']);
+            assert.strictEqual(isDisplayOnlyContent(mockElement), true);
+        });
+    });
+
+    suite('Search content filtering scenarios', () => {
+        /**
+         * Simulates what content should be searchable vs skipped.
+         * This tests the expected behavior of the search filtering.
+         */
+
+        interface MockTextNode {
+            content: string;
+            parentClasses: string[];
+        }
+
+        function shouldNodeBeSearched(node: MockTextNode): boolean {
+            for (const selector of SEARCH_SKIP_SELECTORS) {
+                // Convert class selector to class name
+                const className = selector.startsWith('.') ? selector.slice(1) : selector;
+                if (selector.startsWith('[')) {
+                    // Attribute selector like [contenteditable="false"]
+                    // We simulate this by checking for the attribute marker
+                    if (node.parentClasses.includes('contenteditable-false')) {
+                        return false;
+                    }
+                } else if (node.parentClasses.includes(className)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        test('should search document content in line-content', () => {
+            const node: MockTextNode = {
+                content: 'Hello World',
+                parentClasses: ['line-content']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), true);
+        });
+
+        test('should skip line numbers', () => {
+            const node: MockTextNode = {
+                content: '42',
+                parentClasses: ['line-number']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), false);
+        });
+
+        test('should skip collapsed hints like "(5 empty lines)"', () => {
+            const node: MockTextNode = {
+                content: '(5 empty lines)',
+                parentClasses: ['collapsed-hint']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), false);
+        });
+
+        test('should skip gutter icons', () => {
+            const node: MockTextNode = {
+                content: 'Comment icon',
+                parentClasses: ['gutter-icon']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), false);
+        });
+
+        test('should skip truncation indicators', () => {
+            const node: MockTextNode = {
+                content: '... 42 more lines',
+                parentClasses: ['truncated-indicator']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), false);
+        });
+
+        test('should skip comment bubble content', () => {
+            const node: MockTextNode = {
+                content: 'This is a comment',
+                parentClasses: ['inline-comment-bubble']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), false);
+        });
+
+        test('should skip toolbar button text', () => {
+            const node: MockTextNode = {
+                content: 'Resolve All',
+                parentClasses: ['toolbar']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), false);
+        });
+
+        test('should skip search bar content', () => {
+            const node: MockTextNode = {
+                content: 'Find in document...',
+                parentClasses: ['search-bar']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), false);
+        });
+
+        test('should skip search highlight spans to avoid re-matching', () => {
+            const node: MockTextNode = {
+                content: 'matched text',
+                parentClasses: ['search-highlight']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), false);
+        });
+
+        test('should search code block content in line-content', () => {
+            const node: MockTextNode = {
+                content: 'const x = 42;',
+                parentClasses: ['line-content', 'code-block']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), true);
+        });
+
+        test('should search markdown content', () => {
+            const node: MockTextNode = {
+                content: '# Header',
+                parentClasses: ['line-content', 'markdown-line']
+            };
+            assert.strictEqual(shouldNodeBeSearched(node), true);
+        });
+    });
+
+    suite('Selector format validation', () => {
+        test('all selectors should be valid CSS selectors', () => {
+            // Each selector should either start with . (class), # (id), or [ (attribute)
+            for (const selector of SEARCH_SKIP_SELECTORS) {
+                const isClassSelector = selector.startsWith('.');
+                const isIdSelector = selector.startsWith('#');
+                const isAttributeSelector = selector.startsWith('[');
+                const isElementSelector = /^[a-z]+$/i.test(selector);
+
+                const isValid = isClassSelector || isIdSelector || isAttributeSelector || isElementSelector;
+                assert.ok(isValid, `Selector "${selector}" should be a valid CSS selector format`);
+            }
+        });
+
+        test('class selectors should have valid class names', () => {
+            const classSelectors = SEARCH_SKIP_SELECTORS.filter(s => s.startsWith('.'));
+            for (const selector of classSelectors) {
+                const className = selector.slice(1);
+                // Class names should only contain alphanumeric, hyphens, underscores
+                const isValidClassName = /^[a-zA-Z_-][a-zA-Z0-9_-]*$/.test(className);
+                assert.ok(isValidClassName, `Class name "${className}" should be valid`);
+            }
+        });
+
+        test('attribute selectors should be properly formatted', () => {
+            const attrSelectors = SEARCH_SKIP_SELECTORS.filter(s => s.startsWith('['));
+            for (const selector of attrSelectors) {
+                // Should match pattern like [attr="value"]
+                const isValidAttr = /^\[[a-zA-Z-]+(="[^"]*")?\]$/.test(selector);
+                assert.ok(isValidAttr, `Attribute selector "${selector}" should be properly formatted`);
+            }
         });
     });
 });
