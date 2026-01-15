@@ -27,7 +27,7 @@ export function extractJSON(response: string): string | null {
         /```js\s*([\s\S]*?)```/,
         /```\s*([\s\S]*?)```/
     ];
-    
+
     for (const pattern of codeBlockPatterns) {
         const match = response.match(pattern);
         if (match) {
@@ -38,49 +38,84 @@ export function extractJSON(response: string): string | null {
         }
     }
 
-    // Try to find JSON object with validation
-    const objectMatch = response.match(/\{[\s\S]*\}/);
-    if (objectMatch) {
-        const candidate = objectMatch[0];
-        try {
-            JSON.parse(candidate);
-            return candidate;
-        } catch {
-            // Try to find valid JSON by checking all brace pairs
-            const positions = findAllBracePositions(response);
-            for (let i = positions.length - 1; i >= 0; i--) {
-                const {start, end} = positions[i];
-                const candidate = response.substring(start, end + 1);
-                try {
-                    JSON.parse(candidate);
-                    return candidate;
-                } catch {
-                    continue;
-                }
-            }
-        }
-    }
+    // Find first occurrence of { and [ to determine which type to try first
+    const firstBrace = response.indexOf('{');
+    const firstBracket = response.indexOf('[');
 
-    // Try to find JSON array
-    const arrayMatch = response.match(/\[[\s\S]*\]/);
-    if (arrayMatch) {
-        const candidate = arrayMatch[0];
-        try {
-            JSON.parse(candidate);
-            return candidate;
-        } catch {
-            const positions = findAllBracketPositions(response);
-            for (let i = positions.length - 1; i >= 0; i--) {
-                const {start, end} = positions[i];
-                const candidate = response.substring(start, end + 1);
-                try {
-                    JSON.parse(candidate);
+    // Helper function to try extracting JSON object
+    const tryExtractObject = (): string | null => {
+        const objectMatch = response.match(/\{[\s\S]*\}/);
+        if (objectMatch) {
+            const candidate = objectMatch[0];
+            try {
+                JSON.parse(candidate);
+                return candidate;
+            } catch {
+                // Try to find valid JSON by checking all brace pairs
+                const positions = findAllBracePositions(response);
+                for (let i = positions.length - 1; i >= 0; i--) {
+                    const {start, end} = positions[i];
+                    const subCandidate = response.substring(start, end + 1);
+                    try {
+                        JSON.parse(subCandidate);
+                        return subCandidate;
+                    } catch {
+                        continue;
+                    }
+                }
+                // Return the original candidate even if malformed - attemptJSONFix may fix it
+                // Only return if it looks like JSON (has balanced braces and contains colon)
+                if (hasBalancedBraces(candidate) && candidate.includes(':')) {
                     return candidate;
-                } catch {
-                    continue;
                 }
             }
         }
+        return null;
+    };
+
+    // Helper function to try extracting JSON array
+    const tryExtractArray = (): string | null => {
+        const arrayMatch = response.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+            const candidate = arrayMatch[0];
+            try {
+                JSON.parse(candidate);
+                return candidate;
+            } catch {
+                const positions = findAllBracketPositions(response);
+                for (let i = positions.length - 1; i >= 0; i--) {
+                    const {start, end} = positions[i];
+                    const subCandidate = response.substring(start, end + 1);
+                    try {
+                        JSON.parse(subCandidate);
+                        return subCandidate;
+                    } catch {
+                        continue;
+                    }
+                }
+                // Return candidate if it has balanced brackets
+                if (hasBalancedBrackets(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    };
+
+    // Try to extract based on which comes first in the string
+    // This ensures that top-level arrays are detected before embedded arrays in objects
+    if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+        // Array appears first - try array then object
+        const arrayResult = tryExtractArray();
+        if (arrayResult) return arrayResult;
+        const objectResult = tryExtractObject();
+        if (objectResult) return objectResult;
+    } else if (firstBrace !== -1) {
+        // Object appears first - try object then array
+        const objectResult = tryExtractObject();
+        if (objectResult) return objectResult;
+        const arrayResult = tryExtractArray();
+        if (arrayResult) return arrayResult;
     }
 
     // Try to extract key-value pairs from plain text
@@ -90,6 +125,32 @@ export function extractJSON(response: string): string | null {
     }
 
     return null;
+}
+
+/**
+ * Check if a string has balanced curly braces
+ */
+function hasBalancedBraces(str: string): boolean {
+    let depth = 0;
+    for (const char of str) {
+        if (char === '{') depth++;
+        else if (char === '}') depth--;
+        if (depth < 0) return false;
+    }
+    return depth === 0;
+}
+
+/**
+ * Check if a string has balanced square brackets
+ */
+function hasBalancedBrackets(str: string): boolean {
+    let depth = 0;
+    for (const char of str) {
+        if (char === '[') depth++;
+        else if (char === ']') depth--;
+        if (depth < 0) return false;
+    }
+    return depth === 0;
 }
 
 /**
@@ -293,18 +354,27 @@ function extractFieldsFromNaturalLanguage(response: string, outputFields: string
     let foundAny = false;
 
     for (const field of outputFields) {
+        // Patterns ordered from most specific to least specific
+        // Use word boundary or limited capture to avoid over-matching
+        // Note: Using (?:\n|$) to match end of line OR end of string
         const patterns = [
-            new RegExp(`${field}\\s*[:=]\\s*([^\\n,]+)`, 'i'),
-            new RegExp(`${field}\\s+is\\s+([^\\n,]+)`, 'i'),
-            new RegExp(`${field}\\s*-\\s*([^\\n,]+)`, 'i'),
-            new RegExp(`"${field}"\\s*[:=]\\s*"([^"]+)"`, 'i'),
-            new RegExp(`\\*\\*${field}\\*\\*\\s*[:=]\\s*([^\\n,]+)`, 'i')
+            // Quoted value after colon/equals: field: "value" or field = 'value'
+            new RegExp(`${field}\\s*[:=]\\s*["']([^"']+)["']`, 'i'),
+            // Markdown bold: **field**: value
+            new RegExp(`\\*\\*${field}\\*\\*\\s*[:=]\\s*([^\\n,;]+?)(?:\\s+and\\s+|\\s*[,;]|\\s*\\n|\\s*$)`, 'i'),
+            // field: value (stop at "and", comma, semicolon, newline, or end of string)
+            new RegExp(`${field}\\s*[:=]\\s*([^\\n,;]+?)(?:\\s+and\\s+|\\s*[,;]|\\s*\\n|\\s*$)`, 'i'),
+            // field is value (stop at "and", comma, period, newline, or end of string)
+            new RegExp(`${field}\\s+is\\s+([^\\n,;.]+?)(?:\\s+and\\s+|\\s*[,;.]|\\s*\\n|\\s*$)`, 'i'),
+            // field - value
+            new RegExp(`${field}\\s*-\\s*([^\\n,;]+?)(?:\\s+and\\s+|\\s*[,;]|\\s*\\n|\\s*$)`, 'i'),
         ];
 
         for (const pattern of patterns) {
             const match = response.match(pattern);
             if (match) {
                 let value = match[1].trim();
+                // Clean up markdown formatting and quotes
                 value = value.replace(/[*_`]/g, '').replace(/^["']|["']$/g, '');
                 result[field] = coerceValue(value);
                 foundAny = true;
