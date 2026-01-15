@@ -414,7 +414,7 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
 
     async reduce(
         results: MapResult<PromptMapResult>[],
-        _context: ReduceContext
+        context: ReduceContext
     ): Promise<ReduceResult<PromptMapOutput>> {
         const startTime = Date.now();
 
@@ -431,7 +431,7 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
 
         // Handle AI reduce
         if (this.outputFormat === 'ai') {
-            return await this.performAIReduce(itemResults, summary, results.length, startTime);
+            return await this.performAIReduce(itemResults, summary, results.length, startTime, context);
         }
 
         // Handle deterministic reduce
@@ -460,13 +460,24 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         itemResults: PromptMapResult[],
         summary: PromptMapSummary,
         inputCount: number,
-        startTime: number
+        startTime: number,
+        context: ReduceContext
     ): Promise<ReduceResult<PromptMapOutput>> {
         if (!this.aiInvoker || !this.aiReducePrompt) {
             throw new Error('AI reduce requires aiInvoker and aiReducePrompt');
         }
 
         const isTextMode = !this.aiReduceOutput || this.aiReduceOutput.length === 0;
+
+        // Register reduce process for tracking
+        // Note: parentGroupId may be undefined for single-item pipelines, but we still track the process
+        let reduceProcessId: string | undefined;
+        if (context.processTracker) {
+            reduceProcessId = context.processTracker.registerProcess(
+                'AI Reduce: Synthesizing results',
+                context.parentGroupId
+            );
+        }
 
         // Build prompt with template substitution
         const successfulResults = itemResults.filter(r => r.success);
@@ -500,11 +511,30 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         const aiResult = await this.aiInvoker(fullPrompt, { model: this.aiReduceModel });
 
         if (!aiResult.success || !aiResult.response) {
+            // Update process as failed
+            if (context.processTracker && reduceProcessId) {
+                context.processTracker.updateProcess(
+                    reduceProcessId,
+                    'failed',
+                    undefined,
+                    aiResult.error || 'Unknown error'
+                );
+            }
             throw new Error(`AI reduce failed: ${aiResult.error || 'Unknown error'}`);
         }
 
         // Text mode - return raw AI response without JSON parsing
         if (isTextMode) {
+            // Update process as completed
+            if (context.processTracker && reduceProcessId) {
+                context.processTracker.updateProcess(
+                    reduceProcessId,
+                    'completed',
+                    aiResult.response,
+                    undefined,
+                    JSON.stringify({ mode: 'text', outputLength: aiResult.response.length })
+                );
+            }
             return {
                 output: {
                     results: itemResults,
@@ -529,11 +559,31 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         try {
             aiOutput = parseAIResponse(aiResult.response, this.aiReduceOutput!);
         } catch (parseError) {
+            // Update process as failed
+            if (context.processTracker && reduceProcessId) {
+                context.processTracker.updateProcess(
+                    reduceProcessId,
+                    'failed',
+                    undefined,
+                    parseError instanceof Error ? parseError.message : String(parseError)
+                );
+            }
             throw new Error(`Failed to parse AI reduce response: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
         }
 
         // Format output as JSON string
         const formattedOutput = JSON.stringify(aiOutput, null, 2);
+
+        // Update process as completed
+        if (context.processTracker && reduceProcessId) {
+            context.processTracker.updateProcess(
+                reduceProcessId,
+                'completed',
+                formattedOutput,
+                undefined,
+                JSON.stringify(aiOutput)
+            );
+        }
 
         return {
             output: {

@@ -141,7 +141,9 @@ export class MapReduceExecutor {
             executionId,
             mapPhaseTimeMs,
             successfulMaps,
-            failedMaps
+            failedMaps,
+            processTracker: this.options.processTracker,
+            parentGroupId: groupId
         };
 
         let reduceResult;

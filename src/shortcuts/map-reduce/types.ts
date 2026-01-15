@@ -68,6 +68,10 @@ export interface ReduceContext {
     failedMaps: number;
     /** Optional custom context data */
     customContext?: Record<string, unknown>;
+    /** Optional process tracker for AI reduce tracking */
+    processTracker?: ProcessTracker;
+    /** Optional parent group ID for process tracking */
+    parentGroupId?: string;
 }
 
 /**
