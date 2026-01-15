@@ -48,14 +48,33 @@ function escapeHtml(text: string): string {
 
 /**
  * Cache for highlighted lines
+ * Includes content hashes to ensure cache validity when switching files
  */
 interface HighlightedLinesCache {
     oldLines: string[];
     newLines: string[];
     language: string;
+    /** Hash of old content to detect content changes */
+    oldContentHash: string;
+    /** Hash of new content to detect content changes */
+    newContentHash: string;
 }
 
 let highlightedCache: HighlightedLinesCache | null = null;
+
+/**
+ * Simple hash function for content comparison
+ * Uses a combination of length and sampled characters for fast comparison
+ */
+function hashContent(content: string): string {
+    // Use content length + first 100 chars + last 100 chars + middle sample
+    // This provides a fast and reliable check for content changes
+    const len = content.length;
+    const first = content.slice(0, 100);
+    const last = content.slice(-100);
+    const mid = len > 200 ? content.slice(Math.floor(len / 2) - 50, Math.floor(len / 2) + 50) : '';
+    return `${len}:${first}:${mid}:${last}`;
+}
 
 /**
  * Get highlighted lines for old and new content
@@ -64,9 +83,15 @@ let highlightedCache: HighlightedLinesCache | null = null;
 function getHighlightedLines(): { oldHighlighted: string[]; newHighlighted: string[] } {
     const state = getState();
     const language = getLanguageFromFilePath(state.filePath);
+    const oldContentHash = hashContent(state.oldContent);
+    const newContentHash = hashContent(state.newContent);
 
     // Check if we can use cached result
-    if (highlightedCache && highlightedCache.language === language) {
+    // Must verify both language AND content match to avoid showing wrong file's content
+    if (highlightedCache &&
+        highlightedCache.language === language &&
+        highlightedCache.oldContentHash === oldContentHash &&
+        highlightedCache.newContentHash === newContentHash) {
         return {
             oldHighlighted: highlightedCache.oldLines,
             newHighlighted: highlightedCache.newLines
@@ -81,11 +106,13 @@ function getHighlightedLines(): { oldHighlighted: string[]; newHighlighted: stri
     const oldHighlighted = splitHighlightedHtmlIntoLines(oldHighlightedHtml);
     const newHighlighted = splitHighlightedHtmlIntoLines(newHighlightedHtml);
 
-    // Cache the result
+    // Cache the result with content hashes for validation
     highlightedCache = {
         oldLines: oldHighlighted,
         newLines: newHighlighted,
-        language
+        language,
+        oldContentHash,
+        newContentHash
     };
 
     return { oldHighlighted, newHighlighted };

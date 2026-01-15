@@ -32,6 +32,10 @@ function initialize(): void {
     const state = createInitialState(persistedViewMode);
     updateState(state);
 
+    // Invalidate highlight cache to ensure fresh content is rendered
+    // This is critical when the webview panel is reused for a different file
+    invalidateHighlightCache();
+
     // Initialize UI elements
     initPanelElements();
 
