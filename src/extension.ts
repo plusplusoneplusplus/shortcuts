@@ -448,6 +448,15 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitRefreshCommitRangeCommand: vscode.Disposable | undefined;
         let gitCopyRangeRefCommand: vscode.Disposable | undefined;
         let gitCopyRangeSummaryCommand: vscode.Disposable | undefined;
+        let gitSwitchBranchCommand: vscode.Disposable | undefined;
+        let gitCreateBranchCommand: vscode.Disposable | undefined;
+        let gitDeleteBranchCommand: vscode.Disposable | undefined;
+        let gitRenameBranchCommand: vscode.Disposable | undefined;
+        let gitMergeBranchCommand: vscode.Disposable | undefined;
+        let gitPushCommand: vscode.Disposable | undefined;
+        let gitPullCommand: vscode.Disposable | undefined;
+        let gitPullRebaseCommand: vscode.Disposable | undefined;
+        let gitFetchCommand: vscode.Disposable | undefined;
 
         // Create Git drag and drop controller for Copilot Chat integration
         const gitDragDropController = new GitDragDropController();
@@ -902,6 +911,369 @@ export async function activate(context: vscode.ExtensionContext) {
                         await vscode.env.clipboard.writeText(summary);
                         vscode.window.showInformationMessage('Copied range summary to clipboard');
                     }
+                }
+            );
+
+            // Register branch switching command
+            gitSwitchBranchCommand = vscode.commands.registerCommand(
+                'gitView.switchBranch',
+                async () => {
+                    const branches = gitTreeDataProvider.getAllBranches();
+                    const branchStatus = gitTreeDataProvider.getBranchStatus();
+                    const currentBranch = branchStatus?.name || '';
+
+                    // Build quick pick items
+                    const items: vscode.QuickPickItem[] = [];
+
+                    // Add separator for local branches
+                    if (branches.local.length > 0) {
+                        // Current branch first
+                        const currentBranchItem = branches.local.find(b => b.isCurrent);
+                        if (currentBranchItem) {
+                            items.push({
+                                label: `$(check) ${currentBranchItem.name}`,
+                                description: 'current',
+                                detail: currentBranchItem.lastCommitSubject
+                            });
+                        }
+
+                        // Other local branches
+                        for (const branch of branches.local.filter(b => !b.isCurrent)) {
+                            items.push({
+                                label: branch.name,
+                                description: branch.lastCommitDate,
+                                detail: branch.lastCommitSubject
+                            });
+                        }
+                    }
+
+                    // Add separator and remote branches
+                    if (branches.remote.length > 0) {
+                        items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+                        items.push({ label: 'Remote Branches', kind: vscode.QuickPickItemKind.Separator });
+
+                        for (const branch of branches.remote) {
+                            items.push({
+                                label: branch.name,
+                                description: `remote: ${branch.remoteName}`,
+                                detail: branch.lastCommitSubject
+                            });
+                        }
+                    }
+
+                    // Add special actions
+                    items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+                    items.push({
+                        label: '$(add) Create new branch...',
+                        description: '',
+                        alwaysShow: true
+                    });
+
+                    const selected = await vscode.window.showQuickPick(items, {
+                        placeHolder: 'Select a branch to switch to',
+                        title: 'Switch Branch'
+                    });
+
+                    if (!selected) {
+                        return;
+                    }
+
+                    // Handle create new branch
+                    if (selected.label === '$(add) Create new branch...') {
+                        await vscode.commands.executeCommand('gitView.createBranch');
+                        return;
+                    }
+
+                    // Extract branch name (remove check icon if present)
+                    const branchName = selected.label.replace(/^\$\(check\)\s*/, '');
+
+                    // Skip if it's the current branch
+                    if (branchName === currentBranch) {
+                        vscode.window.showInformationMessage(`Already on branch '${branchName}'`);
+                        return;
+                    }
+
+                    // Check for uncommitted changes
+                    const branchService = gitTreeDataProvider.getBranchService();
+                    const repoRoot = gitTreeDataProvider['gitService'].getFirstRepositoryRoot();
+                    const hasChanges = repoRoot ? branchService.hasUncommittedChanges(repoRoot) : false;
+
+                    if (hasChanges) {
+                        const choice = await vscode.window.showWarningMessage(
+                            `You have uncommitted changes. How would you like to proceed?`,
+                            { modal: true },
+                            'Stash and Switch',
+                            'Discard and Switch',
+                            'Cancel'
+                        );
+
+                        if (choice === 'Cancel' || !choice) {
+                            return;
+                        }
+
+                        if (choice === 'Stash and Switch') {
+                            const result = await gitTreeDataProvider.switchBranch(branchName, { stashFirst: true });
+                            if (result.success) {
+                                vscode.window.showInformationMessage(
+                                    `Switched to '${branchName}'${result.stashed ? ' (changes stashed)' : ''}`
+                                );
+                            } else {
+                                vscode.window.showErrorMessage(`Failed to switch branch: ${result.error}`);
+                            }
+                            return;
+                        }
+
+                        if (choice === 'Discard and Switch') {
+                            const result = await gitTreeDataProvider.switchBranch(branchName, { force: true });
+                            if (result.success) {
+                                vscode.window.showInformationMessage(`Switched to '${branchName}'`);
+                            } else {
+                                vscode.window.showErrorMessage(`Failed to switch branch: ${result.error}`);
+                            }
+                            return;
+                        }
+                    }
+
+                    // Switch to branch
+                    const result = await gitTreeDataProvider.switchBranch(branchName);
+                    if (result.success) {
+                        vscode.window.showInformationMessage(`Switched to '${branchName}'`);
+                    } else {
+                        vscode.window.showErrorMessage(`Failed to switch branch: ${result.error}`);
+                    }
+                }
+            );
+
+            // Register create branch command
+            gitCreateBranchCommand = vscode.commands.registerCommand(
+                'gitView.createBranch',
+                async () => {
+                    const branchName = await vscode.window.showInputBox({
+                        prompt: 'Enter new branch name',
+                        placeHolder: 'feature/my-new-feature',
+                        validateInput: (value) => {
+                            if (!value || !value.trim()) {
+                                return 'Branch name is required';
+                            }
+                            // Basic git branch name validation
+                            if (value.includes(' ')) {
+                                return 'Branch name cannot contain spaces';
+                            }
+                            if (value.startsWith('-')) {
+                                return 'Branch name cannot start with -';
+                            }
+                            if (value.includes('..')) {
+                                return 'Branch name cannot contain ..';
+                            }
+                            return undefined;
+                        }
+                    });
+
+                    if (!branchName) {
+                        return;
+                    }
+
+                    const result = await gitTreeDataProvider.createBranch(branchName.trim(), true);
+                    if (result.success) {
+                        vscode.window.showInformationMessage(`Created and switched to branch '${branchName}'`);
+                    } else {
+                        vscode.window.showErrorMessage(`Failed to create branch: ${result.error}`);
+                    }
+                }
+            );
+
+            // Register delete branch command
+            gitDeleteBranchCommand = vscode.commands.registerCommand(
+                'gitView.deleteBranch',
+                async () => {
+                    const branches = gitTreeDataProvider.getAllBranches();
+                    const branchStatus = gitTreeDataProvider.getBranchStatus();
+                    const currentBranch = branchStatus?.name || '';
+
+                    // Filter out current branch
+                    const deletableBranches = branches.local.filter(b => !b.isCurrent);
+
+                    if (deletableBranches.length === 0) {
+                        vscode.window.showInformationMessage('No branches available to delete');
+                        return;
+                    }
+
+                    const items = deletableBranches.map(b => ({
+                        label: b.name,
+                        description: b.lastCommitDate,
+                        detail: b.lastCommitSubject
+                    }));
+
+                    const selected = await vscode.window.showQuickPick(items, {
+                        placeHolder: 'Select a branch to delete',
+                        title: 'Delete Branch'
+                    });
+
+                    if (!selected) {
+                        return;
+                    }
+
+                    const confirm = await vscode.window.showWarningMessage(
+                        `Are you sure you want to delete branch '${selected.label}'?`,
+                        { modal: true },
+                        'Delete',
+                        'Force Delete (even if not merged)'
+                    );
+
+                    if (!confirm) {
+                        return;
+                    }
+
+                    const force = confirm === 'Force Delete (even if not merged)';
+                    const result = await gitTreeDataProvider.deleteBranch(selected.label, force);
+                    if (result.success) {
+                        vscode.window.showInformationMessage(`Deleted branch '${selected.label}'`);
+                    } else {
+                        vscode.window.showErrorMessage(`Failed to delete branch: ${result.error}`);
+                    }
+                }
+            );
+
+            // Register rename branch command
+            gitRenameBranchCommand = vscode.commands.registerCommand(
+                'gitView.renameBranch',
+                async () => {
+                    const branchStatus = gitTreeDataProvider.getBranchStatus();
+                    const currentBranch = branchStatus?.name || '';
+
+                    if (!currentBranch || branchStatus?.isDetached) {
+                        vscode.window.showWarningMessage('Cannot rename branch in detached HEAD state');
+                        return;
+                    }
+
+                    const newName = await vscode.window.showInputBox({
+                        prompt: `Rename branch '${currentBranch}' to:`,
+                        value: currentBranch,
+                        validateInput: (value) => {
+                            if (!value || !value.trim()) {
+                                return 'Branch name is required';
+                            }
+                            if (value === currentBranch) {
+                                return 'New name must be different';
+                            }
+                            if (value.includes(' ')) {
+                                return 'Branch name cannot contain spaces';
+                            }
+                            return undefined;
+                        }
+                    });
+
+                    if (!newName) {
+                        return;
+                    }
+
+                    const result = await gitTreeDataProvider.renameBranch(currentBranch, newName.trim());
+                    if (result.success) {
+                        vscode.window.showInformationMessage(`Renamed branch to '${newName}'`);
+                    } else {
+                        vscode.window.showErrorMessage(`Failed to rename branch: ${result.error}`);
+                    }
+                }
+            );
+
+            // Register merge branch command
+            gitMergeBranchCommand = vscode.commands.registerCommand(
+                'gitView.mergeBranch',
+                async () => {
+                    const branches = gitTreeDataProvider.getAllBranches();
+                    const branchStatus = gitTreeDataProvider.getBranchStatus();
+                    const currentBranch = branchStatus?.name || '';
+
+                    // Filter out current branch
+                    const mergeableBranches = branches.local.filter(b => !b.isCurrent);
+
+                    if (mergeableBranches.length === 0) {
+                        vscode.window.showInformationMessage('No branches available to merge');
+                        return;
+                    }
+
+                    const items = mergeableBranches.map(b => ({
+                        label: b.name,
+                        description: b.lastCommitDate,
+                        detail: b.lastCommitSubject
+                    }));
+
+                    const selected = await vscode.window.showQuickPick(items, {
+                        placeHolder: `Select a branch to merge into '${currentBranch}'`,
+                        title: 'Merge Branch'
+                    });
+
+                    if (!selected) {
+                        return;
+                    }
+
+                    const result = await gitTreeDataProvider.mergeBranch(selected.label);
+                    if (result.success) {
+                        vscode.window.showInformationMessage(`Merged '${selected.label}' into '${currentBranch}'`);
+                    } else {
+                        vscode.window.showErrorMessage(`Failed to merge branch: ${result.error}`);
+                    }
+                }
+            );
+
+            // Register push command
+            gitPushCommand = vscode.commands.registerCommand(
+                'gitView.push',
+                async () => {
+                    const branchStatus = gitTreeDataProvider.getBranchStatus();
+                    const setUpstream = !branchStatus?.trackingBranch;
+
+                    const result = await gitTreeDataProvider.push(setUpstream);
+                    if (result.success) {
+                        vscode.window.showInformationMessage('Pushed successfully');
+                    } else {
+                        vscode.window.showErrorMessage(`Failed to push: ${result.error}`);
+                    }
+                }
+            );
+
+            // Register pull command
+            gitPullCommand = vscode.commands.registerCommand(
+                'gitView.pull',
+                async () => {
+                    const result = await gitTreeDataProvider.pull(false);
+                    if (result.success) {
+                        vscode.window.showInformationMessage('Pulled successfully');
+                    } else {
+                        vscode.window.showErrorMessage(`Failed to pull: ${result.error}`);
+                    }
+                }
+            );
+
+            // Register pull with rebase command
+            gitPullRebaseCommand = vscode.commands.registerCommand(
+                'gitView.pullRebase',
+                async () => {
+                    const result = await gitTreeDataProvider.pull(true);
+                    if (result.success) {
+                        vscode.window.showInformationMessage('Pulled with rebase successfully');
+                    } else {
+                        vscode.window.showErrorMessage(`Failed to pull with rebase: ${result.error}`);
+                    }
+                }
+            );
+
+            // Register fetch command
+            gitFetchCommand = vscode.commands.registerCommand(
+                'gitView.fetch',
+                async () => {
+                    vscode.window.withProgress({
+                        location: vscode.ProgressLocation.Notification,
+                        title: 'Fetching from remote...',
+                        cancellable: false
+                    }, async () => {
+                        const result = await gitTreeDataProvider.fetch();
+                        if (result.success) {
+                            vscode.window.showInformationMessage('Fetched successfully');
+                        } else {
+                            vscode.window.showErrorMessage(`Failed to fetch: ${result.error}`);
+                        }
+                    });
                 }
             );
 

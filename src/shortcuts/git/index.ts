@@ -5,6 +5,7 @@ export * from './types';
 export * from './git-service';
 export * from './git-log-service';
 export * from './git-range-service';
+export * from './branch-service';
 
 // Tree Items
 export * from './git-change-item';
@@ -15,6 +16,7 @@ export * from './git-range-file-item';
 export * from './section-header-item';
 export * from './stage-section-item';
 export * from './branch-changes-section-item';
+export * from './branch-item';
 export * from './load-more-item';
 export * from './looked-up-commit-item';
 

@@ -1182,6 +1182,60 @@
         "icon": "$(copy)"
       },
       {
+        "command": "gitView.switchBranch",
+        "title": "Switch Branch...",
+        "category": "Git",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "gitView.createBranch",
+        "title": "Create Branch...",
+        "category": "Git",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gitView.deleteBranch",
+        "title": "Delete Branch...",
+        "category": "Git",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "gitView.renameBranch",
+        "title": "Rename Branch...",
+        "category": "Git",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "gitView.mergeBranch",
+        "title": "Merge Branch...",
+        "category": "Git",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "gitView.push",
+        "title": "Push",
+        "category": "Git",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "gitView.pull",
+        "title": "Pull",
+        "category": "Git",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "gitView.pullRebase",
+        "title": "Pull (Rebase)",
+        "category": "Git",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "gitView.fetch",
+        "title": "Fetch",
+        "category": "Git",
+        "icon": "$(sync)"
+      },
+      {
         "command": "shortcuts.reviewRangeAgainstRules",
         "title": "Review Range Against Rules",
         "category": "Code Review",
@@ -1922,6 +1976,51 @@
           "command": "gitView.copyRangeSummary",
           "when": "view == gitView && viewItem == gitCommitRange",
           "group": "gitCommitRange@4"
+        },
+        {
+          "command": "gitView.switchBranch",
+          "when": "view == gitView && viewItem == gitBranch",
+          "group": "gitBranch@1"
+        },
+        {
+          "command": "gitView.createBranch",
+          "when": "view == gitView && viewItem == gitBranch",
+          "group": "gitBranch@2"
+        },
+        {
+          "command": "gitView.renameBranch",
+          "when": "view == gitView && viewItem == gitBranch",
+          "group": "gitBranch@3"
+        },
+        {
+          "command": "gitView.mergeBranch",
+          "when": "view == gitView && viewItem == gitBranch",
+          "group": "gitBranch@4"
+        },
+        {
+          "command": "gitView.deleteBranch",
+          "when": "view == gitView && viewItem == gitBranch",
+          "group": "gitBranch@5"
+        },
+        {
+          "command": "gitView.push",
+          "when": "view == gitView && viewItem == gitBranch",
+          "group": "gitBranch@6"
+        },
+        {
+          "command": "gitView.pull",
+          "when": "view == gitView && viewItem == gitBranch",
+          "group": "gitBranch@7"
+        },
+        {
+          "command": "gitView.pullRebase",
+          "when": "view == gitView && viewItem == gitBranch",
+          "group": "gitBranch@8"
+        },
+        {
+          "command": "gitView.fetch",
+          "when": "view == gitView && viewItem == gitBranch",
+          "group": "gitBranch@9"
         },
         {
           "command": "gitDiffComments.openWithReview",

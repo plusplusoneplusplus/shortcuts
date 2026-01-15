@@ -7,6 +7,8 @@ import {
 } from '../git-diff-comments/diff-comments-tree-provider';
 import { getExtensionLogger, LogCategory } from '../shared';
 import { BranchChangesSectionItem } from './branch-changes-section-item';
+import { BranchItem, BranchStatus } from './branch-item';
+import { BranchService, GitBranch } from './branch-service';
 import { GitChangeItem } from './git-change-item';
 import { GitCommitFileItem } from './git-commit-file-item';
 import { GitCommitItem } from './git-commit-item';
@@ -88,10 +90,15 @@ export class GitTreeDataProvider
     private gitRangeService: GitRangeService;
     private cachedCommitRange: GitCommitRange | null = null;
 
+    // Branch service and cached status
+    private branchService: BranchService;
+    private cachedBranchStatus: BranchStatus | null = null;
+
     constructor() {
         this.gitService = new GitService();
         this.gitLogService = new GitLogService();
         this.gitRangeService = new GitRangeService();
+        this.branchService = new BranchService();
     }
 
     /**
@@ -144,6 +151,7 @@ export class GitTreeDataProvider
                 // When changes occur, also reload commits (HEAD might have changed)
                 this.reloadCommits();
                 this.reloadCommitRange();
+                this.reloadBranchStatus();
                 this.refresh();
             })
         );
@@ -155,6 +163,9 @@ export class GitTreeDataProvider
 
         // Load initial commit range
         this.reloadCommitRange();
+
+        // Load initial branch status
+        this.reloadBranchStatus();
 
         return true;
     }
@@ -223,6 +234,20 @@ export class GitTreeDataProvider
         }
 
         this.cachedCommitRange = this.gitRangeService.detectCommitRange(repoRoot);
+    }
+
+    /**
+     * Reload the branch status
+     */
+    private reloadBranchStatus(): void {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            this.cachedBranchStatus = null;
+            return;
+        }
+
+        const hasChanges = this.branchService.hasUncommittedChanges(repoRoot);
+        this.cachedBranchStatus = this.branchService.getBranchStatus(repoRoot, hasChanges);
     }
 
     /**
@@ -337,9 +362,14 @@ export class GitTreeDataProvider
         const commitCount = this.loadedCommits.length;
         const commentCount = this.getCommentCount();
 
-        const items: vscode.TreeItem[] = [
-            new SectionHeaderItem('changes', changeCounts.total, false)
-        ];
+        const items: vscode.TreeItem[] = [];
+
+        // Add branch item at the top if we have branch status
+        if (this.cachedBranchStatus) {
+            items.push(new BranchItem(this.cachedBranchStatus));
+        }
+
+        items.push(new SectionHeaderItem('changes', changeCounts.total, false));
 
         // Add Branch Changes section if there's a commit range
         if (this.cachedCommitRange) {
@@ -898,6 +928,223 @@ export class GitTreeDataProvider
     }
 
     /**
+     * Get the branch service
+     */
+    getBranchService(): BranchService {
+        return this.branchService;
+    }
+
+    /**
+     * Get the current branch status
+     */
+    getBranchStatus(): BranchStatus | null {
+        return this.cachedBranchStatus;
+    }
+
+    /**
+     * Refresh the branch status
+     */
+    refreshBranchStatus(): void {
+        this.reloadBranchStatus();
+        this.refresh();
+    }
+
+    /**
+     * Get all branches (local and remote)
+     */
+    getAllBranches(): { local: GitBranch[]; remote: GitBranch[] } {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { local: [], remote: [] };
+        }
+        return this.branchService.getAllBranches(repoRoot);
+    }
+
+    /**
+     * Switch to a branch with handling for uncommitted changes
+     * @param branchName Branch to switch to
+     * @param options Options: stashFirst - stash before switch, force - force checkout
+     */
+    async switchBranch(
+        branchName: string,
+        options?: { stashFirst?: boolean; force?: boolean }
+    ): Promise<{ success: boolean; error?: string; stashed?: boolean }> {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { success: false, error: 'No git repository found' };
+        }
+
+        // Check for uncommitted changes
+        const hasChanges = this.branchService.hasUncommittedChanges(repoRoot);
+
+        if (hasChanges && options?.stashFirst) {
+            const stashResult = await this.branchService.stashChanges(
+                repoRoot,
+                `Auto-stash before switching to ${branchName}`
+            );
+            if (!stashResult.success) {
+                return { success: false, error: `Failed to stash changes: ${stashResult.error}` };
+            }
+
+            const switchResult = await this.branchService.switchBranch(repoRoot, branchName);
+            if (!switchResult.success) {
+                // Try to restore stash on failure
+                await this.branchService.popStash(repoRoot);
+                return { success: false, error: switchResult.error };
+            }
+
+            this.reloadBranchStatus();
+            this.reloadCommits();
+            this.reloadCommitRange();
+            this.refresh();
+            return { success: true, stashed: true };
+        }
+
+        const result = await this.branchService.switchBranch(repoRoot, branchName, {
+            force: options?.force
+        });
+
+        if (result.success) {
+            this.reloadBranchStatus();
+            this.reloadCommits();
+            this.reloadCommitRange();
+            this.refresh();
+        }
+
+        return result;
+    }
+
+    /**
+     * Create a new branch
+     * @param branchName New branch name
+     * @param checkout Whether to checkout the new branch
+     */
+    async createBranch(branchName: string, checkout: boolean = true): Promise<{ success: boolean; error?: string }> {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { success: false, error: 'No git repository found' };
+        }
+
+        const result = await this.branchService.createBranch(repoRoot, branchName, checkout);
+        if (result.success && checkout) {
+            this.reloadBranchStatus();
+            this.refresh();
+        }
+
+        return result;
+    }
+
+    /**
+     * Delete a branch
+     * @param branchName Branch to delete
+     * @param force Force delete even if not merged
+     */
+    async deleteBranch(branchName: string, force: boolean = false): Promise<{ success: boolean; error?: string }> {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { success: false, error: 'No git repository found' };
+        }
+
+        return this.branchService.deleteBranch(repoRoot, branchName, force);
+    }
+
+    /**
+     * Rename a branch
+     * @param oldName Current branch name
+     * @param newName New branch name
+     */
+    async renameBranch(oldName: string, newName: string): Promise<{ success: boolean; error?: string }> {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { success: false, error: 'No git repository found' };
+        }
+
+        const result = await this.branchService.renameBranch(repoRoot, oldName, newName);
+        if (result.success) {
+            this.reloadBranchStatus();
+            this.refresh();
+        }
+
+        return result;
+    }
+
+    /**
+     * Merge a branch into the current branch
+     * @param branchName Branch to merge
+     */
+    async mergeBranch(branchName: string): Promise<{ success: boolean; error?: string }> {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { success: false, error: 'No git repository found' };
+        }
+
+        const result = await this.branchService.mergeBranch(repoRoot, branchName);
+        if (result.success) {
+            this.reloadCommits();
+            this.refresh();
+        }
+
+        return result;
+    }
+
+    /**
+     * Push to remote
+     * @param setUpstream Set upstream tracking
+     */
+    async push(setUpstream: boolean = false): Promise<{ success: boolean; error?: string }> {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { success: false, error: 'No git repository found' };
+        }
+
+        const result = await this.branchService.push(repoRoot, setUpstream);
+        if (result.success) {
+            this.reloadBranchStatus();
+            this.refresh();
+        }
+
+        return result;
+    }
+
+    /**
+     * Pull from remote
+     * @param rebase Use rebase instead of merge
+     */
+    async pull(rebase: boolean = false): Promise<{ success: boolean; error?: string }> {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { success: false, error: 'No git repository found' };
+        }
+
+        const result = await this.branchService.pull(repoRoot, rebase);
+        if (result.success) {
+            this.reloadBranchStatus();
+            this.reloadCommits();
+            this.refresh();
+        }
+
+        return result;
+    }
+
+    /**
+     * Fetch from remote
+     */
+    async fetch(): Promise<{ success: boolean; error?: string }> {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { success: false, error: 'No git repository found' };
+        }
+
+        const result = await this.branchService.fetch(repoRoot);
+        if (result.success) {
+            this.reloadBranchStatus();
+            this.refresh();
+        }
+
+        return result;
+    }
+
+    /**
      * Dispose of resources
      */
     dispose(): void {
@@ -905,6 +1152,7 @@ export class GitTreeDataProvider
         this.gitService.dispose();
         this.gitLogService.dispose();
         this.gitRangeService.dispose();
+        this.branchService.dispose();
         for (const disposable of this.disposables) {
             disposable.dispose();
         }
