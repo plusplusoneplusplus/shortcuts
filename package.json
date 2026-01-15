@@ -1854,6 +1854,11 @@
         },
         {
           "command": "clarificationProcesses.viewDetails",
+          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineExecutionProcess_completed$/",
+          "group": "process@3"
+        },
+        {
+          "command": "clarificationProcesses.viewDetails",
           "when": "view == clarificationProcessesView && viewItem =~ /^pipelineItemProcess_completed_child$/",
           "group": "process@2"
         },
@@ -1865,7 +1870,7 @@
         {
           "command": "clarificationProcesses.remove",
           "when": "view == clarificationProcessesView && viewItem =~ /^pipelineExecutionProcess_(completed|failed|cancelled)$/",
-          "group": "process@3"
+          "group": "process@4"
         },
         {
           "command": "clarificationProcesses.viewRawResponse",

@@ -59,7 +59,7 @@ export class AIProcessDocumentProvider implements vscode.TextDocumentContentProv
     }
 
     /**
-     * Format process details as markdown
+     * Format process details as markdown (main entry point)
      */
     private formatProcessContent(process: AIProcess): string {
         const lines: string[] = [];
@@ -67,45 +67,73 @@ export class AIProcessDocumentProvider implements vscode.TextDocumentContentProv
         lines.push(`# AI Process Details`);
         lines.push('');
 
+        // Format the main process
+        this.formatSingleProcess(process, lines, 2);
+
+        // For group processes (pipeline-execution, code-review-group), show child process details
+        if (process.type === 'pipeline-execution' || process.type === 'code-review-group') {
+            const childProcesses = this.processManager.getChildProcesses(process.id);
+            if (childProcesses.length > 0) {
+                lines.push('');
+                lines.push('---');
+                lines.push('');
+                lines.push(`# Child Processes (${childProcesses.length} items)`);
+                lines.push('');
+
+                for (let i = 0; i < childProcesses.length; i++) {
+                    const child = childProcesses[i];
+                    lines.push(`## Item ${i + 1}: ${child.promptPreview}`);
+                    lines.push('');
+                    
+                    // Format child process with heading level 3 (###)
+                    this.formatSingleProcess(child, lines, 3);
+                    
+                    lines.push('---');
+                    lines.push('');
+                }
+            }
+        }
+
+        return lines.join('\n');
+    }
+
+    /**
+     * Format a single process details into markdown lines.
+     * This is the unified method for formatting any process (parent or child).
+     * 
+     * @param process The process to format
+     * @param lines The array to append formatted lines to
+     * @param headingLevel The markdown heading level to use (2 for ##, 3 for ###, etc.)
+     */
+    private formatSingleProcess(process: AIProcess, lines: string[], headingLevel: number): void {
+        const h = '#'.repeat(headingLevel);
+        const subH = '#'.repeat(headingLevel + 1);
+
         // Status section
-        lines.push(`## Status`);
-        const statusEmoji = process.status === 'running' ? '🔄' :
-            process.status === 'completed' ? '✅' :
-            process.status === 'failed' ? '❌' : '🚫';
+        lines.push(`${h} Status`);
+        const statusEmoji = this.getStatusEmoji(process.status);
         lines.push(`${statusEmoji} **${process.status.charAt(0).toUpperCase() + process.status.slice(1)}**`);
         lines.push('');
 
         // Timing section
-        lines.push(`## Timing`);
+        lines.push(`${h} Timing`);
         lines.push(`- **Started:** ${process.startTime.toLocaleString()}`);
         if (process.endTime) {
             lines.push(`- **Ended:** ${process.endTime.toLocaleString()}`);
-            const duration = process.endTime.getTime() - process.startTime.getTime();
-            const seconds = Math.floor(duration / 1000);
-            const minutes = Math.floor(seconds / 60);
-            const hours = Math.floor(minutes / 60);
-            let durationStr: string;
-            if (hours > 0) {
-                durationStr = `${hours}h ${minutes % 60}m`;
-            } else if (minutes > 0) {
-                durationStr = `${minutes}m ${seconds % 60}s`;
-            } else {
-                durationStr = `${seconds}s`;
-            }
-            lines.push(`- **Duration:** ${durationStr}`);
+            lines.push(`- **Duration:** ${this.formatDuration(process.endTime.getTime() - process.startTime.getTime())}`);
         }
         lines.push('');
 
         // Result file path section (if available)
         if (process.resultFilePath) {
-            lines.push(`## Result File`);
+            lines.push(`${h} Result File`);
             lines.push(`- **Path:** \`${process.resultFilePath}\``);
             lines.push('');
         }
 
         // Raw stdout section (if available)
         if (process.rawStdoutFilePath) {
-            lines.push(`## Raw Stdout`);
+            lines.push(`${h} Raw Stdout`);
             lines.push(`- **Path:** \`${process.rawStdoutFilePath}\``);
             lines.push('');
 
@@ -121,16 +149,16 @@ export class AIProcessDocumentProvider implements vscode.TextDocumentContentProv
             }
         }
 
-        // Prompt section
-        lines.push(`## Prompt`);
+        // Prompt section (AI Input)
+        lines.push(`${h} Prompt`);
         lines.push('```');
         lines.push(process.fullPrompt);
         lines.push('```');
         lines.push('');
 
-        // AI Response section
+        // AI Response section (AI Output)
         if (process.result) {
-            lines.push(`## AI Response`);
+            lines.push(`${h} AI Response`);
             lines.push('');
             lines.push(process.result);
             lines.push('');
@@ -138,73 +166,111 @@ export class AIProcessDocumentProvider implements vscode.TextDocumentContentProv
 
         // Structured Result section (for pipeline map items with detailed output)
         if (process.structuredResult) {
-            lines.push(`## Structured Result`);
-            lines.push('');
-            try {
-                const parsed = JSON.parse(process.structuredResult);
-                
-                // Check if this is a pipeline item result with rawResponse
-                if (parsed.rawResponse !== undefined) {
-                    // Show input
-                    if (parsed.item) {
-                        lines.push('### Input');
-                        lines.push('```json');
-                        lines.push(JSON.stringify(parsed.item, null, 2));
-                        lines.push('```');
-                        lines.push('');
-                    }
-                    
-                    // Show output
-                    if (parsed.output) {
-                        lines.push('### Output');
-                        lines.push('```json');
-                        lines.push(JSON.stringify(parsed.output, null, 2));
-                        lines.push('```');
-                        lines.push('');
-                    }
-                    
-                    // Show success/error status
-                    if (parsed.success === false && parsed.error) {
-                        lines.push('### Error');
-                        lines.push('```');
-                        lines.push(parsed.error);
-                        lines.push('```');
-                        lines.push('');
-                    }
-                    
-                    // Show raw AI response
-                    if (parsed.rawResponse) {
-                        lines.push('### Raw AI Response');
-                        lines.push('```');
-                        lines.push(parsed.rawResponse);
-                        lines.push('```');
-                        lines.push('');
-                    }
-                } else {
-                    // Generic structured result - show as formatted JSON
-                    lines.push('```json');
-                    lines.push(JSON.stringify(parsed, null, 2));
-                    lines.push('```');
-                    lines.push('');
-                }
-            } catch {
-                // If parsing fails, show raw string
-                lines.push('```');
-                lines.push(process.structuredResult);
-                lines.push('```');
-                lines.push('');
-            }
+            this.formatStructuredResult(process.structuredResult, lines, headingLevel, subH);
         }
 
         // Error section
         if (process.error) {
-            lines.push(`## Error`);
+            lines.push(`${h} Error`);
             lines.push('```');
             lines.push(process.error);
             lines.push('```');
+            lines.push('');
         }
+    }
 
-        return lines.join('\n');
+    /**
+     * Format structured result section
+     */
+    private formatStructuredResult(structuredResult: string, lines: string[], headingLevel: number, subH: string): void {
+        const h = '#'.repeat(headingLevel);
+        
+        lines.push(`${h} Structured Result`);
+        lines.push('');
+        try {
+            const parsed = JSON.parse(structuredResult);
+            
+            // Check if this is a pipeline item result with rawResponse
+            if (parsed.rawResponse !== undefined) {
+                // Show input
+                if (parsed.item) {
+                    lines.push(`${subH} Input`);
+                    lines.push('```json');
+                    lines.push(JSON.stringify(parsed.item, null, 2));
+                    lines.push('```');
+                    lines.push('');
+                }
+                
+                // Show output
+                if (parsed.output) {
+                    lines.push(`${subH} Output`);
+                    lines.push('```json');
+                    lines.push(JSON.stringify(parsed.output, null, 2));
+                    lines.push('```');
+                    lines.push('');
+                }
+                
+                // Show success/error status
+                if (parsed.success === false && parsed.error) {
+                    lines.push(`${subH} Error`);
+                    lines.push('```');
+                    lines.push(parsed.error);
+                    lines.push('```');
+                    lines.push('');
+                }
+                
+                // Show raw AI response
+                if (parsed.rawResponse) {
+                    lines.push(`${subH} Raw AI Response`);
+                    lines.push('```');
+                    lines.push(parsed.rawResponse);
+                    lines.push('```');
+                    lines.push('');
+                }
+            } else {
+                // Generic structured result - show as formatted JSON
+                lines.push('```json');
+                lines.push(JSON.stringify(parsed, null, 2));
+                lines.push('```');
+                lines.push('');
+            }
+        } catch {
+            // If parsing fails, show raw string
+            lines.push('```');
+            lines.push(structuredResult);
+            lines.push('```');
+            lines.push('');
+        }
+    }
+
+    /**
+     * Get emoji for process status
+     */
+    private getStatusEmoji(status: string): string {
+        switch (status) {
+            case 'running': return '🔄';
+            case 'completed': return '✅';
+            case 'failed': return '❌';
+            case 'cancelled': return '🚫';
+            default: return '○';
+        }
+    }
+
+    /**
+     * Format duration in human readable format
+     */
+    private formatDuration(ms: number): string {
+        const seconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+
+        if (hours > 0) {
+            return `${hours}h ${minutes % 60}m`;
+        }
+        if (minutes > 0) {
+            return `${minutes}m ${seconds % 60}s`;
+        }
+        return `${seconds}s`;
     }
 
     /**
