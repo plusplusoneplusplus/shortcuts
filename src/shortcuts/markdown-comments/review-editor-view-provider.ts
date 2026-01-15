@@ -36,7 +36,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI';
     commentId?: string;
     content?: string;
     selection?: {
@@ -58,6 +58,8 @@ interface WebviewMessage {
     imgId?: string;
     // AI clarification context
     context?: AskAIContext;
+    // Send comment to chat fields
+    newConversation?: boolean;
 }
 
 /**
@@ -515,6 +517,12 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 await this.generateAndSendToChat(relativePath, message.promptOptions);
                 break;
 
+            case 'sendCommentToChat':
+                if (message.commentId) {
+                    await this.generateAndSendCommentToChat(message.commentId, message.newConversation ?? true);
+                }
+                break;
+
             case 'resolveImagePath':
                 if (message.path && message.imgId) {
                     await this.resolveAndSendImagePath(
@@ -831,6 +839,58 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             includeLineNumbers: true
         });
         const newConversation = options?.newConversation ?? true;
+
+        try {
+            if (newConversation) {
+                // Start a new chat conversation (clears history) then send prompt
+                await vscode.commands.executeCommand('workbench.action.chat.newChat');
+                // Small delay to ensure new chat is ready
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+            // Send prompt to chat (new or existing)
+            await vscode.commands.executeCommand('workbench.action.chat.open', {
+                query: prompt
+            });
+        } catch {
+            // Fallback: copy to clipboard and open chat
+            await vscode.env.clipboard.writeText(prompt);
+            try {
+                if (newConversation) {
+                    await vscode.commands.executeCommand('workbench.action.chat.newChat');
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+                await vscode.commands.executeCommand('workbench.action.chat.open');
+                vscode.window.showInformationMessage('Chat opened. Prompt copied to clipboard - paste to continue.');
+            } catch {
+                // If chat is not available, just notify the user
+                vscode.window.showWarningMessage('Chat not available. Prompt copied to clipboard.');
+            }
+        }
+    }
+
+    /**
+     * Generate AI prompt for a single comment and send to VSCode Chat.
+     * @param commentId - The ID of the comment to send
+     * @param newConversation - Whether to start a new conversation or use existing
+     */
+    private async generateAndSendCommentToChat(
+        commentId: string,
+        newConversation: boolean
+    ): Promise<void> {
+        // Get the specific comment
+        const comment = this.commentsManager.getComment(commentId);
+        if (!comment) {
+            vscode.window.showWarningMessage('Comment not found.');
+            return;
+        }
+
+        // Generate prompt for this single comment
+        const prompt = this.promptGenerator.generatePromptForComments([commentId], {
+            outputFormat: 'markdown',
+            includeFullFileContent: false,
+            groupByFile: true,
+            includeLineNumbers: true
+        });
 
         try {
             if (newConversation) {

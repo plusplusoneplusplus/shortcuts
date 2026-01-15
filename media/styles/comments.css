@@ -735,3 +735,71 @@
 .line-row.comment-highlight-flash {
     animation: commentHighlightFlash 2s ease-out forwards;
 }
+
+/* ==============================
+ * Bubble Chat Dropdown
+ * For sending individual comments to chat
+ * ============================== */
+.bubble-chat-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.bubble-chat-btn {
+    position: relative;
+}
+
+.bubble-chat-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    min-width: 140px;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 300;
+    margin-top: 4px;
+    padding: 4px 0;
+    animation: fadeInDown 0.15s ease-out;
+}
+
+.bubble-chat-dropdown.open .bubble-chat-menu {
+    display: block;
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.bubble-chat-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--vscode-foreground);
+    white-space: nowrap;
+    transition: background-color 0.1s;
+}
+
+.bubble-chat-menu-item:hover {
+    background: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.bubble-chat-menu-item:first-child {
+    border-radius: 4px 4px 0 0;
+}
+
+.bubble-chat-menu-item:last-child {
+    border-radius: 0 0 4px 4px;
+}

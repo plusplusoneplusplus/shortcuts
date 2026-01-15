@@ -59,6 +59,15 @@ export function requestSendToChat(format: string = 'markdown', newConversation: 
 }
 
 /**
+ * Request the extension to send a single comment to chat
+ * @param commentId - The ID of the comment to send
+ * @param newConversation - If true, starts a new chat conversation; if false, uses existing chat
+ */
+export function requestSendCommentToChat(commentId: string, newConversation: boolean): void {
+    postMessage({ type: 'sendCommentToChat', commentId, newConversation });
+}
+
+/**
  * Add a new comment
  */
 export function addComment(comment: string): void {

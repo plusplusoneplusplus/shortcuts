@@ -18,7 +18,7 @@ import {
 } from '../../shared/webview/base-panel-manager';
 import { renderCommentMarkdown } from '../../shared/webview/markdown-renderer';
 import { state } from './state';
-import { addComment, deleteCommentMessage, editComment, reopenComment, resolveComment } from './vscode-bridge';
+import { addComment, deleteCommentMessage, editComment, reopenComment, requestSendCommentToChat, resolveComment } from './vscode-bridge';
 
 // DOM element references
 let floatingPanel: HTMLElement;
@@ -396,12 +396,21 @@ function renderCommentBubbleContent(comment: MarkdownComment): string {
     // Build type badge HTML if this is an AI comment
     const typeBadge = typeLabel ? '<span class="status ' + typeClass + '">' + typeLabel + '</span>' : '';
 
+    // Build chat action dropdown for sending individual comment to chat
+    const chatDropdown = '<div class="bubble-chat-dropdown">' +
+        '<button class="bubble-action-btn bubble-chat-btn" data-action="chat" title="Send to Chat">💬</button>' +
+        '<div class="bubble-chat-menu">' +
+        '<div class="bubble-chat-menu-item" data-chat-action="new">💬 New Chat</div>' +
+        '<div class="bubble-chat-menu-item" data-chat-action="existing">🔄 Existing Chat</div>' +
+        '</div></div>';
+
     return '<div class="bubble-header">' +
         '<div class="bubble-meta">' + lineRange +
         '<span class="status ' + statusClass + '">' + statusLabel + '</span>' +
         typeBadge + '</div>' +
         '<div class="bubble-actions">' +
         resolveBtn +
+        chatDropdown +
         '<button class="bubble-action-btn" data-action="edit" title="Edit">✏️</button>' +
         '<button class="bubble-action-btn" data-action="delete" title="Delete">🗑️</button>' +
         '</div></div>' +
@@ -440,15 +449,73 @@ function setupBubbleActions(bubble: HTMLElement, comment: MarkdownComment): void
                     deleteCommentMessage(comment.id);
                     closeActiveCommentBubble();
                     break;
+                case 'chat':
+                    // Toggle chat dropdown menu
+                    toggleChatDropdown(bubble);
+                    break;
             }
         });
     });
+
+    // Setup chat dropdown menu item handlers
+    setupChatDropdownActions(bubble, comment);
 
     // Setup drag functionality for the bubble header
     setupBubbleDrag(bubble);
 
     // Setup resize functionality for the bubble
     setupBubbleResize(bubble);
+}
+
+/**
+ * Toggle the chat dropdown menu visibility
+ */
+function toggleChatDropdown(bubble: HTMLElement): void {
+    const dropdown = bubble.querySelector('.bubble-chat-dropdown');
+    const menu = bubble.querySelector('.bubble-chat-menu');
+    if (dropdown && menu) {
+        dropdown.classList.toggle('open');
+    }
+}
+
+/**
+ * Hide the chat dropdown menu
+ */
+function hideChatDropdown(bubble: HTMLElement): void {
+    const dropdown = bubble.querySelector('.bubble-chat-dropdown');
+    if (dropdown) {
+        dropdown.classList.remove('open');
+    }
+}
+
+/**
+ * Setup chat dropdown menu item handlers
+ */
+function setupChatDropdownActions(bubble: HTMLElement, comment: MarkdownComment): void {
+    bubble.querySelectorAll('.bubble-chat-menu-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const chatAction = (item as HTMLElement).dataset.chatAction;
+
+            if (chatAction === 'new') {
+                requestSendCommentToChat(comment.id, true);
+                closeActiveCommentBubble();
+            } else if (chatAction === 'existing') {
+                requestSendCommentToChat(comment.id, false);
+                closeActiveCommentBubble();
+            }
+
+            hideChatDropdown(bubble);
+        });
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function closeChatDropdownOnClickOutside(e: MouseEvent) {
+        const dropdown = bubble.querySelector('.bubble-chat-dropdown');
+        if (dropdown && !dropdown.contains(e.target as Node)) {
+            hideChatDropdown(bubble);
+        }
+    });
 }
 
 /**

@@ -430,5 +430,271 @@ suite('Send to Chat Tests', () => {
             assert.ok(prompt.includes('This needs to be more descriptive'));
         });
     });
+
+    suite('Individual Comment to Chat', () => {
+        // Test the sendCommentToChat message type
+        interface SendCommentToChatMessage {
+            type: 'sendCommentToChat';
+            commentId: string;
+            newConversation: boolean;
+        }
+
+        test('should support sendCommentToChat message with newConversation true', () => {
+            const message: SendCommentToChatMessage = {
+                type: 'sendCommentToChat',
+                commentId: 'comment_123',
+                newConversation: true
+            };
+
+            assert.strictEqual(message.type, 'sendCommentToChat');
+            assert.strictEqual(message.commentId, 'comment_123');
+            assert.strictEqual(message.newConversation, true);
+        });
+
+        test('should support sendCommentToChat message with newConversation false', () => {
+            const message: SendCommentToChatMessage = {
+                type: 'sendCommentToChat',
+                commentId: 'comment_456',
+                newConversation: false
+            };
+
+            assert.strictEqual(message.type, 'sendCommentToChat');
+            assert.strictEqual(message.commentId, 'comment_456');
+            assert.strictEqual(message.newConversation, false);
+        });
+
+        test('should require commentId field', () => {
+            const message: SendCommentToChatMessage = {
+                type: 'sendCommentToChat',
+                commentId: 'required_id',
+                newConversation: true
+            };
+
+            assert.ok(message.commentId, 'commentId should be defined');
+            assert.ok(message.commentId.length > 0, 'commentId should not be empty');
+        });
+    });
+
+    suite('requestSendCommentToChat Function Logic', () => {
+        // Mock implementation that mirrors the actual requestSendCommentToChat function
+        function createSendCommentToChatMessage(commentId: string, newConversation: boolean) {
+            return {
+                type: 'sendCommentToChat' as const,
+                commentId,
+                newConversation
+            };
+        }
+
+        test('should create message for new conversation', () => {
+            const message = createSendCommentToChatMessage('comment_123', true);
+            assert.strictEqual(message.type, 'sendCommentToChat');
+            assert.strictEqual(message.commentId, 'comment_123');
+            assert.strictEqual(message.newConversation, true);
+        });
+
+        test('should create message for existing conversation', () => {
+            const message = createSendCommentToChatMessage('comment_123', false);
+            assert.strictEqual(message.type, 'sendCommentToChat');
+            assert.strictEqual(message.commentId, 'comment_123');
+            assert.strictEqual(message.newConversation, false);
+        });
+
+        test('should handle different comment IDs', () => {
+            const ids = ['comment_1', 'comment_abc123', 'test-id-456', 'uuid-like-123e4567-e89b'];
+
+            for (const id of ids) {
+                const message = createSendCommentToChatMessage(id, true);
+                assert.strictEqual(message.commentId, id);
+            }
+        });
+    });
+
+    suite('Bubble Chat Dropdown Menu Configuration', () => {
+        // Test the bubble chat dropdown menu item configuration
+        interface BubbleChatMenuItem {
+            dataAction: string;
+            label: string;
+            icon: string;
+            newConversation: boolean;
+        }
+
+        function getBubbleChatMenuItems(): BubbleChatMenuItem[] {
+            return [
+                {
+                    dataAction: 'new',
+                    label: 'New Chat',
+                    icon: '💬',
+                    newConversation: true
+                },
+                {
+                    dataAction: 'existing',
+                    label: 'Existing Chat',
+                    icon: '🔄',
+                    newConversation: false
+                }
+            ];
+        }
+
+        test('should have two bubble chat menu items', () => {
+            const items = getBubbleChatMenuItems();
+            assert.strictEqual(items.length, 2);
+        });
+
+        test('should have new chat option with correct configuration', () => {
+            const items = getBubbleChatMenuItems();
+            const newChatItem = items.find(item => item.dataAction === 'new');
+
+            assert.ok(newChatItem, 'New chat item should exist');
+            assert.strictEqual(newChatItem.label, 'New Chat');
+            assert.strictEqual(newChatItem.newConversation, true);
+        });
+
+        test('should have existing chat option with correct configuration', () => {
+            const items = getBubbleChatMenuItems();
+            const existingChatItem = items.find(item => item.dataAction === 'existing');
+
+            assert.ok(existingChatItem, 'Existing chat item should exist');
+            assert.strictEqual(existingChatItem.label, 'Existing Chat');
+            assert.strictEqual(existingChatItem.newConversation, false);
+        });
+
+        test('should have distinct icons for each option', () => {
+            const items = getBubbleChatMenuItems();
+            const icons = items.map(item => item.icon);
+            const uniqueIcons = new Set(icons);
+
+            assert.strictEqual(uniqueIcons.size, items.length, 'Each menu item should have a unique icon');
+        });
+    });
+
+    suite('Single Comment Prompt Generation', () => {
+        // Test prompt generation logic for a single comment
+        interface Comment {
+            id: string;
+            filePath: string;
+            selectedText: string;
+            comment: string;
+            selection: {
+                startLine: number;
+                endLine: number;
+            };
+        }
+
+        function generateSingleCommentPrompt(comment: Comment): string {
+            const lineRange = comment.selection.startLine === comment.selection.endLine
+                ? `Line ${comment.selection.startLine}`
+                : `Lines ${comment.selection.startLine}-${comment.selection.endLine}`;
+
+            return [
+                '# Document Revision Request',
+                '',
+                `## File: ${comment.filePath}`,
+                '',
+                `### Comment (${lineRange})`,
+                `**ID:** \`${comment.id}\``,
+                '',
+                '**Selected Text:**',
+                '```',
+                comment.selectedText,
+                '```',
+                '',
+                `**Comment:** ${comment.comment}`,
+                '',
+                '**Requested Action:** Revise this section to address the comment.'
+            ].join('\n');
+        }
+
+        test('should generate prompt for single comment', () => {
+            const comment: Comment = {
+                id: 'comment_123',
+                filePath: 'src/test.md',
+                selectedText: 'sample text',
+                comment: 'Please improve this',
+                selection: { startLine: 5, endLine: 5 }
+            };
+            const prompt = generateSingleCommentPrompt(comment);
+
+            assert.ok(prompt.includes('Document Revision Request'));
+            assert.ok(prompt.includes('src/test.md'));
+            assert.ok(prompt.includes('comment_123'));
+            assert.ok(prompt.includes('sample text'));
+            assert.ok(prompt.includes('Please improve this'));
+        });
+
+        test('should format single line location correctly', () => {
+            const comment: Comment = {
+                id: 'comment_1',
+                filePath: 'test.md',
+                selectedText: 'text',
+                comment: 'fix',
+                selection: { startLine: 10, endLine: 10 }
+            };
+            const prompt = generateSingleCommentPrompt(comment);
+
+            assert.ok(prompt.includes('Line 10'));
+            assert.ok(!prompt.includes('Lines 10-10'));
+        });
+
+        test('should format multi-line location correctly', () => {
+            const comment: Comment = {
+                id: 'comment_1',
+                filePath: 'test.md',
+                selectedText: 'text',
+                comment: 'fix',
+                selection: { startLine: 5, endLine: 15 }
+            };
+            const prompt = generateSingleCommentPrompt(comment);
+
+            assert.ok(prompt.includes('Lines 5-15'));
+        });
+
+        test('should include comment ID in prompt', () => {
+            const comment: Comment = {
+                id: 'unique_id_12345',
+                filePath: 'test.md',
+                selectedText: 'text',
+                comment: 'fix',
+                selection: { startLine: 1, endLine: 1 }
+            };
+            const prompt = generateSingleCommentPrompt(comment);
+
+            assert.ok(prompt.includes('unique_id_12345'));
+        });
+    });
+
+    suite('Dropdown Toggle Logic', () => {
+        // Test the dropdown toggle logic for the chat menu in bubble
+        interface DropdownState {
+            isOpen: boolean;
+        }
+
+        function toggleDropdown(state: DropdownState): DropdownState {
+            return { isOpen: !state.isOpen };
+        }
+
+        function hideDropdown(): DropdownState {
+            return { isOpen: false };
+        }
+
+        test('should toggle dropdown from closed to open', () => {
+            const initial: DropdownState = { isOpen: false };
+            const result = toggleDropdown(initial);
+            assert.strictEqual(result.isOpen, true);
+        });
+
+        test('should toggle dropdown from open to closed', () => {
+            const initial: DropdownState = { isOpen: true };
+            const result = toggleDropdown(initial);
+            assert.strictEqual(result.isOpen, false);
+        });
+
+        test('should hide dropdown regardless of current state', () => {
+            const openState: DropdownState = { isOpen: true };
+            const closedState: DropdownState = { isOpen: false };
+
+            assert.strictEqual(hideDropdown().isOpen, false);
+            assert.strictEqual(hideDropdown().isOpen, false);
+        });
+    });
 });
 

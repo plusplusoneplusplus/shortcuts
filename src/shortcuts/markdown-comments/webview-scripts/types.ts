@@ -122,6 +122,7 @@ export type WebviewMessage =
     | { type: 'deleteAll' }
     | { type: 'copyPrompt'; promptOptions: { format: string } }
     | { type: 'sendToChat'; promptOptions: { format: string; newConversation?: boolean } }
+    | { type: 'sendCommentToChat'; commentId: string; newConversation: boolean }
     | { type: 'addComment'; selection: PendingSelection; comment: string; mermaidContext?: MermaidContext }
     | { type: 'editComment'; commentId: string; comment: string }
     | { type: 'resolveComment'; commentId: string }
