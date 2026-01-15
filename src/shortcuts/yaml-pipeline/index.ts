@@ -15,8 +15,12 @@ export type {
     ReduceConfig,
     CSVParseOptions,
     CSVParseResult,
-    PipelineParameter
+    PipelineParameter,
+    CSVSource
 } from './types';
+
+// Type guards
+export { isCSVSource } from './types';
 
 // Re-export execution types from map-reduce (canonical source)
 export type {

@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { PipelineConfig, CSVParseResult } from '../types';
+import { PipelineConfig, CSVParseResult, isCSVSource, PromptItem } from '../types';
 import { ResourceFileInfo } from './types';
 
 /**
@@ -113,7 +113,7 @@ export function generatePipelineMermaid(
     // Add resource nodes if enabled
     if (opts.includeResources && resources && resources.length > 0) {
         // Filter out the main input file to avoid duplication
-        const csvPath = config.input.from?.path;
+        const csvPath = isCSVSource(config.input.from) ? config.input.from.path : undefined;
         const otherResources = resources.filter(r =>
             !csvPath || (r.relativePath !== csvPath && r.fileName !== csvPath)
         );
@@ -140,7 +140,7 @@ export function generatePipelineMermaid(
 
     // Add resource links
     if (opts.includeResources && resources && resources.length > 0) {
-        const csvPath = config.input.from?.path;
+        const csvPath = isCSVSource(config.input.from) ? config.input.from.path : undefined;
         const otherResources = resources.filter(r =>
             !csvPath || (r.relativePath !== csvPath && r.fileName !== csvPath)
         );
@@ -160,7 +160,7 @@ export function generatePipelineMermaid(
     lines.push('    click REDUCE nodeClick');
 
     if (opts.includeResources && resources && resources.length > 0) {
-        const csvPath = config.input.from?.path;
+        const csvPath = isCSVSource(config.input.from) ? config.input.from.path : undefined;
         const otherResources = resources.filter(r =>
             !csvPath || (r.relativePath !== csvPath && r.fileName !== csvPath)
         );
@@ -179,7 +179,7 @@ export function generatePipelineMermaid(
     lines.push('    style REDUCE fill:#FF9800,stroke:#E65100,color:#fff');
 
     if (opts.includeResources && resources && resources.length > 0) {
-        const csvPath = config.input.from?.path;
+        const csvPath = isCSVSource(config.input.from) ? config.input.from.path : undefined;
         const otherResources = resources.filter(r =>
             !csvPath || (r.relativePath !== csvPath && r.fileName !== csvPath)
         );
@@ -204,7 +204,8 @@ function buildInputNodeLabel(
     
     // Determine input type based on new config structure
     const hasInlineItems = config.input.items && config.input.items.length > 0;
-    const hasCSVSource = config.input.from?.type === 'csv';
+    const hasCSVSource = isCSVSource(config.input.from);
+    const hasInlineArrayFrom = Array.isArray(config.input.from);
     
     if (hasInlineItems) {
         parts.push('INLINE');
@@ -222,8 +223,16 @@ function buildInputNodeLabel(
             const displayCount = limit ? Math.min(rowCount, limit) : rowCount;
             parts.push(`${displayCount} rows`);
         } else {
-            // Show file name truncated
-            parts.push(truncateText(config.input.from!.path, 15));
+            // Show file name truncated - hasCSVSource is true so from is CSVSource
+            parts.push(truncateText((config.input.from as { path: string }).path, 15));
+        }
+    } else if (hasInlineArrayFrom) {
+        parts.push('INLINE_ARRAY');
+        if (opts?.showCounts) {
+            const itemCount = (config.input.from as PromptItem[]).length;
+            const limit = config.input.limit;
+            const displayCount = limit ? Math.min(itemCount, limit) : itemCount;
+            parts.push(`${displayCount} items`);
         }
     } else {
         parts.push('UNKNOWN');
@@ -341,8 +350,25 @@ export function generatePipelineTextDiagram(
     
     // Determine input type based on new config structure
     const hasInlineItems = config.input.items && config.input.items.length > 0;
-    const inputType = hasInlineItems ? 'INLINE' : (config.input.from?.type?.toUpperCase() || 'UNKNOWN');
-    const itemCount = hasInlineItems ? config.input.items!.length : csvInfo?.rowCount;
+    const hasCSVSource = isCSVSource(config.input.from);
+    const hasInlineArrayFrom = Array.isArray(config.input.from);
+    
+    let inputType: string;
+    let itemCount: number | undefined;
+    
+    if (hasInlineItems) {
+        inputType = 'INLINE';
+        itemCount = config.input.items!.length;
+    } else if (hasCSVSource) {
+        inputType = 'CSV';
+        itemCount = csvInfo?.rowCount;
+    } else if (hasInlineArrayFrom) {
+        inputType = 'INLINE_ARRAY';
+        itemCount = (config.input.from as PromptItem[]).length;
+    } else {
+        inputType = 'UNKNOWN';
+        itemCount = undefined;
+    }
 
     lines.push('Pipeline Flow:');
     lines.push('');
@@ -350,7 +376,7 @@ export function generatePipelineTextDiagram(
     lines.push(`  │  📥 INPUT       │`);
     lines.push(`  │  ${inputType.padEnd(13)} │`);
     if (itemCount !== undefined) {
-        const countLabel = hasInlineItems ? 'items' : 'rows';
+        const countLabel = hasInlineItems || hasInlineArrayFrom ? 'items' : 'rows';
         lines.push(`  │  ${String(itemCount).padEnd(5)} ${countLabel.padEnd(6)} │`);
     }
     lines.push(`  └────────┬────────┘`);

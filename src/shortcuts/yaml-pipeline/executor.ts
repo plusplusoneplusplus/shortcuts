@@ -25,6 +25,7 @@ import { extractVariables } from './template';
 import {
     AIInvoker,
     CSVSource,
+    isCSVSource,
     PipelineConfig,
     PipelineParameter,
     ProcessTracker
@@ -84,15 +85,22 @@ export async function executePipeline(
     // Validate config
     validatePipelineConfig(config);
 
-    // 1. Input Phase: Load items (either inline or from CSV)
+    // 1. Input Phase: Load items (inline, from CSV, or from inline array)
     let items: PromptItem[];
     try {
         if (config.input.items) {
             // Direct inline items
             items = config.input.items;
         } else if (config.input.from) {
-            // Load from CSV
-            items = await loadFromCSV(config.input.from, options.pipelineDirectory);
+            if (isCSVSource(config.input.from)) {
+                // Load from CSV file
+                items = await loadFromCSV(config.input.from, options.pipelineDirectory);
+            } else if (Array.isArray(config.input.from)) {
+                // Inline array (useful for multi-model fanout)
+                items = config.input.from;
+            } else {
+                throw new PipelineExecutionError('Invalid "from" configuration', 'input');
+            }
         } else {
             // This should be caught by validation, but be defensive
             throw new PipelineExecutionError('Input must have either "items" or "from"', 'input');
@@ -233,15 +241,27 @@ function validatePipelineConfig(config: PipelineConfig): void {
         throw new PipelineExecutionError('Input cannot have both "items" and "from"');
     }
 
-    // Validate CSV source if present
+    // Validate from source if present (can be CSVSource or inline array)
     if (config.input.from) {
-        if (config.input.from.type !== 'csv') {
+        if (Array.isArray(config.input.from)) {
+            // Inline array - validate it's not empty or has valid items
+            // Empty arrays are allowed (will produce no results)
+        } else if (isCSVSource(config.input.from)) {
+            // CSV source - validate path exists
+            if (!config.input.from.path) {
+                throw new PipelineExecutionError('Pipeline config missing "input.from.path"');
+            }
+        } else {
+            // Unknown format - check if it looks like a malformed CSV source
+            const fromObj = config.input.from as Record<string, unknown>;
+            if (fromObj.type && fromObj.type !== 'csv') {
+                throw new PipelineExecutionError(
+                    `Unsupported source type: ${fromObj.type}. Only "csv" is supported.`
+                );
+            }
             throw new PipelineExecutionError(
-                `Unsupported source type: ${config.input.from.type}. Only "csv" is supported.`
+                'Invalid "from" configuration. Must be either a CSV source {type: "csv", path: "..."} or an inline array.'
             );
-        }
-        if (!config.input.from.path) {
-            throw new PipelineExecutionError('Pipeline config missing "input.from.path"');
         }
     }
 

@@ -57,6 +57,20 @@ export interface CSVSource {
 }
 
 /**
+ * Type guard to check if a value is a CSVSource
+ */
+export function isCSVSource(value: unknown): value is CSVSource {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        'type' in value &&
+        (value as CSVSource).type === 'csv' &&
+        'path' in value &&
+        typeof (value as CSVSource).path === 'string'
+    );
+}
+
+/**
  * Parameter definition for pipeline input
  */
 export interface PipelineParameter {
@@ -67,23 +81,39 @@ export interface PipelineParameter {
 }
 
 /**
- * Input configuration - supports inline items or CSV file
+ * Input configuration - supports inline items, CSV file, or inline list for fanout
  * 
  * Input is always a list of items. You can either:
  * - Provide the list inline in YAML via `items`
- * - Load from CSV file via `from`
+ * - Load from CSV file via `from` (CSVSource)
+ * - Provide a simple list via `from` (array) - useful for multi-model fanout
  * 
  * Must have exactly one of `items` or `from`.
  * 
  * Optional `parameters` can define static values available to all items
  * in the map phase template (e.g., {{paramName}}).
+ * 
+ * Multi-model fanout example:
+ * ```yaml
+ * input:
+ *   from:
+ *     - model: gpt-4
+ *     - model: claude-sonnet
+ *   parameters:
+ *     - name: code
+ *       value: "function add(a, b) { return a + b; }"
+ * ```
  */
 export interface InputConfig {
     /** Direct list of items (inline) */
     items?: MRPromptItem[];
 
-    /** Load items from CSV file */
-    from?: CSVSource;
+    /** 
+     * Load items from source:
+     * - CSVSource: Load from CSV file
+     * - PromptItem[]: Inline list (useful for multi-model fanout with parameters)
+     */
+    from?: CSVSource | MRPromptItem[];
 
     /** Limit number of items to process (default: all) */
     limit?: number;
@@ -102,7 +132,12 @@ export interface MapConfig {
     output?: string[];
     /** Maximum concurrent AI calls (default: 5) */
     parallel?: number;
-    /** Model to use for AI calls */
+    /** 
+     * Model to use for AI calls. Supports {{variable}} template syntax for per-item models.
+     * 
+     * Static model example: `model: "gpt-4"`
+     * Dynamic model example: `model: "{{model}}"` (reads from item's model field)
+     */
     model?: string;
     /** Timeout for each AI call in milliseconds (default: 300000 = 5 minutes) */
     timeoutMs?: number;

@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
-import { PipelineConfig, CSVParseResult, PromptItem } from '../types';
+import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource } from '../types';
 import { readCSVFile, resolveCSVPath, getCSVPreview } from '../csv-reader';
 import { PipelineInfo, ValidationResult } from './types';
 import { PipelineManager } from './pipeline-manager';
@@ -137,8 +137,8 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             let csvPreview: PromptItem[] | undefined;
 
             try {
-                // Support both inline items and CSV source
-                if (config.input?.from?.path) {
+                // Support both inline items, CSV source, and inline array from
+                if (isCSVSource(config.input?.from)) {
                     const csvPath = resolveCSVPath(config.input.from.path, packagePath);
 
                     if (fs.existsSync(csvPath)) {
@@ -147,6 +147,16 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
                         });
                         csvPreview = getCSVPreview(csvInfo, 5);
                     }
+                } else if (Array.isArray(config.input?.from) && config.input.from.length > 0) {
+                    // For inline array from, create pseudo-CSV info for preview
+                    const items = config.input.from as PromptItem[];
+                    const headers = Object.keys(items[0]);
+                    csvInfo = {
+                        items: items,
+                        headers: headers,
+                        rowCount: items.length
+                    };
+                    csvPreview = getCSVPreview(csvInfo, 5);
                 } else if (config.input?.items && config.input.items.length > 0) {
                     // For inline items, we can create a pseudo-CSV info for preview
                     const items = config.input.items;

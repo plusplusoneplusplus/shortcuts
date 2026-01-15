@@ -19,7 +19,8 @@ import {
 import {
     AIInvokerResult,
     JobProgress,
-    PipelineConfig
+    PipelineConfig,
+    isCSVSource
 } from '../../../shortcuts/yaml-pipeline/types';
 
 suite('Pipeline Executor', () => {
@@ -774,7 +775,7 @@ suite('Pipeline Executor', () => {
                     aiInvoker: createMockAIInvoker(new Map()),
                     pipelineDirectory: tempDir
                 }),
-                /missing.*path/i
+                /Invalid "from" configuration|missing.*path/i
             );
         });
 
@@ -1129,8 +1130,11 @@ reduce:
 
             assert.strictEqual(config.name, 'Bug Triage');
             assert.ok(config.input.from);
-            assert.strictEqual(config.input.from.type, 'csv');
-            assert.strictEqual(config.input.from.path, './bugs.csv');
+            assert.ok(isCSVSource(config.input.from));
+            if (isCSVSource(config.input.from)) {
+                assert.strictEqual(config.input.from.type, 'csv');
+                assert.strictEqual(config.input.from.path, './bugs.csv');
+            }
             assert.ok(config.map.prompt.includes('Analyze: {{title}}'));
             assert.deepStrictEqual(config.map.output, ['severity', 'category']);
             assert.strictEqual(config.reduce.type, 'list');
@@ -1201,7 +1205,10 @@ reduce:
             const config = await parsePipelineYAML(yaml);
 
             assert.ok(config.input.from);
-            assert.strictEqual(config.input.from.delimiter, '\t');
+            assert.ok(isCSVSource(config.input.from));
+            if (isCSVSource(config.input.from)) {
+                assert.strictEqual(config.input.from.delimiter, '\t');
+            }
             assert.strictEqual(config.map.parallel, 3);
         });
 
@@ -1338,7 +1345,10 @@ reduce:
 
             assert.strictEqual(config.name, 'Sync Test');
             assert.ok(config.input.from);
-            assert.strictEqual(config.input.from.type, 'csv');
+            assert.ok(isCSVSource(config.input.from));
+            if (isCSVSource(config.input.from)) {
+                assert.strictEqual(config.input.from.type, 'csv');
+            }
         });
 
         test('parses valid YAML config synchronously with inline items', () => {

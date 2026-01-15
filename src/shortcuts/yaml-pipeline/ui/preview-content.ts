@@ -8,7 +8,7 @@
  */
 
 import * as vscode from 'vscode';
-import { PipelineConfig, CSVParseResult, PromptItem } from '../types';
+import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource } from '../types';
 import { PipelineInfo, ResourceFileInfo, ValidationResult } from './types';
 import {
     generatePipelineMermaid,
@@ -286,11 +286,12 @@ export function getInputDetails(
     
     // Determine input type and path based on new config structure
     const hasInlineItems = config.input.items && config.input.items.length > 0;
-    const hasCSVSource = config.input.from?.type === 'csv';
-    const inputType = hasInlineItems ? 'INLINE' : (hasCSVSource ? 'CSV' : 'UNKNOWN');
-    const csvPath = config.input.from?.path || '';
-    const delimiter = config.input.from?.delimiter;
-    const itemCount = hasInlineItems ? config.input.items!.length : rowCount;
+    const hasCSVSource = isCSVSource(config.input.from);
+    const hasInlineArrayFrom = Array.isArray(config.input.from);
+    const inputType = hasInlineItems ? 'INLINE' : (hasCSVSource ? 'CSV' : (hasInlineArrayFrom ? 'INLINE_ARRAY' : 'UNKNOWN'));
+    const csvPath = hasCSVSource ? (config.input.from as { path: string }).path : '';
+    const delimiter = hasCSVSource ? (config.input.from as { delimiter?: string }).delimiter : undefined;
+    const itemCount = hasInlineItems ? config.input.items!.length : (hasInlineArrayFrom ? (config.input.from as PromptItem[]).length : rowCount);
     const limit = config.input.limit;
 
     return `

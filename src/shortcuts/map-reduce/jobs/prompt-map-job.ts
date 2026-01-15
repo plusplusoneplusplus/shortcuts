@@ -198,7 +198,7 @@ class PromptMapSplitter implements Splitter<PromptMapInput, PromptWorkItemData> 
 class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
     constructor(
         private aiInvoker: AIInvoker,
-        private model?: string
+        private modelTemplate?: string
     ) {}
 
     async map(
@@ -211,7 +211,13 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
         try {
             const substituted = substituteTemplate(promptTemplate, item);
             const prompt = buildFullPrompt(substituted, outputFields);
-            const result = await this.aiInvoker(prompt, { model: this.model });
+            
+            // Support template substitution in model (e.g., "{{model}}" reads from item.model)
+            const model = this.modelTemplate 
+                ? substituteTemplate(this.modelTemplate, item) || undefined
+                : undefined;
+            
+            const result = await this.aiInvoker(prompt, { model });
 
             if (result.success && result.response) {
                 // Text mode - return raw response without JSON parsing
