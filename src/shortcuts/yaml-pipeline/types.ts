@@ -81,14 +81,53 @@ export interface PipelineParameter {
 }
 
 /**
- * Input configuration - supports inline items, CSV file, or inline list for fanout
+ * Configuration for AI-generated inputs
+ * 
+ * Allows users to generate pipeline input items using AI based on a natural language prompt.
+ * The AI will return items matching the specified schema.
+ */
+export interface GenerateInputConfig {
+    /** 
+     * Natural language prompt describing items to generate.
+     * Include count in the prompt (e.g., "Generate 10 test cases for...")
+     */
+    prompt: string;
+    /** 
+     * Field names for each generated item.
+     * These will be the keys in each generated object.
+     */
+    schema: string[];
+    /**
+     * Optional model to use for generation.
+     * If not specified, uses the default model.
+     */
+    model?: string;
+}
+
+/**
+ * Type guard to check if a value is a GenerateInputConfig
+ */
+export function isGenerateConfig(value: unknown): value is GenerateInputConfig {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        'prompt' in value &&
+        typeof (value as GenerateInputConfig).prompt === 'string' &&
+        'schema' in value &&
+        Array.isArray((value as GenerateInputConfig).schema)
+    );
+}
+
+/**
+ * Input configuration - supports inline items, CSV file, inline list for fanout, or AI-generated items
  * 
  * Input is always a list of items. You can either:
  * - Provide the list inline in YAML via `items`
  * - Load from CSV file via `from` (CSVSource)
  * - Provide a simple list via `from` (array) - useful for multi-model fanout
+ * - Generate items using AI via `generate` (GenerateInputConfig)
  * 
- * Must have exactly one of `items` or `from`.
+ * Must have exactly one of `items`, `from`, or `generate`.
  * 
  * Optional `parameters` can define static values available to all items
  * in the map phase template (e.g., {{paramName}}).
@@ -103,6 +142,17 @@ export interface PipelineParameter {
  *     - name: code
  *       value: "function add(a, b) { return a + b; }"
  * ```
+ * 
+ * AI-generated input example:
+ * ```yaml
+ * input:
+ *   generate:
+ *     prompt: "Generate 10 test cases for user login validation"
+ *     schema:
+ *       - testName
+ *       - input
+ *       - expected
+ * ```
  */
 export interface InputConfig {
     /** Direct list of items (inline) */
@@ -114,6 +164,12 @@ export interface InputConfig {
      * - PromptItem[]: Inline list (useful for multi-model fanout with parameters)
      */
     from?: CSVSource | MRPromptItem[];
+
+    /** 
+     * Generate items using AI based on a prompt and schema.
+     * The user will be able to review and edit generated items before execution.
+     */
+    generate?: GenerateInputConfig;
 
     /** Limit number of items to process (default: all) */
     limit?: number;

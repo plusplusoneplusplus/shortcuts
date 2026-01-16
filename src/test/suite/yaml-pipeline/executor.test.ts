@@ -708,7 +708,7 @@ suite('Pipeline Executor', () => {
             );
         });
 
-        test('throws for missing input (neither items nor from)', async () => {
+        test('throws for missing input (neither items, from, nor generate)', async () => {
             const config = {
                 name: 'Test',
                 input: {},
@@ -721,7 +721,7 @@ suite('Pipeline Executor', () => {
                     aiInvoker: createMockAIInvoker(new Map()),
                     pipelineDirectory: tempDir
                 }),
-                /must have either "items" or "from"/
+                /must have one of "items", "from", or "generate"/
             );
         });
 
@@ -741,7 +741,47 @@ suite('Pipeline Executor', () => {
                     aiInvoker: createMockAIInvoker(new Map()),
                     pipelineDirectory: tempDir
                 }),
-                /cannot have both "items" and "from"/
+                /can only have one of "items", "from", or "generate"/
+            );
+        });
+
+        test('throws for having both items and generate', async () => {
+            const config = {
+                name: 'Test',
+                input: {
+                    items: [{ x: '1' }],
+                    generate: { prompt: 'Generate items', schema: ['x'] }
+                },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /can only have one of "items", "from", or "generate"/
+            );
+        });
+
+        test('throws for having both from and generate', async () => {
+            const config = {
+                name: 'Test',
+                input: {
+                    from: { type: 'csv', path: './data.csv' },
+                    generate: { prompt: 'Generate items', schema: ['x'] }
+                },
+                map: { prompt: '{{x}}', output: ['y'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /can only have one of "items", "from", or "generate"/
             );
         });
 
@@ -907,6 +947,116 @@ suite('Pipeline Executor', () => {
                     pipelineDirectory: tempDir
                 }),
                 /must have a "value"/
+            );
+        });
+    });
+
+    suite('validation errors - generate config', () => {
+        test('throws for generate config requiring interactive approval', async () => {
+            const config: PipelineConfig = {
+                name: 'Generate Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate 5 test cases',
+                        schema: ['name', 'value']
+                    }
+                },
+                map: { prompt: '{{name}}: {{value}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /interactive approval|Pipeline Preview/i
+            );
+        });
+
+        test('throws for generate config with missing prompt', async () => {
+            const config = {
+                name: 'Generate Test',
+                input: {
+                    generate: {
+                        schema: ['name', 'value']
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /Invalid generate configuration|prompt/i
+            );
+        });
+
+        test('throws for generate config with missing schema', async () => {
+            const config = {
+                name: 'Generate Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items'
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /Invalid generate configuration|schema/i
+            );
+        });
+
+        test('throws for generate config with empty schema', async () => {
+            const config: PipelineConfig = {
+                name: 'Generate Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: []
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /at least one field/i
+            );
+        });
+
+        test('throws for generate config with invalid schema field names', async () => {
+            const config: PipelineConfig = {
+                name: 'Generate Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['validName', '123invalid']
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /valid identifier/i
             );
         });
     });

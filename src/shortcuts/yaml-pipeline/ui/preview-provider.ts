@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
-import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource } from '../types';
+import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig, AIInvoker } from '../types';
 import { readCSVFile, resolveCSVPath, getCSVPreview } from '../csv-reader';
 import { PipelineInfo, ValidationResult } from './types';
 import { PipelineManager } from './pipeline-manager';
@@ -22,6 +22,15 @@ import {
     PreviewMessage,
     PipelinePreviewData
 } from './preview-content';
+import {
+    GenerateState,
+    GeneratedItem,
+    generateInputItems,
+    toGeneratedItems,
+    getSelectedItems,
+    createEmptyItem
+} from '../input-generator';
+import { invokeCopilotCLI, getAIToolSetting, copyToClipboard } from '../../ai-service';
 
 /**
  * Pipeline Preview Editor - Custom editor provider for pipeline.yaml files
@@ -29,6 +38,13 @@ import {
  */
 export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorProvider {
     public static readonly viewType = 'pipelinePreviewEditor';
+
+    /** Track generate state per document */
+    private generateStates = new Map<string, GenerateState>();
+    /** Track generated items per document */
+    private generatedItems = new Map<string, GeneratedItem[]>();
+    /** Track webview panels per document for state updates */
+    private webviewPanels = new Map<string, vscode.WebviewPanel>();
 
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -70,10 +86,19 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
         // Get the pipeline package directory (parent of pipeline.yaml)
         const packagePath = path.dirname(document.uri.fsPath);
         const packageName = path.basename(packagePath);
+        const docKey = document.uri.toString();
 
         // Set the tab title
         const fileName = path.basename(document.uri.fsPath);
         webviewPanel.title = `[Preview] ${packageName}`;
+
+        // Track webview panel
+        this.webviewPanels.set(docKey, webviewPanel);
+
+        // Initialize generate state if this is a generate pipeline
+        if (!this.generateStates.has(docKey)) {
+            this.generateStates.set(docKey, { status: 'initial' });
+        }
 
         // Setup webview options
         webviewPanel.webview.options = {
@@ -97,13 +122,16 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
 
         // Handle messages from webview
         const messageSubscription = webviewPanel.webview.onDidReceiveMessage(
-            (message: PreviewMessage) => this.handleMessage(message, document, packagePath)
+            (message: PreviewMessage) => this.handleMessage(message, document, packagePath, webviewPanel)
         );
 
         // Clean up on close
         webviewPanel.onDidDispose(() => {
             changeDocumentSubscription.dispose();
             messageSubscription.dispose();
+            this.webviewPanels.delete(docKey);
+            this.generateStates.delete(docKey);
+            this.generatedItems.delete(docKey);
         });
     }
 
@@ -172,13 +200,20 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
                 console.warn('Failed to read input:', csvError);
             }
 
+            // Get generate state for this document
+            const docKey = document.uri.toString();
+            const generateState = this.generateStates.get(docKey) || { status: 'initial' as const };
+            const generatedItems = this.generatedItems.get(docKey);
+
             // Build preview data
             const previewData: PipelinePreviewData = {
                 config,
                 info: pipelineInfo,
                 validation,
                 csvInfo,
-                csvPreview
+                csvPreview,
+                generateState: isGenerateConfig(config.input?.generate) ? generateState : undefined,
+                generatedItems: generatedItems
             };
 
             // Update webview content
@@ -261,8 +296,11 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
     private async handleMessage(
         message: PreviewMessage,
         document: vscode.TextDocument,
-        packagePath: string
+        packagePath: string,
+        webviewPanel: vscode.WebviewPanel
     ): Promise<void> {
+        const docKey = document.uri.toString();
+
         switch (message.type) {
             case 'edit':
                 // Open the YAML file in the default text editor
@@ -289,6 +327,270 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             case 'ready':
                 // Handled client-side or informational
                 break;
+
+            // Generate flow messages
+            case 'generate':
+                await this.handleGenerate(document, packagePath, webviewPanel);
+                break;
+
+            case 'regenerate':
+                await this.handleGenerate(document, packagePath, webviewPanel);
+                break;
+
+            case 'cancelGenerate':
+                this.generateStates.set(docKey, { status: 'initial' });
+                this.generatedItems.delete(docKey);
+                await this.updateWebview(webviewPanel.webview, document, packagePath);
+                break;
+
+            case 'addRow':
+                await this.handleAddRow(document, packagePath, webviewPanel);
+                break;
+
+            case 'deleteRows':
+                await this.handleDeleteRows(document, packagePath, webviewPanel, message.payload?.indices || []);
+                break;
+
+            case 'updateCell':
+                await this.handleUpdateCell(document, packagePath, webviewPanel, message.payload as { index: number; field: string; value: string } | undefined);
+                break;
+
+            case 'toggleRow':
+                await this.handleToggleRow(document, packagePath, webviewPanel, message.payload as { index: number; selected: boolean } | undefined);
+                break;
+
+            case 'toggleAll':
+                await this.handleToggleAll(document, packagePath, webviewPanel, message.payload?.selected || false);
+                break;
+
+            case 'runWithItems':
+                await this.handleRunWithItems(document, message.payload?.items || []);
+                break;
+        }
+    }
+
+    /**
+     * Handle generate command - invoke AI to generate items
+     */
+    private async handleGenerate(
+        document: vscode.TextDocument,
+        packagePath: string,
+        webviewPanel: vscode.WebviewPanel
+    ): Promise<void> {
+        const docKey = document.uri.toString();
+
+        try {
+            // Parse config to get generate settings
+            const content = document.getText();
+            const config = yaml.load(content) as PipelineConfig;
+
+            if (!config.input?.generate || !isGenerateConfig(config.input.generate)) {
+                vscode.window.showErrorMessage('Pipeline does not have a valid generate configuration');
+                return;
+            }
+
+            const generateConfig = config.input.generate;
+
+            // Update state to generating
+            this.generateStates.set(docKey, { status: 'generating' });
+            await this.updateWebview(webviewPanel.webview, document, packagePath);
+
+            // Create AI invoker
+            const aiTool = getAIToolSetting();
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || packagePath;
+
+            const aiInvoker: AIInvoker = async (prompt: string, options?: { model?: string }): Promise<{ success: boolean; response?: string; error?: string }> => {
+                if (aiTool === 'clipboard') {
+                    await copyToClipboard(prompt);
+                    // In clipboard mode, we can't get a response automatically
+                    // Show a dialog for the user to paste the response
+                    const response = await vscode.window.showInputBox({
+                        prompt: 'Paste the AI response (JSON array)',
+                        placeHolder: '[{"field1": "value1", ...}, ...]',
+                        ignoreFocusOut: true
+                    });
+                    if (response) {
+                        return { success: true, response };
+                    }
+                    return { success: false, error: 'No response provided' };
+                } else {
+                    // Use Copilot CLI with optional model
+                    const result = await invokeCopilotCLI(prompt, workspaceRoot, undefined, undefined, options?.model);
+                    return result;
+                }
+            };
+
+            // Generate items
+            const result = await generateInputItems(generateConfig, aiInvoker);
+
+            if (result.success && result.items) {
+                const items = toGeneratedItems(result.items);
+                this.generatedItems.set(docKey, items);
+                this.generateStates.set(docKey, { status: 'review', items });
+            } else {
+                this.generateStates.set(docKey, {
+                    status: 'error',
+                    message: result.error || 'Generation failed'
+                });
+            }
+
+            await this.updateWebview(webviewPanel.webview, document, packagePath);
+
+        } catch (error) {
+            this.generateStates.set(docKey, {
+                status: 'error',
+                message: error instanceof Error ? error.message : String(error)
+            });
+            await this.updateWebview(webviewPanel.webview, document, packagePath);
+        }
+    }
+
+    /**
+     * Handle adding a new empty row
+     */
+    private async handleAddRow(
+        document: vscode.TextDocument,
+        packagePath: string,
+        webviewPanel: vscode.WebviewPanel
+    ): Promise<void> {
+        const docKey = document.uri.toString();
+        const items = this.generatedItems.get(docKey);
+
+        if (!items) return;
+
+        // Get schema from config
+        const content = document.getText();
+        const config = yaml.load(content) as PipelineConfig;
+        const schema = config.input?.generate?.schema || [];
+
+        // Add empty item
+        const newItem: GeneratedItem = {
+            data: createEmptyItem(schema),
+            selected: true
+        };
+        items.push(newItem);
+
+        this.generatedItems.set(docKey, items);
+        this.generateStates.set(docKey, { status: 'review', items });
+        await this.updateWebview(webviewPanel.webview, document, packagePath);
+    }
+
+    /**
+     * Handle deleting selected rows
+     */
+    private async handleDeleteRows(
+        document: vscode.TextDocument,
+        packagePath: string,
+        webviewPanel: vscode.WebviewPanel,
+        indices: number[]
+    ): Promise<void> {
+        const docKey = document.uri.toString();
+        const items = this.generatedItems.get(docKey);
+
+        if (!items) return;
+
+        // Remove items at specified indices (in reverse order to maintain indices)
+        const sortedIndices = [...indices].sort((a, b) => b - a);
+        for (const idx of sortedIndices) {
+            if (idx >= 0 && idx < items.length) {
+                items.splice(idx, 1);
+            }
+        }
+
+        this.generatedItems.set(docKey, items);
+        this.generateStates.set(docKey, { status: 'review', items });
+        await this.updateWebview(webviewPanel.webview, document, packagePath);
+    }
+
+    /**
+     * Handle updating a cell value
+     */
+    private async handleUpdateCell(
+        document: vscode.TextDocument,
+        packagePath: string,
+        webviewPanel: vscode.WebviewPanel,
+        payload?: { index: number; field: string; value: string }
+    ): Promise<void> {
+        if (!payload) return;
+
+        const docKey = document.uri.toString();
+        const items = this.generatedItems.get(docKey);
+
+        if (!items || payload.index < 0 || payload.index >= items.length) return;
+
+        items[payload.index].data[payload.field] = payload.value;
+
+        this.generatedItems.set(docKey, items);
+        // Don't re-render the whole webview for cell updates - let the webview handle it locally
+    }
+
+    /**
+     * Handle toggling a row's selection
+     */
+    private async handleToggleRow(
+        document: vscode.TextDocument,
+        packagePath: string,
+        webviewPanel: vscode.WebviewPanel,
+        payload?: { index: number; selected: boolean }
+    ): Promise<void> {
+        if (!payload) return;
+
+        const docKey = document.uri.toString();
+        const items = this.generatedItems.get(docKey);
+
+        if (!items || payload.index < 0 || payload.index >= items.length) return;
+
+        items[payload.index].selected = payload.selected;
+
+        this.generatedItems.set(docKey, items);
+        // Don't re-render the whole webview - let the webview handle it locally
+    }
+
+    /**
+     * Handle toggling all rows
+     */
+    private async handleToggleAll(
+        document: vscode.TextDocument,
+        packagePath: string,
+        webviewPanel: vscode.WebviewPanel,
+        selected: boolean
+    ): Promise<void> {
+        const docKey = document.uri.toString();
+        const items = this.generatedItems.get(docKey);
+
+        if (!items) return;
+
+        for (const item of items) {
+            item.selected = selected;
+        }
+
+        this.generatedItems.set(docKey, items);
+        // Don't re-render the whole webview - let the webview handle it locally
+    }
+
+    /**
+     * Handle running pipeline with the approved items
+     */
+    private async handleRunWithItems(
+        document: vscode.TextDocument,
+        items: PromptItem[]
+    ): Promise<void> {
+        const packagePath = path.dirname(document.uri.fsPath);
+        const packageName = path.basename(packagePath);
+
+        if (items.length === 0) {
+            vscode.window.showWarningMessage('No items selected for execution');
+            return;
+        }
+
+        // Find the pipeline and execute with the approved items
+        const pipelines = await this.pipelineManager.getPipelines();
+        const pipeline = pipelines.find(p => p.packageName === packageName);
+
+        if (pipeline) {
+            const item = new PipelineItem(pipeline);
+            // Execute with the approved items
+            await vscode.commands.executeCommand('pipelinesViewer.executeWithItems', item, items);
         }
     }
 

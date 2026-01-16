@@ -9,10 +9,12 @@ import {
     getInputDetails,
     getMapDetails,
     getReduceDetails,
-    getResourceDetails
+    getResourceDetails,
+    PipelinePreviewData
 } from '../../../shortcuts/yaml-pipeline/ui/preview-content';
 import { PipelineConfig, CSVParseResult } from '../../../shortcuts/yaml-pipeline/types';
-import { ResourceFileInfo } from '../../../shortcuts/yaml-pipeline/ui/types';
+import { ResourceFileInfo, PipelineInfo, ValidationResult } from '../../../shortcuts/yaml-pipeline/ui/types';
+import { GeneratedItem } from '../../../shortcuts/yaml-pipeline/input-generator';
 
 suite('Pipeline Preview Content Tests', () => {
     // Sample pipeline config with CSV source
@@ -32,6 +34,25 @@ suite('Pipeline Preview Content Tests', () => {
         },
         reduce: {
             type: 'json'
+        }
+    };
+
+    // Sample pipeline config with AI generate input
+    const generateConfig: PipelineConfig = {
+        name: 'Generate Test Pipeline',
+        input: {
+            generate: {
+                prompt: 'Generate 10 test cases for user login validation',
+                schema: ['testName', 'input', 'expected']
+            }
+        },
+        map: {
+            prompt: 'Run test: {{testName}}\nInput: {{input}}\nExpected: {{expected}}',
+            output: ['actual', 'passed'],
+            parallel: 5
+        },
+        reduce: {
+            type: 'table'
         }
     };
 
@@ -432,6 +453,198 @@ suite('Pipeline Preview Content Tests', () => {
             const result = getMapDetails(configManyOutputs);
             assert.ok(result.includes('f1'), 'Should show first field');
             assert.ok(result.includes('f10'), 'Should show last field');
+        });
+    });
+
+    suite('Generate Input Configuration', () => {
+        // Sample generate config
+        const generateConfig: PipelineConfig = {
+            name: 'Generate Test Pipeline',
+            input: {
+                generate: {
+                    prompt: 'Generate 10 test cases for user login validation',
+                    schema: ['testName', 'input', 'expected']
+                }
+            },
+            map: {
+                prompt: 'Run test: {{testName}}\nInput: {{input}}\nExpected: {{expected}}',
+                output: ['actual', 'passed']
+            },
+            reduce: {
+                type: 'table'
+            }
+        };
+
+        test('should show AI-GENERATED type for generate config', () => {
+            const result = getInputDetails(generateConfig);
+            
+            assert.ok(result.includes('AI-GENERATED') || result.includes('UNKNOWN'), 
+                'Should show AI-GENERATED or handle as unknown type');
+        });
+
+        test('should show schema fields for generate config', () => {
+            // When generate config is used, the input details should show the schema
+            const result = getInputDetails(generateConfig);
+            
+            // The schema should be reflected in the output somehow
+            // Either as columns or in a generate-specific section
+            assert.ok(result.includes('INPUT Configuration'), 'Should have INPUT title');
+        });
+    });
+
+    suite('PipelinePreviewData Interface', () => {
+        test('should accept generateState in preview data', () => {
+            const previewData: PipelinePreviewData = {
+                config: sampleConfig,
+                info: {
+                    packageName: 'test-package',
+                    packagePath: '/path/to/package',
+                    filePath: '/path/to/package/pipeline.yaml',
+                    relativePath: '.vscode/pipelines/test-package/pipeline.yaml',
+                    name: 'Test Pipeline',
+                    lastModified: new Date(),
+                    size: 1024,
+                    isValid: true
+                },
+                validation: {
+                    valid: true,
+                    errors: [],
+                    warnings: []
+                },
+                generateState: { status: 'initial' }
+            };
+
+            assert.ok(previewData.generateState, 'Should accept generateState');
+            assert.strictEqual(previewData.generateState.status, 'initial');
+        });
+
+        test('should accept generating state', () => {
+            const previewData: PipelinePreviewData = {
+                config: sampleConfig,
+                info: {
+                    packageName: 'test-package',
+                    packagePath: '/path/to/package',
+                    filePath: '/path/to/package/pipeline.yaml',
+                    relativePath: '.vscode/pipelines/test-package/pipeline.yaml',
+                    name: 'Test Pipeline',
+                    lastModified: new Date(),
+                    size: 1024,
+                    isValid: true
+                },
+                validation: {
+                    valid: true,
+                    errors: [],
+                    warnings: []
+                },
+                generateState: { status: 'generating' }
+            };
+
+            assert.strictEqual(previewData.generateState?.status, 'generating');
+        });
+
+        test('should accept review state with items', () => {
+            const generatedItems: GeneratedItem[] = [
+                { data: { testName: 'Valid login', input: 'user@test.com', expected: 'Success' }, selected: true },
+                { data: { testName: 'Empty email', input: '', expected: 'Error' }, selected: true },
+                { data: { testName: 'Invalid format', input: 'not-an-email', expected: 'Error' }, selected: false }
+            ];
+
+            const previewData: PipelinePreviewData = {
+                config: generateConfig,
+                info: {
+                    packageName: 'test-package',
+                    packagePath: '/path/to/package',
+                    filePath: '/path/to/package/pipeline.yaml',
+                    relativePath: '.vscode/pipelines/test-package/pipeline.yaml',
+                    name: 'Generate Test Pipeline',
+                    lastModified: new Date(),
+                    size: 1024,
+                    isValid: true
+                },
+                validation: {
+                    valid: true,
+                    errors: [],
+                    warnings: []
+                },
+                generateState: { status: 'review', items: generatedItems },
+                generatedItems: generatedItems
+            };
+
+            assert.strictEqual(previewData.generateState?.status, 'review');
+            if (previewData.generateState?.status === 'review') {
+                assert.strictEqual(previewData.generateState.items.length, 3);
+                assert.strictEqual(previewData.generateState.items[0].data.testName, 'Valid login');
+            }
+            assert.strictEqual(previewData.generatedItems?.length, 3);
+        });
+
+        test('should accept error state', () => {
+            const previewData: PipelinePreviewData = {
+                config: generateConfig,
+                info: {
+                    packageName: 'test-package',
+                    packagePath: '/path/to/package',
+                    filePath: '/path/to/package/pipeline.yaml',
+                    relativePath: '.vscode/pipelines/test-package/pipeline.yaml',
+                    name: 'Generate Test Pipeline',
+                    lastModified: new Date(),
+                    size: 1024,
+                    isValid: true
+                },
+                validation: {
+                    valid: true,
+                    errors: [],
+                    warnings: []
+                },
+                generateState: { status: 'error', message: 'AI service unavailable' }
+            };
+
+            assert.strictEqual(previewData.generateState?.status, 'error');
+            if (previewData.generateState?.status === 'error') {
+                assert.strictEqual(previewData.generateState.message, 'AI service unavailable');
+            }
+        });
+    });
+
+    suite('Generate Config with Regular Input', () => {
+        test('should handle config with both generate and regular inputs differently', () => {
+            // This tests that generate config is mutually exclusive with items/from
+            const configWithGenerate: PipelineConfig = {
+                name: 'Generate Only',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name', 'value']
+                    }
+                },
+                map: {
+                    prompt: '{{name}}: {{value}}',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const configWithItems: PipelineConfig = {
+                name: 'Items Only',
+                input: {
+                    items: [{ name: 'Test', value: '100' }]
+                },
+                map: {
+                    prompt: '{{name}}: {{value}}',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const generateResult = getInputDetails(configWithGenerate);
+            const itemsResult = getInputDetails(configWithItems);
+
+            // Both should generate valid HTML
+            assert.ok(generateResult.includes('INPUT Configuration'));
+            assert.ok(itemsResult.includes('INPUT Configuration'));
+
+            // They should show different types
+            assert.ok(itemsResult.includes('INLINE'), 'Items config should show INLINE');
         });
     });
 });

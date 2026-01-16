@@ -240,14 +240,18 @@ export class PipelineManager implements vscode.Disposable {
             } else {
                 const input = parsed.input as Record<string, unknown>;
                 
-                // Must have either "items" or "from"
+                // Must have either "items", "from", or "generate"
                 const hasItems = Array.isArray(input.items);
                 const hasFrom = input.from !== undefined;
+                const hasGenerate = input.generate !== undefined;
                 
-                if (!hasItems && !hasFrom) {
-                    errors.push('Input must have either "items" (inline array) or "from" (CSV source or inline array)');
-                } else if (hasItems && hasFrom) {
-                    errors.push('Input cannot have both "items" and "from" - use one or the other');
+                // Count how many input sources are specified
+                const inputSourceCount = [hasItems, hasFrom, hasGenerate].filter(Boolean).length;
+                
+                if (inputSourceCount === 0) {
+                    errors.push('Input must have either "items" (inline array), "from" (CSV source or inline array), or "generate" (AI-generated)');
+                } else if (inputSourceCount > 1) {
+                    errors.push('Input cannot have multiple sources - use only one of "items", "from", or "generate"');
                 } else if (hasFrom) {
                     // "from" can be either a CSV source object or an inline array
                     if (Array.isArray(input.from)) {
@@ -277,6 +281,25 @@ export class PipelineManager implements vscode.Disposable {
                     const items = input.items as unknown[];
                     if (items.length === 0) {
                         warnings.push('Input "items" array is empty');
+                    }
+                } else if (hasGenerate) {
+                    // Validate generate config
+                    const generate = input.generate as Record<string, unknown>;
+                    if (!generate.prompt || typeof generate.prompt !== 'string') {
+                        errors.push('Missing or invalid "input.generate.prompt" field - must be a string');
+                    }
+                    if (!generate.schema) {
+                        errors.push('Missing "input.generate.schema" field');
+                    } else if (!Array.isArray(generate.schema)) {
+                        errors.push('"input.generate.schema" must be an array of field names');
+                    } else if (generate.schema.length === 0) {
+                        errors.push('"input.generate.schema" cannot be empty');
+                    } else {
+                        // Validate all schema items are strings
+                        const invalidItems = (generate.schema as unknown[]).filter(item => typeof item !== 'string');
+                        if (invalidItems.length > 0) {
+                            errors.push('"input.generate.schema" must contain only strings');
+                        }
                     }
                 }
                 

@@ -593,7 +593,7 @@ reduce:
                 const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
 
                 assert.strictEqual(result.valid, false);
-                assert.ok(result.errors.some(e => e.includes('both')));
+                assert.ok(result.errors.some(e => e.includes('multiple sources')));
             });
 
             test('should validate inline array in from (multi-model fanout)', async () => {

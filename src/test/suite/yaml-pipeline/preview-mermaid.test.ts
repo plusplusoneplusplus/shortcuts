@@ -415,4 +415,131 @@ suite('Pipeline Preview Mermaid Tests', () => {
             assert.ok(result.includes('template.txt'));
         });
     });
+
+    suite('Generate Input Diagram', () => {
+        // Sample generate config
+        const generateConfig: PipelineConfig = {
+            name: 'Generate Test Pipeline',
+            input: {
+                generate: {
+                    prompt: 'Generate 10 test cases for user login validation',
+                    schema: ['testName', 'input', 'expected']
+                }
+            },
+            map: {
+                prompt: 'Run test: {{testName}}\nInput: {{input}}\nExpected: {{expected}}',
+                output: ['actual', 'passed'],
+                parallel: 5
+            },
+            reduce: {
+                type: 'table'
+            }
+        };
+
+        test('should include GENERATE node for generate config', () => {
+            const result = generatePipelineMermaid(generateConfig);
+            
+            assert.ok(result.includes('GENERATE'), 'Should have GENERATE node');
+            assert.ok(result.includes('🤖'), 'Should have robot emoji for GENERATE');
+            assert.ok(result.includes('AI Input'), 'Should show AI Input label');
+        });
+
+        test('should show schema field count in GENERATE node', () => {
+            const result = generatePipelineMermaid(generateConfig);
+            
+            assert.ok(result.includes('3 fields'), 'Should show schema field count');
+        });
+
+        test('should connect GENERATE to INPUT node', () => {
+            const result = generatePipelineMermaid(generateConfig);
+            
+            assert.ok(result.includes('GENERATE -->'), 'Should have connection from GENERATE');
+            assert.ok(result.includes('AI generates'), 'Should have AI generates label');
+        });
+
+        test('should style GENERATE node with purple color', () => {
+            const result = generatePipelineMermaid(generateConfig);
+            
+            assert.ok(result.includes('style GENERATE'), 'Should have GENERATE style');
+            assert.ok(result.includes('#9C27B0'), 'Should use purple fill color');
+        });
+
+        test('should include click handler for GENERATE node', () => {
+            const result = generatePipelineMermaid(generateConfig);
+            
+            assert.ok(result.includes('click GENERATE'), 'Should have click handler for GENERATE');
+        });
+
+        test('should show AI-GENERATED type in INPUT node', () => {
+            const result = generatePipelineMermaid(generateConfig);
+            
+            assert.ok(result.includes('AI-GENERATED'), 'Should show AI-GENERATED in INPUT');
+        });
+
+        test('should not include GENERATE node for regular CSV config', () => {
+            const result = generatePipelineMermaid(sampleConfig);
+            
+            assert.ok(!result.includes('GENERATE'), 'Should not have GENERATE node');
+            assert.ok(!result.includes('🤖'), 'Should not have robot emoji');
+        });
+
+        test('should not include GENERATE node for inline items config', () => {
+            const inlineConfig: PipelineConfig = {
+                name: 'Inline Pipeline',
+                input: {
+                    items: [
+                        { name: 'Item 1', value: '100' },
+                        { name: 'Item 2', value: '200' }
+                    ]
+                },
+                map: {
+                    prompt: '{{name}}: {{value}}',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const result = generatePipelineMermaid(inlineConfig);
+            
+            assert.ok(!result.includes('GENERATE'), 'Should not have GENERATE node');
+        });
+    });
+
+    suite('generatePipelineTextDiagram with Generate', () => {
+        const generateConfig: PipelineConfig = {
+            name: 'Generate Test Pipeline',
+            input: {
+                generate: {
+                    prompt: 'Generate test cases',
+                    schema: ['name', 'input', 'expected']
+                }
+            },
+            map: {
+                prompt: '{{name}}',
+                output: ['result'],
+                parallel: 5
+            },
+            reduce: { type: 'list' }
+        };
+
+        test('should include GENERATE node in text diagram', () => {
+            const result = generatePipelineTextDiagram(generateConfig);
+            
+            assert.ok(result.includes('GENERATE'), 'Should have GENERATE in text diagram');
+            assert.ok(result.includes('🤖'), 'Should have robot emoji');
+            assert.ok(result.includes('AI Input'), 'Should show AI Input');
+        });
+
+        test('should show AI-GENERATED type in INPUT node', () => {
+            const result = generatePipelineTextDiagram(generateConfig);
+            
+            assert.ok(result.includes('AI-GENERATED'), 'Should show AI-GENERATED type');
+        });
+
+        test('should show field count for generate config', () => {
+            const result = generatePipelineTextDiagram(generateConfig);
+            
+            assert.ok(result.includes('3') && result.includes('fields'), 'Should show field count');
+        });
+    });
 });

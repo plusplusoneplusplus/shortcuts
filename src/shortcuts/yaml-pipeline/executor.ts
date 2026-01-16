@@ -26,10 +26,12 @@ import {
     AIInvoker,
     CSVSource,
     isCSVSource,
+    isGenerateConfig,
     PipelineConfig,
     PipelineParameter,
     ProcessTracker
 } from './types';
+import { validateGenerateConfig } from './input-generator';
 
 /**
  * Default parallel concurrency limit
@@ -231,14 +233,39 @@ function validatePipelineConfig(config: PipelineConfig): void {
         throw new PipelineExecutionError('Pipeline config missing "input"');
     }
 
-    // Must have either items or from
-    if (!config.input.items && !config.input.from) {
-        throw new PipelineExecutionError('Input must have either "items" or "from"');
+    // Count how many input sources are specified
+    const hasItems = !!config.input.items;
+    const hasFrom = !!config.input.from;
+    const hasGenerate = !!config.input.generate;
+    const sourceCount = [hasItems, hasFrom, hasGenerate].filter(Boolean).length;
+
+    // Must have exactly one of items, from, or generate
+    if (sourceCount === 0) {
+        throw new PipelineExecutionError('Input must have one of "items", "from", or "generate"');
     }
 
-    // Cannot have both
-    if (config.input.items && config.input.from) {
-        throw new PipelineExecutionError('Input cannot have both "items" and "from"');
+    if (sourceCount > 1) {
+        throw new PipelineExecutionError('Input can only have one of "items", "from", or "generate"');
+    }
+
+    // Validate generate config if present
+    if (hasGenerate) {
+        if (!isGenerateConfig(config.input.generate)) {
+            throw new PipelineExecutionError('Invalid generate configuration');
+        }
+        const validation = validateGenerateConfig(config.input.generate);
+        if (!validation.valid) {
+            throw new PipelineExecutionError(
+                `Invalid generate configuration: ${validation.errors.join('; ')}`
+            );
+        }
+        // Generate config requires interactive approval before execution
+        // The executor cannot directly execute pipelines with generate config
+        // They must go through the preview UI first
+        throw new PipelineExecutionError(
+            'Pipelines with "generate" input require interactive approval. Use the Pipeline Preview to generate and approve items first.',
+            'input'
+        );
     }
 
     // Validate from source if present (can be CSVSource or inline array)

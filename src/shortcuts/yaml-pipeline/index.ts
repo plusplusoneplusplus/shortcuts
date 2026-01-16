@@ -16,11 +16,12 @@ export type {
     CSVParseOptions,
     CSVParseResult,
     PipelineParameter,
-    CSVSource
+    CSVSource,
+    GenerateInputConfig
 } from './types';
 
 // Type guards
-export { isCSVSource } from './types';
+export { isCSVSource, isGenerateConfig } from './types';
 
 // Re-export execution types from map-reduce (canonical source)
 export type {
@@ -65,6 +66,23 @@ export {
     previewTemplate,
     TemplateError
 } from './template';
+
+// Input Generator (AI-powered input generation)
+export {
+    buildGeneratePrompt,
+    parseGenerateResponse,
+    generateInputItems,
+    toGeneratedItems,
+    getSelectedItems,
+    createEmptyItem,
+    validateGenerateConfig,
+    InputGenerationError
+} from './input-generator';
+export type {
+    GenerateInputResult,
+    GeneratedItem,
+    GenerateState
+} from './input-generator';
 
 // Executor (main API)
 export {

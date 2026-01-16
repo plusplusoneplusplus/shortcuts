@@ -98,6 +98,18 @@ export function generatePipelineMermaid(
     // Start with flowchart definition
     lines.push('graph TB');
 
+    // Check if this is a generate pipeline
+    const hasGenerateConfig = config.input?.generate && 
+        typeof config.input.generate === 'object' &&
+        'prompt' in config.input.generate &&
+        'schema' in config.input.generate;
+
+    // GENERATE node (if applicable)
+    if (hasGenerateConfig) {
+        const generateLabel = buildGenerateNodeLabel(config);
+        lines.push(`    GENERATE["${generateLabel}"]`);
+    }
+
     // INPUT node
     const inputLabel = buildInputNodeLabel(config, csvInfo, opts);
     lines.push(`    INPUT["${inputLabel}"]`);
@@ -129,6 +141,10 @@ export function generatePipelineMermaid(
     lines.push('');
 
     // Links between nodes
+    if (hasGenerateConfig) {
+        lines.push(`    GENERATE -->|"AI generates"| INPUT`);
+    }
+
     const inputLinkLabel = csvInfo
         ? `${csvInfo.headers.length} columns`
         : 'data';
@@ -155,6 +171,9 @@ export function generatePipelineMermaid(
     lines.push('');
 
     // Click handlers - these will be handled by the webview
+    if (hasGenerateConfig) {
+        lines.push('    click GENERATE nodeClick');
+    }
     lines.push('    click INPUT nodeClick');
     lines.push('    click MAP nodeClick');
     lines.push('    click REDUCE nodeClick');
@@ -174,6 +193,9 @@ export function generatePipelineMermaid(
     lines.push('');
 
     // Styling
+    if (hasGenerateConfig) {
+        lines.push('    style GENERATE fill:#9C27B0,stroke:#6A1B9A,color:#fff');
+    }
     lines.push('    style INPUT fill:#4CAF50,stroke:#2E7D32,color:#fff');
     lines.push('    style MAP fill:#2196F3,stroke:#1565C0,color:#fff');
     lines.push('    style REDUCE fill:#FF9800,stroke:#E65100,color:#fff');
@@ -193,6 +215,21 @@ export function generatePipelineMermaid(
 }
 
 /**
+ * Build the label for the GENERATE node
+ */
+function buildGenerateNodeLabel(config: PipelineConfig): string {
+    const parts: string[] = ['🤖 GENERATE'];
+    parts.push('AI Input');
+
+    const generateConfig = config.input?.generate;
+    if (generateConfig && 'schema' in generateConfig) {
+        parts.push(`${generateConfig.schema.length} fields`);
+    }
+
+    return escapeMermaidLabel(parts.join('<br/>'));
+}
+
+/**
  * Build the label for the INPUT node
  */
 function buildInputNodeLabel(
@@ -206,8 +243,16 @@ function buildInputNodeLabel(
     const hasInlineItems = config.input.items && config.input.items.length > 0;
     const hasCSVSource = isCSVSource(config.input.from);
     const hasInlineArrayFrom = Array.isArray(config.input.from);
+    const hasGenerateConfig = config.input?.generate && 
+        typeof config.input.generate === 'object' &&
+        'prompt' in config.input.generate &&
+        'schema' in config.input.generate;
     
-    if (hasInlineItems) {
+    if (hasGenerateConfig) {
+        parts.push('AI-GENERATED');
+        const schema = (config.input.generate as { schema: string[] }).schema;
+        parts.push(`${schema.length} fields`);
+    } else if (hasInlineItems) {
         parts.push('INLINE');
         if (opts?.showCounts) {
             const itemCount = config.input.items!.length;
@@ -352,11 +397,18 @@ export function generatePipelineTextDiagram(
     const hasInlineItems = config.input.items && config.input.items.length > 0;
     const hasCSVSource = isCSVSource(config.input.from);
     const hasInlineArrayFrom = Array.isArray(config.input.from);
+    const hasGenerateConfig = config.input?.generate && 
+        typeof config.input.generate === 'object' &&
+        'prompt' in config.input.generate &&
+        'schema' in config.input.generate;
     
     let inputType: string;
     let itemCount: number | undefined;
     
-    if (hasInlineItems) {
+    if (hasGenerateConfig) {
+        inputType = 'AI-GENERATED';
+        itemCount = (config.input.generate as { schema: string[] }).schema.length;
+    } else if (hasInlineItems) {
         inputType = 'INLINE';
         itemCount = config.input.items!.length;
     } else if (hasCSVSource) {
@@ -372,11 +424,22 @@ export function generatePipelineTextDiagram(
 
     lines.push('Pipeline Flow:');
     lines.push('');
+    
+    // Add GENERATE node if applicable
+    if (hasGenerateConfig) {
+        lines.push(`  ┌─────────────────┐`);
+        lines.push(`  │  🤖 GENERATE    │`);
+        lines.push(`  │  AI Input       │`);
+        lines.push(`  └────────┬────────┘`);
+        lines.push(`           │`);
+        lines.push(`           ▼`);
+    }
+    
     lines.push(`  ┌─────────────────┐`);
     lines.push(`  │  📥 INPUT       │`);
     lines.push(`  │  ${inputType.padEnd(13)} │`);
     if (itemCount !== undefined) {
-        const countLabel = hasInlineItems || hasInlineArrayFrom ? 'items' : 'rows';
+        const countLabel = hasGenerateConfig ? 'fields' : (hasInlineItems || hasInlineArrayFrom ? 'items' : 'rows');
         lines.push(`  │  ${String(itemCount).padEnd(5)} ${countLabel.padEnd(6)} │`);
     }
     lines.push(`  └────────┬────────┘`);

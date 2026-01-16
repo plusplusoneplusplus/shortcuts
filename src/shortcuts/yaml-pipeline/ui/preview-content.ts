@@ -8,7 +8,7 @@
  */
 
 import * as vscode from 'vscode';
-import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource } from '../types';
+import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig } from '../types';
 import { PipelineInfo, ResourceFileInfo, ValidationResult } from './types';
 import {
     generatePipelineMermaid,
@@ -18,6 +18,7 @@ import {
     formatFileSize,
     PipelineNodeType
 } from './preview-mermaid';
+import { GenerateState, GeneratedItem } from '../input-generator';
 
 /**
  * Message types for webview communication
@@ -29,7 +30,17 @@ export type PreviewMessageType =
     | 'edit'
     | 'refresh'
     | 'openFile'
-    | 'ready';
+    | 'ready'
+    // Generate flow messages
+    | 'generate'
+    | 'regenerate'
+    | 'cancelGenerate'
+    | 'addRow'
+    | 'deleteRows'
+    | 'updateCell'
+    | 'toggleRow'
+    | 'toggleAll'
+    | 'runWithItems';
 
 /**
  * Message from webview to extension
@@ -40,6 +51,13 @@ export interface PreviewMessage {
         nodeId?: string;
         nodeType?: PipelineNodeType;
         filePath?: string;
+        // Generate flow payloads
+        indices?: number[];
+        index?: number;
+        field?: string;
+        value?: string;
+        selected?: boolean;
+        items?: PromptItem[];
     };
 }
 
@@ -57,6 +75,10 @@ export interface PipelinePreviewData {
     csvInfo?: CSVParseResult;
     /** Preview of first few CSV rows */
     csvPreview?: PromptItem[];
+    /** Generate state (for pipelines with input.generate) */
+    generateState?: GenerateState;
+    /** Generated items with selection state */
+    generatedItems?: GeneratedItem[];
 }
 
 /**
@@ -98,7 +120,10 @@ export function getPreviewContent(
  * Generate content when pipeline data is available
  */
 function getContentWithData(data: PipelinePreviewData, isDark: boolean): string {
-    const { config, info, validation, csvInfo, csvPreview } = data;
+    const { config, info, validation, csvInfo, csvPreview, generateState, generatedItems } = data;
+
+    // Check if this is a generate pipeline
+    const hasGenerateConfig = isGenerateConfig(config.input?.generate);
 
     // Generate mermaid diagram
     const mermaidDiagram = generatePipelineMermaid(
@@ -109,10 +134,10 @@ function getContentWithData(data: PipelinePreviewData, isDark: boolean): string 
     );
 
     return `
-        ${getToolbar(info, validation)}
+        ${getToolbar(info, validation, hasGenerateConfig, generateState)}
         ${getHeader(info, validation)}
         ${getDiagramSection(mermaidDiagram)}
-        ${getDetailsPanel(config, csvInfo, csvPreview, info)}
+        ${getDetailsPanel(config, csvInfo, csvPreview, info, generateState, generatedItems)}
     `;
 }
 
@@ -132,15 +157,51 @@ function getEmptyContent(): string {
 /**
  * Generate toolbar section
  */
-function getToolbar(info: PipelineInfo, validation: ValidationResult): string {
+function getToolbar(
+    info: PipelineInfo,
+    validation: ValidationResult,
+    hasGenerateConfig?: boolean,
+    generateState?: GenerateState
+): string {
+    // Determine which execute button to show based on generate state
+    let executeButton: string;
+
+    if (hasGenerateConfig) {
+        const status = generateState?.status || 'initial';
+        if (status === 'initial' || status === 'error') {
+            executeButton = `
+                <button class="toolbar-btn toolbar-btn-primary" id="generateBtn" title="Generate & Review Items" ${!validation.valid ? 'disabled' : ''}>
+                    <span class="icon">▶️</span> Generate & Review
+                </button>
+            `;
+        } else if (status === 'generating') {
+            executeButton = `
+                <button class="toolbar-btn" disabled>
+                    <span class="icon">⏳</span> Generating...
+                </button>
+            `;
+        } else {
+            // status === 'review'
+            executeButton = `
+                <button class="toolbar-btn" id="regenerateBtn" title="Regenerate Items">
+                    <span class="icon">🔄</span> Regenerate
+                </button>
+            `;
+        }
+    } else {
+        executeButton = `
+            <button class="toolbar-btn" id="executeBtn" title="Execute Pipeline" ${!validation.valid ? 'disabled' : ''}>
+                <span class="icon">▶️</span> Execute
+            </button>
+        `;
+    }
+
     return `
         <div class="toolbar">
             <button class="toolbar-btn" id="editBtn" title="Edit Pipeline">
                 <span class="icon">✏️</span> Edit
             </button>
-            <button class="toolbar-btn" id="executeBtn" title="Execute Pipeline" ${!validation.valid ? 'disabled' : ''}>
-                <span class="icon">▶️</span> Execute
-            </button>
+            ${executeButton}
             <button class="toolbar-btn" id="validateBtn" title="Validate Pipeline">
                 <span class="icon">✅</span> Validate
             </button>
@@ -248,12 +309,36 @@ function getDetailsPanel(
     config: PipelineConfig,
     csvInfo?: CSVParseResult,
     csvPreview?: PromptItem[],
-    info?: PipelineInfo
+    info?: PipelineInfo,
+    generateState?: GenerateState,
+    generatedItems?: GeneratedItem[]
 ): string {
+    // Determine initial details content based on generate state
+    let initialContent: string;
+    const hasGenerateConfig = isGenerateConfig(config.input?.generate);
+
+    if (hasGenerateConfig && generateState) {
+        switch (generateState.status) {
+            case 'generating':
+                initialContent = getGeneratingStateContent();
+                break;
+            case 'review':
+                initialContent = getReviewTableContent(config, generateState.items);
+                break;
+            case 'error':
+                initialContent = getGenerateErrorContent(generateState.message);
+                break;
+            default:
+                initialContent = getGenerateConfigDetails(config);
+        }
+    } else {
+        initialContent = getInputDetails(config, csvInfo, csvPreview, true);
+    }
+
     return `
         <div class="details-panel" id="detailsPanel">
             <div class="details-content" id="detailsContent">
-                ${getInputDetails(config, csvInfo, csvPreview, true)}
+                ${initialContent}
             </div>
         </div>
         
@@ -266,9 +351,157 @@ function getDetailsPanel(
                     rowCount: csvInfo.rowCount
                 } : null,
                 csvPreview,
-                resources: info?.resourceFiles || []
+                resources: info?.resourceFiles || [],
+                hasGenerateConfig,
+                generateState: generateState || null,
+                generatedItems: generatedItems || null
             })}
         </script>
+    `;
+}
+
+/**
+ * Generate details for a generate config (initial state)
+ */
+function getGenerateConfigDetails(config: PipelineConfig): string {
+    const generateConfig = config.input?.generate;
+    if (!generateConfig) return '';
+
+    const modelHtml = generateConfig.model 
+        ? `
+                <div class="detail-item">
+                    <span class="detail-label">Model:</span>
+                    <span class="detail-value">${escapeHtml(generateConfig.model)}</span>
+                </div>`
+        : '';
+
+    return `
+        <div class="detail-section active">
+            <h4 class="detail-title">🤖 AI-GENERATED Input Configuration</h4>
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <span class="detail-label">Type:</span>
+                    <span class="detail-value">AI-GENERATED</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Schema:</span>
+                    <span class="detail-value">${escapeHtml(generateConfig.schema.join(', '))}</span>
+                </div>${modelHtml}
+            </div>
+            
+            <div class="prompt-section">
+                <h5 class="prompt-title">📝 Generation Prompt</h5>
+                <pre class="prompt-template">${escapeHtml(generateConfig.prompt)}</pre>
+            </div>
+            
+            <div class="generate-status">
+                <p class="status-text">Status: Not generated yet</p>
+                <p class="status-hint">Click "Generate & Review" to generate items using AI.</p>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Generate loading state content
+ */
+function getGeneratingStateContent(): string {
+    return `
+        <div class="detail-section active">
+            <h4 class="detail-title">🤖 Generating Inputs</h4>
+            <div class="generating-container">
+                <div class="generating-spinner"></div>
+                <p class="generating-text">Generating items from AI...</p>
+                <button class="btn btn-secondary" id="cancelGenerateBtn">Cancel</button>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Generate error state content
+ */
+function getGenerateErrorContent(message: string): string {
+    return `
+        <div class="detail-section active">
+            <h4 class="detail-title">⚠️ Generation Error</h4>
+            <div class="generate-error">
+                <p class="error-message">${escapeHtml(message)}</p>
+                <p class="error-hint">Click "Generate & Review" to try again.</p>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Generate the review table content with editable items
+ */
+function getReviewTableContent(config: PipelineConfig, items: GeneratedItem[]): string {
+    const generateConfig = config.input?.generate;
+    if (!generateConfig) return '';
+
+    const schema = generateConfig.schema;
+    const selectedCount = items.filter(i => i.selected).length;
+    const allSelected = selectedCount === items.length;
+
+    return `
+        <div class="detail-section active">
+            <h4 class="detail-title">✅ Review Generated Inputs</h4>
+            
+            <div class="review-toolbar">
+                <button class="btn btn-secondary" id="addRowBtn">
+                    <span class="icon">+</span> Add
+                </button>
+                <button class="btn btn-secondary" id="deleteSelectedBtn">
+                    Delete Selected
+                </button>
+            </div>
+            
+            <div class="table-container review-table-container">
+                <table class="preview-table review-table" id="reviewTable">
+                    <thead>
+                        <tr>
+                            <th class="checkbox-col">
+                                <input type="checkbox" id="selectAllCheckbox" ${allSelected ? 'checked' : ''}>
+                            </th>
+                            ${schema.map(h => `<th>${escapeHtml(h)}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map((item, idx) => `
+                            <tr data-index="${idx}">
+                                <td class="checkbox-col">
+                                    <input type="checkbox" class="row-checkbox" data-index="${idx}" ${item.selected ? 'checked' : ''}>
+                                </td>
+                                ${schema.map(field => `
+                                    <td>
+                                        <input type="text" class="cell-input" 
+                                            data-index="${idx}" 
+                                            data-field="${escapeHtml(field)}" 
+                                            value="${escapeHtml(String(item.data[field] || ''))}"
+                                        >
+                                    </td>
+                                `).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="review-footer">
+                <label class="select-all-label">
+                    <input type="checkbox" id="selectAllFooter" ${allSelected ? 'checked' : ''}>
+                    Select All (${selectedCount}/${items.length} selected)
+                </label>
+                
+                <div class="review-actions">
+                    <button class="btn btn-secondary" id="cancelReviewBtn">Cancel</button>
+                    <button class="btn btn-primary" id="runPipelineBtn" ${selectedCount === 0 ? 'disabled' : ''}>
+                        ▶️ Run Pipeline (${selectedCount} items)
+                    </button>
+                </div>
+            </div>
+        </div>
     `;
 }
 
@@ -943,6 +1176,166 @@ function getStyles(isDark: boolean): string {
         .empty-state p {
             margin: 0;
         }
+
+        /* Primary button style */
+        .toolbar-btn-primary {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        .toolbar-btn-primary:hover:not(:disabled) {
+            filter: brightness(1.1);
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            filter: brightness(1.1);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Generate status */
+        .generate-status {
+            margin-top: 16px;
+            padding: 12px;
+            background: ${isDark ? 'rgba(86, 156, 214, 0.1)' : 'rgba(0, 102, 204, 0.05)'};
+            border: 1px solid var(--accent-color);
+            border-radius: 4px;
+        }
+
+        .status-text {
+            margin: 0 0 4px 0;
+            font-weight: 500;
+        }
+
+        .status-hint {
+            margin: 0;
+            font-size: 12px;
+            color: ${isDark ? '#9d9d9d' : '#666666'};
+        }
+
+        /* Generating state */
+        .generating-container {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .generating-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--border-color);
+            border-top-color: var(--accent-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .generating-text {
+            margin: 0 0 16px 0;
+            color: ${isDark ? '#9d9d9d' : '#666666'};
+        }
+
+        /* Generate error */
+        .generate-error {
+            padding: 12px;
+            background: ${isDark ? 'rgba(244, 67, 54, 0.1)' : 'rgba(244, 67, 54, 0.05)'};
+            border: 1px solid var(--error-color);
+            border-radius: 4px;
+        }
+
+        .error-message {
+            margin: 0 0 8px 0;
+            color: var(--error-color);
+        }
+
+        .error-hint {
+            margin: 0;
+            font-size: 12px;
+            color: ${isDark ? '#9d9d9d' : '#666666'};
+        }
+
+        /* Review table */
+        .review-toolbar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .review-toolbar .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .review-table-container {
+            max-height: 400px;
+            margin-bottom: 16px;
+        }
+
+        .review-table .checkbox-col {
+            width: 40px;
+            text-align: center;
+        }
+
+        .review-table input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .review-table .cell-input {
+            width: 100%;
+            padding: 4px 8px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-color);
+            font-size: 12px;
+            font-family: inherit;
+        }
+
+        .review-table .cell-input:focus {
+            border-color: var(--accent-color);
+            outline: none;
+            background: ${isDark ? '#1e1e1e' : '#ffffff'};
+        }
+
+        .review-table tr:hover .cell-input {
+            background: ${isDark ? '#2a2d2e' : '#f5f5f5'};
+        }
+
+        /* Review footer */
+        .review-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .select-all-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .review-actions {
+            display: flex;
+            gap: 8px;
+        }
     `;
 }
 
@@ -980,18 +1373,29 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             const csvInfo = pipelineData.csvInfo;
             const csvPreview = pipelineData.csvPreview;
             const resources = pipelineData.resources || [];
+            const generateState = pipelineData.generateState;
+            const generatedItems = pipelineData.generatedItems;
             
-            if (nodeId === 'INPUT') {
-                html = generateInputDetails(config, csvInfo, csvPreview);
+            if (nodeId === 'GENERATE') {
+                // Show generate configuration details
+                html = generateGenerateDetails(config, generateState, generatedItems);
+            } else if (nodeId === 'INPUT') {
+                // Check if this is a generate config or regular input
+                if (config.input && config.input.generate) {
+                    html = generateGenerateInputDetails(config, generateState, generatedItems);
+                } else {
+                    html = generateInputDetails(config, csvInfo, csvPreview);
+                }
             } else if (nodeId === 'MAP') {
                 html = generateMapDetails(config, csvInfo?.headers);
             } else if (nodeId === 'REDUCE') {
                 html = generateReduceDetails(config, csvInfo?.rowCount);
             } else if (nodeId.startsWith('RES')) {
                 const idx = parseInt(nodeId.replace('RES', ''), 10);
+                const inputPath = config.input?.from?.path || config.input?.path;
                 const filteredResources = resources.filter(r => 
-                    r.relativePath !== config.input.path && 
-                    r.fileName !== config.input.path
+                    r.relativePath !== inputPath && 
+                    r.fileName !== inputPath
                 );
                 if (filteredResources[idx]) {
                     html = generateResourceDetails(filteredResources[idx]);
@@ -1030,6 +1434,105 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             
             if (csvPreview && csvPreview.length > 0) {
                 html += generateCSVPreviewTable(headers, csvPreview);
+            }
+            
+            html += '</div>';
+            return html;
+        }
+
+        // Generate details for the GENERATE node (AI input generation config)
+        function generateGenerateDetails(config, generateState, generatedItems) {
+            const generateConfig = config.input?.generate;
+            if (!generateConfig) return '';
+            
+            let html = '<div class="detail-section active">';
+            html += '<h4 class="detail-title">🤖 GENERATE Configuration</h4>';
+            html += '<div class="detail-grid">';
+            html += '<div class="detail-item"><span class="detail-label">Type:</span><span class="detail-value">AI Input Generation</span></div>';
+            html += '<div class="detail-item"><span class="detail-label">Schema:</span><span class="detail-value">' + escapeHtml(generateConfig.schema.join(', ')) + '</span></div>';
+            
+            if (generateConfig.model) {
+                html += '<div class="detail-item"><span class="detail-label">Model:</span><span class="detail-value">' + escapeHtml(generateConfig.model) + '</span></div>';
+            }
+            
+            html += '</div>';
+            
+            // Prompt
+            html += '<div class="prompt-section">';
+            html += '<h5 class="prompt-title">📝 Generation Prompt</h5>';
+            html += '<pre class="prompt-template">' + escapeHtml(generateConfig.prompt) + '</pre>';
+            html += '</div>';
+            
+            // Status based on generateState
+            html += '<div class="generate-status">';
+            if (generateState) {
+                if (generateState.status === 'initial') {
+                    html += '<p class="status-text">Status: Not generated yet</p>';
+                    html += '<p class="status-hint">Click "Generate & Review" to generate items using AI.</p>';
+                } else if (generateState.status === 'generating') {
+                    html += '<p class="status-text">Status: Generating...</p>';
+                } else if (generateState.status === 'review') {
+                    const itemCount = generatedItems ? generatedItems.length : 0;
+                    const selectedCount = generatedItems ? generatedItems.filter(i => i.selected).length : 0;
+                    html += '<p class="status-text">Status: Review (' + selectedCount + '/' + itemCount + ' selected)</p>';
+                } else if (generateState.status === 'error') {
+                    html += '<p class="status-text status-error">Status: Error - ' + escapeHtml(generateState.message || 'Unknown error') + '</p>';
+                }
+            } else {
+                html += '<p class="status-text">Status: Not generated yet</p>';
+            }
+            html += '</div>';
+            
+            html += '</div>';
+            return html;
+        }
+
+        // Generate details for INPUT node when using generate config
+        function generateGenerateInputDetails(config, generateState, generatedItems) {
+            const generateConfig = config.input?.generate;
+            if (!generateConfig) return '';
+            
+            let html = '<div class="detail-section active">';
+            html += '<h4 class="detail-title">📥 INPUT Configuration (AI-GENERATED)</h4>';
+            html += '<div class="detail-grid">';
+            html += '<div class="detail-item"><span class="detail-label">Type:</span><span class="detail-value">AI-GENERATED</span></div>';
+            html += '<div class="detail-item"><span class="detail-label">Schema:</span><span class="detail-value">' + escapeHtml(generateConfig.schema.join(', ')) + '</span></div>';
+            html += '</div>';
+            
+            // Show generated items if in review state
+            if (generateState && generateState.status === 'review' && generatedItems && generatedItems.length > 0) {
+                const selectedItems = generatedItems.filter(i => i.selected);
+                html += '<div class="generated-items-preview">';
+                html += '<h5>Generated Items (' + selectedItems.length + ' selected of ' + generatedItems.length + ')</h5>';
+                
+                // Show preview table
+                html += '<table class="csv-preview">';
+                html += '<thead><tr>';
+                generateConfig.schema.forEach(field => {
+                    html += '<th>' + escapeHtml(field) + '</th>';
+                });
+                html += '</tr></thead>';
+                html += '<tbody>';
+                
+                // Show first 5 selected items as preview
+                const previewItems = selectedItems.slice(0, 5);
+                previewItems.forEach(item => {
+                    html += '<tr>';
+                    generateConfig.schema.forEach(field => {
+                        const value = item.data[field] || '';
+                        html += '<td>' + escapeHtml(String(value).substring(0, 50)) + (String(value).length > 50 ? '...' : '') + '</td>';
+                    });
+                    html += '</tr>';
+                });
+                
+                if (selectedItems.length > 5) {
+                    html += '<tr><td colspan="' + generateConfig.schema.length + '" class="more-rows">... and ' + (selectedItems.length - 5) + ' more items</td></tr>';
+                }
+                
+                html += '</tbody></table>';
+                html += '</div>';
+            } else if (!generateState || generateState.status === 'initial') {
+                html += '<p class="status-hint">Items will be shown here after generation.</p>';
             }
             
             html += '</div>';
@@ -1194,6 +1697,19 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             vscode.postMessage({ type: 'refresh' });
         });
 
+        // Generate flow button handlers
+        document.getElementById('generateBtn')?.addEventListener('click', () => {
+            vscode.postMessage({ type: 'generate' });
+        });
+
+        document.getElementById('regenerateBtn')?.addEventListener('click', () => {
+            vscode.postMessage({ type: 'regenerate' });
+        });
+
+        document.getElementById('cancelGenerateBtn')?.addEventListener('click', () => {
+            vscode.postMessage({ type: 'cancelGenerate' });
+        });
+
         // Attach click handlers to file links
         function attachFileClickHandlers() {
             document.querySelectorAll('.file-link').forEach(el => {
@@ -1206,8 +1722,128 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             });
         }
 
+        // Attach handlers for review table
+        function attachReviewTableHandlers() {
+            // Add row button
+            document.getElementById('addRowBtn')?.addEventListener('click', () => {
+                vscode.postMessage({ type: 'addRow' });
+            });
+
+            // Delete selected button
+            document.getElementById('deleteSelectedBtn')?.addEventListener('click', () => {
+                const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+                const indices = Array.from(checkboxes).map(cb => parseInt(cb.getAttribute('data-index'), 10));
+                if (indices.length > 0) {
+                    vscode.postMessage({ type: 'deleteRows', payload: { indices } });
+                }
+            });
+
+            // Select all checkbox (header)
+            document.getElementById('selectAllCheckbox')?.addEventListener('change', (e) => {
+                const selected = e.target.checked;
+                vscode.postMessage({ type: 'toggleAll', payload: { selected } });
+                // Update local checkboxes immediately
+                document.querySelectorAll('.row-checkbox').forEach(cb => {
+                    cb.checked = selected;
+                });
+                updateSelectedCount();
+            });
+
+            // Select all checkbox (footer)
+            document.getElementById('selectAllFooter')?.addEventListener('change', (e) => {
+                const selected = e.target.checked;
+                vscode.postMessage({ type: 'toggleAll', payload: { selected } });
+                // Update local checkboxes immediately
+                document.querySelectorAll('.row-checkbox').forEach(cb => {
+                    cb.checked = selected;
+                });
+                document.getElementById('selectAllCheckbox').checked = selected;
+                updateSelectedCount();
+            });
+
+            // Individual row checkboxes
+            document.querySelectorAll('.row-checkbox').forEach(cb => {
+                cb.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'), 10);
+                    const selected = e.target.checked;
+                    vscode.postMessage({ type: 'toggleRow', payload: { index, selected } });
+                    updateSelectedCount();
+                });
+            });
+
+            // Cell input changes
+            document.querySelectorAll('.cell-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'), 10);
+                    const field = e.target.getAttribute('data-field');
+                    const value = e.target.value;
+                    vscode.postMessage({ type: 'updateCell', payload: { index, field, value } });
+                });
+            });
+
+            // Cancel review button
+            document.getElementById('cancelReviewBtn')?.addEventListener('click', () => {
+                vscode.postMessage({ type: 'cancelGenerate' });
+            });
+
+            // Run pipeline button
+            document.getElementById('runPipelineBtn')?.addEventListener('click', () => {
+                const items = collectSelectedItems();
+                vscode.postMessage({ type: 'runWithItems', payload: { items } });
+            });
+        }
+
+        // Update selected count in footer
+        function updateSelectedCount() {
+            const total = document.querySelectorAll('.row-checkbox').length;
+            const selected = document.querySelectorAll('.row-checkbox:checked').length;
+            
+            const label = document.querySelector('.select-all-label');
+            if (label) {
+                const checkbox = label.querySelector('input[type="checkbox"]');
+                const text = 'Select All (' + selected + '/' + total + ' selected)';
+                label.innerHTML = '';
+                if (checkbox) label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(text));
+            }
+
+            const runBtn = document.getElementById('runPipelineBtn');
+            if (runBtn) {
+                runBtn.disabled = selected === 0;
+                runBtn.textContent = '▶️ Run Pipeline (' + selected + ' items)';
+            }
+
+            // Update header checkbox
+            const headerCheckbox = document.getElementById('selectAllCheckbox');
+            if (headerCheckbox) {
+                headerCheckbox.checked = selected === total && total > 0;
+            }
+        }
+
+        // Collect selected items from the table
+        function collectSelectedItems() {
+            const items = [];
+            const config = pipelineData?.config;
+            const schema = config?.input?.generate?.schema || [];
+            
+            document.querySelectorAll('.review-table tbody tr').forEach((row, idx) => {
+                const checkbox = row.querySelector('.row-checkbox');
+                if (checkbox && checkbox.checked) {
+                    const item = {};
+                    schema.forEach(field => {
+                        const input = row.querySelector('.cell-input[data-field="' + field + '"]');
+                        item[field] = input ? input.value : '';
+                    });
+                    items.push(item);
+                }
+            });
+            
+            return items;
+        }
+
         // Initial setup
         attachFileClickHandlers();
+        attachReviewTableHandlers();
         
         // Notify extension that webview is ready
         vscode.postMessage({ type: 'ready' });
