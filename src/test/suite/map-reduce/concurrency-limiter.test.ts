@@ -5,7 +5,7 @@
  */
 
 import * as assert from 'assert';
-import { ConcurrencyLimiter } from '../../../shortcuts/map-reduce/concurrency-limiter';
+import { ConcurrencyLimiter, CancellationError } from '../../../shortcuts/map-reduce/concurrency-limiter';
 
 suite('ConcurrencyLimiter', () => {
     test('constructor throws for invalid maxConcurrency', () => {
@@ -178,6 +178,174 @@ suite('ConcurrencyLimiter', () => {
             'task2-start',
             'task2-end'
         ]);
+    });
+
+    suite('Cancellation', () => {
+        test('CancellationError has correct name and message', () => {
+            const error = new CancellationError();
+            assert.strictEqual(error.name, 'CancellationError');
+            assert.strictEqual(error.message, 'Operation cancelled');
+
+            const customError = new CancellationError('Custom message');
+            assert.strictEqual(customError.message, 'Custom message');
+        });
+
+        test('run() throws CancellationError when cancelled before acquiring slot', async () => {
+            const limiter = new ConcurrencyLimiter(5);
+            const isCancelled = () => true;
+
+            await assert.rejects(
+                async () => limiter.run(async () => 42, isCancelled),
+                (err: Error) => err instanceof CancellationError
+            );
+        });
+
+        test('run() throws CancellationError when cancelled after acquiring slot but before execution', async () => {
+            const limiter = new ConcurrencyLimiter(1);
+            let cancelled = false;
+            const isCancelled = () => cancelled;
+
+            // Start a long-running task to occupy the slot
+            const blockingTask = limiter.run(async () => {
+                await delay(50);
+                cancelled = true; // Cancel while second task is waiting
+                return 'blocking';
+            });
+
+            // This task will wait for slot, then get cancelled when it acquires
+            const cancelledTask = limiter.run(async () => {
+                return 'should not execute';
+            }, isCancelled);
+
+            const blockingResult = await blockingTask;
+            assert.strictEqual(blockingResult, 'blocking');
+
+            await assert.rejects(
+                cancelledTask,
+                (err: Error) => err instanceof CancellationError
+            );
+        });
+
+        test('all() stops processing new tasks when cancelled', async () => {
+            const limiter = new ConcurrencyLimiter(1);
+            let cancelled = false;
+            const isCancelled = () => cancelled;
+            const executedTasks: number[] = [];
+
+            const tasks = [
+                async () => {
+                    executedTasks.push(1);
+                    await delay(10);
+                    cancelled = true; // Cancel after first task
+                    return 1;
+                },
+                async () => {
+                    executedTasks.push(2);
+                    return 2;
+                },
+                async () => {
+                    executedTasks.push(3);
+                    return 3;
+                }
+            ];
+
+            await assert.rejects(
+                async () => limiter.all(tasks, isCancelled),
+                (err: Error) => err instanceof CancellationError
+            );
+
+            // Only the first task should have executed
+            assert.deepStrictEqual(executedTasks, [1]);
+        });
+
+        test('all() with higher concurrency stops pending tasks when cancelled', async () => {
+            const limiter = new ConcurrencyLimiter(2);
+            let cancelled = false;
+            const isCancelled = () => cancelled;
+            const executedTasks: number[] = [];
+
+            const tasks = [
+                async () => {
+                    executedTasks.push(1);
+                    await delay(50);
+                    return 1;
+                },
+                async () => {
+                    executedTasks.push(2);
+                    await delay(10);
+                    cancelled = true; // Cancel early
+                    return 2;
+                },
+                async () => {
+                    executedTasks.push(3);
+                    return 3;
+                },
+                async () => {
+                    executedTasks.push(4);
+                    return 4;
+                },
+                async () => {
+                    executedTasks.push(5);
+                    return 5;
+                }
+            ];
+
+            await assert.rejects(
+                async () => limiter.all(tasks, isCancelled),
+                (err: Error) => err instanceof CancellationError
+            );
+
+            // First two tasks start immediately (concurrency 2)
+            // After task 2 completes and sets cancelled, remaining tasks should not execute
+            assert.ok(executedTasks.includes(1), 'Task 1 should have started');
+            assert.ok(executedTasks.includes(2), 'Task 2 should have started');
+            // Tasks 3, 4, 5 should not have executed
+            assert.ok(!executedTasks.includes(3) || !executedTasks.includes(4) || !executedTasks.includes(5),
+                'At least some later tasks should not have executed');
+        });
+
+        test('allSettled() handles cancellation gracefully', async () => {
+            const limiter = new ConcurrencyLimiter(1);
+            let cancelled = false;
+            const isCancelled = () => cancelled;
+
+            const tasks = [
+                async () => {
+                    await delay(10);
+                    cancelled = true;
+                    return 1;
+                },
+                async () => 2,
+                async () => 3
+            ];
+
+            const results = await limiter.allSettled(tasks, isCancelled);
+
+            // First task should succeed
+            assert.strictEqual(results[0].status, 'fulfilled');
+            assert.strictEqual((results[0] as PromiseFulfilledResult<number>).value, 1);
+
+            // Remaining tasks should be rejected with CancellationError
+            assert.strictEqual(results[1].status, 'rejected');
+            assert.ok((results[1] as PromiseRejectedResult).reason instanceof CancellationError);
+            assert.strictEqual(results[2].status, 'rejected');
+            assert.ok((results[2] as PromiseRejectedResult).reason instanceof CancellationError);
+        });
+
+        test('cancellation releases slot properly', async () => {
+            const limiter = new ConcurrencyLimiter(1);
+
+            // First, try a cancelled task
+            try {
+                await limiter.run(async () => 42, () => true);
+            } catch {
+                // Expected cancellation
+            }
+
+            // Slot should be available for next task
+            const result = await limiter.run(async () => 'success');
+            assert.strictEqual(result, 'success');
+        });
     });
 });
 

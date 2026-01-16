@@ -383,3 +383,148 @@ suite('createExecutor factory', () => {
         assert.ok(executor instanceof MapReduceExecutor);
     });
 });
+
+suite('MapReduceExecutor Cancellation', () => {
+    // Helper to create a test job with configurable mapper
+    const createCancellationTestJob = (
+        mapper: Mapper<TestWorkItemData, TestMapOutput>
+    ): MapReduceJob<TestInput, TestWorkItemData, TestMapOutput, TestReduceOutput> => ({
+        id: 'cancellation-test-job',
+        name: 'Cancellation Test Job',
+        splitter: new TestSplitter(),
+        mapper,
+        reducer: new TestReducer()
+    });
+
+    test('cancellation stops further map operations', async () => {
+        let cancelled = false;
+        const executedItems: number[] = [];
+
+        const trackingMapper: Mapper<TestWorkItemData, TestMapOutput> = {
+            async map(item, context) {
+                executedItems.push(item.data.value);
+                await new Promise(resolve => setTimeout(resolve, 20));
+                if (item.data.value === 2) {
+                    cancelled = true; // Cancel after processing item 2
+                }
+                return { doubled: item.data.value * 2 };
+            }
+        };
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 1, // Sequential execution to make test deterministic
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            isCancelled: () => cancelled
+        });
+
+        const job = createCancellationTestJob(trackingMapper);
+        const result = await executor.execute(job, { items: [1, 2, 3, 4, 5] });
+
+        // Should have processed items 1 and 2, then cancelled
+        assert.strictEqual(result.success, false);
+        assert.ok(result.error?.includes('cancelled'), `Expected error to contain 'cancelled', got: ${result.error}`);
+        // Items 1 and 2 should have been processed
+        assert.ok(executedItems.includes(1), 'Item 1 should have been processed');
+        assert.ok(executedItems.includes(2), 'Item 2 should have been processed');
+        // Items 3, 4, 5 should not have been processed
+        assert.ok(!executedItems.includes(3), 'Item 3 should not have been processed');
+        assert.ok(!executedItems.includes(4), 'Item 4 should not have been processed');
+        assert.ok(!executedItems.includes(5), 'Item 5 should not have been processed');
+    });
+
+    test('cancellation with higher concurrency stops pending tasks', async () => {
+        let cancelled = false;
+        const executedItems: number[] = [];
+
+        const trackingMapper: Mapper<TestWorkItemData, TestMapOutput> = {
+            async map(item, context) {
+                executedItems.push(item.data.value);
+                await new Promise(resolve => setTimeout(resolve, item.data.value === 1 ? 50 : 10));
+                if (item.data.value === 2) {
+                    cancelled = true; // Cancel after item 2 completes
+                }
+                return { doubled: item.data.value * 2 };
+            }
+        };
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 2, // Two concurrent tasks
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            isCancelled: () => cancelled
+        });
+
+        const job = createCancellationTestJob(trackingMapper);
+        const result = await executor.execute(job, { items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] });
+
+        // Should be cancelled
+        assert.strictEqual(result.success, false);
+        assert.ok(result.error?.includes('cancelled'), `Expected error to contain 'cancelled', got: ${result.error}`);
+        
+        // Items 1 and 2 start immediately (concurrency 2)
+        assert.ok(executedItems.includes(1), 'Item 1 should have started');
+        assert.ok(executedItems.includes(2), 'Item 2 should have started');
+        
+        // Not all items should have been processed
+        assert.ok(executedItems.length < 10, `Expected fewer than 10 items to be processed, got ${executedItems.length}`);
+    });
+
+    test('immediate cancellation prevents any processing', async () => {
+        const executedItems: number[] = [];
+
+        const trackingMapper: Mapper<TestWorkItemData, TestMapOutput> = {
+            async map(item, context) {
+                executedItems.push(item.data.value);
+                return { doubled: item.data.value * 2 };
+            }
+        };
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 5,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            isCancelled: () => true // Always cancelled
+        });
+
+        const job = createCancellationTestJob(trackingMapper);
+        const result = await executor.execute(job, { items: [1, 2, 3] });
+
+        // Should be cancelled immediately
+        assert.strictEqual(result.success, false);
+        assert.ok(result.error?.includes('cancelled'), `Expected error to contain 'cancelled', got: ${result.error}`);
+        // No items should have been processed
+        assert.strictEqual(executedItems.length, 0, 'No items should have been processed');
+    });
+
+    test('cancellation passes isCancelled to map context', async () => {
+        let contextHasIsCancelled = false;
+
+        const checkingMapper: Mapper<TestWorkItemData, TestMapOutput> = {
+            async map(item, context) {
+                contextHasIsCancelled = typeof context.isCancelled === 'function';
+                return { doubled: item.data.value * 2 };
+            }
+        };
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 5,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            isCancelled: () => false
+        });
+
+        const job = createCancellationTestJob(checkingMapper);
+        await executor.execute(job, { items: [1] });
+
+        assert.ok(contextHasIsCancelled, 'Context should have isCancelled function');
+    });
+});

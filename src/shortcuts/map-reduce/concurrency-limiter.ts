@@ -8,6 +8,16 @@
  */
 
 /**
+ * Error thrown when an operation is cancelled
+ */
+export class CancellationError extends Error {
+    constructor(message = 'Operation cancelled') {
+        super(message);
+        this.name = 'CancellationError';
+    }
+}
+
+/**
  * A limiter that controls the maximum number of concurrent async operations.
  * Uses a queue-based approach to manage pending tasks.
  */
@@ -51,10 +61,22 @@ export class ConcurrencyLimiter {
      * If the limit is reached, the function will be queued until a slot is available.
      *
      * @param fn The async function to execute
+     * @param isCancelled Optional function to check if operation should be cancelled
      * @returns Promise that resolves with the function's result
      */
-    async run<T>(fn: () => Promise<T>): Promise<T> {
+    async run<T>(fn: () => Promise<T>, isCancelled?: () => boolean): Promise<T> {
+        // Check for cancellation before acquiring slot
+        if (isCancelled?.()) {
+            throw new CancellationError();
+        }
+
         await this.acquire();
+
+        // Check for cancellation after acquiring slot but before executing
+        if (isCancelled?.()) {
+            this.release();
+            throw new CancellationError();
+        }
 
         try {
             return await fn();
@@ -68,10 +90,11 @@ export class ConcurrencyLimiter {
      * Similar to Promise.all but respects the maxConcurrency limit.
      *
      * @param tasks Array of functions that return promises
+     * @param isCancelled Optional function to check if operation should be cancelled
      * @returns Promise that resolves with array of results (in same order as input)
      */
-    async all<T>(tasks: Array<() => Promise<T>>): Promise<T[]> {
-        return Promise.all(tasks.map(task => this.run(task)));
+    async all<T>(tasks: Array<() => Promise<T>>, isCancelled?: () => boolean): Promise<T[]> {
+        return Promise.all(tasks.map(task => this.run(task, isCancelled)));
     }
 
     /**
@@ -79,12 +102,13 @@ export class ConcurrencyLimiter {
      * Similar to Promise.allSettled but respects the maxConcurrency limit.
      *
      * @param tasks Array of functions that return promises
+     * @param isCancelled Optional function to check if operation should be cancelled
      * @returns Promise that resolves with array of settled results
      */
-    async allSettled<T>(tasks: Array<() => Promise<T>>): Promise<PromiseSettledResult<T>[]> {
+    async allSettled<T>(tasks: Array<() => Promise<T>>, isCancelled?: () => boolean): Promise<PromiseSettledResult<T>[]> {
         return Promise.all(
             tasks.map(task =>
-                this.run(task)
+                this.run(task, isCancelled)
                     .then(value => ({ status: 'fulfilled' as const, value }))
                     .catch(reason => ({ status: 'rejected' as const, reason }))
             )

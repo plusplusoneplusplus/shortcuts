@@ -40,7 +40,7 @@ export { DEFAULT_MAP_REDUCE_OPTIONS } from './types';
 export { MapReduceExecutor, createExecutor } from './executor';
 
 // Concurrency limiter
-export { ConcurrencyLimiter, DEFAULT_MAX_CONCURRENCY } from './concurrency-limiter';
+export { ConcurrencyLimiter, CancellationError, DEFAULT_MAX_CONCURRENCY } from './concurrency-limiter';
 
 // Prompt template
 export {

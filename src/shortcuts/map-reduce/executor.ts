@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { ConcurrencyLimiter } from './concurrency-limiter';
+import { ConcurrencyLimiter, CancellationError } from './concurrency-limiter';
 import {
     DEFAULT_MAP_REDUCE_OPTIONS,
     ExecutionStats,
@@ -112,13 +112,22 @@ export class MapReduceExecutor {
 
         // 2. Map Phase
         const mapStartTime = Date.now();
-        const mapResults = await this.executeMapPhase(
-            job,
-            workItems,
-            executionId,
-            options,
-            groupId
-        );
+        let mapResults: MapResult<TMapOutput>[];
+        try {
+            mapResults = await this.executeMapPhase(
+                job,
+                workItems,
+                executionId,
+                options,
+                groupId
+            );
+        } catch (error) {
+            if (error instanceof CancellationError) {
+                const mapPhaseTimeMs = Date.now() - mapStartTime;
+                return this.createCancelledResult(startTime, mapPhaseTimeMs, workItems.length, options.maxConcurrency);
+            }
+            throw error;
+        }
         const mapPhaseTimeMs = Date.now() - mapStartTime;
 
         // Calculate map statistics
@@ -245,42 +254,76 @@ export class MapReduceExecutor {
     ): Promise<MapResult<TMapOutput>[]> {
         let completedCount = 0;
         let failedCount = 0;
+        let cancelled = false;
 
         // Create tasks for each work item
         const tasks = workItems.map((item, index) => {
-            return () => this.executeMapItem(
-                job,
-                item,
-                {
-                    executionId,
-                    totalItems: workItems.length,
-                    itemIndex: index,
-                    parentGroupId
-                },
-                options
-            ).then(result => {
-                // Update progress
-                if (result.success) {
-                    completedCount++;
-                } else {
-                    failedCount++;
+            return () => {
+                // Check for cancellation before starting this task
+                if (cancelled || this.options.isCancelled?.()) {
+                    cancelled = true;
+                    // Return a cancelled result instead of throwing
+                    return Promise.resolve<MapResult<TMapOutput>>({
+                        workItemId: item.id,
+                        success: false,
+                        error: 'Operation cancelled',
+                        executionTimeMs: 0
+                    });
                 }
 
-                this.reportProgress({
-                    phase: 'mapping',
-                    totalItems: workItems.length,
-                    completedItems: completedCount,
-                    failedItems: failedCount,
-                    percentage: Math.round(((completedCount + failedCount) / workItems.length) * 85),
-                    message: `Processed ${completedCount + failedCount}/${workItems.length} items...`
-                });
+                return this.executeMapItem(
+                    job,
+                    item,
+                    {
+                        executionId,
+                        totalItems: workItems.length,
+                        itemIndex: index,
+                        parentGroupId,
+                        isCancelled: this.options.isCancelled
+                    },
+                    options
+                ).then(result => {
+                    // Update progress
+                    if (result.success) {
+                        completedCount++;
+                    } else {
+                        failedCount++;
+                    }
 
-                return result;
-            });
+                    this.reportProgress({
+                        phase: 'mapping',
+                        totalItems: workItems.length,
+                        completedItems: completedCount,
+                        failedItems: failedCount,
+                        percentage: Math.round(((completedCount + failedCount) / workItems.length) * 85),
+                        message: `Processed ${completedCount + failedCount}/${workItems.length} items...`
+                    });
+
+                    return result;
+                });
+            };
         });
 
-        // Execute with concurrency limit
-        return this.limiter.all(tasks);
+        // Execute with concurrency limit and cancellation support
+        try {
+            return await this.limiter.all(tasks, this.options.isCancelled);
+        } catch (error) {
+            if (error instanceof CancellationError) {
+                // Return cancelled results for any remaining items
+                const processedCount = completedCount + failedCount;
+                const cancelledResults: MapResult<TMapOutput>[] = [];
+                for (let i = processedCount; i < workItems.length; i++) {
+                    cancelledResults.push({
+                        workItemId: workItems[i].id,
+                        success: false,
+                        error: 'Operation cancelled',
+                        executionTimeMs: 0
+                    });
+                }
+                throw error; // Re-throw to propagate cancellation
+            }
+            throw error;
+        }
     }
 
     /**
@@ -453,6 +496,31 @@ export class MapReduceExecutor {
                 reducePhaseTimeMs: 0,
                 maxConcurrency: this.options.maxConcurrency
             }
+        };
+    }
+
+    /**
+     * Create a cancelled result
+     */
+    private createCancelledResult<TMapOutput, TReduceOutput>(
+        startTime: number,
+        mapPhaseTimeMs: number,
+        totalItems: number,
+        maxConcurrency: number
+    ): MapReduceResult<TMapOutput, TReduceOutput> {
+        return {
+            success: false,
+            mapResults: [],
+            totalTimeMs: Date.now() - startTime,
+            executionStats: {
+                totalItems,
+                successfulMaps: 0,
+                failedMaps: 0,
+                mapPhaseTimeMs,
+                reducePhaseTimeMs: 0,
+                maxConcurrency
+            },
+            error: 'Operation cancelled'
         };
     }
 }

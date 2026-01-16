@@ -139,6 +139,7 @@ export async function executeVSCodePipeline(
                 aiInvoker,
                 pipelineDirectory: pipeline.packagePath,
                 processTracker: tracker,
+                isCancelled: () => cancelled,
                 onProgress: (jobProgress) => {
                     // Update VSCode progress
                     const message = getProgressMessage(jobProgress);
@@ -150,7 +151,7 @@ export async function executeVSCodePipeline(
                     // Call optional callback
                     onProgress?.(jobProgress);
 
-                    // Check for cancellation
+                    // Check for cancellation (also throw for immediate feedback)
                     if (cancelled) {
                         throw new Error('Pipeline execution cancelled');
                     }
@@ -297,6 +298,7 @@ export async function executeVSCodePipelineWithItems(
                 aiInvoker,
                 pipelineDirectory: pipeline.packagePath,
                 processTracker: tracker,
+                isCancelled: () => cancelled,
                 onProgress: (jobProgress) => {
                     // Update VSCode progress
                     const message = getProgressMessage(jobProgress);
@@ -308,7 +310,7 @@ export async function executeVSCodePipelineWithItems(
                     // Call optional callback
                     onProgress?.(jobProgress);
 
-                    // Check for cancellation
+                    // Check for cancellation (also throw for immediate feedback)
                     if (cancelled) {
                         throw new Error('Pipeline execution cancelled');
                     }

@@ -370,4 +370,6 @@ export interface ExecutorOptions extends MapReduceOptions {
     processTracker?: ProcessTracker;
     /** Optional progress callback */
     onProgress?: ProgressCallback;
+    /** Optional cancellation check function - returns true if execution should be cancelled */
+    isCancelled?: () => boolean;
 }

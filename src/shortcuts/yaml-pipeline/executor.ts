@@ -66,6 +66,8 @@ export interface ExecutePipelineOptions {
     processTracker?: ProcessTracker;
     /** Progress callback */
     onProgress?: (progress: JobProgress) => void;
+    /** Optional cancellation check function - returns true if execution should be cancelled */
+    isCancelled?: () => boolean;
 }
 
 /**
@@ -157,7 +159,8 @@ export async function executePipeline(
         processTracker: options.processTracker,
         onProgress: options.onProgress,
         jobName: config.name,
-        timeoutMs
+        timeoutMs,
+        isCancelled: options.isCancelled
     };
 
     const executor = createExecutor(executorOptions);
@@ -252,7 +255,8 @@ export async function executePipelineWithItems(
         processTracker: options.processTracker,
         onProgress: options.onProgress,
         jobName: config.name,
-        timeoutMs
+        timeoutMs,
+        isCancelled: options.isCancelled
     };
 
     const executor = createExecutor(executorOptions);
