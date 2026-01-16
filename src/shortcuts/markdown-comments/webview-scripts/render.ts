@@ -11,7 +11,7 @@ import {
     NODE_TYPES,
     restoreCursorAfterContentChange
 } from '../webview-logic/cursor-management';
-import { applyMarkdownHighlighting, escapeHtml } from '../webview-logic/markdown-renderer';
+import { applyMarkdownHighlighting, applySourceModeHighlighting, escapeHtml } from '../webview-logic/markdown-renderer';
 import { applyCommentHighlightToRange, getHighlightColumnsForLine } from '../webview-logic/selection-utils';
 import { parseCodeBlocks, renderCodeBlock, setupCodeBlockHandlers } from './code-block-handlers';
 import { setupCommentInteractions } from './dom-handlers';
@@ -289,8 +289,9 @@ function restoreCursorPosition(
 }
 
 /**
- * Render in source mode - plain text view with line numbers
- * No markdown highlighting, no code block rendering, no comments
+ * Render in source mode - plain text view with line numbers and syntax highlighting
+ * Provides visual highlighting for markdown syntax without rendering.
+ * Code blocks (```) are displayed as plain text without highlighting.
  */
 function renderSourceMode(): void {
     const editorWrapper = document.getElementById('editorWrapper')!;
@@ -302,17 +303,26 @@ function renderSourceMode(): void {
     const lines = normalizedContent.split('\n');
 
     let html = '';
+    let inCodeBlock = false;
 
     lines.forEach((line, index) => {
         const lineNum = index + 1;
-        // Escape HTML entities for safe display.
+        
         // For empty lines, use <br> instead of &nbsp; to avoid persisting a
         // leading "space" artifact when typing on a newly created line.
-        const escapedLine = line.length === 0 ? '<br>' : escapeHtml(line);
+        let lineHtml: string;
+        if (line.length === 0) {
+            lineHtml = '<br>';
+        } else {
+            // Apply source mode syntax highlighting
+            const result = applySourceModeHighlighting(line, inCodeBlock);
+            lineHtml = result.html;
+            inCodeBlock = result.inCodeBlock;
+        }
         
         html += '<div class="line-row">' +
             '<div class="line-number" contenteditable="false">' + lineNum + '</div>' +
-            '<div class="line-content source-mode" data-line="' + lineNum + '">' + escapedLine + '</div>' +
+            '<div class="line-content source-mode" data-line="' + lineNum + '">' + lineHtml + '</div>' +
             '</div>';
     });
 

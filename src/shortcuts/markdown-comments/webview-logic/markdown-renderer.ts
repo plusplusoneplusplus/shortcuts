@@ -67,6 +67,157 @@ export function escapeHtml(text: string): string {
 }
 
 /**
+ * Apply source mode syntax highlighting to a line.
+ * This provides visual highlighting for markdown syntax without rendering.
+ * Code blocks (```) are NOT highlighted - they are displayed as plain text.
+ * 
+ * @param line - The line content
+ * @param inCodeBlock - Whether currently inside a code block
+ * @returns Object with highlighted HTML and code block state
+ */
+export function applySourceModeHighlighting(
+    line: string,
+    inCodeBlock: boolean
+): { html: string; inCodeBlock: boolean } {
+    // Strip trailing \r from Windows line endings
+    const cleanLine = line.replace(/\r$/, '');
+    
+    // Check for code fence (```)
+    if (cleanLine.match(/^```/)) {
+        // Toggle code block state, but don't highlight the fence itself
+        return {
+            html: '<span class="src-code-fence">' + escapeHtml(cleanLine) + '</span>',
+            inCodeBlock: !inCodeBlock
+        };
+    }
+    
+    // If inside a code block, just escape and return (no highlighting)
+    if (inCodeBlock) {
+        return {
+            html: escapeHtml(cleanLine),
+            inCodeBlock: true
+        };
+    }
+    
+    let html = escapeHtml(cleanLine);
+    
+    // Headings (# to ######)
+    const headingMatch = cleanLine.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+        const level = headingMatch[1].length;
+        const hashes = escapeHtml(headingMatch[1]);
+        const content = applySourceModeInlineHighlighting(headingMatch[2]);
+        return {
+            html: `<span class="src-h${level}"><span class="src-hash">${hashes}</span> ${content}</span>`,
+            inCodeBlock: false
+        };
+    }
+    
+    // Horizontal rule
+    if (/^(---+|\*\*\*+|___+)\s*$/.test(cleanLine)) {
+        return {
+            html: '<span class="src-hr">' + html + '</span>',
+            inCodeBlock: false
+        };
+    }
+    
+    // Blockquotes
+    if (/^>\s*/.test(cleanLine)) {
+        const content = cleanLine.replace(/^>\s*/, '');
+        html = '<span class="src-blockquote"><span class="src-blockquote-marker">&gt;</span> ' +
+            applySourceModeInlineHighlighting(content) + '</span>';
+        return { html, inCodeBlock: false };
+    }
+    
+    // Unordered list items
+    const ulMatch = cleanLine.match(/^(\s*)([-*+])\s+(.*)$/);
+    if (ulMatch) {
+        const indent = ulMatch[1];
+        const marker = ulMatch[2];
+        let content = ulMatch[3];
+        
+        // Check for checkbox
+        const checkboxMatch = content.match(/^\[([ xX])\]\s*(.*)$/);
+        if (checkboxMatch) {
+            const checked = checkboxMatch[1].toLowerCase() === 'x';
+            const checkboxClass = checked ? 'src-checkbox src-checkbox-checked' : 'src-checkbox';
+            const checkbox = checked ? '[x]' : '[ ]';
+            content = `<span class="${checkboxClass}">${checkbox}</span> ` + applySourceModeInlineHighlighting(checkboxMatch[2]);
+        } else {
+            content = applySourceModeInlineHighlighting(content);
+        }
+        
+        html = `<span class="src-list-item">${escapeHtml(indent)}<span class="src-list-marker">${escapeHtml(marker)}</span> ${content}</span>`;
+        return { html, inCodeBlock: false };
+    }
+    
+    // Ordered list items
+    const olMatch = cleanLine.match(/^(\s*)(\d+\.)\s+(.*)$/);
+    if (olMatch) {
+        const indent = olMatch[1];
+        const marker = olMatch[2];
+        const content = applySourceModeInlineHighlighting(olMatch[3]);
+        html = `<span class="src-list-item">${escapeHtml(indent)}<span class="src-list-marker">${escapeHtml(marker)}</span> ${content}</span>`;
+        return { html, inCodeBlock: false };
+    }
+    
+    // Apply inline highlighting for regular lines
+    html = applySourceModeInlineHighlighting(cleanLine);
+    
+    return { html, inCodeBlock: false };
+}
+
+/**
+ * Apply inline markdown syntax highlighting for source mode.
+ * Highlights bold, italic, code, links, images, and strikethrough markers.
+ * 
+ * @param text - The text to highlight
+ * @returns HTML with syntax highlighting
+ */
+export function applySourceModeInlineHighlighting(text: string): string {
+    if (!text) return '';
+    
+    let html = escapeHtml(text);
+    
+    // Inline code (must be before bold/italic to avoid conflicts)
+    // Show the backticks with highlighting
+    html = html.replace(/`([^`]+)`/g, '<span class="src-inline-code">`$1`</span>');
+    
+    // Images ![alt](url)
+    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, 
+        '<span class="src-image">![$1]($2)</span>');
+    
+    // Links [text](url)
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, 
+        '<span class="src-link"><span class="src-link-text">[$1]</span><span class="src-link-url">($2)</span></span>');
+    
+    // Bold + Italic (***text*** or ___text___)
+    html = html.replace(/\*\*\*([^*]+)\*\*\*/g, 
+        '<span class="src-bold-italic"><span class="src-marker">***</span>$1<span class="src-marker">***</span></span>');
+    html = html.replace(/___([^_]+)___/g, 
+        '<span class="src-bold-italic"><span class="src-marker">___</span>$1<span class="src-marker">___</span></span>');
+    
+    // Bold (**text** or __text__)
+    html = html.replace(/\*\*([^*]+)\*\*/g, 
+        '<span class="src-bold"><span class="src-marker">**</span>$1<span class="src-marker">**</span></span>');
+    html = html.replace(/__([^_]+)__/g, 
+        '<span class="src-bold"><span class="src-marker">__</span>$1<span class="src-marker">__</span></span>');
+    
+    // Italic (*text* or _text_) - careful not to match inside bold
+    html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, 
+        '<span class="src-italic"><span class="src-marker">*</span>$1<span class="src-marker">*</span></span>');
+    // For underscore italics, require word boundaries
+    html = html.replace(/(?<=^|[\s(]|\&gt;)_([^_\s][^_]*[^_\s]|[^_\s])_(?=$|[\s.,;:!?)\]]|\&lt;)/g, 
+        '<span class="src-italic"><span class="src-marker">_</span>$1<span class="src-marker">_</span></span>');
+    
+    // Strikethrough ~~text~~
+    html = html.replace(/~~([^~]+)~~/g, 
+        '<span class="src-strike"><span class="src-marker">~~</span>$1<span class="src-marker">~~</span></span>');
+    
+    return html;
+}
+
+/**
  * Apply inline markdown formatting (bold, italic, code, links, images)
  * 
  * @param text - The text to format

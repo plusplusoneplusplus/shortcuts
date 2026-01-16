@@ -249,3 +249,125 @@
     margin: 1em 0;
 }
 
+/* ==============================
+ * Source Mode Syntax Highlighting
+ * These styles provide visual highlighting for markdown syntax
+ * in source mode without rendering the content.
+ * ============================== */
+
+/* Headings in source mode */
+.src-h1, .src-h2, .src-h3, .src-h4, .src-h5, .src-h6 {
+    color: var(--md-heading-color);
+    font-weight: 700;
+}
+
+.src-h1 {
+    font-size: 1.3em;
+}
+
+.src-h2 {
+    font-size: 1.2em;
+}
+
+.src-h3 {
+    font-size: 1.1em;
+}
+
+.src-hash {
+    color: var(--md-blockquote-color);
+    opacity: 0.6;
+}
+
+/* Bold and Italic in source mode */
+.src-bold {
+    font-weight: var(--md-bold-weight);
+}
+
+.src-italic {
+    font-style: italic;
+}
+
+.src-bold-italic {
+    font-weight: var(--md-bold-weight);
+    font-style: italic;
+}
+
+.src-marker {
+    color: var(--md-blockquote-color);
+    opacity: 0.5;
+}
+
+/* Strikethrough in source mode */
+.src-strike {
+    text-decoration: line-through;
+    color: var(--md-strikethrough-color);
+}
+
+/* Inline code in source mode */
+.src-inline-code {
+    background: var(--md-code-bg);
+    color: var(--md-code-color);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+/* Code fence in source mode */
+.src-code-fence {
+    color: var(--md-code-color);
+    opacity: 0.8;
+}
+
+/* Links in source mode */
+.src-link {
+    color: var(--md-link-color);
+}
+
+.src-link-text {
+    color: var(--md-link-color);
+}
+
+.src-link-url {
+    color: var(--md-blockquote-color);
+    opacity: 0.7;
+}
+
+/* Images in source mode */
+.src-image {
+    color: var(--md-image-color);
+}
+
+/* Blockquotes in source mode */
+.src-blockquote {
+    color: var(--md-blockquote-color);
+    font-style: italic;
+}
+
+.src-blockquote-marker {
+    color: var(--md-blockquote-border);
+}
+
+/* Lists in source mode */
+.src-list-item {
+    /* Keep default styling */
+}
+
+.src-list-marker {
+    color: var(--md-list-marker-color);
+    font-weight: 600;
+}
+
+.src-checkbox {
+    color: var(--md-list-marker-color);
+}
+
+.src-checkbox-checked {
+    color: #4caf50;
+}
+
+/* Horizontal rule in source mode */
+.src-hr {
+    color: var(--md-hr-color);
+    opacity: 0.7;
+}
+
