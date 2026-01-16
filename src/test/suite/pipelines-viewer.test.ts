@@ -8,7 +8,9 @@ import {
     PipelineItem,
     PipelineManager,
     PipelinesTreeDataProvider,
-    ResourceItem
+    ResourceItem,
+    PIPELINE_TEMPLATES,
+    PipelineTemplateType
 } from '../../shortcuts/yaml-pipeline';
 
 suite('Pipelines Viewer Tests (Package Structure)', () => {
@@ -1150,6 +1152,156 @@ reduce:
             // Shared directory should not appear as a pipeline (no pipeline.yaml)
             const packageNames = pipelines.map(p => p.packageName);
             assert.ok(!packageNames.includes('shared'));
+        });
+    });
+
+    suite('Pipeline Templates', () => {
+        test('should have all expected template types defined', () => {
+            assert.ok(PIPELINE_TEMPLATES['custom'], 'Custom template should exist');
+            assert.ok(PIPELINE_TEMPLATES['data-fanout'], 'Data fanout template should exist');
+            assert.ok(PIPELINE_TEMPLATES['model-fanout'], 'Model fanout template should exist');
+        });
+
+        test('should have correct template properties', () => {
+            const customTemplate = PIPELINE_TEMPLATES['custom'];
+            assert.strictEqual(customTemplate.type, 'custom');
+            assert.ok(customTemplate.displayName.length > 0, 'Should have display name');
+            assert.ok(customTemplate.description.length > 0, 'Should have description');
+            assert.ok(customTemplate.sampleCSV.length > 0, 'Should have sample CSV');
+
+            const dataFanoutTemplate = PIPELINE_TEMPLATES['data-fanout'];
+            assert.strictEqual(dataFanoutTemplate.type, 'data-fanout');
+            assert.ok(dataFanoutTemplate.displayName.includes('Data'), 'Data fanout should mention data');
+
+            const modelFanoutTemplate = PIPELINE_TEMPLATES['model-fanout'];
+            assert.strictEqual(modelFanoutTemplate.type, 'model-fanout');
+            assert.ok(modelFanoutTemplate.displayName.includes('Model'), 'Model fanout should mention model');
+        });
+
+        test('should create pipeline with custom template (default)', async () => {
+            const filePath = await pipelineManager.createPipeline('Custom Pipeline');
+
+            assert.ok(fs.existsSync(filePath), 'Pipeline file should exist');
+
+            const content = fs.readFileSync(filePath, 'utf8');
+            assert.ok(content.includes('name: "Custom Pipeline"'), 'Should have pipeline name');
+            assert.ok(content.includes('from:'), 'Should have input.from section');
+            assert.ok(content.includes('type: csv'), 'Should have CSV input type');
+        });
+
+        test('should create pipeline with data-fanout template', async () => {
+            const filePath = await pipelineManager.createPipelineFromTemplate('Data Pipeline', 'data-fanout');
+
+            assert.ok(fs.existsSync(filePath), 'Pipeline file should exist');
+
+            const content = fs.readFileSync(filePath, 'utf8');
+            assert.ok(content.includes('name: "Data Pipeline"'), 'Should have pipeline name');
+            assert.ok(content.includes('Template: Data Fanout'), 'Should have template comment');
+            assert.ok(content.includes('parallel:'), 'Should have parallel setting');
+            assert.ok(content.includes('themes'), 'Should have themes output field');
+            assert.ok(content.includes('sentiment'), 'Should have sentiment output field');
+            assert.ok(content.includes('executiveSummary'), 'Should have executiveSummary in reduce');
+        });
+
+        test('should create pipeline with model-fanout template', async () => {
+            const filePath = await pipelineManager.createPipelineFromTemplate('Model Comparison', 'model-fanout');
+
+            assert.ok(fs.existsSync(filePath), 'Pipeline file should exist');
+
+            const content = fs.readFileSync(filePath, 'utf8');
+            assert.ok(content.includes('name: "Model Comparison"'), 'Should have pipeline name');
+            assert.ok(content.includes('Template: Model Fanout'), 'Should have template comment');
+            assert.ok(content.includes('model: gpt-4'), 'Should have gpt-4 model');
+            assert.ok(content.includes('model: claude-sonnet'), 'Should have claude-sonnet model');
+            assert.ok(content.includes('model: gemini-pro'), 'Should have gemini-pro model');
+            assert.ok(content.includes('parameters:'), 'Should have parameters section');
+            assert.ok(content.includes('model: "{{model}}"'), 'Should have dynamic model reference');
+            assert.ok(content.includes('consensus'), 'Should have consensus in reduce output');
+            assert.ok(content.includes('conflicts'), 'Should have conflicts in reduce output');
+        });
+
+        test('should create correct sample CSV for data-fanout template', async () => {
+            const filePath = await pipelineManager.createPipelineFromTemplate('Data Test', 'data-fanout');
+            const packagePath = path.dirname(filePath);
+            const csvPath = path.join(packagePath, 'input.csv');
+
+            assert.ok(fs.existsSync(csvPath), 'input.csv should exist');
+
+            const csvContent = fs.readFileSync(csvPath, 'utf8');
+            assert.ok(csvContent.includes('id,title,content'), 'Should have correct headers');
+            assert.ok(csvContent.includes('Document 1'), 'Should have sample data');
+        });
+
+        test('should create correct sample CSV for model-fanout template', async () => {
+            const filePath = await pipelineManager.createPipelineFromTemplate('Model Test', 'model-fanout');
+            const packagePath = path.dirname(filePath);
+            const csvPath = path.join(packagePath, 'input.csv');
+
+            assert.ok(fs.existsSync(csvPath), 'input.csv should exist');
+
+            const csvContent = fs.readFileSync(csvPath, 'utf8');
+            assert.ok(csvContent.includes('model'), 'Should have model header');
+            assert.ok(csvContent.includes('gpt-4'), 'Should have gpt-4 model');
+            assert.ok(csvContent.includes('claude-sonnet'), 'Should have claude-sonnet model');
+        });
+
+        test('should validate data-fanout pipeline as valid', async () => {
+            const filePath = await pipelineManager.createPipelineFromTemplate('Valid Data Fanout', 'data-fanout');
+            const validation = await pipelineManager.validatePipeline(filePath);
+
+            assert.strictEqual(validation.valid, true, `Validation errors: ${validation.errors.join(', ')}`);
+        });
+
+        test('should validate model-fanout pipeline as valid', async () => {
+            const filePath = await pipelineManager.createPipelineFromTemplate('Valid Model Fanout', 'model-fanout');
+            const validation = await pipelineManager.validatePipeline(filePath);
+
+            assert.strictEqual(validation.valid, true, `Validation errors: ${validation.errors.join(', ')}`);
+        });
+
+        test('should create pipeline with explicit custom template type', async () => {
+            const filePath = await pipelineManager.createPipelineFromTemplate('Explicit Custom', 'custom');
+
+            assert.ok(fs.existsSync(filePath), 'Pipeline file should exist');
+
+            const content = fs.readFileSync(filePath, 'utf8');
+            assert.ok(content.includes('name: "Explicit Custom"'), 'Should have pipeline name');
+            // Custom template should NOT have the "Template:" comment
+            assert.ok(!content.includes('Template: Data Fanout'), 'Should not have data fanout comment');
+            assert.ok(!content.includes('Template: Model Fanout'), 'Should not have model fanout comment');
+        });
+
+        test('should throw error when creating duplicate pipeline from template', async () => {
+            await pipelineManager.createPipelineFromTemplate('Duplicate Test', 'data-fanout');
+
+            await assert.rejects(
+                async () => await pipelineManager.createPipelineFromTemplate('Duplicate Test', 'model-fanout'),
+                /already exists/i
+            );
+        });
+
+        test('should sanitize pipeline name when creating from template', async () => {
+            const filePath = await pipelineManager.createPipelineFromTemplate('Pipeline: With <Special> Chars!', 'data-fanout');
+            const packagePath = path.dirname(filePath);
+            const packageName = path.basename(packagePath);
+
+            assert.ok(!packageName.includes(':'), 'Should not contain colon');
+            assert.ok(!packageName.includes('<'), 'Should not contain <');
+            assert.ok(!packageName.includes('>'), 'Should not contain >');
+        });
+
+        test('should handle all template types in a loop', async () => {
+            const templateTypes: PipelineTemplateType[] = ['custom', 'data-fanout', 'model-fanout'];
+
+            for (const templateType of templateTypes) {
+                const name = `Loop Test ${templateType}`;
+                const filePath = await pipelineManager.createPipelineFromTemplate(name, templateType);
+
+                assert.ok(fs.existsSync(filePath), `Pipeline file should exist for ${templateType}`);
+
+                const validation = await pipelineManager.validatePipeline(filePath);
+                assert.strictEqual(validation.valid, true, `${templateType} should be valid: ${validation.errors.join(', ')}`);
+            }
         });
     });
 

@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
-import { PipelineInfo, ValidationResult, PipelinesViewerSettings, PipelineSortBy, ResourceFileInfo } from './types';
+import { PipelineInfo, ValidationResult, PipelinesViewerSettings, PipelineSortBy, ResourceFileInfo, PipelineTemplateType, PIPELINE_TEMPLATES } from './types';
 
 /** Standard pipeline file names recognized by the system */
 const PIPELINE_FILE_NAMES = ['pipeline.yaml', 'pipeline.yml'];
@@ -112,9 +112,11 @@ export class PipelineManager implements vscode.Disposable {
 
     /**
      * Create a new pipeline package with directory structure
+     * @param name Pipeline name
+     * @param templateType Optional template type (defaults to 'custom')
      * @returns The path to the created pipeline.yaml file
      */
-    async createPipeline(name: string): Promise<string> {
+    async createPipeline(name: string, templateType: PipelineTemplateType = 'custom'): Promise<string> {
         this.ensurePipelinesFolderExists();
 
         const sanitizedName = this.sanitizeFileName(name);
@@ -127,16 +129,26 @@ export class PipelineManager implements vscode.Disposable {
         // Create the package directory
         fs.mkdirSync(packagePath, { recursive: true });
 
-        // Create pipeline.yaml in the package
+        // Create pipeline.yaml in the package based on template type
         const filePath = path.join(packagePath, 'pipeline.yaml');
-        const template = this.getDefaultPipelineTemplate(name);
+        const template = this.getPipelineTemplate(name, templateType);
         fs.writeFileSync(filePath, template, 'utf8');
 
-        // Create a sample input.csv file
-        const sampleCSV = 'id,title,description\n1,Sample Item,A sample item for processing';
-        fs.writeFileSync(path.join(packagePath, 'input.csv'), sampleCSV, 'utf8');
+        // Create a sample input.csv file based on template type
+        const templateDef = PIPELINE_TEMPLATES[templateType];
+        fs.writeFileSync(path.join(packagePath, 'input.csv'), templateDef.sampleCSV, 'utf8');
 
         return filePath;
+    }
+
+    /**
+     * Create a new pipeline package from a specific template
+     * @param name Pipeline name
+     * @param templateType Template type to use
+     * @returns The path to the created pipeline.yaml file
+     */
+    async createPipelineFromTemplate(name: string, templateType: PipelineTemplateType): Promise<string> {
+        return this.createPipeline(name, templateType);
     }
 
     /**
@@ -512,10 +524,25 @@ export class PipelineManager implements vscode.Disposable {
     }
 
     /**
-     * Get a default pipeline template
+     * Get pipeline template content based on template type
      * Paths are relative to the package directory
      */
-    private getDefaultPipelineTemplate(name: string): string {
+    private getPipelineTemplate(name: string, templateType: PipelineTemplateType): string {
+        switch (templateType) {
+            case 'data-fanout':
+                return this.getDataFanoutTemplate(name);
+            case 'model-fanout':
+                return this.getModelFanoutTemplate(name);
+            case 'custom':
+            default:
+                return this.getCustomTemplate(name);
+        }
+    }
+
+    /**
+     * Get custom (default) pipeline template
+     */
+    private getCustomTemplate(name: string): string {
         return `# Pipeline: ${name}
 name: "${name}"
 description: "Description of what this pipeline does"
@@ -575,6 +602,159 @@ reduce:
   #
   # Model: Override the default AI model for reduce
   # model: gpt-4
+`;
+    }
+
+    /**
+     * Get Data Fanout pipeline template
+     * Input is a list and each mapper job runs against a single input item
+     */
+    private getDataFanoutTemplate(name: string): string {
+        return `# Pipeline: ${name}
+# Template: Data Fanout
+# Each row in the CSV is processed independently by the AI
+name: "${name}"
+description: "Process a list of items in parallel - each mapper job runs against a single input"
+
+input:
+  # Load items from CSV - each row becomes an independent map job
+  from:
+    type: csv
+    path: "input.csv"
+  # Optional: Limit number of items to process
+  # limit: 10
+
+map:
+  # Each item from the CSV is processed independently
+  prompt: |
+    Analyze the following item:
+    
+    ID: {{id}}
+    Title: {{title}}
+    Content: {{content}}
+    
+    Provide a detailed analysis including:
+    1. Key themes or topics
+    2. Sentiment (positive/negative/neutral)
+    3. Action items if any
+    
+    Respond with JSON containing your analysis.
+  output:
+    - themes
+    - sentiment
+    - actionItems
+    - summary
+  # Process multiple items in parallel (default: 5)
+  parallel: 5
+
+reduce:
+  # Aggregate all results with AI synthesis
+  type: ai
+  prompt: |
+    You analyzed {{count}} items with the following results:
+    
+    {{results}}
+    
+    Successful: {{successCount}}
+    Failed: {{failureCount}}
+    
+    Please provide:
+    1. An executive summary of all findings
+    2. Common themes across items
+    3. Overall sentiment distribution
+    4. Prioritized action items
+  output:
+    - executiveSummary
+    - commonThemes
+    - sentimentDistribution
+    - prioritizedActions
+`;
+    }
+
+    /**
+     * Get Model Fanout pipeline template
+     * Run the same data against different models and find consensus/conflicts
+     */
+    private getModelFanoutTemplate(name: string): string {
+        return `# Pipeline: ${name}
+# Template: Model Fanout
+# Run the same prompt against multiple AI models and compare results
+name: "${name}"
+description: "Run the same data against multiple AI models and find consensus/conflicts"
+
+input:
+  # List of models to use - each becomes a separate map job
+  from:
+    - model: gpt-4
+    - model: claude-sonnet
+    - model: gemini-pro
+  # Define the shared data as parameters (accessible via {{paramName}})
+  parameters:
+    - name: codeToReview
+      value: |
+        function calculateTotal(items) {
+          let total = 0;
+          for (let i = 0; i <= items.length; i++) {
+            total += items[i].price;
+          }
+          return total;
+        }
+    - name: reviewContext
+      value: "JavaScript function for calculating shopping cart total"
+
+map:
+  # The same prompt is sent to each model specified in input.from
+  prompt: |
+    Review the following code:
+    
+    Context: {{reviewContext}}
+    
+    \`\`\`javascript
+    {{codeToReview}}
+    \`\`\`
+    
+    Analyze for:
+    1. Bugs or errors
+    2. Performance issues
+    3. Security concerns
+    4. Code style improvements
+    
+    Provide your analysis as JSON.
+  output:
+    - bugs
+    - performanceIssues
+    - securityConcerns
+    - styleImprovements
+    - overallScore
+  # Use the model specified in each input item
+  model: "{{model}}"
+  # Run all models in parallel
+  parallel: 3
+
+reduce:
+  # AI-powered consensus finding
+  type: ai
+  prompt: |
+    Multiple AI models ({{count}}) reviewed the same code:
+    
+    {{results}}
+    
+    Successful responses: {{successCount}}
+    Failed responses: {{failureCount}}
+    
+    Please analyze the responses and provide:
+    1. CONSENSUS: Issues that multiple models agree on
+    2. CONFLICTS: Areas where models disagree
+    3. UNIQUE INSIGHTS: Valuable points raised by only one model
+    4. FINAL RECOMMENDATION: Your synthesized recommendation
+    
+    Weight consensus items higher in your final recommendation.
+  output:
+    - consensus
+    - conflicts
+    - uniqueInsights
+    - finalRecommendation
+    - confidenceScore
 `;
     }
 

@@ -16,6 +16,7 @@ import {
     VSCodePipelineResult
 } from './pipeline-executor-service';
 import { PipelineResultViewerProvider } from './result-viewer-provider';
+import { PipelineTemplateType, PIPELINE_TEMPLATES } from './types';
 
 /**
  * Command handlers for the Pipelines Viewer
@@ -59,7 +60,7 @@ export class PipelineCommands {
         const disposables: vscode.Disposable[] = [];
 
         disposables.push(
-            vscode.commands.registerCommand('pipelinesViewer.create', () => this.createPipeline()),
+            vscode.commands.registerCommand('pipelinesViewer.create', () => this.createPipelineFromTemplate()),
             vscode.commands.registerCommand('pipelinesViewer.open', (item: PipelineItem) => this.openPipeline(item)),
             vscode.commands.registerCommand('pipelinesViewer.execute', (item: PipelineItem) => this.executePipeline(item)),
             vscode.commands.registerCommand('pipelinesViewer.rename', (item: PipelineItem) => this.renamePipeline(item)),
@@ -73,13 +74,33 @@ export class PipelineCommands {
     }
 
     /**
-     * Create a new pipeline package.
-     * Creates a package directory with pipeline.yaml and sample input.csv.
+     * Create a new pipeline package from a template.
+     * Shows template selection UI, then creates the pipeline with the selected template.
      */
-    private async createPipeline(): Promise<void> {
+    private async createPipelineFromTemplate(): Promise<void> {
+        // Show template selection quick pick
+        const templateItems: vscode.QuickPickItem[] = Object.values(PIPELINE_TEMPLATES).map(template => ({
+            label: template.displayName,
+            description: template.type,
+            detail: template.description
+        }));
+
+        const selectedTemplate = await vscode.window.showQuickPick(templateItems, {
+            placeHolder: 'Select a pipeline template',
+            title: 'Create Pipeline from Template'
+        });
+
+        if (!selectedTemplate) {
+            return;
+        }
+
+        // Get the template type from the selection
+        const templateType = selectedTemplate.description as PipelineTemplateType;
+
+        // Ask for pipeline name
         const name = await vscode.window.showInputBox({
-            prompt: 'Enter pipeline package name',
-            placeHolder: 'my-pipeline',
+            prompt: `Enter pipeline name for ${selectedTemplate.label}`,
+            placeHolder: this.getDefaultNameForTemplate(templateType),
             validateInput: (value) => {
                 if (!value || value.trim().length === 0) {
                     return 'Pipeline name cannot be empty';
@@ -96,7 +117,7 @@ export class PipelineCommands {
         }
 
         try {
-            const filePath = await this.pipelineManager.createPipeline(name.trim());
+            const filePath = await this.pipelineManager.createPipelineFromTemplate(name.trim(), templateType);
             this.treeDataProvider.refresh();
 
             // Open the new pipeline.yaml file
@@ -106,11 +127,26 @@ export class PipelineCommands {
             );
 
             vscode.window.showInformationMessage(
-                `Pipeline package "${name}" created with pipeline.yaml and input.csv`
+                `Pipeline "${name}" created from ${selectedTemplate.label} template`
             );
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to create pipeline: ${err.message}`);
+        }
+    }
+
+    /**
+     * Get a default name suggestion for a template type
+     */
+    private getDefaultNameForTemplate(templateType: PipelineTemplateType): string {
+        switch (templateType) {
+            case 'data-fanout':
+                return 'my-data-pipeline';
+            case 'model-fanout':
+                return 'my-model-comparison';
+            case 'custom':
+            default:
+                return 'my-pipeline';
         }
     }
 

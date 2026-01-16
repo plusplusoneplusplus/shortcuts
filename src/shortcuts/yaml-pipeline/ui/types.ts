@@ -84,3 +84,46 @@ export interface PipelinesViewerSettings {
  * Tree item type enumeration for UI rendering
  */
 export type TreeItemType = 'package' | 'resource';
+
+/**
+ * Pipeline template type identifiers
+ */
+export type PipelineTemplateType = 'custom' | 'data-fanout' | 'model-fanout';
+
+/**
+ * Pipeline template definition
+ */
+export interface PipelineTemplate {
+    /** Template type identifier */
+    type: PipelineTemplateType;
+    /** Display name for the template */
+    displayName: string;
+    /** Description of what this template does */
+    description: string;
+    /** Sample CSV content for the template */
+    sampleCSV: string;
+}
+
+/**
+ * Available pipeline templates
+ */
+export const PIPELINE_TEMPLATES: Record<PipelineTemplateType, PipelineTemplate> = {
+    'custom': {
+        type: 'custom',
+        displayName: 'Custom Pipeline',
+        description: 'Start with a blank pipeline template that you can customize',
+        sampleCSV: 'id,title,description\n1,Sample Item,A sample item for processing'
+    },
+    'data-fanout': {
+        type: 'data-fanout',
+        displayName: 'Data Fanout',
+        description: 'Process a list of items in parallel - each mapper job runs against a single input item',
+        sampleCSV: 'id,title,content\n1,Document 1,Content of document 1\n2,Document 2,Content of document 2\n3,Document 3,Content of document 3'
+    },
+    'model-fanout': {
+        type: 'model-fanout',
+        displayName: 'Model Fanout',
+        description: 'Run the same data against multiple AI models and find consensus/conflicts',
+        sampleCSV: 'model\ngpt-4\nclaude-sonnet\ngemini-pro'
+    }
+};

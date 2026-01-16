@@ -108,8 +108,12 @@ export type {
     ValidationResult,
     PipelinesViewerSettings,
     PipelineSortBy,
-    TreeItemType
+    TreeItemType,
+    PipelineTemplateType,
+    PipelineTemplate
 } from './ui';
+
+export { PIPELINE_TEMPLATES } from './ui';
 
 // Result Viewer (enhanced pipeline result display)
 export {
