@@ -81,7 +81,7 @@
         {
           "id": "markdownCommentsView",
           "name": "Markdown Comments",
-          "when": "true"
+          "when": "config.workspaceShortcuts.markdownComments.panelEnabled"
         },
         {
           "id": "clarificationProcessesView",
@@ -175,6 +175,11 @@
             "Sync only within this workspace"
           ],
           "description": "VSCode Sync: Scope for synchronization"
+        },
+        "workspaceShortcuts.markdownComments.panelEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the Markdown Comments panel in the sidebar"
         },
         "workspaceShortcuts.markdownComments.showResolved": {
           "type": "boolean",

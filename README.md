@@ -85,6 +85,7 @@ Sync your configuration across devices via VSCode Settings Sync.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `workspaceShortcuts.alwaysOpenMarkdownInReviewEditor` | `false` | Always open markdown in Review Editor |
+| `workspaceShortcuts.markdownComments.panelEnabled` | `false` | Enable the Markdown Comments panel |
 | `workspaceShortcuts.markdownComments.showResolved` | `true` | Show resolved comments |
 | `workspaceShortcuts.markdownComments.highlightColor` | `rgba(255, 235, 59, 0.3)` | Comment highlight color |
 | `workspaceShortcuts.aiService.enabled` | `false` | Enable AI features |
