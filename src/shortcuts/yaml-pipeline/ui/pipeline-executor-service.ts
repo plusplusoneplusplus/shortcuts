@@ -13,13 +13,15 @@ import * as vscode from 'vscode';
 import { IAIProcessManager, invokeCopilotCLI, getAIModelSetting } from '../../ai-service';
 import {
     executePipeline,
+    executePipelineWithItems as coreExecutePipelineWithItems,
     parsePipelineYAML,
     PipelineExecutionResult,
     PipelineConfig,
     AIInvoker,
     AIInvokerResult,
     JobProgress,
-    ProcessTracker
+    ProcessTracker,
+    PromptItem
 } from '../index';
 import { PipelineInfo } from './types';
 
@@ -162,6 +164,163 @@ export async function executeVSCodePipeline(
                 processManager.completeProcessGroup(groupProcessId, {
                     result: summary,
                     structuredResult: JSON.stringify(result), // Store full result, not just output
+                    executionStats: {
+                        totalItems: result.executionStats.totalItems,
+                        successfulMaps: result.executionStats.successfulMaps,
+                        failedMaps: result.executionStats.failedMaps,
+                        mapPhaseTimeMs: result.executionStats.mapPhaseTimeMs,
+                        reducePhaseTimeMs: result.executionStats.reducePhaseTimeMs,
+                        maxConcurrency: result.executionStats.maxConcurrency
+                    }
+                });
+            }
+
+            return {
+                success: result.success,
+                result,
+                processId: groupProcessId
+            };
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+
+            // Mark process as failed
+            if (processManager && groupProcessId) {
+                processManager.failProcess(groupProcessId, errorMsg);
+            }
+
+            return {
+                success: false,
+                error: errorMsg,
+                processId: groupProcessId
+            };
+        }
+    });
+}
+
+/**
+ * Options for pipeline execution with pre-approved items
+ */
+export interface PipelineExecutionWithItemsOptions extends PipelineExecutionOptions {
+    /** Pre-approved items to use instead of loading from input config */
+    items: PromptItem[];
+}
+
+/**
+ * Execute a pipeline with pre-approved items (from the generate & review flow)
+ * This bypasses the normal input loading and uses the provided items directly.
+ *
+ * @param options Execution options including the pre-approved items
+ * @returns Pipeline execution result
+ */
+export async function executeVSCodePipelineWithItems(
+    options: PipelineExecutionWithItemsOptions
+): Promise<VSCodePipelineResult> {
+    const { pipeline, workspaceRoot, processManager, onProgress, items } = options;
+
+    // Read and parse the pipeline YAML
+    let config: PipelineConfig;
+    try {
+        const yamlContent = fs.readFileSync(pipeline.filePath, 'utf8');
+        // Parse but don't validate (since generate config will fail validation)
+        const yaml = await import('js-yaml');
+        config = yaml.load(yamlContent) as PipelineConfig;
+        
+        if (!config || !config.name) {
+            return { success: false, error: 'Invalid pipeline configuration: missing name' };
+        }
+    } catch (error) {
+        const errorMsg = `Failed to parse pipeline: ${error instanceof Error ? error.message : String(error)}`;
+        return { success: false, error: errorMsg };
+    }
+
+    // Register a process group for tracking
+    let groupProcessId: string | undefined;
+    if (processManager) {
+        groupProcessId = processManager.registerProcessGroup(
+            `Pipeline: ${config.name}`,
+            {
+                type: 'pipeline-execution',
+                idPrefix: 'pipeline',
+                metadata: {
+                    pipelineName: config.name,
+                    pipelinePath: pipeline.relativePath,
+                    packageName: pipeline.packageName,
+                    itemCount: items.length
+                }
+            }
+        );
+    }
+
+    // Create AI invoker that uses Copilot CLI
+    const defaultModel = getAIModelSetting();
+    const aiInvoker: AIInvoker = async (prompt: string, options?: { model?: string }): Promise<AIInvokerResult> => {
+        const model = options?.model || defaultModel;
+        
+        const result = await invokeCopilotCLI(
+            prompt,
+            workspaceRoot,
+            undefined,
+            undefined,
+            model
+        );
+
+        return {
+            success: result.success,
+            response: result.response,
+            error: result.error
+        };
+    };
+
+    // Create process tracker if we have a process manager
+    let tracker: ProcessTracker | undefined;
+    if (processManager && groupProcessId) {
+        tracker = createProcessTracker(processManager, groupProcessId);
+    }
+
+    // Execute with progress reporting
+    return await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Executing pipeline: ${config.name}`,
+        cancellable: true
+    }, async (progress, token) => {
+        // Track cancellation
+        let cancelled = false;
+        token.onCancellationRequested(() => {
+            cancelled = true;
+            if (processManager && groupProcessId) {
+                processManager.cancelProcess(groupProcessId);
+            }
+        });
+
+        try {
+            const result = await coreExecutePipelineWithItems(config, items, {
+                aiInvoker,
+                pipelineDirectory: pipeline.packagePath,
+                processTracker: tracker,
+                onProgress: (jobProgress) => {
+                    // Update VSCode progress
+                    const message = getProgressMessage(jobProgress);
+                    progress.report({
+                        message,
+                        increment: calculateIncrement(jobProgress)
+                    });
+
+                    // Call optional callback
+                    onProgress?.(jobProgress);
+
+                    // Check for cancellation
+                    if (cancelled) {
+                        throw new Error('Pipeline execution cancelled');
+                    }
+                }
+            });
+
+            // Complete the process group
+            if (processManager && groupProcessId) {
+                const summary = formatExecutionSummary(result);
+                processManager.completeProcessGroup(groupProcessId, {
+                    result: summary,
+                    structuredResult: JSON.stringify(result),
                     executionStats: {
                         totalItems: result.executionStats.totalItems,
                         successfulMaps: result.executionStats.successfulMaps,

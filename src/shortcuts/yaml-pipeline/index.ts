@@ -87,6 +87,7 @@ export type {
 // Executor (main API)
 export {
     executePipeline,
+    executePipelineWithItems,
     parsePipelineYAML,
     parsePipelineYAMLSync,
     PipelineExecutionError,

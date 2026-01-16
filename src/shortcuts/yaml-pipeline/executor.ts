@@ -197,6 +197,145 @@ export async function executePipeline(
 }
 
 /**
+ * Execute a pipeline with pre-approved items
+ * 
+ * This function bypasses the normal input loading and uses provided items directly.
+ * Used when items have been generated via AI and approved by the user.
+ * 
+ * @param config Pipeline configuration (parsed from YAML)
+ * @param items Pre-approved items to process
+ * @param options Execution options
+ * @returns Map-reduce result containing pipeline output
+ */
+export async function executePipelineWithItems(
+    config: PipelineConfig,
+    items: PromptItem[],
+    options: ExecutePipelineOptions
+): Promise<PipelineExecutionResult> {
+    // Validate basic config structure (but skip input validation since we're using pre-approved items)
+    validatePipelineConfigForExecution(config);
+
+    // Apply limit if specified
+    const limit = config.input.limit ?? items.length;
+    let processItems = items.slice(0, limit);
+
+    // Merge parameters into each item (parameters take lower precedence than item fields)
+    if (config.input.parameters && config.input.parameters.length > 0) {
+        const paramValues = convertParametersToObject(config.input.parameters);
+        processItems = processItems.map(item => ({ ...paramValues, ...item }));
+    }
+
+    // Validate that items have required template variables (if any items exist)
+    if (processItems.length > 0) {
+        const templateVars = extractVariables(config.map.prompt);
+        const firstItem = processItems[0];
+        const missingVars = templateVars.filter(v => !(v in firstItem));
+        if (missingVars.length > 0) {
+            throw new PipelineExecutionError(
+                `Items missing required fields: ${missingVars.join(', ')}`,
+                'input'
+            );
+        }
+    }
+
+    // Create and execute map-reduce job
+    const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
+    const model = config.map.model;
+    const timeoutMs = config.map.timeoutMs ?? 300000;
+
+    const executorOptions: ExecutorOptions = {
+        aiInvoker: options.aiInvoker,
+        maxConcurrency: parallelLimit,
+        reduceMode: 'deterministic',
+        showProgress: true,
+        retryOnFailure: false,
+        processTracker: options.processTracker,
+        onProgress: options.onProgress,
+        jobName: config.name,
+        timeoutMs
+    };
+
+    const executor = createExecutor(executorOptions);
+
+    // Convert parameters to object for reduce phase
+    const reduceParameters = config.input.parameters
+        ? convertParametersToObject(config.input.parameters)
+        : undefined;
+
+    const job = createPromptMapJob({
+        aiInvoker: options.aiInvoker,
+        outputFormat: config.reduce.type,
+        model,
+        maxConcurrency: parallelLimit,
+        ...(config.reduce.type === 'ai' && {
+            aiReducePrompt: config.reduce.prompt,
+            aiReduceOutput: config.reduce.output,
+            aiReduceModel: config.reduce.model,
+            aiReduceParameters: reduceParameters
+        })
+    });
+
+    const jobInput = createPromptMapInput(
+        processItems,
+        config.map.prompt,
+        config.map.output || []
+    );
+
+    try {
+        return await executor.execute(job, jobInput);
+    } catch (error) {
+        throw new PipelineExecutionError(
+            `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,
+            'map'
+        );
+    }
+}
+
+/**
+ * Validate pipeline configuration for execution (without input source validation)
+ * Used when executing with pre-approved items.
+ */
+function validatePipelineConfigForExecution(config: PipelineConfig): void {
+    if (!config.name) {
+        throw new PipelineExecutionError('Pipeline config missing "name"');
+    }
+
+    if (!config.map) {
+        throw new PipelineExecutionError('Pipeline config missing "map"');
+    }
+
+    if (!config.map.prompt) {
+        throw new PipelineExecutionError('Pipeline config missing "map.prompt"');
+    }
+
+    // map.output is optional - if omitted, text mode is used
+    if (config.map.output !== undefined) {
+        if (!Array.isArray(config.map.output)) {
+            throw new PipelineExecutionError('Pipeline config "map.output" must be an array if provided');
+        }
+    }
+
+    if (!config.reduce) {
+        throw new PipelineExecutionError('Pipeline config missing "reduce"');
+    }
+
+    const validReduceTypes = ['list', 'table', 'json', 'csv', 'ai', 'text'];
+    if (!validReduceTypes.includes(config.reduce.type)) {
+        throw new PipelineExecutionError(`Unsupported reduce type: ${config.reduce.type}. Supported types: ${validReduceTypes.join(', ')}`);
+    }
+
+    // Validate AI reduce configuration
+    if (config.reduce.type === 'ai') {
+        if (!config.reduce.prompt) {
+            throw new PipelineExecutionError('Pipeline config "reduce.prompt" is required when reduce.type is "ai"');
+        }
+        if (config.reduce.output !== undefined && !Array.isArray(config.reduce.output)) {
+            throw new PipelineExecutionError('Pipeline config "reduce.output" must be an array if provided');
+        }
+    }
+}
+
+/**
  * Load items from CSV file
  */
 async function loadFromCSV(

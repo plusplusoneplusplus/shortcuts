@@ -12,6 +12,7 @@ import * as path from 'path';
 import {
     DEFAULT_PARALLEL_LIMIT,
     executePipeline,
+    executePipelineWithItems,
     parsePipelineYAML,
     parsePipelineYAMLSync,
     PipelineExecutionError
@@ -1658,6 +1659,448 @@ What are the next steps?`,
             assert.strictEqual(result.executionStats.totalItems, 20);
             assert.ok(result.output);
             assert.strictEqual(result.output.results.length, 20);
+        });
+    });
+
+    suite('executePipelineWithItems - pre-approved items', () => {
+        test('executes pipeline with pre-approved items successfully', async () => {
+            // Config with generate config (which would normally fail validation)
+            const config: PipelineConfig = {
+                name: 'Generated Items Pipeline',
+                input: {
+                    generate: {
+                        prompt: 'Generate test cases',
+                        schema: ['testName', 'input', 'expected']
+                    }
+                },
+                map: {
+                    prompt: 'Run test: {{testName}}\nInput: {{input}}\nExpected: {{expected}}',
+                    output: ['actual', 'passed']
+                },
+                reduce: { type: 'list' }
+            };
+
+            // Pre-approved items (as if user approved them in the UI)
+            const items = [
+                { testName: 'Valid Login', input: 'user@test.com', expected: 'Success' },
+                { testName: 'Empty Password', input: '', expected: 'Error' }
+            ];
+
+            const responses = new Map([
+                ['Valid Login', '{"actual": "Success", "passed": true}'],
+                ['Empty Password', '{"actual": "Error", "passed": true}']
+            ]);
+
+            const result = await executePipelineWithItems(config, items, {
+                aiInvoker: createMockAIInvoker(responses),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 2);
+
+            assert.strictEqual(result.output.results[0].success, true);
+            assert.strictEqual(result.output.results[0].output.actual, 'Success');
+            assert.strictEqual(result.output.results[0].output.passed, true);
+
+            assert.strictEqual(result.output.results[1].success, true);
+            assert.strictEqual(result.output.results[1].output.actual, 'Error');
+            assert.strictEqual(result.output.results[1].output.passed, true);
+        });
+
+        test('handles empty items array', async () => {
+            const config: PipelineConfig = {
+                name: 'Empty Items Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name']
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const result = await executePipelineWithItems(config, [], {
+                aiInvoker: createMockAIInvoker(new Map()),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.executionStats.totalItems, 0);
+        });
+
+        test('applies limit to pre-approved items', async () => {
+            const config: PipelineConfig = {
+                name: 'Limit Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name']
+                    },
+                    limit: 2
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const items = [
+                { name: 'Item 1' },
+                { name: 'Item 2' },
+                { name: 'Item 3' },
+                { name: 'Item 4' },
+                { name: 'Item 5' }
+            ];
+
+            const result = await executePipelineWithItems(config, items, {
+                aiInvoker: createMockAIInvoker(new Map()),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.executionStats.totalItems, 2);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 2);
+            assert.strictEqual(result.output.results[0].item.name, 'Item 1');
+            assert.strictEqual(result.output.results[1].item.name, 'Item 2');
+        });
+
+        test('merges parameters into pre-approved items', async () => {
+            const config: PipelineConfig = {
+                name: 'Parameters Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['testName']
+                    },
+                    parameters: [
+                        { name: 'project', value: 'MyProject' },
+                        { name: 'version', value: '1.0.0' }
+                    ]
+                },
+                map: {
+                    prompt: 'Project: {{project}} v{{version}}, Test: {{testName}}',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const items = [
+                { testName: 'Test A' },
+                { testName: 'Test B' }
+            ];
+
+            let capturedPrompts: string[] = [];
+            const aiInvoker = async (prompt: string) => {
+                capturedPrompts.push(prompt);
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            await executePipelineWithItems(config, items, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(capturedPrompts.length, 2);
+            assert.ok(capturedPrompts[0].includes('Project: MyProject v1.0.0'));
+            assert.ok(capturedPrompts[0].includes('Test: Test A'));
+            assert.ok(capturedPrompts[1].includes('Project: MyProject v1.0.0'));
+            assert.ok(capturedPrompts[1].includes('Test: Test B'));
+        });
+
+        test('item fields take precedence over parameters', async () => {
+            const config: PipelineConfig = {
+                name: 'Override Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name', 'project']
+                    },
+                    parameters: [
+                        { name: 'project', value: 'DefaultProject' }
+                    ]
+                },
+                map: {
+                    prompt: '{{project}}: {{name}}',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const items = [
+                { name: 'Item 1', project: 'CustomProject' }
+            ];
+
+            let capturedPrompt = '';
+            const aiInvoker = async (prompt: string) => {
+                capturedPrompt = prompt;
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            await executePipelineWithItems(config, items, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            // Item's 'project' should override parameter's 'project'
+            assert.ok(capturedPrompt.includes('CustomProject: Item 1'));
+            assert.ok(!capturedPrompt.includes('DefaultProject'));
+        });
+
+        test('validates items have required template variables', async () => {
+            const config: PipelineConfig = {
+                name: 'Validation Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name']
+                    }
+                },
+                map: { prompt: '{{name}} {{description}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const items = [
+                { name: 'Test' }  // Missing 'description' field
+            ];
+
+            await assert.rejects(
+                async () => executePipelineWithItems(config, items, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /missing required fields.*description/i
+            );
+        });
+
+        test('passes model to AI invoker', async () => {
+            const config: PipelineConfig = {
+                name: 'Model Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name']
+                    }
+                },
+                map: {
+                    prompt: '{{name}}',
+                    output: ['result'],
+                    model: 'gpt-4'
+                },
+                reduce: { type: 'list' }
+            };
+
+            const items = [{ name: 'Test' }];
+
+            let receivedModel: string | undefined;
+            const aiInvoker = async (_prompt: string, options?: { model?: string }) => {
+                receivedModel = options?.model;
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            const result = await executePipelineWithItems(config, items, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(receivedModel, 'gpt-4');
+        });
+
+        test('handles AI failures gracefully', async () => {
+            const config: PipelineConfig = {
+                name: 'Failure Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name']
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const items = [
+                { name: 'Good' },
+                { name: 'Bad' }
+            ];
+
+            const aiInvoker = async (prompt: string) => {
+                if (prompt.includes('Bad')) {
+                    return { success: false, error: 'AI service unavailable' };
+                }
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            const result = await executePipelineWithItems(config, items, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            // The executor considers the job successful if all map operations completed
+            assert.strictEqual(result.success, true);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results[0].success, true);
+            assert.strictEqual(result.output.results[1].success, false);
+            assert.ok(result.output.results[1].error?.includes('AI service unavailable'));
+        });
+
+        test('reports progress during execution', async () => {
+            const config: PipelineConfig = {
+                name: 'Progress Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name']
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const items = [
+                { name: 'A' },
+                { name: 'B' },
+                { name: 'C' }
+            ];
+
+            const progressUpdates: JobProgress[] = [];
+
+            await executePipelineWithItems(config, items, {
+                aiInvoker: createMockAIInvoker(new Map()),
+                pipelineDirectory: tempDir,
+                onProgress: (progress) => progressUpdates.push({ ...progress })
+            });
+
+            // Verify progress updates were received
+            assert.ok(progressUpdates.length > 0, 'Should have progress updates');
+
+            // Verify final progress
+            const finalProgress = progressUpdates[progressUpdates.length - 1];
+            assert.strictEqual(finalProgress.percentage, 100);
+        });
+
+        test('works with AI reduce type', async () => {
+            const config: PipelineConfig = {
+                name: 'AI Reduce Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name', 'category']
+                    }
+                },
+                map: {
+                    prompt: 'Analyze: {{name}} ({{category}})',
+                    output: ['score']
+                },
+                reduce: {
+                    type: 'ai',
+                    prompt: 'Summarize {{COUNT}} results:\n{{RESULTS}}',
+                    output: ['summary']
+                }
+            };
+
+            const items = [
+                { name: 'Item A', category: 'cat1' },
+                { name: 'Item B', category: 'cat2' }
+            ];
+
+            let reducePromptReceived = false;
+            const aiInvoker = async (prompt: string) => {
+                if (prompt.includes('Summarize')) {
+                    reducePromptReceived = true;
+                    return { success: true, response: '{"summary": "All items processed successfully"}' };
+                }
+                return { success: true, response: '{"score": 5}' };
+            };
+
+            const result = await executePipelineWithItems(config, items, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.ok(reducePromptReceived, 'AI reduce should have been called');
+        });
+
+        test('throws for missing map config', async () => {
+            const config = {
+                name: 'Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name']
+                    }
+                },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            const items = [{ name: 'Test' }];
+
+            await assert.rejects(
+                async () => executePipelineWithItems(config, items, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /missing "map"/
+            );
+        });
+
+        test('throws for unsupported reduce type', async () => {
+            const config = {
+                name: 'Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name']
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'invalid' }
+            } as unknown as PipelineConfig;
+
+            const items = [{ name: 'Test' }];
+
+            await assert.rejects(
+                async () => executePipelineWithItems(config, items, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir
+                }),
+                /Unsupported reduce type/
+            );
+        });
+
+        test('records execution statistics', async () => {
+            const config: PipelineConfig = {
+                name: 'Stats Test',
+                input: {
+                    generate: {
+                        prompt: 'Generate items',
+                        schema: ['name']
+                    }
+                },
+                map: { prompt: '{{name}}', output: ['result'] },
+                reduce: { type: 'list' }
+            };
+
+            const items = [
+                { name: 'A' },
+                { name: 'B' },
+                { name: 'C' }
+            ];
+
+            const result = await executePipelineWithItems(config, items, {
+                aiInvoker: createMockAIInvoker(new Map()),
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.executionStats.totalItems, 3);
+            assert.strictEqual(result.executionStats.successfulMaps, 3);
+            assert.strictEqual(result.executionStats.failedMaps, 0);
+            assert.ok(result.totalTimeMs >= 0);
+            assert.ok(result.executionStats.mapPhaseTimeMs >= 0);
+            assert.ok(result.executionStats.reducePhaseTimeMs >= 0);
         });
     });
 });

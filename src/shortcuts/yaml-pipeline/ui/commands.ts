@@ -12,9 +12,11 @@ import { PipelinesTreeDataProvider } from './tree-data-provider';
 import { PipelineItem, PipelineTreeItem } from './pipeline-item';
 import {
     executeVSCodePipeline,
+    executeVSCodePipelineWithItems,
     showPipelineResults,
     VSCodePipelineResult
 } from './pipeline-executor-service';
+import { PromptItem } from '../types';
 import { PipelineResultViewerProvider } from './result-viewer-provider';
 import { PipelineTemplateType, PIPELINE_TEMPLATES } from './types';
 
@@ -63,6 +65,7 @@ export class PipelineCommands {
             vscode.commands.registerCommand('pipelinesViewer.create', () => this.createPipelineFromTemplate()),
             vscode.commands.registerCommand('pipelinesViewer.open', (item: PipelineItem) => this.openPipeline(item)),
             vscode.commands.registerCommand('pipelinesViewer.execute', (item: PipelineItem) => this.executePipeline(item)),
+            vscode.commands.registerCommand('pipelinesViewer.executeWithItems', (item: PipelineItem, items: PromptItem[]) => this.executePipelineWithItems(item, items)),
             vscode.commands.registerCommand('pipelinesViewer.rename', (item: PipelineItem) => this.renamePipeline(item)),
             vscode.commands.registerCommand('pipelinesViewer.delete', (item: PipelineItem) => this.deletePipeline(item)),
             vscode.commands.registerCommand('pipelinesViewer.validate', (item: PipelineItem) => this.validatePipeline(item)),
@@ -204,6 +207,82 @@ export class PipelineCommands {
                 pipeline: item.pipeline,
                 workspaceRoot: this.workspaceRoot,
                 processManager: this.aiProcessManager,
+                onProgress: (progress) => {
+                    // Progress is shown via VSCode's withProgress in the executor service
+                }
+            });
+
+            if (executionResult.success && executionResult.result) {
+                // Show success message with options
+                const stats = executionResult.result.executionStats;
+                const successMsg = `Pipeline "${item.pipeline.name}" completed: ${stats.successfulMaps}/${stats.totalItems} items processed`;
+
+                const action = await vscode.window.showInformationMessage(
+                    successMsg,
+                    'View Results',
+                    'Copy Results',
+                    'Dismiss'
+                );
+
+                if (action === 'View Results') {
+                    // Use the enhanced result viewer with individual nodes
+                    if (this.resultViewerProvider) {
+                        await this.resultViewerProvider.showResults(
+                            executionResult.result,
+                            item.pipeline.name,
+                            item.pipeline.packageName
+                        );
+                    } else {
+                        // Fallback to basic viewer
+                        await showPipelineResults(executionResult.result, item.pipeline.name);
+                    }
+                } else if (action === 'Copy Results') {
+                    const { copyPipelineResults } = await import('./pipeline-executor-service');
+                    await copyPipelineResults(executionResult.result);
+                }
+            } else if (!executionResult.success) {
+                // Check if it was cancelled
+                if (executionResult.error?.includes('cancelled')) {
+                    vscode.window.showWarningMessage(`Pipeline "${item.pipeline.name}" was cancelled.`);
+                } else {
+                    vscode.window.showErrorMessage(
+                        `Pipeline "${item.pipeline.name}" failed: ${executionResult.error || 'Unknown error'}`
+                    );
+                }
+            }
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to execute pipeline: ${errorMsg}`);
+        }
+    }
+
+    /**
+     * Execute a pipeline with pre-approved items (from the generate & review flow)
+     * This bypasses the normal input loading and uses the provided items directly.
+     */
+    private async executePipelineWithItems(item: PipelineItem, items: PromptItem[]): Promise<void> {
+        if (!item?.pipeline) {
+            return;
+        }
+
+        if (!items || items.length === 0) {
+            vscode.window.showWarningMessage('No items selected for execution');
+            return;
+        }
+
+        // Check for workspace root
+        if (!this.workspaceRoot) {
+            vscode.window.showErrorMessage('No workspace folder open. Please open a workspace to execute pipelines.');
+            return;
+        }
+
+        // Execute the pipeline with the provided items
+        try {
+            const executionResult: VSCodePipelineResult = await executeVSCodePipelineWithItems({
+                pipeline: item.pipeline,
+                workspaceRoot: this.workspaceRoot,
+                processManager: this.aiProcessManager,
+                items,
                 onProgress: (progress) => {
                     // Progress is shown via VSCode's withProgress in the executor service
                 }
