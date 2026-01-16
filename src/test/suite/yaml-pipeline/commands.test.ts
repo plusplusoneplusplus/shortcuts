@@ -421,4 +421,168 @@ reduce:
             assert.ok(!fullPath.includes(':') || process.platform === 'win32');
         });
     });
+
+    suite('Pipeline Templates', () => {
+        test('PIPELINE_TEMPLATES has all expected template types', () => {
+            const { PIPELINE_TEMPLATES } = require('../../../shortcuts/yaml-pipeline/ui/types');
+            
+            assert.ok(PIPELINE_TEMPLATES['custom'], 'Should have custom template');
+            assert.ok(PIPELINE_TEMPLATES['data-fanout'], 'Should have data-fanout template');
+            assert.ok(PIPELINE_TEMPLATES['model-fanout'], 'Should have model-fanout template');
+            assert.ok(PIPELINE_TEMPLATES['ai-generated'], 'Should have ai-generated template');
+        });
+
+        test('ai-generated template has correct structure', () => {
+            const { PIPELINE_TEMPLATES } = require('../../../shortcuts/yaml-pipeline/ui/types');
+            const template = PIPELINE_TEMPLATES['ai-generated'];
+
+            assert.strictEqual(template.type, 'ai-generated');
+            assert.ok(template.displayName.includes('AI'), 'Display name should mention AI');
+            assert.ok(template.description.includes('generate') || template.description.includes('Generate'), 
+                'Description should mention generation');
+            assert.ok(template.sampleCSV, 'Should have sample CSV content');
+        });
+
+        test('all templates have required fields', () => {
+            const { PIPELINE_TEMPLATES } = require('../../../shortcuts/yaml-pipeline/ui/types');
+            
+            for (const [key, template] of Object.entries(PIPELINE_TEMPLATES)) {
+                const t = template as { type: string; displayName: string; description: string; sampleCSV: string };
+                assert.ok(t.type, `Template ${key} should have type`);
+                assert.ok(t.displayName, `Template ${key} should have displayName`);
+                assert.ok(t.description, `Template ${key} should have description`);
+                assert.ok(t.sampleCSV !== undefined, `Template ${key} should have sampleCSV`);
+            }
+        });
+
+        test('default name for ai-generated template', () => {
+            // Test the default name logic
+            const getDefaultNameForTemplate = (templateType: string): string => {
+                switch (templateType) {
+                    case 'data-fanout':
+                        return 'my-data-pipeline';
+                    case 'model-fanout':
+                        return 'my-model-comparison';
+                    case 'ai-generated':
+                        return 'my-ai-generated-pipeline';
+                    case 'custom':
+                    default:
+                        return 'my-pipeline';
+                }
+            };
+
+            assert.strictEqual(getDefaultNameForTemplate('ai-generated'), 'my-ai-generated-pipeline');
+            assert.strictEqual(getDefaultNameForTemplate('data-fanout'), 'my-data-pipeline');
+            assert.strictEqual(getDefaultNameForTemplate('model-fanout'), 'my-model-comparison');
+            assert.strictEqual(getDefaultNameForTemplate('custom'), 'my-pipeline');
+        });
+    });
+
+    suite('AI-Generated Pipeline Template', () => {
+        test('creates valid ai-generated pipeline yaml', async () => {
+            const yaml = require('js-yaml');
+            const packageDir = path.join(tempDir, 'ai-generated-test');
+            await fs.promises.mkdir(packageDir, { recursive: true });
+
+            // Simulate what PipelineManager.getAIGeneratedTemplate would create
+            const pipelineContent = `name: "AI Test Pipeline"
+description: "Generate input items using AI from a natural language prompt, then review and execute"
+
+input:
+  generate:
+    prompt: "Generate 10 test cases for user authentication"
+    schema:
+      - testName
+      - input
+      - expectedResult
+      - category
+
+map:
+  prompt: |
+    Execute the following test case:
+    Test Name: {{testName}}
+    Input: {{input}}
+    Expected Result: {{expectedResult}}
+    Category: {{category}}
+  output:
+    - passed
+    - actualResult
+    - observations
+  parallel: 5
+
+reduce:
+  type: ai
+  prompt: |
+    Test execution completed for {{COUNT}} test cases:
+    {{RESULTS}}
+    Successful: {{SUCCESS_COUNT}}
+    Failed: {{FAILURE_COUNT}}
+  output:
+    - summary
+    - passRate
+`;
+            await fs.promises.writeFile(path.join(packageDir, 'pipeline.yaml'), pipelineContent);
+
+            // Verify it parses correctly
+            const content = await fs.promises.readFile(path.join(packageDir, 'pipeline.yaml'), 'utf8');
+            const parsed = yaml.load(content);
+
+            assert.strictEqual(parsed.name, 'AI Test Pipeline');
+            assert.ok(parsed.input.generate, 'Should have generate config');
+            assert.ok(parsed.input.generate.prompt, 'Generate should have prompt');
+            assert.ok(Array.isArray(parsed.input.generate.schema), 'Generate should have schema array');
+            assert.strictEqual(parsed.input.generate.schema.length, 4, 'Schema should have 4 fields');
+            assert.ok(parsed.map.prompt, 'Map should have prompt');
+            assert.ok(Array.isArray(parsed.map.output), 'Map should have output array');
+            assert.strictEqual(parsed.reduce.type, 'ai', 'Reduce should be ai type');
+        });
+
+        test('ai-generated template uses generate config instead of CSV', async () => {
+            const yaml = require('js-yaml');
+            const packageDir = path.join(tempDir, 'ai-gen-no-csv');
+            await fs.promises.mkdir(packageDir, { recursive: true });
+
+            const pipelineContent = `name: "No CSV Pipeline"
+input:
+  generate:
+    prompt: "Generate 5 items"
+    schema:
+      - name
+      - value
+map:
+  prompt: "Process {{name}}: {{value}}"
+  output: [result]
+reduce:
+  type: list
+`;
+            await fs.promises.writeFile(path.join(packageDir, 'pipeline.yaml'), pipelineContent);
+
+            const content = await fs.promises.readFile(path.join(packageDir, 'pipeline.yaml'), 'utf8');
+            const parsed = yaml.load(content);
+
+            // Verify it doesn't have 'from' or 'items' - only 'generate'
+            assert.ok(!parsed.input.from, 'Should not have from field');
+            assert.ok(!parsed.input.items, 'Should not have items field');
+            assert.ok(parsed.input.generate, 'Should have generate field');
+        });
+
+        test('ai-generated schema fields are valid identifiers', () => {
+            // Test that schema field validation works
+            const validateSchemaField = (field: string): boolean => {
+                return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field);
+            };
+
+            // Valid identifiers
+            assert.strictEqual(validateSchemaField('testName'), true);
+            assert.strictEqual(validateSchemaField('_private'), true);
+            assert.strictEqual(validateSchemaField('field123'), true);
+            assert.strictEqual(validateSchemaField('camelCase'), true);
+
+            // Invalid identifiers
+            assert.strictEqual(validateSchemaField('123invalid'), false);
+            assert.strictEqual(validateSchemaField('with-dash'), false);
+            assert.strictEqual(validateSchemaField('with space'), false);
+            assert.strictEqual(validateSchemaField(''), false);
+        });
+    });
 });

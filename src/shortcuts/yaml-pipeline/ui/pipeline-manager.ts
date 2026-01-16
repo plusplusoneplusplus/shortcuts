@@ -556,6 +556,8 @@ export class PipelineManager implements vscode.Disposable {
                 return this.getDataFanoutTemplate(name);
             case 'model-fanout':
                 return this.getModelFanoutTemplate(name);
+            case 'ai-generated':
+                return this.getAIGeneratedTemplate(name);
             case 'custom':
             default:
                 return this.getCustomTemplate(name);
@@ -778,6 +780,79 @@ reduce:
     - uniqueInsights
     - finalRecommendation
     - confidenceScore
+`;
+    }
+
+    /**
+     * Get AI-Generated Input pipeline template
+     * Generate input items using AI from a natural language prompt
+     */
+    private getAIGeneratedTemplate(name: string): string {
+        return `# Pipeline: ${name}
+# Template: AI-Generated Input
+# Generate input items using AI, review them, then process with map-reduce
+name: "${name}"
+description: "Generate input items using AI from a natural language prompt, then review and execute"
+
+input:
+  # AI will generate items based on this configuration
+  # When you open the pipeline preview, click "Generate & Review" to create items
+  generate:
+    # Describe what items to generate - be specific about count and content
+    prompt: "Generate 10 test cases for user authentication including edge cases like empty passwords, SQL injection attempts, and valid credentials"
+    # Define the fields for each generated item
+    schema:
+      - testName
+      - input
+      - expectedResult
+      - category
+    # Optional: specify a model for generation
+    # model: gpt-4
+
+map:
+  # Process each generated item
+  prompt: |
+    Execute the following test case:
+    
+    Test Name: {{testName}}
+    Input: {{input}}
+    Expected Result: {{expectedResult}}
+    Category: {{category}}
+    
+    Simulate running this test and provide:
+    1. Whether the test passed or failed
+    2. Actual result observed
+    3. Any issues or observations
+    
+    Respond with JSON containing your analysis.
+  output:
+    - passed
+    - actualResult
+    - observations
+  parallel: 5
+
+reduce:
+  # Synthesize all test results
+  type: ai
+  prompt: |
+    Test execution completed for {{COUNT}} test cases:
+    
+    {{RESULTS}}
+    
+    Successful: {{SUCCESS_COUNT}}
+    Failed: {{FAILURE_COUNT}}
+    
+    Please provide:
+    1. Overall test summary (pass/fail rate)
+    2. Critical issues found
+    3. Patterns in failures
+    4. Recommendations for improvement
+  output:
+    - summary
+    - passRate
+    - criticalIssues
+    - failurePatterns
+    - recommendations
 `;
     }
 

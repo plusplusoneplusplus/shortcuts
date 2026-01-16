@@ -88,7 +88,7 @@ export type TreeItemType = 'package' | 'resource';
 /**
  * Pipeline template type identifiers
  */
-export type PipelineTemplateType = 'custom' | 'data-fanout' | 'model-fanout';
+export type PipelineTemplateType = 'custom' | 'data-fanout' | 'model-fanout' | 'ai-generated';
 
 /**
  * Pipeline template definition
@@ -125,5 +125,11 @@ export const PIPELINE_TEMPLATES: Record<PipelineTemplateType, PipelineTemplate> 
         displayName: 'Model Fanout',
         description: 'Run the same data against multiple AI models and find consensus/conflicts',
         sampleCSV: 'model\ngpt-4\nclaude-sonnet\ngemini-pro'
+    },
+    'ai-generated': {
+        type: 'ai-generated',
+        displayName: 'AI-Generated Input',
+        description: 'Generate input items using AI from a natural language prompt, then review and execute',
+        sampleCSV: '# This template uses AI-generated input instead of CSV\n# The input.csv file is not used - you can delete it'
     }
 };

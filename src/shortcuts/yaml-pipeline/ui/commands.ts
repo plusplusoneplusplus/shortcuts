@@ -147,6 +147,8 @@ export class PipelineCommands {
                 return 'my-data-pipeline';
             case 'model-fanout':
                 return 'my-model-comparison';
+            case 'ai-generated':
+                return 'my-ai-generated-pipeline';
             case 'custom':
             default:
                 return 'my-pipeline';
