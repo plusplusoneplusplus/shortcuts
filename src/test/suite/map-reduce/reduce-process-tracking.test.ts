@@ -70,7 +70,7 @@ suite('AI Reduce Process Tracking', () => {
         const job = createPromptMapJob({
             aiInvoker: mockAIInvoker,
             outputFormat: 'ai',
-            aiReducePrompt: 'Summarize: {{results}}',
+            aiReducePrompt: 'Summarize: {{RESULTS}}',
             aiReduceOutput: ['summary', 'priority'],
             maxConcurrency: 1
         });
@@ -129,7 +129,7 @@ suite('AI Reduce Process Tracking', () => {
         const job = createPromptMapJob({
             aiInvoker: mockAIInvoker,
             outputFormat: 'ai',
-            aiReducePrompt: 'Summarize: {{results}}',
+            aiReducePrompt: 'Summarize: {{RESULTS}}',
             aiReduceOutput: ['summary'],
             maxConcurrency: 1
         });
@@ -178,7 +178,7 @@ suite('AI Reduce Process Tracking', () => {
         const job = createPromptMapJob({
             aiInvoker: mockAIInvoker,
             outputFormat: 'ai',
-            aiReducePrompt: 'Summarize: {{results}}',
+            aiReducePrompt: 'Summarize: {{RESULTS}}',
             aiReduceOutput: [], // Empty output fields = text mode
             maxConcurrency: 1
         });
@@ -228,7 +228,7 @@ suite('AI Reduce Process Tracking', () => {
         const job = createPromptMapJob({
             aiInvoker: mockAIInvoker,
             outputFormat: 'ai',
-            aiReducePrompt: 'Summarize: {{results}}',
+            aiReducePrompt: 'Summarize: {{RESULTS}}',
             aiReduceOutput: ['summary'],
             maxConcurrency: 1
         });
@@ -261,7 +261,7 @@ suite('AI Reduce Process Tracking', () => {
         const job = createPromptMapJob({
             aiInvoker: mockAIInvoker,
             outputFormat: 'ai',
-            aiReducePrompt: 'Summarize: {{results}}',
+            aiReducePrompt: 'Summarize: {{RESULTS}}',
             aiReduceOutput: ['summary'],
             maxConcurrency: 1
         });
@@ -311,7 +311,7 @@ suite('AI Reduce Process Tracking', () => {
         const job = createPromptMapJob({
             aiInvoker: mockAIInvoker,
             outputFormat: 'ai',
-            aiReducePrompt: 'Summarize: {{results}}',
+            aiReducePrompt: 'Summarize: {{RESULTS}}',
             aiReduceOutput: ['summary', 'priority'],
             maxConcurrency: 1
         });

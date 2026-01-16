@@ -617,7 +617,7 @@ reduce:
   type: ai
   prompt: |
     Models responded:
-    {{results}}
+    {{RESULTS}}
     Identify consensus.
   output:
     - consensus

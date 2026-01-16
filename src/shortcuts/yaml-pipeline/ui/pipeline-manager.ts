@@ -590,8 +590,8 @@ reduce:
   #   - ai: AI-powered synthesis
   type: ai
   prompt: |
-    You analyzed {{count}} items:
-    {{results}}
+    You analyzed {{COUNT}} items:
+    {{RESULTS}}
 
     Create a summary with key insights.
   # Output fields for structured AI reduce
@@ -651,12 +651,12 @@ reduce:
   # Aggregate all results with AI synthesis
   type: ai
   prompt: |
-    You analyzed {{count}} items with the following results:
+    You analyzed {{COUNT}} items with the following results:
     
-    {{results}}
+    {{RESULTS}}
     
-    Successful: {{successCount}}
-    Failed: {{failureCount}}
+    Successful: {{SUCCESS_COUNT}}
+    Failed: {{FAILURE_COUNT}}
     
     Please provide:
     1. An executive summary of all findings
@@ -735,12 +735,12 @@ reduce:
   # AI-powered consensus finding
   type: ai
   prompt: |
-    Multiple AI models ({{count}}) reviewed the same code:
+    Multiple AI models ({{COUNT}}) reviewed the same code:
     
-    {{results}}
+    {{RESULTS}}
     
-    Successful responses: {{successCount}}
-    Failed responses: {{failureCount}}
+    Successful responses: {{SUCCESS_COUNT}}
+    Failed responses: {{FAILURE_COUNT}}
     
     Please analyze the responses and provide:
     1. CONSENSUS: Issues that multiple models agree on

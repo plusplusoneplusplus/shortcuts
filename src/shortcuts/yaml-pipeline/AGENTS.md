@@ -281,12 +281,12 @@ map:
 reduce:
   type: ai
   prompt: |
-    You analyzed {{count}} bug reports with these results:
+    You analyzed {{COUNT}} bug reports with these results:
     
-    {{results}}
+    {{RESULTS}}
     
-    Successful: {{successCount}}
-    Failed: {{failureCount}}
+    Successful: {{SUCCESS_COUNT}}
+    Failed: {{FAILURE_COUNT}}
     
     Task:
     1. Identify common patterns across bugs
@@ -306,10 +306,10 @@ reduce:
 #### AI Reduce Template Variables
 
 Available in `reduce.prompt`:
-- `{{results}}` - All successful map outputs as JSON array
-- `{{count}}` - Total number of results
-- `{{successCount}}` - Number of successful map operations
-- `{{failureCount}}` - Number of failed map operations
+- `{{RESULTS}}` - All successful map outputs as JSON array
+- `{{COUNT}}` - Total number of results
+- `{{SUCCESS_COUNT}}` - Number of successful map operations
+- `{{FAILURE_COUNT}}` - Number of failed map operations
 
 #### Common AI Reduce Use Cases
 
@@ -318,8 +318,8 @@ Available in `reduce.prompt`:
 reduce:
   type: ai
   prompt: |
-    Analyzed {{count}} items:
-    {{results}}
+    Analyzed {{COUNT}} items:
+    {{RESULTS}}
     
     Create a 2-3 sentence executive summary highlighting key trends.
   output:
@@ -331,8 +331,8 @@ reduce:
 reduce:
   type: ai
   prompt: |
-    {{count}} code review findings:
-    {{results}}
+    {{COUNT}} code review findings:
+    {{RESULTS}}
     
     Deduplicate similar issues. Group by root cause and list affected files.
     Return JSON: { "uniqueFindings": [{ "issue": "...", "files": [...] }] }
@@ -345,8 +345,8 @@ reduce:
 reduce:
   type: ai
   prompt: |
-    {{count}} technical debt items:
-    {{results}}
+    {{COUNT}} technical debt items:
+    {{RESULTS}}
     
     Rank by ROI (impact/effort). Return top 10 with reasoning.
   output:
@@ -578,10 +578,10 @@ interface ReduceConfig {
   - Optional `model` to override default
 
 **AI Reduce Template Variables:**
-- `{{results}}` - All successful map outputs (JSON array)
-- `{{count}}` - Total number of results
-- `{{successCount}}` - Number of successful items
-- `{{failureCount}}` - Number of failed items
+- `{{RESULTS}}` - All successful map outputs (JSON array)
+- `{{COUNT}}` - Total number of results
+- `{{SUCCESS_COUNT}}` - Number of successful items
+- `{{FAILURE_COUNT}}` - Number of failed items
 ```
 
 ### PipelineExecutionResult

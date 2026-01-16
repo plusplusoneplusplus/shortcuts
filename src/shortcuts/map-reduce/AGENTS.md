@@ -135,7 +135,7 @@ const deterministicReducer = createDeterministicReducer({
 
 // AI reducer - use AI to synthesize results
 const aiReducer = createAIReducer({
-    promptTemplate: 'Summarize these findings: {{results}}',
+    promptTemplate: 'Summarize these findings: {{RESULTS}}',
     aiInvoker: copilotInvoker
 });
 

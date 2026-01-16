@@ -389,8 +389,8 @@ suite('Text Mode Pipeline', () => {
                 },
                 reduce: {
                     type: 'ai',
-                    prompt: `Here are {{count}} feedback summaries:
-{{results}}
+                    prompt: `Here are {{COUNT}} feedback summaries:
+{{RESULTS}}
 
 Write an executive summary.`
                     // No output field - text mode for AI reduce
@@ -436,7 +436,7 @@ Write an executive summary.`
                 },
                 reduce: {
                     type: 'ai',
-                    prompt: 'ReduceSummarize {{results}}',
+                    prompt: 'ReduceSummarize {{RESULTS}}',
                     output: []  // Empty array - text mode
                 }
             };
@@ -463,7 +463,7 @@ Write an executive summary.`
                 },
                 reduce: {
                     type: 'ai',
-                    prompt: 'Summarize the results: {{results}}'
+                    prompt: 'Summarize the results: {{RESULTS}}'
                     // No output - text mode
                 }
             };
@@ -499,8 +499,8 @@ Write an executive summary.`
                 },
                 reduce: {
                     type: 'ai',
-                    prompt: `You answered {{count}} questions:
-{{results}}
+                    prompt: `You answered {{COUNT}} questions:
+{{RESULTS}}
 
 Write a conclusion.`
                     // No output - text mode
@@ -532,7 +532,7 @@ Write a conclusion.`
                 },
                 reduce: {
                     type: 'ai',
-                    prompt: 'ReduceResults: {{results}}'
+                    prompt: 'ReduceResults: {{RESULTS}}'
                 }
             };
 
@@ -569,10 +569,10 @@ Write a conclusion.`
                 reduce: {
                     type: 'ai',
                     prompt: `Project: {{projectName}}
-Count: {{count}}
-Success: {{successCount}}
-Failed: {{failureCount}}
-Results: {{results}}`
+Count: {{COUNT}}
+Success: {{SUCCESS_COUNT}}
+Failed: {{FAILURE_COUNT}}
+Results: {{RESULTS}}`
                     // No output - text mode
                 }
             };
@@ -639,7 +639,7 @@ map:
   prompt: "Process {{x}}"
 reduce:
   type: ai
-  prompt: "Summarize {{results}}"
+  prompt: "Summarize {{RESULTS}}"
 `;
             const config = parsePipelineYAMLSync(yaml);
             assert.strictEqual(config.reduce.type, 'ai');
@@ -729,7 +729,7 @@ reduce:
                 reduce: {
                     type: 'ai',
                     prompt: `ReduceAnalyzedBugs:
-{{results}}
+{{RESULTS}}
 
 Write a natural language summary.`
                     // No output - text mode AI reduce
@@ -860,7 +860,7 @@ Write a natural language summary.`
                 },
                 reduce: {
                     type: 'ai',
-                    prompt: 'Summarize {{results}}'
+                    prompt: 'Summarize {{RESULTS}}'
                     // No output - text mode
                 }
             };

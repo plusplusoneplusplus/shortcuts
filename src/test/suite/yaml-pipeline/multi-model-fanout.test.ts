@@ -399,7 +399,7 @@ suite('Multi-Model Fanout', () => {
                 },
                 reduce: {
                     type: 'ai',
-                    prompt: 'Models responded:\n{{results}}\n\nIdentify consensus.',
+                    prompt: 'Models responded:\n{{RESULTS}}\n\nIdentify consensus.',
                     output: ['consensus', 'conflicts']
                 }
             };

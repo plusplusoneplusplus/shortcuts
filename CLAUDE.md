@@ -233,8 +233,8 @@ Use AI to synthesize, deduplicate, or prioritize map results.
 reduce:
   type: ai
   prompt: |
-    You analyzed {{count}} bugs:
-    {{results}}
+    You analyzed {{COUNT}} bugs:
+    {{RESULTS}}
     
     Create executive summary with top priorities.
   output:
@@ -244,10 +244,10 @@ reduce:
 ```
 
 Available template variables in reduce.prompt:
-- `{{results}}` - All successful map outputs as JSON
-- `{{count}}` - Total results count
-- `{{successCount}}` - Successful items
-- `{{failureCount}}` - Failed items
+- `{{RESULTS}}` - All successful map outputs as JSON
+- `{{COUNT}}` - Total results count
+- `{{SUCCESS_COUNT}}` - Successful items
+- `{{FAILURE_COUNT}}` - Failed items
 - `{{paramName}}` - Any parameter defined in `input.parameters` (e.g., `{{projectName}}`, `{{reviewer}}`)
 
 **Commands:**

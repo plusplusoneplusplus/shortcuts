@@ -492,10 +492,10 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         const resultsString = JSON.stringify(resultsForPrompt, null, 2);
 
         let prompt = this.aiReducePrompt
-            .replace(/\{\{results\}\}/g, resultsString)
-            .replace(/\{\{count\}\}/g, String(summary.totalItems))
-            .replace(/\{\{successCount\}\}/g, String(summary.successfulItems))
-            .replace(/\{\{failureCount\}\}/g, String(summary.failedItems));
+            .replace(/\{\{RESULTS\}\}/g, resultsString)
+            .replace(/\{\{COUNT\}\}/g, String(summary.totalItems))
+            .replace(/\{\{SUCCESS_COUNT\}\}/g, String(summary.successfulItems))
+            .replace(/\{\{FAILURE_COUNT\}\}/g, String(summary.failedItems));
 
         // Substitute input parameters
         if (this.aiReduceParameters) {
