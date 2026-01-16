@@ -81,15 +81,21 @@ export class BranchService implements vscode.Disposable {
      */
     getBranchStatus(repoRoot: string, hasUncommittedChanges: boolean): BranchStatus | null {
         try {
+            // First verify this is a valid git repository by checking if we can get HEAD hash
+            // This will fail for non-existent paths or non-git directories
+            const headHash = this.getHeadHash(repoRoot);
+            if (!headHash) {
+                return null;
+            }
+
             // Check for detached HEAD
             const isDetached = this.isDetachedHead(repoRoot);
 
             if (isDetached) {
-                const hash = this.getHeadHash(repoRoot);
                 return {
                     name: '',
                     isDetached: true,
-                    detachedHash: hash,
+                    detachedHash: headHash,
                     ahead: 0,
                     behind: 0,
                     hasUncommittedChanges
