@@ -134,10 +134,16 @@ const deterministicReducer = createDeterministicReducer({
 });
 
 // AI reducer - use AI to synthesize results
+// Use {{RESULTS}} for inline JSON or {{RESULTS_FILE}} for temp file path
 const aiReducer = createAIReducer({
-    promptTemplate: 'Summarize these findings: {{RESULTS}}',
+    promptTemplate: 'Read results from: {{RESULTS_FILE}}\nSummarize the findings.',
     aiInvoker: copilotInvoker
 });
+
+// Note: {{RESULTS_FILE}} is recommended for:
+// - Large result sets (avoids command line length limits)
+// - Windows platform (avoids shell escaping issues with newlines)
+// - Results containing newlines in string values
 
 // Hybrid reducer - deterministic first, then AI polish
 const hybridReducer = createHybridReducer({

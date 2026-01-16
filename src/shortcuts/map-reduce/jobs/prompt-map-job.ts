@@ -26,6 +26,7 @@ import {
     extractJSON as sharedExtractJSON, 
     parseAIResponse as sharedParseAIResponse 
 } from '../../shared/ai-response-parser';
+import { writeTempFile, TempFileResult } from '../temp-file-utils';
 
 /**
  * A generic item with string key-value pairs for template substitution
@@ -491,7 +492,25 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         });
         const resultsString = JSON.stringify(resultsForPrompt, null, 2);
 
-        let prompt = this.aiReducePrompt
+        // Check if prompt uses {{RESULTS_FILE}} - if so, write to temp file
+        // This avoids shell escaping issues on Windows where newlines in JSON
+        // get converted to literal \n, breaking JSON structure
+        let tempFileResult: TempFileResult | undefined;
+        let prompt = this.aiReducePrompt;
+
+        if (prompt.includes('{{RESULTS_FILE}}')) {
+            tempFileResult = writeTempFile(resultsString, 'ai-reduce-results', '.json');
+            if (tempFileResult) {
+                prompt = prompt.replace(/\{\{RESULTS_FILE\}\}/g, tempFileResult.filePath);
+            } else {
+                // Fallback to inline if temp file creation fails
+                console.warn('Failed to create temp file for RESULTS_FILE, falling back to inline RESULTS');
+                prompt = prompt.replace(/\{\{RESULTS_FILE\}\}/g, resultsString);
+            }
+        }
+
+        // Replace {{RESULTS}} with inline JSON (original behavior)
+        prompt = prompt
             .replace(/\{\{RESULTS\}\}/g, resultsString)
             .replace(/\{\{COUNT\}\}/g, String(summary.totalItems))
             .replace(/\{\{SUCCESS_COUNT\}\}/g, String(summary.successfulItems))
@@ -507,8 +526,16 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         // In text mode, don't append JSON format instruction
         const fullPrompt = isTextMode ? prompt : buildFullPrompt(prompt, this.aiReduceOutput!);
 
-        // Call AI
-        const aiResult = await this.aiInvoker(fullPrompt, { model: this.aiReduceModel });
+        // Call AI and ensure temp file cleanup
+        let aiResult;
+        try {
+            aiResult = await this.aiInvoker(fullPrompt, { model: this.aiReduceModel });
+        } finally {
+            // Always cleanup temp file after AI call completes
+            if (tempFileResult) {
+                tempFileResult.cleanup();
+            }
+        }
 
         if (!aiResult.success || !aiResult.response) {
             // Update process as failed

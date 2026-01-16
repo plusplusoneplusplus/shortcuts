@@ -157,3 +157,16 @@ export type {
     PromptMapJobOptions,
     OutputFormat
 } from './jobs';
+
+// Temp file utilities
+export {
+    writeTempFile,
+    readTempFile,
+    cleanupTempFile,
+    cleanupAllTempFiles,
+    ensureTempDir,
+    generateTempFileName,
+    isTempFilePath,
+    getTempDirPath
+} from './temp-file-utils';
+export type { TempFileResult } from './temp-file-utils';

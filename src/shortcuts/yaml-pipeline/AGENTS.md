@@ -306,10 +306,40 @@ reduce:
 #### AI Reduce Template Variables
 
 Available in `reduce.prompt`:
-- `{{RESULTS}}` - All successful map outputs as JSON array
+- `{{RESULTS}}` - All successful map outputs as JSON array (inline in prompt)
+- `{{RESULTS_FILE}}` - Path to temp file containing results JSON (recommended for large results or Windows)
 - `{{COUNT}}` - Total number of results
 - `{{SUCCESS_COUNT}}` - Number of successful map operations
 - `{{FAILURE_COUNT}}` - Number of failed map operations
+
+**When to use `{{RESULTS_FILE}}` vs `{{RESULTS}}`:**
+
+| Use Case | Recommended Variable |
+|----------|---------------------|
+| Small results (< 10 items) | `{{RESULTS}}` |
+| Large results (> 10 items) | `{{RESULTS_FILE}}` |
+| Windows platform | `{{RESULTS_FILE}}` |
+| Results contain newlines in string values | `{{RESULTS_FILE}}` |
+| Need AI to parse JSON programmatically | `{{RESULTS_FILE}}` |
+
+**Why `{{RESULTS_FILE}}` is preferred for Windows:**
+
+On Windows, shell escaping converts newlines in the prompt to literal `\n` characters, which breaks JSON structure. Using `{{RESULTS_FILE}}` writes the JSON to a temp file that the AI can read directly, avoiding shell escaping issues entirely.
+
+**Example using `{{RESULTS_FILE}}`:**
+```yaml
+reduce:
+  type: ai
+  prompt: |
+    Read the analysis results from: {{RESULTS_FILE}}
+    
+    Processed {{COUNT}} items ({{SUCCESS_COUNT}} successful, {{FAILURE_COUNT}} failed).
+    
+    Synthesize the findings into an executive summary.
+  output:
+    - summary
+    - keyFindings
+```
 
 #### Common AI Reduce Use Cases
 
