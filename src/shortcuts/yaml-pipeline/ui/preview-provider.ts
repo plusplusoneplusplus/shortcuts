@@ -20,7 +20,8 @@ import { PipelineItem } from './pipeline-item';
 import {
     getPreviewContent,
     PreviewMessage,
-    PipelinePreviewData
+    PipelinePreviewData,
+    ExtensionMessage
 } from './preview-content';
 import {
     GenerateState,
@@ -133,6 +134,28 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             this.generateStates.delete(docKey);
             this.generatedItems.delete(docKey);
         });
+    }
+
+    /**
+     * Send generate state update to webview without full re-render
+     * This keeps the webview's local pipelineData in sync with the extension state
+     */
+    private sendGenerateStateUpdate(
+        webview: vscode.Webview,
+        docKey: string
+    ): void {
+        const generateState = this.generateStates.get(docKey);
+        const generatedItems = this.generatedItems.get(docKey);
+        
+        const message: ExtensionMessage = {
+            type: 'updateGenerateState',
+            payload: {
+                generateState: generateState || undefined,
+                generatedItems: generatedItems || undefined
+            }
+        };
+        
+        webview.postMessage(message);
     }
 
     /**
@@ -341,6 +364,8 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
                 this.generateStates.set(docKey, { status: 'initial' });
                 this.generatedItems.delete(docKey);
                 await this.updateWebview(webviewPanel.webview, document, packagePath);
+                // Also send state update to keep webview's pipelineData in sync
+                this.sendGenerateStateUpdate(webviewPanel.webview, docKey);
                 break;
 
             case 'addRow':
@@ -435,6 +460,8 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             }
 
             await this.updateWebview(webviewPanel.webview, document, packagePath);
+            // Also send state update to keep webview's pipelineData in sync
+            this.sendGenerateStateUpdate(webviewPanel.webview, docKey);
 
         } catch (error) {
             this.generateStates.set(docKey, {
@@ -442,6 +469,8 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
                 message: error instanceof Error ? error.message : String(error)
             });
             await this.updateWebview(webviewPanel.webview, document, packagePath);
+            // Also send state update to keep webview's pipelineData in sync
+            this.sendGenerateStateUpdate(webviewPanel.webview, docKey);
         }
     }
 
@@ -473,6 +502,8 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
         this.generatedItems.set(docKey, items);
         this.generateStates.set(docKey, { status: 'review', items });
         await this.updateWebview(webviewPanel.webview, document, packagePath);
+        // Also send state update to keep webview's pipelineData in sync
+        this.sendGenerateStateUpdate(webviewPanel.webview, docKey);
     }
 
     /**
@@ -500,6 +531,8 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
         this.generatedItems.set(docKey, items);
         this.generateStates.set(docKey, { status: 'review', items });
         await this.updateWebview(webviewPanel.webview, document, packagePath);
+        // Also send state update to keep webview's pipelineData in sync
+        this.sendGenerateStateUpdate(webviewPanel.webview, docKey);
     }
 
     /**

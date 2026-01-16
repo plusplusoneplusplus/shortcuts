@@ -21,7 +21,7 @@ import {
 import { GenerateState, GeneratedItem } from '../input-generator';
 
 /**
- * Message types for webview communication
+ * Message types for webview communication (from webview to extension)
  */
 export type PreviewMessageType =
     | 'nodeClick'
@@ -41,6 +41,23 @@ export type PreviewMessageType =
     | 'toggleRow'
     | 'toggleAll'
     | 'runWithItems';
+
+/**
+ * Message types from extension to webview
+ */
+export type ExtensionMessageType =
+    | 'updateGenerateState';
+
+/**
+ * Message from extension to webview
+ */
+export interface ExtensionMessage {
+    type: ExtensionMessageType;
+    payload?: {
+        generateState?: GenerateState;
+        generatedItems?: GeneratedItem[];
+    };
+}
 
 /**
  * Message from webview to extension
@@ -1405,6 +1422,8 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             if (html) {
                 detailsContent.innerHTML = html;
                 attachFileClickHandlers();
+                // Re-attach review table handlers if we rendered the review table
+                attachReviewTableHandlers();
             }
             
             // Notify extension
@@ -1445,6 +1464,11 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             const generateConfig = config.input?.generate;
             if (!generateConfig) return '';
             
+            // If in review state, show the full review table
+            if (generateState && generateState.status === 'review' && generatedItems && generatedItems.length > 0) {
+                return generateReviewTableContent(config, generatedItems);
+            }
+            
             let html = '<div class="detail-section active">';
             html += '<h4 class="detail-title">🤖 GENERATE Configuration</h4>';
             html += '<div class="detail-grid">';
@@ -1471,10 +1495,6 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
                     html += '<p class="status-hint">Click "Generate & Review" to generate items using AI.</p>';
                 } else if (generateState.status === 'generating') {
                     html += '<p class="status-text">Status: Generating...</p>';
-                } else if (generateState.status === 'review') {
-                    const itemCount = generatedItems ? generatedItems.length : 0;
-                    const selectedCount = generatedItems ? generatedItems.filter(i => i.selected).length : 0;
-                    html += '<p class="status-text">Status: Review (' + selectedCount + '/' + itemCount + ' selected)</p>';
                 } else if (generateState.status === 'error') {
                     html += '<p class="status-text status-error">Status: Error - ' + escapeHtml(generateState.message || 'Unknown error') + '</p>';
                 }
@@ -1492,6 +1512,11 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             const generateConfig = config.input?.generate;
             if (!generateConfig) return '';
             
+            // If in review state, show the full review table
+            if (generateState && generateState.status === 'review' && generatedItems && generatedItems.length > 0) {
+                return generateReviewTableContent(config, generatedItems);
+            }
+            
             let html = '<div class="detail-section active">';
             html += '<h4 class="detail-title">📥 INPUT Configuration (AI-GENERATED)</h4>';
             html += '<div class="detail-grid">';
@@ -1499,41 +1524,56 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             html += '<div class="detail-item"><span class="detail-label">Schema:</span><span class="detail-value">' + escapeHtml(generateConfig.schema.join(', ')) + '</span></div>';
             html += '</div>';
             
-            // Show generated items if in review state
-            if (generateState && generateState.status === 'review' && generatedItems && generatedItems.length > 0) {
-                const selectedItems = generatedItems.filter(i => i.selected);
-                html += '<div class="generated-items-preview">';
-                html += '<h5>Generated Items (' + selectedItems.length + ' selected of ' + generatedItems.length + ')</h5>';
-                
-                // Show preview table
-                html += '<table class="csv-preview">';
-                html += '<thead><tr>';
-                generateConfig.schema.forEach(field => {
-                    html += '<th>' + escapeHtml(field) + '</th>';
-                });
-                html += '</tr></thead>';
-                html += '<tbody>';
-                
-                // Show first 5 selected items as preview
-                const previewItems = selectedItems.slice(0, 5);
-                previewItems.forEach(item => {
-                    html += '<tr>';
-                    generateConfig.schema.forEach(field => {
-                        const value = item.data[field] || '';
-                        html += '<td>' + escapeHtml(String(value).substring(0, 50)) + (String(value).length > 50 ? '...' : '') + '</td>';
-                    });
-                    html += '</tr>';
-                });
-                
-                if (selectedItems.length > 5) {
-                    html += '<tr><td colspan="' + generateConfig.schema.length + '" class="more-rows">... and ' + (selectedItems.length - 5) + ' more items</td></tr>';
-                }
-                
-                html += '</tbody></table>';
-                html += '</div>';
-            } else if (!generateState || generateState.status === 'initial') {
+            if (!generateState || generateState.status === 'initial') {
                 html += '<p class="status-hint">Items will be shown here after generation.</p>';
             }
+            
+            html += '</div>';
+            return html;
+        }
+
+        // Generate the review table content (client-side version)
+        function generateReviewTableContent(config, items) {
+            const generateConfig = config.input?.generate;
+            if (!generateConfig) return '';
+
+            const schema = generateConfig.schema;
+            const selectedCount = items.filter(i => i.selected).length;
+            const allSelected = selectedCount === items.length;
+
+            let html = '<div class="detail-section active">';
+            html += '<h4 class="detail-title">✅ Review Generated Inputs</h4>';
+            
+            html += '<div class="review-toolbar">';
+            html += '<button class="btn btn-secondary" id="addRowBtn"><span class="icon">+</span> Add</button>';
+            html += '<button class="btn btn-secondary" id="deleteSelectedBtn">Delete Selected</button>';
+            html += '</div>';
+            
+            html += '<div class="table-container review-table-container">';
+            html += '<table class="preview-table review-table" id="reviewTable">';
+            html += '<thead><tr>';
+            html += '<th class="checkbox-col"><input type="checkbox" id="selectAllCheckbox" ' + (allSelected ? 'checked' : '') + '></th>';
+            schema.forEach(h => { html += '<th>' + escapeHtml(h) + '</th>'; });
+            html += '</tr></thead>';
+            html += '<tbody>';
+            
+            items.forEach((item, idx) => {
+                html += '<tr data-index="' + idx + '">';
+                html += '<td class="checkbox-col"><input type="checkbox" class="row-checkbox" data-index="' + idx + '" ' + (item.selected ? 'checked' : '') + '></td>';
+                schema.forEach(field => {
+                    html += '<td><input type="text" class="cell-input" data-index="' + idx + '" data-field="' + escapeHtml(field) + '" value="' + escapeHtml(String(item.data[field] || '')) + '"></td>';
+                });
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table></div>';
+            
+            html += '<div class="review-footer">';
+            html += '<label class="select-all-label"><input type="checkbox" id="selectAllFooter" ' + (allSelected ? 'checked' : '') + '>Select All (' + selectedCount + '/' + items.length + ' selected)</label>';
+            html += '<div class="review-actions">';
+            html += '<button class="btn btn-secondary" id="cancelReviewBtn">Cancel</button>';
+            html += '<button class="btn btn-primary" id="runPipelineBtn" ' + (selectedCount === 0 ? 'disabled' : '') + '>▶️ Run Pipeline (' + selectedCount + ' items)</button>';
+            html += '</div></div>';
             
             html += '</div>';
             return html;
@@ -1840,6 +1880,18 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             
             return items;
         }
+
+        // Handle messages from extension
+        window.addEventListener('message', event => {
+            const message = event.data;
+            if (message.type === 'updateGenerateState') {
+                // Update the local pipelineData with new generate state
+                if (pipelineData) {
+                    pipelineData.generateState = message.payload?.generateState || null;
+                    pipelineData.generatedItems = message.payload?.generatedItems || null;
+                }
+            }
+        });
 
         // Initial setup
         attachFileClickHandlers();
