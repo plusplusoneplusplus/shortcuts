@@ -2418,6 +2418,7 @@
     "vsce:publish": "vsce publish"
   },
   "devDependencies": {
+    "@types/diff": "^5.2.1",
     "@types/glob": "^8.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.1",
@@ -2436,6 +2437,7 @@
     "webpack-cli": "^5.0.0"
   },
   "dependencies": {
+    "diff": "^5.2.0",
     "js-yaml": "^4.1.0"
   }
 }

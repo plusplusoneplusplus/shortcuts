@@ -62,6 +62,15 @@ function handleMessage(message: ExtensionMessage): void {
             // Track if this is an external change for cursor handling
             const isExternalChange = message.isExternalChange === true;
 
+            // Update line change indicators for external changes
+            if (isExternalChange && message.lineChanges && message.lineChanges.length > 0) {
+                console.log('[Webview] Setting line changes:', message.lineChanges.length, 'changes');
+                state.setLineChanges(message.lineChanges);
+            } else if (!isExternalChange) {
+                // Clear line changes for non-external updates (user is editing)
+                state.clearLineChanges();
+            }
+
             // Update state
             state.setCurrentContent(message.content);
             state.setComments(message.comments || []);

@@ -3,6 +3,7 @@
  */
 
 import { CommentSelection, MarkdownComment, MermaidContext } from '../types';
+import { LineChange } from '../line-change-tracker';
 
 /**
  * VS Code API interface (provided by acquireVsCodeApi)
@@ -147,6 +148,8 @@ export type ExtensionMessage =
         settings?: WebviewSettings;
         /** True if this update is from an external change (undo/redo, external editor) */
         isExternalChange?: boolean;
+        /** Line changes for showing change indicators (only present on external changes) */
+        lineChanges?: LineChange[];
     }
     | { type: 'imageResolved'; imgId: string; uri?: string; alt?: string; error?: string }
     | { type: 'scrollToComment'; commentId: string };

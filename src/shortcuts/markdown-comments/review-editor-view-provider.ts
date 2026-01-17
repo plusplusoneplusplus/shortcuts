@@ -10,6 +10,7 @@ import { getPredefinedCommentRegistry } from '../shared/predefined-comment-regis
 import { handleAIClarification } from './ai-clarification-handler';
 import { CodeBlockTheme } from './code-block-themes';
 import { CommentsManager } from './comments-manager';
+import { computeLineChanges } from './line-change-tracker';
 import { isExternalUrl, isMarkdownFile, parseLineFragment, resolveFilePath } from './file-path-utils';
 import { PromptGenerator } from './prompt-generator';
 import { ClarificationContext, isUserComment, MarkdownComment, MermaidContext } from './types';
@@ -254,6 +255,15 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             const content = document.getText();
             const contentChanged = content !== previousContent;
 
+            // Compute line-level changes for visual indicators
+            const lineChanges = contentChanged
+                ? computeLineChanges(previousContent, content)
+                : [];
+
+            if (lineChanges.length > 0) {
+                console.log('[Extension] Detected', lineChanges.length, 'line changes');
+            }
+
             // Check if any comments need relocation based on anchors
             const needsRelocationIds = this.commentsManager.checkNeedsRelocation(relativePath, content);
 
@@ -286,7 +296,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 fileDir: fileDir,
                 workspaceRoot: workspaceRoot,
                 settings: settings,
-                isExternalChange: contentChanged
+                isExternalChange: contentChanged,
+                lineChanges: lineChanges
             });
 
             previousContent = content;

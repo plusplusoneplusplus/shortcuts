@@ -1087,6 +1087,13 @@ function handleEditorInput(): void {
         // Debug: show first 200 chars of old and new content
         console.log('[Webview] OLD content preview:', state.currentContent.substring(0, 200));
         console.log('[Webview] NEW content preview:', newContent.substring(0, 200));
+
+        // Clear line change indicators when user edits (acknowledges they've seen changes)
+        if (state.hasLineChanges) {
+            console.log('[Webview] Clearing line changes on user edit');
+            state.clearLineChanges();
+        }
+
         state.setCurrentContent(newContent);
         updateContent(newContent);
     }

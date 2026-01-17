@@ -5,12 +5,13 @@
  */
 
 import { MarkdownComment } from '../types';
-import { 
-    VsCodeApi, 
-    WebviewSettings, 
-    PendingSelection, 
-    SavedSelection, 
-    ActiveCommentBubble 
+import { LineChange } from '../line-change-tracker';
+import {
+    VsCodeApi,
+    WebviewSettings,
+    PendingSelection,
+    SavedSelection,
+    ActiveCommentBubble
 } from './types';
 
 /**
@@ -54,6 +55,9 @@ class WebviewStateManager {
     // Interaction state (for preventing click-to-close during resize/drag)
     private _isInteracting: boolean = false;
     private _interactionEndTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    // Line change tracking (for showing change indicators on external edits)
+    private _lineChanges: Map<number, 'added' | 'modified'> = new Map();
     
     // Getters
     get vscode(): VsCodeApi {
@@ -122,7 +126,14 @@ class WebviewStateManager {
     get viewMode(): ViewMode {
         return this._viewMode;
     }
-    
+
+    /**
+     * Check if there are any line changes being tracked
+     */
+    get hasLineChanges(): boolean {
+        return this._lineChanges.size > 0;
+    }
+
     // Setters
     setVscode(api: VsCodeApi): void {
         this._vscode = api;
@@ -209,7 +220,34 @@ class WebviewStateManager {
             this._interactionEndTimeout = null;
         }, 100);
     }
-    
+
+    /**
+     * Set line changes from an external edit.
+     * Replaces any existing line changes.
+     */
+    setLineChanges(changes: LineChange[]): void {
+        this._lineChanges.clear();
+        for (const change of changes) {
+            this._lineChanges.set(change.line, change.type);
+        }
+    }
+
+    /**
+     * Get the change type for a specific line.
+     * @returns 'added', 'modified', or null if unchanged
+     */
+    getLineChangeType(line: number): 'added' | 'modified' | null {
+        return this._lineChanges.get(line) || null;
+    }
+
+    /**
+     * Clear all line change indicators.
+     * Called when user makes an edit (acknowledging they've seen the changes).
+     */
+    clearLineChanges(): void {
+        this._lineChanges.clear();
+    }
+
     // Utility methods
     findCommentById(id: string): MarkdownComment | undefined {
         return this._comments.find(c => c.id === id);

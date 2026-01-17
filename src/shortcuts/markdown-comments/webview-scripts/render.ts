@@ -320,8 +320,10 @@ function renderSourceMode(): void {
             inCodeBlock = result.inCodeBlock;
         }
         
+        const changeClass = state.getLineChangeType(lineNum);
+        const changeClassStr = changeClass ? ` change-${changeClass}` : '';
         html += '<div class="line-row">' +
-            '<div class="line-number" contenteditable="false">' + lineNum + '</div>' +
+            '<div class="line-number' + changeClassStr + '" contenteditable="false">' + lineNum + '</div>' +
             '<div class="line-content source-mode" data-line="' + lineNum + '">' + lineHtml + '</div>' +
             '</div>';
     });
@@ -342,6 +344,16 @@ function renderSourceMode(): void {
  * 
  * @param isExternalChange - True if this render is triggered by an external change (undo/redo)
  */
+/**
+ * Get the CSS class for a line change indicator.
+ * @param lineNum - 1-based line number
+ * @returns CSS class string (e.g., ' change-added' or ' change-modified') or empty string
+ */
+function getLineChangeClass(lineNum: number): string {
+    const changeType = state.getLineChangeType(lineNum);
+    return changeType ? ` change-${changeType}` : '';
+}
+
 export function render(isExternalChange: boolean = false): void {
     // Check if we're in source mode
     if (state.viewMode === 'source') {
@@ -349,7 +361,7 @@ export function render(isExternalChange: boolean = false): void {
         return;
     }
 
-    const editorWrapper = document.getElementById('editorWrapper')!;
+    const editorWrapper = document.getElementById('editorWrapper')!
 
     // For external changes, try to restore cursor position by clamping to valid bounds
     const cursorPosition = getCursorPosition(editorWrapper);
@@ -435,14 +447,15 @@ export function render(isExternalChange: boolean = false): void {
                 const blockGutterIcon = blockHasComments
                     ? '<span class="gutter-icon" title="Click to view comments">💬</span>'
                     : '';
-                lineNumsHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
+                const changeClass = getLineChangeClass(i);
+                lineNumsHtml += '<div class="line-number' + changeClass + '">' + blockGutterIcon + i + '</div>';
             }
-            
+
             // Show truncation indicator
             const hiddenCount = totalLines - (BLOCK_LINE_SHOW_COUNT * 2);
             lineNumsHtml += '<div class="line-number line-number-truncated" title="' + hiddenCount + ' lines hidden">' +
                 '<span class="truncated-indicator">⋮' + hiddenCount + '</span></div>';
-            
+
             // Show last few lines
             for (let i = endLine - BLOCK_LINE_SHOW_COUNT + 1; i <= endLine; i++) {
                 const blockLineComments = commentsMap.get(i) || [];
@@ -452,7 +465,8 @@ export function render(isExternalChange: boolean = false): void {
                 const blockGutterIcon = blockHasComments
                     ? '<span class="gutter-icon" title="Click to view comments">💬</span>'
                     : '';
-                lineNumsHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
+                const changeClass = getLineChangeClass(i);
+                lineNumsHtml += '<div class="line-number' + changeClass + '">' + blockGutterIcon + i + '</div>';
             }
         } else {
             // Show all line numbers for small blocks
@@ -464,7 +478,8 @@ export function render(isExternalChange: boolean = false): void {
                 const blockGutterIcon = blockHasComments
                     ? '<span class="gutter-icon" title="Click to view comments">💬</span>'
                     : '';
-                lineNumsHtml += '<div class="line-number">' + blockGutterIcon + i + '</div>';
+                const changeClass = getLineChangeClass(i);
+                lineNumsHtml += '<div class="line-number' + changeClass + '">' + blockGutterIcon + i + '</div>';
             }
         }
         return lineNumsHtml;
@@ -561,8 +576,9 @@ export function render(isExternalChange: boolean = false): void {
                 }
 
                 // Render first empty line normally
+                const firstChangeClass = getLineChangeClass(lineNum);
                 html += '<div class="line-row">' +
-                    '<div class="line-number" contenteditable="false">' + lineNum + '</div>' +
+                    '<div class="line-number' + firstChangeClass + '" contenteditable="false">' + lineNum + '</div>' +
                     '<div class="line-content" data-line="' + lineNum + '"><br></div>' +
                     '</div>';
 
@@ -573,15 +589,16 @@ export function render(isExternalChange: boolean = false): void {
                     ? '<span class="gutter-icon" title="Some lines have comments">💬</span>'
                     : '';
                 html += '<div class="line-row empty-lines-collapsed" data-start="' + (lineNum + 1) + '" data-end="' + (endLineNum - 1) + '">' +
-                    '<div class="line-number collapsed-indicator" contenteditable="false">' + gutterIconCollapsed + 
+                    '<div class="line-number collapsed-indicator" contenteditable="false">' + gutterIconCollapsed +
                     '<span class="collapsed-range" title="Click to expand ' + collapsedCount + ' empty lines">⋮ ' + collapsedCount + '</span></div>' +
                     '<div class="line-content collapsed-content" data-line="' + (lineNum + 1) + '">' +
                     '<span class="collapsed-hint">(' + collapsedCount + ' empty lines)</span></div>' +
                     '</div>';
 
                 // Render last empty line normally
+                const lastChangeClass = getLineChangeClass(endLineNum);
                 html += '<div class="line-row">' +
-                    '<div class="line-number" contenteditable="false">' + endLineNum + '</div>' +
+                    '<div class="line-number' + lastChangeClass + '" contenteditable="false">' + endLineNum + '</div>' +
                     '<div class="line-content" data-line="' + endLineNum + '"><br></div>' +
                     '</div>';
 
@@ -630,8 +647,9 @@ export function render(isExternalChange: boolean = false): void {
 
         // Create row-based layout with line number and content together
         // Line numbers are not editable
+        const changeClass = getLineChangeClass(lineNum);
         html += '<div class="line-row">' +
-            '<div class="line-number" contenteditable="false">' + gutterIcon + lineNum + '</div>' +
+            '<div class="line-number' + changeClass + '" contenteditable="false">' + gutterIcon + lineNum + '</div>' +
             '<div class="line-content" data-line="' + lineNum + '">' + lineHtml + '</div>' +
             '</div>';
     });

@@ -328,6 +328,17 @@ body.source-mode .toolbar-review-only {
     justify-content: flex-end;
     gap: 4px;
     padding-top: 0;
+    /* Reserve space for change indicator border */
+    border-left: 3px solid transparent;
+}
+
+/* Recent change indicators in gutter */
+.line-number.change-added {
+    border-left-color: var(--vscode-gitDecoration-addedResourceForeground, #89d185);
+}
+
+.line-number.change-modified {
+    border-left-color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
 }
 
 .line-number .gutter-icon {
