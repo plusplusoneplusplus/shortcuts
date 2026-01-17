@@ -20,11 +20,13 @@ export interface PromptFile {
  * Gets the configured prompt file locations from VS Code settings.
  * These are the folders where VS Code Copilot looks for .prompt.md files.
  *
+ * @param configOverride Optional configuration override for testing
  * @returns Array of folder paths that are enabled (value is true)
  */
-export function getPromptFileLocations(): string[] {
-    const config = vscode.workspace.getConfiguration('chat');
-    const locations = config.get<Record<string, boolean>>('promptFilesLocations') || {};
+export function getPromptFileLocations(configOverride?: Record<string, boolean>): string[] {
+    const locations = configOverride !== undefined
+        ? configOverride
+        : (vscode.workspace.getConfiguration('chat').get<Record<string, boolean>>('promptFilesLocations') || {});
 
     // Return only folders where the value is true (enabled)
     return Object.entries(locations)
@@ -36,15 +38,16 @@ export function getPromptFileLocations(): string[] {
  * Finds all .prompt.md files in the configured prompt file locations.
  *
  * @param workspaceRoot Optional workspace root path. If not provided, uses the first workspace folder.
+ * @param configOverride Optional configuration override for testing
  * @returns Array of PromptFile objects representing found prompt files
  */
-export async function getPromptFiles(workspaceRoot?: string): Promise<PromptFile[]> {
+export async function getPromptFiles(workspaceRoot?: string, configOverride?: Record<string, boolean>): Promise<PromptFile[]> {
     const root = workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!root) {
         return [];
     }
 
-    const locations = getPromptFileLocations();
+    const locations = getPromptFileLocations(configOverride);
     const promptFiles: PromptFile[] = [];
 
     for (const location of locations) {
@@ -107,10 +110,11 @@ async function findPromptFilesInFolder(
  * Gets prompt files as a flat list of file paths (convenience function)
  *
  * @param workspaceRoot Optional workspace root path
+ * @param configOverride Optional configuration override for testing
  * @returns Array of absolute file paths
  */
-export async function getPromptFilePaths(workspaceRoot?: string): Promise<string[]> {
-    const files = await getPromptFiles(workspaceRoot);
+export async function getPromptFilePaths(workspaceRoot?: string, configOverride?: Record<string, boolean>): Promise<string[]> {
+    const files = await getPromptFiles(workspaceRoot, configOverride);
     return files.map(f => f.absolutePath);
 }
 
@@ -118,9 +122,10 @@ export async function getPromptFilePaths(workspaceRoot?: string): Promise<string
  * Gets prompt file names (without .prompt.md extension)
  *
  * @param workspaceRoot Optional workspace root path
+ * @param configOverride Optional configuration override for testing
  * @returns Array of prompt file names
  */
-export async function getPromptFileNames(workspaceRoot?: string): Promise<string[]> {
-    const files = await getPromptFiles(workspaceRoot);
+export async function getPromptFileNames(workspaceRoot?: string, configOverride?: Record<string, boolean>): Promise<string[]> {
+    const files = await getPromptFiles(workspaceRoot, configOverride);
     return files.map(f => f.name);
 }

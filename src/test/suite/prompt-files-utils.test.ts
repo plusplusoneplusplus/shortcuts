@@ -7,7 +7,6 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as vscode from 'vscode';
 import {
     getPromptFileLocations,
     getPromptFileNames,
@@ -18,53 +17,32 @@ import {
 
 suite('Prompt Files Utils Tests', () => {
     let tempDir: string;
-    let originalConfig: Record<string, boolean> | undefined;
 
     suiteSetup(async () => {
         // Create a temporary directory for testing
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-files-test-'));
-
-        // Store original config value
-        const config = vscode.workspace.getConfiguration('chat');
-        originalConfig = config.get<Record<string, boolean>>('promptFilesLocations');
     });
 
     suiteTeardown(async () => {
-        // Restore original config value
-        const config = vscode.workspace.getConfiguration('chat');
-        await config.update('promptFilesLocations', originalConfig, vscode.ConfigurationTarget.Global);
-
         // Clean up temporary directory
         if (fs.existsSync(tempDir)) {
             fs.rmSync(tempDir, { recursive: true, force: true });
         }
     });
 
-    teardown(async () => {
-        // Reset config after each test
-        const config = vscode.workspace.getConfiguration('chat');
-        await config.update('promptFilesLocations', originalConfig, vscode.ConfigurationTarget.Global);
-    });
-
     suite('getPromptFileLocations', () => {
         test('should return empty array when setting is not configured', async () => {
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {}, vscode.ConfigurationTarget.Global);
-
-            const locations = getPromptFileLocations();
+            const locations = getPromptFileLocations({});
             assert.ok(Array.isArray(locations));
             assert.strictEqual(locations.length, 0);
         });
 
         test('should return only enabled folders (value is true)', async () => {
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const locations = getPromptFileLocations({
                 '.github/prompts': true,
                 '.vscode/prompts': false,
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const locations = getPromptFileLocations();
+            });
             assert.strictEqual(locations.length, 2);
             assert.ok(locations.includes('.github/prompts'));
             assert.ok(locations.includes('prompts'));
@@ -72,23 +50,18 @@ suite('Prompt Files Utils Tests', () => {
         });
 
         test('should return empty array when all folders are disabled', async () => {
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const locations = getPromptFileLocations({
                 '.github/prompts': false,
                 '.vscode/prompts': false
-            }, vscode.ConfigurationTarget.Global);
-
-            const locations = getPromptFileLocations();
+            });
             assert.strictEqual(locations.length, 0);
         });
 
         test('should handle undefined setting gracefully', async () => {
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', undefined, vscode.ConfigurationTarget.Global);
-
-            const locations = getPromptFileLocations();
+            // When no override provided and setting is undefined, should return empty array
+            const locations = getPromptFileLocations({});
             assert.ok(Array.isArray(locations));
-            // May have default value from VS Code
+            assert.strictEqual(locations.length, 0);
         });
     });
 
@@ -111,17 +84,14 @@ suite('Prompt Files Utils Tests', () => {
         test('should return empty array when no workspace root provided and no workspace open', async () => {
             // This test may behave differently depending on test environment
             // If there's a workspace, it will use it; otherwise empty array
-            const files = await getPromptFiles('/non-existent-path-12345');
+            const files = await getPromptFiles('/non-existent-path-12345', {});
             assert.ok(Array.isArray(files));
         });
 
         test('should return empty array when folder does not exist', async () => {
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const files = await getPromptFiles(tempDir, {
                 'non-existent-folder': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const files = await getPromptFiles(tempDir);
+            });
             assert.ok(Array.isArray(files));
             assert.strictEqual(files.length, 0);
         });
@@ -131,12 +101,9 @@ suite('Prompt Files Utils Tests', () => {
             fs.writeFileSync(path.join(promptsDir, 'readme.md'), '# Readme');
             fs.writeFileSync(path.join(promptsDir, 'notes.txt'), 'notes');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const files = await getPromptFiles(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const files = await getPromptFiles(tempDir);
+            });
             assert.strictEqual(files.length, 0);
         });
 
@@ -145,12 +112,9 @@ suite('Prompt Files Utils Tests', () => {
             fs.writeFileSync(path.join(promptsDir, 'code-review.prompt.md'), '# Code Review Prompt');
             fs.writeFileSync(path.join(promptsDir, 'explain.prompt.md'), '# Explain Prompt');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const files = await getPromptFiles(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const files = await getPromptFiles(tempDir);
+            });
             assert.strictEqual(files.length, 2);
 
             const names = files.map(f => f.name).sort();
@@ -166,12 +130,9 @@ suite('Prompt Files Utils Tests', () => {
             fs.writeFileSync(path.join(promptsDir, 'nested', 'middle.prompt.md'), '# Middle');
             fs.writeFileSync(path.join(nestedDir, 'deep.prompt.md'), '# Deep');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const files = await getPromptFiles(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const files = await getPromptFiles(tempDir);
+            });
             assert.strictEqual(files.length, 3);
 
             const names = files.map(f => f.name).sort();
@@ -181,12 +142,9 @@ suite('Prompt Files Utils Tests', () => {
         test('should return correct PromptFile structure', async () => {
             fs.writeFileSync(path.join(promptsDir, 'test.prompt.md'), '# Test');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const files = await getPromptFiles(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const files = await getPromptFiles(tempDir);
+            });
             assert.strictEqual(files.length, 1);
 
             const file = files[0];
@@ -205,13 +163,10 @@ suite('Prompt Files Utils Tests', () => {
             fs.writeFileSync(path.join(promptsDir, 'prompt1.prompt.md'), '# Prompt 1');
             fs.writeFileSync(path.join(secondDir, 'prompt2.prompt.md'), '# Prompt 2');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const files = await getPromptFiles(tempDir, {
                 'prompts': true,
                 '.github/prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const files = await getPromptFiles(tempDir);
+            });
             assert.strictEqual(files.length, 2);
 
             const sourceFolders = files.map(f => f.sourceFolder).sort();
@@ -226,13 +181,10 @@ suite('Prompt Files Utils Tests', () => {
             fs.writeFileSync(path.join(promptsDir, 'enabled.prompt.md'), '# Enabled');
             fs.writeFileSync(path.join(disabledDir, 'disabled.prompt.md'), '# Disabled');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const files = await getPromptFiles(tempDir, {
                 'prompts': true,
                 'disabled-prompts': false
-            }, vscode.ConfigurationTarget.Global);
-
-            const files = await getPromptFiles(tempDir);
+            });
             assert.strictEqual(files.length, 1);
             assert.strictEqual(files[0].name, 'enabled');
         });
@@ -241,12 +193,9 @@ suite('Prompt Files Utils Tests', () => {
             fs.writeFileSync(path.join(promptsDir, 'regular.md'), '# Regular MD');
             fs.writeFileSync(path.join(promptsDir, 'actual.prompt.md'), '# Actual Prompt');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const files = await getPromptFiles(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const files = await getPromptFiles(tempDir);
+            });
             assert.strictEqual(files.length, 1);
             assert.strictEqual(files[0].name, 'actual');
         });
@@ -257,12 +206,9 @@ suite('Prompt Files Utils Tests', () => {
             fs.writeFileSync(path.join(absoluteDir, 'absolute.prompt.md'), '# Absolute');
 
             try {
-                const config = vscode.workspace.getConfiguration('chat');
-                await config.update('promptFilesLocations', {
+                const files = await getPromptFiles(tempDir, {
                     [absoluteDir]: true
-                }, vscode.ConfigurationTarget.Global);
-
-                const files = await getPromptFiles(tempDir);
+                });
                 assert.strictEqual(files.length, 1);
                 assert.strictEqual(files[0].name, 'absolute');
                 assert.strictEqual(files[0].sourceFolder, absoluteDir);
@@ -273,12 +219,9 @@ suite('Prompt Files Utils Tests', () => {
 
         test('should handle empty folder gracefully', async () => {
             // prompts folder exists but is empty
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const files = await getPromptFiles(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const files = await getPromptFiles(tempDir);
+            });
             assert.ok(Array.isArray(files));
             assert.strictEqual(files.length, 0);
         });
@@ -287,12 +230,9 @@ suite('Prompt Files Utils Tests', () => {
             fs.writeFileSync(path.join(promptsDir, 'my-code_review.prompt.md'), '# Review');
             fs.writeFileSync(path.join(promptsDir, 'test 123.prompt.md'), '# Test');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const files = await getPromptFiles(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const files = await getPromptFiles(tempDir);
+            });
             assert.strictEqual(files.length, 2);
 
             const names = files.map(f => f.name).sort();
@@ -317,24 +257,18 @@ suite('Prompt Files Utils Tests', () => {
         test('should return array of absolute paths', async () => {
             fs.writeFileSync(path.join(promptsDir, 'test.prompt.md'), '# Test');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const paths = await getPromptFilePaths(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const paths = await getPromptFilePaths(tempDir);
+            });
             assert.strictEqual(paths.length, 1);
             assert.ok(path.isAbsolute(paths[0]));
             assert.ok(paths[0].endsWith('test.prompt.md'));
         });
 
         test('should return empty array when no files found', async () => {
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const paths = await getPromptFilePaths(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const paths = await getPromptFilePaths(tempDir);
+            });
             assert.ok(Array.isArray(paths));
             assert.strictEqual(paths.length, 0);
         });
@@ -358,12 +292,9 @@ suite('Prompt Files Utils Tests', () => {
             fs.writeFileSync(path.join(promptsDir, 'code-review.prompt.md'), '# Review');
             fs.writeFileSync(path.join(promptsDir, 'explain.prompt.md'), '# Explain');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const names = await getPromptFileNames(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const names = await getPromptFileNames(tempDir);
+            });
             assert.strictEqual(names.length, 2);
             assert.ok(names.includes('code-review'));
             assert.ok(names.includes('explain'));
@@ -372,12 +303,9 @@ suite('Prompt Files Utils Tests', () => {
         });
 
         test('should return empty array when no files found', async () => {
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
+            const names = await getPromptFileNames(tempDir, {
                 'prompts': true
-            }, vscode.ConfigurationTarget.Global);
-
-            const names = await getPromptFileNames(tempDir);
+            });
             assert.ok(Array.isArray(names));
             assert.strictEqual(names.length, 0);
         });
@@ -399,12 +327,9 @@ suite('Prompt Files Utils Tests', () => {
             fs.symlinkSync(realDir, symlinkDir, 'dir');
 
             try {
-                const config = vscode.workspace.getConfiguration('chat');
-                await config.update('promptFilesLocations', {
+                const files = await getPromptFiles(tempDir, {
                     'symlink-prompts': true
-                }, vscode.ConfigurationTarget.Global);
-
-                const files = await getPromptFiles(tempDir);
+                });
                 assert.strictEqual(files.length, 1);
                 assert.strictEqual(files[0].name, 'symlinked');
             } finally {
@@ -428,13 +353,10 @@ suite('Prompt Files Utils Tests', () => {
             fs.chmodSync(restrictedDir, 0o000);
 
             try {
-                const config = vscode.workspace.getConfiguration('chat');
-                await config.update('promptFilesLocations', {
-                    'restricted': true
-                }, vscode.ConfigurationTarget.Global);
-
                 // Should not throw, just return empty or skip the folder
-                const files = await getPromptFiles(tempDir);
+                const files = await getPromptFiles(tempDir, {
+                    'restricted': true
+                });
                 assert.ok(Array.isArray(files));
             } finally {
                 // Restore permission for cleanup
@@ -448,13 +370,10 @@ suite('Prompt Files Utils Tests', () => {
             fs.mkdirSync(deepPath, { recursive: true });
             fs.writeFileSync(path.join(deepPath, 'deep.prompt.md'), '# Deep');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
-                'a': true
-            }, vscode.ConfigurationTarget.Global);
-
             try {
-                const files = await getPromptFiles(tempDir);
+                const files = await getPromptFiles(tempDir, {
+                    'a': true
+                });
                 assert.strictEqual(files.length, 1);
                 assert.strictEqual(files[0].name, 'deep');
             } finally {
@@ -473,13 +392,10 @@ suite('Prompt Files Utils Tests', () => {
             fs.writeFileSync(path.join(mixedDir, 'script.js'), '// js');
             fs.writeFileSync(path.join(mixedDir, '.hidden.prompt.md'), '# Hidden');
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
-                'mixed': true
-            }, vscode.ConfigurationTarget.Global);
-
             try {
-                const files = await getPromptFiles(tempDir);
+                const files = await getPromptFiles(tempDir, {
+                    'mixed': true
+                });
                 // Should only find .prompt.md files
                 assert.strictEqual(files.length, 2);
                 const names = files.map(f => f.name).sort();
@@ -494,13 +410,10 @@ suite('Prompt Files Utils Tests', () => {
             fs.mkdirSync(path.join(parentDir, 'subdir1'), { recursive: true });
             fs.mkdirSync(path.join(parentDir, 'subdir2'), { recursive: true });
 
-            const config = vscode.workspace.getConfiguration('chat');
-            await config.update('promptFilesLocations', {
-                'only-dirs': true
-            }, vscode.ConfigurationTarget.Global);
-
             try {
-                const files = await getPromptFiles(tempDir);
+                const files = await getPromptFiles(tempDir, {
+                    'only-dirs': true
+                });
                 assert.ok(Array.isArray(files));
                 assert.strictEqual(files.length, 0);
             } finally {
