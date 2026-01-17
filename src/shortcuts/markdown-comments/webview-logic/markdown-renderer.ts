@@ -140,9 +140,12 @@ export function applySourceModeHighlighting(
         const checkboxMatch = content.match(/^\[([ xX])\]\s*(.*)$/);
         if (checkboxMatch) {
             const checked = checkboxMatch[1].toLowerCase() === 'x';
-            const checkboxClass = checked ? 'src-checkbox src-checkbox-checked' : 'src-checkbox';
+            const checkboxClass = checked ? 'src-checkbox src-checkbox-checked src-checkbox-clickable' : 'src-checkbox src-checkbox-clickable';
             const checkbox = checked ? '[x]' : '[ ]';
-            content = `<span class="${checkboxClass}">${checkbox}</span> ` + applySourceModeInlineHighlighting(checkboxMatch[2]);
+            // Add data attributes for click handling in source mode
+            // Note: lineNum is not available in source mode highlighting, so we use a placeholder
+            // The actual line number will be determined from the parent element's data-line attribute
+            content = `<span class="${checkboxClass}" data-checked="${checked}">${checkbox}</span> ` + applySourceModeInlineHighlighting(checkboxMatch[2]);
         } else {
             content = applySourceModeInlineHighlighting(content);
         }
@@ -387,9 +390,10 @@ export function applyMarkdownHighlighting(
         const checkboxMatch = content.match(/^\[([ xX])\]\s*(.*)$/);
         if (checkboxMatch) {
             const checked = checkboxMatch[1].toLowerCase() === 'x';
-            const checkboxClass = checked ? 'md-checkbox md-checkbox-checked' : 'md-checkbox';
+            const checkboxClass = checked ? 'md-checkbox md-checkbox-checked md-checkbox-clickable' : 'md-checkbox md-checkbox-clickable';
             const checkbox = checked ? '[x]' : '[ ]';
-            content = `<span class="${checkboxClass}">${checkbox}</span> ` + applyInlineMarkdown(checkboxMatch[2]);
+            // Add data attributes for click handling: line number and current checked state
+            content = `<span class="${checkboxClass}" data-line="${lineNum}" data-checked="${checked}">${checkbox}</span> ` + applyInlineMarkdown(checkboxMatch[2]);
         } else {
             content = applyInlineMarkdown(content);
         }

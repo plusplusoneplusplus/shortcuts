@@ -1841,6 +1841,9 @@ export function setupCommentInteractions(): void {
         });
     });
 
+    // Click on checkboxes to toggle them
+    setupCheckboxClickHandlers();
+
     // Ctrl+Click on markdown links to open workspace files
     document.querySelectorAll('.md-link').forEach(linkEl => {
         linkEl.addEventListener('click', (e) => {
@@ -1872,6 +1875,93 @@ export function setupCommentInteractions(): void {
 
     // Click on anchor links (ToC navigation) to jump to the target heading
     setupAnchorLinkNavigation();
+}
+
+/**
+ * Setup click handlers for markdown checkboxes.
+ * Clicking on a checkbox like [ ] or [x] will toggle its state.
+ * 
+ * Works consistently across Windows, macOS, and Linux.
+ */
+function setupCheckboxClickHandlers(): void {
+    // Handle both review mode (.md-checkbox-clickable) and source mode (.src-checkbox-clickable)
+    document.querySelectorAll('.md-checkbox-clickable, .src-checkbox-clickable').forEach(checkboxEl => {
+        checkboxEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const el = checkboxEl as HTMLElement;
+            const isChecked = el.dataset.checked === 'true';
+            
+            // Get the line number from the checkbox's data attribute or parent line-content element
+            let lineNum: number | null = null;
+            if (el.dataset.line) {
+                lineNum = parseInt(el.dataset.line, 10);
+            } else {
+                // For source mode, get line number from parent line-content element
+                const lineContent = el.closest('.line-content[data-line]');
+                if (lineContent) {
+                    lineNum = parseInt((lineContent as HTMLElement).dataset.line || '', 10);
+                }
+            }
+            
+            if (!lineNum || isNaN(lineNum)) {
+                console.warn('[Webview] Could not determine line number for checkbox');
+                return;
+            }
+
+            // Toggle the checkbox in the content
+            toggleCheckbox(lineNum, isChecked);
+        });
+
+        // Add cursor pointer style
+        (checkboxEl as HTMLElement).style.cursor = 'pointer';
+    });
+}
+
+/**
+ * Toggle a checkbox on a specific line.
+ * Updates the markdown content and triggers a re-render.
+ * 
+ * @param lineNum - 1-based line number
+ * @param currentlyChecked - Current state of the checkbox
+ */
+function toggleCheckbox(lineNum: number, currentlyChecked: boolean): void {
+    const lines = state.currentContent.split('\n');
+    const lineIndex = lineNum - 1;
+
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+        console.warn('[Webview] Invalid line number for checkbox toggle:', lineNum);
+        return;
+    }
+
+    const line = lines[lineIndex];
+    
+    // Match checkbox pattern: optional indent, list marker (- * +), space, checkbox
+    // Supports: - [ ] item, - [x] item, - [X] item
+    // Also supports: * [ ] item, + [ ] item
+    const checkboxPattern = /^(\s*[-*+]\s+)\[([ xX])\](\s*.*)$/;
+    const match = line.match(checkboxPattern);
+
+    if (!match) {
+        console.warn('[Webview] Line does not contain a checkbox:', line);
+        return;
+    }
+
+    const prefix = match[1];  // "- " or "  - " etc.
+    const suffix = match[3];  // " item text" etc.
+
+    // Toggle the checkbox state
+    const newCheckbox = currentlyChecked ? '[ ]' : '[x]';
+    lines[lineIndex] = prefix + newCheckbox + suffix;
+
+    // Update content
+    const newContent = lines.join('\n');
+    state.setCurrentContent(newContent);
+    updateContent(newContent);
+
+    // Re-render to show the updated checkbox
+    render();
 }
 
 /**

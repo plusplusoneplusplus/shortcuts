@@ -238,6 +238,26 @@
     color: #4caf50;
 }
 
+/* Clickable checkbox styling */
+.md-checkbox-clickable,
+.src-checkbox-clickable {
+    cursor: pointer;
+    user-select: none;
+    border-radius: 3px;
+    padding: 0 2px;
+    transition: background-color 0.15s ease;
+}
+
+.md-checkbox-clickable:hover,
+.src-checkbox-clickable:hover {
+    background-color: var(--vscode-editor-hoverHighlightBackground, rgba(100, 100, 100, 0.2));
+}
+
+.md-checkbox-clickable:active,
+.src-checkbox-clickable:active {
+    background-color: var(--vscode-editor-selectionBackground, rgba(100, 100, 100, 0.3));
+}
+
 /* ==============================
  * Horizontal Rule
  * ============================== */
@@ -364,6 +384,8 @@
 .src-checkbox-checked {
     color: #4caf50;
 }
+
+/* Note: Clickable styles for .src-checkbox-clickable are shared with .md-checkbox-clickable above */
 
 /* Horizontal rule in source mode */
 .src-hr {
