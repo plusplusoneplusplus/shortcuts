@@ -36,6 +36,15 @@ export type { BasePromptGenerationOptions } from './prompt-generator-base';
 // Glob utilities for file pattern matching
 export { getFilesWithExtension, glob } from './glob-utils';
 
+// Prompt files utilities (for VS Code Copilot .prompt.md files)
+export {
+    getPromptFileLocations,
+    getPromptFileNames,
+    getPromptFilePaths,
+    getPromptFiles
+} from './prompt-files-utils';
+export type { PromptFile } from './prompt-files-utils';
+
 // Extension-wide logging framework
 export {
     AILogLevel, // Backward compatibility alias
