@@ -403,6 +403,79 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Register command to read a VSCode setting by ID
+        const readSettingCommand = vscode.commands.registerCommand(
+            'debugPanel.readSetting',
+            async () => {
+                const settingId = await vscode.window.showInputBox({
+                    prompt: 'Enter setting ID',
+                    placeHolder: 'e.g., editor.fontSize, workspaceShortcuts.sync.enabled',
+                    ignoreFocusOut: true
+                });
+                if (!settingId) return;
+
+                // Split the setting ID into section and key
+                // e.g., "editor.fontSize" -> section: "editor", key: "fontSize"
+                // e.g., "workspaceShortcuts.sync.enabled" -> section: "workspaceShortcuts.sync", key: "enabled"
+                const lastDotIndex = settingId.lastIndexOf('.');
+                if (lastDotIndex === -1) {
+                    // No dot found, try to get the entire section
+                    const config = vscode.workspace.getConfiguration();
+                    const value = config.get(settingId);
+                    const inspection = config.inspect(settingId);
+
+                    const result = {
+                        settingId,
+                        value,
+                        inspection: {
+                            defaultValue: inspection?.defaultValue,
+                            globalValue: inspection?.globalValue,
+                            workspaceValue: inspection?.workspaceValue,
+                            workspaceFolderValue: inspection?.workspaceFolderValue
+                        }
+                    };
+
+                    vscode.window.showInformationMessage(
+                        `${settingId}: ${JSON.stringify(value)}`,
+                        'Copy to Clipboard'
+                    ).then(selection => {
+                        if (selection === 'Copy to Clipboard') {
+                            vscode.env.clipboard.writeText(JSON.stringify(result, null, 2));
+                        }
+                    });
+                } else {
+                    const section = settingId.substring(0, lastDotIndex);
+                    const key = settingId.substring(lastDotIndex + 1);
+
+                    const config = vscode.workspace.getConfiguration(section);
+                    const value = config.get(key);
+                    const inspection = config.inspect(key);
+
+                    const result = {
+                        settingId,
+                        section,
+                        key,
+                        value,
+                        inspection: {
+                            defaultValue: inspection?.defaultValue,
+                            globalValue: inspection?.globalValue,
+                            workspaceValue: inspection?.workspaceValue,
+                            workspaceFolderValue: inspection?.workspaceFolderValue
+                        }
+                    };
+
+                    vscode.window.showInformationMessage(
+                        `${settingId}: ${JSON.stringify(value)}`,
+                        'Copy to Clipboard'
+                    ).then(selection => {
+                        if (selection === 'Copy to Clipboard') {
+                            vscode.env.clipboard.writeText(JSON.stringify(result, null, 2));
+                        }
+                    });
+                }
+            }
+        );
+
         // Initialize Git Diff Comments feature (must be before git tree provider)
         const diffCommentsManager = new DiffCommentsManager(workspaceRoot);
         await diffCommentsManager.initialize();
@@ -1820,7 +1893,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitCopyRangeSummaryCommand) disposables.push(gitCopyRangeSummaryCommand);
 
         // Add Debug Panel disposables
-        disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand, runCustomCommand);
+        disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand, runCustomCommand, readSettingCommand);
 
         // Register code review commands (requires git log service)
         if (gitInitialized) {

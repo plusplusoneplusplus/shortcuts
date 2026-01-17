@@ -28,6 +28,14 @@ export function getDefaultDebugCommands(): DebugCommand[] {
             commandId: 'debugPanel.runCustomCommand'
         },
         {
+            id: 'read-setting',
+            label: 'Read Setting',
+            description: 'Get setting value by ID',
+            tooltip: 'Read a VSCode setting value by its ID\n\nEnter full setting ID like "editor.fontSize" or "workspaceShortcuts.sync.enabled"',
+            icon: 'settings-gear',
+            commandId: 'debugPanel.readSetting'
+        },
+        {
             id: 'new-chat-with-prompt',
             label: 'New Chat with Prompt',
             description: 'Ask something...',
