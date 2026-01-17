@@ -136,16 +136,21 @@ export function applySourceModeHighlighting(
         const marker = ulMatch[2];
         let content = ulMatch[3];
         
-        // Check for checkbox
-        const checkboxMatch = content.match(/^\[([ xX])\]\s*(.*)$/);
+        // Check for checkbox (supports [ ], [x], [X], [~] for unchecked, checked, in-progress)
+        const checkboxMatch = content.match(/^\[([ xX~])\]\s*(.*)$/);
         if (checkboxMatch) {
-            const checked = checkboxMatch[1].toLowerCase() === 'x';
-            const checkboxClass = checked ? 'src-checkbox src-checkbox-checked src-checkbox-clickable' : 'src-checkbox src-checkbox-clickable';
-            const checkbox = checked ? '[x]' : '[ ]';
+            const checkChar = checkboxMatch[1].toLowerCase();
+            const state = checkChar === 'x' ? 'checked' : checkChar === '~' ? 'in-progress' : 'unchecked';
+            const checkboxClass = state === 'checked' 
+                ? 'src-checkbox src-checkbox-checked src-checkbox-clickable'
+                : state === 'in-progress'
+                    ? 'src-checkbox src-checkbox-in-progress src-checkbox-clickable'
+                    : 'src-checkbox src-checkbox-clickable';
+            const checkbox = state === 'checked' ? '[x]' : state === 'in-progress' ? '[~]' : '[ ]';
             // Add data attributes for click handling in source mode
             // Note: lineNum is not available in source mode highlighting, so we use a placeholder
             // The actual line number will be determined from the parent element's data-line attribute
-            content = `<span class="${checkboxClass}" data-checked="${checked}">${checkbox}</span> ` + applySourceModeInlineHighlighting(checkboxMatch[2]);
+            content = `<span class="${checkboxClass}" data-state="${state}">${checkbox}</span> ` + applySourceModeInlineHighlighting(checkboxMatch[2]);
         } else {
             content = applySourceModeInlineHighlighting(content);
         }
@@ -386,14 +391,19 @@ export function applyMarkdownHighlighting(
         const marker = ulMatch[2];
         let content = ulMatch[3];
 
-        // Check for checkbox
-        const checkboxMatch = content.match(/^\[([ xX])\]\s*(.*)$/);
+        // Check for checkbox (supports [ ], [x], [X], [~] for unchecked, checked, in-progress)
+        const checkboxMatch = content.match(/^\[([ xX~])\]\s*(.*)$/);
         if (checkboxMatch) {
-            const checked = checkboxMatch[1].toLowerCase() === 'x';
-            const checkboxClass = checked ? 'md-checkbox md-checkbox-checked md-checkbox-clickable' : 'md-checkbox md-checkbox-clickable';
-            const checkbox = checked ? '[x]' : '[ ]';
-            // Add data attributes for click handling: line number and current checked state
-            content = `<span class="${checkboxClass}" data-line="${lineNum}" data-checked="${checked}">${checkbox}</span> ` + applyInlineMarkdown(checkboxMatch[2]);
+            const checkChar = checkboxMatch[1].toLowerCase();
+            const state = checkChar === 'x' ? 'checked' : checkChar === '~' ? 'in-progress' : 'unchecked';
+            const checkboxClass = state === 'checked'
+                ? 'md-checkbox md-checkbox-checked md-checkbox-clickable'
+                : state === 'in-progress'
+                    ? 'md-checkbox md-checkbox-in-progress md-checkbox-clickable'
+                    : 'md-checkbox md-checkbox-clickable';
+            const checkbox = state === 'checked' ? '[x]' : state === 'in-progress' ? '[~]' : '[ ]';
+            // Add data attributes for click handling: line number and current state
+            content = `<span class="${checkboxClass}" data-line="${lineNum}" data-state="${state}">${checkbox}</span> ` + applyInlineMarkdown(checkboxMatch[2]);
         } else {
             content = applyInlineMarkdown(content);
         }

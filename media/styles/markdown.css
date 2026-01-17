@@ -238,6 +238,10 @@
     color: #4caf50;
 }
 
+.md-checkbox-in-progress {
+    color: #ff9800;
+}
+
 /* Clickable checkbox styling */
 .md-checkbox-clickable,
 .src-checkbox-clickable {
@@ -383,6 +387,10 @@
 
 .src-checkbox-checked {
     color: #4caf50;
+}
+
+.src-checkbox-in-progress {
+    color: #ff9800;
 }
 
 /* Note: Clickable styles for .src-checkbox-clickable are shared with .md-checkbox-clickable above */

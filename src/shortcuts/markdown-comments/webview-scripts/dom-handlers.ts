@@ -1879,7 +1879,8 @@ export function setupCommentInteractions(): void {
 
 /**
  * Setup click handlers for markdown checkboxes.
- * Clicking on a checkbox like [ ] or [x] will toggle its state.
+ * Clicking on a checkbox cycles through states: [ ] -> [~] -> [x] -> [ ]
+ * (unchecked -> in-progress -> checked -> unchecked)
  * 
  * Works consistently across Windows, macOS, and Linux.
  */
@@ -1891,7 +1892,7 @@ function setupCheckboxClickHandlers(): void {
             e.stopPropagation();
 
             const el = checkboxEl as HTMLElement;
-            const isChecked = el.dataset.checked === 'true';
+            const currentState = el.dataset.state || 'unchecked';
             
             // Get the line number from the checkbox's data attribute or parent line-content element
             let lineNum: number | null = null;
@@ -1910,8 +1911,8 @@ function setupCheckboxClickHandlers(): void {
                 return;
             }
 
-            // Toggle the checkbox in the content
-            toggleCheckbox(lineNum, isChecked);
+            // Cycle the checkbox state in the content
+            cycleCheckboxState(lineNum, currentState);
         });
 
         // Add cursor pointer style
@@ -1920,13 +1921,14 @@ function setupCheckboxClickHandlers(): void {
 }
 
 /**
- * Toggle a checkbox on a specific line.
+ * Cycle a checkbox state on a specific line.
+ * State cycle: unchecked -> in-progress -> checked -> unchecked
  * Updates the markdown content and triggers a re-render.
  * 
  * @param lineNum - 1-based line number
- * @param currentlyChecked - Current state of the checkbox
+ * @param currentState - Current state of the checkbox ('unchecked', 'in-progress', 'checked')
  */
-function toggleCheckbox(lineNum: number, currentlyChecked: boolean): void {
+function cycleCheckboxState(lineNum: number, currentState: string): void {
     const lines = state.currentContent.split('\n');
     const lineIndex = lineNum - 1;
 
@@ -1938,9 +1940,9 @@ function toggleCheckbox(lineNum: number, currentlyChecked: boolean): void {
     const line = lines[lineIndex];
     
     // Match checkbox pattern: optional indent, list marker (- * +), space, checkbox
-    // Supports: - [ ] item, - [x] item, - [X] item
+    // Supports: - [ ] item, - [x] item, - [X] item, - [~] item
     // Also supports: * [ ] item, + [ ] item
-    const checkboxPattern = /^(\s*[-*+]\s+)\[([ xX])\](\s*.*)$/;
+    const checkboxPattern = /^(\s*[-*+]\s+)\[([ xX~])\](\s*.*)$/;
     const match = line.match(checkboxPattern);
 
     if (!match) {
@@ -1951,8 +1953,21 @@ function toggleCheckbox(lineNum: number, currentlyChecked: boolean): void {
     const prefix = match[1];  // "- " or "  - " etc.
     const suffix = match[3];  // " item text" etc.
 
-    // Toggle the checkbox state
-    const newCheckbox = currentlyChecked ? '[ ]' : '[x]';
+    // Cycle the checkbox state: unchecked -> in-progress -> checked -> unchecked
+    let newCheckbox: string;
+    switch (currentState) {
+        case 'unchecked':
+            newCheckbox = '[~]';  // unchecked -> in-progress
+            break;
+        case 'in-progress':
+            newCheckbox = '[x]';  // in-progress -> checked
+            break;
+        case 'checked':
+        default:
+            newCheckbox = '[ ]';  // checked -> unchecked
+            break;
+    }
+    
     lines[lineIndex] = prefix + newCheckbox + suffix;
 
     // Update content
