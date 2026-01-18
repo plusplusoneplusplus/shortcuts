@@ -127,13 +127,14 @@ const TERMINAL_PREFERENCE_ORDER: Record<string, TerminalType[]> = {
 };
 
 /**
- * Escape a string for use in AppleScript
+ * Escape a string for use in AppleScript double-quoted strings.
+ * Only backslashes and double quotes need escaping.
+ * Single quotes are safe inside AppleScript double-quoted strings.
  */
 function escapeAppleScript(str: string): string {
     return str
         .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"')
-        .replace(/'/g, "'\\''");
+        .replace(/"/g, '\\"');
 }
 
 
