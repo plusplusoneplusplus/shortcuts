@@ -5,6 +5,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { IAIProcessManager } from '../../ai-service';
 import { PipelineManager } from './pipeline-manager';
@@ -18,7 +19,7 @@ import {
 } from './pipeline-executor-service';
 import { PromptItem } from '../types';
 import { PipelineResultViewerProvider } from './result-viewer-provider';
-import { PipelineTemplateType, PIPELINE_TEMPLATES } from './types';
+import { PipelineTemplateType, PIPELINE_TEMPLATES, PipelineSource } from './types';
 
 /**
  * Command handlers for the Pipelines Viewer
@@ -70,7 +71,10 @@ export class PipelineCommands {
             vscode.commands.registerCommand('pipelinesViewer.delete', (item: PipelineItem) => this.deletePipeline(item)),
             vscode.commands.registerCommand('pipelinesViewer.validate', (item: PipelineItem) => this.validatePipeline(item)),
             vscode.commands.registerCommand('pipelinesViewer.refresh', () => this.refreshPipelines()),
-            vscode.commands.registerCommand('pipelinesViewer.openFolder', () => this.openPipelinesFolder())
+            vscode.commands.registerCommand('pipelinesViewer.openFolder', () => this.openPipelinesFolder()),
+            // Bundled pipeline commands
+            vscode.commands.registerCommand('pipelinesViewer.copyToWorkspace', (item: PipelineItem) => this.copyBundledToWorkspace(item)),
+            vscode.commands.registerCommand('pipelinesViewer.viewBundled', (item: PipelineItem) => this.viewBundledPipeline(item))
         );
 
         return disposables;
@@ -451,5 +455,133 @@ export class PipelineCommands {
 
         const uri = vscode.Uri.file(pipelinesFolder);
         await vscode.commands.executeCommand('revealFileInOS', uri);
+    }
+
+    /**
+     * Copy a bundled pipeline to the workspace for customization
+     */
+    private async copyBundledToWorkspace(item: PipelineItem): Promise<void> {
+        if (!item?.pipeline) {
+            return;
+        }
+
+        if (item.pipeline.source !== PipelineSource.Bundled) {
+            vscode.window.showWarningMessage('This pipeline is already in your workspace.');
+            return;
+        }
+
+        const bundledId = item.pipeline.bundledId;
+        if (!bundledId) {
+            vscode.window.showErrorMessage('Invalid bundled pipeline.');
+            return;
+        }
+
+        // Check if already exists in workspace
+        const exists = await this.pipelineManager.isBundledPipelineInWorkspace(bundledId);
+        if (exists) {
+            const choice = await vscode.window.showWarningMessage(
+                `Pipeline "${item.pipeline.name}" already exists in workspace.`,
+                'Open Existing',
+                'Create Copy'
+            );
+
+            if (choice === 'Open Existing') {
+                const workspacePath = path.join(
+                    this.pipelineManager.getPipelinesFolder(),
+                    item.pipeline.packageName
+                );
+                const pipelineFile = path.join(workspacePath, 'pipeline.yaml');
+                await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(pipelineFile));
+                return;
+            }
+
+            if (choice === 'Create Copy') {
+                const newName = await vscode.window.showInputBox({
+                    prompt: 'Enter a name for the copied pipeline',
+                    value: `${item.pipeline.packageName}-copy`,
+                    validateInput: this.validatePipelineName.bind(this)
+                });
+
+                if (!newName) {
+                    return;
+                }
+
+                await this.doCopyBundledPipeline(bundledId, newName);
+                return;
+            }
+
+            return;
+        }
+
+        await this.doCopyBundledPipeline(bundledId);
+    }
+
+    /**
+     * Actually perform the copy operation
+     */
+    private async doCopyBundledPipeline(bundledId: string, targetName?: string): Promise<void> {
+        try {
+            const destPath = await this.pipelineManager.copyBundledToWorkspace(bundledId, targetName);
+
+            this.treeDataProvider.refresh();
+
+            const choice = await vscode.window.showInformationMessage(
+                `Pipeline copied to workspace: ${path.basename(path.dirname(destPath))}`,
+                'Open Pipeline'
+            );
+
+            if (choice === 'Open Pipeline') {
+                const doc = await vscode.workspace.openTextDocument(destPath);
+                await vscode.window.showTextDocument(doc);
+            }
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to copy pipeline: ${errorMsg}`);
+        }
+    }
+
+    /**
+     * View a bundled pipeline (read-only)
+     */
+    private async viewBundledPipeline(item: PipelineItem): Promise<void> {
+        if (!item?.pipeline) {
+            return;
+        }
+
+        if (item.pipeline.source !== PipelineSource.Bundled) {
+            return;
+        }
+
+        const doc = await vscode.workspace.openTextDocument(
+            vscode.Uri.file(item.pipeline.filePath)
+        );
+
+        await vscode.window.showTextDocument(doc, {
+            preview: true,
+            preserveFocus: false
+        });
+
+        // Show info message about read-only
+        const choice = await vscode.window.showInformationMessage(
+            'This is a bundled pipeline. Copy to workspace to edit.',
+            'Copy to Workspace'
+        );
+
+        if (choice === 'Copy to Workspace') {
+            await vscode.commands.executeCommand('pipelinesViewer.copyToWorkspace', item);
+        }
+    }
+
+    /**
+     * Validate a pipeline name
+     */
+    private validatePipelineName(value: string): string | null {
+        if (!value || value.trim().length === 0) {
+            return 'Pipeline name cannot be empty';
+        }
+        if (value.includes('/') || value.includes('\\')) {
+            return 'Pipeline name cannot contain path separators';
+        }
+        return null;
     }
 }

@@ -202,7 +202,7 @@ export async function activate(context: vscode.ExtensionContext) {
         let pipelinesCommandDisposables: vscode.Disposable[] = [];
 
         if (pipelinesViewerEnabled && workspaceFolder) {
-            pipelineManager = new PipelineManager(workspaceRoot);
+            pipelineManager = new PipelineManager(workspaceRoot, context);
             pipelineManager.ensurePipelinesFolderExists();
 
             pipelinesTreeDataProvider = new PipelinesTreeDataProvider(pipelineManager);

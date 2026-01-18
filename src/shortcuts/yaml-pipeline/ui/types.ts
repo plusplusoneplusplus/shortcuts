@@ -5,6 +5,45 @@
  */
 
 /**
+ * Source of a pipeline - bundled with extension or user-created in workspace
+ */
+export enum PipelineSource {
+    /** Bundled with extension - read-only */
+    Bundled = 'bundled',
+    /** User-created in workspace - editable */
+    Workspace = 'workspace'
+}
+
+/**
+ * Manifest for a bundled pipeline that ships with the extension
+ */
+export interface BundledPipelineManifest {
+    /** Unique identifier for the bundled pipeline */
+    id: string;
+
+    /** Display name */
+    name: string;
+
+    /** Short description */
+    description: string;
+
+    /** Category for grouping */
+    category?: 'code-review' | 'data-processing' | 'documentation' | 'testing' | 'other';
+
+    /** Directory name within bundled-pipelines folder */
+    directory: string;
+
+    /** Main pipeline YAML file name (default: pipeline.yaml) */
+    entryPoint?: string;
+
+    /** Additional resource files to copy when exporting */
+    resources?: string[];
+
+    /** Minimum extension version required */
+    minVersion?: string;
+}
+
+/**
  * Information about a pipeline package discovered in the workspace.
  * A pipeline package is a directory containing pipeline.yaml and resource files.
  */
@@ -35,6 +74,12 @@ export interface PipelineInfo {
 
     /** Resource files in the package (CSV, templates, etc.) */
     resourceFiles?: ResourceFileInfo[];
+
+    /** Source of the pipeline - bundled or workspace */
+    source: PipelineSource;
+
+    /** For bundled pipelines, the bundled pipeline ID */
+    bundledId?: string;
 }
 
 /**

@@ -1,0 +1,73 @@
+# Bundled Pipeline: Documentation Generator
+# Generate documentation from code files
+name: "Documentation Generator"
+description: "Generate API documentation from source files. Extracts exports, functions, and classes to create comprehensive documentation."
+
+input:
+  # This pipeline expects file data to be provided
+  # When executed, provide items with: path, content
+  items: []
+  parameters:
+    - name: docStyle
+      value: "JSDoc"
+    - name: includeExamples
+      value: "true"
+
+map:
+  prompt: |
+    Generate documentation for this source file:
+
+    File: {{path}}
+
+    ```
+    {{content}}
+    ```
+
+    Documentation style: {{docStyle}}
+    Include examples: {{includeExamples}}
+
+    Extract and document:
+    1. All exported functions (parameters, return types, description)
+    2. All exported classes (methods, properties, description)
+    3. All exported types/interfaces
+    4. Module-level documentation
+
+    For each item, provide:
+    - Name and signature
+    - Description of purpose
+    - Parameters with types and descriptions
+    - Return value description
+    - Usage example (if includeExamples is true)
+
+    Return JSON with the documentation.
+  output:
+    - module_description
+    - functions
+    - classes
+    - types
+    - examples
+  parallel: 5
+
+reduce:
+  type: ai
+  prompt: |
+    Create a comprehensive API reference from these file documentations:
+
+    {{RESULTS}}
+
+    Total files: {{COUNT}}
+
+    Generate:
+    1. Table of contents organized by module
+    2. Overview section describing the API
+    3. Detailed documentation for each module
+    4. Cross-references between related items
+    5. Quick reference section with function signatures
+
+    Return JSON with the complete documentation structure.
+  output:
+    - table_of_contents
+    - overview
+    - modules
+    - cross_references
+    - quick_reference

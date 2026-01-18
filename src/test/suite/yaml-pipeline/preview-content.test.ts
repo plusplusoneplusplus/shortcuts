@@ -13,7 +13,7 @@ import {
     PipelinePreviewData
 } from '../../../shortcuts/yaml-pipeline/ui/preview-content';
 import { PipelineConfig, CSVParseResult } from '../../../shortcuts/yaml-pipeline/types';
-import { ResourceFileInfo, PipelineInfo, ValidationResult } from '../../../shortcuts/yaml-pipeline/ui/types';
+import { ResourceFileInfo, PipelineInfo, ValidationResult, PipelineSource } from '../../../shortcuts/yaml-pipeline/ui/types';
 import { GeneratedItem } from '../../../shortcuts/yaml-pipeline/input-generator';
 
 suite('Pipeline Preview Content Tests', () => {
@@ -504,7 +504,8 @@ suite('Pipeline Preview Content Tests', () => {
                     name: 'Test Pipeline',
                     lastModified: new Date(),
                     size: 1024,
-                    isValid: true
+                    isValid: true,
+                    source: PipelineSource.Workspace
                 },
                 validation: {
                     valid: true,
@@ -529,7 +530,8 @@ suite('Pipeline Preview Content Tests', () => {
                     name: 'Test Pipeline',
                     lastModified: new Date(),
                     size: 1024,
-                    isValid: true
+                    isValid: true,
+                    source: PipelineSource.Workspace
                 },
                 validation: {
                     valid: true,
@@ -559,7 +561,8 @@ suite('Pipeline Preview Content Tests', () => {
                     name: 'Generate Test Pipeline',
                     lastModified: new Date(),
                     size: 1024,
-                    isValid: true
+                    isValid: true,
+                    source: PipelineSource.Workspace
                 },
                 validation: {
                     valid: true,
@@ -589,7 +592,8 @@ suite('Pipeline Preview Content Tests', () => {
                     name: 'Generate Test Pipeline',
                     lastModified: new Date(),
                     size: 1024,
-                    isValid: true
+                    isValid: true,
+                    source: PipelineSource.Workspace
                 },
                 validation: {
                     valid: true,

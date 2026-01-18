@@ -14,7 +14,7 @@ import * as yaml from 'js-yaml';
 import * as fs from 'fs';
 import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig, AIInvoker } from '../types';
 import { readCSVFile, resolveCSVPath, getCSVPreview } from '../csv-reader';
-import { PipelineInfo, ValidationResult } from './types';
+import { PipelineInfo, ValidationResult, PipelineSource } from './types';
 import { PipelineManager } from './pipeline-manager';
 import { PipelineItem } from './pipeline-item';
 import {
@@ -272,7 +272,8 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             lastModified: stat.mtime,
             size: stat.size,
             isValid: true, // Will be updated by validation
-            resourceFiles
+            resourceFiles,
+            source: PipelineSource.Workspace
         };
     }
 

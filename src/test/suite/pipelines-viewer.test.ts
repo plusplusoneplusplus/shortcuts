@@ -10,7 +10,8 @@ import {
     PipelinesTreeDataProvider,
     ResourceItem,
     PIPELINE_TEMPLATES,
-    PipelineTemplateType
+    PipelineTemplateType,
+    PipelineSource
 } from '../../shortcuts/yaml-pipeline';
 
 suite('Pipelines Viewer Tests (Package Structure)', () => {
@@ -732,7 +733,8 @@ reduce:
                 lastModified: new Date(),
                 size: 1024,
                 isValid: true,
-                resourceFiles: []
+                resourceFiles: [],
+                source: PipelineSource.Workspace
             };
 
             const item = new PipelineItem(pipeline);
@@ -761,7 +763,8 @@ reduce:
                         size: 100,
                         fileType: 'csv'
                     }
-                ]
+                ],
+                source: PipelineSource.Workspace
             };
 
             const item = new PipelineItem(pipeline);
@@ -779,7 +782,8 @@ reduce:
                 lastModified: new Date(),
                 size: 1024,
                 isValid: true,
-                resourceFiles: []
+                resourceFiles: [],
+                source: PipelineSource.Workspace
             };
 
             const item = new PipelineItem(pipeline);
@@ -797,7 +801,8 @@ reduce:
                 lastModified: new Date(),
                 size: 100,
                 isValid: false,
-                validationErrors: ['Missing input field']
+                validationErrors: ['Missing input field'],
+                source: PipelineSource.Workspace
             };
 
             const item = new PipelineItem(pipeline);
@@ -814,7 +819,8 @@ reduce:
                 name: 'Pipeline',
                 lastModified: new Date(),
                 size: 500,
-                isValid: true
+                isValid: true,
+                source: PipelineSource.Workspace
             };
 
             const item = new PipelineItem(pipeline);
@@ -838,7 +844,8 @@ reduce:
                 isValid: true,
                 resourceFiles: [
                     { fileName: 'a.csv', filePath: '', relativePath: '', size: 10, fileType: 'csv' }
-                ]
+                ],
+                source: PipelineSource.Workspace
             };
 
             const item = new PipelineItem(pipeline);
@@ -857,7 +864,8 @@ reduce:
                 name: 'Test',
                 lastModified: new Date(),
                 size: 100,
-                isValid: true
+                isValid: true,
+                source: PipelineSource.Workspace
             };
 
             const resource = {
@@ -885,7 +893,8 @@ reduce:
                 name: 'Test',
                 lastModified: new Date(),
                 size: 100,
-                isValid: true
+                isValid: true,
+                source: PipelineSource.Workspace
             };
 
             const resource = {
@@ -910,7 +919,8 @@ reduce:
                 name: 'Test',
                 lastModified: new Date(),
                 size: 100,
-                isValid: true
+                isValid: true,
+                source: PipelineSource.Workspace
             };
 
             const resource = {
@@ -945,19 +955,28 @@ reduce:
             assert.ok(typeof treeDataProvider.getChildren === 'function');
         });
 
-        test('should return empty array when no pipeline packages', async () => {
+        test('should return category items when no pipeline packages', async () => {
             pipelineManager.ensurePipelinesFolderExists();
             const children = await treeDataProvider.getChildren();
-            assert.strictEqual(children.length, 0);
+            // Should have workspace category (folder exists)
+            assert.ok(children.length >= 1);
+            assert.ok(children.every(c => c.itemType === 'category'));
         });
 
-        test('should return pipeline package items', async () => {
+        test('should return pipeline package items under workspace category', async () => {
             createPipelinePackage('package-1', validPipelineYAML('Pipeline 1'));
             createPipelinePackage('package-2', validPipelineYAML('Pipeline 2'));
 
-            const children = await treeDataProvider.getChildren();
-            assert.strictEqual(children.length, 2);
-            assert.ok(children.every(c => c instanceof PipelineItem));
+            const categories = await treeDataProvider.getChildren();
+            // Find workspace category
+            const workspaceCategory = categories.find(c => 
+                c.itemType === 'category' && (c as any).categoryType === 'workspace'
+            );
+            assert.ok(workspaceCategory, 'Should have workspace category');
+            
+            const pipelines = await treeDataProvider.getChildren(workspaceCategory);
+            assert.strictEqual(pipelines.length, 2);
+            assert.ok(pipelines.every(c => c instanceof PipelineItem));
         });
 
         test('should return resource items for pipeline children', async () => {
@@ -966,7 +985,11 @@ reduce:
                 { name: 'config.json', content: '{}' }
             ]);
 
-            const pipelines = await treeDataProvider.getChildren();
+            const categories = await treeDataProvider.getChildren();
+            const workspaceCategory = categories.find(c => 
+                c.itemType === 'category' && (c as any).categoryType === 'workspace'
+            );
+            const pipelines = await treeDataProvider.getChildren(workspaceCategory);
             const pipelineItem = pipelines[0] as PipelineItem;
 
             const resources = await treeDataProvider.getChildren(pipelineItem);
@@ -979,7 +1002,11 @@ reduce:
                 { name: 'input.csv', content: 'id\n1' }
             ]);
 
-            const pipelines = await treeDataProvider.getChildren();
+            const categories = await treeDataProvider.getChildren();
+            const workspaceCategory = categories.find(c => 
+                c.itemType === 'category' && (c as any).categoryType === 'workspace'
+            );
+            const pipelines = await treeDataProvider.getChildren(workspaceCategory);
             const pipelineItem = pipelines[0] as PipelineItem;
             const resources = await treeDataProvider.getChildren(pipelineItem);
             const resourceItem = resources[0] as ResourceItem;
@@ -1004,9 +1031,14 @@ reduce:
 
             treeDataProvider.setFilter('banana');
 
-            const children = await treeDataProvider.getChildren();
-            assert.strictEqual(children.length, 1);
-            assert.strictEqual((children[0] as PipelineItem).label, 'Banana Pipeline');
+            const categories = await treeDataProvider.getChildren();
+            const workspaceCategory = categories.find(c => 
+                c.itemType === 'category' && (c as any).categoryType === 'workspace'
+            );
+            assert.ok(workspaceCategory);
+            const pipelines = await treeDataProvider.getChildren(workspaceCategory);
+            assert.strictEqual(pipelines.length, 1);
+            assert.strictEqual((pipelines[0] as PipelineItem).label, 'Banana Pipeline');
         });
 
         test('should filter pipelines by package name', async () => {
@@ -1015,8 +1047,13 @@ reduce:
 
             treeDataProvider.setFilter('test-one');
 
-            const children = await treeDataProvider.getChildren();
-            assert.strictEqual(children.length, 1);
+            const categories = await treeDataProvider.getChildren();
+            const workspaceCategory = categories.find(c => 
+                c.itemType === 'category' && (c as any).categoryType === 'workspace'
+            );
+            assert.ok(workspaceCategory);
+            const pipelines = await treeDataProvider.getChildren(workspaceCategory);
+            assert.strictEqual(pipelines.length, 1);
         });
 
         test('should clear filter', async () => {
@@ -1024,12 +1061,20 @@ reduce:
             createPipelinePackage('package-2', validPipelineYAML('Pipeline 2'));
 
             treeDataProvider.setFilter('1');
-            let children = await treeDataProvider.getChildren();
-            assert.strictEqual(children.length, 1);
+            let categories = await treeDataProvider.getChildren();
+            let workspaceCategory = categories.find(c => 
+                c.itemType === 'category' && (c as any).categoryType === 'workspace'
+            );
+            let pipelines = await treeDataProvider.getChildren(workspaceCategory);
+            assert.strictEqual(pipelines.length, 1);
 
             treeDataProvider.clearFilter();
-            children = await treeDataProvider.getChildren();
-            assert.strictEqual(children.length, 2);
+            categories = await treeDataProvider.getChildren();
+            workspaceCategory = categories.find(c => 
+                c.itemType === 'category' && (c as any).categoryType === 'workspace'
+            );
+            pipelines = await treeDataProvider.getChildren(workspaceCategory);
+            assert.strictEqual(pipelines.length, 2);
         });
 
         test('should sort pipelines by name', async () => {
@@ -1037,8 +1082,12 @@ reduce:
             createPipelinePackage('apple', validPipelineYAML('Apple'));
             createPipelinePackage('mango', validPipelineYAML('Mango'));
 
-            const children = await treeDataProvider.getChildren();
-            const names = children.map(c => (c as PipelineItem).label);
+            const categories = await treeDataProvider.getChildren();
+            const workspaceCategory = categories.find(c => 
+                c.itemType === 'category' && (c as any).categoryType === 'workspace'
+            );
+            const pipelines = await treeDataProvider.getChildren(workspaceCategory);
+            const names = pipelines.map(c => (c as PipelineItem).label);
 
             assert.strictEqual(names[0], 'Apple');
             assert.strictEqual(names[1], 'Mango');
@@ -1054,7 +1103,8 @@ reduce:
                 name: 'Test',
                 lastModified: new Date(),
                 size: 100,
-                isValid: true
+                isValid: true,
+                source: PipelineSource.Workspace
             };
             const item = new PipelineItem(pipeline);
 
@@ -1108,8 +1158,16 @@ reduce:
                 { name: 'data/nested.csv', content: 'col\nval' }
             ]);
 
-            // Get root items
-            const pipelines = await treeDataProvider.getChildren();
+            // Get root items (categories)
+            const categories = await treeDataProvider.getChildren();
+            assert.ok(categories.length >= 1);
+
+            // Get workspace category and its pipelines
+            const workspaceCategory = categories.find(c => 
+                c.itemType === 'category' && (c as any).categoryType === 'workspace'
+            );
+            assert.ok(workspaceCategory);
+            const pipelines = await treeDataProvider.getChildren(workspaceCategory);
             assert.strictEqual(pipelines.length, 1);
 
             // Get children (resources)

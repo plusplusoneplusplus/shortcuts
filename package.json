@@ -1436,6 +1436,18 @@
         "title": "Preview Pipeline",
         "category": "Pipelines",
         "icon": "$(preview)"
+      },
+      {
+        "command": "pipelinesViewer.copyToWorkspace",
+        "title": "Copy to Workspace",
+        "category": "Pipelines",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "pipelinesViewer.viewBundled",
+        "title": "View Pipeline",
+        "category": "Pipelines",
+        "icon": "$(eye)"
       }
     ],
     "menus": {
@@ -2249,13 +2261,23 @@
         },
         {
           "command": "pipelinesViewer.rename",
-          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "when": "view == pipelinesView && (viewItem == pipeline || viewItem == pipeline_invalid)",
           "group": "pipeline@5"
         },
         {
           "command": "pipelinesViewer.delete",
-          "when": "view == pipelinesView && viewItem =~ /^pipeline/",
+          "when": "view == pipelinesView && (viewItem == pipeline || viewItem == pipeline_invalid)",
           "group": "pipeline@6"
+        },
+        {
+          "command": "pipelinesViewer.copyToWorkspace",
+          "when": "view == pipelinesView && viewItem == pipeline_bundled",
+          "group": "pipeline@1"
+        },
+        {
+          "command": "pipelinesViewer.viewBundled",
+          "when": "view == pipelinesView && viewItem == pipeline_bundled",
+          "group": "pipeline@3"
         }
       ],
       "explorer/context": [
@@ -2428,6 +2450,7 @@
     "@typescript-eslint/parser": "^5.45.0",
     "@vscode/test-electron": "^2.2.0",
     "@vscode/vsce": "^2.15.0",
+    "copy-webpack-plugin": "^13.0.1",
     "eslint": "^8.28.0",
     "glob": "^8.0.3",
     "mocha": "^10.1.0",

@@ -1,15 +1,41 @@
 /**
  * Pipeline Item
  *
- * Tree items representing pipelines and resources in the Pipelines Viewer.
+ * Tree items representing pipelines, resources, and categories in the Pipelines Viewer.
+ * Supports both bundled (read-only) and workspace (editable) pipelines.
  */
 
 import * as vscode from 'vscode';
-import { PipelineInfo, ResourceFileInfo } from './types';
+import { PipelineInfo, ResourceFileInfo, PipelineSource } from './types';
+
+/**
+ * Category header item (Bundled / Workspace)
+ */
+export class PipelineCategoryItem extends vscode.TreeItem {
+    public readonly categoryType: 'bundled' | 'workspace';
+    public readonly itemType: 'category' = 'category';
+
+    constructor(
+        label: string,
+        categoryType: 'bundled' | 'workspace',
+        count: number,
+        tooltip: string
+    ) {
+        super(label, vscode.TreeItemCollapsibleState.Expanded);
+        this.categoryType = categoryType;
+        this.description = `(${count})`;
+        this.tooltip = tooltip;
+        this.contextValue = `pipelineCategory_${categoryType}`;
+        this.iconPath = categoryType === 'bundled'
+            ? new vscode.ThemeIcon('package')
+            : new vscode.ThemeIcon('folder');
+    }
+}
 
 /**
  * Tree item representing a pipeline package in the Pipelines Viewer.
  * A package is collapsible and contains the pipeline definition and resource files.
+ * Supports both bundled (read-only) and workspace (editable) pipelines.
  */
 export class PipelineItem extends vscode.TreeItem {
     public readonly contextValue: string;
@@ -27,8 +53,19 @@ export class PipelineItem extends vscode.TreeItem {
         );
 
         this.pipeline = pipeline;
-        this.contextValue = pipeline.isValid ? 'pipeline' : 'pipeline_invalid';
-        this.description = pipeline.packageName;
+        
+        // Set context value based on source and validity
+        if (pipeline.source === PipelineSource.Bundled) {
+            this.contextValue = 'pipeline_bundled';
+        } else {
+            this.contextValue = pipeline.isValid ? 'pipeline' : 'pipeline_invalid';
+        }
+        
+        // Show "(read-only)" for bundled pipelines, package name for workspace
+        this.description = pipeline.source === PipelineSource.Bundled
+            ? '(read-only)'
+            : pipeline.packageName;
+            
         this.tooltip = this.buildTooltip(pipeline);
         this.iconPath = this.getIconPath(pipeline);
 
@@ -50,12 +87,21 @@ export class PipelineItem extends vscode.TreeItem {
         const tooltip = new vscode.MarkdownString();
         tooltip.isTrusted = true;
 
-        // Title
-        tooltip.appendMarkdown(`### 📦 ${pipeline.name}\n\n`);
+        // Title with icon based on source
+        const icon = pipeline.source === PipelineSource.Bundled ? '📦' : '📋';
+        tooltip.appendMarkdown(`### ${icon} ${pipeline.name}\n\n`);
 
         // Description
         if (pipeline.description) {
             tooltip.appendMarkdown(`${pipeline.description}\n\n`);
+        }
+
+        // Source indicator
+        if (pipeline.source === PipelineSource.Bundled) {
+            tooltip.appendMarkdown(`📦 *Bundled with extension (read-only)*\n\n`);
+            tooltip.appendMarkdown(`Right-click to copy to workspace for editing.\n\n`);
+        } else {
+            tooltip.appendMarkdown(`📁 *Workspace pipeline*\n\n`);
         }
 
         // Package info
@@ -68,15 +114,17 @@ export class PipelineItem extends vscode.TreeItem {
             tooltip.appendMarkdown(`**Resources:** ${pipeline.resourceFiles.length} file(s)\n\n`);
         }
 
-        // Validation status
-        if (pipeline.isValid) {
-            tooltip.appendMarkdown(`**Status:** ✅ Valid\n`);
-        } else {
-            tooltip.appendMarkdown(`**Status:** ⚠️ Invalid\n\n`);
-            if (pipeline.validationErrors && pipeline.validationErrors.length > 0) {
-                tooltip.appendMarkdown(`**Errors:**\n`);
-                for (const error of pipeline.validationErrors) {
-                    tooltip.appendMarkdown(`- ${error}\n`);
+        // Validation status (only for workspace pipelines)
+        if (pipeline.source === PipelineSource.Workspace) {
+            if (pipeline.isValid) {
+                tooltip.appendMarkdown(`**Status:** ✅ Valid\n`);
+            } else {
+                tooltip.appendMarkdown(`**Status:** ⚠️ Invalid\n\n`);
+                if (pipeline.validationErrors && pipeline.validationErrors.length > 0) {
+                    tooltip.appendMarkdown(`**Errors:**\n`);
+                    for (const error of pipeline.validationErrors) {
+                        tooltip.appendMarkdown(`- ${error}\n`);
+                    }
                 }
             }
         }
@@ -88,11 +136,17 @@ export class PipelineItem extends vscode.TreeItem {
      * Get the icon for the pipeline package
      */
     private getIconPath(pipeline: PipelineInfo): vscode.ThemeIcon {
-        if (!pipeline.isValid) {
+        if (!pipeline.isValid && pipeline.source === PipelineSource.Workspace) {
             return new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
         }
-        // Use folder icon with a color to indicate it's a pipeline package
-        return new vscode.ThemeIcon('package', new vscode.ThemeColor('charts.blue'));
+        
+        // Use different icons for bundled vs workspace
+        if (pipeline.source === PipelineSource.Bundled) {
+            return new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.purple'));
+        }
+        
+        // Workspace pipeline
+        return new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.blue'));
     }
 
     /**
@@ -215,4 +269,4 @@ export class ResourceItem extends vscode.TreeItem {
 }
 
 /** Union type for all tree item types */
-export type PipelineTreeItem = PipelineItem | ResourceItem;
+export type PipelineTreeItem = PipelineCategoryItem | PipelineItem | ResourceItem;

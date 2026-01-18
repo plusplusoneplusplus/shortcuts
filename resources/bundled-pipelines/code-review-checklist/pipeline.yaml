@@ -1,0 +1,61 @@
+# Bundled Pipeline: Code Review Checklist
+# Generate code review checklists from git diffs
+name: "Code Review Checklist"
+description: "Generate a code review checklist from git diff. Analyzes each changed file and creates a prioritized checklist of items to verify during review."
+
+input:
+  # This pipeline expects git diff data to be provided
+  # When executed, provide items with: file, changeType, diff
+  items: []
+  parameters:
+    - name: reviewFocus
+      value: "correctness, edge cases, security, performance"
+
+map:
+  prompt: |
+    Analyze this code change and create a review checklist:
+
+    File: {{file}}
+    Change Type: {{changeType}}
+
+    Diff:
+    ```
+    {{diff}}
+    ```
+
+    Focus areas: {{reviewFocus}}
+
+    Create a checklist of items to verify during code review.
+    For each item, indicate:
+    - What to check
+    - Why it matters
+    - Risk level (high/medium/low)
+
+    Return JSON with your analysis.
+  output:
+    - checklist_items
+    - risk_level
+    - suggested_tests
+  parallel: 5
+
+reduce:
+  type: ai
+  prompt: |
+    Combine these file-level checklists into a unified review checklist.
+
+    Results from {{COUNT}} files:
+    {{RESULTS}}
+
+    Create a prioritized checklist organized by risk level.
+    Include:
+    1. Critical items (must check)
+    2. Important items (should check)
+    3. Nice-to-have items (optional)
+
+    Also provide an overall risk assessment for the changes.
+  output:
+    - critical_items
+    - important_items
+    - optional_items
+    - overall_risk
+    - summary

@@ -1,0 +1,60 @@
+# Bundled Pipeline: Bug Triage
+# Classify and prioritize bug reports from CSV
+name: "Bug Triage"
+description: "Classify and prioritize bug reports. Analyzes bug descriptions to determine severity, category, and estimated effort."
+
+input:
+  # Load bug reports from CSV
+  # Expected columns: title, description, priority (optional)
+  from:
+    type: csv
+    path: "sample-input.csv"
+
+map:
+  prompt: |
+    Analyze this bug report:
+
+    Title: {{title}}
+    Description: {{description}}
+    Reporter Priority: {{priority}}
+
+    Classify the bug by:
+    1. Severity (critical/high/medium/low)
+    2. Category (crash, data-loss, ui, performance, security, functionality, other)
+    3. Affected components (list likely affected areas)
+    4. Estimated effort in hours
+    5. Whether more information is needed from the reporter
+
+    Return JSON with your analysis.
+  output:
+    - severity
+    - category
+    - affected_components
+    - effort_hours
+    - needs_more_info
+  parallel: 5
+
+reduce:
+  type: ai
+  prompt: |
+    You analyzed {{COUNT}} bug reports:
+
+    {{RESULTS}}
+
+    Successful: {{SUCCESS_COUNT}}
+    Failed: {{FAILURE_COUNT}}
+
+    Create a triage summary:
+    1. Group bugs by severity
+    2. Identify patterns or related issues
+    3. Recommend prioritization order
+    4. Estimate total effort
+    5. Flag any bugs that need immediate attention
+
+    Return JSON with the summary.
+  output:
+    - severity_breakdown
+    - patterns
+    - prioritized_list
+    - total_effort_hours
+    - urgent_items

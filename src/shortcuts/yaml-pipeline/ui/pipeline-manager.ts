@@ -4,13 +4,15 @@
  * Manages pipeline packages stored in the pipelines folder.
  * Each pipeline is a package (directory) containing pipeline.yaml and resource files.
  * Handles discovery, parsing, validation, and file watching.
+ * Also manages bundled pipelines that ship with the extension.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
-import { PipelineInfo, ValidationResult, PipelinesViewerSettings, PipelineSortBy, ResourceFileInfo, PipelineTemplateType, PIPELINE_TEMPLATES } from './types';
+import { PipelineInfo, ValidationResult, PipelinesViewerSettings, PipelineSortBy, ResourceFileInfo, PipelineTemplateType, PIPELINE_TEMPLATES, PipelineSource, BundledPipelineManifest } from './types';
+import { BUNDLED_PIPELINES, getBundledPipelinesPath, getBundledPipelineManifest } from '../bundled';
 
 /** Standard pipeline file names recognized by the system */
 const PIPELINE_FILE_NAMES = ['pipeline.yaml', 'pipeline.yml'];
@@ -18,16 +20,26 @@ const PIPELINE_FILE_NAMES = ['pipeline.yaml', 'pipeline.yml'];
 /**
  * Manages pipeline packages in the workspace.
  * A pipeline package is a directory containing pipeline.yaml and related resources.
+ * Also manages bundled pipelines that ship with the extension.
  */
 export class PipelineManager implements vscode.Disposable {
     private readonly workspaceRoot: string;
+    private extensionContext?: vscode.ExtensionContext;
     private fileWatcher?: vscode.FileSystemWatcher;
     private folderWatcher?: vscode.FileSystemWatcher;
     private debounceTimer?: NodeJS.Timeout;
     private refreshCallback?: () => void;
 
-    constructor(workspaceRoot: string) {
+    constructor(workspaceRoot: string, extensionContext?: vscode.ExtensionContext) {
         this.workspaceRoot = workspaceRoot;
+        this.extensionContext = extensionContext;
+    }
+
+    /**
+     * Set the extension context (needed for bundled pipelines)
+     */
+    setExtensionContext(context: vscode.ExtensionContext): void {
+        this.extensionContext = context;
     }
 
     /**
@@ -90,11 +102,172 @@ export class PipelineManager implements vscode.Disposable {
     }
 
     /**
-     * Get a specific pipeline by package name
+     * Get a specific pipeline by package name (workspace pipelines only)
      */
     async getPipeline(packageName: string): Promise<PipelineInfo | undefined> {
         const pipelines = await this.getPipelines();
         return pipelines.find(p => p.packageName === packageName);
+    }
+
+    /**
+     * Get all pipelines from both bundled and workspace sources.
+     */
+    async getAllPipelines(): Promise<PipelineInfo[]> {
+        const [bundled, workspace] = await Promise.all([
+            this.getBundledPipelines(),
+            this.getWorkspacePipelines()
+        ]);
+        return [...bundled, ...workspace];
+    }
+
+    /**
+     * Get workspace pipelines only (alias for getPipelines with source field)
+     */
+    async getWorkspacePipelines(): Promise<PipelineInfo[]> {
+        const pipelines = await this.getPipelines();
+        return pipelines.map(p => ({
+            ...p,
+            source: PipelineSource.Workspace
+        }));
+    }
+
+    /**
+     * Get pipelines bundled with the extension.
+     */
+    async getBundledPipelines(): Promise<PipelineInfo[]> {
+        if (!this.extensionContext) {
+            return [];
+        }
+
+        const bundledPath = getBundledPipelinesPath(this.extensionContext);
+        const pipelines: PipelineInfo[] = [];
+
+        for (const manifest of BUNDLED_PIPELINES) {
+            const pipelineDir = path.join(bundledPath, manifest.directory);
+            const entryPoint = manifest.entryPoint || 'pipeline.yaml';
+            const pipelineFile = path.join(pipelineDir, entryPoint);
+
+            try {
+                if (!fs.existsSync(pipelineFile)) {
+                    console.warn(`Bundled pipeline not found: ${pipelineFile}`);
+                    continue;
+                }
+
+                const content = fs.readFileSync(pipelineFile, 'utf-8');
+                const parsed = yaml.load(content) as Record<string, unknown>;
+                const stats = fs.statSync(pipelineFile);
+
+                // Get resource files in the bundled package
+                const resourceFiles = this.getResourceFiles(pipelineDir);
+
+                pipelines.push({
+                    packageName: manifest.directory,
+                    packagePath: pipelineDir,
+                    filePath: pipelineFile,
+                    relativePath: `bundled://${manifest.directory}`,
+                    name: (parsed?.name as string) || manifest.name,
+                    description: (parsed?.description as string) || manifest.description,
+                    lastModified: stats.mtime,
+                    size: stats.size,
+                    isValid: true, // Bundled pipelines are pre-validated
+                    source: PipelineSource.Bundled,
+                    bundledId: manifest.id,
+                    resourceFiles
+                });
+            } catch (error) {
+                console.error(`Failed to load bundled pipeline ${manifest.id}:`, error);
+            }
+        }
+
+        return pipelines;
+    }
+
+    /**
+     * Copy a bundled pipeline to the workspace for customization.
+     * @param bundledId The ID of the bundled pipeline to copy
+     * @param targetName Optional custom name for the copied pipeline
+     * @returns The path to the created pipeline.yaml file
+     */
+    async copyBundledToWorkspace(bundledId: string, targetName?: string): Promise<string> {
+        if (!this.extensionContext) {
+            throw new Error('Extension context not available');
+        }
+
+        const manifest = getBundledPipelineManifest(bundledId);
+        if (!manifest) {
+            throw new Error(`Bundled pipeline not found: ${bundledId}`);
+        }
+
+        const bundledPath = getBundledPipelinesPath(this.extensionContext);
+        const sourceDir = path.join(bundledPath, manifest.directory);
+        const destName = targetName || manifest.directory;
+        const sanitizedDestName = this.sanitizeFileName(destName);
+        const destDir = path.join(this.getPipelinesFolder(), sanitizedDestName);
+
+        // Check if destination already exists
+        if (fs.existsSync(destDir)) {
+            throw new Error(`Pipeline already exists: ${destName}`);
+        }
+
+        // Ensure pipelines folder exists
+        this.ensurePipelinesFolderExists();
+
+        // Create destination directory
+        fs.mkdirSync(destDir, { recursive: true });
+
+        // Copy pipeline.yaml
+        const entryPoint = manifest.entryPoint || 'pipeline.yaml';
+        fs.copyFileSync(
+            path.join(sourceDir, entryPoint),
+            path.join(destDir, entryPoint)
+        );
+
+        // Copy resource files
+        if (manifest.resources) {
+            for (const resource of manifest.resources) {
+                const srcFile = path.join(sourceDir, resource);
+                const destFile = path.join(destDir, resource);
+
+                if (fs.existsSync(srcFile)) {
+                    // Create subdirectories if needed
+                    const destFileDir = path.dirname(destFile);
+                    if (!fs.existsSync(destFileDir)) {
+                        fs.mkdirSync(destFileDir, { recursive: true });
+                    }
+                    fs.copyFileSync(srcFile, destFile);
+                }
+            }
+        }
+
+        return path.join(destDir, entryPoint);
+    }
+
+    /**
+     * Check if a bundled pipeline has been copied to workspace.
+     */
+    async isBundledPipelineInWorkspace(bundledId: string): Promise<boolean> {
+        const manifest = getBundledPipelineManifest(bundledId);
+        if (!manifest) {
+            return false;
+        }
+
+        const workspacePath = path.join(this.getPipelinesFolder(), manifest.directory);
+        return fs.existsSync(workspacePath);
+    }
+
+    /**
+     * Check if the workspace pipelines folder exists
+     */
+    async workspaceFolderExists(): Promise<boolean> {
+        return fs.existsSync(this.getPipelinesFolder());
+    }
+
+    /**
+     * Get the relative path to the pipelines folder
+     */
+    getRelativePipelinesFolder(): string {
+        const settings = this.getSettings();
+        return settings.folderPath || '.vscode/pipelines';
     }
 
     /**
@@ -461,7 +634,8 @@ export class PipelineManager implements vscode.Disposable {
             size: stats.size,
             isValid: validation.valid,
             validationErrors: validation.errors.length > 0 ? validation.errors : undefined,
-            resourceFiles
+            resourceFiles,
+            source: PipelineSource.Workspace
         };
     }
 

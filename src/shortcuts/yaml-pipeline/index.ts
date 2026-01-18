@@ -121,6 +121,8 @@ export type {
     PipelineTreeItem
 } from './ui';
 
+export { PipelineCategoryItem } from './ui';
+
 export type {
     PipelineInfo,
     ResourceFileInfo,
@@ -129,10 +131,22 @@ export type {
     PipelineSortBy,
     TreeItemType,
     PipelineTemplateType,
-    PipelineTemplate
+    PipelineTemplate,
+    BundledPipelineManifest
 } from './ui';
 
-export { PIPELINE_TEMPLATES } from './ui';
+export { PIPELINE_TEMPLATES, PipelineSource } from './ui';
+
+// Bundled Pipelines
+export {
+    BUNDLED_PIPELINES,
+    getBundledPipelinesPath,
+    getBundledPipelineManifest,
+    getAllBundledPipelineManifests,
+    isValidBundledPipelineId,
+    getBundledPipelineDirectory,
+    getBundledPipelineEntryPoint
+} from './ui';
 
 // Result Viewer (enhanced pipeline result display)
 export {

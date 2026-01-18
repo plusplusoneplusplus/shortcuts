@@ -1,0 +1,6 @@
+title,description,priority
+Login fails intermittently,"Users report being unable to log in randomly. The error message says 'Authentication failed' but credentials are correct. Happens more often during peak hours.",high
+Button color is wrong,"The submit button on the settings page is blue instead of green as per the design spec.",low
+App crashes on startup,"The application crashes immediately after launch on Windows 10. Error log shows null pointer exception in UserService.init().",critical
+Search results are slow,"Search takes 10+ seconds to return results when there are more than 1000 items in the database.",medium
+Data export missing columns,"When exporting to CSV, the 'created_at' and 'updated_at' columns are not included.",medium
