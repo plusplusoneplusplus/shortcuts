@@ -95,9 +95,11 @@ export {
     TerminalType
 } from './types';
 
+// Export CLI utilities
+export { buildCliCommand, COPILOT_BASE_FLAGS } from './cli-utils';
+
 // Export external terminal launcher
 export {
-    buildCliCommand,
     ExternalTerminalLauncher,
     getExternalTerminalLauncher,
     resetExternalTerminalLauncher

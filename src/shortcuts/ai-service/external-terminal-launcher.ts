@@ -18,6 +18,7 @@ import {
     InteractiveToolType,
     TerminalType
 } from './types';
+import { buildCliCommand } from './cli-utils';
 
 /**
  * Terminal configuration for each platform
@@ -135,43 +136,6 @@ function escapeAppleScript(str: string): string {
         .replace(/'/g, "'\\''");
 }
 
-/**
- * Build the CLI command string for the specified tool
- */
-export function buildCliCommand(tool: InteractiveToolType, initialPrompt?: string): string {
-    const baseCommand = tool === 'copilot' ? 'copilot' : 'claude';
-
-    if (!initialPrompt) {
-        return baseCommand;
-    }
-
-    // Escape the prompt for shell use
-    const platform = process.platform;
-    const escapedPrompt = escapeShellArg(initialPrompt, platform as NodeJS.Platform);
-
-    return `${baseCommand} -p ${escapedPrompt}`;
-}
-
-/**
- * Escape a string for safe use in shell commands
- */
-export function escapeShellArg(str: string, platform: NodeJS.Platform): string {
-    if (platform === 'win32') {
-        // Windows: Use double quotes, escape internal double quotes
-        const escaped = str
-            .replace(/\r\n/g, '\\n')
-            .replace(/\r/g, '')
-            .replace(/\n/g, '\\n')
-            .replace(/%/g, '%%')
-            .replace(/!/g, '^!')
-            .replace(/"/g, '""');
-        return `"${escaped}"`;
-    } else {
-        // Unix: Use single quotes, escape internal single quotes
-        const escaped = str.replace(/'/g, "'\\''");
-        return `'${escaped}'`;
-    }
-}
 
 /**
  * External Terminal Launcher
@@ -276,7 +240,7 @@ export class ExternalTerminalLauncher {
      * Launch an external terminal with the specified options
      */
     async launch(options: ExternalTerminalLaunchOptions): Promise<ExternalTerminalLaunchResult> {
-        const { workingDirectory, tool, initialPrompt, preferredTerminal } = options;
+        const { workingDirectory, tool, initialPrompt, preferredTerminal, model } = options;
 
         // Determine which terminal to use
         let terminalType: TerminalType;
@@ -296,7 +260,7 @@ export class ExternalTerminalLauncher {
         }
 
         // Build the CLI command
-        const command = buildCliCommand(tool, initialPrompt);
+        const command = buildCliCommand(tool, { prompt: initialPrompt, model });
 
         // Get the terminal configuration
         const platformKey = this.getPlatformKey();

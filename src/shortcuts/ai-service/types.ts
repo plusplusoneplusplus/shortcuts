@@ -435,6 +435,8 @@ export interface ExternalTerminalLaunchOptions {
     initialPrompt?: string;
     /** Preferred terminal type (optional, auto-detected if not specified) */
     preferredTerminal?: TerminalType;
+    /** Model to use (optional, uses default if not specified) */
+    model?: string;
 }
 
 /**
