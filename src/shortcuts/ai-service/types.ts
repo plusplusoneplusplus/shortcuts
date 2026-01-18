@@ -365,6 +365,106 @@ export interface ProcessEvent {
 }
 
 // ============================================================================
+// Interactive Session Types
+// ============================================================================
+
+/**
+ * Supported CLI tools for interactive sessions
+ */
+export type InteractiveToolType = 'copilot' | 'claude';
+
+/**
+ * Status of an interactive session
+ */
+export type InteractiveSessionStatus = 'starting' | 'active' | 'ended' | 'error';
+
+/**
+ * Supported terminal types across platforms
+ */
+export type TerminalType =
+    // macOS
+    | 'terminal.app'
+    | 'iterm'
+    // Windows
+    | 'windows-terminal'
+    | 'cmd'
+    | 'powershell'
+    // Linux
+    | 'gnome-terminal'
+    | 'konsole'
+    | 'xfce4-terminal'
+    | 'xterm'
+    // Generic
+    | 'unknown';
+
+/**
+ * An interactive CLI session running in an external terminal
+ */
+export interface InteractiveSession {
+    /** Unique session identifier */
+    id: string;
+    /** When the session was started */
+    startTime: Date;
+    /** When the session ended (if ended) */
+    endTime?: Date;
+    /** Current session status */
+    status: InteractiveSessionStatus;
+    /** Working directory for the session */
+    workingDirectory: string;
+    /** CLI tool being used */
+    tool: InteractiveToolType;
+    /** Initial prompt sent to the CLI (if any) */
+    initialPrompt?: string;
+    /** Type of terminal used */
+    terminalType: TerminalType;
+    /** Process ID of the terminal (if available) */
+    pid?: number;
+    /** Error message if status is 'error' */
+    error?: string;
+}
+
+/**
+ * Options for launching an external terminal
+ */
+export interface ExternalTerminalLaunchOptions {
+    /** Working directory for the terminal */
+    workingDirectory: string;
+    /** CLI tool to launch */
+    tool: InteractiveToolType;
+    /** Initial prompt to send (optional) */
+    initialPrompt?: string;
+    /** Preferred terminal type (optional, auto-detected if not specified) */
+    preferredTerminal?: TerminalType;
+}
+
+/**
+ * Result of launching an external terminal
+ */
+export interface ExternalTerminalLaunchResult {
+    /** Whether the launch was successful */
+    success: boolean;
+    /** Type of terminal that was launched */
+    terminalType: TerminalType;
+    /** Process ID of the launched terminal (if available) */
+    pid?: number;
+    /** Error message if launch failed */
+    error?: string;
+}
+
+/**
+ * Event types for interactive session changes
+ */
+export type InteractiveSessionEventType = 'session-started' | 'session-updated' | 'session-ended' | 'session-error';
+
+/**
+ * Interactive session change event
+ */
+export interface InteractiveSessionEvent {
+    type: InteractiveSessionEventType;
+    session: InteractiveSession;
+}
+
+// ============================================================================
 // AI Process Manager Interface
 // ============================================================================
 

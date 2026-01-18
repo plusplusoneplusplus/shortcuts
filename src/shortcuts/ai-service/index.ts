@@ -58,7 +58,10 @@ export {
 } from './mock-ai-process-manager';
 
 // Export tree data provider
-export { AIProcessItem, AIProcessTreeDataProvider } from './ai-process-tree-provider';
+export { AIProcessItem, AIProcessTreeDataProvider, AIProcessTreeItem } from './ai-process-tree-provider';
+
+// Export interactive session tree items
+export { InteractiveSessionItem, InteractiveSessionSectionItem } from './interactive-session-tree-item';
 
 // Export document provider for read-only process viewing
 export { AI_PROCESS_SCHEME, AIProcessDocumentProvider } from './ai-process-document-provider';
@@ -80,3 +83,30 @@ export { buildPrompt, getAvailableVariables, PromptContext, usesTemplateVariable
 export { AILogLevel, AIServiceLogger, getAIServiceLogger, LogLevel, ExtensionLogger, getExtensionLogger, LogCategory } from './ai-service-logger';
 export type { AILogEntry } from './ai-service-logger';
 
+// Export interactive session types
+export {
+    ExternalTerminalLaunchOptions,
+    ExternalTerminalLaunchResult,
+    InteractiveSession,
+    InteractiveSessionEvent,
+    InteractiveSessionEventType,
+    InteractiveSessionStatus,
+    InteractiveToolType,
+    TerminalType
+} from './types';
+
+// Export external terminal launcher
+export {
+    buildCliCommand,
+    ExternalTerminalLauncher,
+    getExternalTerminalLauncher,
+    resetExternalTerminalLauncher
+} from './external-terminal-launcher';
+
+// Export interactive session manager
+export {
+    getInteractiveSessionManager,
+    InteractiveSessionManager,
+    resetInteractiveSessionManager,
+    StartSessionOptions
+} from './interactive-session-manager';

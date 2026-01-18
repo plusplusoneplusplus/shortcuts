@@ -1,13 +1,16 @@
 /**
  * Tree data provider for the AI Processes panel
- * 
+ *
  * Provides a tree view of running and completed AI processes.
  * Supports hierarchical display for grouped code reviews.
+ * Also supports interactive CLI sessions in external terminals.
  */
 
 import * as vscode from 'vscode';
 import { IAIProcessManager } from './types';
 import { AIProcess } from './types';
+import { InteractiveSessionManager } from './interactive-session-manager';
+import { InteractiveSessionItem, InteractiveSessionSectionItem } from './interactive-session-tree-item';
 
 /**
  * Tree item representing an AI process
@@ -391,18 +394,25 @@ export class AIProcessItem extends vscode.TreeItem {
 }
 
 /**
+ * Union type for all tree items in the AI Processes panel
+ */
+export type AIProcessTreeItem = AIProcessItem | InteractiveSessionItem | InteractiveSessionSectionItem;
+
+/**
  * Tree data provider for AI processes
  */
-export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProcessItem>, vscode.Disposable {
-    private readonly _onDidChangeTreeData = new vscode.EventEmitter<AIProcessItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<AIProcessItem | undefined | null | void> = this._onDidChangeTreeData.event;
+export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProcessTreeItem>, vscode.Disposable {
+    private readonly _onDidChangeTreeData = new vscode.EventEmitter<AIProcessTreeItem | undefined | null | void>();
+    readonly onDidChangeTreeData: vscode.Event<AIProcessTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
     private processManager: IAIProcessManager;
+    private sessionManager?: InteractiveSessionManager;
     private disposables: vscode.Disposable[] = [];
     private refreshInterval?: NodeJS.Timeout;
 
-    constructor(processManager: IAIProcessManager) {
+    constructor(processManager: IAIProcessManager, sessionManager?: InteractiveSessionManager) {
         this.processManager = processManager;
+        this.sessionManager = sessionManager;
 
         // Listen for process changes
         this.disposables.push(
@@ -411,12 +421,39 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
             })
         );
 
-        // Refresh every second to update elapsed times for running processes
+        // Listen for session changes if session manager is provided
+        if (sessionManager) {
+            this.disposables.push(
+                sessionManager.onDidChangeSessions(() => {
+                    this.refresh();
+                })
+            );
+        }
+
+        // Refresh every second to update elapsed times for running processes and active sessions
         this.refreshInterval = setInterval(() => {
-            if (this.processManager.hasRunningProcesses()) {
+            const hasRunningProcesses = this.processManager.hasRunningProcesses();
+            const hasActiveSessions = this.sessionManager?.hasActiveSessions() ?? false;
+            if (hasRunningProcesses || hasActiveSessions) {
                 this._onDidChangeTreeData.fire();
             }
         }, 1000);
+    }
+
+    /**
+     * Set the session manager (can be set after construction)
+     */
+    setSessionManager(sessionManager: InteractiveSessionManager): void {
+        this.sessionManager = sessionManager;
+
+        // Listen for session changes
+        this.disposables.push(
+            sessionManager.onDidChangeSessions(() => {
+                this.refresh();
+            })
+        );
+
+        this.refresh();
     }
 
     /**
@@ -429,18 +466,24 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
     /**
      * Get tree item
      */
-    getTreeItem(element: AIProcessItem): vscode.TreeItem {
+    getTreeItem(element: AIProcessTreeItem): vscode.TreeItem {
         return element;
     }
 
     /**
-     * Get children - supports hierarchical display for code review groups
+     * Get children - supports hierarchical display for code review groups and interactive sessions
      */
-    async getChildren(element?: AIProcessItem): Promise<AIProcessItem[]> {
+    async getChildren(element?: AIProcessTreeItem): Promise<AIProcessTreeItem[]> {
+        // Handle interactive sessions section
+        if (element instanceof InteractiveSessionSectionItem) {
+            return this.getInteractiveSessionItems();
+        }
+
         // If we're getting children of a code review group or pipeline execution, return its child processes
-        if (element && (element.process.type === 'code-review-group' || element.process.type === 'pipeline-execution')) {
+        if (element instanceof AIProcessItem &&
+            (element.process.type === 'code-review-group' || element.process.type === 'pipeline-execution')) {
             const childProcesses = this.processManager.getChildProcesses(element.process.id);
-            
+
             // Sort child processes: running first, then by start time
             childProcesses.sort((a, b) => {
                 if (a.status === 'running' && b.status !== 'running') {
@@ -451,13 +494,25 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
                 }
                 return a.startTime.getTime() - b.startTime.getTime();
             });
-            
+
             return childProcesses.map(p => new AIProcessItem(p, true));
         }
 
-        // For other elements or root level, return top-level processes only
+        // For other non-root elements, return empty
         if (element) {
             return [];
+        }
+
+        // Root level - return interactive sessions section (if any) + top-level processes
+        const items: AIProcessTreeItem[] = [];
+
+        // Add interactive sessions section if there are any sessions
+        if (this.sessionManager) {
+            const sessions = this.sessionManager.getSessions();
+            if (sessions.length > 0) {
+                const activeSessions = this.sessionManager.getActiveSessions();
+                items.push(new InteractiveSessionSectionItem(activeSessions.length));
+            }
         }
 
         // Get only top-level processes (those without parents)
@@ -474,14 +529,55 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
             return b.startTime.getTime() - a.startTime.getTime();
         });
 
-        return processes.map(p => new AIProcessItem(p));
+        items.push(...processes.map(p => new AIProcessItem(p)));
+
+        return items;
+    }
+
+    /**
+     * Get interactive session items sorted by status and time
+     */
+    private getInteractiveSessionItems(): InteractiveSessionItem[] {
+        if (!this.sessionManager) {
+            return [];
+        }
+
+        const sessions = this.sessionManager.getSessions();
+
+        // Sort: active/starting first, then by start time (newest first)
+        sessions.sort((a, b) => {
+            const aActive = a.status === 'active' || a.status === 'starting';
+            const bActive = b.status === 'active' || b.status === 'starting';
+
+            if (aActive && !bActive) {
+                return -1;
+            }
+            if (!aActive && bActive) {
+                return 1;
+            }
+            return b.startTime.getTime() - a.startTime.getTime();
+        });
+
+        return sessions.map(s => new InteractiveSessionItem(s));
     }
 
     /**
      * Get parent for tree item (needed for reveal)
      */
-    getParent(element: AIProcessItem): AIProcessItem | undefined {
-        if (element.process.parentProcessId) {
+    getParent(element: AIProcessTreeItem): AIProcessTreeItem | undefined {
+        // Interactive session items have the section as parent
+        if (element instanceof InteractiveSessionItem) {
+            const activeSessions = this.sessionManager?.getActiveSessions() ?? [];
+            return new InteractiveSessionSectionItem(activeSessions.length);
+        }
+
+        // Section items have no parent
+        if (element instanceof InteractiveSessionSectionItem) {
+            return undefined;
+        }
+
+        // AIProcessItem - check for parent process
+        if (element instanceof AIProcessItem && element.process.parentProcessId) {
             const parentProcess = this.processManager.getProcess(element.process.parentProcessId);
             if (parentProcess) {
                 return new AIProcessItem(parentProcess);

@@ -66,6 +66,14 @@ export function getDefaultDebugCommands(): DebugCommand[] {
             tooltip: 'Open a new Copilot CLI background agent session with a custom prompt\n\nCommand: workbench.action.chat.openNewSessionEditor.copilotcli',
             icon: 'hubot',
             commandId: 'debugPanel.newBackgroundAgent'
+        },
+        {
+            id: 'new-interactive-session',
+            label: 'New Interactive Session',
+            description: 'Launch external CLI',
+            tooltip: 'Launch an interactive AI CLI session (Copilot or Claude) in an external terminal window\n\nThe session runs independently and can be used for interactive conversations.',
+            icon: 'terminal-view-icon',
+            commandId: 'interactiveSessions.start'
         }
     ];
 }

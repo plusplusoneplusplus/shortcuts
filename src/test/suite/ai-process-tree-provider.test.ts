@@ -4,7 +4,26 @@
  */
 
 import * as assert from 'assert';
-import { AIProcessItem, AIProcessTreeDataProvider, MockAIProcessManager } from '../../shortcuts/ai-service';
+import { AIProcessItem, AIProcessTreeDataProvider, AIProcessTreeItem, MockAIProcessManager } from '../../shortcuts/ai-service';
+
+/**
+ * Type guard to check if a tree item is an AIProcessItem
+ */
+function isAIProcessItem(item: AIProcessTreeItem): item is AIProcessItem {
+    return 'process' in item;
+}
+
+/**
+ * Assert that tree items are AIProcessItems and return them typed
+ */
+function assertAIProcessItems(items: AIProcessTreeItem[]): AIProcessItem[] {
+    const processItems: AIProcessItem[] = [];
+    for (const item of items) {
+        assert.ok(isAIProcessItem(item), 'Expected AIProcessItem');
+        processItems.push(item);
+    }
+    return processItems;
+}
 
 suite('AI Process Tree Provider Tests', () => {
 
@@ -22,9 +41,10 @@ suite('AI Process Tree Provider Tests', () => {
             });
 
             const topLevel = await provider.getChildren();
-            assert.strictEqual(topLevel.length, 1);
-            assert.strictEqual(topLevel[0].process.id, groupId);
-            assert.strictEqual(topLevel[0].process.type, 'code-review-group');
+            const processItems = assertAIProcessItems(topLevel);
+            assert.strictEqual(processItems.length, 1);
+            assert.strictEqual(processItems[0].process.id, groupId);
+            assert.strictEqual(processItems[0].process.type, 'code-review-group');
 
             provider.dispose();
         });
@@ -60,8 +80,9 @@ suite('AI Process Tree Provider Tests', () => {
 
             // But only group is at top level
             const topLevel = await provider.getChildren();
-            assert.strictEqual(topLevel.length, 1);
-            assert.strictEqual(topLevel[0].process.type, 'code-review-group');
+            const processItems = assertAIProcessItems(topLevel);
+            assert.strictEqual(processItems.length, 1);
+            assert.strictEqual(processItems[0].process.type, 'code-review-group');
 
             provider.dispose();
         });
@@ -93,13 +114,15 @@ suite('AI Process Tree Provider Tests', () => {
 
             // Get the group item
             const topLevel = await provider.getChildren();
-            const groupItem = topLevel[0];
+            const processItems = assertAIProcessItems(topLevel);
+            const groupItem = processItems[0];
 
             // Get children of the group
             const children = await provider.getChildren(groupItem);
-            assert.strictEqual(children.length, 2);
+            const childItems = assertAIProcessItems(children);
+            assert.strictEqual(childItems.length, 2);
 
-            const childIds = children.map(c => c.process.id);
+            const childIds = childItems.map(c => c.process.id);
             assert.ok(childIds.includes(childId1));
             assert.ok(childIds.includes(childId2));
 
@@ -133,9 +156,10 @@ suite('AI Process Tree Provider Tests', () => {
             );
 
             const topLevel = await provider.getChildren();
-            assert.strictEqual(topLevel.length, 3); // group + standalone + single review
+            const processItems = assertAIProcessItems(topLevel);
+            assert.strictEqual(processItems.length, 3); // group + standalone + single review
 
-            const topLevelIds = topLevel.map(t => t.process.id);
+            const topLevelIds = processItems.map(t => t.process.id);
             assert.ok(topLevelIds.includes(groupId));
             assert.ok(topLevelIds.includes(standaloneId));
             assert.ok(topLevelIds.includes(singleReviewId));
@@ -279,10 +303,11 @@ suite('AI Process Tree Provider Tests', () => {
             });
 
             const topLevel = await provider.getChildren();
+            const processItems = assertAIProcessItems(topLevel);
 
             // Running should be first
-            assert.strictEqual(topLevel[0].process.id, groupId2);
-            assert.strictEqual(topLevel[0].process.status, 'running');
+            assert.strictEqual(processItems[0].process.id, groupId2);
+            assert.strictEqual(processItems[0].process.status, 'running');
 
             provider.dispose();
         });
@@ -327,15 +352,17 @@ suite('AI Process Tree Provider Tests', () => {
 
             // Get group item
             const topLevel = await provider.getChildren();
-            const groupItem = topLevel[0];
+            const processItems = assertAIProcessItems(topLevel);
+            const groupItem = processItems[0];
 
             // Get children
             const children = await provider.getChildren(groupItem);
+            const childItems = assertAIProcessItems(children);
 
             // Should be sorted by start time (oldest first for children)
-            assert.strictEqual(children[0].process.id, childId1);
-            assert.strictEqual(children[1].process.id, childId2);
-            assert.strictEqual(children[2].process.id, childId3);
+            assert.strictEqual(childItems[0].process.id, childId1);
+            assert.strictEqual(childItems[1].process.id, childId2);
+            assert.strictEqual(childItems[2].process.id, childId3);
 
             provider.dispose();
         });
@@ -363,14 +390,17 @@ suite('AI Process Tree Provider Tests', () => {
 
             // Get child item
             const topLevel = await provider.getChildren();
-            const groupItem = topLevel[0];
+            const processItems = assertAIProcessItems(topLevel);
+            const groupItem = processItems[0];
             const children = await provider.getChildren(groupItem);
-            const childItem = children[0];
+            const childItems = assertAIProcessItems(children);
+            const childItem = childItems[0];
 
             // Get parent
             const parent = provider.getParent(childItem);
 
             assert.ok(parent);
+            assert.ok(isAIProcessItem(parent));
             assert.strictEqual(parent.process.id, groupId);
 
             provider.dispose();
@@ -388,7 +418,8 @@ suite('AI Process Tree Provider Tests', () => {
             });
 
             const topLevel = await provider.getChildren();
-            const groupItem = topLevel[0];
+            const processItems = assertAIProcessItems(topLevel);
+            const groupItem = processItems[0];
 
             const parent = provider.getParent(groupItem);
 

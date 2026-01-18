@@ -977,6 +977,30 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "interactiveSessions.start",
+        "title": "Start Interactive Session",
+        "category": "AI Processes",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "interactiveSessions.end",
+        "title": "End Session",
+        "category": "AI Processes",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "interactiveSessions.remove",
+        "title": "Remove Session",
+        "category": "AI Processes",
+        "icon": "$(close)"
+      },
+      {
+        "command": "interactiveSessions.clearEnded",
+        "title": "Clear Ended Sessions",
+        "category": "AI Processes",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "gitView.refresh",
         "title": "Refresh Git View",
         "category": "Git",
@@ -1523,19 +1547,24 @@
           "group": "navigation"
         },
         {
+          "command": "interactiveSessions.start",
+          "when": "view == clarificationProcessesView",
+          "group": "navigation@1"
+        },
+        {
           "command": "clarificationProcesses.clearCompleted",
           "when": "view == clarificationProcessesView",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "clarificationProcesses.clearAll",
           "when": "view == clarificationProcessesView",
-          "group": "navigation"
+          "group": "navigation@3"
         },
         {
           "command": "clarificationProcesses.refresh",
           "when": "view == clarificationProcessesView",
-          "group": "navigation"
+          "group": "navigation@4"
         },
         {
           "command": "gitView.lookupCommit",
@@ -1938,6 +1967,21 @@
           "command": "clarificationProcesses.remove",
           "when": "view == clarificationProcessesView && viewItem =~ /^discoveryProcess_(completed|failed|cancelled)$/",
           "group": "process@3"
+        },
+        {
+          "command": "interactiveSessions.end",
+          "when": "view == clarificationProcessesView && viewItem =~ /^interactiveSession_(starting|active)$/",
+          "group": "session@1"
+        },
+        {
+          "command": "interactiveSessions.remove",
+          "when": "view == clarificationProcessesView && viewItem =~ /^interactiveSession_(ended|error)$/",
+          "group": "session@2"
+        },
+        {
+          "command": "interactiveSessions.clearEnded",
+          "when": "view == clarificationProcessesView && viewItem == interactiveSessionSection",
+          "group": "section@1"
         },
         {
           "command": "gitView.copyCommitHash",

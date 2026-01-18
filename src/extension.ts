@@ -1,7 +1,14 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AI_PROCESS_SCHEME, AIProcessDocumentProvider, AIProcessManager, AIProcessTreeDataProvider } from './shortcuts/ai-service';
+import {
+    AI_PROCESS_SCHEME,
+    AIProcessDocumentProvider,
+    AIProcessManager,
+    AIProcessTreeDataProvider,
+    InteractiveSessionManager,
+    InteractiveSessionItem
+} from './shortcuts/ai-service';
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
@@ -1482,8 +1489,11 @@ export async function activate(context: vscode.ExtensionContext) {
         });
         commentsCommands.setTreeView(commentsTreeView);
 
-        // Initialize AI Process tree data provider
-        const aiProcessTreeDataProvider = new AIProcessTreeDataProvider(aiProcessManager);
+        // Initialize Interactive Session Manager
+        const interactiveSessionManager = new InteractiveSessionManager();
+
+        // Initialize AI Process tree data provider (with session manager for interactive sessions)
+        const aiProcessTreeDataProvider = new AIProcessTreeDataProvider(aiProcessManager, interactiveSessionManager);
 
         // Initialize AI Process document provider for read-only viewing
         const aiProcessDocumentProvider = new AIProcessDocumentProvider(aiProcessManager);
@@ -1719,6 +1729,64 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Register Interactive Session commands
+        const startInteractiveSessionCommand = vscode.commands.registerCommand(
+            'interactiveSessions.start',
+            async () => {
+                const tool = await vscode.window.showQuickPick(
+                    [
+                        { label: 'Copilot CLI', value: 'copilot' as const },
+                        { label: 'Claude CLI', value: 'claude' as const }
+                    ],
+                    { placeHolder: 'Select AI tool for interactive session' }
+                );
+
+                if (!tool) {
+                    return;
+                }
+
+                const prompt = await vscode.window.showInputBox({
+                    prompt: 'Initial prompt (optional)',
+                    placeHolder: 'Enter a prompt to start with or leave empty'
+                });
+
+                const sessionId = await interactiveSessionManager.startSession({
+                    workingDirectory: workspaceRoot,
+                    tool: tool.value,
+                    initialPrompt: prompt || undefined
+                });
+
+                if (sessionId) {
+                    vscode.window.showInformationMessage(`Interactive ${tool.label} session started`);
+                }
+            }
+        );
+
+        const endInteractiveSessionCommand = vscode.commands.registerCommand(
+            'interactiveSessions.end',
+            (item: InteractiveSessionItem) => {
+                if (item?.session?.id) {
+                    interactiveSessionManager.endSession(item.session.id);
+                }
+            }
+        );
+
+        const removeInteractiveSessionCommand = vscode.commands.registerCommand(
+            'interactiveSessions.remove',
+            (item: InteractiveSessionItem) => {
+                if (item?.session?.id) {
+                    interactiveSessionManager.removeSession(item.session.id);
+                }
+            }
+        );
+
+        const clearEndedSessionsCommand = vscode.commands.registerCommand(
+            'interactiveSessions.clearEnded',
+            () => {
+                interactiveSessionManager.clearEndedSessions();
+            }
+        );
+
         // Update comments view description with count
         const updateCommentsViewDescription = () => {
             const openCount = commentsManager.getOpenCommentCount();
@@ -1857,6 +1925,12 @@ export async function activate(context: vscode.ExtensionContext) {
             viewRawResponseCommand,
             viewDiscoveryResultsCommand,
             refreshProcessesCommand,
+            // Interactive Session disposables
+            interactiveSessionManager,
+            startInteractiveSessionCommand,
+            endInteractiveSessionCommand,
+            removeInteractiveSessionCommand,
+            clearEndedSessionsCommand,
             // Git view disposables
             gitTreeDataProvider,
             gitShowProvider,
