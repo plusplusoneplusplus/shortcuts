@@ -1733,15 +1733,28 @@ export async function activate(context: vscode.ExtensionContext) {
         const startInteractiveSessionCommand = vscode.commands.registerCommand(
             'interactiveSessions.start',
             async () => {
-                const tool = await vscode.window.showQuickPick(
-                    [
-                        { label: 'Copilot CLI', value: 'copilot' as const },
-                        { label: 'Claude CLI', value: 'claude' as const }
-                    ],
-                    { placeHolder: 'Select AI tool for interactive session' }
-                );
+                // Check the default tool setting
+                const config = vscode.workspace.getConfiguration('workspaceShortcuts');
+                const defaultTool = config.get<string>('interactiveSessions.defaultTool', 'ask');
 
-                if (!tool) {
+                let selectedTool: { label: string; value: 'copilot' | 'claude' } | undefined;
+
+                if (defaultTool === 'copilot') {
+                    selectedTool = { label: 'Copilot CLI', value: 'copilot' };
+                } else if (defaultTool === 'claude') {
+                    selectedTool = { label: 'Claude CLI', value: 'claude' };
+                } else {
+                    // 'ask' or unknown value - prompt user to select
+                    selectedTool = await vscode.window.showQuickPick(
+                        [
+                            { label: 'Copilot CLI', value: 'copilot' as const },
+                            { label: 'Claude CLI', value: 'claude' as const }
+                        ],
+                        { placeHolder: 'Select AI tool for interactive session' }
+                    );
+                }
+
+                if (!selectedTool) {
                     return;
                 }
 
@@ -1752,12 +1765,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
                 const sessionId = await interactiveSessionManager.startSession({
                     workingDirectory: workspaceRoot,
-                    tool: tool.value,
+                    tool: selectedTool.value,
                     initialPrompt: prompt || undefined
                 });
 
                 if (sessionId) {
-                    vscode.window.showInformationMessage(`Interactive ${tool.label} session started`);
+                    vscode.window.showInformationMessage(`Interactive ${selectedTool.label} session started`);
                 }
             }
         );

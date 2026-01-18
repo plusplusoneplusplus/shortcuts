@@ -418,6 +418,21 @@
             }
           }
         },
+        "workspaceShortcuts.interactiveSessions.defaultTool": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "copilot",
+            "claude"
+          ],
+          "enumDescriptions": [
+            "Ask every time - Prompt to select the CLI tool each time you start a session",
+            "Copilot CLI - Always use GitHub Copilot CLI for interactive sessions",
+            "Claude CLI - Always use Claude CLI for interactive sessions"
+          ],
+          "default": "copilot",
+          "markdownDescription": "Default CLI tool for interactive sessions. Set to `ask` to be prompted each time."
+        },
         "workspaceShortcuts.codeReview.rulesFolder": {
           "type": "string",
           "default": ".github/cr-rules",
