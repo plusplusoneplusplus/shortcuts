@@ -27,6 +27,13 @@ export interface WebviewState {
 }
 
 /**
+ * Mode for AI command execution
+ * - 'comment': AI response is added as a comment in the document (default)
+ * - 'interactive': Opens an interactive AI session in external terminal
+ */
+export type AICommandMode = 'comment' | 'interactive';
+
+/**
  * Serialized AI command for webview
  */
 export interface SerializedAICommand {
@@ -35,6 +42,17 @@ export interface SerializedAICommand {
     icon?: string;
     order?: number;
     isCustomInput?: boolean;
+}
+
+/**
+ * Serialized AI menu configuration for webview
+ * Contains both comment and interactive mode commands
+ */
+export interface SerializedAIMenuConfig {
+    /** Commands for "Ask AI to Comment" menu */
+    commentCommands: SerializedAICommand[];
+    /** Commands for "Ask AI Interactively" menu */
+    interactiveCommands: SerializedAICommand[];
 }
 
 /**
@@ -57,6 +75,8 @@ export interface WebviewSettings {
     askAIEnabled?: boolean;
     /** Configurable AI commands */
     aiCommands?: SerializedAICommand[];
+    /** Full AI menu configuration with both comment and interactive modes */
+    aiMenuConfig?: SerializedAIMenuConfig;
     /** Predefined comment templates */
     predefinedComments?: SerializedPredefinedComment[];
 }
@@ -103,6 +123,8 @@ export interface AskAIContext {
     instructionType: AIInstructionType;
     /** Custom instruction text (only used when command has isCustomInput=true) */
     customInstruction?: string;
+    /** Mode for AI command execution ('comment' or 'interactive') */
+    mode: AICommandMode;
 }
 
 /**
@@ -132,7 +154,8 @@ export type WebviewMessage =
     | { type: 'updateContent'; content: string }
     | { type: 'resolveImagePath'; path: string; imgId: string }
     | { type: 'openFile'; path: string }
-    | { type: 'askAI'; context: AskAIContext };
+    | { type: 'askAI'; context: AskAIContext }
+    | { type: 'askAIInteractive'; context: AskAIContext };
 
 /**
  * Messages sent from extension to webview

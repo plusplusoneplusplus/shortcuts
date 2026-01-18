@@ -6,7 +6,7 @@
  */
 
 import * as vscode from 'vscode';
-import { AICommand, DEFAULT_AI_COMMANDS, serializeCommands, SerializedAICommand } from './ai-command-types';
+import { AICommand, AICommandMode, DEFAULT_AI_COMMANDS, serializeCommands, SerializedAICommand, SerializedAIMenuConfig } from './ai-command-types';
 import { DEFAULT_PROMPTS } from './types';
 
 /**
@@ -151,6 +151,20 @@ export class AICommandRegistry {
      */
     public getSerializedCommands(): SerializedAICommand[] {
         return serializeCommands(this.getCommands());
+    }
+
+    /**
+     * Get the full menu configuration for webview
+     * Returns both comment and interactive mode commands
+     */
+    public getSerializedMenuConfig(): SerializedAIMenuConfig {
+        const commands = this.getSerializedCommands();
+        // Both menus use the same commands (Clarify, Go Deeper, Custom)
+        // The mode determines how the AI response is handled
+        return {
+            commentCommands: commands,
+            interactiveCommands: commands
+        };
     }
 
     /**

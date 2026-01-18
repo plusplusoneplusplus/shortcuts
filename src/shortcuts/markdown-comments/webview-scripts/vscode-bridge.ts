@@ -142,8 +142,10 @@ export function openFile(path: string): void {
     postMessage({ type: 'openFile', path });
 }
 
+import { AICommandMode, AskAIContext } from './types';
+
 /**
- * Request AI clarification for selected text
+ * Request AI clarification for selected text (comment mode)
  */
 export function requestAskAI(context: {
     selectedText: string;
@@ -155,8 +157,27 @@ export function requestAskAI(context: {
     /** Command ID from the AI command registry */
     instructionType: string;
     customInstruction?: string;
+    mode: AICommandMode;
 }): void {
-    postMessage({ type: 'askAI', context });
+    postMessage({ type: 'askAI', context: context as AskAIContext });
+}
+
+/**
+ * Request AI interactive session for selected text
+ */
+export function requestAskAIInteractive(context: {
+    selectedText: string;
+    startLine: number;
+    endLine: number;
+    surroundingLines: string;
+    nearestHeading: string | null;
+    allHeadings: string[];
+    /** Command ID from the AI command registry */
+    instructionType: string;
+    customInstruction?: string;
+    mode: AICommandMode;
+}): void {
+    postMessage({ type: 'askAIInteractive', context: context as AskAIContext });
 }
 
 /**

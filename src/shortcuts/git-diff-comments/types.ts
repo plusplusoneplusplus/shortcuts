@@ -253,6 +253,13 @@ export interface DiffReviewOptions {
 }
 
 /**
+ * Mode for AI command execution
+ * - 'comment': AI response is added as a comment in the document (default)
+ * - 'interactive': Opens an interactive AI session in external terminal
+ */
+export type AICommandMode = 'comment' | 'interactive';
+
+/**
  * Serialized AI command for webview
  */
 export interface SerializedAICommand {
@@ -261,6 +268,17 @@ export interface SerializedAICommand {
     icon?: string;
     order?: number;
     isCustomInput?: boolean;
+}
+
+/**
+ * Serialized AI menu configuration for webview
+ * Contains both comment and interactive mode commands
+ */
+export interface SerializedAIMenuConfig {
+    /** Commands for "Ask AI to Comment" menu */
+    commentCommands: SerializedAICommand[];
+    /** Commands for "Ask AI Interactively" menu */
+    interactiveCommands: SerializedAICommand[];
 }
 
 /**
@@ -303,6 +321,8 @@ export interface DiffAskAIContext {
     surroundingLines: string;
     instructionType: DiffAIInstructionType;
     customInstruction?: string;
+    /** Mode for AI command execution ('comment' or 'interactive') */
+    mode: AICommandMode;
 }
 
 /**
@@ -310,7 +330,7 @@ export interface DiffAskAIContext {
  */
 export interface DiffWebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'saveContent' | 'contentModified' | 'pinTab';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'askAIInteractive' | 'saveContent' | 'contentModified' | 'pinTab';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;
@@ -319,7 +339,7 @@ export interface DiffWebviewMessage {
     fileToOpen?: string;
     /** File path to copy (for copyPath message) */
     pathToCopy?: string;
-    /** AI clarification context (for askAI message) */
+    /** AI clarification context (for askAI or askAIInteractive message) */
     context?: DiffAskAIContext;
     /** New content to save (for saveContent message) */
     newContent?: string;
@@ -335,6 +355,8 @@ export interface DiffCommentsSettingsExtended extends DiffCommentsSettings {
     askAIEnabled?: boolean;
     /** Configurable AI commands */
     aiCommands?: SerializedAICommand[];
+    /** Full AI menu configuration with both comment and interactive modes */
+    aiMenuConfig?: SerializedAIMenuConfig;
 }
 
 /**

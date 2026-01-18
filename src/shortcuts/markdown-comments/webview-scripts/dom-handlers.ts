@@ -12,6 +12,7 @@ import {
 import {
     attachAISubmenuHandlers,
     getAICommands,
+    getAIMenuConfig,
     updateAISubmenu
 } from './ai-menu-builder';
 import {
@@ -24,8 +25,8 @@ import {
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
-import { SerializedAICommand, SerializedPredefinedComment } from './types';
-import { openFile, requestAskAI, requestCopyPrompt, requestDeleteAll, requestResolveAll, requestSendToChat, updateContent } from './vscode-bridge';
+import { AICommandMode, SerializedAICommand, SerializedPredefinedComment } from './types';
+import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestResolveAll, requestSendToChat, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 
@@ -37,9 +38,14 @@ let contextMenuCut: HTMLElement;
 let contextMenuCopy: HTMLElement;
 let contextMenuPaste: HTMLElement;
 let contextMenuAddComment: HTMLElement;
-let contextMenuAskAI: HTMLElement;
-// Ask AI submenu element (dynamically populated)
-let askAISubmenu: HTMLElement;
+// Ask AI to Comment menu elements
+let contextMenuAskAIComment: HTMLElement;
+let askAICommentSubmenu: HTMLElement;
+// Ask AI Interactively menu elements
+let contextMenuAskAIInteractive: HTMLElement;
+let askAIInteractiveSubmenu: HTMLElement;
+// Ask AI separator
+let askAISeparator: HTMLElement;
 // Predefined comments submenu elements
 let contextMenuPredefined: HTMLElement;
 let predefinedSubmenu: HTMLElement;
@@ -54,8 +60,9 @@ let customInstructionInput: HTMLTextAreaElement;
 let customInstructionCancelBtn: HTMLElement;
 let customInstructionSubmitBtn: HTMLElement;
 let customInstructionOverlay: HTMLElement | null = null;
-// Current command ID for custom instruction dialog
+// Current command ID and mode for custom instruction dialog
 let pendingCustomCommandId: string = 'custom';
+let pendingCustomCommandMode: AICommandMode = 'comment';
 // Search controller
 let searchController: SearchController | null = null;
 
@@ -70,9 +77,14 @@ export function initDomHandlers(): void {
     contextMenuCopy = document.getElementById('contextMenuCopy')!;
     contextMenuPaste = document.getElementById('contextMenuPaste')!;
     contextMenuAddComment = document.getElementById('contextMenuAddComment')!;
-    contextMenuAskAI = document.getElementById('contextMenuAskAI')!;
-    // Ask AI submenu element (dynamically populated)
-    askAISubmenu = document.getElementById('askAISubmenu')!;
+    // Ask AI to Comment menu elements
+    contextMenuAskAIComment = document.getElementById('contextMenuAskAIComment')!;
+    askAICommentSubmenu = document.getElementById('askAICommentSubmenu')!;
+    // Ask AI Interactively menu elements
+    contextMenuAskAIInteractive = document.getElementById('contextMenuAskAIInteractive')!;
+    askAIInteractiveSubmenu = document.getElementById('askAIInteractiveSubmenu')!;
+    // Ask AI separator
+    askAISeparator = document.getElementById('askAISeparator')!;
     // Predefined comments submenu elements
     contextMenuPredefined = document.getElementById('contextMenuPredefined')!;
     predefinedSubmenu = document.getElementById('predefinedSubmenu')!;
@@ -105,12 +117,18 @@ export function initDomHandlers(): void {
 }
 
 /**
- * Rebuild the AI submenu based on current settings
+ * Rebuild both AI submenus based on current settings
  */
 export function rebuildAISubmenu(): void {
-    const commands = getAICommands(state.settings.aiCommands);
-    updateAISubmenu(askAISubmenu, commands);
-    attachAISubmenuHandlers(askAISubmenu, handleAICommandClick);
+    const menuConfig = getAIMenuConfig(state.settings.aiMenuConfig);
+    
+    // Build "Ask AI to Comment" submenu
+    updateAISubmenu(askAICommentSubmenu, menuConfig.commentCommands, 'comment');
+    attachAISubmenuHandlers(askAICommentSubmenu, handleAICommandClick);
+    
+    // Build "Ask AI Interactively" submenu
+    updateAISubmenu(askAIInteractiveSubmenu, menuConfig.interactiveCommands, 'interactive');
+    attachAISubmenuHandlers(askAIInteractiveSubmenu, handleAICommandClick);
 }
 
 /**
@@ -192,13 +210,14 @@ function hidePreview(): void {
 /**
  * Handle click on an AI command in the submenu
  */
-function handleAICommandClick(commandId: string, isCustomInput: boolean): void {
+function handleAICommandClick(commandId: string, isCustomInput: boolean, mode: AICommandMode): void {
     hideContextMenu();
     if (isCustomInput) {
         pendingCustomCommandId = commandId;
+        pendingCustomCommandMode = mode;
         showCustomInstructionDialog();
     } else {
-        handleAskAIFromContextMenu(commandId);
+        handleAskAIFromContextMenu(commandId, undefined, mode);
     }
 }
 
@@ -440,9 +459,14 @@ function setupContextMenuEventListeners(): void {
         handleAddCommentFromContextMenu();
     });
 
-    // Ask AI parent - reposition submenu on hover
-    contextMenuAskAI.addEventListener('mouseenter', () => {
-        positionSubmenu(askAISubmenu, contextMenuAskAI);
+    // Ask AI to Comment parent - reposition submenu on hover
+    contextMenuAskAIComment.addEventListener('mouseenter', () => {
+        positionSubmenu(askAICommentSubmenu, contextMenuAskAIComment);
+    });
+
+    // Ask AI Interactively parent - reposition submenu on hover
+    contextMenuAskAIInteractive.addEventListener('mouseenter', () => {
+        positionSubmenu(askAIInteractiveSubmenu, contextMenuAskAIInteractive);
     });
 
     // Predefined comments parent - reposition submenu on hover
@@ -531,37 +555,34 @@ function handleContextMenu(e: MouseEvent): void {
         contextMenuCopy.classList.remove('disabled');
         contextMenuAddComment.classList.remove('disabled');
         contextMenuPredefined.classList.remove('disabled');
-        // Only enable Ask AI if the feature is enabled in settings
+        // Only enable Ask AI menus if the feature is enabled in settings
         if (state.settings.askAIEnabled) {
-            contextMenuAskAI.classList.remove('disabled');
+            contextMenuAskAIComment.classList.remove('disabled');
+            contextMenuAskAIInteractive.classList.remove('disabled');
         } else {
-            contextMenuAskAI.classList.add('disabled');
+            contextMenuAskAIComment.classList.add('disabled');
+            contextMenuAskAIInteractive.classList.add('disabled');
         }
     } else {
         contextMenuCut.classList.add('disabled');
         contextMenuCopy.classList.add('disabled');
         contextMenuAddComment.classList.add('disabled');
         contextMenuPredefined.classList.add('disabled');
-        contextMenuAskAI.classList.add('disabled');
+        contextMenuAskAIComment.classList.add('disabled');
+        contextMenuAskAIInteractive.classList.add('disabled');
     }
     // Paste is always enabled
     contextMenuPaste.classList.remove('disabled');
 
-    // Show/hide Ask AI menu item based on feature flag
+    // Show/hide Ask AI menu items based on feature flag
     if (state.settings.askAIEnabled) {
-        contextMenuAskAI.style.display = '';
-        // Also show the separator before Ask AI
-        const separator = contextMenuAskAI.previousElementSibling;
-        if (separator?.classList.contains('context-menu-separator')) {
-            (separator as HTMLElement).style.display = '';
-        }
+        contextMenuAskAIComment.style.display = '';
+        contextMenuAskAIInteractive.style.display = '';
+        askAISeparator.style.display = '';
     } else {
-        contextMenuAskAI.style.display = 'none';
-        // Also hide the separator before Ask AI
-        const separator = contextMenuAskAI.previousElementSibling;
-        if (separator?.classList.contains('context-menu-separator')) {
-            (separator as HTMLElement).style.display = 'none';
-        }
+        contextMenuAskAIComment.style.display = 'none';
+        contextMenuAskAIInteractive.style.display = 'none';
+        askAISeparator.style.display = 'none';
     }
 
     // Position and show context menu
@@ -605,7 +626,7 @@ function hideContextMenu(): void {
     contextMenu.style.display = 'none';
     hidePreview(); // Also hide preview tooltip
     // Reset submenu positioning
-    [askAISubmenu, predefinedSubmenu].forEach(submenu => {
+    [askAICommentSubmenu, askAIInteractiveSubmenu, predefinedSubmenu].forEach(submenu => {
         if (submenu) {
             submenu.style.left = '';
             submenu.style.right = '';
@@ -815,10 +836,12 @@ function handlePredefinedCommentFromContextMenu(predefinedText: string): void {
  * Extracts document context and sends to extension for AI clarification
  * @param commandId - The command ID from the AI command registry
  * @param customInstruction - Optional custom instruction text (for custom input commands)
+ * @param mode - The AI command mode ('comment' or 'interactive')
  */
 function handleAskAIFromContextMenu(
     commandId: string,
-    customInstruction?: string
+    customInstruction?: string,
+    mode: AICommandMode = 'comment'
 ): void {
     const saved = state.savedSelectionForContextMenu;
     if (!saved || !saved.selectedText) {
@@ -829,15 +852,20 @@ function handleAskAIFromContextMenu(
     // Extract document context for the AI
     const baseContext = extractDocumentContext(saved.startLine, saved.endLine, saved.selectedText);
 
-    // Add command ID (as instructionType for backward compatibility) and optional custom instruction
+    // Add command ID (as instructionType for backward compatibility), mode, and optional custom instruction
     const context = {
         ...baseContext,
         instructionType: commandId,
-        customInstruction
+        customInstruction,
+        mode
     };
 
-    // Send to extension
-    requestAskAI(context);
+    // Send to extension based on mode
+    if (mode === 'interactive') {
+        requestAskAIInteractive(context);
+    } else {
+        requestAskAI(context);
+    }
 
     // Clear saved selection
     state.setSavedSelectionForContextMenu(null);
@@ -922,8 +950,8 @@ function setupCustomInstructionDialogEventListeners(): void {
             return;
         }
         hideCustomInstructionDialog();
-        // Use the pending command ID (set when custom input command was clicked)
-        handleAskAIFromContextMenu(pendingCustomCommandId, instruction);
+        // Use the pending command ID and mode (set when custom input command was clicked)
+        handleAskAIFromContextMenu(pendingCustomCommandId, instruction, pendingCustomCommandMode);
     });
 
     // Submit on Ctrl+Enter

@@ -69,9 +69,11 @@ export { AI_PROCESS_SCHEME, AIProcessDocumentProvider } from './ai-process-docum
 // Export AI command types and registry
 export {
     AICommand,
+    AICommandMode,
     AICommandsConfig,
     DEFAULT_AI_COMMANDS, serializeCommand,
-    serializeCommands, SerializedAICommand
+    serializeCommands, SerializedAICommand,
+    SerializedAIMenuConfig
 } from './ai-command-types';
 
 export { AICommandRegistry, getAICommandRegistry } from './ai-command-registry';

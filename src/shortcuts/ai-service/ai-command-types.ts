@@ -7,6 +7,13 @@
 import { DEFAULT_PROMPTS } from './types';
 
 /**
+ * Mode for AI command execution
+ * - 'comment': AI response is added as a comment in the document (default)
+ * - 'interactive': Opens an interactive AI session in external terminal
+ */
+export type AICommandMode = 'comment' | 'interactive';
+
+/**
  * An AI command that can be invoked from the review editor
  */
 export interface AICommand {
@@ -90,6 +97,17 @@ export interface SerializedAICommand {
     icon?: string;
     order?: number;
     isCustomInput?: boolean;
+}
+
+/**
+ * Serialized format of AI menu configuration for webview
+ * Contains both comment and interactive mode commands
+ */
+export interface SerializedAIMenuConfig {
+    /** Commands for "Ask AI to Comment" menu */
+    commentCommands: SerializedAICommand[];
+    /** Commands for "Ask AI Interactively" menu */
+    interactiveCommands: SerializedAICommand[];
 }
 
 /**

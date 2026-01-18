@@ -229,25 +229,21 @@ export function getWebviewContent(
                 <!-- Dynamically populated from settings -->
             </div>
         </div>
-        <div class="context-menu-separator"></div>
-        <div class="context-menu-item context-menu-parent" id="contextMenuAskAI">
-            <span class="context-menu-icon">🤖</span>
-            <span class="context-menu-label">Ask AI</span>
+        <div class="context-menu-separator" id="askAISeparator"></div>
+        <div class="context-menu-item context-menu-parent" id="contextMenuAskAIComment">
+            <span class="context-menu-icon">💬</span>
+            <span class="context-menu-label">Ask AI to Comment</span>
             <span class="context-menu-arrow">▶</span>
-            <div class="context-submenu" id="askAISubmenu">
-                <div class="context-menu-item" id="askAIClarify">
-                    <span class="context-menu-icon">💡</span>
-                    <span class="context-menu-label">Clarify</span>
-                </div>
-                <div class="context-menu-item" id="askAIGoDeeper">
-                    <span class="context-menu-icon">🔍</span>
-                    <span class="context-menu-label">Go Deeper</span>
-                </div>
-                <div class="context-menu-separator"></div>
-                <div class="context-menu-item" id="askAICustom">
-                    <span class="context-menu-icon">✏️</span>
-                    <span class="context-menu-label">Custom Instruction...</span>
-                </div>
+            <div class="context-submenu" id="askAICommentSubmenu">
+                <!-- Dynamically populated from settings -->
+            </div>
+        </div>
+        <div class="context-menu-item context-menu-parent" id="contextMenuAskAIInteractive">
+            <span class="context-menu-icon">🤖</span>
+            <span class="context-menu-label">Ask AI Interactively</span>
+            <span class="context-menu-arrow">▶</span>
+            <div class="context-submenu" id="askAIInteractiveSubmenu">
+                <!-- Dynamically populated from settings -->
             </div>
         </div>
     </div>

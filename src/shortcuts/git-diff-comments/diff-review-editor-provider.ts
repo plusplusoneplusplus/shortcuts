@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { IAIProcessManager, getAICommandRegistry } from '../ai-service';
+import { IAIProcessManager, getAICommandRegistry, getInteractiveSessionManager } from '../ai-service';
 import { getExtensionLogger, LogCategory } from '../shared';
 import { getPredefinedCommentRegistry } from '../shared/predefined-comment-registry';
 import { DiffCommentsManager } from './diff-comments-manager';
@@ -648,6 +648,12 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 }
                 break;
 
+            case 'askAIInteractive':
+                if (message.context) {
+                    await this.handleAskAIInteractive(message.context, relativeFilePath, gitContext);
+                }
+                break;
+
             case 'saveContent':
                 if (message.newContent !== undefined && isEditable) {
                     // Pin the preview panel when saving content - user is editing the file
@@ -810,6 +816,79 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     }
 
     /**
+     * Handle AI interactive session request from the webview
+     * Opens an interactive AI CLI session in an external terminal
+     */
+    private async handleAskAIInteractive(
+        context: DiffAskAIContext,
+        filePath: string,
+        gitContext: DiffGitContext
+    ): Promise<void> {
+        const workspaceRoot = gitContext.repositoryRoot;
+
+        // Build the prompt from the context
+        const promptParts: string[] = [];
+        
+        // Add file and git context
+        promptParts.push(`File: ${filePath}`);
+        promptParts.push(`Side: ${context.side === 'old' ? 'Old version' : 'New version'}`);
+        promptParts.push(`Lines: ${context.startLine}-${context.endLine}`);
+        promptParts.push(`Git context: ${gitContext.oldRef} → ${gitContext.newRef}`);
+        promptParts.push('');
+        
+        // Add the selected text
+        promptParts.push('Selected text from diff:');
+        promptParts.push('```');
+        promptParts.push(context.selectedText);
+        promptParts.push('```');
+        promptParts.push('');
+        
+        // Add the instruction based on command type
+        if (context.customInstruction) {
+            promptParts.push(`Instruction: ${context.customInstruction}`);
+        } else {
+            const instructionMap: Record<string, string> = {
+                'clarify': 'Please clarify and explain the selected code change.',
+                'go-deeper': 'Please provide a deep analysis of the selected code change, including implications, potential issues, and suggestions.',
+                'custom': 'Please help me understand the selected code change.'
+            };
+            promptParts.push(instructionMap[context.instructionType] || instructionMap['clarify']);
+        }
+        
+        // Add surrounding context if available
+        if (context.surroundingLines) {
+            promptParts.push('');
+            promptParts.push('Surrounding context:');
+            promptParts.push('```');
+            promptParts.push(context.surroundingLines);
+            promptParts.push('```');
+        }
+
+        const prompt = promptParts.join('\n');
+
+        // Get the interactive session manager and start a session
+        const sessionManager = getInteractiveSessionManager();
+        
+        // Determine the working directory (prefer src if it exists)
+        const srcPath = path.join(workspaceRoot, 'src');
+        const workingDirectory = fs.existsSync(srcPath) && fs.statSync(srcPath).isDirectory() 
+            ? srcPath 
+            : workspaceRoot;
+        
+        const sessionId = await sessionManager.startSession({
+            workingDirectory,
+            tool: 'copilot', // Default to copilot, could be made configurable
+            initialPrompt: prompt
+        });
+
+        if (sessionId) {
+            vscode.window.showInformationMessage('Interactive AI session started in external terminal.');
+        } else {
+            vscode.window.showErrorMessage('Failed to start interactive AI session. Please check that the AI CLI tool is installed.');
+        }
+    }
+
+    /**
      * Send current state to webview
      */
     private sendStateToWebview(
@@ -826,13 +905,15 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         const aiConfig = vscode.workspace.getConfiguration('workspaceShortcuts.aiService');
         const askAIEnabled = aiConfig.get<boolean>('enabled', false);
         const aiCommands = getAICommandRegistry().getSerializedCommands();
+        const aiMenuConfig = getAICommandRegistry().getSerializedMenuConfig();
         const predefinedComments = getPredefinedCommentRegistry().getSerializedDiffComments();
 
-        // Extend settings with AI enabled flag, commands, and predefined comments
+        // Extend settings with AI enabled flag, commands, menu config, and predefined comments
         const settings = {
             ...baseSettings,
             askAIEnabled,
             aiCommands,
+            aiMenuConfig,
             predefinedComments
         };
 
@@ -1053,22 +1134,17 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 <!-- Dynamically populated from settings -->
             </div>
         </div>
-        <div class="context-menu-separator"></div>
-        <div class="context-menu-item has-submenu" id="context-menu-ask-ai">
-            Ask AI
-            <div class="ask-ai-submenu" id="ask-ai-submenu">
-                <div class="context-menu-item" id="ask-ai-clarify">
-                    <span class="ai-icon">💡</span>
-                    <span>Clarify</span>
-                </div>
-                <div class="context-menu-item" id="ask-ai-go-deeper">
-                    <span class="ai-icon">🔍</span>
-                    <span>Go Deeper</span>
-                </div>
-                <div class="context-menu-item" id="ask-ai-custom">
-                    <span class="ai-icon">✏️</span>
-                    <span>Custom...</span>
-                </div>
+        <div class="context-menu-separator" id="ask-ai-separator"></div>
+        <div class="context-menu-item has-submenu" id="context-menu-ask-ai-comment">
+            Ask AI to Comment
+            <div class="ask-ai-submenu" id="ask-ai-comment-submenu">
+                <!-- Dynamically populated from settings -->
+            </div>
+        </div>
+        <div class="context-menu-item has-submenu" id="context-menu-ask-ai-interactive">
+            Ask AI Interactively
+            <div class="ask-ai-submenu" id="ask-ai-interactive-submenu">
+                <!-- Dynamically populated from settings -->
             </div>
         </div>
     </div>

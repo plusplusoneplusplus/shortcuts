@@ -177,33 +177,24 @@ export function sendCopyPath(filePath: string): void {
     });
 }
 
-/**
- * AI instruction type for Ask AI feature.
- * This is now a string to support dynamic command IDs from the registry.
- */
-export type DiffAIInstructionType = string;
+import { AskAIContext } from './types';
 
 /**
- * Context for Ask AI request
- */
-export interface AskAIContext {
-    selectedText: string;
-    startLine: number;
-    endLine: number;
-    side: 'old' | 'new' | 'both';
-    surroundingLines: string;
-    /** Command ID from the AI command registry */
-    instructionType: DiffAIInstructionType;
-    /** Custom instruction text (only used when command has isCustomInput=true) */
-    customInstruction?: string;
-}
-
-/**
- * Send Ask AI request
+ * Send Ask AI request (comment mode)
  */
 export function sendAskAI(context: AskAIContext): void {
     postMessage({
         type: 'askAI',
+        context
+    });
+}
+
+/**
+ * Send Ask AI Interactive request
+ */
+export function sendAskAIInteractive(context: AskAIContext): void {
+    postMessage({
+        type: 'askAIInteractive',
         context
     });
 }

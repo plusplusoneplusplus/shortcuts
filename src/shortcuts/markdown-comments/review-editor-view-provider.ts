@@ -5,7 +5,7 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { IAIProcessManager, getAICommandRegistry } from '../ai-service';
+import { IAIProcessManager, getAICommandRegistry, getInteractiveSessionManager } from '../ai-service';
 import { getPredefinedCommentRegistry } from '../shared/predefined-comment-registry';
 import { handleAIClarification } from './ai-clarification-handler';
 import { CodeBlockTheme } from './code-block-themes';
@@ -20,6 +20,11 @@ import { getWebviewContent, WebviewContentOptions } from './webview-content';
  * Message types from webview to extension
  */
 /**
+ * Mode for AI command execution
+ */
+type AICommandMode = 'comment' | 'interactive';
+
+/**
  * Context data for AI clarification requests from the webview
  */
 interface AskAIContext {
@@ -32,12 +37,14 @@ interface AskAIContext {
     /** Command ID from the AI command registry */
     instructionType: string;
     customInstruction?: string;
+    /** Mode for AI command execution ('comment' or 'interactive') */
+    mode: AICommandMode;
 }
 
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive';
     commentId?: string;
     content?: string;
     selection?: {
@@ -231,8 +238,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             // Add Ask AI enabled setting and commands from VS Code configuration
             const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiService').get<boolean>('enabled', false);
             const aiCommands = getAICommandRegistry().getSerializedCommands();
+            const aiMenuConfig = getAICommandRegistry().getSerializedMenuConfig();
             const predefinedComments = getPredefinedCommentRegistry().getSerializedMarkdownComments();
-            const settings = { ...baseSettings, askAIEnabled, aiCommands, predefinedComments };
+            const settings = { ...baseSettings, askAIEnabled, aiCommands, aiMenuConfig, predefinedComments };
 
             console.log('[Extension] updateWebview called - content length:', content.length);
             console.log('[Extension] updateWebview - content preview:', content.substring(0, 200));
@@ -285,8 +293,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             // Add Ask AI enabled setting and commands from VS Code configuration
             const askAIEnabled = vscode.workspace.getConfiguration('workspaceShortcuts.aiService').get<boolean>('enabled', false);
             const aiCommands = getAICommandRegistry().getSerializedCommands();
+            const aiMenuConfig = getAICommandRegistry().getSerializedMenuConfig();
             const predefinedComments = getPredefinedCommentRegistry().getSerializedMarkdownComments();
-            const settings = { ...baseSettings, askAIEnabled, aiCommands, predefinedComments };
+            const settings = { ...baseSettings, askAIEnabled, aiCommands, aiMenuConfig, predefinedComments };
 
             webviewPanel.webview.postMessage({
                 type: 'update',
@@ -556,6 +565,12 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                     await this.handleAskAI(message.context, relativePath);
                 }
                 break;
+
+            case 'askAIInteractive':
+                if (message.context) {
+                    await this.handleAskAIInteractive(message.context, relativePath);
+                }
+                break;
         }
     }
 
@@ -620,6 +635,86 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                     vscode.env.clipboard.writeText(result.clarification!);
                 }
             });
+        }
+    }
+
+    /**
+     * Handle AI interactive session request from the webview
+     * Opens an interactive AI CLI session in an external terminal
+     */
+    private async handleAskAIInteractive(context: AskAIContext, filePath: string): Promise<void> {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+
+        // Build the prompt from the context
+        const promptParts: string[] = [];
+        
+        // Add file context
+        promptParts.push(`File: ${filePath}`);
+        if (context.nearestHeading) {
+            promptParts.push(`Section: ${context.nearestHeading}`);
+        }
+        promptParts.push(`Lines: ${context.startLine}-${context.endLine}`);
+        promptParts.push('');
+        
+        // Add the selected text
+        promptParts.push('Selected text:');
+        promptParts.push('```');
+        promptParts.push(context.selectedText);
+        promptParts.push('```');
+        promptParts.push('');
+        
+        // Add the instruction based on command type
+        if (context.customInstruction) {
+            promptParts.push(`Instruction: ${context.customInstruction}`);
+        } else {
+            const instructionMap: Record<string, string> = {
+                'clarify': 'Please clarify and explain the selected text.',
+                'go-deeper': 'Please provide a deep analysis of the selected text, including implications, edge cases, and related concepts.',
+                'custom': 'Please help me understand the selected text.'
+            };
+            promptParts.push(instructionMap[context.instructionType] || instructionMap['clarify']);
+        }
+        
+        // Add surrounding context if available
+        if (context.surroundingLines) {
+            promptParts.push('');
+            promptParts.push('Surrounding context:');
+            promptParts.push('```');
+            promptParts.push(context.surroundingLines);
+            promptParts.push('```');
+        }
+
+        const prompt = promptParts.join('\n');
+
+        // Get the interactive session manager and start a session
+        const sessionManager = getInteractiveSessionManager();
+        
+        // Determine the working directory (prefer src if it exists)
+        const srcPath = path.join(workspaceRoot, 'src');
+        const workingDirectory = await this.directoryExists(srcPath) ? srcPath : workspaceRoot;
+        
+        const sessionId = await sessionManager.startSession({
+            workingDirectory,
+            tool: 'copilot', // Default to copilot, could be made configurable
+            initialPrompt: prompt
+        });
+
+        if (sessionId) {
+            vscode.window.showInformationMessage('Interactive AI session started in external terminal.');
+        } else {
+            vscode.window.showErrorMessage('Failed to start interactive AI session. Please check that the AI CLI tool is installed.');
+        }
+    }
+
+    /**
+     * Check if a directory exists
+     */
+    private async directoryExists(dirPath: string): Promise<boolean> {
+        try {
+            const stat = await vscode.workspace.fs.stat(vscode.Uri.file(dirPath));
+            return (stat.type & vscode.FileType.Directory) !== 0;
+        } catch {
+            return false;
         }
     }
 

@@ -5,10 +5,10 @@
  * functionality like drag, resize, positioning, and date formatting.
  */
 
-import { AskAIContext, DiffAIInstructionType, DiffComment, DiffSide, SelectionState, SerializedAICommand, SerializedPredefinedComment } from './types';
+import { AICommandMode, AskAIContext, DiffAIInstructionType, DiffComment, DiffSide, SelectionState, SerializedAICommand, SerializedAIMenuConfig, SerializedPredefinedComment } from './types';
 import { endInteraction, getState, setCommentPanelOpen, setEditingCommentId, startInteraction } from './state';
 import { clearSelection, toDiffSelection } from './selection-handler';
-import { sendAddComment, sendAskAI, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
+import { sendAddComment, sendAskAI, sendAskAIInteractive, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
 import {
     calculateBubbleDimensions,
     DEFAULT_RESIZE_CONSTRAINTS,
@@ -51,9 +51,14 @@ let commentsListBody: HTMLElement | null = null;
 let closeCommentsListButton: HTMLButtonElement | null = null;
 let contextMenu: HTMLElement | null = null;
 let contextMenuAddComment: HTMLElement | null = null;
-// Ask AI context menu elements
-let contextMenuAskAI: HTMLElement | null = null;
-let askAISubmenu: HTMLElement | null = null;
+// Ask AI to Comment context menu elements
+let contextMenuAskAIComment: HTMLElement | null = null;
+let askAICommentSubmenu: HTMLElement | null = null;
+// Ask AI Interactively context menu elements
+let contextMenuAskAIInteractive: HTMLElement | null = null;
+let askAIInteractiveSubmenu: HTMLElement | null = null;
+// Ask AI separator
+let askAISeparator: HTMLElement | null = null;
 // Predefined comments submenu elements
 let contextMenuPredefined: HTMLElement | null = null;
 let predefinedSubmenu: HTMLElement | null = null;
@@ -65,8 +70,9 @@ let customInstructionInput: HTMLTextAreaElement | null = null;
 let customInstructionCancelBtn: HTMLElement | null = null;
 let customInstructionSubmitBtn: HTMLElement | null = null;
 let customInstructionOverlay: HTMLElement | null = null;
-// Current command ID for custom instruction dialog
+// Current command ID and mode for custom instruction dialog
 let pendingCustomCommandId: string = 'custom';
+let pendingCustomCommandMode: AICommandMode = 'comment';
 
 // Active comment bubble (single floating bubble like markdown review)
 let activeCommentBubble: HTMLElement | null = null;
@@ -82,56 +88,81 @@ let currentPanelSelection: SelectionState | null = null;
 let savedSelectionForAskAI: SelectionState | null = null;
 
 /**
- * Get the AI commands to display in menus
+ * Get the AI menu configuration
  */
-function getAICommands(): SerializedAICommand[] {
+function getAIMenuConfig(): SerializedAIMenuConfig {
     const state = getState();
-    const commands = state.settings.aiCommands;
-    if (commands && commands.length > 0) {
-        return [...commands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+    const config = state.settings.aiMenuConfig;
+    if (config && config.commentCommands && config.commentCommands.length > 0) {
+        return {
+            commentCommands: [...config.commentCommands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100)),
+            interactiveCommands: [...config.interactiveCommands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
+        };
     }
-    return DEFAULT_AI_COMMANDS;
+    // Default: both menus use the same commands
+    return {
+        commentCommands: DEFAULT_AI_COMMANDS,
+        interactiveCommands: DEFAULT_AI_COMMANDS
+    };
 }
 
 /**
  * Build the AI submenu HTML dynamically
+ * @param commands - The commands to display
+ * @param mode - The mode for this menu ('comment' or 'interactive')
  */
-function buildAISubmenuHTML(commands: SerializedAICommand[]): string {
+function buildAISubmenuHTML(commands: SerializedAICommand[], mode: AICommandMode): string {
+    const modeClass = mode === 'interactive' ? 'ask-ai-interactive-item' : 'ask-ai-item';
     return commands.map(cmd => {
         const icon = cmd.icon ? `<span class="menu-icon">${cmd.icon}</span>` : '';
         const dataCustomInput = cmd.isCustomInput ? 'data-custom-input="true"' : '';
-        return `<div class="context-menu-item ask-ai-item" data-command-id="${cmd.id}" ${dataCustomInput}>
+        return `<div class="context-menu-item ${modeClass}" data-command-id="${cmd.id}" data-mode="${mode}" ${dataCustomInput}>
             ${icon}${cmd.label}
         </div>`;
     }).join('');
 }
 
 /**
- * Rebuild the AI submenu based on current settings
+ * Attach click handlers to AI submenu items
  */
-export function rebuildAISubmenu(): void {
-    if (!askAISubmenu) return;
-
-    const commands = getAICommands();
-    askAISubmenu.innerHTML = buildAISubmenuHTML(commands);
-
-    // Attach click handlers to all AI items
-    askAISubmenu.querySelectorAll('.ask-ai-item').forEach(item => {
+function attachAISubmenuHandlers(submenuElement: HTMLElement): void {
+    submenuElement.querySelectorAll('.ask-ai-item, .ask-ai-interactive-item').forEach(item => {
         item.addEventListener('click', (e) => {
             e.stopPropagation();
             const element = item as HTMLElement;
             const commandId = element.dataset.commandId || '';
             const isCustomInput = element.dataset.customInput === 'true';
+            const mode = (element.dataset.mode || 'comment') as AICommandMode;
 
             hideContextMenu();
             if (isCustomInput) {
                 pendingCustomCommandId = commandId;
+                pendingCustomCommandMode = mode;
                 showCustomInstructionDialog();
             } else {
-                handleAskAI(commandId);
+                handleAskAI(commandId, undefined, mode);
             }
         });
     });
+}
+
+/**
+ * Rebuild both AI submenus based on current settings
+ */
+export function rebuildAISubmenu(): void {
+    const menuConfig = getAIMenuConfig();
+    
+    // Build "Ask AI to Comment" submenu
+    if (askAICommentSubmenu) {
+        askAICommentSubmenu.innerHTML = buildAISubmenuHTML(menuConfig.commentCommands, 'comment');
+        attachAISubmenuHandlers(askAICommentSubmenu);
+    }
+    
+    // Build "Ask AI Interactively" submenu
+    if (askAIInteractiveSubmenu) {
+        askAIInteractiveSubmenu.innerHTML = buildAISubmenuHTML(menuConfig.interactiveCommands, 'interactive');
+        attachAISubmenuHandlers(askAIInteractiveSubmenu);
+    }
 }
 
 /**
@@ -206,9 +237,14 @@ export function initPanelElements(): void {
     contextMenu = document.getElementById('custom-context-menu');
     contextMenuAddComment = document.getElementById('context-menu-add-comment');
     
-    // Ask AI context menu elements
-    contextMenuAskAI = document.getElementById('context-menu-ask-ai');
-    askAISubmenu = document.getElementById('ask-ai-submenu');
+    // Ask AI to Comment context menu elements
+    contextMenuAskAIComment = document.getElementById('context-menu-ask-ai-comment');
+    askAICommentSubmenu = document.getElementById('ask-ai-comment-submenu');
+    // Ask AI Interactively context menu elements
+    contextMenuAskAIInteractive = document.getElementById('context-menu-ask-ai-interactive');
+    askAIInteractiveSubmenu = document.getElementById('ask-ai-interactive-submenu');
+    // Ask AI separator
+    askAISeparator = document.getElementById('ask-ai-separator');
 
     // Predefined comments submenu elements
     contextMenuPredefined = document.getElementById('context-menu-predefined');
@@ -248,9 +284,14 @@ export function initPanelElements(): void {
         });
     }
 
-    // Ask AI submenu event listeners
-    if (contextMenuAskAI) {
-        contextMenuAskAI.addEventListener('mouseenter', positionAskAISubmenu);
+    // Ask AI to Comment submenu event listeners
+    if (contextMenuAskAIComment) {
+        contextMenuAskAIComment.addEventListener('mouseenter', () => positionAskAISubmenu(askAICommentSubmenu, contextMenuAskAIComment));
+    }
+    
+    // Ask AI Interactively submenu event listeners
+    if (contextMenuAskAIInteractive) {
+        contextMenuAskAIInteractive.addEventListener('mouseenter', () => positionAskAISubmenu(askAIInteractiveSubmenu, contextMenuAskAIInteractive));
     }
 
     // Predefined comments submenu event listeners
@@ -1080,20 +1121,22 @@ function setupPanelDrag(panel: HTMLElement): void {
 
 /**
  * Position Ask AI submenu based on available viewport space
+ * @param submenu - The submenu element to position
+ * @param parentMenuItem - The parent menu item element
  */
-function positionAskAISubmenu(): void {
-    if (!askAISubmenu || !contextMenuAskAI || !contextMenu) return;
+function positionAskAISubmenu(submenu: HTMLElement | null, parentMenuItem: HTMLElement | null): void {
+    if (!submenu || !parentMenuItem || !contextMenu) return;
     
-    const parentRect = contextMenuAskAI.getBoundingClientRect();
+    const parentRect = parentMenuItem.getBoundingClientRect();
     const menuRect = contextMenu.getBoundingClientRect();
     
     // Temporarily show submenu to get its dimensions
-    const originalDisplay = askAISubmenu.style.display;
-    askAISubmenu.style.display = 'block';
-    askAISubmenu.style.visibility = 'hidden';
-    const submenuRect = askAISubmenu.getBoundingClientRect();
-    askAISubmenu.style.visibility = '';
-    askAISubmenu.style.display = originalDisplay;
+    const originalDisplay = submenu.style.display;
+    submenu.style.display = 'block';
+    submenu.style.visibility = 'hidden';
+    const submenuRect = submenu.getBoundingClientRect();
+    submenu.style.visibility = '';
+    submenu.style.display = originalDisplay;
     
     // Check horizontal space
     const spaceOnRight = window.innerWidth - menuRect.right;
@@ -1101,21 +1144,21 @@ function positionAskAISubmenu(): void {
     
     if (spaceOnRight < submenuRect.width && spaceOnLeft > submenuRect.width) {
         // Show on left side
-        askAISubmenu.style.left = 'auto';
-        askAISubmenu.style.right = '100%';
+        submenu.style.left = 'auto';
+        submenu.style.right = '100%';
     } else {
         // Show on right side (default)
-        askAISubmenu.style.left = '100%';
-        askAISubmenu.style.right = 'auto';
+        submenu.style.left = '100%';
+        submenu.style.right = 'auto';
     }
     
     // Check vertical space
     const submenuBottomIfAlignedToTop = parentRect.top + submenuRect.height;
     if (submenuBottomIfAlignedToTop > window.innerHeight) {
         const overflow = submenuBottomIfAlignedToTop - window.innerHeight;
-        askAISubmenu.style.top = `${-overflow - 5}px`;
+        submenu.style.top = `${-overflow - 5}px`;
     } else {
-        askAISubmenu.style.top = '-1px';
+        submenu.style.top = '-1px';
     }
 }
 
@@ -1164,8 +1207,9 @@ function positionPredefinedSubmenu(): void {
  * Handle Ask AI request
  * @param commandId - The command ID from the AI command registry
  * @param customInstruction - Optional custom instruction text (for custom input commands)
+ * @param mode - The AI command mode ('comment' or 'interactive')
  */
-function handleAskAI(commandId: string, customInstruction?: string): void {
+function handleAskAI(commandId: string, customInstruction?: string, mode: AICommandMode = 'comment'): void {
     if (!currentPanelSelection) {
         console.log('[Diff Webview] No selection for Ask AI');
         return;
@@ -1185,10 +1229,16 @@ function handleAskAI(commandId: string, customInstruction?: string): void {
         side: currentPanelSelection.side,
         surroundingLines,
         instructionType: commandId,
-        customInstruction
+        customInstruction,
+        mode
     };
 
-    sendAskAI(context);
+    // Send to extension based on mode
+    if (mode === 'interactive') {
+        sendAskAIInteractive(context);
+    } else {
+        sendAskAI(context);
+    }
     currentPanelSelection = null;
 }
 
@@ -1241,8 +1291,8 @@ function setupCustomInstructionDialogListeners(): void {
             // Restore the selection and send Ask AI request
             if (savedSelectionForAskAI) {
                 currentPanelSelection = savedSelectionForAskAI;
-                // Use the pending command ID (set when custom input command was clicked)
-                handleAskAI(pendingCustomCommandId, instruction);
+                // Use the pending command ID and mode (set when custom input command was clicked)
+                handleAskAI(pendingCustomCommandId, instruction, pendingCustomCommandMode);
                 savedSelectionForAskAI = null;
             }
         });
@@ -1322,22 +1372,15 @@ export function updateContextMenuForSettings(): void {
     const state = getState();
     const askAIEnabled = state.settings.askAIEnabled;
     
-    if (contextMenuAskAI) {
-        if (askAIEnabled) {
-            contextMenuAskAI.style.display = '';
-            // Show separator before Ask AI
-            const separator = contextMenuAskAI.previousElementSibling;
-            if (separator?.classList.contains('context-menu-separator')) {
-                (separator as HTMLElement).style.display = '';
-            }
-        } else {
-            contextMenuAskAI.style.display = 'none';
-            // Hide separator before Ask AI
-            const separator = contextMenuAskAI.previousElementSibling;
-            if (separator?.classList.contains('context-menu-separator')) {
-                (separator as HTMLElement).style.display = 'none';
-            }
-        }
+    // Show/hide both Ask AI menus and separator
+    if (contextMenuAskAIComment) {
+        contextMenuAskAIComment.style.display = askAIEnabled ? '' : 'none';
+    }
+    if (contextMenuAskAIInteractive) {
+        contextMenuAskAIInteractive.style.display = askAIEnabled ? '' : 'none';
+    }
+    if (askAISeparator) {
+        askAISeparator.style.display = askAIEnabled ? '' : 'none';
     }
 }
 
