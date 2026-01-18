@@ -36,3 +36,11 @@ export {
     getBundledPipelineDirectory,
     getBundledPipelineEntryPoint
 } from '../bundled';
+
+// Bundled Pipeline Read-only Provider
+export {
+    BUNDLED_PIPELINE_SCHEME,
+    BundledPipelineContentProvider,
+    createBundledPipelineUri,
+    registerBundledPipelineProvider
+} from './bundled-readonly-provider';

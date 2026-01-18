@@ -38,7 +38,8 @@ import {
     PipelineCommands,
     PipelineTreeItem,
     registerPipelineResultsProvider,
-    registerPipelinePreview
+    registerPipelinePreview,
+    registerBundledPipelineProvider
 } from './shortcuts/yaml-pipeline';
 
 /**
@@ -204,6 +205,9 @@ export async function activate(context: vscode.ExtensionContext) {
         if (pipelinesViewerEnabled && workspaceFolder) {
             pipelineManager = new PipelineManager(workspaceRoot, context);
             pipelineManager.ensurePipelinesFolderExists();
+
+            // Register the bundled pipeline read-only provider
+            registerBundledPipelineProvider(context);
 
             pipelinesTreeDataProvider = new PipelinesTreeDataProvider(pipelineManager);
 

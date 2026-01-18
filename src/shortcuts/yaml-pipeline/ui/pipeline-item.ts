@@ -7,6 +7,7 @@
 
 import * as vscode from 'vscode';
 import { PipelineInfo, ResourceFileInfo, PipelineSource } from './types';
+import { createBundledPipelineUri } from './bundled-readonly-provider';
 
 /**
  * Category header item (Bundled / Workspace)
@@ -73,10 +74,15 @@ export class PipelineItem extends vscode.TreeItem {
         this.resourceUri = vscode.Uri.file(pipeline.filePath);
 
         // Click to open the pipeline.yaml file
+        // For bundled pipelines, use the read-only scheme
+        const openUri = pipeline.source === PipelineSource.Bundled
+            ? createBundledPipelineUri(pipeline.filePath)
+            : vscode.Uri.file(pipeline.filePath);
+        
         this.command = {
             command: 'vscode.open',
             title: 'Open Pipeline',
-            arguments: [vscode.Uri.file(pipeline.filePath)]
+            arguments: [openUri]
         };
     }
 

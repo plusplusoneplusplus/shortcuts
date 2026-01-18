@@ -20,6 +20,7 @@ import {
 import { PromptItem } from '../types';
 import { PipelineResultViewerProvider } from './result-viewer-provider';
 import { PipelineTemplateType, PIPELINE_TEMPLATES, PipelineSource } from './types';
+import { createBundledPipelineUri } from './bundled-readonly-provider';
 
 /**
  * Command handlers for the Pipelines Viewer
@@ -552,9 +553,10 @@ export class PipelineCommands {
             return;
         }
 
-        const doc = await vscode.workspace.openTextDocument(
-            vscode.Uri.file(item.pipeline.filePath)
-        );
+        // Use the bundled-pipeline scheme to open as read-only
+        const readOnlyUri = createBundledPipelineUri(item.pipeline.filePath);
+        
+        const doc = await vscode.workspace.openTextDocument(readOnlyUri);
 
         await vscode.window.showTextDocument(doc, {
             preview: true,
@@ -563,7 +565,7 @@ export class PipelineCommands {
 
         // Show info message about read-only
         const choice = await vscode.window.showInformationMessage(
-            'This is a bundled pipeline. Copy to workspace to edit.',
+            'This is a bundled pipeline (read-only). Copy to workspace to edit.',
             'Copy to Workspace'
         );
 

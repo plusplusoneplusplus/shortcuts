@@ -145,7 +145,12 @@ export {
     getAllBundledPipelineManifests,
     isValidBundledPipelineId,
     getBundledPipelineDirectory,
-    getBundledPipelineEntryPoint
+    getBundledPipelineEntryPoint,
+    // Read-only provider for bundled pipelines
+    BUNDLED_PIPELINE_SCHEME,
+    BundledPipelineContentProvider,
+    createBundledPipelineUri,
+    registerBundledPipelineProvider
 } from './ui';
 
 // Result Viewer (enhanced pipeline result display)
