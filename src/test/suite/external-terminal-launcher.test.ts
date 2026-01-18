@@ -7,11 +7,8 @@
 
 import * as assert from 'assert';
 import { ChildProcess } from 'child_process';
-import {
-    ExternalTerminalLauncher,
-    buildCliCommand,
-    escapeShellArg
-} from '../../shortcuts/ai-service/external-terminal-launcher';
+import { ExternalTerminalLauncher } from '../../shortcuts/ai-service/external-terminal-launcher';
+import { buildCliCommand, escapeShellArg } from '../../shortcuts/ai-service/cli-utils';
 import { TerminalType, ExternalTerminalLaunchOptions } from '../../shortcuts/ai-service/types';
 
 // ============================================================================
@@ -114,26 +111,26 @@ suite('ExternalTerminalLauncher - buildCliCommand', () => {
         const originalPlatform = process.platform;
 
         // We can't change process.platform directly, so we test the escaping separately
-        const result = buildCliCommand('copilot', 'Hello world');
+        const result = buildCliCommand('copilot', { prompt: 'Hello world' });
 
-        // The result should contain the prompt flag
-        assert.ok(result.includes('-p'), 'Should include -p flag');
+        // The result should contain the interactive prompt flag
+        assert.ok(result.includes('-i'), 'Should include -i flag for interactive mode');
         assert.ok(result.includes('Hello world'), 'Should include prompt text');
     });
 
     test('should build claude command with prompt', () => {
-        const result = buildCliCommand('claude', 'Explain this code');
+        const result = buildCliCommand('claude', { prompt: 'Explain this code' });
 
         assert.ok(result.includes('claude'), 'Should include claude command');
-        assert.ok(result.includes('-p'), 'Should include -p flag');
+        assert.ok(result.includes('-i'), 'Should include -i flag for interactive mode');
         assert.ok(result.includes('Explain this code'), 'Should include prompt text');
     });
 
     test('should escape special characters in prompt', () => {
-        const result = buildCliCommand('copilot', "it's a \"test\"");
+        const result = buildCliCommand('copilot', { prompt: "it's a \"test\"" });
 
         // Should be properly escaped
-        assert.ok(result.includes('-p'), 'Should include -p flag');
+        assert.ok(result.includes('-i'), 'Should include -i flag for interactive mode');
     });
 });
 
@@ -415,7 +412,7 @@ suite('ExternalTerminalLauncher - macOS', () => {
             // Verify the command includes the prompt
             const args = calls[0].args.join(' ');
             assert.ok(args.includes('copilot'), 'Should include copilot command');
-            assert.ok(args.includes('-p'), 'Should include -p flag');
+            assert.ok(args.includes('-i'), 'Should include -i flag for interactive mode');
         });
 
         test('should return error when no terminal available', async () => {

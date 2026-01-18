@@ -94,5 +94,7 @@ export function buildCliCommand(
     // Escape the prompt for shell use
     const escapedPrompt = escapeShellArg(prompt, platform);
 
-    return `${baseCommand} ${COPILOT_BASE_FLAGS}${modelFlag} -p ${escapedPrompt}`;
+    // Use -i flag to start interactive mode with the initial prompt
+    // (-p would execute and exit, -i keeps the session interactive)
+    return `${baseCommand} ${COPILOT_BASE_FLAGS}${modelFlag} -i ${escapedPrompt}`;
 }
