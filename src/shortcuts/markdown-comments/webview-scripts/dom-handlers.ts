@@ -26,7 +26,7 @@ import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
 import { AICommandMode, SerializedAICommand, SerializedPredefinedComment } from './types';
-import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestResolveAll, requestSendToChat, updateContent } from './vscode-bridge';
+import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 
@@ -254,6 +254,7 @@ function setupAIActionDropdown(): void {
     const aiActionMenu = document.getElementById('aiActionMenu');
     const sendToNewChatBtn = document.getElementById('sendToNewChatBtn');
     const sendToExistingChatBtn = document.getElementById('sendToExistingChatBtn');
+    const sendToCLIInteractiveBtn = document.getElementById('sendToCLIInteractiveBtn');
     const copyPromptBtn = document.getElementById('copyPromptBtn');
 
     if (!aiActionDropdown || !aiActionBtn || !aiActionMenu) return;
@@ -279,6 +280,12 @@ function setupAIActionDropdown(): void {
     sendToExistingChatBtn?.addEventListener('click', () => {
         hideAIActionMenu();
         requestSendToChat('markdown', false);
+    });
+
+    // Send to CLI Interactive action (opens external terminal with AI CLI)
+    sendToCLIInteractiveBtn?.addEventListener('click', () => {
+        hideAIActionMenu();
+        requestSendToCLIInteractive('markdown');
     });
 
     // Copy as Prompt action

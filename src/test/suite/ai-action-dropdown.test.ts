@@ -40,6 +40,14 @@ suite('AI Action Dropdown Tests', () => {
                 'format' in (msg as any).promptOptions;
         }
 
+        function isSendToCLIInteractiveMessage(msg: WebviewMessage): msg is WebviewMessage & { promptOptions: PromptOptions } {
+            return msg.type === 'sendToCLIInteractive' &&
+                'promptOptions' in msg &&
+                typeof (msg as any).promptOptions === 'object' &&
+                (msg as any).promptOptions !== null &&
+                'format' in (msg as any).promptOptions;
+        }
+
         test('should validate copyPrompt message', () => {
             const msg = {
                 type: 'copyPrompt',
@@ -100,6 +108,37 @@ suite('AI Action Dropdown Tests', () => {
                 promptOptions: null
             };
             assert.ok(!isSendToChatMessage(msg));
+        });
+
+        test('should validate sendToCLIInteractive message', () => {
+            const msg = {
+                type: 'sendToCLIInteractive',
+                promptOptions: { format: 'markdown' }
+            };
+            assert.ok(isValidWebviewMessage(msg));
+            assert.ok(isSendToCLIInteractiveMessage(msg));
+        });
+
+        test('should validate sendToCLIInteractive message with json format', () => {
+            const msg = {
+                type: 'sendToCLIInteractive',
+                promptOptions: { format: 'json' }
+            };
+            assert.ok(isValidWebviewMessage(msg));
+            assert.ok(isSendToCLIInteractiveMessage(msg));
+        });
+
+        test('should reject sendToCLIInteractive message without promptOptions', () => {
+            const msg = { type: 'sendToCLIInteractive' };
+            assert.ok(!isSendToCLIInteractiveMessage(msg));
+        });
+
+        test('should reject sendToCLIInteractive message with invalid promptOptions', () => {
+            const msg = {
+                type: 'sendToCLIInteractive',
+                promptOptions: null
+            };
+            assert.ok(!isSendToCLIInteractiveMessage(msg));
         });
     });
 
@@ -406,6 +445,269 @@ suite('AI Action Dropdown Tests', () => {
             state = closeDropdown(state);
             state = closeDropdown(state);
             assert.strictEqual(state.isOpen, false);
+        });
+    });
+
+    suite('Send to CLI Interactive', () => {
+        // Test the CLI interactive session functionality
+
+        interface MarkdownComment {
+            id: string;
+            selection: {
+                startLine: number;
+                startColumn: number;
+                endLine: number;
+                endColumn: number;
+            };
+            selectedText: string;
+            comment: string;
+            status: 'open' | 'resolved';
+            type?: string;
+        }
+
+        function isUserComment(comment: MarkdownComment): boolean {
+            const aiTypes = ['ai-clarification', 'ai-suggestion', 'ai-critique', 'ai-question'];
+            return !comment.type || !aiTypes.includes(comment.type);
+        }
+
+        function filterCommentsForCLI(comments: MarkdownComment[]): MarkdownComment[] {
+            return comments
+                .filter(c => c.status === 'open')
+                .filter(c => isUserComment(c));
+        }
+
+        function generateCLIPrompt(
+            comments: MarkdownComment[],
+            filePath: string,
+            options?: { format?: 'markdown' | 'json' }
+        ): string {
+            const format = options?.format || 'markdown';
+            const filteredComments = filterCommentsForCLI(comments);
+
+            if (format === 'json') {
+                return JSON.stringify({
+                    task: 'Review and address the following comments',
+                    file: filePath,
+                    comments: filteredComments.map(c => ({
+                        id: c.id,
+                        lineRange: c.selection.startLine === c.selection.endLine
+                            ? `Line ${c.selection.startLine}`
+                            : `Lines ${c.selection.startLine}-${c.selection.endLine}`,
+                        selectedText: c.selectedText,
+                        comment: c.comment
+                    }))
+                }, null, 2);
+            }
+
+            // Markdown format
+            const lines: string[] = [
+                '# Document Review Request',
+                '',
+                `**File:** ${filePath}`,
+                `**Comments:** ${filteredComments.length}`,
+                ''
+            ];
+
+            filteredComments.forEach((comment, index) => {
+                const lineRange = comment.selection.startLine === comment.selection.endLine
+                    ? `Line ${comment.selection.startLine}`
+                    : `Lines ${comment.selection.startLine}-${comment.selection.endLine}`;
+
+                lines.push(`## Comment ${index + 1}`);
+                lines.push(`**Location:** ${lineRange}`);
+                lines.push('');
+                lines.push('**Selected Text:**');
+                lines.push('```');
+                lines.push(comment.selectedText);
+                lines.push('```');
+                lines.push('');
+                lines.push('**Comment:**');
+                lines.push(`> ${comment.comment}`);
+                lines.push('');
+            });
+
+            return lines.join('\n');
+        }
+
+        test('should generate CLI prompt for single comment', () => {
+            const comments: MarkdownComment[] = [{
+                id: 'c1',
+                selection: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 20 },
+                selectedText: 'Some selected text',
+                comment: 'Please improve this',
+                status: 'open'
+            }];
+
+            const prompt = generateCLIPrompt(comments, 'test.md');
+
+            assert.ok(prompt.includes('# Document Review Request'));
+            assert.ok(prompt.includes('**File:** test.md'));
+            assert.ok(prompt.includes('**Comments:** 1'));
+            assert.ok(prompt.includes('## Comment 1'));
+            assert.ok(prompt.includes('**Location:** Line 5'));
+            assert.ok(prompt.includes('Some selected text'));
+            assert.ok(prompt.includes('> Please improve this'));
+        });
+
+        test('should generate CLI prompt in JSON format', () => {
+            const comments: MarkdownComment[] = [{
+                id: 'c1',
+                selection: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 20 },
+                selectedText: 'Some text',
+                comment: 'Fix this',
+                status: 'open'
+            }];
+
+            const prompt = generateCLIPrompt(comments, 'test.md', { format: 'json' });
+            const parsed = JSON.parse(prompt);
+
+            assert.strictEqual(parsed.task, 'Review and address the following comments');
+            assert.strictEqual(parsed.file, 'test.md');
+            assert.strictEqual(parsed.comments.length, 1);
+            assert.strictEqual(parsed.comments[0].id, 'c1');
+        });
+
+        test('should exclude AI-generated comments from CLI prompt', () => {
+            const comments: MarkdownComment[] = [
+                {
+                    id: 'c1',
+                    selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                    selectedText: 'User text',
+                    comment: 'User comment',
+                    status: 'open'
+                },
+                {
+                    id: 'c2',
+                    selection: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 },
+                    selectedText: 'AI text',
+                    comment: 'AI comment',
+                    status: 'open',
+                    type: 'ai-clarification'
+                }
+            ];
+
+            const prompt = generateCLIPrompt(comments, 'test.md');
+
+            assert.ok(prompt.includes('**Comments:** 1'));
+            assert.ok(prompt.includes('User text'));
+            assert.ok(!prompt.includes('AI text'));
+        });
+
+        test('should exclude resolved comments from CLI prompt', () => {
+            const comments: MarkdownComment[] = [
+                {
+                    id: 'c1',
+                    selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                    selectedText: 'Open text',
+                    comment: 'Open comment',
+                    status: 'open'
+                },
+                {
+                    id: 'c2',
+                    selection: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 },
+                    selectedText: 'Resolved text',
+                    comment: 'Resolved comment',
+                    status: 'resolved'
+                }
+            ];
+
+            const prompt = generateCLIPrompt(comments, 'test.md');
+
+            assert.ok(prompt.includes('**Comments:** 1'));
+            assert.ok(prompt.includes('Open text'));
+            assert.ok(!prompt.includes('Resolved text'));
+        });
+
+        test('should handle multi-line selections in CLI prompt', () => {
+            const comments: MarkdownComment[] = [{
+                id: 'c1',
+                selection: { startLine: 5, startColumn: 1, endLine: 10, endColumn: 20 },
+                selectedText: 'Multi-line text',
+                comment: 'Refactor this section',
+                status: 'open'
+            }];
+
+            const prompt = generateCLIPrompt(comments, 'test.md');
+
+            assert.ok(prompt.includes('**Location:** Lines 5-10'));
+        });
+
+        test('should return empty prompt content when no valid comments', () => {
+            const comments: MarkdownComment[] = [
+                {
+                    id: 'c1',
+                    selection: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 10 },
+                    selectedText: 'Resolved',
+                    comment: 'Comment',
+                    status: 'resolved'
+                },
+                {
+                    id: 'c2',
+                    selection: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 10 },
+                    selectedText: 'AI',
+                    comment: 'Comment',
+                    status: 'open',
+                    type: 'ai-clarification'
+                }
+            ];
+
+            const prompt = generateCLIPrompt(comments, 'test.md');
+
+            assert.ok(prompt.includes('**Comments:** 0'));
+        });
+    });
+
+    suite('CLI Interactive Cross-Platform Path Handling', () => {
+        // Test that CLI interactive works correctly on Windows, macOS, and Linux
+
+        function normalizePathForCLI(filePath: string): string {
+            // Normalize path separators to forward slashes for consistency
+            return filePath.replace(/\\/g, '/');
+        }
+
+        function buildWorkingDirectory(workspaceRoot: string, preferSrc: boolean): string {
+            // Simulates the working directory selection logic
+            const normalized = normalizePathForCLI(workspaceRoot);
+            if (preferSrc) {
+                return normalized + '/src';
+            }
+            return normalized;
+        }
+
+        test('should normalize Windows workspace paths', () => {
+            const windowsPath = 'C:\\Users\\test\\project';
+            const normalized = normalizePathForCLI(windowsPath);
+            assert.strictEqual(normalized, 'C:/Users/test/project');
+        });
+
+        test('should preserve Unix workspace paths', () => {
+            const unixPath = '/home/user/project';
+            const normalized = normalizePathForCLI(unixPath);
+            assert.strictEqual(normalized, '/home/user/project');
+        });
+
+        test('should preserve macOS workspace paths', () => {
+            const macPath = '/Users/user/Documents/project';
+            const normalized = normalizePathForCLI(macPath);
+            assert.strictEqual(normalized, '/Users/user/Documents/project');
+        });
+
+        test('should build working directory with src preference on Windows', () => {
+            const windowsPath = 'C:\\Users\\test\\project';
+            const workDir = buildWorkingDirectory(windowsPath, true);
+            assert.strictEqual(workDir, 'C:/Users/test/project/src');
+        });
+
+        test('should build working directory without src preference', () => {
+            const unixPath = '/home/user/project';
+            const workDir = buildWorkingDirectory(unixPath, false);
+            assert.strictEqual(workDir, '/home/user/project');
+        });
+
+        test('should handle mixed path separators', () => {
+            const mixedPath = 'C:\\Users/test\\project/subdir';
+            const normalized = normalizePathForCLI(mixedPath);
+            assert.strictEqual(normalized, 'C:/Users/test/project/subdir');
         });
     });
 

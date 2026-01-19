@@ -59,6 +59,15 @@ export function requestSendToChat(format: string = 'markdown', newConversation: 
 }
 
 /**
+ * Request the extension to send the AI prompt to CLI interactive session
+ * Opens an interactive AI CLI session (copilot/claude) in an external terminal
+ * @param format - The format of the prompt ('markdown' or 'json')
+ */
+export function requestSendToCLIInteractive(format: string = 'markdown'): void {
+    postMessage({ type: 'sendToCLIInteractive', promptOptions: { format } });
+}
+
+/**
  * Request the extension to send a single comment to chat
  * @param commentId - The ID of the comment to send
  * @param newConversation - If true, starts a new chat conversation; if false, uses existing chat

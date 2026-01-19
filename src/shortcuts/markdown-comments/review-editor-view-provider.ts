@@ -44,7 +44,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive';
     commentId?: string;
     content?: string;
     selection?: {
@@ -543,6 +543,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 }
                 break;
 
+            case 'sendToCLIInteractive':
+                await this.generateAndSendToCLIInteractive(relativePath, message.promptOptions);
+                break;
+
             case 'resolveImagePath':
                 if (message.path && message.imgId) {
                     await this.resolveAndSendImagePath(
@@ -1023,6 +1027,59 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 // If chat is not available, just notify the user
                 vscode.window.showWarningMessage('Chat not available. Prompt copied to clipboard.');
             }
+        }
+    }
+
+    /**
+     * Generate AI prompt and send to CLI interactive session.
+     * Opens an interactive AI CLI session (copilot/claude) in an external terminal.
+     * Only includes user comments, excluding AI-generated comments.
+     * @param filePath - The file path for the comments
+     * @param options - Options including format
+     */
+    private async generateAndSendToCLIInteractive(
+        filePath: string,
+        options?: { format: 'markdown' | 'json' }
+    ): Promise<void> {
+        const comments = this.commentsManager.getCommentsForFile(filePath)
+            .filter(c => c.status === 'open')
+            .filter(c => isUserComment(c));
+
+        if (comments.length === 0) {
+            vscode.window.showInformationMessage('No open user comments to generate prompt from.');
+            return;
+        }
+
+        // Use the unified PromptGenerator with comment IDs
+        const commentIds = comments.map(c => c.id);
+        const prompt = this.promptGenerator.generatePromptForComments(commentIds, {
+            outputFormat: options?.format || 'markdown',
+            includeFullFileContent: false,
+            groupByFile: true,
+            includeLineNumbers: true
+        });
+
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+
+        // Get the interactive session manager and start a session
+        const sessionManager = getInteractiveSessionManager();
+
+        // Determine the working directory (prefer src if it exists)
+        const srcPath = path.join(workspaceRoot, 'src');
+        const workingDirectory = await this.directoryExists(srcPath) ? srcPath : workspaceRoot;
+
+        const sessionId = await sessionManager.startSession({
+            workingDirectory,
+            tool: 'copilot', // Default to copilot, could be made configurable
+            initialPrompt: prompt
+        });
+
+        if (sessionId) {
+            vscode.window.showInformationMessage('Interactive AI session started in external terminal.');
+        } else {
+            // Fallback: copy to clipboard
+            await vscode.env.clipboard.writeText(prompt);
+            vscode.window.showWarningMessage('Failed to start interactive AI session. Prompt copied to clipboard.');
         }
     }
 }
