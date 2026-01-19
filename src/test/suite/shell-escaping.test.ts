@@ -258,6 +258,219 @@ suite('Shell Argument Escaping Tests', () => {
             assert.strictEqual(result, '"Is ""^!PATH^!"" equal to 100%%?\\nCheck now^!"');
         });
 
+        test('should handle caret character (escape char itself)', () => {
+            // Caret (^) is cmd.exe's escape character
+            // Inside double quotes, it should be preserved literally
+            const result = escapeShellArg('x^2 + y^3', platform);
+            assert.strictEqual(result, '"x^2 + y^3"');
+        });
+
+        test('should handle caret with other special chars', () => {
+            const result = escapeShellArg('echo "test^!" && pause', platform);
+            assert.strictEqual(result, '"echo ""test^^!\"" && pause"');
+        });
+
+        test('should handle consecutive percent signs', () => {
+            const result = escapeShellArg('100%% discount', platform);
+            assert.strictEqual(result, '"100%%%% discount"');
+        });
+
+        test('should handle consecutive exclamation marks', () => {
+            const result = escapeShellArg('Wow!!!', platform);
+            assert.strictEqual(result, '"Wow^!^!^!"');
+        });
+
+        test('should handle consecutive double quotes', () => {
+            const result = escapeShellArg('He said ""nothing""', platform);
+            assert.strictEqual(result, '"He said """"nothing"""""');
+        });
+
+        test('should handle command separators (ampersand)', () => {
+            // & is a command separator in cmd.exe, but safe in double quotes
+            const result = escapeShellArg('cd C:\\temp & dir', platform);
+            assert.strictEqual(result, '"cd C:\\temp & dir"');
+        });
+
+        test('should handle double ampersand (logical AND)', () => {
+            const result = escapeShellArg('build && test', platform);
+            assert.strictEqual(result, '"build && test"');
+        });
+
+        test('should handle pipe character', () => {
+            // | is a pipe operator but safe in double quotes
+            const result = escapeShellArg('type file.txt | more', platform);
+            assert.strictEqual(result, '"type file.txt | more"');
+        });
+
+        test('should handle double pipe (logical OR)', () => {
+            const result = escapeShellArg('test || fallback', platform);
+            assert.strictEqual(result, '"test || fallback"');
+        });
+
+        test('should handle angle brackets (redirection)', () => {
+            // < and > are redirection operators but safe in double quotes
+            const result = escapeShellArg('cat < input.txt > output.txt', platform);
+            assert.strictEqual(result, '"cat < input.txt > output.txt"');
+        });
+
+        test('should handle parentheses (command grouping)', () => {
+            // () are used for command grouping but safe in double quotes
+            const result = escapeShellArg('(echo start) && (echo end)', platform);
+            assert.strictEqual(result, '"(echo start) && (echo end)"');
+        });
+
+        test('should handle semicolons', () => {
+            // ; is not special in cmd.exe but is in PowerShell
+            const result = escapeShellArg('cmd1; cmd2; cmd3', platform);
+            assert.strictEqual(result, '"cmd1; cmd2; cmd3"');
+        });
+
+        test('should handle at symbol', () => {
+            // @ suppresses command echoing in batch files but safe in double quotes
+            const result = escapeShellArg('@echo off', platform);
+            assert.strictEqual(result, '"@echo off"');
+        });
+
+        test('should handle equals sign (variable assignment)', () => {
+            const result = escapeShellArg('SET PATH=C:\\bin', platform);
+            assert.strictEqual(result, '"SET PATH=C:\\bin"');
+        });
+
+        test('should handle tilde (short path syntax)', () => {
+            const result = escapeShellArg('cd ~1', platform);
+            assert.strictEqual(result, '"cd ~1"');
+        });
+
+        test('should handle leading spaces', () => {
+            const result = escapeShellArg('   leading spaces', platform);
+            assert.strictEqual(result, '"   leading spaces"');
+        });
+
+        test('should handle trailing spaces', () => {
+            const result = escapeShellArg('trailing spaces   ', platform);
+            assert.strictEqual(result, '"trailing spaces   "');
+        });
+
+        test('should handle tabs', () => {
+            const result = escapeShellArg('col1\tcol2\tcol3', platform);
+            assert.strictEqual(result, '"col1\tcol2\tcol3"');
+        });
+
+        test('should handle mixed tabs and newlines', () => {
+            const result = escapeShellArg('line1\ttab\nline2', platform);
+            assert.strictEqual(result, '"line1\ttab\\nline2"');
+        });
+
+        test('should handle backslash before double quote', () => {
+            // In cmd.exe, backslash is NOT an escape character
+            const result = escapeShellArg('path\\to\\"file"', platform);
+            assert.strictEqual(result, '"path\\to\\""file"""');
+        });
+
+        test('should handle UNC paths', () => {
+            const result = escapeShellArg('\\\\server\\share\\file.txt', platform);
+            assert.strictEqual(result, '"\\\\server\\share\\file.txt"');
+        });
+
+        test('should handle environment variable syntax variations', () => {
+            const result = escapeShellArg('%USERPROFILE%\\%APPDATA%', platform);
+            assert.strictEqual(result, '"%%USERPROFILE%%\\%%APPDATA%%"');
+        });
+
+        test('should handle delayed expansion variable syntax', () => {
+            // !var! syntax used when delayed expansion is enabled
+            const result = escapeShellArg('echo !count! items', platform);
+            assert.strictEqual(result, '"echo ^!count^! items"');
+        });
+
+        test('should handle batch file labels', () => {
+            // :label syntax but safe in double quotes
+            const result = escapeShellArg('goto :label', platform);
+            assert.strictEqual(result, '"goto :label"');
+        });
+
+        test('should handle batch comments', () => {
+            const result = escapeShellArg('REM This is a comment', platform);
+            assert.strictEqual(result, '"REM This is a comment"');
+        });
+
+        test('should handle dollar sign (not special in cmd.exe)', () => {
+            const result = escapeShellArg('Price: $100', platform);
+            assert.strictEqual(result, '"Price: $100"');
+        });
+
+        test('should handle backticks (not special in cmd.exe)', () => {
+            const result = escapeShellArg('Use `command` here', platform);
+            assert.strictEqual(result, '"Use `command` here"');
+        });
+
+        test('should handle asterisk and question mark (wildcards)', () => {
+            // * and ? are wildcards but safe in double quotes
+            const result = escapeShellArg('del *.txt', platform);
+            assert.strictEqual(result, '"del *.txt"');
+        });
+
+        test('should handle very long string with special chars', () => {
+            const longStr = 'x'.repeat(1000) + '!"' + '%'.repeat(100);
+            const result = escapeShellArg(longStr, platform);
+            assert.ok(result.startsWith('"x'), 'Should start with quote and x');
+            assert.ok(result.includes('^!'), 'Should escape exclamation');
+            assert.ok(result.includes('""'), 'Should escape double quote');
+            assert.ok(result.includes('%%'), 'Should escape percent signs');
+            assert.ok(result.endsWith('"'), 'Should end with quote');
+        });
+
+        test('should handle all cmd.exe operators together', () => {
+            const result = escapeShellArg('cmd1 & cmd2 | cmd3 && cmd4 || cmd5 < in.txt > out.txt', platform);
+            assert.strictEqual(result, '"cmd1 & cmd2 | cmd3 && cmd4 || cmd5 < in.txt > out.txt"');
+        });
+
+        test('should handle complex batch script line', () => {
+            const result = escapeShellArg('if "%VAR%"=="value" (echo "Found!") else (echo "Missing!")', platform);
+            assert.strictEqual(result, '"if ""%%VAR%%""==""value"" (echo ""Found^!"") else (echo ""Missing^!"")"');
+        });
+
+        test('should handle PowerShell variable syntax', () => {
+            // $var syntax (PowerShell, not cmd.exe)
+            const result = escapeShellArg('Write-Host $env:PATH', platform);
+            assert.strictEqual(result, '"Write-Host $env:PATH"');
+        });
+
+        test('should handle hash/pound sign', () => {
+            const result = escapeShellArg('Issue #123', platform);
+            assert.strictEqual(result, '"Issue #123"');
+        });
+
+        test('should handle square brackets', () => {
+            const result = escapeShellArg('array[0] = value', platform);
+            assert.strictEqual(result, '"array[0] = value"');
+        });
+
+        test('should handle curly braces', () => {
+            const result = escapeShellArg('function() { return true; }', platform);
+            assert.strictEqual(result, '"function() { return true; }"');
+        });
+
+        test('should handle plus and minus signs', () => {
+            const result = escapeShellArg('x = a + b - c', platform);
+            assert.strictEqual(result, '"x = a + b - c"');
+        });
+
+        test('should handle slash and backslash together', () => {
+            const result = escapeShellArg('C:\\path/to/file', platform);
+            assert.strictEqual(result, '"C:\\path/to/file"');
+        });
+
+        test('should handle commas', () => {
+            const result = escapeShellArg('value1, value2, value3', platform);
+            assert.strictEqual(result, '"value1, value2, value3"');
+        });
+
+        test('should handle periods and dots', () => {
+            const result = escapeShellArg('file.name.ext', platform);
+            assert.strictEqual(result, '"file.name.ext"');
+        });
+
         test('should handle real-world code review prompt', () => {
             const prompt = 'Review this code:\nfunction validate(x) {\n  if (!x) throw "Invalid!";\n  return x;\n}';
             const result = escapeShellArg(prompt, platform);
