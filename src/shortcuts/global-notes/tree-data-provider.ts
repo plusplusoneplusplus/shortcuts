@@ -1,20 +1,17 @@
 import * as vscode from 'vscode';
 import { ConfigurationManager } from '../configuration-manager';
-import { NotificationManager } from '../notification-manager';
-import { getExtensionLogger, LogCategory } from '../shared';
 import { GlobalNoteItem } from '../tree-items';
+import { BaseTreeDataProvider } from '../shared/base-tree-data-provider';
 
 /**
  * Tree data provider for the Global Notes view
  * Displays global notes that are not tied to any specific group
  */
-export class GlobalNotesTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
-
+export class GlobalNotesTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem> {
     private configurationManager: ConfigurationManager;
 
     constructor(configurationManager: ConfigurationManager) {
+        super();
         this.configurationManager = configurationManager;
     }
 
@@ -26,30 +23,16 @@ export class GlobalNotesTreeDataProvider implements vscode.TreeDataProvider<vsco
     }
 
     /**
-     * Get the children of an element or root elements if no element is provided
+     * Implementation of getChildren logic
      */
-    async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
-        try {
-            if (!element) {
-                // Return root level global notes
-                return await this.getGlobalNotes();
-            } else {
-                // Global notes have no children
-                return [];
-            }
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            getExtensionLogger().error(LogCategory.EXTENSION, 'Error getting global notes', err);
-            NotificationManager.showError(`Error loading global notes: ${err.message}`);
+    protected async getChildrenImpl(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+        if (!element) {
+            // Return root level global notes
+            return await this.getGlobalNotes();
+        } else {
+            // Global notes have no children
             return [];
         }
-    }
-
-    /**
-     * Refresh the tree view
-     */
-    refresh(): void {
-        this._onDidChangeTreeData.fire();
     }
 
     /**
@@ -57,13 +40,6 @@ export class GlobalNotesTreeDataProvider implements vscode.TreeDataProvider<vsco
      */
     getConfigurationManager(): ConfigurationManager {
         return this.configurationManager;
-    }
-
-    /**
-     * Dispose of resources
-     */
-    dispose(): void {
-        this._onDidChangeTreeData.dispose();
     }
 
     /**

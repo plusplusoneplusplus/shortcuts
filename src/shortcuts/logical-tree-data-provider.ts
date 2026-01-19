@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from './configuration-manager';
 import { NotificationManager } from './notification-manager';
 import { getExtensionLogger, LogCategory } from './shared';
+import { FilterableTreeDataProvider } from './shared/filterable-tree-data-provider';
 import { ThemeManager } from './theme-manager';
 import { CommandShortcutItem, CommitFileItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, ShortcutItem, TaskShortcutItem } from './tree-items';
 import { GitLogService } from './git/git-log-service';
@@ -13,17 +14,14 @@ import { BasePath, LogicalGroup } from './types';
  * Tree data provider for the logical groups panel
  * Handles custom logical groupings of shortcuts
  */
-export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
-
+export class LogicalTreeDataProvider extends FilterableTreeDataProvider<vscode.TreeItem> {
     private configurationManager: ConfigurationManager;
     private workspaceRoot: string;
     private themeManager: ThemeManager;
-    private searchFilter: string = '';
     private gitLogService: GitLogService | undefined;
 
     constructor(workspaceRoot: string, configurationManager: ConfigurationManager, themeManager: ThemeManager) {
+        super();
         this.workspaceRoot = workspaceRoot;
         this.configurationManager = configurationManager;
         this.themeManager = themeManager;
@@ -44,42 +42,28 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
     }
 
     /**
-     * Get the children of an element or root elements if no element is provided
+     * Implementation of getChildren logic
      */
-    async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
-        try {
-            if (!element) {
-                // Return root level logical groups
-                return await this.getRootLogicalGroups();
-            } else if (element instanceof LogicalGroupItem) {
-                // Return contents of the logical group
-                return await this.getLogicalGroupContents(element);
-            } else if (element instanceof LogicalGroupChildItem && element.itemType === 'folder') {
-                // Return filesystem contents of folders within logical groups
-                return await this.getFolderContents(element);
-            } else if (element instanceof FolderShortcutItem) {
-                // Return filesystem contents of expanded folders (nested folders)
-                return await this.getFolderContentsFromFolderItem(element);
-            } else if (element instanceof CommitShortcutItem) {
-                // Return files changed in the commit
-                return await this.getCommitFiles(element);
-            } else {
-                // Files and other items have no children
-                return [];
-            }
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            getExtensionLogger().error(LogCategory.EXTENSION, 'Error getting logical tree children', err);
-            NotificationManager.showError(`Error loading logical groups: ${err.message}`);
+    protected async getChildrenImpl(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+        if (!element) {
+            // Return root level logical groups
+            return await this.getRootLogicalGroups();
+        } else if (element instanceof LogicalGroupItem) {
+            // Return contents of the logical group
+            return await this.getLogicalGroupContents(element);
+        } else if (element instanceof LogicalGroupChildItem && element.itemType === 'folder') {
+            // Return filesystem contents of folders within logical groups
+            return await this.getFolderContents(element);
+        } else if (element instanceof FolderShortcutItem) {
+            // Return filesystem contents of expanded folders (nested folders)
+            return await this.getFolderContentsFromFolderItem(element);
+        } else if (element instanceof CommitShortcutItem) {
+            // Return files changed in the commit
+            return await this.getCommitFiles(element);
+        } else {
+            // Files and other items have no children
             return [];
         }
-    }
-
-    /**
-     * Refresh the tree view
-     */
-    refresh(): void {
-        this._onDidChangeTreeData.fire();
     }
 
     /**
@@ -90,33 +74,31 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
     }
 
     /**
-     * Set search filter
+     * Set search filter (backward compatibility alias)
      */
     setSearchFilter(filter: string): void {
-        this.searchFilter = filter.toLowerCase();
-        this.refresh();
+        this.setFilter(filter);
     }
 
     /**
-     * Clear search filter
+     * Clear search filter (backward compatibility alias)
      */
     clearSearchFilter(): void {
-        this.searchFilter = '';
-        this.refresh();
+        this.clearFilter();
     }
 
     /**
-     * Get current search filter
+     * Get current search filter (backward compatibility alias)
      */
     getSearchFilter(): string {
-        return this.searchFilter;
+        return this.getFilter();
     }
 
     /**
-     * Dispose of resources
+     * Override to use EXTENSION log category
      */
-    dispose(): void {
-        this._onDidChangeTreeData.dispose();
+    protected getLogCategory(): LogCategory {
+        return LogCategory.EXTENSION;
     }
 
     /**
@@ -134,15 +116,15 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
         for (const groupConfig of config.logicalGroups) {
             try {
                 // Apply search filter to group names and contents
-                if (this.searchFilter) {
-                    const groupMatches = groupConfig.name.toLowerCase().includes(this.searchFilter) ||
-                        (groupConfig.description && groupConfig.description.toLowerCase().includes(this.searchFilter));
+                if (this.hasFilter) {
+                    const groupMatches = groupConfig.name.toLowerCase().includes(this.getFilter()) ||
+                        (groupConfig.description && groupConfig.description.toLowerCase().includes(this.getFilter()));
 
                     if (!groupMatches) {
                         // Check if any items in the group match
                         const hasMatchingItems = groupConfig.items.some(item =>
-                            item.name.toLowerCase().includes(this.searchFilter) ||
-                            (item.path && item.path.toLowerCase().includes(this.searchFilter))
+                            item.name.toLowerCase().includes(this.getFilter()) ||
+                            (item.path && item.path.toLowerCase().includes(this.getFilter()))
                         );
 
                         if (!hasMatchingItems) {
@@ -224,15 +206,15 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
             if (groupConfig.groups && groupConfig.groups.length > 0) {
                 for (const nestedGroup of groupConfig.groups) {
                     // Apply search filter to nested group names
-                    if (this.searchFilter) {
-                        const groupMatches = nestedGroup.name.toLowerCase().includes(this.searchFilter) ||
-                            (nestedGroup.description && nestedGroup.description.toLowerCase().includes(this.searchFilter));
+                    if (this.hasFilter) {
+                        const groupMatches = nestedGroup.name.toLowerCase().includes(this.getFilter()) ||
+                            (nestedGroup.description && nestedGroup.description.toLowerCase().includes(this.getFilter()));
 
                         if (!groupMatches) {
                             // Check if any items in the nested group match
                             const hasMatchingItems = nestedGroup.items.some(item =>
-                                item.name.toLowerCase().includes(this.searchFilter) ||
-                                (item.path && item.path.toLowerCase().includes(this.searchFilter))
+                                item.name.toLowerCase().includes(this.getFilter()) ||
+                                (item.path && item.path.toLowerCase().includes(this.getFilter()))
                             );
 
                             if (!hasMatchingItems) {
@@ -273,17 +255,17 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
             for (const itemConfig of sortedItems) {
                 try {
                     // Apply search filter to item names
-                    if (this.searchFilter) {
-                        const itemMatches = itemConfig.name.toLowerCase().includes(this.searchFilter) ||
-                            (itemConfig.path && itemConfig.path.toLowerCase().includes(this.searchFilter)) ||
-                            (itemConfig.command && itemConfig.command.toLowerCase().includes(this.searchFilter)) ||
-                            (itemConfig.task && itemConfig.task.toLowerCase().includes(this.searchFilter));
+                    if (this.hasFilter) {
+                        const itemMatches = itemConfig.name.toLowerCase().includes(this.getFilter()) ||
+                            (itemConfig.path && itemConfig.path.toLowerCase().includes(this.getFilter())) ||
+                            (itemConfig.command && itemConfig.command.toLowerCase().includes(this.getFilter())) ||
+                            (itemConfig.task && itemConfig.task.toLowerCase().includes(this.getFilter()));
 
                         if (!itemMatches) {
                             // For folders, check if they contain matching items
                             if (itemConfig.type === 'folder' && itemConfig.path) {
                                 const resolvedPath = this.resolvePath(itemConfig.path, config.basePaths);
-                                const hasMatchingChildren = await this.hasMatchingChildren(resolvedPath, this.searchFilter);
+                                const hasMatchingChildren = await this.hasMatchingChildren(resolvedPath, this.getFilter());
                                 if (!hasMatchingChildren) {
                                     continue;
                                 }
@@ -585,10 +567,10 @@ export class LogicalTreeDataProvider implements vscode.TreeDataProvider<vscode.T
                     const entryUri = vscode.Uri.file(entryPath);
 
                     // Apply search filter if active
-                    if (this.searchFilter && !entry.name.toLowerCase().includes(this.searchFilter)) {
+                    if (this.getFilter() && !entry.name.toLowerCase().includes(this.getFilter())) {
                         // If searching, check if folder contains matching items
                         if (entry.isDirectory()) {
-                            const hasMatchingChildren = await this.hasMatchingChildren(entryPath, this.searchFilter);
+                            const hasMatchingChildren = await this.hasMatchingChildren(entryPath, this.getFilter());
                             if (!hasMatchingChildren) {
                                 continue;
                             }

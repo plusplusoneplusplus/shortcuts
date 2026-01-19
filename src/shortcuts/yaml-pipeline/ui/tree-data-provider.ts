@@ -7,7 +7,8 @@
  */
 
 import * as vscode from 'vscode';
-import { getExtensionLogger, LogCategory } from '../../shared';
+import { LogCategory } from '../../shared';
+import { FilterableTreeDataProvider } from '../../shared/filterable-tree-data-provider';
 import { PipelineManager } from './pipeline-manager';
 import { PipelineItem, ResourceItem, PipelineTreeItem, PipelineCategoryItem } from './pipeline-item';
 import { PipelineInfo, PipelineSource } from './types';
@@ -16,16 +17,12 @@ import { PipelineInfo, PipelineSource } from './types';
  * Tree data provider for the Pipelines Viewer.
  * Displays pipeline packages and their resource files from the configured pipelines folder.
  */
-export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<PipelineTreeItem>, vscode.Disposable {
-    private _onDidChangeTreeData: vscode.EventEmitter<PipelineTreeItem | undefined | null | void> =
-        new vscode.EventEmitter<PipelineTreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<PipelineTreeItem | undefined | null | void> =
-        this._onDidChangeTreeData.event;
-
-    private filterText: string = '';
+export class PipelinesTreeDataProvider extends FilterableTreeDataProvider<PipelineTreeItem> {
     private cachedPipelines: PipelineInfo[] = [];
 
-    constructor(private pipelineManager: PipelineManager) {}
+    constructor(private pipelineManager: PipelineManager) {
+        super();
+    }
 
     /**
      * Get the tree item representation of an element
@@ -35,35 +32,28 @@ export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<Pipeli
     }
 
     /**
-     * Get the children of an element or root elements if no element is provided
+     * Implementation of getChildren logic
      */
-    async getChildren(element?: PipelineTreeItem): Promise<PipelineTreeItem[]> {
-        try {
-            if (!element) {
-                // Return root level - category headers
-                return await this.getRootItems();
-            }
-
-            // If element is a category, return pipelines in that category
-            if (element.itemType === 'category') {
-                const categoryItem = element as PipelineCategoryItem;
-                return await this.getPipelinesInCategory(categoryItem.categoryType);
-            }
-
-            // If element is a PipelineItem, return its resource files
-            if (element.itemType === 'package') {
-                const pipelineItem = element as PipelineItem;
-                return this.getResourceItems(pipelineItem);
-            }
-
-            // ResourceItems have no children
-            return [];
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            getExtensionLogger().error(LogCategory.EXTENSION, 'Error getting pipelines', err);
-            vscode.window.showErrorMessage(`Error loading pipelines: ${err.message}`);
-            return [];
+    protected async getChildrenImpl(element?: PipelineTreeItem): Promise<PipelineTreeItem[]> {
+        if (!element) {
+            // Return root level - category headers
+            return await this.getRootItems();
         }
+
+        // If element is a category, return pipelines in that category
+        if (element.itemType === 'category') {
+            const categoryItem = element as PipelineCategoryItem;
+            return await this.getPipelinesInCategory(categoryItem.categoryType);
+        }
+
+        // If element is a PipelineItem, return its resource files
+        if (element.itemType === 'package') {
+            const pipelineItem = element as PipelineItem;
+            return this.getResourceItems(pipelineItem);
+        }
+
+        // ResourceItems have no children
+        return [];
     }
 
     /**
@@ -93,36 +83,6 @@ export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<Pipeli
     }
 
     /**
-     * Refresh the tree view
-     */
-    refresh(): void {
-        this._onDidChangeTreeData.fire();
-    }
-
-    /**
-     * Set filter text
-     */
-    setFilter(text: string): void {
-        this.filterText = text.toLowerCase();
-        this.refresh();
-    }
-
-    /**
-     * Clear the filter
-     */
-    clearFilter(): void {
-        this.filterText = '';
-        this.refresh();
-    }
-
-    /**
-     * Get current filter text
-     */
-    getFilter(): string {
-        return this.filterText;
-    }
-
-    /**
      * Get the pipeline manager instance
      */
     getPipelineManager(): PipelineManager {
@@ -130,10 +90,10 @@ export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<Pipeli
     }
 
     /**
-     * Dispose of resources
+     * Override to use EXTENSION log category
      */
-    dispose(): void {
-        this._onDidChangeTreeData.dispose();
+    protected getLogCategory(): LogCategory {
+        return LogCategory.EXTENSION;
     }
 
     /**
@@ -145,11 +105,12 @@ export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<Pipeli
 
         // Apply filter
         let filteredPipelines = allPipelines;
-        if (this.filterText) {
+        if (this.hasFilter) {
+            const filter = this.getFilter();
             filteredPipelines = allPipelines.filter(pipeline =>
-                pipeline.name.toLowerCase().includes(this.filterText) ||
-                pipeline.packageName.toLowerCase().includes(this.filterText) ||
-                (pipeline.description && pipeline.description.toLowerCase().includes(this.filterText))
+                pipeline.name.toLowerCase().includes(filter) ||
+                pipeline.packageName.toLowerCase().includes(filter) ||
+                (pipeline.description && pipeline.description.toLowerCase().includes(filter))
             );
         }
 
@@ -160,7 +121,7 @@ export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<Pipeli
         const workspace = filteredPipelines.filter(p => p.source === PipelineSource.Workspace);
 
         // Always show Bundled category (even if empty, for discoverability)
-        if (bundled.length > 0 || !this.filterText) {
+        if (bundled.length > 0 || !this.hasFilter) {
             items.push(new PipelineCategoryItem(
                 'Bundled Pipelines',
                 'bundled',
@@ -171,7 +132,7 @@ export class PipelinesTreeDataProvider implements vscode.TreeDataProvider<Pipeli
 
         // Show Workspace category if there are workspace pipelines or folder exists
         const workspaceFolderExists = await this.pipelineManager.workspaceFolderExists();
-        if (workspace.length > 0 || workspaceFolderExists || !this.filterText) {
+        if (workspace.length > 0 || workspaceFolderExists || !this.hasFilter) {
             items.push(new PipelineCategoryItem(
                 'Workspace Pipelines',
                 'workspace',

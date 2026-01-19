@@ -43,12 +43,13 @@ This module provides a tree view for managing markdown task files. It parses tas
 
 ### TasksTreeDataProvider
 
-The main tree data provider for tasks.
+The main tree data provider for tasks. Extends `FilterableTreeDataProvider` for built-in filtering and search capabilities.
 
 ```typescript
 import { TasksTreeDataProvider } from '../tasks-viewer';
 
-// Create provider
+// The provider extends FilterableTreeDataProvider
+// Provides built-in filter management, EventEmitter, and error handling
 const provider = new TasksTreeDataProvider(taskManager);
 
 // Register with VSCode
@@ -57,10 +58,10 @@ const treeView = vscode.window.createTreeView('workspaceShortcuts.tasks', {
     dragAndDropController: new TasksDragDropController(provider)
 });
 
-// Refresh the tree
+// Refresh the tree (inherited from base class)
 provider.refresh();
 
-// Set filter
+// Set filter (inherited from FilterableTreeDataProvider)
 provider.setFilter('incomplete');
 
 // Set search

@@ -36,6 +36,96 @@ This module contains shared utilities used by multiple features across the exten
 
 ## Key Components
 
+### Tree Data Provider Base Classes
+
+#### BaseTreeDataProvider
+
+Foundation base class for all tree data providers in the extension. Provides common functionality including EventEmitter setup, refresh mechanism, disposal pattern, and error handling.
+
+```typescript
+import { BaseTreeDataProvider } from '../shared/base-tree-data-provider';
+
+class MyTreeProvider extends BaseTreeDataProvider<vscode.TreeItem> {
+    constructor() {
+        super();
+    }
+    
+    // Implement required methods
+    protected async getChildrenImpl(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+        if (!element) {
+            return await this.getRootItems();
+        }
+        return [];
+    }
+    
+    getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
+        return element;
+    }
+    
+    // Optional: Override to use specific log category
+    protected getLogCategory(): LogCategory {
+        return LogCategory.EXTENSION;
+    }
+}
+```
+
+**Key Features:**
+- Automatic EventEmitter setup (`onDidChangeTreeData`)
+- Built-in `refresh()` method with optional element parameter
+- Error handling with logging and user notifications
+- Disposable management (`dispose()` method automatically called)
+- Eliminates ~40-50 lines of boilerplate per provider
+
+**Providers using BaseTreeDataProvider:**
+- GlobalNotesTreeDataProvider
+
+#### FilterableTreeDataProvider
+
+Extends BaseTreeDataProvider with filtering/search capabilities. Perfect for tree views that need text-based filtering.
+
+```typescript
+import { FilterableTreeDataProvider } from '../shared/filterable-tree-data-provider';
+
+class MyFilterableProvider extends FilterableTreeDataProvider<vscode.TreeItem> {
+    protected async getChildrenImpl(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+        let items = await this.getAllItems();
+        
+        // Use base class filter helpers
+        if (this.hasFilter) {
+            items = items.filter(item =>
+                this.matchesFilter(item.name, item.description, item.path)
+            );
+        }
+        
+        return items;
+    }
+    
+    getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
+        return element;
+    }
+}
+
+// Usage
+provider.setFilter('search text');  // Sets filter and auto-refreshes
+provider.clearFilter();             // Clears filter and auto-refreshes
+const current = provider.getFilter(); // Gets current filter
+const isActive = provider.hasFilter; // Check if filter is active
+```
+
+**Key Features:**
+- All features from BaseTreeDataProvider
+- Automatic filter state management (lowercase storage)
+- Case-insensitive filtering by default
+- Helper method `matchesFilter(...fields)` for multi-field matching
+- `hasFilter` property to check if filter is active
+- Auto-refresh on filter changes
+- Eliminates ~60-70 lines of boilerplate per provider
+
+**Providers using FilterableTreeDataProvider:**
+- TasksTreeDataProvider
+- PipelinesTreeDataProvider
+- LogicalTreeDataProvider
+
 ### ExtensionLogger
 
 Unified logging framework for the extension.
@@ -110,6 +200,99 @@ const highlighted = getHighlightedHTMLLines(
     endLine,
     'highlight-class'
 );
+```
+
+### Tree Provider Utility Modules
+
+#### Tree Filter Utils
+
+Utilities for filter matching operations in tree data providers.
+
+```typescript
+import { FilterMatcher } from '../shared/tree-filter-utils';
+
+// Create filter matcher
+const matcher = new FilterMatcher('search text');
+
+// Check if fields match filter (case-insensitive)
+const matches = matcher.matches('My Item', 'Description text');
+// true if any field contains 'search text'
+
+// Check object properties
+const objectMatches = matcher.matchesObject(
+    { name: 'Task 1', description: 'Do something' },
+    'name', 'description'
+);
+
+// Get the filter text (lowercase)
+const filterText = matcher.getFilterText();
+```
+
+#### Tree Icon Utils
+
+Centralized icon constants and mapping functions for tree providers.
+
+```typescript
+import {
+    PROCESS_STATUS_ICONS,
+    GIT_STATUS_ICONS,
+    DOCUMENT_TYPE_ICONS,
+    getDocumentIcon,
+    getArchivedIcon,
+    getProcessStatusIcon,
+    getGitStageIcon
+} from '../shared/tree-icon-utils';
+
+// Get process status icon
+const icon = getProcessStatusIcon('running');
+// Returns: ThemeIcon('sync~spin', blue color)
+
+// Get git stage icon
+const stageIcon = getGitStageIcon('staged');
+// Returns: ThemeIcon('check', green color)
+
+// Get document type icon
+const docIcon = getDocumentIcon('plan');
+// Returns: ThemeIcon('checklist')
+
+// Get archived item icon
+const archivedIcon = getArchivedIcon();
+// Returns: ThemeIcon('archive', gray color)
+
+// Use constant maps directly
+const customIcon = PROCESS_STATUS_ICONS['completed'];
+```
+
+**Available Icon Constants:**
+- `PROCESS_STATUS_ICONS` - running, completed, failed, cancelled
+- `GIT_STATUS_ICONS` - staged, unstaged, untracked
+- `DOCUMENT_TYPE_ICONS` - plan, spec, test, notes, todo, readme, design, impl, review, etc. (18+ types)
+
+#### Tree Error Handler
+
+Utilities for consistent error handling in tree data providers.
+
+```typescript
+import { TreeErrorHandler } from '../shared/tree-error-handler';
+
+// Create error handler
+const errorHandler = new TreeErrorHandler('MyProvider', LogCategory.EXTENSION);
+
+// Handle error (logs and shows notification)
+try {
+    await someOperation();
+} catch (error) {
+    errorHandler.handle(error);
+}
+
+// Wrap async function with error handling
+const result = await errorHandler.wrap(
+    async () => await riskyOperation(),
+    [] // fallback value on error
+);
+
+// Normalize unknown errors to Error objects
+const normalizedError = TreeErrorHandler.normalize(unknownError);
 ```
 
 ### CommentsTreeProviderBase
@@ -425,16 +608,21 @@ interface BasePromptGenerationOptions {
 
 ```
 shared/
-├── index.ts                    # Main exports
-├── extension-logger.ts         # Logging framework
-├── text-matching.ts           # String similarity utilities
-├── highlighted-html-lines.ts  # HTML line processing
-├── anchor-utils.ts            # Anchor creation/relocation
-├── glob-utils.ts              # File pattern matching
-├── comments-tree-provider-base.ts  # Tree provider base
-├── prompt-generator-base.ts   # Prompt generator base
+├── index.ts                          # Main exports
+├── extension-logger.ts               # Logging framework
+├── base-tree-data-provider.ts        # Base class for tree providers
+├── filterable-tree-data-provider.ts  # Base with filtering support
+├── tree-filter-utils.ts              # Filter matching utilities
+├── tree-icon-utils.ts                # Icon constants and helpers
+├── tree-error-handler.ts             # Error handling utilities
+├── text-matching.ts                  # String similarity utilities
+├── highlighted-html-lines.ts         # HTML line processing
+├── anchor-utils.ts                   # Anchor creation/relocation
+├── glob-utils.ts                     # File pattern matching
+├── comments-tree-provider-base.ts    # Tree provider base for comments
+├── prompt-generator-base.ts          # Prompt generator base
 ├── ai-clarification-handler-base.ts  # AI handler base
-└── webview/                   # Webview utilities
+└── webview/                          # Webview utilities
     ├── index.ts
     ├── content-generator.ts
     ├── message-handler.ts

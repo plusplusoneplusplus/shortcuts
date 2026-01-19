@@ -683,9 +683,9 @@ await showPipelineResults(result, pipelineName);
 
 **Reason:** Basic viewer lacks individual item inspection and detailed result breakdown. The enhanced viewer provides superior user experience with node-level details and interactive features.
 
-### Pipeline Manager
+### PipelinesTreeDataProvider
 
-Manages pipeline packages - discovery, CRUD operations, validation.
+Tree data provider for the Pipelines Viewer. Extends `FilterableTreeDataProvider` for built-in search and filtering capabilities.
 
 ```typescript
 import { PipelineManager } from '../yaml-pipeline';
@@ -712,7 +712,9 @@ await manager.deletePipeline(filePath);
 const csvPath = manager.resolveResourcePath('data/input.csv', packagePath);
 ```
 
-### Tree View Components
+### Pipeline Manager
+
+Manages pipeline packages - discovery, CRUD operations, validation.
 
 ```typescript
 import {
@@ -721,11 +723,29 @@ import {
     ResourceItem
 } from '../yaml-pipeline';
 
+// Tree data provider extends FilterableTreeDataProvider
+// Provides built-in filter management, EventEmitter, and error handling
+const provider = new PipelinesTreeDataProvider(pipelineManager);
+
+// Set filter (inherited from FilterableTreeDataProvider)
+provider.setFilter('bug');  // Filter pipelines by name/description
+
+// Clear filter (inherited)
+provider.clearFilter();
+
+// Get current filter (inherited)
+const currentFilter = provider.getFilter();
+
+// Refresh (inherited from BaseTreeDataProvider)
+provider.refresh();
+```
+
+### Tree View Components
+
+```typescript
 // Tree data provider supports hierarchical display:
 // - PipelineItem: Represents a pipeline package (collapsible)
 // - ResourceItem: Represents resource files within a package
-
-const provider = new PipelinesTreeDataProvider(pipelineManager);
 
 // Get root items (pipeline packages)
 const packages = await provider.getChildren();

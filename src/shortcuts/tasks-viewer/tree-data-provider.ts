@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { getExtensionLogger, LogCategory } from '../shared';
+import { LogCategory } from '../shared';
+import { FilterableTreeDataProvider } from '../shared/filterable-tree-data-provider';
 import { TaskManager } from './task-manager';
 import { TaskItem } from './task-item';
 import { TaskGroupItem } from './task-group-item';
@@ -12,20 +13,16 @@ import { Task, TaskDocument, TaskDocumentGroup } from './types';
  * Displays task markdown files from the configured tasks folder
  * Groups tasks into Active/Archived sections when Show Archived is enabled
  */
-export class TasksTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.Disposable {
-    private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null | void> =
-        new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null | void> =
-        this._onDidChangeTreeData.event;
-
-    private filterText: string = '';
+export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.TreeItem> {
     private cachedTasks: Task[] = [];
     private tasksByGroup: Map<'active' | 'archived', Task[]> = new Map();
     private cachedDocumentGroups: TaskDocumentGroup[] = [];
     private cachedSingleDocuments: TaskDocument[] = [];
     private documentsByArchiveStatus: Map<'active' | 'archived', { groups: TaskDocumentGroup[]; singles: TaskDocument[] }> = new Map();
 
-    constructor(private taskManager: TaskManager) {}
+    constructor(private taskManager: TaskManager) {
+        super();
+    }
 
     /**
      * Get the tree item representation of an element
@@ -35,27 +32,20 @@ export class TasksTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
     }
 
     /**
-     * Get the children of an element or root elements if no element is provided
+     * Implementation of getChildren logic
      */
-    async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
-        try {
-            if (!element) {
-                // Return root level - either groups or flat list
-                return await this.getRootItems();
-            } else if (element instanceof TaskGroupItem) {
-                // Return tasks for this group (active/archived)
-                return this.getGroupTasks(element.groupType);
-            } else if (element instanceof TaskDocumentGroupItem) {
-                // Return documents within this document group
-                return this.getDocumentGroupChildren(element);
-            } else {
-                // Tasks and documents have no children
-                return [];
-            }
-        } catch (error) {
-            const err = error instanceof Error ? error : new Error('Unknown error');
-            getExtensionLogger().error(LogCategory.TASKS, 'Error getting tasks', err);
-            vscode.window.showErrorMessage(`Error loading tasks: ${err.message}`);
+    protected async getChildrenImpl(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+        if (!element) {
+            // Return root level - either groups or flat list
+            return await this.getRootItems();
+        } else if (element instanceof TaskGroupItem) {
+            // Return tasks for this group (active/archived)
+            return this.getGroupTasks(element.groupType);
+        } else if (element instanceof TaskDocumentGroupItem) {
+            // Return documents within this document group
+            return this.getDocumentGroupChildren(element);
+        } else {
+            // Tasks and documents have no children
             return [];
         }
     }
@@ -74,36 +64,6 @@ export class TasksTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
     }
 
     /**
-     * Refresh the tree view
-     */
-    refresh(): void {
-        this._onDidChangeTreeData.fire();
-    }
-
-    /**
-     * Set filter text
-     */
-    setFilter(text: string): void {
-        this.filterText = text.toLowerCase();
-        this.refresh();
-    }
-
-    /**
-     * Clear the filter
-     */
-    clearFilter(): void {
-        this.filterText = '';
-        this.refresh();
-    }
-
-    /**
-     * Get current filter text
-     */
-    getFilter(): string {
-        return this.filterText;
-    }
-
-    /**
      * Get the task manager instance
      */
     getTaskManager(): TaskManager {
@@ -111,10 +71,10 @@ export class TasksTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
     }
 
     /**
-     * Dispose of resources
+     * Override to use TASKS log category
      */
-    dispose(): void {
-        this._onDidChangeTreeData.dispose();
+    protected getLogCategory(): LogCategory {
+        return LogCategory.TASKS;
     }
 
     /**
@@ -132,9 +92,10 @@ export class TasksTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
         let tasks = await this.taskManager.getTasks();
 
         // Apply filter
-        if (this.filterText) {
+        if (this.hasFilter) {
+            const filter = this.getFilter();
             tasks = tasks.filter(task =>
-                task.name.toLowerCase().includes(this.filterText)
+                task.name.toLowerCase().includes(filter)
             );
         }
 
@@ -158,18 +119,19 @@ export class TasksTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
         let { groups, singles } = await this.taskManager.getTaskDocumentGroups();
 
         // Apply filter
-        if (this.filterText) {
+        if (this.hasFilter) {
+            const filter = this.getFilter();
             groups = groups.filter(group =>
-                group.baseName.toLowerCase().includes(this.filterText) ||
+                group.baseName.toLowerCase().includes(filter) ||
                 group.documents.some(doc => 
-                    (doc.docType?.toLowerCase().includes(this.filterText)) ||
-                    doc.fileName.toLowerCase().includes(this.filterText)
+                    (doc.docType?.toLowerCase().includes(filter)) ||
+                    doc.fileName.toLowerCase().includes(filter)
                 )
             );
             singles = singles.filter(doc =>
-                doc.baseName.toLowerCase().includes(this.filterText) ||
-                (doc.docType?.toLowerCase().includes(this.filterText)) ||
-                doc.fileName.toLowerCase().includes(this.filterText)
+                doc.baseName.toLowerCase().includes(filter) ||
+                (doc.docType?.toLowerCase().includes(filter)) ||
+                doc.fileName.toLowerCase().includes(filter)
             );
         }
 

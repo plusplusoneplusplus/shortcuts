@@ -39,12 +39,13 @@ This module provides a global notes feature that allows users to create and mana
 
 ### GlobalNotesTreeDataProvider
 
-Tree data provider for the global notes view.
+Tree data provider for the global notes view. Extends `BaseTreeDataProvider` for common functionality like EventEmitter, refresh, and error handling.
 
 ```typescript
 import { GlobalNotesTreeDataProvider } from '../global-notes';
 
-// Create provider
+// The provider extends BaseTreeDataProvider
+// No need to implement EventEmitter or dispose() manually
 const provider = new GlobalNotesTreeDataProvider(context, configManager);
 
 // Register with VSCode
