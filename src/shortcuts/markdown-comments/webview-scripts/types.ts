@@ -42,6 +42,8 @@ export interface SerializedAICommand {
     icon?: string;
     order?: number;
     isCustomInput?: boolean;
+    /** Prompt text shown in hover preview tooltip */
+    prompt?: string;
 }
 
 /**

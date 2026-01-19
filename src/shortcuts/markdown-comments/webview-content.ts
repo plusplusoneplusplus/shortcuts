@@ -255,6 +255,7 @@ export function getWebviewContent(
 
     <!-- Hover preview tooltip for predefined comments -->
     <div class="predefined-comment-preview" id="predefinedPreview" style="display: none;">
+        <div class="preview-header">Preview</div>
         <div class="preview-content"></div>
     </div>
 

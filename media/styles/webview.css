@@ -496,21 +496,24 @@ body.source-mode .toolbar-review-only {
 .context-menu {
     display: none;
     position: fixed;
-    min-width: 200px;
+    min-width: 220px;
     background: var(--comment-bg);
     border: 1px solid var(--comment-border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     z-index: 2000;
     overflow: visible;
+    padding: 4px 0;
 }
 
 .context-menu-item {
     display: flex;
     align-items: center;
-    padding: 8px 12px;
+    padding: 8px 14px;
     cursor: pointer;
-    transition: background-color 0.15s;
+    transition: background-color 0.12s ease;
+    margin: 0 4px;
+    border-radius: 4px;
 }
 
 .context-menu-item:hover {
@@ -529,6 +532,9 @@ body.source-mode .toolbar-review-only {
 .context-menu-icon {
     margin-right: 10px;
     font-size: 14px;
+    width: 18px;
+    text-align: center;
+    flex-shrink: 0;
 }
 
 .context-menu-label {
@@ -538,14 +544,15 @@ body.source-mode .toolbar-review-only {
 
 .context-menu-shortcut {
     font-size: 11px;
-    opacity: 0.6;
-    margin-left: 16px;
+    opacity: 0.5;
+    margin-left: 20px;
+    font-family: var(--vscode-font-family);
 }
 
 .context-menu-separator {
     height: 1px;
     background: var(--border-color);
-    margin: 4px 8px;
+    margin: 6px 12px;
 }
 
 /* Context Menu Parent (with submenu) */
@@ -554,9 +561,10 @@ body.source-mode .toolbar-review-only {
 }
 
 .context-menu-arrow {
-    font-size: 10px;
-    opacity: 0.7;
-    margin-left: 8px;
+    font-size: 9px;
+    opacity: 0.6;
+    margin-left: 12px;
+    flex-shrink: 0;
 }
 
 /* Context Submenu */
@@ -564,15 +572,16 @@ body.source-mode .toolbar-review-only {
     display: none;
     position: absolute;
     left: 100%;
-    top: -1px;
+    top: -5px;
     min-width: 180px;
     background: var(--comment-bg);
     border: 1px solid var(--comment-border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     z-index: 2001;
     overflow: hidden;
-    margin-left: 2px;
+    margin-left: 4px;
+    padding: 4px 0;
     /* Allow JS to override positioning */
     margin-right: 0;
 }
@@ -584,11 +593,13 @@ body.source-mode .toolbar-review-only {
 
 /* Submenu items styling */
 .context-submenu .context-menu-item {
-    padding: 8px 12px;
+    padding: 8px 14px;
+    margin: 0 4px;
+    border-radius: 4px;
 }
 
 .context-submenu .context-menu-separator {
-    margin: 4px 8px;
+    margin: 6px 12px;
 }
 
 /* Predefined Comment Preview Tooltip */
@@ -596,20 +607,48 @@ body.source-mode .toolbar-review-only {
     position: fixed;
     background: var(--comment-bg);
     border: 1px solid var(--comment-border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-    padding: 8px 12px;
-    max-width: 300px;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: 0;
+    min-width: 200px;
+    max-width: 360px;
     z-index: 2002;
     pointer-events: none;
     font-size: 12px;
-    line-height: 1.4;
+    line-height: 1.5;
     color: var(--text-color);
+    overflow: hidden;
+    animation: preview-fade-in 0.15s ease-out;
+}
+
+@keyframes preview-fade-in {
+    from {
+        opacity: 0;
+        transform: translateX(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.preview-header {
+    padding: 8px 12px;
+    background: var(--vscode-titleBar-activeBackground, rgba(255, 255, 255, 0.05));
+    border-bottom: 1px solid var(--comment-border);
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #888);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .preview-content {
+    padding: 10px 12px;
     white-space: pre-wrap;
     word-wrap: break-word;
+    max-height: 200px;
+    overflow-y: auto;
 }
 
 /* Custom Instruction Dialog */

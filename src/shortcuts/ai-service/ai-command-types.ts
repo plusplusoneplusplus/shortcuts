@@ -97,6 +97,8 @@ export interface SerializedAICommand {
     icon?: string;
     order?: number;
     isCustomInput?: boolean;
+    /** Prompt text shown in hover preview tooltip */
+    prompt?: string;
 }
 
 /**
@@ -119,7 +121,8 @@ export function serializeCommand(command: AICommand): SerializedAICommand {
         label: command.label,
         icon: command.icon,
         order: command.order,
-        isCustomInput: command.isCustomInput
+        isCustomInput: command.isCustomInput,
+        prompt: command.prompt
     };
 }
 

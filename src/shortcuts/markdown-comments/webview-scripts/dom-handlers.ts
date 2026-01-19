@@ -10,6 +10,7 @@ import {
     normalizeExtractedLine
 } from '../webview-logic/content-extraction';
 import {
+    AISubmenuHoverHandlers,
     attachAISubmenuHandlers,
     getAICommands,
     getAIMenuConfig,
@@ -117,18 +118,30 @@ export function initDomHandlers(): void {
 }
 
 /**
+ * Hover handlers for AI submenu items (reused for both menus)
+ */
+const aiHoverHandlers: AISubmenuHoverHandlers = {
+    onHover: (description: string, element: HTMLElement) => {
+        showPreview(description, element);
+    },
+    onLeave: () => {
+        hidePreview();
+    }
+};
+
+/**
  * Rebuild both AI submenus based on current settings
  */
 export function rebuildAISubmenu(): void {
     const menuConfig = getAIMenuConfig(state.settings.aiMenuConfig);
-    
+
     // Build "Ask AI to Comment" submenu
     updateAISubmenu(askAICommentSubmenu, menuConfig.commentCommands, 'comment');
-    attachAISubmenuHandlers(askAICommentSubmenu, handleAICommandClick);
-    
+    attachAISubmenuHandlers(askAICommentSubmenu, handleAICommandClick, aiHoverHandlers);
+
     // Build "Ask AI Interactively" submenu
     updateAISubmenu(askAIInteractiveSubmenu, menuConfig.interactiveCommands, 'interactive');
-    attachAISubmenuHandlers(askAIInteractiveSubmenu, handleAICommandClick);
+    attachAISubmenuHandlers(askAIInteractiveSubmenu, handleAICommandClick, aiHoverHandlers);
 }
 
 /**
@@ -184,18 +197,60 @@ export function rebuildPredefinedSubmenu(): void {
 
 /**
  * Show preview tooltip for predefined comment
+ * Positions intelligently to stay within viewport
  */
 function showPreview(text: string, anchorElement: HTMLElement): void {
     if (!predefinedPreview || !previewContent) return;
-    
+
     // Set the preview text
     previewContent.textContent = text;
-    
-    // Position the preview to the right of the submenu item
-    const rect = anchorElement.getBoundingClientRect();
-    predefinedPreview.style.left = `${rect.right + 8}px`;
-    predefinedPreview.style.top = `${rect.top}px`;
+
+    // Temporarily show to get dimensions
     predefinedPreview.style.display = 'block';
+    predefinedPreview.style.visibility = 'hidden';
+    const previewRect = predefinedPreview.getBoundingClientRect();
+    predefinedPreview.style.visibility = '';
+
+    // Get the submenu position (parent of the anchor element)
+    const submenu = anchorElement.closest('.context-submenu');
+    const submenuRect = submenu ? submenu.getBoundingClientRect() : anchorElement.getBoundingClientRect();
+    const anchorRect = anchorElement.getBoundingClientRect();
+
+    const margin = 8;
+    const previewWidth = previewRect.width;
+    const previewHeight = previewRect.height;
+
+    // Calculate horizontal position - prefer right side of submenu
+    let left: number;
+    const spaceOnRight = window.innerWidth - submenuRect.right;
+    const spaceOnLeft = submenuRect.left;
+
+    if (spaceOnRight >= previewWidth + margin) {
+        // Enough space on the right
+        left = submenuRect.right + margin;
+    } else if (spaceOnLeft >= previewWidth + margin) {
+        // Show on the left side instead
+        left = submenuRect.left - previewWidth - margin;
+    } else {
+        // Not enough space on either side, position at right edge with some margin
+        left = window.innerWidth - previewWidth - margin;
+    }
+
+    // Calculate vertical position - align with anchor item, keep within viewport
+    let top = anchorRect.top;
+
+    // Ensure preview doesn't go below viewport
+    if (top + previewHeight > window.innerHeight - margin) {
+        top = window.innerHeight - previewHeight - margin;
+    }
+
+    // Ensure preview doesn't go above viewport
+    if (top < margin) {
+        top = margin;
+    }
+
+    predefinedPreview.style.left = `${Math.max(margin, left)}px`;
+    predefinedPreview.style.top = `${top}px`;
 }
 
 /**
