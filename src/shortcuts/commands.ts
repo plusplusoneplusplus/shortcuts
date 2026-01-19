@@ -5,6 +5,7 @@ import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
 import { CommandShortcutItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
 import { getExtensionLogger, LogCategory } from './shared/extension-logger';
+import { getWorkspaceRoot, getWorkspaceRootUri } from './shared/workspace-utils';
 
 /**
  * Command handlers for the shortcuts panel
@@ -452,7 +453,7 @@ export class ShortcutsCommands {
                 canSelectMany: true,
                 openLabel: 'Add Files and Folders to Group',
                 title: `Select files and folders to add to "${groupItem.label}"`,
-                defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
+                defaultUri: getWorkspaceRootUri()
             });
 
             if (!uris || uris.length === 0) {
@@ -524,7 +525,7 @@ export class ShortcutsCommands {
                 canSelectMany: true,
                 openLabel: 'Add Files to Group',
                 title: `Select files to add to "${groupItem.label}"`,
-                defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
+                defaultUri: getWorkspaceRootUri()
             });
             if (!uris || uris.length === 0) {
                 return;
@@ -590,7 +591,7 @@ export class ShortcutsCommands {
                 canSelectMany: true,
                 openLabel: 'Add Folders to Group',
                 title: `Select folders to add to "${groupItem.label}"`,
-                defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
+                defaultUri: getWorkspaceRootUri()
             });
             if (!uris || uris.length === 0) {
                 return;
@@ -938,7 +939,7 @@ export class ShortcutsCommands {
             if (location.value === 'custom') {
                 // Show file save dialog (no filters needed - defaultUri includes filename)
                 const uri = await vscode.window.showSaveDialog({
-                    defaultUri: vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', fileName)),
+                    defaultUri: vscode.Uri.file(path.join(getWorkspaceRoot() || '', fileName)),
                     saveLabel: 'Create File Here'
                 });
 
@@ -949,12 +950,12 @@ export class ShortcutsCommands {
                 targetPath = uri.fsPath;
             } else {
                 // Create in workspace root
-                const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                if (!workspaceRoot) {
+                const wsRoot = getWorkspaceRoot();
+                if (!wsRoot) {
                     NotificationManager.showError('No workspace folder found');
                     return;
                 }
-                targetPath = path.join(workspaceRoot, fileName);
+                targetPath = path.join(wsRoot, fileName);
             }
 
             // Create the file if it doesn't exist
@@ -1226,12 +1227,12 @@ export class ShortcutsCommands {
                 targetPath = path.join(uris[0].fsPath, folderName);
             } else {
                 // Create in workspace root
-                const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                if (!workspaceRoot) {
+                const wsRoot = getWorkspaceRoot();
+                if (!wsRoot) {
                     NotificationManager.showError('No workspace folder found');
                     return;
                 }
-                targetPath = path.join(workspaceRoot, folderName);
+                targetPath = path.join(wsRoot, folderName);
             }
 
             // Create the folder if it doesn't exist

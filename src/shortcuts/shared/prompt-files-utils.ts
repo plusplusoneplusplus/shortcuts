@@ -1,6 +1,7 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import { getWorkspaceRoot } from './workspace-utils';
 
 /**
  * Represents a prompt file with its path and metadata
@@ -42,7 +43,7 @@ export function getPromptFileLocations(configOverride?: Record<string, boolean>)
  * @returns Array of PromptFile objects representing found prompt files
  */
 export async function getPromptFiles(workspaceRoot?: string, configOverride?: Record<string, boolean>): Promise<PromptFile[]> {
-    const root = workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const root = workspaceRoot || getWorkspaceRoot();
     if (!root) {
         return [];
     }

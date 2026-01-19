@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationManager } from '../../shortcuts/configuration-manager';
 import { LogicalTreeDataProvider } from '../../shortcuts/logical-tree-data-provider';
+import { getWorkspaceRoot } from '../../shortcuts/shared/workspace-utils';
 import { ThemeManager } from '../../shortcuts/theme-manager';
 
 suite('Nested Groups Tests', () => {
@@ -17,7 +18,7 @@ suite('Nested Groups Tests', () => {
 
     suiteSetup(async () => {
         // Use the workspace folder launched by the test runner for isolation
-        tempDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-nested-test-'));
+        tempDir = getWorkspaceRoot() || fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-nested-test-'));
 
         // Create test folder structure
         testFolder = path.join(tempDir, 'test-folder');

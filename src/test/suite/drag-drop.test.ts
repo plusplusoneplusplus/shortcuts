@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { ConfigurationManager } from '../../shortcuts/configuration-manager';
 import { ShortcutsDragDropController } from '../../shortcuts/drag-drop-controller';
 import { LogicalTreeDataProvider } from '../../shortcuts/logical-tree-data-provider';
+import { getWorkspaceRoot } from '../../shortcuts/shared/workspace-utils';
 import { ThemeManager } from '../../shortcuts/theme-manager';
 import { FileShortcutItem, FolderShortcutItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem } from '../../shortcuts/tree-items';
 
@@ -21,7 +22,7 @@ suite('Drag and Drop Tests', () => {
 
     suiteSetup(async () => {
         // Use the workspace folder launched by the test runner for isolation
-        tempDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-dragdrop-test-'));
+        tempDir = getWorkspaceRoot() || fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-dragdrop-test-'));
 
         // Create test folder structure
         testFolder = path.join(tempDir, 'test-folder');

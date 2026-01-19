@@ -20,6 +20,7 @@ import { getResultViewerContent } from './result-viewer-content';
 import { PipelineExecutionResult } from '../executor';
 import { MapResult } from '../../map-reduce/types';
 import { PromptMapResult, PromptMapOutput } from '../../map-reduce/jobs/prompt-map-job';
+import { getWorkspaceRoot } from '../../shared/workspace-utils';
 
 /**
  * URI scheme for exporting results
@@ -213,7 +214,7 @@ export class PipelineResultViewerProvider {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
         const defaultUri = vscode.Uri.file(
             path.join(
-                vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                getWorkspaceRoot() || '',
                 `${data.pipelineName}-results-${timestamp}.${fileExtension}`
             )
         );

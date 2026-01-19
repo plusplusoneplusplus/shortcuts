@@ -21,6 +21,7 @@ import { PromptItem } from '../types';
 import { PipelineResultViewerProvider } from './result-viewer-provider';
 import { PipelineTemplateType, PIPELINE_TEMPLATES, PipelineSource } from './types';
 import { createBundledPipelineUri } from './bundled-readonly-provider';
+import { getWorkspaceRoot } from '../../shared/workspace-utils';
 
 /**
  * Command handlers for the Pipelines Viewer
@@ -37,7 +38,7 @@ export class PipelineCommands {
         private context: vscode.ExtensionContext
     ) {
         // Get workspace root for pipeline execution
-        this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        this.workspaceRoot = getWorkspaceRoot() || '';
         
         // Initialize result viewer provider
         this.resultViewerProvider = new PipelineResultViewerProvider(context.extensionUri);

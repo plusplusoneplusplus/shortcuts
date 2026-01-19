@@ -32,6 +32,7 @@ import {
     createEmptyItem
 } from '../input-generator';
 import { invokeCopilotCLI, getAIToolSetting, copyToClipboard } from '../../ai-service';
+import { getWorkspaceRoot } from '../../shared/workspace-utils';
 
 /**
  * Pipeline Preview Editor - Custom editor provider for pipeline.yaml files
@@ -256,7 +257,7 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
         packagePath: string,
         config: PipelineConfig
     ): Promise<PipelineInfo> {
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        const workspaceRoot = getWorkspaceRoot() || '';
         const stat = fs.statSync(document.uri.fsPath);
 
         // Get resource files in the package
@@ -423,7 +424,7 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
 
             // Create AI invoker
             const aiTool = getAIToolSetting();
-            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || packagePath;
+            const workspaceRoot = getWorkspaceRoot() || packagePath;
 
             const aiInvoker: AIInvoker = async (prompt: string, options?: { model?: string }): Promise<{ success: boolean; response?: string; error?: string }> => {
                 if (aiTool === 'clipboard') {

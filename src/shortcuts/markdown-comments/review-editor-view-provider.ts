@@ -7,6 +7,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { IAIProcessManager, getAICommandRegistry, getInteractiveSessionManager } from '../ai-service';
 import { getPredefinedCommentRegistry } from '../shared/predefined-comment-registry';
+import { getWorkspaceRoot, getWorkspaceRootUri } from '../shared/workspace-utils';
 import { handleAIClarification } from './ai-clarification-handler';
 import { CodeBlockTheme } from './code-block-themes';
 import { CommentsManager } from './comments-manager';
@@ -186,8 +187,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         _token: vscode.CancellationToken
     ): Promise<void> {
         // Get the relative file path for comment lookup
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-        const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+        const workspaceRoot = getWorkspaceRoot() || '';
+        const workspaceUri = getWorkspaceRootUri();
         const relativePath = path.relative(workspaceRoot, document.uri.fsPath);
 
         // Normalize file path for tracking (use forward slashes)
@@ -582,7 +583,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
      * Handle AI clarification request from the webview
      */
     private async handleAskAI(context: AskAIContext, filePath: string): Promise<void> {
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        const workspaceRoot = getWorkspaceRoot() || '';
 
         // Convert webview context to ClarificationContext
         const clarificationContext: ClarificationContext = {
@@ -647,7 +648,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
      * Opens an interactive AI CLI session in an external terminal
      */
     private async handleAskAIInteractive(context: AskAIContext, filePath: string): Promise<void> {
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        const workspaceRoot = getWorkspaceRoot() || '';
 
         // Build the prompt from the context
         const promptParts: string[] = [];
@@ -733,7 +734,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     ): Promise<void> {
         try {
             const fileDir = path.dirname(document.uri.fsPath);
-            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+            const workspaceRoot = getWorkspaceRoot() || '';
 
             let resolvedPath: string;
 
@@ -804,7 +805,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     ): Promise<void> {
         try {
             const fileDir = path.dirname(document.uri.fsPath);
-            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+            const workspaceRoot = getWorkspaceRoot() || '';
 
             // Skip external URLs (http, https, mailto, etc.)
             if (isExternalUrl(filePath)) {
@@ -1059,7 +1060,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             includeLineNumbers: true
         });
 
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        const workspaceRoot = getWorkspaceRoot() || '';
 
         // Get the interactive session manager and start a session
         const sessionManager = getInteractiveSessionManager();

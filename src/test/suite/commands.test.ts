@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { ShortcutsCommands } from '../../shortcuts/commands';
 import { ConfigurationManager } from '../../shortcuts/configuration-manager';
 import { LogicalTreeDataProvider } from '../../shortcuts/logical-tree-data-provider';
+import { getWorkspaceRoot } from '../../shortcuts/shared/workspace-utils';
 import { ThemeManager } from '../../shortcuts/theme-manager';
 import { LogicalGroupItem } from '../../shortcuts/tree-items';
 
@@ -29,7 +30,7 @@ suite('ShortcutsCommands Integration Tests', function() {
     suiteSetup(async function() {
         this.timeout(30000);
         // Use the workspace folder launched by the test runner for isolation
-        tempDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-commands-test-'));
+        tempDir = getWorkspaceRoot() || fs.mkdtempSync(path.join(os.tmpdir(), 'shortcuts-commands-test-'));
 
         // Create test folder structure
         testFolder = path.join(tempDir, 'test-folder');

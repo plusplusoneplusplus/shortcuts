@@ -57,6 +57,15 @@ export {
 } from './extension-logger';
 export type { LogEntry, LoggerConfig } from './extension-logger';
 
+// Workspace utilities for path resolution
+export {
+    getFirstWorkspaceFolder,
+    getWorkspaceRoot,
+    getWorkspaceRootOrFallback,
+    getWorkspaceRootUri,
+    hasWorkspace
+} from './workspace-utils';
+
 // Note: Webview utilities are exported separately via './webview'
 // to avoid bundling issues with webview-specific code in the extension bundle
 

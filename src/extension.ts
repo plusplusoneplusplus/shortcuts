@@ -36,7 +36,7 @@ import {
     ReviewEditorViewProvider
 } from './shortcuts/markdown-comments';
 import { NotificationManager } from './shortcuts/notification-manager';
-import { getExtensionLogger, LogCategory } from './shortcuts/shared';
+import { getExtensionLogger, getFirstWorkspaceFolder, LogCategory } from './shortcuts/shared';
 import { TaskManager, TasksCommands, TasksDragDropController, TasksTreeDataProvider } from './shortcuts/tasks-viewer';
 import { ThemeManager } from './shortcuts/theme-manager';
 import {
@@ -95,7 +95,7 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log('Shortcuts extension is now active!');
 
     // Check if we have a workspace folder, use stable directory if none
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    const workspaceFolder = getFirstWorkspaceFolder();
     const workspaceRoot = workspaceFolder?.uri.fsPath || getGlobalConfigPath();
     console.log(`Initializing shortcuts panel for workspace: ${workspaceRoot}`);
 

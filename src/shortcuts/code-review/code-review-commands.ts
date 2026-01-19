@@ -42,6 +42,7 @@ import {
     ReviewFinding,
     ReviewSummary
 } from './types';
+import { getWorkspaceRoot } from '../shared/workspace-utils';
 
 /**
  * Adapter to convert CodeRule to Rule (map-reduce framework format)
@@ -172,8 +173,8 @@ export function registerCodeReviewCommands(
     disposables.push(codeReviewService);
 
     // Get workspace root
-    const getWorkspaceRoot = (): string | undefined => {
-        return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const getWsRoot = (): string | undefined => {
+        return getWorkspaceRoot();
     };
 
     // Get repository root (from git service or workspace)
