@@ -36,6 +36,14 @@ export const BUNDLED_PIPELINES: BundledPipelineManifest[] = [
         description: 'Generate documentation from code files',
         category: 'documentation',
         directory: 'doc-generator'
+    },
+    {
+        id: 'multi-agent-research',
+        name: 'Multi-Agent Research System',
+        description: 'AI-decomposed orchestrator-worker pattern for parallel research (inspired by Anthropic)',
+        category: 'research',
+        directory: 'multi-agent-research',
+        resources: ['README.md']
     }
 ];
 

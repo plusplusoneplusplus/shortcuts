@@ -1,0 +1,279 @@
+# Multi-Agent Research System
+# Inspired by Anthropic's Research feature architecture
+#
+# This pipeline implements an orchestrator-worker pattern where:
+# 1. AI decomposes a single research query into focused subtasks
+# 2. Subagents explore different aspects in parallel
+# 3. Results are synthesized with AI-powered reduce
+#
+# Architecture:
+# - Input: Single research topic with AI-powered decomposition
+# - Map: Parallel subagent execution with specialized instructions
+# - Reduce: AI synthesis of findings with citation tracking
+
+name: "Multi-Agent Research System"
+description: "AI-decomposed orchestrator-worker pattern for parallel research"
+
+input:
+  # AI generates the research decomposition from a single topic
+  # The lead agent decides how to break down the query
+  generate:
+    prompt: |
+      You are the lead research agent planning a multi-agent research project.
+      
+      RESEARCH TOPIC: "{{TOPIC}}"
+      
+      Your task is to decompose this research topic into 3-8 focused sub-queries 
+      that can be explored in parallel by specialized subagents.
+      
+      DECOMPOSITION GUIDELINES:
+      
+      1. INDEPENDENCE: Each focus area should be independently researchable
+         - Avoid dependencies between sub-queries
+         - Each subagent should work without needing others' results
+      
+      2. COVERAGE: Together, the focus areas should comprehensively cover the topic
+         - Consider different angles: technical, practical, theoretical
+         - Include: current state, best practices, emerging trends, challenges
+      
+      3. SPECIFICITY: Each focus area should be specific enough to guide research
+         - "Architecture patterns" ✓ (specific)
+         - "General information" ✗ (too vague)
+      
+      4. COMPLEXITY ASSESSMENT:
+         - "simple": Factual lookup, well-documented (budget: 3-5 searches)
+         - "medium": Requires synthesis, multiple sources (budget: 6-10 searches)
+         - "high": Complex analysis, emerging/niche topics (budget: 10-15 searches)
+      
+      5. BALANCE: Distribute effort appropriately
+         - Not all sub-queries need high complexity
+         - Start with 1-2 broad areas, then 3-5 specific deep-dives
+      
+      EXAMPLE DECOMPOSITION:
+      
+      Topic: "VSCode extension development best practices 2025"
+      
+      Sub-queries:
+      1. focus_area: "Architecture and modularity patterns"
+         complexity: "medium", tool_budget: 8
+      2. focus_area: "Testing strategies and CI/CD integration"  
+         complexity: "medium", tool_budget: 8
+      3. focus_area: "Performance optimization techniques"
+         complexity: "high", tool_budget: 12
+      4. focus_area: "Security and sandboxing considerations"
+         complexity: "medium", tool_budget: 7
+      5. focus_area: "Marketplace and distribution strategies"
+         complexity: "simple", tool_budget: 5
+      
+      Now generate the decomposition for the given research topic.
+      Return 3-8 sub-queries that will enable thorough parallel exploration.
+      
+      RESPOND AS JSON ARRAY (one object per sub-query):
+      [
+        {
+          "focus_area": "Specific aspect to research",
+          "complexity": "simple|medium|high",
+          "tool_budget": 5-15,
+          "rationale": "Why this focus area is important"
+        }
+      ]
+    
+    schema:
+      - focus_area
+      - complexity
+      - tool_budget
+      - rationale
+    
+    # Use best model for query decomposition
+    model: "claude-opus-4.5"
+
+  # Static parameters available to all subagents
+  parameters:
+    - name: research_topic
+      value: "Multi-agent AI systems for code analysis"
+    - name: project_context
+      value: "Building a VSCode extension with AI-powered code review"
+    - name: search_guidelines
+      value: "Start with broad queries, then narrow down. Prefer authoritative sources."
+
+map:
+  # Each subagent gets a specialized research task
+  # The prompt teaches the agent HOW to research effectively
+  prompt: |
+    You are a specialized research subagent in a multi-agent research system.
+    
+    RESEARCH TOPIC: {{research_topic}}
+    PROJECT CONTEXT: {{project_context}}
+    
+    YOUR ASSIGNED FOCUS AREA: {{focus_area}}
+    Complexity Level: {{complexity}}
+    Why this matters: {{rationale}}
+    
+    RESEARCH GUIDELINES:
+    {{search_guidelines}}
+    
+    INSTRUCTIONS:
+    1. Start with broad exploration to understand the landscape
+    2. Identify key sources and primary information
+    3. Progressively narrow your focus to specific details
+    4. Prefer authoritative sources over SEO-optimized content
+    5. Track where you found each key piece of information
+    
+    TOOL USAGE BUDGET:
+    - Simple queries: 3-5 searches
+    - Medium complexity: 6-10 searches  
+    - High complexity: 10-15 searches
+    
+    Your current budget: {{tool_budget}} searches maximum
+    
+    OUTPUT REQUIREMENTS:
+    Return structured JSON with:
+    - findings: Array of key discoveries with details
+    - sources: Array of source URLs/references with quality ratings
+    - confidence: Your confidence level (high/medium/low)
+    - gaps: Any information gaps or areas needing more research
+    - next_steps: Suggested follow-up research directions
+    
+    Think step-by-step about your search strategy, then execute it systematically.
+    
+    RESPOND IN JSON FORMAT:
+    {
+      "findings": [
+        {
+          "fact": "Key finding with details",
+          "source": "URL or reference",
+          "relevance": "Why this matters to the query"
+        }
+      ],
+      "sources": [
+        {
+          "url": "Source URL",
+          "quality": "high|medium|low",
+          "type": "academic|documentation|blog|forum"
+        }
+      ],
+      "confidence": "high|medium|low",
+      "gaps": "What we still need to know",
+      "next_steps": "Suggested follow-up research"
+    }
+
+  output:
+    - findings
+    - sources
+    - confidence
+    - gaps
+    - next_steps
+
+  # Parallel execution (3-10 subagents based on complexity)
+  parallel: 5
+
+  # Extended timeout for research tasks (10 minutes per agent)
+  timeoutMs: 600000
+
+  # Use Claude Sonnet for subagents (cost-effective, high quality)
+  model: "claude-sonnet-4.5"
+
+reduce:
+  type: ai
+  
+  # Lead agent synthesizes all subagent findings
+  # This mirrors Anthropic's approach of having a lead researcher coordinate
+  prompt: |
+    You are the lead research agent coordinating a multi-agent research system.
+    
+    RESEARCH TOPIC: {{research_topic}}
+    PROJECT CONTEXT: {{project_context}}
+    
+    SUBAGENT RESULTS:
+    You dispatched {{SUCCESS_COUNT}} subagents to research different aspects.
+    {{FAILURE_COUNT}} agents encountered issues.
+    
+    ALL FINDINGS (from {{COUNT}} agents):
+    {{RESULTS}}
+    
+    YOUR TASKS AS LEAD RESEARCHER:
+    
+    1. SYNTHESIZE FINDINGS
+       - Identify common themes and patterns across all subagent reports
+       - Resolve any conflicting information
+       - Build a coherent narrative from distributed findings
+    
+    2. ASSESS QUALITY
+       - Evaluate source quality across all agents
+       - Flag any gaps or weak evidence
+       - Rate overall research confidence
+    
+    3. DEDUPLICATE & ORGANIZE
+       - Remove redundant findings from multiple agents
+       - Group related discoveries
+       - Prioritize by relevance and reliability
+    
+    4. IDENTIFY NEXT STEPS
+       - Determine if additional research is needed
+       - Suggest specific follow-up queries
+       - Highlight unresolved questions
+    
+    5. GENERATE CITATIONS
+       - Track all unique sources
+       - Rate source quality and authority
+       - Map findings to sources for attribution
+    
+    OUTPUT FORMAT:
+    Return comprehensive JSON with:
+    - executive_summary: 2-3 sentence high-level answer
+    - key_findings: Top 5-10 discoveries with source citations
+    - all_sources: Deduplicated source list with quality ratings
+    - confidence_assessment: Overall confidence and reasoning
+    - research_gaps: What we still don't know
+    - recommended_actions: Specific next steps if more research needed
+    - synthesis_notes: How you resolved conflicts or combined insights
+    
+    RESPOND IN JSON:
+    {
+      "executive_summary": "Clear, concise answer to the research query",
+      "key_findings": [
+        {
+          "finding": "Important discovery",
+          "evidence": "Supporting details",
+          "sources": ["URL1", "URL2"],
+          "confidence": "high|medium|low"
+        }
+      ],
+      "all_sources": [
+        {
+          "url": "Source URL",
+          "quality": "high|medium|low",
+          "type": "academic|documentation|blog|forum",
+          "cited_by_agents": 3,
+          "relevance": "Why this source is valuable"
+        }
+      ],
+      "confidence_assessment": {
+        "level": "high|medium|low",
+        "reasoning": "Why we have this confidence level",
+        "coverage": "How well we covered the query"
+      },
+      "research_gaps": [
+        "Specific information still needed"
+      ],
+      "recommended_actions": [
+        {
+          "action": "What to do next",
+          "priority": "high|medium|low",
+          "rationale": "Why this is important"
+        }
+      ],
+      "synthesis_notes": "How findings were combined and conflicts resolved"
+    }
+
+  output:
+    - executive_summary
+    - key_findings
+    - all_sources
+    - confidence_assessment
+    - research_gaps
+    - recommended_actions
+    - synthesis_notes
+
+  # Use Claude Opus for lead agent (best reasoning for synthesis)
+  model: "claude-opus-4.5"
