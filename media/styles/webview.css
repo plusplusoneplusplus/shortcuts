@@ -613,7 +613,8 @@ body.source-mode .toolbar-review-only {
     min-width: 200px;
     max-width: 360px;
     z-index: 2002;
-    pointer-events: none;
+    /* pointer-events enabled to allow text selection and scrolling */
+    pointer-events: auto;
     font-size: 12px;
     line-height: 1.5;
     color: var(--text-color);
@@ -649,6 +650,9 @@ body.source-mode .toolbar-review-only {
     word-wrap: break-word;
     max-height: 200px;
     overflow-y: auto;
+    /* Allow text selection */
+    user-select: text;
+    cursor: text;
 }
 
 /* Custom Instruction Dialog */

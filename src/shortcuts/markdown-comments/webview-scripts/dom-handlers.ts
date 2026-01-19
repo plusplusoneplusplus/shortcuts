@@ -53,6 +53,10 @@ let predefinedSubmenu: HTMLElement;
 // Predefined comment preview tooltip
 let predefinedPreview: HTMLElement;
 let previewContent: HTMLElement;
+// Preview hide timeout for allowing mouse to move to preview
+let previewHideTimeout: ReturnType<typeof setTimeout> | null = null;
+// Track the current parent menu item for the preview (to keep submenu open)
+let currentPreviewParentItem: HTMLElement | null = null;
 // Custom instruction dialog elements
 let customInstructionDialog: HTMLElement;
 let customInstructionClose: HTMLElement;
@@ -106,6 +110,7 @@ export function initDomHandlers(): void {
     setupKeyboardEventListeners();
     setupGlobalEventListeners();
     setupCustomInstructionDialogEventListeners();
+    setupPreviewEventListeners();
     
     // Initialize search functionality (Ctrl+F)
     searchController = initSearch('#editorWrapper');
@@ -202,6 +207,20 @@ export function rebuildPredefinedSubmenu(): void {
 function showPreview(text: string, anchorElement: HTMLElement): void {
     if (!predefinedPreview || !previewContent) return;
 
+    // Cancel any pending hide timeout
+    if (previewHideTimeout) {
+        clearTimeout(previewHideTimeout);
+        previewHideTimeout = null;
+    }
+
+    // Track the parent menu item to keep submenu open when hovering preview
+    const parentMenuItem = anchorElement.closest('.context-menu-parent') as HTMLElement;
+    if (currentPreviewParentItem && currentPreviewParentItem !== parentMenuItem) {
+        // Remove submenu-open from previous parent
+        currentPreviewParentItem.classList.remove('submenu-open');
+    }
+    currentPreviewParentItem = parentMenuItem;
+
     // Set the preview text
     previewContent.textContent = text;
 
@@ -254,12 +273,63 @@ function showPreview(text: string, anchorElement: HTMLElement): void {
 }
 
 /**
- * Hide preview tooltip
+ * Hide preview tooltip with a small delay to allow mouse to move to preview
  */
 function hidePreview(): void {
+    // Use a small delay to allow the mouse to move to the preview
+    previewHideTimeout = setTimeout(() => {
+        if (predefinedPreview) {
+            predefinedPreview.style.display = 'none';
+        }
+        previewHideTimeout = null;
+    }, 100);
+}
+
+/**
+ * Hide preview tooltip immediately without delay
+ */
+function hidePreviewImmediately(): void {
+    if (previewHideTimeout) {
+        clearTimeout(previewHideTimeout);
+        previewHideTimeout = null;
+    }
+    // Remove submenu-open class from parent menu item
+    if (currentPreviewParentItem) {
+        currentPreviewParentItem.classList.remove('submenu-open');
+        currentPreviewParentItem = null;
+    }
     if (predefinedPreview) {
         predefinedPreview.style.display = 'none';
     }
+}
+
+/**
+ * Setup event listeners for the preview tooltip
+ * Allows the preview to stay visible when mouse is over it and enables text selection/scrolling
+ */
+function setupPreviewEventListeners(): void {
+    if (!predefinedPreview) return;
+
+    // Keep preview visible when mouse enters it and keep submenu open
+    predefinedPreview.addEventListener('mouseenter', () => {
+        if (previewHideTimeout) {
+            clearTimeout(previewHideTimeout);
+            previewHideTimeout = null;
+        }
+        // Add submenu-open class to keep the submenu visible
+        if (currentPreviewParentItem) {
+            currentPreviewParentItem.classList.add('submenu-open');
+        }
+    });
+
+    // Hide preview when mouse leaves it and remove submenu-open class
+    predefinedPreview.addEventListener('mouseleave', () => {
+        if (currentPreviewParentItem) {
+            currentPreviewParentItem.classList.remove('submenu-open');
+            currentPreviewParentItem = null;
+        }
+        hidePreviewImmediately();
+    });
 }
 
 /**
@@ -686,7 +756,7 @@ function handleContextMenu(e: MouseEvent): void {
  */
 function hideContextMenu(): void {
     contextMenu.style.display = 'none';
-    hidePreview(); // Also hide preview tooltip
+    hidePreviewImmediately(); // Also hide preview tooltip immediately
     // Reset submenu positioning
     [askAICommentSubmenu, askAIInteractiveSubmenu, predefinedSubmenu].forEach(submenu => {
         if (submenu) {
