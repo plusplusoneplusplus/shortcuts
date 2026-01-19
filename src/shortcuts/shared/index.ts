@@ -66,6 +66,30 @@ export {
     hasWorkspace
 } from './workspace-utils';
 
+// File I/O utilities with consistent error handling
+export {
+    ensureDirectoryExists,
+    getFileErrorMessage,
+    readYAML,
+    safeCopyFile,
+    safeExists,
+    safeIsDirectory,
+    safeIsFile,
+    safeReadDir,
+    safeReadFile,
+    safeRemove,
+    safeRename,
+    safeStats,
+    safeWriteFile,
+    writeYAML
+} from './file-utils';
+export type {
+    FileOperationResult,
+    ReadFileOptions,
+    WriteFileOptions,
+    YAMLOptions
+} from './file-utils';
+
 // Note: Webview utilities are exported separately via './webview'
 // to avoid bundling issues with webview-specific code in the extension bundle
 
