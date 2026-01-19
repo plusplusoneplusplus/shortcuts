@@ -115,6 +115,14 @@ export abstract class CommentsManagerBase<
     }
 
     /**
+     * Get the ID prefix for generated comment IDs
+     * Override in subclass to customize (e.g., 'comment', 'diff_comment')
+     */
+    protected getCommentIdPrefix(): string {
+        return 'comment';
+    }
+
+    /**
      * Update an existing comment
      */
     async updateComment(
@@ -518,4 +526,77 @@ export abstract class CommentsManagerBase<
      * Check if a comment object is valid
      */
     protected abstract isValidComment(comment: any): comment is TComment;
+
+    /**
+     * Create anchor from content - must be implemented by subclass
+     * @param content File or diff content
+     * @param selection Type-specific selection object
+     * @param additionalContext Optional context (unused in base)
+     * @returns Anchor or undefined if creation fails
+     */
+    protected abstract createAnchorFromContent(
+        content: string,
+        selection: TSelection,
+        additionalContext?: any
+    ): TAnchor | undefined;
+
+    /**
+     * Safely create anchor with error handling
+     * @param content Content string (or undefined)
+     * @param selection Selection object
+     * @param additionalContext Optional context
+     * @returns Anchor or undefined if creation fails or content is undefined
+     */
+    protected tryCreateAnchor(
+        content: string | undefined,
+        selection: TSelection,
+        additionalContext?: any
+    ): TAnchor | undefined {
+        if (!content) {
+            return undefined;
+        }
+        
+        try {
+            return this.createAnchorFromContent(content, selection, additionalContext);
+        } catch (error) {
+            console.warn('Failed to create anchor for comment:', error);
+            return undefined;
+        }
+    }
+
+    /**
+     * Create base comment object with common fields
+     * Subclasses add type-specific fields via spread operator
+     * @param filePath Absolute or relative file path
+     * @param selection Type-specific selection object
+     * @param selectedText The selected text content
+     * @param comment The comment text
+     * @param author Optional author
+     * @param tags Optional tags
+     * @returns Partial comment object with common fields
+     */
+    protected createCommentBase(
+        filePath: string,
+        selection: TSelection,
+        selectedText: string,
+        comment: string,
+        author?: string,
+        tags?: string[]
+    ): Pick<TComment, 'id' | 'filePath' | 'selection' | 'selectedText' | 'comment' | 'status' | 'createdAt' | 'updatedAt' | 'author' | 'tags'> {
+        const now = new Date().toISOString();
+        const relativePath = this.getRelativePath(filePath);
+        
+        return {
+            id: this.generateId(this.getCommentIdPrefix()),
+            filePath: relativePath,
+            selection,
+            selectedText,
+            comment,
+            status: 'open',
+            createdAt: now,
+            updatedAt: now,
+            author,
+            tags
+        } as any;
+    }
 }

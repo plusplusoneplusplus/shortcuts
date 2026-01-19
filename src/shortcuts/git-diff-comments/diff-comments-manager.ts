@@ -70,6 +70,37 @@ export class DiffCommentsManager extends CommentsManagerBase<
     }
 
     /**
+     * Get the ID prefix for diff comments
+     */
+    protected override getCommentIdPrefix(): string {
+        return 'diff_comment';
+    }
+
+    /**
+     * Create diff anchor from content
+     */
+    protected createAnchorFromContent(
+        content: string,
+        selection: DiffSelection
+    ): DiffAnchor | undefined {
+        const startLine = selection.side === 'old' ? selection.oldStartLine : selection.newStartLine;
+        const endLine = selection.side === 'old' ? selection.oldEndLine : selection.newEndLine;
+        
+        if (startLine === null || endLine === null) {
+            return undefined;
+        }
+        
+        return createDiffAnchor(
+            content,
+            startLine,
+            endLine,
+            selection.startColumn,
+            selection.endColumn,
+            selection.side
+        );
+    }
+
+    /**
      * Add a new diff comment
      */
     async addComment(
@@ -83,42 +114,15 @@ export class DiffCommentsManager extends CommentsManagerBase<
         tags?: string[],
         type?: DiffComment['type']
     ): Promise<DiffComment> {
-        const now = new Date().toISOString();
-        const relativePath = this.getRelativePath(filePath);
-
-        // Try to create anchor from content
-        let anchor: DiffAnchor | undefined;
-        if (content) {
-            try {
-                const startLine = selection.side === 'old' ? selection.oldStartLine : selection.newStartLine;
-                const endLine = selection.side === 'old' ? selection.oldEndLine : selection.newEndLine;
-
-                if (startLine !== null && endLine !== null) {
-                    anchor = createDiffAnchor(
-                        content,
-                        startLine,
-                        endLine,
-                        selection.startColumn,
-                        selection.endColumn,
-                        selection.side
-                    );
-                }
-            } catch (error) {
-                console.warn('Failed to create anchor for diff comment:', error);
-            }
-        }
-
+        // Create base comment with common fields
+        const baseComment = this.createCommentBase(filePath, selection, selectedText, comment, author, tags);
+        
+        // Create anchor using base helper (passes content to abstract method)
+        const anchor = this.tryCreateAnchor(content, selection);
+        
+        // Add diff-specific fields
         const newComment: DiffComment = {
-            id: this.generateId('diff_comment'),
-            filePath: relativePath,
-            selection,
-            selectedText,
-            comment,
-            status: 'open',
-            createdAt: now,
-            updatedAt: now,
-            author,
-            tags,
+            ...baseComment,
             gitContext,
             anchor,
             type: type || 'user'

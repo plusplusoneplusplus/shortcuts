@@ -59,6 +59,23 @@ export class CommentsManager extends CommentsManagerBase<
     }
 
     /**
+     * Get the ID prefix for markdown comments
+     */
+    protected override getCommentIdPrefix(): string {
+        return 'comment';
+    }
+
+    /**
+     * Create anchor from markdown file content
+     */
+    protected createAnchorFromContent(
+        content: string,
+        selection: CommentSelection
+    ): CommentAnchor | undefined {
+        return createAnchor(content, selection);
+    }
+
+    /**
      * Add a new comment
      */
     async addComment(
@@ -71,33 +88,24 @@ export class CommentsManager extends CommentsManagerBase<
         mermaidContext?: MermaidContext,
         type?: CommentType
     ): Promise<MarkdownComment> {
-        const now = new Date().toISOString();
+        // Get file content for anchor creation
         const relativePath = this.getRelativePath(filePath);
-
-        // Try to create anchor from file content
-        let anchor: CommentAnchor | undefined;
-        try {
-            const absolutePath = this.getAbsolutePath(relativePath);
-            if (fs.existsSync(absolutePath)) {
-                const content = fs.readFileSync(absolutePath, 'utf8');
-                anchor = createAnchor(content, selection);
-            }
-        } catch (error) {
-            console.warn('Failed to create anchor for comment:', error);
+        const absolutePath = this.getAbsolutePath(relativePath);
+        let content: string | undefined;
+        if (fs.existsSync(absolutePath)) {
+            content = fs.readFileSync(absolutePath, 'utf8');
         }
-
+        
+        // Create base comment with common fields
+        const baseComment = this.createCommentBase(filePath, selection, selectedText, comment, author, tags);
+        
+        // Create anchor using base helper
+        const anchor = this.tryCreateAnchor(content, selection);
+        
+        // Add markdown-specific fields
         const newComment: MarkdownComment = {
-            id: this.generateId('comment'),
-            filePath: relativePath,
-            selection,
-            selectedText,
-            comment,
-            status: 'open',
+            ...baseComment,
             type: type || 'user',
-            createdAt: now,
-            updatedAt: now,
-            author,
-            tags,
             mermaidContext,
             anchor
         };
