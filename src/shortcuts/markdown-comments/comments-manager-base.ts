@@ -3,10 +3,10 @@
  * Provides shared functionality for both markdown and diff comments
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from '../shared';
+import { ensureDirectoryExists, safeExists, safeReadFile, safeWriteFile } from '../shared/file-utils';
 import {
     BaseAnchor,
     BaseComment,
@@ -62,10 +62,14 @@ export abstract class CommentsManagerBase<
      */
     async loadComments(): Promise<TConfig> {
         try {
-            if (fs.existsSync(this.configPath)) {
-                const content = fs.readFileSync(this.configPath, 'utf8');
-                const parsed = JSON.parse(content) as TConfig;
-                this.config = this.validateConfig(parsed);
+            if (safeExists(this.configPath)) {
+                const readResult = safeReadFile(this.configPath);
+                if (readResult.success && readResult.data) {
+                    const parsed = JSON.parse(readResult.data) as TConfig;
+                    this.config = this.validateConfig(parsed);
+                } else {
+                    this.config = this.getDefaultConfig();
+                }
             } else {
                 this.config = this.getDefaultConfig();
             }
@@ -90,12 +94,13 @@ export abstract class CommentsManagerBase<
         try {
             // Ensure .vscode directory exists
             const configDir = path.dirname(this.configPath);
-            if (!fs.existsSync(configDir)) {
-                fs.mkdirSync(configDir, { recursive: true });
-            }
+            ensureDirectoryExists(configDir);
 
             const content = JSON.stringify(this.config, null, 2);
-            fs.writeFileSync(this.configPath, content, 'utf8');
+            const result = safeWriteFile(this.configPath, content);
+            if (!result.success) {
+                throw result.error || new Error('Failed to write comments file');
+            }
         } catch (error) {
             getExtensionLogger().error(LogCategory.MARKDOWN, 'Error saving comments', error instanceof Error ? error : undefined);
             throw error;

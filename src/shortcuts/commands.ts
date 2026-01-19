@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { GlobalNotesTreeDataProvider } from './global-notes';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
+import { ensureDirectoryExists, safeExists, safeIsDirectory, safeStats, safeWriteFile } from './shared/file-utils';
 import { CommandShortcutItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
 import { getExtensionLogger, LogCategory } from './shared/extension-logger';
 import { getWorkspaceRoot, getWorkspaceRootUri } from './shared/workspace-utils';
@@ -330,8 +331,7 @@ export class ShortcutsCommands {
             const configUri = vscode.Uri.file(configPath);
 
             // Only create the file if it doesn't exist - don't overwrite existing configuration
-            const fs = require('fs');
-            if (!fs.existsSync(configPath)) {
+            if (!safeExists(configPath)) {
                 const { DEFAULT_SHORTCUTS_CONFIG } = await import('./types');
                 await configManager.saveConfiguration(DEFAULT_SHORTCUTS_CONFIG);
             }
@@ -461,7 +461,6 @@ export class ShortcutsCommands {
             }
 
             const configManager = this.treeDataProvider.getConfigurationManager();
-            const fs = require('fs');
             let addedCount = 0;
             let skippedCount = 0;
 
@@ -469,8 +468,7 @@ export class ShortcutsCommands {
             for (const uri of uris) {
                 try {
                     // Automatically detect the type based on what was selected
-                    const stat = fs.statSync(uri.fsPath);
-                    const itemType = stat.isDirectory() ? 'folder' : 'file';
+                    const itemType = safeIsDirectory(uri.fsPath) ? 'folder' : 'file';
 
                     // Use the filename as the default display name
                     const defaultName = path.basename(uri.fsPath);
@@ -532,14 +530,12 @@ export class ShortcutsCommands {
             }
 
             const configManager = this.treeDataProvider.getConfigurationManager();
-            const fs = require('fs');
             let addedCount = 0;
             let skippedCount = 0;
 
             for (const uri of uris) {
                 try {
-                    const stat = fs.statSync(uri.fsPath);
-                    if (stat.isDirectory()) {
+                    if (safeIsDirectory(uri.fsPath)) {
                         // Skip folders when adding files-only
                         skippedCount++;
                         continue;
@@ -598,14 +594,12 @@ export class ShortcutsCommands {
             }
 
             const configManager = this.treeDataProvider.getConfigurationManager();
-            const fs = require('fs');
             let addedCount = 0;
             let skippedCount = 0;
 
             for (const uri of uris) {
                 try {
-                    const stat = fs.statSync(uri.fsPath);
-                    if (!stat.isDirectory()) {
+                    if (!safeIsDirectory(uri.fsPath)) {
                         // Skip files when adding folders-only
                         skippedCount++;
                         continue;
@@ -959,7 +953,7 @@ export class ShortcutsCommands {
             }
 
             // Create the file if it doesn't exist
-            if (fs.existsSync(targetPath)) {
+            if (safeExists(targetPath)) {
                 const overwrite = await NotificationManager.showWarning(
                     `File "${path.basename(targetPath)}" already exists. Do you want to add it to the group anyway?`,
                     { timeout: 0, actions: ['Yes'] }
@@ -969,7 +963,7 @@ export class ShortcutsCommands {
                 }
             } else {
                 // Create empty file
-                fs.writeFileSync(targetPath, '', 'utf8');
+                safeWriteFile(targetPath, '');
             }
 
             // Add to logical group
@@ -1013,9 +1007,7 @@ export class ShortcutsCommands {
             const parentFolder = folderItem.resourceUri.fsPath;
 
             // Verify the parent is actually a folder
-            const fs = require('fs');
-            const stat = fs.statSync(parentFolder);
-            if (!stat.isDirectory()) {
+            if (!safeIsDirectory(parentFolder)) {
                 NotificationManager.showError('Selected item is not a folder');
                 return;
             }
@@ -1042,7 +1034,7 @@ export class ShortcutsCommands {
             const targetPath = path.join(parentFolder, fileName);
 
             // Create the file if it doesn't exist
-            if (fs.existsSync(targetPath)) {
+            if (safeExists(targetPath)) {
                 const overwrite = await NotificationManager.showWarning(
                     `File "${fileName}" already exists. Do you want to open it anyway?`,
                     { timeout: 0, actions: ['Open'] }
@@ -1052,7 +1044,7 @@ export class ShortcutsCommands {
                 }
             } else {
                 // Create empty file
-                fs.writeFileSync(targetPath, '', 'utf8');
+                safeWriteFile(targetPath, '');
             }
 
             // If this is within a logical group, add to the group
@@ -1094,9 +1086,7 @@ export class ShortcutsCommands {
             const parentFolder = folderItem.resourceUri.fsPath;
 
             // Verify the parent is actually a folder
-            const fs = require('fs');
-            const stat = fs.statSync(parentFolder);
-            if (!stat.isDirectory()) {
+            if (!safeIsDirectory(parentFolder)) {
                 NotificationManager.showError('Selected item is not a folder');
                 return;
             }
@@ -1123,9 +1113,8 @@ export class ShortcutsCommands {
             const targetPath = path.join(parentFolder, folderName);
 
             // Create the folder if it doesn't exist
-            if (fs.existsSync(targetPath)) {
-                const stat = fs.statSync(targetPath);
-                if (!stat.isDirectory()) {
+            if (safeExists(targetPath)) {
+                if (!safeIsDirectory(targetPath)) {
                     NotificationManager.showError(`A file with name "${folderName}" already exists at this location`);
                     return;
                 }
@@ -1138,7 +1127,7 @@ export class ShortcutsCommands {
                 }
             } else {
                 // Create the folder
-                fs.mkdirSync(targetPath, { recursive: true });
+                ensureDirectoryExists(targetPath);
             }
 
             // If this is within a logical group, add to the group
@@ -1208,7 +1197,6 @@ export class ShortcutsCommands {
             }
 
             let targetPath: string;
-            const fs = require('fs');
 
             if (location.value === 'custom') {
                 // Show folder selection dialog
@@ -1236,9 +1224,8 @@ export class ShortcutsCommands {
             }
 
             // Create the folder if it doesn't exist
-            if (fs.existsSync(targetPath)) {
-                const stat = fs.statSync(targetPath);
-                if (!stat.isDirectory()) {
+            if (safeExists(targetPath)) {
+                if (!safeIsDirectory(targetPath)) {
                     NotificationManager.showError(`A file with name "${folderName}" already exists at this location`);
                     return;
                 }
@@ -1251,7 +1238,7 @@ export class ShortcutsCommands {
                 }
             } else {
                 // Create the folder
-                fs.mkdirSync(targetPath, { recursive: true });
+                ensureDirectoryExists(targetPath);
             }
 
             // Add to logical group

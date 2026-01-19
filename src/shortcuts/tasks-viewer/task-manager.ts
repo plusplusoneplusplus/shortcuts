@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { ensureDirectoryExists, safeExists, safeReadDir, safeRename, safeStats, safeWriteFile } from '../shared/file-utils';
 import { Task, TasksViewerSettings, TaskSortBy, TaskDocument, TaskDocumentGroup } from './types';
 
 /**
@@ -43,12 +44,8 @@ export class TaskManager implements vscode.Disposable {
         const tasksFolder = this.getTasksFolder();
         const archiveFolder = this.getArchiveFolder();
 
-        if (!fs.existsSync(tasksFolder)) {
-            fs.mkdirSync(tasksFolder, { recursive: true });
-        }
-        if (!fs.existsSync(archiveFolder)) {
-            fs.mkdirSync(archiveFolder, { recursive: true });
-        }
+        ensureDirectoryExists(tasksFolder);
+        ensureDirectoryExists(archiveFolder);
     }
 
     /**
@@ -60,23 +57,19 @@ export class TaskManager implements vscode.Disposable {
 
         // Read active tasks
         const tasksFolder = this.getTasksFolder();
-        if (fs.existsSync(tasksFolder)) {
-            const files = fs.readdirSync(tasksFolder);
-            for (const file of files) {
+        const tasksResult = safeReadDir(tasksFolder);
+        if (tasksResult.success && tasksResult.data) {
+            for (const file of tasksResult.data) {
                 if (file.endsWith('.md')) {
                     const filePath = path.join(tasksFolder, file);
-                    try {
-                        const stats = fs.statSync(filePath);
-                        if (stats.isFile()) {
-                            tasks.push({
-                                name: path.basename(file, '.md'),
-                                filePath,
-                                modifiedTime: stats.mtime,
-                                isArchived: false
-                            });
-                        }
-                    } catch (error) {
-                        console.warn(`Failed to read task file ${filePath}:`, error);
+                    const statsResult = safeStats(filePath);
+                    if (statsResult.success && statsResult.data?.isFile()) {
+                        tasks.push({
+                            name: path.basename(file, '.md'),
+                            filePath,
+                            modifiedTime: statsResult.data.mtime,
+                            isArchived: false
+                        });
                     }
                 }
             }
@@ -85,23 +78,19 @@ export class TaskManager implements vscode.Disposable {
         // Read archived tasks if setting enabled
         if (settings.showArchived) {
             const archiveFolder = this.getArchiveFolder();
-            if (fs.existsSync(archiveFolder)) {
-                const files = fs.readdirSync(archiveFolder);
-                for (const file of files) {
+            const archiveResult = safeReadDir(archiveFolder);
+            if (archiveResult.success && archiveResult.data) {
+                for (const file of archiveResult.data) {
                     if (file.endsWith('.md')) {
                         const filePath = path.join(archiveFolder, file);
-                        try {
-                            const stats = fs.statSync(filePath);
-                            if (stats.isFile()) {
-                                tasks.push({
-                                    name: path.basename(file, '.md'),
-                                    filePath,
-                                    modifiedTime: stats.mtime,
-                                    isArchived: true
-                                });
-                            }
-                        } catch (error) {
-                            console.warn(`Failed to read archived task file ${filePath}:`, error);
+                        const statsResult = safeStats(filePath);
+                        if (statsResult.success && statsResult.data?.isFile()) {
+                            tasks.push({
+                                name: path.basename(file, '.md'),
+                                filePath,
+                                modifiedTime: statsResult.data.mtime,
+                                isArchived: true
+                            });
                         }
                     }
                 }
@@ -121,13 +110,13 @@ export class TaskManager implements vscode.Disposable {
         const sanitizedName = this.sanitizeFileName(name);
         const filePath = path.join(this.getTasksFolder(), `${sanitizedName}.md`);
 
-        if (fs.existsSync(filePath)) {
+        if (safeExists(filePath)) {
             throw new Error(`Task "${name}" already exists`);
         }
 
         // Create empty file with task name as header
         const content = `# ${name}\n\n`;
-        fs.writeFileSync(filePath, content, 'utf8');
+        safeWriteFile(filePath, content);
 
         return filePath;
     }
@@ -137,7 +126,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns The new file path
      */
     async renameTask(oldPath: string, newName: string): Promise<string> {
-        if (!fs.existsSync(oldPath)) {
+        if (!safeExists(oldPath)) {
             throw new Error(`Task file not found: ${oldPath}`);
         }
 
@@ -145,11 +134,11 @@ export class TaskManager implements vscode.Disposable {
         const directory = path.dirname(oldPath);
         const newPath = path.join(directory, `${sanitizedName}.md`);
 
-        if (oldPath !== newPath && fs.existsSync(newPath)) {
+        if (oldPath !== newPath && safeExists(newPath)) {
             throw new Error(`Task "${newName}" already exists`);
         }
 
-        fs.renameSync(oldPath, newPath);
+        safeRename(oldPath, newPath);
         return newPath;
     }
 
@@ -157,7 +146,7 @@ export class TaskManager implements vscode.Disposable {
      * Delete a task file
      */
     async deleteTask(filePath: string): Promise<void> {
-        if (!fs.existsSync(filePath)) {
+        if (!safeExists(filePath)) {
             throw new Error(`Task file not found: ${filePath}`);
         }
 
@@ -169,7 +158,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns The new file path
      */
     async archiveTask(filePath: string): Promise<string> {
-        if (!fs.existsSync(filePath)) {
+        if (!safeExists(filePath)) {
             throw new Error(`Task file not found: ${filePath}`);
         }
 
@@ -180,13 +169,13 @@ export class TaskManager implements vscode.Disposable {
 
         // Handle name collision in archive
         let finalPath = newPath;
-        if (fs.existsSync(newPath)) {
+        if (safeExists(newPath)) {
             const baseName = path.basename(fileName, '.md');
             const timestamp = Date.now();
             finalPath = path.join(this.getArchiveFolder(), `${baseName}-${timestamp}.md`);
         }
 
-        fs.renameSync(filePath, finalPath);
+        safeRename(filePath, finalPath);
         return finalPath;
     }
 
@@ -195,7 +184,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns The new file path
      */
     async unarchiveTask(filePath: string): Promise<string> {
-        if (!fs.existsSync(filePath)) {
+        if (!safeExists(filePath)) {
             throw new Error(`Task file not found: ${filePath}`);
         }
 
@@ -204,13 +193,13 @@ export class TaskManager implements vscode.Disposable {
 
         // Handle name collision
         let finalPath = newPath;
-        if (fs.existsSync(newPath)) {
+        if (safeExists(newPath)) {
             const baseName = path.basename(fileName, '.md');
             const timestamp = Date.now();
             finalPath = path.join(this.getTasksFolder(), `${baseName}-${timestamp}.md`);
         }
 
-        fs.renameSync(filePath, finalPath);
+        safeRename(filePath, finalPath);
         return finalPath;
     }
 
@@ -224,7 +213,7 @@ export class TaskManager implements vscode.Disposable {
         const tasksFolder = this.getTasksFolder();
 
         // Create watcher for main tasks folder
-        if (fs.existsSync(tasksFolder)) {
+        if (safeExists(tasksFolder)) {
             const pattern = new vscode.RelativePattern(tasksFolder, '*.md');
             this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
 
@@ -235,7 +224,7 @@ export class TaskManager implements vscode.Disposable {
 
         // Create watcher for archive folder
         const archiveFolder = this.getArchiveFolder();
-        if (fs.existsSync(archiveFolder)) {
+        if (safeExists(archiveFolder)) {
             const archivePattern = new vscode.RelativePattern(archiveFolder, '*.md');
             this.archiveWatcher = vscode.workspace.createFileSystemWatcher(archivePattern);
 
@@ -304,26 +293,22 @@ export class TaskManager implements vscode.Disposable {
 
         // Read active documents
         const tasksFolder = this.getTasksFolder();
-        if (fs.existsSync(tasksFolder)) {
-            const files = fs.readdirSync(tasksFolder);
-            for (const file of files) {
+        const tasksResult = safeReadDir(tasksFolder);
+        if (tasksResult.success && tasksResult.data) {
+            for (const file of tasksResult.data) {
                 if (file.endsWith('.md')) {
                     const filePath = path.join(tasksFolder, file);
-                    try {
-                        const stats = fs.statSync(filePath);
-                        if (stats.isFile()) {
-                            const { baseName, docType } = this.parseFileName(file);
-                            documents.push({
-                                baseName,
-                                docType,
-                                fileName: file,
-                                filePath,
-                                modifiedTime: stats.mtime,
-                                isArchived: false
-                            });
-                        }
-                    } catch (error) {
-                        console.warn(`Failed to read task file ${filePath}:`, error);
+                    const statsResult = safeStats(filePath);
+                    if (statsResult.success && statsResult.data?.isFile()) {
+                        const { baseName, docType } = this.parseFileName(file);
+                        documents.push({
+                            baseName,
+                            docType,
+                            fileName: file,
+                            filePath,
+                            modifiedTime: statsResult.data.mtime,
+                            isArchived: false
+                        });
                     }
                 }
             }
@@ -332,26 +317,22 @@ export class TaskManager implements vscode.Disposable {
         // Read archived documents if setting enabled
         if (settings.showArchived) {
             const archiveFolder = this.getArchiveFolder();
-            if (fs.existsSync(archiveFolder)) {
-                const files = fs.readdirSync(archiveFolder);
-                for (const file of files) {
+            const archiveResult = safeReadDir(archiveFolder);
+            if (archiveResult.success && archiveResult.data) {
+                for (const file of archiveResult.data) {
                     if (file.endsWith('.md')) {
                         const filePath = path.join(archiveFolder, file);
-                        try {
-                            const stats = fs.statSync(filePath);
-                            if (stats.isFile()) {
-                                const { baseName, docType } = this.parseFileName(file);
-                                documents.push({
-                                    baseName,
-                                    docType,
-                                    fileName: file,
-                                    filePath,
-                                    modifiedTime: stats.mtime,
-                                    isArchived: true
-                                });
-                            }
-                        } catch (error) {
-                            console.warn(`Failed to read archived task file ${filePath}:`, error);
+                        const statsResult = safeStats(filePath);
+                        if (statsResult.success && statsResult.data?.isFile()) {
+                            const { baseName, docType } = this.parseFileName(file);
+                            documents.push({
+                                baseName,
+                                docType,
+                                fileName: file,
+                                filePath,
+                                modifiedTime: statsResult.data.mtime,
+                                isArchived: true
+                            });
                         }
                     }
                 }

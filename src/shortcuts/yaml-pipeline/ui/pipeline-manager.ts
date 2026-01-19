@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
+import { ensureDirectoryExists, readYAML, safeCopyFile, safeExists, safeReadDir, safeReadFile, safeRemove, safeRename, safeStats, safeWriteFile } from '../../shared/file-utils';
 import { PipelineInfo, ValidationResult, PipelinesViewerSettings, PipelineSortBy, ResourceFileInfo, PipelineTemplateType, PIPELINE_TEMPLATES, PipelineSource, BundledPipelineManifest } from './types';
 import { BUNDLED_PIPELINES, getBundledPipelinesPath, getBundledPipelineManifest } from '../bundled';
 
@@ -58,9 +59,7 @@ export class PipelineManager implements vscode.Disposable {
      */
     ensurePipelinesFolderExists(): void {
         const pipelinesFolder = this.getPipelinesFolder();
-        if (!fs.existsSync(pipelinesFolder)) {
-            fs.mkdirSync(pipelinesFolder, { recursive: true });
-        }
+        ensureDirectoryExists(pipelinesFolder);
     }
 
     /**
@@ -71,28 +70,32 @@ export class PipelineManager implements vscode.Disposable {
         const pipelines: PipelineInfo[] = [];
         const pipelinesFolder = this.getPipelinesFolder();
 
-        if (!fs.existsSync(pipelinesFolder)) {
+        if (!safeExists(pipelinesFolder)) {
             return pipelines;
         }
 
-        const entries = fs.readdirSync(pipelinesFolder, { withFileTypes: true });
+        const entriesResult = safeReadDir(pipelinesFolder, true);
+        if (!entriesResult.success || !entriesResult.data) {
+            return pipelines;
+        }
+        const entries = entriesResult.data;
         for (const entry of entries) {
             if (entry.isDirectory()) {
                 const packagePath = path.join(pipelinesFolder, entry.name);
                 const pipelineFile = this.findPipelineFile(packagePath);
 
                 if (pipelineFile) {
-                    try {
-                        const stats = fs.statSync(pipelineFile);
+                    const statsResult = safeStats(pipelineFile);
+                    if (statsResult.success && statsResult.data) {
                         const pipelineInfo = await this.parsePipelinePackage(
                             packagePath,
                             entry.name,
                             pipelineFile,
-                            stats
+                            statsResult.data
                         );
                         pipelines.push(pipelineInfo);
-                    } catch (error) {
-                        console.warn(`Failed to read pipeline package ${packagePath}:`, error);
+                    } else {
+                        console.warn(`Failed to read pipeline package ${packagePath}:`, statsResult.error?.message);
                     }
                 }
             }
@@ -147,36 +150,37 @@ export class PipelineManager implements vscode.Disposable {
             const entryPoint = manifest.entryPoint || 'pipeline.yaml';
             const pipelineFile = path.join(pipelineDir, entryPoint);
 
-            try {
-                if (!fs.existsSync(pipelineFile)) {
-                    console.warn(`Bundled pipeline not found: ${pipelineFile}`);
-                    continue;
-                }
-
-                const content = fs.readFileSync(pipelineFile, 'utf-8');
-                const parsed = yaml.load(content) as Record<string, unknown>;
-                const stats = fs.statSync(pipelineFile);
-
-                // Get resource files in the bundled package
-                const resourceFiles = this.getResourceFiles(pipelineDir);
-
-                pipelines.push({
-                    packageName: manifest.directory,
-                    packagePath: pipelineDir,
-                    filePath: pipelineFile,
-                    relativePath: `bundled://${manifest.directory}`,
-                    name: (parsed?.name as string) || manifest.name,
-                    description: (parsed?.description as string) || manifest.description,
-                    lastModified: stats.mtime,
-                    size: stats.size,
-                    isValid: true, // Bundled pipelines are pre-validated
-                    source: PipelineSource.Bundled,
-                    bundledId: manifest.id,
-                    resourceFiles
-                });
-            } catch (error) {
-                console.error(`Failed to load bundled pipeline ${manifest.id}:`, error);
+            const yamlResult = readYAML<Record<string, unknown>>(pipelineFile);
+            if (!yamlResult.success) {
+                console.warn(`Bundled pipeline not found or invalid: ${pipelineFile}`);
+                continue;
             }
+
+            const statsResult = safeStats(pipelineFile);
+            if (!statsResult.success || !statsResult.data) {
+                console.warn(`Failed to get stats for bundled pipeline: ${pipelineFile}`);
+                continue;
+            }
+
+            // Get resource files in the bundled package
+            const resourceFiles = this.getResourceFiles(pipelineDir);
+            const parsed = yamlResult.data;
+            const stats = statsResult.data;
+
+            pipelines.push({
+                packageName: manifest.directory,
+                packagePath: pipelineDir,
+                filePath: pipelineFile,
+                relativePath: `bundled://${manifest.directory}`,
+                name: (parsed?.name as string) || manifest.name,
+                description: (parsed?.description as string) || manifest.description,
+                lastModified: stats.mtime,
+                size: stats.size,
+                isValid: true, // Bundled pipelines are pre-validated
+                source: PipelineSource.Bundled,
+                bundledId: manifest.id,
+                resourceFiles
+            });
         }
 
         return pipelines;
@@ -205,7 +209,7 @@ export class PipelineManager implements vscode.Disposable {
         const destDir = path.join(this.getPipelinesFolder(), sanitizedDestName);
 
         // Check if destination already exists
-        if (fs.existsSync(destDir)) {
+        if (safeExists(destDir)) {
             throw new Error(`Pipeline already exists: ${destName}`);
         }
 
@@ -213,11 +217,11 @@ export class PipelineManager implements vscode.Disposable {
         this.ensurePipelinesFolderExists();
 
         // Create destination directory
-        fs.mkdirSync(destDir, { recursive: true });
+        ensureDirectoryExists(destDir);
 
         // Copy pipeline.yaml
         const entryPoint = manifest.entryPoint || 'pipeline.yaml';
-        fs.copyFileSync(
+        safeCopyFile(
             path.join(sourceDir, entryPoint),
             path.join(destDir, entryPoint)
         );
@@ -228,13 +232,9 @@ export class PipelineManager implements vscode.Disposable {
                 const srcFile = path.join(sourceDir, resource);
                 const destFile = path.join(destDir, resource);
 
-                if (fs.existsSync(srcFile)) {
-                    // Create subdirectories if needed
-                    const destFileDir = path.dirname(destFile);
-                    if (!fs.existsSync(destFileDir)) {
-                        fs.mkdirSync(destFileDir, { recursive: true });
-                    }
-                    fs.copyFileSync(srcFile, destFile);
+                if (safeExists(srcFile)) {
+                    // safeCopyFile handles directory creation
+                    safeCopyFile(srcFile, destFile);
                 }
             }
         }
@@ -252,14 +252,14 @@ export class PipelineManager implements vscode.Disposable {
         }
 
         const workspacePath = path.join(this.getPipelinesFolder(), manifest.directory);
-        return fs.existsSync(workspacePath);
+        return safeExists(workspacePath);
     }
 
     /**
      * Check if the workspace pipelines folder exists
      */
     async workspaceFolderExists(): Promise<boolean> {
-        return fs.existsSync(this.getPipelinesFolder());
+        return safeExists(this.getPipelinesFolder());
     }
 
     /**
@@ -276,7 +276,7 @@ export class PipelineManager implements vscode.Disposable {
     private findPipelineFile(packagePath: string): string | undefined {
         for (const fileName of PIPELINE_FILE_NAMES) {
             const filePath = path.join(packagePath, fileName);
-            if (fs.existsSync(filePath)) {
+            if (safeExists(filePath)) {
                 return filePath;
             }
         }
@@ -295,21 +295,21 @@ export class PipelineManager implements vscode.Disposable {
         const sanitizedName = this.sanitizeFileName(name);
         const packagePath = path.join(this.getPipelinesFolder(), sanitizedName);
 
-        if (fs.existsSync(packagePath)) {
+        if (safeExists(packagePath)) {
             throw new Error(`Pipeline "${name}" already exists`);
         }
 
         // Create the package directory
-        fs.mkdirSync(packagePath, { recursive: true });
+        ensureDirectoryExists(packagePath);
 
         // Create pipeline.yaml in the package based on template type
         const filePath = path.join(packagePath, 'pipeline.yaml');
         const template = this.getPipelineTemplate(name, templateType);
-        fs.writeFileSync(filePath, template, 'utf8');
+        safeWriteFile(filePath, template);
 
         // Create a sample input.csv file based on template type
         const templateDef = PIPELINE_TEMPLATES[templateType];
-        fs.writeFileSync(path.join(packagePath, 'input.csv'), templateDef.sampleCSV, 'utf8');
+        safeWriteFile(path.join(packagePath, 'input.csv'), templateDef.sampleCSV);
 
         return filePath;
     }
@@ -339,7 +339,7 @@ export class PipelineManager implements vscode.Disposable {
      */
     async renamePipeline(oldPath: string, newName: string): Promise<string> {
         const oldPackagePath = this.getPackagePath(oldPath);
-        if (!fs.existsSync(oldPackagePath)) {
+        if (!safeExists(oldPackagePath)) {
             throw new Error(`Pipeline package not found: ${oldPackagePath}`);
         }
 
@@ -347,22 +347,24 @@ export class PipelineManager implements vscode.Disposable {
         const pipelinesFolder = this.getPipelinesFolder();
         const newPackagePath = path.join(pipelinesFolder, sanitizedName);
 
-        if (oldPackagePath !== newPackagePath && fs.existsSync(newPackagePath)) {
+        if (oldPackagePath !== newPackagePath && safeExists(newPackagePath)) {
             throw new Error(`Pipeline "${newName}" already exists`);
         }
 
         // Update the name field in the YAML content
-        const content = fs.readFileSync(oldPath, 'utf8');
-        const parsed = yaml.load(content) as Record<string, unknown>;
-        if (parsed && typeof parsed === 'object') {
-            parsed.name = newName;
-            const updatedContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
-            fs.writeFileSync(oldPath, updatedContent, 'utf8');
+        const readResult = safeReadFile(oldPath);
+        if (readResult.success && readResult.data) {
+            const parsed = yaml.load(readResult.data) as Record<string, unknown>;
+            if (parsed && typeof parsed === 'object') {
+                parsed.name = newName;
+                const updatedContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+                safeWriteFile(oldPath, updatedContent);
+            }
         }
 
         // Rename the package directory if name changed
         if (oldPackagePath !== newPackagePath) {
-            fs.renameSync(oldPackagePath, newPackagePath);
+            safeRename(oldPackagePath, newPackagePath);
         }
 
         return path.join(newPackagePath, 'pipeline.yaml');
@@ -374,12 +376,12 @@ export class PipelineManager implements vscode.Disposable {
      */
     async deletePipeline(filePath: string): Promise<void> {
         const packagePath = this.getPackagePath(filePath);
-        if (!fs.existsSync(packagePath)) {
+        if (!safeExists(packagePath)) {
             throw new Error(`Pipeline package not found: ${packagePath}`);
         }
 
         // Remove the entire package directory
-        fs.rmSync(packagePath, { recursive: true, force: true });
+        safeRemove(packagePath, { recursive: true, force: true });
     }
 
     /**
@@ -389,15 +391,19 @@ export class PipelineManager implements vscode.Disposable {
         const errors: string[] = [];
         const warnings: string[] = [];
 
-        if (!fs.existsSync(filePath)) {
+        if (!safeExists(filePath)) {
             return { valid: false, errors: ['File not found'], warnings: [] };
         }
 
         const packagePath = this.getPackagePath(filePath);
 
+        const readResult = safeReadFile(filePath);
+        if (!readResult.success || !readResult.data) {
+            return { valid: false, errors: [`Failed to read file: ${readResult.error?.message}`], warnings: [] };
+        }
+
         try {
-            const content = fs.readFileSync(filePath, 'utf8');
-            const parsed = yaml.load(content) as Record<string, unknown>;
+            const parsed = yaml.load(readResult.data) as Record<string, unknown>;
 
             if (!parsed || typeof parsed !== 'object') {
                 return { valid: false, errors: ['Invalid YAML: not an object'], warnings: [] };
@@ -444,7 +450,7 @@ export class PipelineManager implements vscode.Disposable {
                         } else {
                             // Validate that the CSV file exists relative to the package
                             const csvPath = this.resolveResourcePath(from.path as string, packagePath);
-                            if (!fs.existsSync(csvPath)) {
+                            if (!safeExists(csvPath)) {
                                 warnings.push(`Input file not found: ${from.path} (expected at ${csvPath})`);
                             }
                         }
@@ -604,20 +610,15 @@ export class PipelineManager implements vscode.Disposable {
         let name = packageName;
         let description: string | undefined;
 
-        try {
-            const content = fs.readFileSync(pipelineFilePath, 'utf8');
-            const parsed = yaml.load(content) as Record<string, unknown>;
-
-            if (parsed && typeof parsed === 'object') {
-                if (typeof parsed.name === 'string') {
-                    name = parsed.name;
-                }
-                if (typeof parsed.description === 'string') {
-                    description = parsed.description;
-                }
+        const yamlResult = readYAML<Record<string, unknown>>(pipelineFilePath);
+        if (yamlResult.success && yamlResult.data) {
+            const parsed = yamlResult.data;
+            if (typeof parsed.name === 'string') {
+                name = parsed.name;
             }
-        } catch (error) {
-            // Use package name as fallback
+            if (typeof parsed.description === 'string') {
+                description = parsed.description;
+            }
         }
 
         // Get resource files in the package
@@ -646,38 +647,35 @@ export class PipelineManager implements vscode.Disposable {
         const resources: ResourceFileInfo[] = [];
 
         const scanDirectory = (dirPath: string, basePath: string = '') => {
-            try {
-                const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+            const entriesResult = safeReadDir(dirPath, true);
+            if (!entriesResult.success || !entriesResult.data) {
+                return; // Skip directories we can't read
+            }
 
-                for (const entry of entries) {
-                    const fullPath = path.join(dirPath, entry.name);
-                    const relativePath = basePath ? path.join(basePath, entry.name) : entry.name;
+            for (const entry of entriesResult.data) {
+                const fullPath = path.join(dirPath, entry.name);
+                const relativePath = basePath ? path.join(basePath, entry.name) : entry.name;
 
-                    if (entry.isDirectory()) {
-                        // Recursively scan subdirectories
-                        scanDirectory(fullPath, relativePath);
-                    } else if (entry.isFile()) {
-                        // Skip pipeline.yaml/yml files
-                        if (PIPELINE_FILE_NAMES.includes(entry.name)) {
-                            continue;
-                        }
+                if (entry.isDirectory()) {
+                    // Recursively scan subdirectories
+                    scanDirectory(fullPath, relativePath);
+                } else if (entry.isFile()) {
+                    // Skip pipeline.yaml/yml files
+                    if (PIPELINE_FILE_NAMES.includes(entry.name)) {
+                        continue;
+                    }
 
-                        try {
-                            const stats = fs.statSync(fullPath);
-                            resources.push({
-                                fileName: entry.name,
-                                filePath: fullPath,
-                                relativePath,
-                                size: stats.size,
-                                fileType: this.getFileType(entry.name)
-                            });
-                        } catch {
-                            // Skip files we can't read
-                        }
+                    const statsResult = safeStats(fullPath);
+                    if (statsResult.success && statsResult.data) {
+                        resources.push({
+                            fileName: entry.name,
+                            filePath: fullPath,
+                            relativePath,
+                            size: statsResult.data.size,
+                            fileType: this.getFileType(entry.name)
+                        });
                     }
                 }
-            } catch {
-                // Skip directories we can't read
             }
         };
 

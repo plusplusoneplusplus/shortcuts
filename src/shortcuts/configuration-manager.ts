@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { CURRENT_CONFIG_VERSION, detectConfigVersion, migrateConfig } from './config-migrations';
 import { NotificationManager } from './notification-manager';
 import { getExtensionLogger, LogCategory } from './shared/extension-logger';
+import { ensureDirectoryExists, readYAML, safeExists, safeIsDirectory, safeStats, safeWriteFile, writeYAML } from './shared/file-utils';
 import { SyncManager } from './sync/sync-manager';
 import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, GlobalNote, LogicalGroup, LogicalGroupItem, ShortcutsConfig, SyncConfig } from './types';
 
@@ -139,31 +140,37 @@ export class ConfigurationManager {
     private async loadConfigurationFromDisk(): Promise<ShortcutsConfig> {
         try {
             // Try to load workspace-specific config first (highest priority)
-            if (this.isWorkspaceConfig() && fs.existsSync(this.configPath)) {
-                try {
-                    const workspaceContent = fs.readFileSync(this.configPath, 'utf8');
-                    const parsedWorkspaceConfig = yaml.load(workspaceContent) as any;
-                    const workspaceConfig = this.validateConfiguration(parsedWorkspaceConfig);
-                    getExtensionLogger().info(LogCategory.CONFIG, 'Using workspace configuration');
-                    return workspaceConfig;
-                } catch (error) {
-                    const err = error instanceof Error ? error : new Error(String(error));
-                    getExtensionLogger().warn(LogCategory.CONFIG, 'Error loading workspace config, falling back to global', { error: err.message });
+            if (this.isWorkspaceConfig() && safeExists(this.configPath)) {
+                const workspaceResult = readYAML<any>(this.configPath);
+                if (workspaceResult.success) {
+                    try {
+                        const workspaceConfig = this.validateConfiguration(workspaceResult.data);
+                        getExtensionLogger().info(LogCategory.CONFIG, 'Using workspace configuration');
+                        return workspaceConfig;
+                    } catch (error) {
+                        const err = error instanceof Error ? error : new Error(String(error));
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Error validating workspace config, falling back to global', { error: err.message });
+                    }
+                } else {
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Error loading workspace config, falling back to global', { error: workspaceResult.error?.message });
                 }
             }
 
             // Fallback to global config if workspace doesn't exist or failed to load
             const globalConfigPath = this.getGlobalConfigPath();
-            if (fs.existsSync(globalConfigPath)) {
-                try {
-                    const globalContent = fs.readFileSync(globalConfigPath, 'utf8');
-                    const parsedGlobalConfig = yaml.load(globalContent) as any;
-                    const globalConfig = this.validateConfiguration(parsedGlobalConfig);
-                    getExtensionLogger().info(LogCategory.CONFIG, 'Using global configuration');
-                    return globalConfig;
-                } catch (error) {
-                    const err = error instanceof Error ? error : new Error(String(error));
-                    getExtensionLogger().warn(LogCategory.CONFIG, 'Error loading global config', { error: err.message });
+            if (safeExists(globalConfigPath)) {
+                const globalResult = readYAML<any>(globalConfigPath);
+                if (globalResult.success) {
+                    try {
+                        const globalConfig = this.validateConfiguration(globalResult.data);
+                        getExtensionLogger().info(LogCategory.CONFIG, 'Using global configuration');
+                        return globalConfig;
+                    } catch (error) {
+                        const err = error instanceof Error ? error : new Error(String(error));
+                        getExtensionLogger().warn(LogCategory.CONFIG, 'Error validating global config', { error: err.message });
+                    }
+                } else {
+                    getExtensionLogger().warn(LogCategory.CONFIG, 'Error loading global config', { error: globalResult.error?.message });
                 }
             }
 
@@ -182,7 +189,7 @@ export class ConfigurationManager {
             } else if (err.message.includes('EACCES') || err.message.includes('permission denied')) {
                 userMessage = 'Permission denied accessing configuration file. Please check file permissions.';
                 NotificationManager.showWarning(userMessage);
-            } else if (err.message.includes('YAMLException') || err.message.includes('invalid yaml')) {
+            } else if (err.message.includes('YAMLException') || err.message.includes('invalid yaml') || err.message.includes('YAML parse error')) {
                 userMessage = 'Configuration file contains invalid YAML syntax. Please check the file format.';
                 NotificationManager.showWarning(userMessage, { timeout: 0, actions: ['Open Configuration File'] }).then(action => {
                     if (action === 'Open Configuration File') {
@@ -207,26 +214,17 @@ export class ConfigurationManager {
             // Invalidate cache before saving
             this.configCache = undefined;
 
-            // Ensure .vscode directory exists
-            const configDir = path.dirname(this.configPath);
-            if (!fs.existsSync(configDir)) {
-                fs.mkdirSync(configDir, { recursive: true });
-            }
-
             // Add version number to config before saving
             const versionedConfig = {
                 version: CURRENT_CONFIG_VERSION,
                 ...config
             };
 
-            // Convert to YAML and write to file
-            const yamlContent = yaml.dump(versionedConfig, {
-                indent: 2,
-                lineWidth: -1,
-                noRefs: true
-            });
-
-            fs.writeFileSync(this.configPath, yamlContent, 'utf8');
+            // Write YAML to file (ensureDirectoryExists is handled by writeYAML)
+            const result = writeYAML(this.configPath, versionedConfig);
+            if (!result.success) {
+                throw result.error || new Error('Failed to write configuration file');
+            }
 
             // Sync to cloud if enabled
             if (this.syncManager?.isAutoSyncEnabled()) {
@@ -279,7 +277,7 @@ export class ConfigurationManager {
      */
     getActiveConfigSource(): { source: 'workspace' | 'global' | 'default'; path: string; exists: boolean } {
         // Check workspace config first
-        if (this.isWorkspaceConfig() && fs.existsSync(this.configPath)) {
+        if (this.isWorkspaceConfig() && safeExists(this.configPath)) {
             return {
                 source: 'workspace',
                 path: this.configPath,
@@ -289,7 +287,7 @@ export class ConfigurationManager {
 
         // Check global config
         const globalConfigPath = this.getGlobalConfigPath();
-        if (fs.existsSync(globalConfigPath)) {
+        if (safeExists(globalConfigPath)) {
             return {
                 source: 'global',
                 path: globalConfigPath,
@@ -382,12 +380,12 @@ export class ConfigurationManager {
                 // Validate that the path exists (no basePaths during migration as they're from old config)
                 try {
                     const resolvedPath = this.resolvePath(shortcut.path, config.basePaths);
-                    if (!fs.existsSync(resolvedPath)) {
+                    if (!safeExists(resolvedPath)) {
                         getExtensionLogger().warn(LogCategory.CONFIG, `Skipping migration of shortcut with non-existent path: ${shortcut.path}`);
                         continue;
                     }
 
-                    if (!fs.statSync(resolvedPath).isDirectory()) {
+                    if (!safeIsDirectory(resolvedPath)) {
                         getExtensionLogger().warn(LogCategory.CONFIG, `Skipping migration of shortcut with non-directory path: ${shortcut.path}`);
                         continue;
                     }
@@ -613,29 +611,28 @@ export class ConfigurationManager {
                     }
 
                     // Validate that the path exists
-                    try {
-                        const resolvedPath = this.resolvePath(item.path, validBasePaths);
-                        if (!fs.existsSync(resolvedPath)) {
-                            getExtensionLogger().warn(LogCategory.CONFIG, `Skipping logical group item with non-existent path: ${item.path}`);
-                            continue;
-                        }
-
-                        const stat = fs.statSync(resolvedPath);
-                        const actualType = stat.isDirectory() ? 'folder' : 'file';
-                        if (actualType !== item.type) {
-                            getExtensionLogger().warn(LogCategory.CONFIG, `Logical group item type mismatch for ${item.path}: expected ${item.type}, found ${actualType}. Using actual type.`);
-                        }
-
-                        validItems.push({
-                            path: item.path,
-                            name: item.name,
-                            type: actualType as 'folder' | 'file'
-                        });
-                    } catch (error) {
-                        const err = error instanceof Error ? error : new Error('Unknown error');
-                        getExtensionLogger().warn(LogCategory.CONFIG, `Skipping logical group item with invalid path: ${item.path}`, { error: err.message });
+                    const resolvedPath = this.resolvePath(item.path, validBasePaths);
+                    if (!safeExists(resolvedPath)) {
+                        getExtensionLogger().warn(LogCategory.CONFIG, `Skipping logical group item with non-existent path: ${item.path}`);
                         continue;
                     }
+
+                    const statResult = safeStats(resolvedPath);
+                    if (!statResult.success || !statResult.data) {
+                        getExtensionLogger().warn(LogCategory.CONFIG, `Skipping logical group item with invalid path: ${item.path}`, { error: statResult.error?.message });
+                        continue;
+                    }
+
+                    const actualType = statResult.data.isDirectory() ? 'folder' : 'file';
+                    if (actualType !== item.type) {
+                        getExtensionLogger().warn(LogCategory.CONFIG, `Logical group item type mismatch for ${item.path}: expected ${item.type}, found ${actualType}. Using actual type.`);
+                    }
+
+                    validItems.push({
+                        path: item.path,
+                        name: item.name,
+                        type: actualType as 'folder' | 'file'
+                    });
                 }
 
                 // Recursively validate nested groups
@@ -818,29 +815,28 @@ export class ConfigurationManager {
                 }
 
                 // Validate that the path exists
-                try {
-                    const resolvedPath = this.resolvePath(item.path, validBasePaths);
-                    if (!fs.existsSync(resolvedPath)) {
-                        getExtensionLogger().warn(LogCategory.CONFIG, `Skipping nested group item with non-existent path: ${item.path}`);
-                        continue;
-                    }
-
-                    const stat = fs.statSync(resolvedPath);
-                    const actualType = stat.isDirectory() ? 'folder' : 'file';
-                    if (actualType !== item.type) {
-                        getExtensionLogger().warn(LogCategory.CONFIG, `Nested group item type mismatch for ${item.path}: expected ${item.type}, found ${actualType}. Using actual type.`);
-                    }
-
-                    validItems.push({
-                        path: item.path,
-                        name: item.name,
-                        type: actualType as 'folder' | 'file'
-                    });
-                } catch (error) {
-                    const err = error instanceof Error ? error : new Error('Unknown error');
-                    getExtensionLogger().warn(LogCategory.CONFIG, `Skipping nested group item with invalid path: ${item.path}`, { error: err.message });
+                const resolvedPath = this.resolvePath(item.path, validBasePaths);
+                if (!safeExists(resolvedPath)) {
+                    getExtensionLogger().warn(LogCategory.CONFIG, `Skipping nested group item with non-existent path: ${item.path}`);
                     continue;
                 }
+
+                const statResult = safeStats(resolvedPath);
+                if (!statResult.success || !statResult.data) {
+                    getExtensionLogger().warn(LogCategory.CONFIG, `Skipping nested group item with invalid path: ${item.path}`, { error: statResult.error?.message });
+                    continue;
+                }
+
+                const actualType = statResult.data.isDirectory() ? 'folder' : 'file';
+                if (actualType !== item.type) {
+                    getExtensionLogger().warn(LogCategory.CONFIG, `Nested group item type mismatch for ${item.path}: expected ${item.type}, found ${actualType}. Using actual type.`);
+                }
+
+                validItems.push({
+                    path: item.path,
+                    name: item.name,
+                    type: actualType as 'folder' | 'file'
+                });
             }
 
             // Recursively validate deeper nested groups
@@ -953,7 +949,7 @@ export class ConfigurationManager {
      */
     private findGitRoot(filePath: string): string | undefined {
         try {
-            const directory = fs.statSync(filePath).isDirectory() ? filePath : path.dirname(filePath);
+            const directory = safeIsDirectory(filePath) ? filePath : path.dirname(filePath);
             const gitRoot = execSync('git rev-parse --show-toplevel', {
                 cwd: directory,
                 encoding: 'utf8',
@@ -1824,8 +1820,9 @@ export class ConfigurationManager {
             }
 
             // Get local file timestamp
-            const localTimestamp = fs.existsSync(this.configPath)
-                ? fs.statSync(this.configPath).mtimeMs
+            const statsResult = safeStats(this.configPath);
+            const localTimestamp = statsResult.success && statsResult.data
+                ? statsResult.data.mtimeMs
                 : 0;
 
             // If cloud is newer, download and use it
@@ -1861,26 +1858,17 @@ export class ConfigurationManager {
             // Invalidate cache before saving
             this.configCache = undefined;
 
-            // Ensure .vscode directory exists
-            const configDir = path.dirname(this.configPath);
-            if (!fs.existsSync(configDir)) {
-                fs.mkdirSync(configDir, { recursive: true });
-            }
-
             // Add version number to config before saving
             const versionedConfig = {
                 version: CURRENT_CONFIG_VERSION,
                 ...config
             };
 
-            // Convert to YAML and write to file
-            const yamlContent = yaml.dump(versionedConfig, {
-                indent: 2,
-                lineWidth: -1,
-                noRefs: true
-            });
-
-            fs.writeFileSync(this.configPath, yamlContent, 'utf8');
+            // Write YAML to file (ensureDirectoryExists is handled by writeYAML)
+            const result = writeYAML(this.configPath, versionedConfig);
+            if (!result.success) {
+                throw result.error || new Error('Failed to write configuration file');
+            }
 
         } catch (error) {
             const err = error instanceof Error ? error : new Error(String(error));
