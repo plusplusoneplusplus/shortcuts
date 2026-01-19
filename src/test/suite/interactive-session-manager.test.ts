@@ -584,7 +584,8 @@ suite('InteractiveSessionManager - Events', () => {
 
         const startedEvent = events.find(e => e.type === 'session-started');
         assert.ok(startedEvent);
-        assert.strictEqual(startedEvent.session.status, 'starting');
+        // Session is immediately active after successful launch
+        assert.strictEqual(startedEvent.session.status, 'active');
 
         manager.dispose();
     });

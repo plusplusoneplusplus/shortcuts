@@ -98,12 +98,14 @@ function createMockSpawn(): {
 suite('ExternalTerminalLauncher - buildCliCommand', () => {
     test('should build basic copilot command without prompt', () => {
         const result = buildCliCommand('copilot');
-        assert.strictEqual(result, 'copilot');
+        // Now includes base flags by default
+        assert.strictEqual(result, 'copilot --allow-all-tools --allow-all-paths --disable-builtin-mcps');
     });
 
     test('should build basic claude command without prompt', () => {
         const result = buildCliCommand('claude');
-        assert.strictEqual(result, 'claude');
+        // Now includes base flags by default
+        assert.strictEqual(result, 'claude --allow-all-tools --allow-all-paths --disable-builtin-mcps');
     });
 
     test('should build copilot command with prompt on Unix', () => {
@@ -1039,9 +1041,9 @@ suite('ExternalTerminalLauncher - Edge Cases', () => {
             initialPrompt: ''
         });
 
-        // Should launch without the -p flag
+        // Should launch without the -i flag (interactive mode with prompt)
         const allArgs = calls[0].args.join(' ');
-        assert.ok(!allArgs.includes('-p'), 'Should not include -p flag for empty prompt');
+        assert.ok(!allArgs.includes('-i'), 'Should not include -i flag for empty prompt');
     });
 
     test('should handle undefined initial prompt', async () => {
@@ -1056,8 +1058,8 @@ suite('ExternalTerminalLauncher - Edge Cases', () => {
             // initialPrompt not provided
         });
 
-        // Should launch without the -p flag
+        // Should launch without the -i flag (interactive mode with prompt)
         const allArgs = calls[0].args.join(' ');
-        assert.ok(!allArgs.includes('-p'), 'Should not include -p flag for undefined prompt');
+        assert.ok(!allArgs.includes('-i'), 'Should not include -i flag for undefined prompt');
     });
 });

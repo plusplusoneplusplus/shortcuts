@@ -35,9 +35,9 @@ suite('Debug Panel Tests', () => {
             assert.strictEqual(openChat?.commandId, 'workbench.panel.chat.view.copilot.focus');
         });
 
-        test('should have exactly 6 commands', () => {
+        test('should have exactly 7 commands', () => {
             const commands = getDefaultDebugCommands();
-            assert.strictEqual(commands.length, 6);
+            assert.strictEqual(commands.length, 7);
         });
 
         test('should include read-setting command', () => {

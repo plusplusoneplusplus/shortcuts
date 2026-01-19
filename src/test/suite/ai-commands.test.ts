@@ -121,11 +121,12 @@ suite('AI Commands System Tests', () => {
             assert.strictEqual(serialized.isCustomInput, true);
         });
 
-        test('should not include prompt in serialized output', () => {
+        test('should include prompt in serialized output for hover preview', () => {
             const cmd = createCommand({ prompt: 'secret prompt' });
             const serialized = serializeCommand(cmd);
 
-            assert.ok(!('prompt' in serialized), 'prompt should not be serialized');
+            assert.ok('prompt' in serialized, 'prompt should be serialized for hover preview');
+            assert.strictEqual(serialized.prompt, 'secret prompt');
         });
 
         test('should not include responseLabel in serialized output', () => {
@@ -184,7 +185,8 @@ suite('AI Commands System Tests', () => {
 
             assert.strictEqual(serialized.length, 3);
             assert.ok(serialized.every(s => s.id && s.label));
-            assert.ok(serialized.every(s => !('prompt' in s)));
+            // prompt is now included in serialized output for hover preview
+            assert.ok(serialized.every(s => 'prompt' in s));
         });
     });
 

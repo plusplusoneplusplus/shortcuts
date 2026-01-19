@@ -149,8 +149,9 @@ suite('Source Mode Highlighting Tests', () => {
 
             test('should highlight checkbox unchecked', () => {
                 const result = applySourceModeHighlighting('- [ ] Todo item', false);
-                assert.ok(result.html.includes('class="src-checkbox"'));
-                assert.ok(!result.html.includes('src-checkbox-checked'));
+                // Checkbox now has multiple classes including src-checkbox-clickable
+                assert.ok(result.html.includes('src-checkbox'), 'Should have src-checkbox class');
+                assert.ok(!result.html.includes('src-checkbox-checked'), 'Should not have checked class');
             });
 
             test('should highlight checkbox checked', () => {
