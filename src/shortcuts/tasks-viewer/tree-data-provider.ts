@@ -123,11 +123,14 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
         const settings = this.taskManager.getSettings();
         
         // Build folder hierarchy
-        const rootFolder = await this.taskManager.getTaskFolderHierarchy();
-        this.cachedFolderHierarchy = rootFolder;
+        let rootFolder = await this.taskManager.getTaskFolderHierarchy();
 
-        // Apply filter
-        // TODO: Implement hierarchical filtering if needed
+        // Apply filter to the hierarchy
+        if (this.hasFilter) {
+            rootFolder = this.filterFolderHierarchy(rootFolder, this.getFilter());
+        }
+
+        this.cachedFolderHierarchy = rootFolder;
         
         // When showArchived is enabled, use active/archived grouping at root
         if (settings.showArchived) {
@@ -137,9 +140,6 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
             const activeCount = this.countFolderItems(activeFolder);
             const archivedCount = this.countFolderItems(archivedFolder);
             
-            // Store for getGroupTasks
-            this.cachedFolderHierarchy = rootFolder;
-            
             return [
                 new TaskGroupItem('active', activeCount),
                 new TaskGroupItem('archived', archivedCount)
@@ -148,6 +148,37 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
 
         // Flat hierarchical view (show all folders/items at root)
         return this.getFolderChildren(rootFolder);
+    }
+
+    /**
+     * Filter a folder hierarchy by name
+     * Returns a new folder with only items matching the filter
+     */
+    private filterFolderHierarchy(folder: TaskFolder, filter: string): TaskFolder {
+        const filteredFolder: TaskFolder = {
+            ...folder,
+            children: [],
+            documentGroups: folder.documentGroups.filter(g => 
+                g.baseName.toLowerCase().includes(filter)
+            ),
+            singleDocuments: folder.singleDocuments.filter(d => 
+                d.baseName.toLowerCase().includes(filter)
+            ),
+            tasks: folder.tasks.filter(t => 
+                t.name.toLowerCase().includes(filter)
+            )
+        };
+
+        // Recursively filter child folders
+        for (const child of folder.children) {
+            const filteredChild = this.filterFolderHierarchy(child, filter);
+            // Include child folder if it has any matching items
+            if (this.countFolderItems(filteredChild) > 0) {
+                filteredFolder.children.push(filteredChild);
+            }
+        }
+
+        return filteredFolder;
     }
 
     /**
