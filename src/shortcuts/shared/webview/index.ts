@@ -26,3 +26,15 @@ export * from './markdown-renderer';
 
 // Search functionality for webview editors
 export * from './search-handler';
+
+// Context menu types
+export * from './context-menu-types';
+
+// Context menu builder utilities
+export * from './context-menu-builder';
+
+// Context menu manager
+export { ContextMenuManager } from './context-menu-manager';
+
+// Custom instruction dialog
+export { CustomInstructionDialog } from './custom-instruction-dialog';

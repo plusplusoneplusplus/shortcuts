@@ -3,9 +3,10 @@
  * 
  * Uses shared utilities from the base-panel-manager module for common
  * functionality like drag, resize, positioning, and date formatting.
+ * Uses shared context menu module for consistent context menu behavior.
  */
 
-import { AICommandMode, AskAIContext, DiffAIInstructionType, DiffComment, DiffSide, SelectionState, SerializedAICommand, SerializedAIMenuConfig, SerializedPredefinedComment } from './types';
+import { AICommandMode, AskAIContext, DiffComment, DiffSide, SelectionState, SerializedAICommand, SerializedAIMenuConfig, SerializedPredefinedComment } from './types';
 import { endInteraction, getState, setCommentPanelOpen, setEditingCommentId, startInteraction } from './state';
 import { clearSelection, toDiffSelection } from './selection-handler';
 import { sendAddComment, sendAskAI, sendAskAIInteractive, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
@@ -18,24 +19,15 @@ import {
     setupPanelDrag as setupSharedPanelDrag
 } from '../../shared/webview/base-panel-manager';
 import { renderCommentMarkdown } from '../../shared/webview/markdown-renderer';
-
-/**
- * Default AI commands when none are configured
- */
-const DEFAULT_AI_COMMANDS: SerializedAICommand[] = [
-    { id: 'clarify', label: 'Clarify', icon: '💡', order: 1 },
-    { id: 'go-deeper', label: 'Go Deeper', icon: '🔍', order: 2 },
-    { id: 'custom', label: 'Custom...', icon: '💬', order: 99, isCustomInput: true }
-];
-
-/**
- * Default predefined comments when none are configured
- */
-const DEFAULT_PREDEFINED_COMMENTS: SerializedPredefinedComment[] = [
-    { id: 'todo', label: 'TODO', text: 'TODO: ', order: 1 },
-    { id: 'fixme', label: 'FIXME', text: 'FIXME: ', order: 2 },
-    { id: 'question', label: 'Question', text: 'Question: ', order: 3 }
-];
+import {
+    ContextMenuManager,
+    CustomInstructionDialog,
+    ContextMenuSelection,
+    getAIMenuConfig as getSharedAIMenuConfig,
+    getPredefinedComments as getSharedPredefinedComments,
+    DEFAULT_AI_COMMANDS,
+    DEFAULT_PREDEFINED_COMMENTS
+} from '../../shared/webview';
 
 /**
  * DOM element references
@@ -49,30 +41,12 @@ let closeButton: HTMLButtonElement | null = null;
 let commentsListPanel: HTMLElement | null = null;
 let commentsListBody: HTMLElement | null = null;
 let closeCommentsListButton: HTMLButtonElement | null = null;
-let contextMenu: HTMLElement | null = null;
-let contextMenuAddComment: HTMLElement | null = null;
-// Ask AI to Comment context menu elements
-let contextMenuAskAIComment: HTMLElement | null = null;
-let askAICommentSubmenu: HTMLElement | null = null;
-// Ask AI Interactively context menu elements
-let contextMenuAskAIInteractive: HTMLElement | null = null;
-let askAIInteractiveSubmenu: HTMLElement | null = null;
-// Ask AI separator
-let askAISeparator: HTMLElement | null = null;
-// Predefined comments submenu elements
-let contextMenuPredefined: HTMLElement | null = null;
-let predefinedSubmenu: HTMLElement | null = null;
-// Custom instruction dialog elements
-let customInstructionDialog: HTMLElement | null = null;
-let customInstructionClose: HTMLElement | null = null;
-let customInstructionSelection: HTMLElement | null = null;
-let customInstructionInput: HTMLTextAreaElement | null = null;
-let customInstructionCancelBtn: HTMLElement | null = null;
-let customInstructionSubmitBtn: HTMLElement | null = null;
-let customInstructionOverlay: HTMLElement | null = null;
-// Current command ID and mode for custom instruction dialog
-let pendingCustomCommandId: string = 'custom';
-let pendingCustomCommandMode: AICommandMode = 'comment';
+
+// Shared context menu manager
+let contextMenuManager: ContextMenuManager | null = null;
+
+// Shared custom instruction dialog
+let customInstructionDialogManager: CustomInstructionDialog | null = null;
 
 // Active comment bubble (single floating bubble like markdown review)
 let activeCommentBubble: HTMLElement | null = null;
@@ -89,126 +63,39 @@ let savedSelectionForAskAI: SelectionState | null = null;
 
 /**
  * Get the AI menu configuration
+ * Uses the shared getAIMenuConfig utility
  */
 function getAIMenuConfig(): SerializedAIMenuConfig {
     const state = getState();
-    const config = state.settings.aiMenuConfig;
-    if (config && config.commentCommands && config.commentCommands.length > 0) {
-        return {
-            commentCommands: [...config.commentCommands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100)),
-            interactiveCommands: [...config.interactiveCommands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
-        };
-    }
-    // Default: both menus use the same commands
-    return {
-        commentCommands: DEFAULT_AI_COMMANDS,
-        interactiveCommands: DEFAULT_AI_COMMANDS
-    };
-}
-
-/**
- * Build the AI submenu HTML dynamically
- * @param commands - The commands to display
- * @param mode - The mode for this menu ('comment' or 'interactive')
- */
-function buildAISubmenuHTML(commands: SerializedAICommand[], mode: AICommandMode): string {
-    const modeClass = mode === 'interactive' ? 'ask-ai-interactive-item' : 'ask-ai-item';
-    return commands.map(cmd => {
-        const icon = cmd.icon ? `<span class="menu-icon">${cmd.icon}</span>` : '';
-        const dataCustomInput = cmd.isCustomInput ? 'data-custom-input="true"' : '';
-        return `<div class="context-menu-item ${modeClass}" data-command-id="${cmd.id}" data-mode="${mode}" ${dataCustomInput}>
-            ${icon}${cmd.label}
-        </div>`;
-    }).join('');
-}
-
-/**
- * Attach click handlers to AI submenu items
- */
-function attachAISubmenuHandlers(submenuElement: HTMLElement): void {
-    submenuElement.querySelectorAll('.ask-ai-item, .ask-ai-interactive-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const element = item as HTMLElement;
-            const commandId = element.dataset.commandId || '';
-            const isCustomInput = element.dataset.customInput === 'true';
-            const mode = (element.dataset.mode || 'comment') as AICommandMode;
-
-            hideContextMenu();
-            if (isCustomInput) {
-                pendingCustomCommandId = commandId;
-                pendingCustomCommandMode = mode;
-                showCustomInstructionDialog();
-            } else {
-                handleAskAI(commandId, undefined, mode);
-            }
-        });
-    });
-}
-
-/**
- * Rebuild both AI submenus based on current settings
- */
-export function rebuildAISubmenu(): void {
-    const menuConfig = getAIMenuConfig();
-    
-    // Build "Ask AI to Comment" submenu
-    if (askAICommentSubmenu) {
-        askAICommentSubmenu.innerHTML = buildAISubmenuHTML(menuConfig.commentCommands, 'comment');
-        attachAISubmenuHandlers(askAICommentSubmenu);
-    }
-    
-    // Build "Ask AI Interactively" submenu
-    if (askAIInteractiveSubmenu) {
-        askAIInteractiveSubmenu.innerHTML = buildAISubmenuHTML(menuConfig.interactiveCommands, 'interactive');
-        attachAISubmenuHandlers(askAIInteractiveSubmenu);
-    }
+    return getSharedAIMenuConfig(state.settings.aiMenuConfig);
 }
 
 /**
  * Get the predefined comments to display in menus
+ * Uses the shared getPredefinedComments utility
  */
 function getPredefinedComments(): SerializedPredefinedComment[] {
     const state = getState();
-    const comments = state.settings.predefinedComments;
-    if (comments && comments.length > 0) {
-        return [...comments].sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
-    }
-    return DEFAULT_PREDEFINED_COMMENTS;
+    return getSharedPredefinedComments(state.settings.predefinedComments);
 }
 
 /**
- * Build the predefined comments submenu HTML
+ * Rebuild both AI submenus based on current settings
+ * Uses the shared ContextMenuManager
  */
-function buildPredefinedSubmenuHTML(comments: SerializedPredefinedComment[]): string {
-    return comments.map(c => {
-        const title = c.description ? `title="${c.description}"` : '';
-        return `<div class="context-menu-item predefined-item" data-id="${c.id}" data-text="${encodeURIComponent(c.text)}" ${title}>
-            ${c.label}
-        </div>`;
-    }).join('');
+export function rebuildAISubmenu(): void {
+    if (!contextMenuManager) return;
+    const state = getState();
+    contextMenuManager.rebuildAISubmenus(state.settings.aiMenuConfig);
 }
 
 /**
  * Rebuild the predefined comments submenu based on current settings
+ * Uses the shared ContextMenuManager
  */
 export function rebuildPredefinedSubmenu(): void {
-    if (!predefinedSubmenu) return;
-
-    const comments = getPredefinedComments();
-    predefinedSubmenu.innerHTML = buildPredefinedSubmenuHTML(comments);
-
-    // Attach click handlers to all predefined items
-    predefinedSubmenu.querySelectorAll('.predefined-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const element = item as HTMLElement;
-            const text = decodeURIComponent(element.dataset.text || '');
-
-            hideContextMenu();
-            handlePredefinedComment(text);
-        });
-    });
+    if (!contextMenuManager) return;
+    contextMenuManager.rebuildPredefinedSubmenu(getPredefinedComments());
 }
 
 /**
@@ -218,6 +105,20 @@ export function rebuildPredefinedSubmenu(): void {
 function handlePredefinedComment(predefinedText: string): void {
     if (currentPanelSelection) {
         showCommentPanel(currentPanelSelection, predefinedText);
+    }
+}
+
+/**
+ * Handle AI command click
+ */
+function handleAICommandClick(commandId: string, isCustomInput: boolean, mode: AICommandMode): void {
+    if (isCustomInput) {
+        if (currentPanelSelection && customInstructionDialogManager) {
+            savedSelectionForAskAI = currentPanelSelection;
+            customInstructionDialogManager.show(currentPanelSelection.selectedText, commandId, mode);
+        }
+    } else {
+        handleAskAI(commandId, undefined, mode);
     }
 }
 
@@ -234,29 +135,48 @@ export function initPanelElements(): void {
     commentsListPanel = document.getElementById('comments-list');
     commentsListBody = document.getElementById('comments-list-body');
     closeCommentsListButton = document.getElementById('close-comments-list') as HTMLButtonElement;
-    contextMenu = document.getElementById('custom-context-menu');
-    contextMenuAddComment = document.getElementById('context-menu-add-comment');
-    
-    // Ask AI to Comment context menu elements
-    contextMenuAskAIComment = document.getElementById('context-menu-ask-ai-comment');
-    askAICommentSubmenu = document.getElementById('ask-ai-comment-submenu');
-    // Ask AI Interactively context menu elements
-    contextMenuAskAIInteractive = document.getElementById('context-menu-ask-ai-interactive');
-    askAIInteractiveSubmenu = document.getElementById('ask-ai-interactive-submenu');
-    // Ask AI separator
-    askAISeparator = document.getElementById('ask-ai-separator');
 
-    // Predefined comments submenu elements
-    contextMenuPredefined = document.getElementById('context-menu-predefined');
-    predefinedSubmenu = document.getElementById('predefined-submenu');
+    // Initialize shared context menu manager (simpler config for diff editor)
+    contextMenuManager = new ContextMenuManager(
+        {
+            enableClipboardItems: false,
+            enablePreviewTooltips: false,
+            minWidth: 150,
+            borderRadius: 4,
+            richMenuItems: false
+        },
+        {
+            onAddComment: () => {
+                if (currentPanelSelection) {
+                    showCommentPanel(currentPanelSelection);
+                }
+            },
+            onPredefinedComment: handlePredefinedComment,
+            onAskAI: handleAICommandClick
+        }
+    );
+    contextMenuManager.init();
 
-    // Custom instruction dialog elements
-    customInstructionDialog = document.getElementById('custom-instruction-dialog');
-    customInstructionClose = document.getElementById('custom-instruction-close');
-    customInstructionSelection = document.getElementById('custom-instruction-selection');
-    customInstructionInput = document.getElementById('custom-instruction-input') as HTMLTextAreaElement;
-    customInstructionCancelBtn = document.getElementById('custom-instruction-cancel');
-    customInstructionSubmitBtn = document.getElementById('custom-instruction-submit');
+    // Initialize shared custom instruction dialog
+    customInstructionDialogManager = new CustomInstructionDialog(
+        {
+            title: 'Custom AI Instruction',
+            placeholder: "e.g., Explain the security implications of...",
+            submitLabel: 'Ask AI',
+            cancelLabel: 'Cancel'
+        },
+        {
+            onSubmit: (instruction, commandId, mode) => {
+                // Restore the selection and send Ask AI request
+                if (savedSelectionForAskAI) {
+                    currentPanelSelection = savedSelectionForAskAI;
+                    handleAskAI(commandId, instruction, mode);
+                    savedSelectionForAskAI = null;
+                }
+            }
+        }
+    );
+    customInstructionDialogManager.init();
 
     // Setup event listeners
     if (submitButton) {
@@ -275,47 +195,11 @@ export function initPanelElements(): void {
         closeCommentsListButton.addEventListener('click', hideCommentsList);
     }
 
-    if (contextMenuAddComment) {
-        contextMenuAddComment.addEventListener('click', () => {
-            if (currentPanelSelection) {
-                showCommentPanel(currentPanelSelection);
-                hideContextMenu();
-            }
-        });
-    }
-
-    // Ask AI to Comment submenu event listeners
-    if (contextMenuAskAIComment) {
-        contextMenuAskAIComment.addEventListener('mouseenter', () => positionAskAISubmenu(askAICommentSubmenu, contextMenuAskAIComment));
-    }
-    
-    // Ask AI Interactively submenu event listeners
-    if (contextMenuAskAIInteractive) {
-        contextMenuAskAIInteractive.addEventListener('mouseenter', () => positionAskAISubmenu(askAIInteractiveSubmenu, contextMenuAskAIInteractive));
-    }
-
-    // Predefined comments submenu event listeners
-    if (contextMenuPredefined) {
-        contextMenuPredefined.addEventListener('mouseenter', positionPredefinedSubmenu);
-    }
-
     // Build initial AI submenu with default commands
     rebuildAISubmenu();
 
     // Build initial predefined comments submenu
     rebuildPredefinedSubmenu();
-
-    // Custom instruction dialog event listeners
-    setupCustomInstructionDialogListeners();
-
-    // Hide context menu on click anywhere else
-    document.addEventListener('click', (e) => {
-        // Only hide if we clicked outside the context menu
-        // But if we clicked the "Add Comment" item, the click handler above handles it
-        if (contextMenu && !contextMenu.contains(e.target as Node)) {
-            hideContextMenu();
-        }
-    });
 
     // Handle keyboard shortcuts
     if (commentInput) {
@@ -1068,43 +952,34 @@ export function isCommentsListVisible(): boolean {
 /**
  * Show custom context menu
  */
+/**
+ * Show custom context menu
+ * Uses the shared ContextMenuManager
+ */
 export function showContextMenu(x: number, y: number, selection: SelectionState): void {
-    if (!contextMenu) return;
+    if (!contextMenuManager) return;
 
     currentPanelSelection = selection;
     
-    // Update Ask AI visibility based on settings
-    updateContextMenuForSettings();
-    
-    // Position menu - account for submenu width
-    const submenuWidth = 200;
-    const menuWidth = 150;
-    const menuHeight = 80; // Approx with Ask AI
-    
-    let left = x;
-    let top = y;
-    
-    // Adjust if close to edge - need room for submenu
-    if (left + menuWidth + submenuWidth > window.innerWidth) {
-        left = Math.max(0, window.innerWidth - menuWidth - submenuWidth);
-    }
-    
-    if (top + menuHeight > window.innerHeight) {
-        top = window.innerHeight - menuHeight - 10;
-    }
-    
-    contextMenu.style.left = `${left}px`;
-    contextMenu.style.top = `${top}px`;
-    contextMenu.classList.remove('hidden');
+    // Create selection state for context menu manager
+    const menuSelection: ContextMenuSelection = {
+        selectedText: selection.selectedText,
+        startLine: selection.startLine,
+        endLine: selection.endLine,
+        startColumn: selection.startColumn,
+        endColumn: selection.endColumn
+    };
+
+    const state = getState();
+    contextMenuManager.show(x, y, menuSelection, state.settings.askAIEnabled ?? false);
 }
 
 /**
  * Hide custom context menu
+ * Uses the shared ContextMenuManager
  */
 export function hideContextMenu(): void {
-    if (contextMenu) {
-        contextMenu.classList.add('hidden');
-    }
+    contextMenuManager?.hide();
 }
 
 /**
@@ -1119,89 +994,7 @@ function setupPanelDrag(panel: HTMLElement): void {
     );
 }
 
-/**
- * Position Ask AI submenu based on available viewport space
- * @param submenu - The submenu element to position
- * @param parentMenuItem - The parent menu item element
- */
-function positionAskAISubmenu(submenu: HTMLElement | null, parentMenuItem: HTMLElement | null): void {
-    if (!submenu || !parentMenuItem || !contextMenu) return;
-    
-    const parentRect = parentMenuItem.getBoundingClientRect();
-    const menuRect = contextMenu.getBoundingClientRect();
-    
-    // Temporarily show submenu to get its dimensions
-    const originalDisplay = submenu.style.display;
-    submenu.style.display = 'block';
-    submenu.style.visibility = 'hidden';
-    const submenuRect = submenu.getBoundingClientRect();
-    submenu.style.visibility = '';
-    submenu.style.display = originalDisplay;
-    
-    // Check horizontal space
-    const spaceOnRight = window.innerWidth - menuRect.right;
-    const spaceOnLeft = menuRect.left;
-    
-    if (spaceOnRight < submenuRect.width && spaceOnLeft > submenuRect.width) {
-        // Show on left side
-        submenu.style.left = 'auto';
-        submenu.style.right = '100%';
-    } else {
-        // Show on right side (default)
-        submenu.style.left = '100%';
-        submenu.style.right = 'auto';
-    }
-    
-    // Check vertical space
-    const submenuBottomIfAlignedToTop = parentRect.top + submenuRect.height;
-    if (submenuBottomIfAlignedToTop > window.innerHeight) {
-        const overflow = submenuBottomIfAlignedToTop - window.innerHeight;
-        submenu.style.top = `${-overflow - 5}px`;
-    } else {
-        submenu.style.top = '-1px';
-    }
-}
-
-/**
- * Position predefined comments submenu based on available viewport space
- */
-function positionPredefinedSubmenu(): void {
-    if (!predefinedSubmenu || !contextMenuPredefined || !contextMenu) return;
-
-    const parentRect = contextMenuPredefined.getBoundingClientRect();
-    const menuRect = contextMenu.getBoundingClientRect();
-
-    // Temporarily show submenu to get its dimensions
-    const originalDisplay = predefinedSubmenu.style.display;
-    predefinedSubmenu.style.display = 'block';
-    predefinedSubmenu.style.visibility = 'hidden';
-    const submenuRect = predefinedSubmenu.getBoundingClientRect();
-    predefinedSubmenu.style.visibility = '';
-    predefinedSubmenu.style.display = originalDisplay;
-
-    // Check horizontal space
-    const spaceOnRight = window.innerWidth - menuRect.right;
-    const spaceOnLeft = menuRect.left;
-
-    if (spaceOnRight < submenuRect.width && spaceOnLeft > submenuRect.width) {
-        // Show on left side
-        predefinedSubmenu.style.left = 'auto';
-        predefinedSubmenu.style.right = '100%';
-    } else {
-        // Show on right side (default)
-        predefinedSubmenu.style.left = '100%';
-        predefinedSubmenu.style.right = 'auto';
-    }
-
-    // Check vertical space
-    const submenuBottomIfAlignedToTop = parentRect.top + submenuRect.height;
-    if (submenuBottomIfAlignedToTop > window.innerHeight) {
-        const overflow = submenuBottomIfAlignedToTop - window.innerHeight;
-        predefinedSubmenu.style.top = `${-overflow - 5}px`;
-    } else {
-        predefinedSubmenu.style.top = '-1px';
-    }
-}
+// Submenu positioning is handled by the shared ContextMenuManager
 
 /**
  * Handle Ask AI request
@@ -1267,120 +1060,14 @@ function extractSurroundingLines(side: DiffSide, startLine: number, endLine: num
     return surroundingLines.join('\n');
 }
 
-/**
- * Setup custom instruction dialog event listeners
- */
-function setupCustomInstructionDialogListeners(): void {
-    if (customInstructionClose) {
-        customInstructionClose.addEventListener('click', hideCustomInstructionDialog);
-    }
-    
-    if (customInstructionCancelBtn) {
-        customInstructionCancelBtn.addEventListener('click', hideCustomInstructionDialog);
-    }
-    
-    if (customInstructionSubmitBtn) {
-        customInstructionSubmitBtn.addEventListener('click', () => {
-            const instruction = customInstructionInput?.value.trim();
-            if (!instruction) {
-                customInstructionInput?.focus();
-                return;
-            }
-            hideCustomInstructionDialog();
-
-            // Restore the selection and send Ask AI request
-            if (savedSelectionForAskAI) {
-                currentPanelSelection = savedSelectionForAskAI;
-                // Use the pending command ID and mode (set when custom input command was clicked)
-                handleAskAI(pendingCustomCommandId, instruction, pendingCustomCommandMode);
-                savedSelectionForAskAI = null;
-            }
-        });
-    }
-    
-    if (customInstructionInput) {
-        customInstructionInput.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                e.preventDefault();
-                customInstructionSubmitBtn?.click();
-            }
-            if (e.key === 'Escape') {
-                hideCustomInstructionDialog();
-            }
-        });
-    }
-}
-
-/**
- * Show custom instruction dialog
- */
-function showCustomInstructionDialog(): void {
-    if (!currentPanelSelection) {
-        console.log('[Diff Webview] No selection for custom instruction');
-        return;
-    }
-    
-    // Save the selection for later use
-    savedSelectionForAskAI = currentPanelSelection;
-    
-    // Create overlay
-    customInstructionOverlay = document.createElement('div');
-    customInstructionOverlay.className = 'custom-instruction-overlay';
-    customInstructionOverlay.addEventListener('click', hideCustomInstructionDialog);
-    document.body.appendChild(customInstructionOverlay);
-    
-    // Show selected text preview
-    if (customInstructionSelection) {
-        const truncatedText = savedSelectionForAskAI.selectedText.length > 100
-            ? savedSelectionForAskAI.selectedText.substring(0, 100) + '...'
-            : savedSelectionForAskAI.selectedText;
-        customInstructionSelection.textContent = truncatedText;
-    }
-    
-    // Clear input and show dialog
-    if (customInstructionInput) {
-        customInstructionInput.value = '';
-    }
-    
-    if (customInstructionDialog) {
-        customInstructionDialog.classList.remove('hidden');
-    }
-    
-    // Focus input
-    setTimeout(() => customInstructionInput?.focus(), 50);
-}
-
-/**
- * Hide custom instruction dialog
- */
-function hideCustomInstructionDialog(): void {
-    if (customInstructionDialog) {
-        customInstructionDialog.classList.add('hidden');
-    }
-    
-    if (customInstructionOverlay) {
-        customInstructionOverlay.remove();
-        customInstructionOverlay = null;
-    }
-}
+// Custom instruction dialog is handled by the shared CustomInstructionDialog class
 
 /**
  * Update context menu visibility based on settings
  * Call this when settings are updated
  */
 export function updateContextMenuForSettings(): void {
-    const state = getState();
-    const askAIEnabled = state.settings.askAIEnabled;
-    
-    // Show/hide both Ask AI menus and separator
-    if (contextMenuAskAIComment) {
-        contextMenuAskAIComment.style.display = askAIEnabled ? '' : 'none';
-    }
-    if (contextMenuAskAIInteractive) {
-        contextMenuAskAIInteractive.style.display = askAIEnabled ? '' : 'none';
-    }
-    if (askAISeparator) {
-        askAISeparator.style.display = askAIEnabled ? '' : 'none';
-    }
+    // Menu state is now managed by the ContextMenuManager
+    // This function is kept for API compatibility
 }
 

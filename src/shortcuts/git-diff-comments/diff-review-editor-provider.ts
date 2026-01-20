@@ -987,6 +987,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             vscode.Uri.joinPath(this.context.extensionUri, 'media', 'styles', 'search.css')
         );
 
+        const sharedContextMenuStyleUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this.context.extensionUri, 'media', 'styles', 'shared-context-menu.css')
+        );
+
         // Get URI for script
         const scriptUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'diff-webview.js')
@@ -1013,6 +1017,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     <link href="${styleUri}" rel="stylesheet">
     <link href="${commentsStyleUri}" rel="stylesheet">
     <link href="${searchStyleUri}" rel="stylesheet">
+    <link href="${sharedContextMenuStyleUri}" rel="stylesheet">
     <title>Diff Review: ${escapeHtml(filePath)}</title>
 </head>
 <body>

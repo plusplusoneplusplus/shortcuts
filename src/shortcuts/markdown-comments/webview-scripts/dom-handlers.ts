@@ -2,6 +2,7 @@
  * DOM event handlers for the webview
  * 
  * Uses content-extraction module for extracting plain text from the contenteditable editor.
+ * Uses shared context menu module for consistent context menu behavior.
  */
 
 import {
@@ -9,13 +10,6 @@ import {
     ExtractionContext,
     normalizeExtractedLine
 } from '../webview-logic/content-extraction';
-import {
-    AISubmenuHoverHandlers,
-    attachAISubmenuHandlers,
-    getAICommands,
-    getAIMenuConfig,
-    updateAISubmenu
-} from './ai-menu-builder';
 import {
     closeActiveCommentBubble,
     closeFloatingPanel,
@@ -26,48 +20,29 @@ import {
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
-import { AICommandMode, SerializedAICommand, SerializedPredefinedComment } from './types';
+import { AICommandMode } from './types';
 import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
+import {
+    ContextMenuManager,
+    CustomInstructionDialog,
+    ContextMenuSelection,
+    getAIMenuConfig,
+    getPredefinedComments as getSharedPredefinedComments,
+    SerializedPredefinedComment
+} from '../../shared/webview';
 
 // DOM element references
 let editorWrapper: HTMLElement;
 let showResolvedCheckbox: HTMLInputElement;
-let contextMenu: HTMLElement;
-let contextMenuCut: HTMLElement;
-let contextMenuCopy: HTMLElement;
-let contextMenuPaste: HTMLElement;
-let contextMenuAddComment: HTMLElement;
-// Ask AI to Comment menu elements
-let contextMenuAskAIComment: HTMLElement;
-let askAICommentSubmenu: HTMLElement;
-// Ask AI Interactively menu elements
-let contextMenuAskAIInteractive: HTMLElement;
-let askAIInteractiveSubmenu: HTMLElement;
-// Ask AI separator
-let askAISeparator: HTMLElement;
-// Predefined comments submenu elements
-let contextMenuPredefined: HTMLElement;
-let predefinedSubmenu: HTMLElement;
-// Predefined comment preview tooltip
-let predefinedPreview: HTMLElement;
-let previewContent: HTMLElement;
-// Preview hide timeout for allowing mouse to move to preview
-let previewHideTimeout: ReturnType<typeof setTimeout> | null = null;
-// Track the current parent menu item for the preview (to keep submenu open)
-let currentPreviewParentItem: HTMLElement | null = null;
-// Custom instruction dialog elements
-let customInstructionDialog: HTMLElement;
-let customInstructionClose: HTMLElement;
-let customInstructionSelection: HTMLElement;
-let customInstructionInput: HTMLTextAreaElement;
-let customInstructionCancelBtn: HTMLElement;
-let customInstructionSubmitBtn: HTMLElement;
-let customInstructionOverlay: HTMLElement | null = null;
-// Current command ID and mode for custom instruction dialog
-let pendingCustomCommandId: string = 'custom';
-let pendingCustomCommandMode: AICommandMode = 'comment';
+
+// Shared context menu manager
+let contextMenuManager: ContextMenuManager | null = null;
+
+// Shared custom instruction dialog
+let customInstructionDialog: CustomInstructionDialog | null = null;
+
 // Search controller
 let searchController: SearchController | null = null;
 
@@ -77,40 +52,51 @@ let searchController: SearchController | null = null;
 export function initDomHandlers(): void {
     editorWrapper = document.getElementById('editorWrapper')!;
     showResolvedCheckbox = document.getElementById('showResolvedCheckbox') as HTMLInputElement;
-    contextMenu = document.getElementById('contextMenu')!;
-    contextMenuCut = document.getElementById('contextMenuCut')!;
-    contextMenuCopy = document.getElementById('contextMenuCopy')!;
-    contextMenuPaste = document.getElementById('contextMenuPaste')!;
-    contextMenuAddComment = document.getElementById('contextMenuAddComment')!;
-    // Ask AI to Comment menu elements
-    contextMenuAskAIComment = document.getElementById('contextMenuAskAIComment')!;
-    askAICommentSubmenu = document.getElementById('askAICommentSubmenu')!;
-    // Ask AI Interactively menu elements
-    contextMenuAskAIInteractive = document.getElementById('contextMenuAskAIInteractive')!;
-    askAIInteractiveSubmenu = document.getElementById('askAIInteractiveSubmenu')!;
-    // Ask AI separator
-    askAISeparator = document.getElementById('askAISeparator')!;
-    // Predefined comments submenu elements
-    contextMenuPredefined = document.getElementById('contextMenuPredefined')!;
-    predefinedSubmenu = document.getElementById('predefinedSubmenu')!;
-    // Preview tooltip elements
-    predefinedPreview = document.getElementById('predefinedPreview')!;
-    previewContent = predefinedPreview.querySelector('.preview-content')!;
-    // Custom instruction dialog elements
-    customInstructionDialog = document.getElementById('customInstructionDialog')!;
-    customInstructionClose = document.getElementById('customInstructionClose')!;
-    customInstructionSelection = document.getElementById('customInstructionSelection')!;
-    customInstructionInput = document.getElementById('customInstructionInput') as HTMLTextAreaElement;
-    customInstructionCancelBtn = document.getElementById('customInstructionCancelBtn')!;
-    customInstructionSubmitBtn = document.getElementById('customInstructionSubmitBtn')!;
+
+    // Initialize shared context menu manager with rich menu items and preview tooltips
+    contextMenuManager = new ContextMenuManager(
+        {
+            enableClipboardItems: true,
+            enablePreviewTooltips: true,
+            minWidth: 220,
+            borderRadius: 8,
+            richMenuItems: true
+        },
+        {
+            onCut: handleCut,
+            onCopy: handleCopy,
+            onPaste: handlePaste,
+            onAddComment: handleAddCommentFromContextMenu,
+            onPredefinedComment: handlePredefinedCommentFromContextMenu,
+            onAskAI: handleAICommandClick,
+            onHide: () => {
+                // Clear saved selection when menu is hidden
+            }
+        }
+    );
+    contextMenuManager.init();
+
+    // Initialize shared custom instruction dialog
+    customInstructionDialog = new CustomInstructionDialog(
+        {
+            title: '🤖 Custom AI Instruction',
+            placeholder: "Enter your instruction for the AI (e.g., 'Explain the security implications')",
+            submitLabel: 'Ask AI',
+            cancelLabel: 'Cancel'
+        },
+        {
+            onSubmit: (instruction, commandId, mode) => {
+                handleAskAIFromContextMenu(commandId, instruction, mode);
+            }
+        }
+    );
+    customInstructionDialog.init();
 
     setupToolbarEventListeners();
     setupEditorEventListeners();
     setupContextMenuEventListeners();
     setupKeyboardEventListeners();
     setupGlobalEventListeners();
-    setupCustomInstructionDialogEventListeners();
-    setupPreviewEventListeners();
     
     // Initialize search functionality (Ctrl+F)
     searchController = initSearch('#editorWrapper');
@@ -123,30 +109,12 @@ export function initDomHandlers(): void {
 }
 
 /**
- * Hover handlers for AI submenu items (reused for both menus)
- */
-const aiHoverHandlers: AISubmenuHoverHandlers = {
-    onHover: (description: string, element: HTMLElement) => {
-        showPreview(description, element);
-    },
-    onLeave: () => {
-        hidePreview();
-    }
-};
-
-/**
  * Rebuild both AI submenus based on current settings
+ * Uses the shared ContextMenuManager
  */
 export function rebuildAISubmenu(): void {
-    const menuConfig = getAIMenuConfig(state.settings.aiMenuConfig);
-
-    // Build "Ask AI to Comment" submenu
-    updateAISubmenu(askAICommentSubmenu, menuConfig.commentCommands, 'comment');
-    attachAISubmenuHandlers(askAICommentSubmenu, handleAICommandClick, aiHoverHandlers);
-
-    // Build "Ask AI Interactively" submenu
-    updateAISubmenu(askAIInteractiveSubmenu, menuConfig.interactiveCommands, 'interactive');
-    attachAISubmenuHandlers(askAIInteractiveSubmenu, handleAICommandClick, aiHoverHandlers);
+    if (!contextMenuManager) return;
+    contextMenuManager.rebuildAISubmenus(state.settings.aiMenuConfig);
 }
 
 /**
@@ -163,184 +131,22 @@ function getPredefinedComments(): SerializedPredefinedComment[] {
 
 /**
  * Rebuild the predefined comments submenu based on current settings
+ * Uses the shared ContextMenuManager
  */
 export function rebuildPredefinedSubmenu(): void {
-    if (!predefinedSubmenu) return;
-
-    const comments = getPredefinedComments();
-    predefinedSubmenu.innerHTML = comments.map(c => {
-        const title = c.description ? `title="${c.description}"` : '';
-        return `<div class="context-menu-item predefined-item" data-id="${c.id}" data-text="${encodeURIComponent(c.text)}" ${title}>
-            <span class="context-menu-label">${c.label}</span>
-        </div>`;
-    }).join('');
-
-    // Attach click and hover handlers
-    predefinedSubmenu.querySelectorAll('.predefined-item').forEach(item => {
-        const el = item as HTMLElement;
-        
-        // Click handler
-        el.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const text = decodeURIComponent(el.dataset.text || '');
-            hidePreview();
-            hideContextMenu();
-            handlePredefinedCommentFromContextMenu(text);
-        });
-        
-        // Hover handlers for preview
-        el.addEventListener('mouseenter', (e) => {
-            const text = decodeURIComponent(el.dataset.text || '');
-            showPreview(text, el);
-        });
-        
-        el.addEventListener('mouseleave', () => {
-            hidePreview();
-        });
-    });
-}
-
-/**
- * Show preview tooltip for predefined comment
- * Positions intelligently to stay within viewport
- */
-function showPreview(text: string, anchorElement: HTMLElement): void {
-    if (!predefinedPreview || !previewContent) return;
-
-    // Cancel any pending hide timeout
-    if (previewHideTimeout) {
-        clearTimeout(previewHideTimeout);
-        previewHideTimeout = null;
-    }
-
-    // Track the parent menu item to keep submenu open when hovering preview
-    const parentMenuItem = anchorElement.closest('.context-menu-parent') as HTMLElement;
-    if (currentPreviewParentItem && currentPreviewParentItem !== parentMenuItem) {
-        // Remove submenu-open from previous parent
-        currentPreviewParentItem.classList.remove('submenu-open');
-    }
-    currentPreviewParentItem = parentMenuItem;
-
-    // Set the preview text
-    previewContent.textContent = text;
-
-    // Temporarily show to get dimensions
-    predefinedPreview.style.display = 'block';
-    predefinedPreview.style.visibility = 'hidden';
-    const previewRect = predefinedPreview.getBoundingClientRect();
-    predefinedPreview.style.visibility = '';
-
-    // Get the submenu position (parent of the anchor element)
-    const submenu = anchorElement.closest('.context-submenu');
-    const submenuRect = submenu ? submenu.getBoundingClientRect() : anchorElement.getBoundingClientRect();
-    const anchorRect = anchorElement.getBoundingClientRect();
-
-    const margin = 8;
-    const previewWidth = previewRect.width;
-    const previewHeight = previewRect.height;
-
-    // Calculate horizontal position - prefer right side of submenu
-    let left: number;
-    const spaceOnRight = window.innerWidth - submenuRect.right;
-    const spaceOnLeft = submenuRect.left;
-
-    if (spaceOnRight >= previewWidth + margin) {
-        // Enough space on the right
-        left = submenuRect.right + margin;
-    } else if (spaceOnLeft >= previewWidth + margin) {
-        // Show on the left side instead
-        left = submenuRect.left - previewWidth - margin;
-    } else {
-        // Not enough space on either side, position at right edge with some margin
-        left = window.innerWidth - previewWidth - margin;
-    }
-
-    // Calculate vertical position - align with anchor item, keep within viewport
-    let top = anchorRect.top;
-
-    // Ensure preview doesn't go below viewport
-    if (top + previewHeight > window.innerHeight - margin) {
-        top = window.innerHeight - previewHeight - margin;
-    }
-
-    // Ensure preview doesn't go above viewport
-    if (top < margin) {
-        top = margin;
-    }
-
-    predefinedPreview.style.left = `${Math.max(margin, left)}px`;
-    predefinedPreview.style.top = `${top}px`;
-}
-
-/**
- * Hide preview tooltip with a small delay to allow mouse to move to preview
- */
-function hidePreview(): void {
-    // Use a small delay to allow the mouse to move to the preview
-    previewHideTimeout = setTimeout(() => {
-        if (predefinedPreview) {
-            predefinedPreview.style.display = 'none';
-        }
-        previewHideTimeout = null;
-    }, 100);
-}
-
-/**
- * Hide preview tooltip immediately without delay
- */
-function hidePreviewImmediately(): void {
-    if (previewHideTimeout) {
-        clearTimeout(previewHideTimeout);
-        previewHideTimeout = null;
-    }
-    // Remove submenu-open class from parent menu item
-    if (currentPreviewParentItem) {
-        currentPreviewParentItem.classList.remove('submenu-open');
-        currentPreviewParentItem = null;
-    }
-    if (predefinedPreview) {
-        predefinedPreview.style.display = 'none';
-    }
-}
-
-/**
- * Setup event listeners for the preview tooltip
- * Allows the preview to stay visible when mouse is over it and enables text selection/scrolling
- */
-function setupPreviewEventListeners(): void {
-    if (!predefinedPreview) return;
-
-    // Keep preview visible when mouse enters it and keep submenu open
-    predefinedPreview.addEventListener('mouseenter', () => {
-        if (previewHideTimeout) {
-            clearTimeout(previewHideTimeout);
-            previewHideTimeout = null;
-        }
-        // Add submenu-open class to keep the submenu visible
-        if (currentPreviewParentItem) {
-            currentPreviewParentItem.classList.add('submenu-open');
-        }
-    });
-
-    // Hide preview when mouse leaves it and remove submenu-open class
-    predefinedPreview.addEventListener('mouseleave', () => {
-        if (currentPreviewParentItem) {
-            currentPreviewParentItem.classList.remove('submenu-open');
-            currentPreviewParentItem = null;
-        }
-        hidePreviewImmediately();
-    });
+    if (!contextMenuManager) return;
+    contextMenuManager.rebuildPredefinedSubmenu(getPredefinedComments());
 }
 
 /**
  * Handle click on an AI command in the submenu
  */
 function handleAICommandClick(commandId: string, isCustomInput: boolean, mode: AICommandMode): void {
-    hideContextMenu();
     if (isCustomInput) {
-        pendingCustomCommandId = commandId;
-        pendingCustomCommandMode = mode;
-        showCustomInstructionDialog();
+        const saved = state.savedSelectionForContextMenu;
+        if (saved && saved.selectedText && customInstructionDialog) {
+            customInstructionDialog.show(saved.selectedText, commandId, mode);
+        }
     } else {
         handleAskAIFromContextMenu(commandId, undefined, mode);
     }
@@ -563,6 +369,7 @@ function handleKeyboardPaste(e: ClipboardEvent): void {
 
 /**
  * Setup context menu event listeners
+ * Uses the shared ContextMenuManager for menu display
  */
 function setupContextMenuEventListeners(): void {
     document.addEventListener('contextmenu', (e) => {
@@ -570,51 +377,7 @@ function setupContextMenuEventListeners(): void {
             handleContextMenu(e);
         }
     });
-
-    contextMenuCut.addEventListener('click', () => {
-        hideContextMenu();
-        handleCut();
-    });
-
-    contextMenuCopy.addEventListener('click', () => {
-        hideContextMenu();
-        handleCopy();
-    });
-
-    contextMenuPaste.addEventListener('click', () => {
-        hideContextMenu();
-        handlePaste();
-    });
-
-    contextMenuAddComment.addEventListener('click', () => {
-        hideContextMenu();
-        handleAddCommentFromContextMenu();
-    });
-
-    // Ask AI to Comment parent - reposition submenu on hover
-    contextMenuAskAIComment.addEventListener('mouseenter', () => {
-        positionSubmenu(askAICommentSubmenu, contextMenuAskAIComment);
-    });
-
-    // Ask AI Interactively parent - reposition submenu on hover
-    contextMenuAskAIInteractive.addEventListener('mouseenter', () => {
-        positionSubmenu(askAIInteractiveSubmenu, contextMenuAskAIInteractive);
-    });
-
-    // Predefined comments parent - reposition submenu on hover
-    contextMenuPredefined.addEventListener('mouseenter', () => {
-        positionSubmenu(predefinedSubmenu, contextMenuPredefined);
-    });
-
-    // Note: AI submenu items are handled dynamically via rebuildAISubmenu()
-    // Note: Predefined submenu items are handled dynamically via rebuildPredefinedSubmenu()
-
-    // Hide context menu on click outside
-    document.addEventListener('click', (e) => {
-        if (!(e.target as HTMLElement).closest('.context-menu')) {
-            hideContextMenu();
-        }
-    });
+    // Note: Click handlers and submenu positioning are handled by ContextMenuManager
 }
 
 /**
@@ -660,8 +423,11 @@ function setupGlobalEventListeners(): void {
 
 /**
  * Handle context menu
+ * Uses the shared ContextMenuManager for display
  */
 function handleContextMenu(e: MouseEvent): void {
+    if (!contextMenuManager) return;
+
     const selection = window.getSelection();
     const hasSelection = selection && !selection.isCollapsed && selection.toString().trim().length > 0;
 
@@ -681,142 +447,33 @@ function handleContextMenu(e: MouseEvent): void {
         state.setSavedSelectionForContextMenu(null);
     }
 
-    // Update menu item states based on selection
-    if (hasSelection) {
-        contextMenuCut.classList.remove('disabled');
-        contextMenuCopy.classList.remove('disabled');
-        contextMenuAddComment.classList.remove('disabled');
-        contextMenuPredefined.classList.remove('disabled');
-        // Only enable Ask AI menus if the feature is enabled in settings
-        if (state.settings.askAIEnabled) {
-            contextMenuAskAIComment.classList.remove('disabled');
-            contextMenuAskAIInteractive.classList.remove('disabled');
-        } else {
-            contextMenuAskAIComment.classList.add('disabled');
-            contextMenuAskAIInteractive.classList.add('disabled');
-        }
-    } else {
-        contextMenuCut.classList.add('disabled');
-        contextMenuCopy.classList.add('disabled');
-        contextMenuAddComment.classList.add('disabled');
-        contextMenuPredefined.classList.add('disabled');
-        contextMenuAskAIComment.classList.add('disabled');
-        contextMenuAskAIInteractive.classList.add('disabled');
-    }
-    // Paste is always enabled
-    contextMenuPaste.classList.remove('disabled');
-
-    // Show/hide Ask AI menu items based on feature flag
-    if (state.settings.askAIEnabled) {
-        contextMenuAskAIComment.style.display = '';
-        contextMenuAskAIInteractive.style.display = '';
-        askAISeparator.style.display = '';
-    } else {
-        contextMenuAskAIComment.style.display = 'none';
-        contextMenuAskAIInteractive.style.display = 'none';
-        askAISeparator.style.display = 'none';
-    }
-
-    // Position and show context menu
     e.preventDefault();
-    
-    // Get menu dimensions
-    contextMenu.style.display = 'block';
-    contextMenu.style.visibility = 'hidden';
-    const menuRect = contextMenu.getBoundingClientRect();
-    contextMenu.style.visibility = '';
-    
-    // Calculate position with edge detection
-    // Account for submenu width (180px + margin) when calculating right edge
-    const submenuWidth = 200;
-    const menuWidth = menuRect.width;
-    const menuHeight = menuRect.height;
-    
-    let x = e.clientX;
-    let y = e.clientY;
-    
-    // Check right edge - need room for both menu and potential submenu
-    if (x + menuWidth + submenuWidth > window.innerWidth) {
-        x = Math.max(0, window.innerWidth - menuWidth - submenuWidth);
-    }
-    
-    // Check bottom edge
-    if (y + menuHeight > window.innerHeight) {
-        y = Math.max(0, window.innerHeight - menuHeight);
-    }
-    
-    contextMenu.style.left = x + 'px';
-    contextMenu.style.top = y + 'px';
 
-    // Note: Submenus are positioned on hover via mouseenter events
+    // Create selection state for context menu manager
+    const savedSelection = state.savedSelectionForContextMenu;
+    const menuSelection: ContextMenuSelection = savedSelection ? {
+        selectedText: savedSelection.selectedText,
+        startLine: savedSelection.startLine,
+        endLine: savedSelection.endLine,
+        startColumn: savedSelection.startColumn,
+        endColumn: savedSelection.endColumn
+    } : {
+        selectedText: '',
+        startLine: 0,
+        endLine: 0,
+        startColumn: 0,
+        endColumn: 0
+    };
+
+    // Show context menu using the shared manager
+    contextMenuManager.show(e.clientX, e.clientY, menuSelection, state.settings.askAIEnabled ?? false);
 }
 
 /**
  * Hide context menu
  */
 function hideContextMenu(): void {
-    contextMenu.style.display = 'none';
-    hidePreviewImmediately(); // Also hide preview tooltip immediately
-    // Reset submenu positioning
-    [askAICommentSubmenu, askAIInteractiveSubmenu, predefinedSubmenu].forEach(submenu => {
-        if (submenu) {
-            submenu.style.left = '';
-            submenu.style.right = '';
-            submenu.style.top = '';
-            submenu.style.bottom = '';
-        }
-    });
-}
-
-/**
- * Position submenu based on available viewport space
- * Adjusts left/right and top/bottom positioning to keep submenu visible
- * @param submenu - The submenu element to position
- * @param parentItem - The parent menu item element
- */
-function positionSubmenu(submenu: HTMLElement, parentItem: HTMLElement): void {
-    if (!submenu || !parentItem) return;
-
-    // Get parent item position
-    const parentRect = parentItem.getBoundingClientRect();
-    const menuRect = contextMenu.getBoundingClientRect();
-
-    // Temporarily show submenu to get its dimensions
-    const originalDisplay = submenu.style.display;
-    submenu.style.display = 'block';
-    submenu.style.visibility = 'hidden';
-    const submenuRect = submenu.getBoundingClientRect();
-    submenu.style.visibility = '';
-    submenu.style.display = originalDisplay;
-
-    // Check horizontal space - can we show submenu on the right?
-    const spaceOnRight = window.innerWidth - menuRect.right;
-    const spaceOnLeft = menuRect.left;
-
-    if (spaceOnRight < submenuRect.width && spaceOnLeft > submenuRect.width) {
-        // Not enough space on right, but enough on left - flip to left side
-        submenu.style.left = 'auto';
-        submenu.style.right = '100%';
-        submenu.style.marginLeft = '0';
-        submenu.style.marginRight = '2px';
-    } else {
-        // Default: show on right
-        submenu.style.left = '100%';
-        submenu.style.right = 'auto';
-        submenu.style.marginLeft = '2px';
-        submenu.style.marginRight = '0';
-    }
-
-    // Check vertical space - position submenu so it doesn't go off-screen
-    const submenuBottomIfAlignedToTop = parentRect.top + submenuRect.height;
-
-    if (submenuBottomIfAlignedToTop > window.innerHeight) {
-        // Submenu would go below viewport - align to bottom instead
-        const overflow = submenuBottomIfAlignedToTop - window.innerHeight;
-        submenu.style.top = `${-overflow - 5}px`;  // Extra 5px margin from bottom
-    } else {
-        submenu.style.top = '-1px';
-    }
+    contextMenuManager?.hide();
 }
 
 /**
@@ -1068,79 +725,7 @@ function extractDocumentContext(startLine: number, endLine: number, selectedText
     };
 }
 
-/**
- * Setup event listeners for the custom instruction dialog
- */
-function setupCustomInstructionDialogEventListeners(): void {
-    customInstructionClose.addEventListener('click', hideCustomInstructionDialog);
-    customInstructionCancelBtn.addEventListener('click', hideCustomInstructionDialog);
-
-    customInstructionSubmitBtn.addEventListener('click', () => {
-        const instruction = customInstructionInput.value.trim();
-        if (!instruction) {
-            customInstructionInput.focus();
-            return;
-        }
-        hideCustomInstructionDialog();
-        // Use the pending command ID and mode (set when custom input command was clicked)
-        handleAskAIFromContextMenu(pendingCustomCommandId, instruction, pendingCustomCommandMode);
-    });
-
-    // Submit on Ctrl+Enter
-    customInstructionInput.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault();
-            customInstructionSubmitBtn.click();
-        }
-        // Close on Escape
-        if (e.key === 'Escape') {
-            hideCustomInstructionDialog();
-        }
-    });
-}
-
-/**
- * Show the custom instruction dialog
- */
-function showCustomInstructionDialog(): void {
-    const saved = state.savedSelectionForContextMenu;
-    if (!saved || !saved.selectedText) {
-        alert('Please select some text first to ask AI.');
-        return;
-    }
-    
-    // Create and show overlay
-    customInstructionOverlay = document.createElement('div');
-    customInstructionOverlay.className = 'custom-instruction-overlay';
-    customInstructionOverlay.addEventListener('click', hideCustomInstructionDialog);
-    document.body.appendChild(customInstructionOverlay);
-    
-    // Show selected text preview (truncated if needed)
-    const truncatedText = saved.selectedText.length > 100 
-        ? saved.selectedText.substring(0, 100) + '...' 
-        : saved.selectedText;
-    customInstructionSelection.textContent = truncatedText;
-    
-    // Clear previous input and show dialog
-    customInstructionInput.value = '';
-    customInstructionDialog.style.display = 'block';
-    
-    // Focus the input
-    setTimeout(() => customInstructionInput.focus(), 50);
-}
-
-/**
- * Hide the custom instruction dialog
- */
-function hideCustomInstructionDialog(): void {
-    customInstructionDialog.style.display = 'none';
-    
-    // Remove overlay if exists
-    if (customInstructionOverlay) {
-        customInstructionOverlay.remove();
-        customInstructionOverlay = null;
-    }
-}
+// Custom instruction dialog event listeners are handled by the shared CustomInstructionDialog class
 
 /**
  * Handle selection change in editor

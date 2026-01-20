@@ -24,6 +24,7 @@ function getStylesheetUris(webview: vscode.Webview, extensionUri: vscode.Uri): {
     commentsCss: vscode.Uri;
     componentsCss: vscode.Uri;
     searchCss: vscode.Uri;
+    sharedContextMenuCss: vscode.Uri;
 } {
     const stylesPath = vscode.Uri.joinPath(extensionUri, 'media', 'styles');
     return {
@@ -31,7 +32,8 @@ function getStylesheetUris(webview: vscode.Webview, extensionUri: vscode.Uri): {
         markdownCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'markdown.css')),
         commentsCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'comments.css')),
         componentsCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'components.css')),
-        searchCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'search.css'))
+        searchCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'search.css')),
+        sharedContextMenuCss: webview.asWebviewUri(vscode.Uri.joinPath(stylesPath, 'shared-context-menu.css'))
     };
 }
 
@@ -86,6 +88,7 @@ export function getWebviewContent(
     <link rel="stylesheet" href="${styles.commentsCss}">
     <link rel="stylesheet" href="${styles.componentsCss}">
     <link rel="stylesheet" href="${styles.searchCss}">
+    <link rel="stylesheet" href="${styles.sharedContextMenuCss}">
     ${codeBlockThemeStyle}
 </head>
 <body>

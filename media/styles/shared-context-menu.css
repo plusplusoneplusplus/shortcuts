@@ -1,0 +1,427 @@
+/**
+ * Shared Context Menu Styles
+ * 
+ * Unified CSS for context menus used by both markdown review editor
+ * and git diff review editor.
+ * 
+ * Uses CSS variables for customization per-editor.
+ */
+
+/* ==============================
+ * CSS Variables (can be overridden)
+ * ============================== */
+:root {
+    /* Menu container */
+    --context-menu-bg: var(--vscode-menu-background, var(--comment-bg, #252526));
+    --context-menu-fg: var(--vscode-menu-foreground, var(--text-color, #cccccc));
+    --context-menu-border: var(--vscode-menu-border, var(--comment-border, #454545));
+    --context-menu-radius: 8px;
+    --context-menu-min-width: 220px;
+    --context-menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    
+    /* Menu items */
+    --context-menu-item-padding: 8px 14px;
+    --context-menu-item-margin: 0 4px;
+    --context-menu-item-radius: 4px;
+    --context-menu-item-hover-bg: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1));
+    --context-menu-item-selection-bg: var(--vscode-menu-selectionBackground, #094771);
+    --context-menu-item-selection-fg: var(--vscode-menu-selectionForeground, #ffffff);
+    
+    /* Submenu */
+    --context-submenu-min-width: 180px;
+    --context-submenu-margin: 4px;
+    
+    /* Preview tooltip */
+    --preview-bg: var(--context-menu-bg);
+    --preview-border: var(--context-menu-border);
+    --preview-radius: 8px;
+    --preview-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    --preview-min-width: 200px;
+    --preview-max-width: 360px;
+    --preview-max-height: 200px;
+    
+    /* Custom instruction dialog */
+    --dialog-bg: var(--context-menu-bg);
+    --dialog-border: var(--context-menu-border);
+    --dialog-radius: 8px;
+    --dialog-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    --dialog-min-width: 400px;
+    --dialog-max-width: 500px;
+}
+
+/* ==============================
+ * Context Menu Container
+ * ============================== */
+.context-menu {
+    display: none;
+    position: fixed;
+    min-width: var(--context-menu-min-width);
+    background: var(--context-menu-bg);
+    color: var(--context-menu-fg);
+    border: 1px solid var(--context-menu-border);
+    border-radius: var(--context-menu-radius);
+    box-shadow: var(--context-menu-shadow);
+    z-index: 2000;
+    overflow: visible;
+    padding: 4px 0;
+}
+
+.context-menu.hidden {
+    display: none !important;
+}
+
+/* ==============================
+ * Context Menu Items
+ * ============================== */
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    padding: var(--context-menu-item-padding);
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+    margin: var(--context-menu-item-margin);
+    border-radius: var(--context-menu-item-radius);
+    font-size: 13px;
+}
+
+.context-menu-item:hover {
+    background: var(--context-menu-item-hover-bg);
+}
+
+.context-menu-item.disabled {
+    opacity: 0.5;
+    cursor: default;
+    pointer-events: none;
+}
+
+.context-menu-item.disabled:hover {
+    background: transparent;
+}
+
+/* Menu item components */
+.context-menu-icon {
+    margin-right: 10px;
+    font-size: 14px;
+    width: 18px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.context-menu-label {
+    flex: 1;
+    font-size: 13px;
+}
+
+.context-menu-shortcut {
+    font-size: 11px;
+    opacity: 0.5;
+    margin-left: 20px;
+    font-family: var(--vscode-font-family);
+}
+
+/* Simple menu icon for non-rich menus */
+.menu-icon {
+    margin-right: 8px;
+}
+
+/* ==============================
+ * Separator
+ * ============================== */
+.context-menu-separator {
+    height: 1px;
+    background: var(--context-menu-border);
+    margin: 6px 12px;
+}
+
+/* ==============================
+ * Parent Items (with submenu)
+ * ============================== */
+.context-menu-parent {
+    position: relative;
+}
+
+.context-menu-arrow {
+    font-size: 9px;
+    opacity: 0.6;
+    margin-left: 12px;
+    flex-shrink: 0;
+}
+
+/* ==============================
+ * Submenu
+ * ============================== */
+.context-submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -5px;
+    min-width: var(--context-submenu-min-width);
+    background: var(--context-menu-bg);
+    border: 1px solid var(--context-menu-border);
+    border-radius: var(--context-menu-radius);
+    box-shadow: var(--context-menu-shadow);
+    z-index: 2001;
+    overflow: hidden;
+    margin-left: var(--context-submenu-margin);
+    padding: 4px 0;
+    /* Allow JS to override positioning */
+    margin-right: 0;
+}
+
+.context-menu-parent:hover > .context-submenu,
+.context-menu-parent.submenu-open > .context-submenu {
+    display: block;
+}
+
+/* Submenu items styling */
+.context-submenu .context-menu-item {
+    padding: var(--context-menu-item-padding);
+    margin: var(--context-menu-item-margin);
+    border-radius: var(--context-menu-item-radius);
+}
+
+.context-submenu .context-menu-separator {
+    margin: 6px 12px;
+}
+
+/* Alias for has-submenu class (used by diff editor) */
+.has-submenu {
+    position: relative;
+}
+
+.has-submenu:hover > .predefined-submenu,
+.has-submenu:hover > .ask-ai-submenu {
+    display: block;
+}
+
+/* Predefined submenu (alias for diff editor) */
+.predefined-submenu,
+.ask-ai-submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -5px;
+    min-width: var(--context-submenu-min-width);
+    background: var(--context-menu-bg);
+    border: 1px solid var(--context-menu-border);
+    border-radius: var(--context-menu-radius);
+    box-shadow: var(--context-menu-shadow);
+    z-index: 2001;
+    overflow: hidden;
+    margin-left: var(--context-submenu-margin);
+    padding: 4px 0;
+}
+
+/* ==============================
+ * Preview Tooltip
+ * ============================== */
+.predefined-comment-preview {
+    position: fixed;
+    background: var(--preview-bg);
+    border: 1px solid var(--preview-border);
+    border-radius: var(--preview-radius);
+    box-shadow: var(--preview-shadow);
+    padding: 0;
+    min-width: var(--preview-min-width);
+    max-width: var(--preview-max-width);
+    z-index: 2002;
+    /* Enable pointer events for text selection and scrolling */
+    pointer-events: auto;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--context-menu-fg);
+    overflow: hidden;
+    animation: preview-fade-in 0.15s ease-out;
+}
+
+@keyframes preview-fade-in {
+    from {
+        opacity: 0;
+        transform: translateX(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.preview-header {
+    padding: 8px 12px;
+    background: var(--vscode-titleBar-activeBackground, rgba(255, 255, 255, 0.05));
+    border-bottom: 1px solid var(--preview-border);
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #888);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.preview-content {
+    padding: 10px 12px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: var(--preview-max-height);
+    overflow-y: auto;
+    /* Allow text selection */
+    user-select: text;
+    cursor: text;
+}
+
+/* ==============================
+ * Custom Instruction Dialog
+ * ============================== */
+.custom-instruction-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--dialog-min-width);
+    max-width: var(--dialog-max-width);
+    background: var(--dialog-bg);
+    border: 1px solid var(--dialog-border);
+    border-radius: var(--dialog-radius);
+    box-shadow: var(--dialog-shadow);
+    z-index: 3000;
+    padding: 16px;
+}
+
+.custom-instruction-dialog.hidden {
+    display: none !important;
+}
+
+.custom-instruction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.custom-instruction-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.custom-instruction-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--context-menu-fg);
+    opacity: 0.7;
+    transition: opacity 0.15s;
+    padding: 0;
+    line-height: 1;
+}
+
+.custom-instruction-close:hover {
+    opacity: 1;
+}
+
+.custom-instruction-selection {
+    background: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.2));
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    max-height: 80px;
+    overflow-y: auto;
+    border-left: 3px solid var(--vscode-button-background, #0e639c);
+}
+
+.custom-instruction-body {
+    margin-bottom: 12px;
+}
+
+.custom-instruction-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground, #888);
+}
+
+.custom-instruction-dialog textarea,
+.custom-instruction-input {
+    width: 100%;
+    padding: 10px;
+    background: var(--vscode-input-background, #3c3c3c);
+    color: var(--vscode-input-foreground, #cccccc);
+    border: 1px solid var(--vscode-input-border, #3c3c3c);
+    border-radius: 4px;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 13px;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+}
+
+.custom-instruction-dialog textarea:focus,
+.custom-instruction-input:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder, #0e639c);
+}
+
+.custom-instruction-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* Custom instruction dialog overlay */
+.custom-instruction-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 2999;
+}
+
+/* ==============================
+ * Button Styles (for dialogs)
+ * ============================== */
+.btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background-color 0.15s, opacity 0.15s;
+}
+
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.btn-primary {
+    background: var(--vscode-button-background, #0e639c);
+    color: var(--vscode-button-foreground, #ffffff);
+}
+
+.btn-primary:hover {
+    background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.btn-secondary {
+    background: var(--vscode-button-secondaryBackground, #3a3d41);
+    color: var(--vscode-button-secondaryForeground, #ffffff);
+}
+
+.btn-secondary:hover {
+    background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+/* ==============================
+ * Simple Context Menu Variant
+ * (for diff editor backward compatibility)
+ * ============================== */
+.context-menu.simple {
+    --context-menu-radius: 4px;
+    --context-menu-min-width: 150px;
+}
+
+.context-menu.simple .context-menu-item {
+    padding: 6px 16px;
+}
