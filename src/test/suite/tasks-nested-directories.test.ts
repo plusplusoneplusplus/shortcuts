@@ -405,7 +405,7 @@ suite('Tasks Viewer - Nested Directories Tests', () => {
 
     suite('File Watching with Nested Directories', () => {
         test('should detect changes in nested directories', async function() {
-            this.timeout(5000); // Increase timeout for file watching
+            this.timeout(10000); // Increase timeout for file watching on CI
 
             createTaskFile('.vscode/tasks/feature1/task1.md');
 
@@ -414,12 +414,20 @@ suite('Tasks Viewer - Nested Directories Tests', () => {
                 refreshCount++;
             });
 
-            await wait(100); // Wait for watcher to initialize
+            await wait(200); // Wait for watcher to initialize
 
             // Create a new file in nested directory
             createTaskFile('.vscode/tasks/feature1/task2.md');
 
-            await wait(500); // Wait for file system event to propagate
+            // Wait for file system event with retry logic for CI environments
+            // File system events can be delayed on CI machines
+            const maxWaitTime = 3000;
+            const checkInterval = 100;
+            let waited = 0;
+            while (refreshCount === 0 && waited < maxWaitTime) {
+                await wait(checkInterval);
+                waited += checkInterval;
+            }
 
             assert.ok(refreshCount > 0, 'Should trigger refresh callback');
         });
