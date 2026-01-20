@@ -961,6 +961,75 @@ export class GitTreeDataProvider
     }
 
     /**
+     * Get local branch count
+     * @param searchPattern Optional search pattern
+     */
+    getLocalBranchCount(searchPattern?: string): number {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return 0;
+        }
+        return this.branchService.getLocalBranchCount(repoRoot, searchPattern);
+    }
+
+    /**
+     * Get remote branch count
+     * @param searchPattern Optional search pattern
+     */
+    getRemoteBranchCount(searchPattern?: string): number {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return 0;
+        }
+        return this.branchService.getRemoteBranchCount(repoRoot, searchPattern);
+    }
+
+    /**
+     * Get local branches with pagination and search support
+     * @param options Pagination and search options
+     */
+    getLocalBranchesPaginated(options?: { limit?: number; offset?: number; searchPattern?: string }): {
+        branches: GitBranch[];
+        totalCount: number;
+        hasMore: boolean;
+    } {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { branches: [], totalCount: 0, hasMore: false };
+        }
+        return this.branchService.getLocalBranchesPaginated(repoRoot, options);
+    }
+
+    /**
+     * Get remote branches with pagination and search support
+     * @param options Pagination and search options
+     */
+    getRemoteBranchesPaginated(options?: { limit?: number; offset?: number; searchPattern?: string }): {
+        branches: GitBranch[];
+        totalCount: number;
+        hasMore: boolean;
+    } {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { branches: [], totalCount: 0, hasMore: false };
+        }
+        return this.branchService.getRemoteBranchesPaginated(repoRoot, options);
+    }
+
+    /**
+     * Search branches by name
+     * @param searchPattern Search pattern
+     * @param limit Maximum results to return
+     */
+    searchBranches(searchPattern: string, limit?: number): { local: GitBranch[]; remote: GitBranch[] } {
+        const repoRoot = this.gitService.getFirstRepositoryRoot();
+        if (!repoRoot) {
+            return { local: [], remote: [] };
+        }
+        return this.branchService.searchBranches(repoRoot, searchPattern, limit);
+    }
+
+    /**
      * Switch to a branch with handling for uncommitted changes
      * @param branchName Branch to switch to
      * @param options Options: stashFirst - stash before switch, force - force checkout

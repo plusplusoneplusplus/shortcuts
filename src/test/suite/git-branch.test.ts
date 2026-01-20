@@ -7,7 +7,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { BranchItem, BranchStatus } from '../../shortcuts/git/branch-item';
-import { BranchService, GitBranch } from '../../shortcuts/git/branch-service';
+import { BranchService, GitBranch, BranchListOptions, PaginatedBranchResult } from '../../shortcuts/git/branch-service';
 
 suite('Git Branch Tests', () => {
 
@@ -596,7 +596,7 @@ suite('Git Branch Tests', () => {
             };
             const item = new BranchItem(status);
             const icon = item.iconPath as vscode.ThemeIcon;
-            
+
             // No special color for normal branch
             assert.strictEqual(icon.color, undefined);
         });
@@ -611,7 +611,7 @@ suite('Git Branch Tests', () => {
             };
             const item = new BranchItem(status);
             const icon = item.iconPath as vscode.ThemeIcon;
-            
+
             // Should have modified color
             assert.ok(icon.color);
         });
@@ -626,9 +626,309 @@ suite('Git Branch Tests', () => {
             };
             const item = new BranchItem(status);
             const icon = item.iconPath as vscode.ThemeIcon;
-            
+
             // Should have added color
             assert.ok(icon.color);
+        });
+    });
+
+    // ============================================
+    // Pagination Types Tests
+    // ============================================
+    suite('Branch Pagination Types', () => {
+        test('BranchListOptions should have correct structure', () => {
+            const options: BranchListOptions = {
+                limit: 100,
+                offset: 0,
+                searchPattern: 'feature'
+            };
+            assert.strictEqual(options.limit, 100);
+            assert.strictEqual(options.offset, 0);
+            assert.strictEqual(options.searchPattern, 'feature');
+        });
+
+        test('BranchListOptions should allow partial options', () => {
+            const options: BranchListOptions = {
+                limit: 50
+            };
+            assert.strictEqual(options.limit, 50);
+            assert.strictEqual(options.offset, undefined);
+            assert.strictEqual(options.searchPattern, undefined);
+        });
+
+        test('BranchListOptions should allow empty options', () => {
+            const options: BranchListOptions = {};
+            assert.strictEqual(options.limit, undefined);
+            assert.strictEqual(options.offset, undefined);
+            assert.strictEqual(options.searchPattern, undefined);
+        });
+
+        test('PaginatedBranchResult should have correct structure', () => {
+            const result: PaginatedBranchResult = {
+                branches: [
+                    { name: 'main', isCurrent: true, isRemote: false },
+                    { name: 'develop', isCurrent: false, isRemote: false }
+                ],
+                totalCount: 100,
+                hasMore: true
+            };
+            assert.strictEqual(result.branches.length, 2);
+            assert.strictEqual(result.totalCount, 100);
+            assert.strictEqual(result.hasMore, true);
+        });
+
+        test('PaginatedBranchResult should handle empty results', () => {
+            const result: PaginatedBranchResult = {
+                branches: [],
+                totalCount: 0,
+                hasMore: false
+            };
+            assert.strictEqual(result.branches.length, 0);
+            assert.strictEqual(result.totalCount, 0);
+            assert.strictEqual(result.hasMore, false);
+        });
+
+        test('PaginatedBranchResult should handle last page', () => {
+            const result: PaginatedBranchResult = {
+                branches: [
+                    { name: 'feature-1', isCurrent: false, isRemote: false }
+                ],
+                totalCount: 101,
+                hasMore: false
+            };
+            assert.strictEqual(result.branches.length, 1);
+            assert.strictEqual(result.totalCount, 101);
+            assert.strictEqual(result.hasMore, false);
+        });
+    });
+
+    // ============================================
+    // Paginated Branch Service Tests
+    // ============================================
+    suite('BranchService Pagination', () => {
+        let branchService: BranchService;
+
+        setup(() => {
+            branchService = new BranchService();
+        });
+
+        teardown(() => {
+            branchService.dispose();
+        });
+
+        test('getLocalBranchCount returns 0 for non-existent path', () => {
+            const result = branchService.getLocalBranchCount('/non/existent/path');
+            assert.strictEqual(result, 0);
+        });
+
+        test('getLocalBranchCount with search pattern returns 0 for non-existent path', () => {
+            const result = branchService.getLocalBranchCount('/non/existent/path', 'feature');
+            assert.strictEqual(result, 0);
+        });
+
+        test('getRemoteBranchCount returns 0 for non-existent path', () => {
+            const result = branchService.getRemoteBranchCount('/non/existent/path');
+            assert.strictEqual(result, 0);
+        });
+
+        test('getRemoteBranchCount with search pattern returns 0 for non-existent path', () => {
+            const result = branchService.getRemoteBranchCount('/non/existent/path', 'origin');
+            assert.strictEqual(result, 0);
+        });
+
+        test('getLocalBranchesPaginated returns empty result for non-existent path', () => {
+            const result = branchService.getLocalBranchesPaginated('/non/existent/path');
+            assert.deepStrictEqual(result.branches, []);
+            assert.strictEqual(result.totalCount, 0);
+            assert.strictEqual(result.hasMore, false);
+        });
+
+        test('getLocalBranchesPaginated with options returns empty result for non-existent path', () => {
+            const result = branchService.getLocalBranchesPaginated('/non/existent/path', {
+                limit: 50,
+                offset: 10,
+                searchPattern: 'feature'
+            });
+            assert.deepStrictEqual(result.branches, []);
+            assert.strictEqual(result.totalCount, 0);
+            assert.strictEqual(result.hasMore, false);
+        });
+
+        test('getRemoteBranchesPaginated returns empty result for non-existent path', () => {
+            const result = branchService.getRemoteBranchesPaginated('/non/existent/path');
+            assert.deepStrictEqual(result.branches, []);
+            assert.strictEqual(result.totalCount, 0);
+            assert.strictEqual(result.hasMore, false);
+        });
+
+        test('getRemoteBranchesPaginated with options returns empty result for non-existent path', () => {
+            const result = branchService.getRemoteBranchesPaginated('/non/existent/path', {
+                limit: 50,
+                offset: 10,
+                searchPattern: 'origin'
+            });
+            assert.deepStrictEqual(result.branches, []);
+            assert.strictEqual(result.totalCount, 0);
+            assert.strictEqual(result.hasMore, false);
+        });
+
+        test('searchBranches returns empty results for non-existent path', () => {
+            const result = branchService.searchBranches('/non/existent/path', 'feature');
+            assert.deepStrictEqual(result.local, []);
+            assert.deepStrictEqual(result.remote, []);
+        });
+
+        test('searchBranches with limit returns empty results for non-existent path', () => {
+            const result = branchService.searchBranches('/non/existent/path', 'feature', 10);
+            assert.deepStrictEqual(result.local, []);
+            assert.deepStrictEqual(result.remote, []);
+        });
+    });
+
+    // ============================================
+    // Pagination Integration Tests
+    // ============================================
+    suite('BranchService Pagination Integration (require git repository)', () => {
+        let branchService: BranchService;
+        const testRepoPath = process.cwd(); // Use current directory as test repo
+
+        setup(() => {
+            branchService = new BranchService();
+        });
+
+        teardown(() => {
+            branchService.dispose();
+        });
+
+        test('getLocalBranchCount returns a number for valid repo', () => {
+            const result = branchService.getLocalBranchCount(testRepoPath);
+            assert.ok(typeof result === 'number');
+            assert.ok(result >= 0);
+        });
+
+        test('getRemoteBranchCount returns a number for valid repo', () => {
+            const result = branchService.getRemoteBranchCount(testRepoPath);
+            assert.ok(typeof result === 'number');
+            assert.ok(result >= 0);
+        });
+
+        test('getLocalBranchesPaginated returns valid structure for valid repo', () => {
+            const result = branchService.getLocalBranchesPaginated(testRepoPath);
+            assert.ok(Array.isArray(result.branches));
+            assert.ok(typeof result.totalCount === 'number');
+            assert.ok(typeof result.hasMore === 'boolean');
+        });
+
+        test('getLocalBranchesPaginated respects limit option', () => {
+            const result = branchService.getLocalBranchesPaginated(testRepoPath, { limit: 1 });
+            assert.ok(result.branches.length <= 1);
+        });
+
+        test('getLocalBranchesPaginated with search filters results', () => {
+            // Search for a pattern that likely doesn't exist
+            const result = branchService.getLocalBranchesPaginated(testRepoPath, {
+                searchPattern: 'zzzzznonexistent12345'
+            });
+            assert.strictEqual(result.branches.length, 0);
+        });
+
+        test('getRemoteBranchesPaginated returns valid structure for valid repo', () => {
+            const result = branchService.getRemoteBranchesPaginated(testRepoPath);
+            assert.ok(Array.isArray(result.branches));
+            assert.ok(typeof result.totalCount === 'number');
+            assert.ok(typeof result.hasMore === 'boolean');
+        });
+
+        test('getRemoteBranchesPaginated respects limit option', () => {
+            const result = branchService.getRemoteBranchesPaginated(testRepoPath, { limit: 1 });
+            assert.ok(result.branches.length <= 1);
+        });
+
+        test('searchBranches returns valid structure for valid repo', () => {
+            const result = branchService.searchBranches(testRepoPath, 'main');
+            assert.ok(Array.isArray(result.local));
+            assert.ok(Array.isArray(result.remote));
+        });
+
+        test('hasMore is false when branches count equals total', () => {
+            const result = branchService.getLocalBranchesPaginated(testRepoPath, { limit: 1000 });
+            if (result.branches.length === result.totalCount) {
+                assert.strictEqual(result.hasMore, false);
+            }
+        });
+
+        test('paginated branches have expected properties', () => {
+            const result = branchService.getLocalBranchesPaginated(testRepoPath, { limit: 5 });
+            for (const branch of result.branches) {
+                assert.ok(typeof branch.name === 'string');
+                assert.ok(typeof branch.isCurrent === 'boolean');
+                assert.ok(typeof branch.isRemote === 'boolean');
+            }
+        });
+
+        test('remote paginated branches have expected structure', () => {
+            const result = branchService.getRemoteBranchesPaginated(testRepoPath, { limit: 5 });
+            for (const branch of result.branches) {
+                // Remote branches should be marked as remote
+                assert.ok(branch.isRemote, `Branch ${branch.name} should be marked as remote`);
+                // Branch should have a name
+                assert.ok(typeof branch.name === 'string', 'Branch should have a string name');
+            }
+        });
+    });
+
+    // ============================================
+    // Search Pattern Edge Cases
+    // ============================================
+    suite('Search Pattern Edge Cases', () => {
+        let branchService: BranchService;
+
+        setup(() => {
+            branchService = new BranchService();
+        });
+
+        teardown(() => {
+            branchService.dispose();
+        });
+
+        test('search with empty pattern returns all branches', () => {
+            const allResult = branchService.getLocalBranchesPaginated(process.cwd());
+            const emptySearchResult = branchService.getLocalBranchesPaginated(process.cwd(), {
+                searchPattern: ''
+            });
+            assert.strictEqual(allResult.totalCount, emptySearchResult.totalCount);
+        });
+
+        test('search is case-insensitive', () => {
+            // First check if there's a 'main' branch
+            const allBranches = branchService.getLocalBranchesPaginated(process.cwd());
+            const hasMainBranch = allBranches.branches.some(b =>
+                b.name.toLowerCase().includes('main')
+            );
+
+            if (hasMainBranch) {
+                const upperResult = branchService.getLocalBranchesPaginated(process.cwd(), {
+                    searchPattern: 'MAIN'
+                });
+                const lowerResult = branchService.getLocalBranchesPaginated(process.cwd(), {
+                    searchPattern: 'main'
+                });
+                // Both should find the same branches (case-insensitive)
+                assert.strictEqual(upperResult.totalCount, lowerResult.totalCount,
+                    'Case-insensitive search should return same count for MAIN and main');
+            }
+            // Test passes if no main branch (nothing to compare)
+        });
+
+        test('search handles special regex characters safely', () => {
+            // These should not throw errors
+            const patterns = ['feature.*', 'test[1]', 'branch(1)', 'path/to/branch'];
+            for (const pattern of patterns) {
+                const result = branchService.getLocalBranchesPaginated(process.cwd(), {
+                    searchPattern: pattern
+                });
+                assert.ok(typeof result.totalCount === 'number');
+            }
         });
     });
 });

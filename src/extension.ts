@@ -1002,129 +1002,264 @@ export async function activate(context: vscode.ExtensionContext) {
             gitSwitchBranchCommand = vscode.commands.registerCommand(
                 'gitView.switchBranch',
                 async () => {
-                    const branches = gitTreeDataProvider.getAllBranches();
                     const branchStatus = gitTreeDataProvider.getBranchStatus();
                     const currentBranch = branchStatus?.name || '';
+                    const PAGE_SIZE = 100;
 
-                    // Build quick pick items
-                    const items: vscode.QuickPickItem[] = [];
+                    // Create interactive QuickPick for dynamic search
+                    const quickPick = vscode.window.createQuickPick();
+                    quickPick.title = 'Switch Branch';
+                    quickPick.placeholder = 'Type to search branches...';
+                    quickPick.matchOnDescription = true;
+                    quickPick.matchOnDetail = true;
 
-                    // Add separator for local branches
-                    if (branches.local.length > 0) {
-                        // Current branch first
-                        const currentBranchItem = branches.local.find(b => b.isCurrent);
-                        if (currentBranchItem) {
+                    // Track pagination state
+                    let localOffset = 0;
+                    let remoteOffset = 0;
+                    let localHasMore = false;
+                    let remoteHasMore = false;
+                    let currentSearchPattern = '';
+                    let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+                    // Build items from branch data
+                    const buildItems = (
+                        localResult: { branches: { name: string; isCurrent: boolean; lastCommitSubject?: string; lastCommitDate?: string }[]; totalCount: number; hasMore: boolean },
+                        remoteResult: { branches: { name: string; remoteName?: string; lastCommitSubject?: string }[]; totalCount: number; hasMore: boolean },
+                        searchPattern: string
+                    ): vscode.QuickPickItem[] => {
+                        const items: vscode.QuickPickItem[] = [];
+
+                        // Show total counts in a header when searching or when there are many branches
+                        if (searchPattern || localResult.totalCount > PAGE_SIZE || remoteResult.totalCount > PAGE_SIZE) {
+                            const totalLocal = localResult.totalCount;
+                            const totalRemote = remoteResult.totalCount;
+                            const showingLocal = localResult.branches.length;
+                            const showingRemote = remoteResult.branches.length;
                             items.push({
-                                label: `$(check) ${currentBranchItem.name}`,
-                                description: 'current',
-                                detail: currentBranchItem.lastCommitSubject
+                                label: `$(info) Showing ${showingLocal}/${totalLocal} local, ${showingRemote}/${totalRemote} remote branches`,
+                                kind: vscode.QuickPickItemKind.Separator
                             });
                         }
 
-                        // Other local branches
-                        for (const branch of branches.local.filter(b => !b.isCurrent)) {
-                            items.push({
-                                label: branch.name,
-                                description: branch.lastCommitDate,
-                                detail: branch.lastCommitSubject
-                            });
-                        }
-                    }
+                        // Local branches section
+                        if (localResult.branches.length > 0) {
+                            // Current branch first
+                            const currentBranchItem = localResult.branches.find(b => b.isCurrent);
+                            if (currentBranchItem) {
+                                items.push({
+                                    label: `$(check) ${currentBranchItem.name}`,
+                                    description: 'current',
+                                    detail: currentBranchItem.lastCommitSubject
+                                });
+                            }
 
-                    // Add separator and remote branches
-                    if (branches.remote.length > 0) {
+                            // Other local branches
+                            for (const branch of localResult.branches.filter(b => !b.isCurrent)) {
+                                items.push({
+                                    label: branch.name,
+                                    description: branch.lastCommitDate,
+                                    detail: branch.lastCommitSubject
+                                });
+                            }
+
+                            // "Load more" for local branches
+                            if (localResult.hasMore) {
+                                items.push({
+                                    label: '$(ellipsis) Load more local branches...',
+                                    description: `${localResult.totalCount - localResult.branches.length} more`,
+                                    alwaysShow: true
+                                });
+                            }
+                        }
+
+                        // Remote branches section
+                        if (remoteResult.branches.length > 0) {
+                            items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+                            items.push({ label: 'Remote Branches', kind: vscode.QuickPickItemKind.Separator });
+
+                            for (const branch of remoteResult.branches) {
+                                items.push({
+                                    label: branch.name,
+                                    description: `remote: ${branch.remoteName}`,
+                                    detail: branch.lastCommitSubject
+                                });
+                            }
+
+                            // "Load more" for remote branches
+                            if (remoteResult.hasMore) {
+                                items.push({
+                                    label: '$(ellipsis) Load more remote branches...',
+                                    description: `${remoteResult.totalCount - remoteResult.branches.length} more`,
+                                    alwaysShow: true
+                                });
+                            }
+                        }
+
+                        // Add special actions
                         items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
-                        items.push({ label: 'Remote Branches', kind: vscode.QuickPickItemKind.Separator });
+                        items.push({
+                            label: '$(add) Create new branch...',
+                            description: '',
+                            alwaysShow: true
+                        });
 
-                        for (const branch of branches.remote) {
-                            items.push({
-                                label: branch.name,
-                                description: `remote: ${branch.remoteName}`,
-                                detail: branch.lastCommitSubject
+                        return items;
+                    };
+
+                    // Load branches with current state
+                    const loadBranches = (searchPattern: string, appendLocal = false, appendRemote = false) => {
+                        quickPick.busy = true;
+
+                        try {
+                            // Get paginated results
+                            const localResult = gitTreeDataProvider.getLocalBranchesPaginated({
+                                limit: appendLocal ? PAGE_SIZE : localOffset + PAGE_SIZE,
+                                offset: 0,
+                                searchPattern: searchPattern || undefined
                             });
-                        }
-                    }
 
-                    // Add special actions
-                    items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
-                    items.push({
-                        label: '$(add) Create new branch...',
-                        description: '',
-                        alwaysShow: true
+                            const remoteResult = gitTreeDataProvider.getRemoteBranchesPaginated({
+                                limit: appendRemote ? PAGE_SIZE : remoteOffset + PAGE_SIZE,
+                                offset: 0,
+                                searchPattern: searchPattern || undefined
+                            });
+
+                            // Update pagination state
+                            if (appendLocal) {
+                                localOffset += PAGE_SIZE;
+                            } else if (!appendRemote) {
+                                localOffset = localResult.branches.length;
+                            }
+
+                            if (appendRemote) {
+                                remoteOffset += PAGE_SIZE;
+                            } else if (!appendLocal) {
+                                remoteOffset = remoteResult.branches.length;
+                            }
+
+                            localHasMore = localResult.hasMore;
+                            remoteHasMore = remoteResult.hasMore;
+                            currentSearchPattern = searchPattern;
+
+                            // Rebuild items
+                            quickPick.items = buildItems(localResult, remoteResult, searchPattern);
+                        } finally {
+                            quickPick.busy = false;
+                        }
+                    };
+
+                    // Initial load
+                    loadBranches('');
+
+                    // Handle search input with debounce
+                    quickPick.onDidChangeValue(value => {
+                        if (searchDebounceTimer) {
+                            clearTimeout(searchDebounceTimer);
+                        }
+                        searchDebounceTimer = setTimeout(() => {
+                            // Reset pagination when search changes
+                            localOffset = 0;
+                            remoteOffset = 0;
+                            loadBranches(value);
+                        }, 150);
                     });
 
-                    const selected = await vscode.window.showQuickPick(items, {
-                        placeHolder: 'Select a branch to switch to',
-                        title: 'Switch Branch'
+                    // Handle selection
+                    quickPick.onDidAccept(async () => {
+                        const selected = quickPick.selectedItems[0];
+                        if (!selected) {
+                            return;
+                        }
+
+                        // Handle "Load more local branches"
+                        if (selected.label === '$(ellipsis) Load more local branches...') {
+                            loadBranches(currentSearchPattern, true, false);
+                            return;
+                        }
+
+                        // Handle "Load more remote branches"
+                        if (selected.label === '$(ellipsis) Load more remote branches...') {
+                            loadBranches(currentSearchPattern, false, true);
+                            return;
+                        }
+
+                        // Handle create new branch
+                        if (selected.label === '$(add) Create new branch...') {
+                            quickPick.hide();
+                            await vscode.commands.executeCommand('gitView.createBranch');
+                            return;
+                        }
+
+                        // Extract branch name (remove check icon if present)
+                        const branchName = selected.label.replace(/^\$\(check\)\s*/, '');
+
+                        // Skip if it's the current branch
+                        if (branchName === currentBranch) {
+                            quickPick.hide();
+                            vscode.window.showInformationMessage(`Already on branch '${branchName}'`);
+                            return;
+                        }
+
+                        quickPick.hide();
+
+                        // Check for uncommitted changes
+                        const branchService = gitTreeDataProvider.getBranchService();
+                        const repoRoot = gitTreeDataProvider['gitService'].getFirstRepositoryRoot();
+                        const hasChanges = repoRoot ? branchService.hasUncommittedChanges(repoRoot) : false;
+
+                        if (hasChanges) {
+                            const choice = await vscode.window.showWarningMessage(
+                                `You have uncommitted changes. How would you like to proceed?`,
+                                { modal: true },
+                                'Stash and Switch',
+                                'Discard and Switch',
+                                'Cancel'
+                            );
+
+                            if (choice === 'Cancel' || !choice) {
+                                return;
+                            }
+
+                            if (choice === 'Stash and Switch') {
+                                const result = await gitTreeDataProvider.switchBranch(branchName, { stashFirst: true });
+                                if (result.success) {
+                                    vscode.window.showInformationMessage(
+                                        `Switched to '${branchName}'${result.stashed ? ' (changes stashed)' : ''}`
+                                    );
+                                } else {
+                                    vscode.window.showErrorMessage(`Failed to switch branch: ${result.error}`);
+                                }
+                                return;
+                            }
+
+                            if (choice === 'Discard and Switch') {
+                                const result = await gitTreeDataProvider.switchBranch(branchName, { force: true });
+                                if (result.success) {
+                                    vscode.window.showInformationMessage(`Switched to '${branchName}'`);
+                                } else {
+                                    vscode.window.showErrorMessage(`Failed to switch branch: ${result.error}`);
+                                }
+                                return;
+                            }
+                        }
+
+                        // Switch to branch
+                        const result = await gitTreeDataProvider.switchBranch(branchName);
+                        if (result.success) {
+                            vscode.window.showInformationMessage(`Switched to '${branchName}'`);
+                        } else {
+                            vscode.window.showErrorMessage(`Failed to switch branch: ${result.error}`);
+                        }
                     });
 
-                    if (!selected) {
-                        return;
-                    }
-
-                    // Handle create new branch
-                    if (selected.label === '$(add) Create new branch...') {
-                        await vscode.commands.executeCommand('gitView.createBranch');
-                        return;
-                    }
-
-                    // Extract branch name (remove check icon if present)
-                    const branchName = selected.label.replace(/^\$\(check\)\s*/, '');
-
-                    // Skip if it's the current branch
-                    if (branchName === currentBranch) {
-                        vscode.window.showInformationMessage(`Already on branch '${branchName}'`);
-                        return;
-                    }
-
-                    // Check for uncommitted changes
-                    const branchService = gitTreeDataProvider.getBranchService();
-                    const repoRoot = gitTreeDataProvider['gitService'].getFirstRepositoryRoot();
-                    const hasChanges = repoRoot ? branchService.hasUncommittedChanges(repoRoot) : false;
-
-                    if (hasChanges) {
-                        const choice = await vscode.window.showWarningMessage(
-                            `You have uncommitted changes. How would you like to proceed?`,
-                            { modal: true },
-                            'Stash and Switch',
-                            'Discard and Switch',
-                            'Cancel'
-                        );
-
-                        if (choice === 'Cancel' || !choice) {
-                            return;
+                    quickPick.onDidHide(() => {
+                        if (searchDebounceTimer) {
+                            clearTimeout(searchDebounceTimer);
                         }
+                        quickPick.dispose();
+                    });
 
-                        if (choice === 'Stash and Switch') {
-                            const result = await gitTreeDataProvider.switchBranch(branchName, { stashFirst: true });
-                            if (result.success) {
-                                vscode.window.showInformationMessage(
-                                    `Switched to '${branchName}'${result.stashed ? ' (changes stashed)' : ''}`
-                                );
-                            } else {
-                                vscode.window.showErrorMessage(`Failed to switch branch: ${result.error}`);
-                            }
-                            return;
-                        }
-
-                        if (choice === 'Discard and Switch') {
-                            const result = await gitTreeDataProvider.switchBranch(branchName, { force: true });
-                            if (result.success) {
-                                vscode.window.showInformationMessage(`Switched to '${branchName}'`);
-                            } else {
-                                vscode.window.showErrorMessage(`Failed to switch branch: ${result.error}`);
-                            }
-                            return;
-                        }
-                    }
-
-                    // Switch to branch
-                    const result = await gitTreeDataProvider.switchBranch(branchName);
-                    if (result.success) {
-                        vscode.window.showInformationMessage(`Switched to '${branchName}'`);
-                    } else {
-                        vscode.window.showErrorMessage(`Failed to switch branch: ${result.error}`);
-                    }
+                    quickPick.show();
                 }
             );
 
@@ -1170,51 +1305,143 @@ export async function activate(context: vscode.ExtensionContext) {
             gitDeleteBranchCommand = vscode.commands.registerCommand(
                 'gitView.deleteBranch',
                 async () => {
-                    const branches = gitTreeDataProvider.getAllBranches();
                     const branchStatus = gitTreeDataProvider.getBranchStatus();
                     const currentBranch = branchStatus?.name || '';
+                    const PAGE_SIZE = 100;
 
-                    // Filter out current branch
-                    const deletableBranches = branches.local.filter(b => !b.isCurrent);
+                    // Create interactive QuickPick for dynamic search
+                    const quickPick = vscode.window.createQuickPick();
+                    quickPick.title = 'Delete Branch';
+                    quickPick.placeholder = 'Type to search branches to delete...';
+                    quickPick.matchOnDescription = true;
+                    quickPick.matchOnDetail = true;
 
-                    if (deletableBranches.length === 0) {
-                        vscode.window.showInformationMessage('No branches available to delete');
-                        return;
-                    }
+                    let localOffset = 0;
+                    let localHasMore = false;
+                    let currentSearchPattern = '';
+                    let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-                    const items = deletableBranches.map(b => ({
-                        label: b.name,
-                        description: b.lastCommitDate,
-                        detail: b.lastCommitSubject
-                    }));
+                    const buildItems = (
+                        localResult: { branches: { name: string; isCurrent: boolean; lastCommitSubject?: string; lastCommitDate?: string }[]; totalCount: number; hasMore: boolean },
+                        searchPattern: string
+                    ): vscode.QuickPickItem[] => {
+                        const items: vscode.QuickPickItem[] = [];
 
-                    const selected = await vscode.window.showQuickPick(items, {
-                        placeHolder: 'Select a branch to delete',
-                        title: 'Delete Branch'
+                        // Filter out current branch
+                        const deletableBranches = localResult.branches.filter(b => !b.isCurrent);
+                        const deletableCount = localResult.totalCount - (localResult.branches.some(b => b.isCurrent) ? 1 : 0);
+
+                        if (deletableBranches.length === 0 && !localResult.hasMore) {
+                            items.push({
+                                label: '$(info) No branches available to delete',
+                                kind: vscode.QuickPickItemKind.Separator
+                            });
+                            return items;
+                        }
+
+                        if (searchPattern || deletableCount > PAGE_SIZE) {
+                            items.push({
+                                label: `$(info) Showing ${deletableBranches.length}/${deletableCount} deletable branches`,
+                                kind: vscode.QuickPickItemKind.Separator
+                            });
+                        }
+
+                        for (const branch of deletableBranches) {
+                            items.push({
+                                label: branch.name,
+                                description: branch.lastCommitDate,
+                                detail: branch.lastCommitSubject
+                            });
+                        }
+
+                        if (localResult.hasMore) {
+                            items.push({
+                                label: '$(ellipsis) Load more branches...',
+                                description: `${deletableCount - deletableBranches.length} more`,
+                                alwaysShow: true
+                            });
+                        }
+
+                        return items;
+                    };
+
+                    const loadBranches = (searchPattern: string, appendMore = false) => {
+                        quickPick.busy = true;
+
+                        try {
+                            const localResult = gitTreeDataProvider.getLocalBranchesPaginated({
+                                limit: appendMore ? localOffset + PAGE_SIZE : PAGE_SIZE,
+                                offset: 0,
+                                searchPattern: searchPattern || undefined
+                            });
+
+                            localOffset = localResult.branches.length;
+                            localHasMore = localResult.hasMore;
+                            currentSearchPattern = searchPattern;
+
+                            quickPick.items = buildItems(localResult, searchPattern);
+                        } finally {
+                            quickPick.busy = false;
+                        }
+                    };
+
+                    loadBranches('');
+
+                    quickPick.onDidChangeValue(value => {
+                        if (searchDebounceTimer) {
+                            clearTimeout(searchDebounceTimer);
+                        }
+                        searchDebounceTimer = setTimeout(() => {
+                            localOffset = 0;
+                            loadBranches(value);
+                        }, 150);
                     });
 
-                    if (!selected) {
-                        return;
-                    }
+                    quickPick.onDidAccept(async () => {
+                        const selected = quickPick.selectedItems[0];
+                        if (!selected) {
+                            return;
+                        }
 
-                    const confirm = await vscode.window.showWarningMessage(
-                        `Are you sure you want to delete branch '${selected.label}'?`,
-                        { modal: true },
-                        'Delete',
-                        'Force Delete (even if not merged)'
-                    );
+                        if (selected.label === '$(ellipsis) Load more branches...') {
+                            loadBranches(currentSearchPattern, true);
+                            return;
+                        }
 
-                    if (!confirm) {
-                        return;
-                    }
+                        if (selected.kind === vscode.QuickPickItemKind.Separator) {
+                            return;
+                        }
 
-                    const force = confirm === 'Force Delete (even if not merged)';
-                    const result = await gitTreeDataProvider.deleteBranch(selected.label, force);
-                    if (result.success) {
-                        vscode.window.showInformationMessage(`Deleted branch '${selected.label}'`);
-                    } else {
-                        vscode.window.showErrorMessage(`Failed to delete branch: ${result.error}`);
-                    }
+                        quickPick.hide();
+
+                        const confirm = await vscode.window.showWarningMessage(
+                            `Are you sure you want to delete branch '${selected.label}'?`,
+                            { modal: true },
+                            'Delete',
+                            'Force Delete (even if not merged)'
+                        );
+
+                        if (!confirm) {
+                            return;
+                        }
+
+                        const force = confirm === 'Force Delete (even if not merged)';
+                        const result = await gitTreeDataProvider.deleteBranch(selected.label, force);
+                        if (result.success) {
+                            vscode.window.showInformationMessage(`Deleted branch '${selected.label}'`);
+                        } else {
+                            vscode.window.showErrorMessage(`Failed to delete branch: ${result.error}`);
+                        }
+                    });
+
+                    quickPick.onDidHide(() => {
+                        if (searchDebounceTimer) {
+                            clearTimeout(searchDebounceTimer);
+                        }
+                        quickPick.dispose();
+                    });
+
+                    quickPick.show();
                 }
             );
 
@@ -1264,39 +1491,131 @@ export async function activate(context: vscode.ExtensionContext) {
             gitMergeBranchCommand = vscode.commands.registerCommand(
                 'gitView.mergeBranch',
                 async () => {
-                    const branches = gitTreeDataProvider.getAllBranches();
                     const branchStatus = gitTreeDataProvider.getBranchStatus();
                     const currentBranch = branchStatus?.name || '';
+                    const PAGE_SIZE = 100;
 
-                    // Filter out current branch
-                    const mergeableBranches = branches.local.filter(b => !b.isCurrent);
+                    // Create interactive QuickPick for dynamic search
+                    const quickPick = vscode.window.createQuickPick();
+                    quickPick.title = 'Merge Branch';
+                    quickPick.placeholder = `Type to search branches to merge into '${currentBranch}'...`;
+                    quickPick.matchOnDescription = true;
+                    quickPick.matchOnDetail = true;
 
-                    if (mergeableBranches.length === 0) {
-                        vscode.window.showInformationMessage('No branches available to merge');
-                        return;
-                    }
+                    let localOffset = 0;
+                    let localHasMore = false;
+                    let currentSearchPattern = '';
+                    let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-                    const items = mergeableBranches.map(b => ({
-                        label: b.name,
-                        description: b.lastCommitDate,
-                        detail: b.lastCommitSubject
-                    }));
+                    const buildItems = (
+                        localResult: { branches: { name: string; isCurrent: boolean; lastCommitSubject?: string; lastCommitDate?: string }[]; totalCount: number; hasMore: boolean },
+                        searchPattern: string
+                    ): vscode.QuickPickItem[] => {
+                        const items: vscode.QuickPickItem[] = [];
 
-                    const selected = await vscode.window.showQuickPick(items, {
-                        placeHolder: `Select a branch to merge into '${currentBranch}'`,
-                        title: 'Merge Branch'
+                        // Filter out current branch
+                        const mergeableBranches = localResult.branches.filter(b => !b.isCurrent);
+                        const mergeableCount = localResult.totalCount - (localResult.branches.some(b => b.isCurrent) ? 1 : 0);
+
+                        if (mergeableBranches.length === 0 && !localResult.hasMore) {
+                            items.push({
+                                label: '$(info) No branches available to merge',
+                                kind: vscode.QuickPickItemKind.Separator
+                            });
+                            return items;
+                        }
+
+                        if (searchPattern || mergeableCount > PAGE_SIZE) {
+                            items.push({
+                                label: `$(info) Showing ${mergeableBranches.length}/${mergeableCount} branches`,
+                                kind: vscode.QuickPickItemKind.Separator
+                            });
+                        }
+
+                        for (const branch of mergeableBranches) {
+                            items.push({
+                                label: branch.name,
+                                description: branch.lastCommitDate,
+                                detail: branch.lastCommitSubject
+                            });
+                        }
+
+                        if (localResult.hasMore) {
+                            items.push({
+                                label: '$(ellipsis) Load more branches...',
+                                description: `${mergeableCount - mergeableBranches.length} more`,
+                                alwaysShow: true
+                            });
+                        }
+
+                        return items;
+                    };
+
+                    const loadBranches = (searchPattern: string, appendMore = false) => {
+                        quickPick.busy = true;
+
+                        try {
+                            const localResult = gitTreeDataProvider.getLocalBranchesPaginated({
+                                limit: appendMore ? localOffset + PAGE_SIZE : PAGE_SIZE,
+                                offset: 0,
+                                searchPattern: searchPattern || undefined
+                            });
+
+                            localOffset = localResult.branches.length;
+                            localHasMore = localResult.hasMore;
+                            currentSearchPattern = searchPattern;
+
+                            quickPick.items = buildItems(localResult, searchPattern);
+                        } finally {
+                            quickPick.busy = false;
+                        }
+                    };
+
+                    loadBranches('');
+
+                    quickPick.onDidChangeValue(value => {
+                        if (searchDebounceTimer) {
+                            clearTimeout(searchDebounceTimer);
+                        }
+                        searchDebounceTimer = setTimeout(() => {
+                            localOffset = 0;
+                            loadBranches(value);
+                        }, 150);
                     });
 
-                    if (!selected) {
-                        return;
-                    }
+                    quickPick.onDidAccept(async () => {
+                        const selected = quickPick.selectedItems[0];
+                        if (!selected) {
+                            return;
+                        }
 
-                    const result = await gitTreeDataProvider.mergeBranch(selected.label);
-                    if (result.success) {
-                        vscode.window.showInformationMessage(`Merged '${selected.label}' into '${currentBranch}'`);
-                    } else {
-                        vscode.window.showErrorMessage(`Failed to merge branch: ${result.error}`);
-                    }
+                        if (selected.label === '$(ellipsis) Load more branches...') {
+                            loadBranches(currentSearchPattern, true);
+                            return;
+                        }
+
+                        if (selected.kind === vscode.QuickPickItemKind.Separator) {
+                            return;
+                        }
+
+                        quickPick.hide();
+
+                        const result = await gitTreeDataProvider.mergeBranch(selected.label);
+                        if (result.success) {
+                            vscode.window.showInformationMessage(`Merged '${selected.label}' into '${currentBranch}'`);
+                        } else {
+                            vscode.window.showErrorMessage(`Failed to merge branch: ${result.error}`);
+                        }
+                    });
+
+                    quickPick.onDidHide(() => {
+                        if (searchDebounceTimer) {
+                            clearTimeout(searchDebounceTimer);
+                        }
+                        quickPick.dispose();
+                    });
+
+                    quickPick.show();
                 }
             );
 

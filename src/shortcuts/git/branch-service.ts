@@ -22,6 +22,30 @@ export interface GitBranch {
 }
 
 /**
+ * Options for paginated branch listing
+ */
+export interface BranchListOptions {
+    /** Maximum number of branches to return */
+    limit?: number;
+    /** Number of branches to skip */
+    offset?: number;
+    /** Search pattern to filter branches (case-insensitive substring match) */
+    searchPattern?: string;
+}
+
+/**
+ * Result of paginated branch listing
+ */
+export interface PaginatedBranchResult {
+    /** Branches in this page */
+    branches: GitBranch[];
+    /** Total count of matching branches */
+    totalCount: number;
+    /** Whether there are more branches available */
+    hasMore: boolean;
+}
+
+/**
  * Options for git command execution
  */
 interface GitExecOptions {
@@ -275,6 +299,261 @@ export class BranchService implements vscode.Disposable {
         return {
             local: this.getLocalBranches(repoRoot),
             remote: this.getRemoteBranches(repoRoot)
+        };
+    }
+
+    /**
+     * Get local branch count (fast operation)
+     * @param repoRoot Repository root path
+     * @param searchPattern Optional search pattern to filter (case-insensitive)
+     */
+    getLocalBranchCount(repoRoot: string, searchPattern?: string): number {
+        try {
+            const command = 'git branch --list';
+            const output = this.execGitSync(command, { cwd: repoRoot });
+            if (!output.trim()) {
+                return 0;
+            }
+            let lines = output.trim().split('\n').filter(line => line.trim());
+
+            // Apply case-insensitive filtering if search pattern provided
+            if (searchPattern) {
+                const lowerPattern = searchPattern.toLowerCase();
+                lines = lines.filter(line => {
+                    // Branch name is after the first 2 characters (current marker + space)
+                    const branchName = line.substring(2).trim();
+                    return branchName.toLowerCase().includes(lowerPattern);
+                });
+            }
+
+            return lines.length;
+        } catch (error) {
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to get local branch count', error instanceof Error ? error : undefined);
+            return 0;
+        }
+    }
+
+    /**
+     * Get remote branch count (fast operation)
+     * @param repoRoot Repository root path
+     * @param searchPattern Optional search pattern to filter (case-insensitive)
+     */
+    getRemoteBranchCount(repoRoot: string, searchPattern?: string): number {
+        try {
+            const command = 'git branch -r --list';
+            const output = this.execGitSync(command, { cwd: repoRoot });
+            if (!output.trim()) {
+                return 0;
+            }
+            // Filter out HEAD entries
+            let lines = output.trim().split('\n').filter(line => line.trim() && !line.includes('HEAD'));
+
+            // Apply case-insensitive filtering if search pattern provided
+            if (searchPattern) {
+                const lowerPattern = searchPattern.toLowerCase();
+                lines = lines.filter(line => {
+                    const branchName = line.trim();
+                    return branchName.toLowerCase().includes(lowerPattern);
+                });
+            }
+
+            return lines.length;
+        } catch (error) {
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to get remote branch count', error instanceof Error ? error : undefined);
+            return 0;
+        }
+    }
+
+    /**
+     * Get local branches with pagination and search support
+     * For repos with many branches, this is more efficient than loading all branches
+     * @param repoRoot Repository root path
+     * @param options Pagination and search options
+     */
+    getLocalBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): PaginatedBranchResult {
+        const { limit = 100, offset = 0, searchPattern } = options;
+
+        try {
+            // Get total count first for pagination info
+            const totalCount = this.getLocalBranchCount(repoRoot, searchPattern);
+
+            if (totalCount === 0) {
+                return { branches: [], totalCount: 0, hasMore: false };
+            }
+
+            // Format: current indicator, branch name, commit subject, commit date
+            const format = '%(if)%(HEAD)%(then)*%(else) %(end)|%(refname:short)|%(subject)|%(committerdate:relative)';
+            let command = `git branch --format="${format}"`;
+
+            // Git doesn't have built-in pagination, so we use shell utilities
+            // But we need to be careful with the pattern matching
+            if (searchPattern) {
+                // Filter with grep for the search pattern (case-insensitive)
+                const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                if (process.platform === 'win32') {
+                    // Windows: use findstr (case-insensitive with /i)
+                    command += ` | findstr /i "${escapedPattern}"`;
+                } else {
+                    // Unix: use grep -i for case-insensitive
+                    command += ` | grep -i "${escapedPattern}"`;
+                }
+            }
+
+            // Apply pagination using tail and head
+            // Skip first 'offset' lines, then take 'limit' lines
+            if (process.platform === 'win32') {
+                // Windows doesn't have tail/head, we'll process in JS
+            } else {
+                if (offset > 0) {
+                    command += ` | tail -n +${offset + 1}`;
+                }
+                command += ` | head -n ${limit}`;
+            }
+
+            const output = this.execGitSync(command, { cwd: repoRoot, timeout: 30000 });
+
+            if (!output.trim()) {
+                return { branches: [], totalCount, hasMore: offset + limit < totalCount };
+            }
+
+            let lines = output.trim().split('\n');
+
+            // For Windows, apply pagination in JS
+            if (process.platform === 'win32') {
+                if (searchPattern) {
+                    const lowerPattern = searchPattern.toLowerCase();
+                    lines = lines.filter(line => {
+                        const parts = line.split('|');
+                        const branchName = parts[1] || '';
+                        return branchName.toLowerCase().includes(lowerPattern);
+                    });
+                }
+                lines = lines.slice(offset, offset + limit);
+            }
+
+            const branches = lines.map(line => {
+                const parts = line.split('|');
+                const isCurrent = parts[0] === '*';
+                return {
+                    name: parts[1] || '',
+                    isCurrent,
+                    isRemote: false,
+                    lastCommitSubject: parts[2] || '',
+                    lastCommitDate: parts[3] || ''
+                };
+            }).filter(b => b.name);
+
+            return {
+                branches,
+                totalCount,
+                hasMore: offset + branches.length < totalCount
+            };
+        } catch (error) {
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to get paginated local branches', error instanceof Error ? error : undefined);
+            return { branches: [], totalCount: 0, hasMore: false };
+        }
+    }
+
+    /**
+     * Get remote branches with pagination and search support
+     * @param repoRoot Repository root path
+     * @param options Pagination and search options
+     */
+    getRemoteBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): PaginatedBranchResult {
+        const { limit = 100, offset = 0, searchPattern } = options;
+
+        try {
+            // Get total count first
+            const totalCount = this.getRemoteBranchCount(repoRoot, searchPattern);
+
+            if (totalCount === 0) {
+                return { branches: [], totalCount: 0, hasMore: false };
+            }
+
+            const format = '%(refname:short)|%(subject)|%(committerdate:relative)';
+            let command = `git branch -r --format="${format}"`;
+
+            // Filter out HEAD and apply search
+            if (process.platform === 'win32') {
+                command += ' | findstr /v "HEAD"';
+                if (searchPattern) {
+                    const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    command += ` | findstr /i "${escapedPattern}"`;
+                }
+            } else {
+                command += ' | grep -v "HEAD"';
+                if (searchPattern) {
+                    const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    command += ` | grep -i "${escapedPattern}"`;
+                }
+                if (offset > 0) {
+                    command += ` | tail -n +${offset + 1}`;
+                }
+                command += ` | head -n ${limit}`;
+            }
+
+            const output = this.execGitSync(command, { cwd: repoRoot, timeout: 30000 });
+
+            if (!output.trim()) {
+                return { branches: [], totalCount, hasMore: offset + limit < totalCount };
+            }
+
+            let lines = output.trim().split('\n').filter(line => !line.includes('HEAD'));
+
+            // For Windows, apply pagination in JS
+            if (process.platform === 'win32') {
+                if (searchPattern) {
+                    const lowerPattern = searchPattern.toLowerCase();
+                    lines = lines.filter(line => {
+                        const parts = line.split('|');
+                        const branchName = parts[0] || '';
+                        return branchName.toLowerCase().includes(lowerPattern);
+                    });
+                }
+                lines = lines.slice(offset, offset + limit);
+            }
+
+            const branches = lines.map(line => {
+                const parts = line.split('|');
+                const fullName = parts[0] || '';
+                const slashIndex = fullName.indexOf('/');
+                const remoteName = slashIndex > 0 ? fullName.substring(0, slashIndex) : undefined;
+
+                return {
+                    name: fullName,
+                    isCurrent: false,
+                    isRemote: true,
+                    remoteName,
+                    lastCommitSubject: parts[1] || '',
+                    lastCommitDate: parts[2] || ''
+                };
+            }).filter(b => b.name);
+
+            return {
+                branches,
+                totalCount,
+                hasMore: offset + branches.length < totalCount
+            };
+        } catch (error) {
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to get paginated remote branches', error instanceof Error ? error : undefined);
+            return { branches: [], totalCount: 0, hasMore: false };
+        }
+    }
+
+    /**
+     * Search branches by name (combines local and remote)
+     * Returns a limited set for quick display, suitable for type-ahead search
+     * @param repoRoot Repository root path
+     * @param searchPattern Search pattern
+     * @param limit Maximum results to return
+     */
+    searchBranches(repoRoot: string, searchPattern: string, limit: number = 50): { local: GitBranch[]; remote: GitBranch[] } {
+        const localResult = this.getLocalBranchesPaginated(repoRoot, { searchPattern, limit });
+        const remoteResult = this.getRemoteBranchesPaginated(repoRoot, { searchPattern, limit });
+
+        return {
+            local: localResult.branches,
+            remote: remoteResult.branches
         };
     }
 

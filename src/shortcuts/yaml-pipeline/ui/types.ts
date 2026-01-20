@@ -28,7 +28,7 @@ export interface BundledPipelineManifest {
     description: string;
 
     /** Category for grouping */
-    category?: 'code-review' | 'data-processing' | 'documentation' | 'testing' | 'other';
+    category?: 'code-review' | 'data-processing' | 'documentation' | 'testing' | 'research' | 'other';
 
     /** Directory name within bundled-pipelines folder */
     directory: string;
