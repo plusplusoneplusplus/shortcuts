@@ -137,13 +137,13 @@ suite('Diff View Mode Persistence Tests', () => {
          */
         function createInitialState(persistedViewMode?: ViewMode): { viewMode: ViewMode } {
             return {
-                viewMode: persistedViewMode || 'split'
+                viewMode: persistedViewMode || 'inline'
             };
         }
 
-        test('should default to split view when no persisted mode', () => {
+        test('should default to inline view when no persisted mode', () => {
             const state = createInitialState(undefined);
-            assert.strictEqual(state.viewMode, 'split');
+            assert.strictEqual(state.viewMode, 'inline');
         });
 
         test('should use persisted split mode', () => {

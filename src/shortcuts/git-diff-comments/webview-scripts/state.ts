@@ -73,8 +73,8 @@ export function createInitialState(persistedViewMode?: ViewMode): AppState {
         currentSelection: null,
         isCommentPanelOpen: false,
         editingCommentId: null,
-        // Use persisted view mode if available, otherwise default to 'split'
-        viewMode: persistedViewMode || 'split' as ViewMode,
+        // Use persisted view mode if available, otherwise default to 'inline'
+        viewMode: persistedViewMode || 'inline' as ViewMode,
         ignoreWhitespace: false,
         isEditable: initialData.isEditable || false,
         isInteracting: false
