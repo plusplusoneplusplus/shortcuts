@@ -5,7 +5,29 @@
  * across the AI service module.
  */
 
+import * as os from 'os';
+import * as path from 'path';
+import * as fs from 'fs';
 import { InteractiveToolType } from './types';
+
+/** Threshold for prompt length before switching to file-based delivery */
+export const PROMPT_LENGTH_THRESHOLD = 500;
+
+/**
+ * Pattern matching characters that are problematic for shell escaping.
+ * Alphanumeric, spaces, and basic punctuation (. , : ; - _ @) are safe.
+ *
+ * Problematic characters include:
+ * - Quotes: ' " `
+ * - Shell variables/expansion: $ ! %
+ * - Escape characters: \
+ * - Redirection/pipes: < > |
+ * - Command separators: &
+ * - Grouping: ( ) { } [ ]
+ * - Comments/special: # * ? ~
+ * - Whitespace: \n \r \t (newlines and tabs)
+ */
+export const PROBLEMATIC_CHARS_PATTERN = /['"$!%`\\<>|&(){}\[\]#*?~\n\r\t]/;
 
 /** Base flags for copilot CLI commands */
 export const COPILOT_BASE_FLAGS = '--allow-all-tools --allow-all-paths --disable-builtin-mcps';
@@ -63,17 +85,74 @@ export function escapeShellArg(str: string, platform?: NodeJS.Platform): string 
 }
 
 /**
+ * Determine if a prompt should use file-based delivery instead of direct shell argument.
+ *
+ * Uses direct prompt when:
+ * - Prompt is short (under PROMPT_LENGTH_THRESHOLD)
+ * - AND contains only safe characters (alphanumeric, spaces, basic punctuation)
+ *
+ * Uses file-based delivery when:
+ * - Prompt is long (over PROMPT_LENGTH_THRESHOLD)
+ * - OR contains any shell-problematic characters
+ *
+ * @param prompt - The prompt to evaluate
+ * @returns true if file-based delivery should be used, false for direct prompt
+ */
+export function shouldUseFileDelivery(prompt: string): boolean {
+    if (prompt.length > PROMPT_LENGTH_THRESHOLD) {
+        return true;
+    }
+    return PROBLEMATIC_CHARS_PATTERN.test(prompt);
+}
+
+/**
+ * Write prompt content to a temporary file.
+ * The OS handles cleanup via the temp directory lifecycle.
+ *
+ * File naming includes timestamp and random suffix to avoid collisions.
+ * Uses UTF-8 encoding for proper Unicode support.
+ *
+ * @param prompt - The prompt content to write
+ * @returns The absolute path to the created temp file
+ */
+export function writePromptToTempFile(prompt: string): string {
+    const tmpDir = os.tmpdir();
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).slice(2, 8);
+    const filename = `copilot-prompt-${timestamp}-${randomSuffix}.txt`;
+    const filepath = path.join(tmpDir, filename);
+    fs.writeFileSync(filepath, prompt, 'utf-8');
+    return filepath;
+}
+
+/**
+ * Result of building a CLI command, including metadata about the delivery method used.
+ */
+export interface BuildCliCommandResult {
+    /** The complete command string to execute */
+    command: string;
+    /** The delivery method used for the prompt */
+    deliveryMethod: 'direct' | 'file';
+    /** Path to the temp file if file-based delivery was used */
+    tempFilePath?: string;
+}
+
+/**
  * Build the CLI command string for the specified tool.
  *
  * This is the shared command builder used by both interactive (terminal)
  * and non-interactive (child process) modes.
+ *
+ * Uses smart prompt delivery:
+ * - Direct: For short, simple prompts without shell-problematic characters
+ * - File-based: For long prompts or those containing special characters
  *
  * @param tool - The CLI tool to use ('copilot' or 'claude')
  * @param options - Optional command options
  * @param options.prompt - Initial prompt to send
  * @param options.model - Model to use (e.g., 'gpt-4')
  * @param options.platform - Platform override for shell escaping (defaults to process.platform)
- * @returns The complete command string
+ * @returns Object containing the command string and delivery metadata
  */
 export function buildCliCommand(
     tool: InteractiveToolType,
@@ -82,19 +161,40 @@ export function buildCliCommand(
         model?: string;
         platform?: NodeJS.Platform;
     }
-): string {
+): BuildCliCommandResult {
     const baseCommand = tool === 'copilot' ? 'copilot' : 'claude';
     const { prompt, model, platform } = options ?? {};
     const modelFlag = model ? ` --model ${model}` : '';
 
     if (!prompt) {
-        return `${baseCommand} ${COPILOT_BASE_FLAGS}${modelFlag}`;
+        return {
+            command: `${baseCommand} ${COPILOT_BASE_FLAGS}${modelFlag}`,
+            deliveryMethod: 'direct'
+        };
     }
 
-    // Escape the prompt for shell use
+    // Determine delivery method based on prompt characteristics
+    if (shouldUseFileDelivery(prompt)) {
+        // File-based delivery: write prompt to temp file
+        const tempFilePath = writePromptToTempFile(prompt);
+
+        // Build a simple redirection prompt - the CLI tool will read the file
+        // File paths only need escaping for spaces, which is handled by quotes
+        const redirectPrompt = `Follow the instructions in ${tempFilePath}`;
+        const escapedRedirect = escapeShellArg(redirectPrompt, platform);
+
+        return {
+            command: `${baseCommand} ${COPILOT_BASE_FLAGS}${modelFlag} -i ${escapedRedirect}`,
+            deliveryMethod: 'file',
+            tempFilePath
+        };
+    }
+
+    // Direct delivery: escape and pass prompt directly
     const escapedPrompt = escapeShellArg(prompt, platform);
 
-    // Use -i flag to start interactive mode with the initial prompt
-    // (-p would execute and exit, -i keeps the session interactive)
-    return `${baseCommand} ${COPILOT_BASE_FLAGS}${modelFlag} -i ${escapedPrompt}`;
+    return {
+        command: `${baseCommand} ${COPILOT_BASE_FLAGS}${modelFlag} -i ${escapedPrompt}`,
+        deliveryMethod: 'direct'
+    };
 }

@@ -261,7 +261,8 @@ export class ExternalTerminalLauncher {
         }
 
         // Build the CLI command
-        const command = buildCliCommand(tool, { prompt: initialPrompt, model });
+        const result = buildCliCommand(tool, { prompt: initialPrompt, model });
+        const command = result.command;
 
         // Get the terminal configuration
         const platformKey = this.getPlatformKey();

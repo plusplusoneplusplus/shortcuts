@@ -99,40 +99,45 @@ suite('ExternalTerminalLauncher - buildCliCommand', () => {
     test('should build basic copilot command without prompt', () => {
         const result = buildCliCommand('copilot');
         // Now includes base flags by default
-        assert.strictEqual(result, 'copilot --allow-all-tools --allow-all-paths --disable-builtin-mcps');
+        assert.strictEqual(result.command, 'copilot --allow-all-tools --allow-all-paths --disable-builtin-mcps');
+        assert.strictEqual(result.deliveryMethod, 'direct');
     });
 
     test('should build basic claude command without prompt', () => {
         const result = buildCliCommand('claude');
         // Now includes base flags by default
-        assert.strictEqual(result, 'claude --allow-all-tools --allow-all-paths --disable-builtin-mcps');
+        assert.strictEqual(result.command, 'claude --allow-all-tools --allow-all-paths --disable-builtin-mcps');
+        assert.strictEqual(result.deliveryMethod, 'direct');
     });
 
-    test('should build copilot command with prompt on Unix', () => {
-        // Save original platform
-        const originalPlatform = process.platform;
-
-        // We can't change process.platform directly, so we test the escaping separately
+    test('should build copilot command with simple prompt using direct delivery', () => {
+        // Simple prompt without special characters should use direct delivery
         const result = buildCliCommand('copilot', { prompt: 'Hello world' });
 
         // The result should contain the interactive prompt flag
-        assert.ok(result.includes('-i'), 'Should include -i flag for interactive mode');
-        assert.ok(result.includes('Hello world'), 'Should include prompt text');
+        assert.ok(result.command.includes('-i'), 'Should include -i flag for interactive mode');
+        assert.ok(result.command.includes('Hello world'), 'Should include prompt text');
+        assert.strictEqual(result.deliveryMethod, 'direct');
     });
 
-    test('should build claude command with prompt', () => {
+    test('should build claude command with simple prompt using direct delivery', () => {
         const result = buildCliCommand('claude', { prompt: 'Explain this code' });
 
-        assert.ok(result.includes('claude'), 'Should include claude command');
-        assert.ok(result.includes('-i'), 'Should include -i flag for interactive mode');
-        assert.ok(result.includes('Explain this code'), 'Should include prompt text');
+        assert.ok(result.command.includes('claude'), 'Should include claude command');
+        assert.ok(result.command.includes('-i'), 'Should include -i flag for interactive mode');
+        assert.ok(result.command.includes('Explain this code'), 'Should include prompt text');
+        assert.strictEqual(result.deliveryMethod, 'direct');
     });
 
-    test('should escape special characters in prompt', () => {
+    test('should use file delivery for prompts with special characters', () => {
+        // Prompts with quotes/special chars should use file delivery
         const result = buildCliCommand('copilot', { prompt: "it's a \"test\"" });
 
-        // Should be properly escaped
-        assert.ok(result.includes('-i'), 'Should include -i flag for interactive mode');
+        // Should use file delivery due to quotes
+        assert.strictEqual(result.deliveryMethod, 'file');
+        assert.ok(result.tempFilePath, 'Should have temp file path');
+        assert.ok(result.command.includes('-i'), 'Should include -i flag for interactive mode');
+        assert.ok(result.command.includes('Follow the instructions in'), 'Should include redirect prompt');
     });
 });
 

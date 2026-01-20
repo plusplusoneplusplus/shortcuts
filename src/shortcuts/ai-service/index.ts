@@ -98,7 +98,15 @@ export {
 } from './types';
 
 // Export CLI utilities
-export { buildCliCommand, COPILOT_BASE_FLAGS } from './cli-utils';
+export {
+    buildCliCommand,
+    COPILOT_BASE_FLAGS,
+    PROMPT_LENGTH_THRESHOLD,
+    PROBLEMATIC_CHARS_PATTERN,
+    shouldUseFileDelivery,
+    writePromptToTempFile,
+    BuildCliCommandResult
+} from './cli-utils';
 
 // Export external terminal launcher
 export {

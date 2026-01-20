@@ -270,7 +270,8 @@ function buildCopilotCommand(prompt: string, overrideModel?: string): string {
     // Use override model if provided, otherwise use configured model from settings
     const model = overrideModel || getAIModelSetting();
 
-    return buildCliCommand('copilot', { prompt, model });
+    const result = buildCliCommand('copilot', { prompt, model });
+    return result.command;
 }
 
 /**
