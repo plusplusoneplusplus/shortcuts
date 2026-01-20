@@ -15,15 +15,18 @@ suite('GitSearchProvider Tests', () => {
     let provider: GitSearchProvider;
     let isGitRepo = false;
 
-    setup(() => {
+    setup(function() {
+        // Increase timeout for setup on CI
+        this.timeout(10000);
+
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-search-test-'));
         provider = new GitSearchProvider();
 
-        // Try to initialize a git repo
+        // Try to initialize a git repo with timeout
         try {
-            execSync('git init', { cwd: tempDir, stdio: 'pipe' });
-            execSync('git config user.email "test@test.com"', { cwd: tempDir, stdio: 'pipe' });
-            execSync('git config user.name "Test User"', { cwd: tempDir, stdio: 'pipe' });
+            execSync('git init', { cwd: tempDir, stdio: 'pipe', timeout: 5000 });
+            execSync('git config user.email "test@test.com"', { cwd: tempDir, stdio: 'pipe', timeout: 5000 });
+            execSync('git config user.name "Test User"', { cwd: tempDir, stdio: 'pipe', timeout: 5000 });
             isGitRepo = true;
         } catch {
             isGitRepo = false;
