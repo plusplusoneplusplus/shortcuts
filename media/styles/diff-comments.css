@@ -495,30 +495,7 @@
     cursor: pointer;
 }
 
-/* Context Menu */
-.context-menu {
-    position: fixed;
-    background-color: var(--vscode-menu-background);
-    color: var(--vscode-menu-foreground);
-    border: 1px solid var(--vscode-menu-border);
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    z-index: 2000;
-    min-width: 150px;
-    padding: 4px 0;
-}
-
-.context-menu-item {
-    padding: 6px 16px;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background-color 0.1s;
-}
-
-.context-menu-item:hover {
-    background-color: var(--vscode-menu-selectionBackground);
-    color: var(--vscode-menu-selectionForeground);
-}
+/* Context menu styles are now in shared-context-menu.css */
 
 /* ==============================
  * Markdown Content Styling
