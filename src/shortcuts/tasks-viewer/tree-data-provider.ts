@@ -6,11 +6,12 @@ import { TaskItem } from './task-item';
 import { TaskGroupItem } from './task-group-item';
 import { TaskDocumentGroupItem } from './task-document-group-item';
 import { TaskDocumentItem } from './task-document-item';
-import { Task, TaskDocument, TaskDocumentGroup } from './types';
+import { TaskFolderItem } from './task-folder-item';
+import { Task, TaskDocument, TaskDocumentGroup, TaskFolder } from './types';
 
 /**
  * Tree data provider for the Tasks Viewer
- * Displays task markdown files from the configured tasks folder
+ * Displays task markdown files from the configured tasks folder with hierarchical folder support
  * Groups tasks into Active/Archived sections when Show Archived is enabled
  */
 export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.TreeItem> {
@@ -19,6 +20,7 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
     private cachedDocumentGroups: TaskDocumentGroup[] = [];
     private cachedSingleDocuments: TaskDocument[] = [];
     private documentsByArchiveStatus: Map<'active' | 'archived', { groups: TaskDocumentGroup[]; singles: TaskDocument[] }> = new Map();
+    private cachedFolderHierarchy?: TaskFolder;
 
     constructor(private taskManager: TaskManager) {
         super();
@@ -44,6 +46,9 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
         } else if (element instanceof TaskDocumentGroupItem) {
             // Return documents within this document group
             return this.getDocumentGroupChildren(element);
+        } else if (element instanceof TaskFolderItem) {
+            // Return children of this folder (subfolders and tasks)
+            return this.getFolderChildren(element.folder);
         } else {
             // Tasks and documents have no children
             return [];
@@ -116,38 +121,79 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
      */
     private async getRootItemsWithDocumentGroups(): Promise<vscode.TreeItem[]> {
         const settings = this.taskManager.getSettings();
-        let { groups, singles } = await this.taskManager.getTaskDocumentGroups();
+        
+        // Build folder hierarchy
+        const rootFolder = await this.taskManager.getTaskFolderHierarchy();
+        this.cachedFolderHierarchy = rootFolder;
 
         // Apply filter
-        if (this.hasFilter) {
-            const filter = this.getFilter();
-            groups = groups.filter(group =>
-                group.baseName.toLowerCase().includes(filter) ||
-                group.documents.some(doc => 
-                    (doc.docType?.toLowerCase().includes(filter)) ||
-                    doc.fileName.toLowerCase().includes(filter)
-                )
-            );
-            singles = singles.filter(doc =>
-                doc.baseName.toLowerCase().includes(filter) ||
-                (doc.docType?.toLowerCase().includes(filter)) ||
-                doc.fileName.toLowerCase().includes(filter)
-            );
-        }
-
-        // Cache for children access
-        this.cachedDocumentGroups = groups;
-        this.cachedSingleDocuments = singles;
-
-        // When showArchived is enabled, use active/archived grouping
+        // TODO: Implement hierarchical filtering if needed
+        
+        // When showArchived is enabled, use active/archived grouping at root
         if (settings.showArchived) {
-            return this.getGroupedDocumentRootItems(groups, singles);
+            // Split hierarchy into active and archived
+            const { activeFolder, archivedFolder } = this.splitFolderByArchiveStatus(rootFolder);
+            
+            const activeCount = this.countFolderItems(activeFolder);
+            const archivedCount = this.countFolderItems(archivedFolder);
+            
+            // Store for getGroupTasks
+            this.cachedFolderHierarchy = rootFolder;
+            
+            return [
+                new TaskGroupItem('active', activeCount),
+                new TaskGroupItem('archived', archivedCount)
+            ];
         }
 
-        // Flat list - only active items
-        const activeGroups = groups.filter(g => !g.isArchived);
-        const activeSingles = singles.filter(s => !s.isArchived);
-        return this.getFlatDocumentItems(activeGroups, activeSingles);
+        // Flat hierarchical view (show all folders/items at root)
+        return this.getFolderChildren(rootFolder);
+    }
+
+    /**
+     * Split a folder hierarchy into active and archived portions
+     */
+    private splitFolderByArchiveStatus(folder: TaskFolder): { activeFolder: TaskFolder; archivedFolder: TaskFolder } {
+        const activeFolder: TaskFolder = {
+            ...folder,
+            children: [],
+            documentGroups: folder.documentGroups.filter(g => !g.isArchived),
+            singleDocuments: folder.singleDocuments.filter(d => !d.isArchived),
+            tasks: folder.tasks.filter(t => !t.isArchived)
+        };
+
+        const archivedFolder: TaskFolder = {
+            ...folder,
+            children: [],
+            documentGroups: folder.documentGroups.filter(g => g.isArchived),
+            singleDocuments: folder.singleDocuments.filter(d => d.isArchived),
+            tasks: folder.tasks.filter(t => t.isArchived)
+        };
+
+        // Recursively split child folders
+        for (const child of folder.children) {
+            const { activeFolder: activeChild, archivedFolder: archivedChild } = this.splitFolderByArchiveStatus(child);
+            
+            if (this.countFolderItems(activeChild) > 0) {
+                activeFolder.children.push(activeChild);
+            }
+            if (this.countFolderItems(archivedChild) > 0) {
+                archivedFolder.children.push(archivedChild);
+            }
+        }
+
+        return { activeFolder, archivedFolder };
+    }
+
+    /**
+     * Count total items in a folder (recursively)
+     */
+    private countFolderItems(folder: TaskFolder): number {
+        let count = folder.documentGroups.length + folder.singleDocuments.length + folder.tasks.length;
+        for (const child of folder.children) {
+            count += this.countFolderItems(child);
+        }
+        return count;
     }
 
     /**
@@ -262,6 +308,49 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
     }
 
     /**
+     * Get children of a folder (subfolders, document groups, and single documents)
+     */
+    private getFolderChildren(folder: TaskFolder): vscode.TreeItem[] {
+        const items: vscode.TreeItem[] = [];
+        const settings = this.taskManager.getSettings();
+
+        // Add subfolders
+        const sortedFolders = [...folder.children].sort((a, b) => {
+            if (settings.sortBy === 'name') {
+                return a.name.localeCompare(b.name);
+            } else {
+                // For folders, we could use latest modified time of contents
+                // For simplicity, sort by name when using modifiedDate sort
+                return a.name.localeCompare(b.name);
+            }
+        });
+
+        for (const subfolder of sortedFolders) {
+            items.push(new TaskFolderItem(subfolder));
+        }
+
+        // Add document groups
+        const sortedGroups = this.sortDocumentGroups(folder.documentGroups);
+        for (const group of sortedGroups) {
+            items.push(new TaskDocumentGroupItem(group.baseName, group.documents, group.isArchived));
+        }
+
+        // Add single documents
+        const sortedDocs = this.sortDocuments(folder.singleDocuments);
+        for (const doc of sortedDocs) {
+            items.push(new TaskItem({
+                name: doc.fileName.replace(/\.md$/i, ''),
+                filePath: doc.filePath,
+                modifiedTime: doc.modifiedTime,
+                isArchived: doc.isArchived,
+                relativePath: doc.relativePath
+            }));
+        }
+
+        return items;
+    }
+
+    /**
      * Sort document groups
      */
     private sortDocumentGroups(groups: TaskDocumentGroup[]): TaskDocumentGroup[] {
@@ -326,7 +415,14 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
     private getGroupTasks(groupType: 'active' | 'archived'): vscode.TreeItem[] {
         const settings = this.taskManager.getSettings();
 
-        // If document grouping is enabled, use the cached document data
+        // If document grouping is enabled and we have cached hierarchy
+        if (settings.groupRelatedDocuments && this.cachedFolderHierarchy) {
+            const { activeFolder, archivedFolder } = this.splitFolderByArchiveStatus(this.cachedFolderHierarchy);
+            const folder = groupType === 'active' ? activeFolder : archivedFolder;
+            return this.getFolderChildren(folder);
+        }
+
+        // Legacy behavior - document grouping without hierarchy
         if (settings.groupRelatedDocuments) {
             const cached = this.documentsByArchiveStatus.get(groupType);
             if (cached) {
@@ -335,7 +431,7 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
             return [];
         }
 
-        // Legacy behavior
+        // Legacy behavior - flat task list
         const tasks = this.tasksByGroup.get(groupType) || [];
         return tasks.map(task => new TaskItem(task));
     }

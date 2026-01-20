@@ -33,6 +33,7 @@ This is the "Markdown Review & Workspace Shortcuts" VSCode extension that provid
 3. **Code Review Against Rules** - Review commits against custom coding standards
 4. **Shortcut Groups** - Custom organization of files and folders into thematic groups
 5. **Global Notes** - Quick-access notes available from any workspace
+6. **Tasks Viewer** - Hierarchical task management with support for nested directories and document grouping
 
 ## Development Commands
 
@@ -198,6 +199,69 @@ Review commits or pending changes against custom coding rules.
 **Settings:**
 - `workspaceShortcuts.codeReview.rulesFolder` - Path to rules folder
 - `workspaceShortcuts.codeReview.rulesPattern` - Glob pattern for rule files
+
+## YAML Pipeline Framework
+
+Define and execute AI-powered data processing pipelines via YAML configuration.
+
+## Tasks Viewer (With Nested Directory Support)
+
+The Tasks Viewer provides hierarchical task management with support for nested directories and document grouping.
+
+**Directory Structure Support:**
+```
+.vscode/tasks/
+├── root-task.md                           # Root-level task
+├── feature1/                              # Feature folder
+│   ├── task1.plan.md                      # Grouped documents
+│   ├── task1.spec.md                      # (task1.plan + task1.spec)
+│   ├── task2.md                           # Single document
+│   └── backlog1/                          # Nested subfolder
+│       ├── task3.plan.md
+│       └── task3.test.md
+├── feature2/
+│   └── backlog2/
+│       ├── task4.md
+│       └── task5.md
+└── archive/                               # Archive folder
+    ├── archived-task.md
+    └── feature1/
+        └── old-task.md
+```
+
+**Key Features:**
+
+1. **Recursive Directory Scanning** - Automatically discovers tasks in nested subdirectories at any depth
+2. **Hierarchical Display** - Shows folders as expandable tree items with tasks nested inside
+3. **Document Grouping** - Groups related documents (e.g., `task1.plan.md`, `task1.spec.md`) under a single parent
+4. **Cross-Platform Support** - Works correctly on Linux, macOS, and Windows with proper path handling
+5. **Archive Support** - Maintains nested structure in archive folder
+6. **Smart Grouping** - Only groups documents in the same directory (different directories keep tasks separate)
+
+**Architecture:**
+
+- `TaskManager` - Handles recursive directory scanning with `scanTasksRecursively()` and `scanDocumentsRecursively()`
+- `TaskFolder` type - Represents hierarchical folder structure with children, documentGroups, and singleDocuments
+- `TaskFolderItem` - Tree item for displaying folders in the tree view
+- `relativePath` property - Tracks file location relative to tasks root (e.g., `feature1/backlog1`)
+- File watchers use glob pattern `**/*.md` for recursive monitoring
+
+**Settings:**
+- `workspaceShortcuts.tasksViewer.enabled` - Enable/disable tasks viewer
+- `workspaceShortcuts.tasksViewer.folderPath` - Path to tasks folder (default: `.vscode/tasks`)
+- `workspaceShortcuts.tasksViewer.showArchived` - Show/hide archived tasks
+- `workspaceShortcuts.tasksViewer.sortBy` - Sort by name or modified date
+- `workspaceShortcuts.tasksViewer.groupRelatedDocuments` - Enable document grouping (default: true)
+
+**Document Grouping Logic:**
+- Files like `task1.plan.md`, `task1.spec.md`, `task1.test.md` in the same directory are grouped under "task1"
+- Documents in different directories remain separate even with the same base name
+- Common doc type suffixes: plan, spec, test, notes, todo, design, impl, review, checklist, requirements, analysis
+
+**Testing:**
+- 23 comprehensive tests covering nested directories (`tasks-nested-directories.test.ts`)
+- Tests include: single/multi-level nesting, cross-platform paths, document grouping, hierarchy construction, tree display
+- All tests pass on macOS, Linux, and Windows (via cross-platform path handling)
 
 ## YAML Pipeline Framework
 

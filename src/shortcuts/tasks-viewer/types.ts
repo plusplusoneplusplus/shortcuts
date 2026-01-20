@@ -10,6 +10,8 @@ export interface Task {
     modifiedTime: Date;
     /** Whether task is in archive folder */
     isArchived: boolean;
+    /** Relative path from tasks root folder (undefined for root-level files) */
+    relativePath?: string;
 }
 
 /**
@@ -29,6 +31,8 @@ export interface TaskDocument {
     modifiedTime: Date;
     /** Whether document is in archive folder */
     isArchived: boolean;
+    /** Relative path from tasks root folder (undefined for root-level files) */
+    relativePath?: string;
 }
 
 /**
@@ -48,6 +52,28 @@ export interface TaskDocumentGroup {
 
 /** Sort options for tasks */
 export type TaskSortBy = 'name' | 'modifiedDate';
+
+/**
+ * Represents a folder containing task files
+ */
+export interface TaskFolder {
+    /** Folder name */
+    name: string;
+    /** Absolute path to the folder */
+    folderPath: string;
+    /** Relative path from tasks root folder */
+    relativePath: string;
+    /** Whether folder is in archive */
+    isArchived: boolean;
+    /** Child folders */
+    children: TaskFolder[];
+    /** Task files directly in this folder */
+    tasks: Task[];
+    /** Task document groups in this folder */
+    documentGroups: TaskDocumentGroup[];
+    /** Single task documents in this folder (not grouped) */
+    singleDocuments: TaskDocument[];
+}
 
 /** Settings for the Tasks Viewer feature */
 export interface TasksViewerSettings {
