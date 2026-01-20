@@ -14,7 +14,7 @@ import {
 import { applyMarkdownHighlighting, applySourceModeHighlighting, escapeHtml } from '../webview-logic/markdown-renderer';
 import { applyCommentHighlightToRange, getHighlightColumnsForLine } from '../webview-logic/selection-utils';
 import { parseCodeBlocks, renderCodeBlock, setupCodeBlockHandlers } from './code-block-handlers';
-import { setupCommentInteractions } from './dom-handlers';
+import { setupCommentInteractions, setupToolbarInteractions } from './dom-handlers';
 import { resolveImagePaths, setupImageHandlers } from './image-handlers';
 import { renderMermaidContainer, renderMermaidDiagrams } from './mermaid-handlers';
 import { state } from './state';
@@ -664,6 +664,9 @@ export function render(isExternalChange: boolean = false): void {
 
     // Setup click handlers for commented text and gutter icons
     setupCommentInteractions();
+
+    // Re-attach toolbar button listeners (Resolve All, Delete All)
+    setupToolbarInteractions();
 
     // Setup code block handlers
     setupCodeBlockHandlers();

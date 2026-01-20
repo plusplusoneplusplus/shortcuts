@@ -1962,6 +1962,32 @@ function getPlainTextContent(): string {
 }
 
 /**
+ * Setup toolbar event listeners (called after render to re-attach)
+ */
+export function setupToolbarInteractions(): void {
+    // Use optional chaining to safely add listeners even if elements don't exist
+    const resolveAllBtn = document.getElementById('resolveAllBtn');
+    const deleteAllBtn = document.getElementById('deleteAllBtn');
+    
+    if (resolveAllBtn) {
+        // Remove old listener by cloning the node (this removes all event listeners)
+        const newResolveAllBtn = resolveAllBtn.cloneNode(true);
+        resolveAllBtn.parentNode?.replaceChild(newResolveAllBtn, resolveAllBtn);
+        newResolveAllBtn.addEventListener('click', () => {
+            requestResolveAll();
+        });
+    }
+    
+    if (deleteAllBtn) {
+        const newDeleteAllBtn = deleteAllBtn.cloneNode(true);
+        deleteAllBtn.parentNode?.replaceChild(newDeleteAllBtn, deleteAllBtn);
+        newDeleteAllBtn.addEventListener('click', () => {
+            requestDeleteAll();
+        });
+    }
+}
+
+/**
  * Setup comment interaction handlers (called after render)
  */
 export function setupCommentInteractions(): void {
