@@ -136,14 +136,14 @@ export function initPanelElements(): void {
     commentsListBody = document.getElementById('comments-list-body');
     closeCommentsListButton = document.getElementById('close-comments-list') as HTMLButtonElement;
 
-    // Initialize shared context menu manager (simpler config for diff editor)
+    // Initialize shared context menu manager (same rich style as markdown editor)
     contextMenuManager = new ContextMenuManager(
         {
             enableClipboardItems: false,
-            enablePreviewTooltips: false,
-            minWidth: 150,
-            borderRadius: 4,
-            richMenuItems: false
+            enablePreviewTooltips: true,
+            minWidth: 220,
+            borderRadius: 8,
+            richMenuItems: true
         },
         {
             onAddComment: () => {

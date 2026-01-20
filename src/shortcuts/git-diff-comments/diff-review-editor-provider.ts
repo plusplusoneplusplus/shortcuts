@@ -1131,47 +1131,55 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     </div>
 
     <!-- Context Menu (hidden by default) -->
-    <div id="custom-context-menu" class="context-menu hidden">
-        <div class="context-menu-item" id="context-menu-add-comment">Add Comment</div>
-        <div class="context-menu-item has-submenu" id="context-menu-predefined">
-            Add Predefined Comment
-            <div class="predefined-submenu" id="predefined-submenu">
+    <div id="contextMenu" class="context-menu hidden">
+        <div class="context-menu-item" id="contextMenuAddComment">
+            <span class="context-menu-icon">💬</span>
+            <span class="context-menu-label">Add Comment</span>
+        </div>
+        <div class="context-menu-item context-menu-parent" id="contextMenuPredefined">
+            <span class="context-menu-icon">📋</span>
+            <span class="context-menu-label">Add Predefined Comment</span>
+            <span class="context-menu-arrow">▶</span>
+            <div class="context-submenu" id="predefinedSubmenu">
                 <!-- Dynamically populated from settings -->
             </div>
         </div>
-        <div class="context-menu-separator" id="ask-ai-separator"></div>
-        <div class="context-menu-item has-submenu" id="context-menu-ask-ai-comment">
-            Ask AI to Comment
-            <div class="ask-ai-submenu" id="ask-ai-comment-submenu">
+        <div class="context-menu-separator" id="askAISeparator"></div>
+        <div class="context-menu-item context-menu-parent" id="contextMenuAskAIComment">
+            <span class="context-menu-icon">💬</span>
+            <span class="context-menu-label">Ask AI to Comment</span>
+            <span class="context-menu-arrow">▶</span>
+            <div class="context-submenu" id="askAICommentSubmenu">
                 <!-- Dynamically populated from settings -->
             </div>
         </div>
-        <div class="context-menu-item has-submenu" id="context-menu-ask-ai-interactive">
-            Ask AI Interactively
-            <div class="ask-ai-submenu" id="ask-ai-interactive-submenu">
+        <div class="context-menu-item context-menu-parent" id="contextMenuAskAIInteractive">
+            <span class="context-menu-icon">🤖</span>
+            <span class="context-menu-label">Ask AI Interactively</span>
+            <span class="context-menu-arrow">▶</span>
+            <div class="context-submenu" id="askAIInteractiveSubmenu">
                 <!-- Dynamically populated from settings -->
             </div>
         </div>
     </div>
 
+    <!-- Hover preview tooltip for predefined comments -->
+    <div class="predefined-comment-preview" id="predefinedPreview" style="display: none;">
+        <div class="preview-header">Preview</div>
+        <div class="preview-content"></div>
+    </div>
+
     <!-- Custom Instruction Dialog (hidden by default) -->
-    <div id="custom-instruction-dialog" class="custom-instruction-dialog hidden">
+    <div id="customInstructionDialog" class="custom-instruction-dialog" style="display: none;">
         <div class="custom-instruction-header">
-            <h3>Custom AI Instruction</h3>
-            <button class="custom-instruction-close" id="custom-instruction-close">&times;</button>
+            <span class="custom-instruction-title">🤖 Custom AI Instruction</span>
+            <button class="custom-instruction-close" id="customInstructionClose">×</button>
         </div>
-        <div class="custom-instruction-body">
-            <div class="custom-instruction-selection" id="custom-instruction-selection"></div>
-            <label class="custom-instruction-label">Enter your instruction:</label>
-            <textarea 
-                id="custom-instruction-input" 
-                class="custom-instruction-input" 
-                placeholder="e.g., Explain the security implications of..."
-            ></textarea>
-        </div>
+        <div class="custom-instruction-selection" id="customInstructionSelection"></div>
+        <textarea id="customInstructionInput" placeholder="Enter your instruction for the AI (e.g., 'Explain the security implications')" rows="3"></textarea>
         <div class="custom-instruction-footer">
-            <button class="btn btn-secondary" id="custom-instruction-cancel">Cancel</button>
-            <button class="btn btn-primary" id="custom-instruction-submit">Ask AI</button>
+            <button id="customInstructionCancelBtn" class="btn btn-secondary btn-sm">Cancel</button>
+            <button id="customInstructionSubmitBtn" class="btn btn-primary btn-sm">Ask AI</button>
         </div>
     </div>
 
