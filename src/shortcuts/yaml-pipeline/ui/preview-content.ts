@@ -43,7 +43,9 @@ export type PreviewMessageType =
     | 'updateCell'
     | 'toggleRow'
     | 'toggleAll'
-    | 'runWithItems';
+    | 'runWithItems'
+    // CSV preview messages
+    | 'toggleShowAllRows';
 
 /**
  * Message types from extension to webview
@@ -78,6 +80,8 @@ export interface PreviewMessage {
         value?: string;
         selected?: boolean;
         items?: PromptItem[];
+        // CSV preview payloads
+        showAllRows?: boolean;
     };
 }
 
@@ -95,10 +99,14 @@ export interface PipelinePreviewData {
     csvInfo?: CSVParseResult;
     /** Preview of first few CSV rows */
     csvPreview?: PromptItem[];
+    /** All CSV items (for "show all rows" feature) */
+    csvAllItems?: PromptItem[];
     /** Generate state (for pipelines with input.generate) */
     generateState?: GenerateState;
     /** Generated items with selection state */
     generatedItems?: GeneratedItem[];
+    /** Whether to show all rows in CSV preview (default: false) */
+    showAllRows?: boolean;
 }
 
 /**
@@ -141,7 +149,7 @@ export function getPreviewContent(
  * Generate content when pipeline data is available
  */
 function getContentWithData(data: PipelinePreviewData, isDark: boolean): string {
-    const { config, info, validation, csvInfo, csvPreview, generateState, generatedItems } = data;
+    const { config, info, validation, csvInfo, csvPreview, generateState, generatedItems, csvAllItems, showAllRows } = data;
 
     // Check if this is a generate pipeline
     const hasGenerateConfig = isGenerateConfig(config.input?.generate);
@@ -158,7 +166,7 @@ function getContentWithData(data: PipelinePreviewData, isDark: boolean): string 
         ${getToolbar(info, validation, hasGenerateConfig, generateState)}
         ${getHeader(info, validation)}
         ${getDiagramSection(mermaidDiagram)}
-        ${getDetailsPanel(config, csvInfo, csvPreview, info, generateState, generatedItems)}
+        ${getDetailsPanel(config, csvInfo, csvPreview, info, generateState, generatedItems, csvAllItems, showAllRows)}
     `;
 }
 
@@ -332,7 +340,9 @@ function getDetailsPanel(
     csvPreview?: PromptItem[],
     info?: PipelineInfo,
     generateState?: GenerateState,
-    generatedItems?: GeneratedItem[]
+    generatedItems?: GeneratedItem[],
+    csvAllItems?: PromptItem[],
+    showAllRows?: boolean
 ): string {
     // Determine initial details content based on generate state
     let initialContent: string;
@@ -353,7 +363,7 @@ function getDetailsPanel(
                 initialContent = getGenerateConfigDetails(config);
         }
     } else {
-        initialContent = getInputDetails(config, csvInfo, csvPreview, true);
+        initialContent = getInputDetails(config, csvInfo, csvPreview, true, csvAllItems, showAllRows);
     }
 
     return `
@@ -372,6 +382,8 @@ function getDetailsPanel(
                     rowCount: csvInfo.rowCount
                 } : null,
                 csvPreview,
+                csvAllItems: csvAllItems || null,
+                showAllRows: showAllRows || false,
                 resources: info?.resourceFiles || [],
                 hasGenerateConfig,
                 generateState: generateState || null,
@@ -533,7 +545,9 @@ export function getInputDetails(
     config: PipelineConfig,
     csvInfo?: CSVParseResult,
     csvPreview?: PromptItem[],
-    initial: boolean = false
+    initial: boolean = false,
+    csvAllItems?: PromptItem[],
+    showAllRows?: boolean
 ): string {
     const headers = csvInfo?.headers || [];
     const rowCount = csvInfo?.rowCount || 0;
@@ -591,19 +605,52 @@ export function getInputDetails(
                 </div>
                 ` : ''}
             </div>
-            ${csvPreview && csvPreview.length > 0 ? getCSVPreviewTable(headers, csvPreview) : ''}
+            ${csvPreview && csvPreview.length > 0 ? getCSVPreviewTable(headers, csvPreview, rowCount, csvAllItems, showAllRows) : ''}
         </div>
     `;
 }
 
 /**
- * Generate CSV preview table
+ * Generate CSV preview table with optional "show all rows" functionality
+ * @param headers CSV column headers
+ * @param preview Preview items (first N rows)
+ * @param totalRowCount Total number of rows in the CSV
+ * @param allItems All items (used when showAllRows is true)
+ * @param showAllRows Whether to show all rows or just preview
  */
-function getCSVPreviewTable(headers: string[], preview: PromptItem[]): string {
+function getCSVPreviewTable(
+    headers: string[],
+    preview: PromptItem[],
+    totalRowCount?: number,
+    allItems?: PromptItem[],
+    showAllRows?: boolean
+): string {
+    const displayItems = showAllRows && allItems ? allItems : preview;
+    const previewCount = preview.length;
+    const hasMoreRows = totalRowCount !== undefined && totalRowCount > previewCount;
+    
+    // Title text varies based on whether we're showing all rows
+    const titleText = showAllRows 
+        ? `📊 All ${totalRowCount} rows`
+        : `📊 Preview (first ${previewCount} rows)`;
+    
+    // Show "Show All" button only if there are more rows and not already showing all
+    const showAllButton = hasMoreRows && !showAllRows
+        ? `<button class="btn btn-secondary btn-show-all" id="showAllRowsBtn" title="Show all ${totalRowCount} rows">Show All (${totalRowCount})</button>`
+        : '';
+    
+    // Show "Collapse" button when showing all rows
+    const collapseButton = showAllRows && hasMoreRows
+        ? `<button class="btn btn-secondary btn-show-all" id="collapseRowsBtn" title="Show preview only">Collapse</button>`
+        : '';
+
     return `
         <div class="csv-preview">
-            <h5 class="preview-title">📊 Preview (first ${preview.length} rows)</h5>
-            <div class="table-container">
+            <div class="preview-header">
+                <h5 class="preview-title">${titleText}</h5>
+                ${showAllButton}${collapseButton}
+            </div>
+            <div class="table-container${showAllRows ? ' table-container-expanded' : ''}">
                 <table class="preview-table">
                     <thead>
                         <tr>
@@ -611,7 +658,7 @@ function getCSVPreviewTable(headers: string[], preview: PromptItem[]): string {
                         </tr>
                     </thead>
                     <tbody>
-                        ${preview.map(row => `
+                        ${displayItems.map(row => `
                             <tr>
                                 ${headers.map(h => `<td>${escapeHtml(String(row[h] || ''))}</td>`).join('')}
                             </tr>
@@ -1038,15 +1085,32 @@ function getStyles(isDark: boolean): string {
             margin-top: 16px;
         }
 
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
         .preview-title {
             font-size: 12px;
             font-weight: 600;
-            margin: 0 0 8px 0;
+            margin: 0;
+        }
+
+        .btn-show-all {
+            padding: 4px 10px;
+            font-size: 11px;
         }
 
         .table-container {
             overflow-x: auto;
             max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .table-container-expanded {
+            max-height: 500px;
         }
 
         .preview-table {
@@ -1067,6 +1131,7 @@ function getStyles(isDark: boolean): string {
             font-weight: 600;
             position: sticky;
             top: 0;
+            z-index: 1;
         }
 
         .preview-table td {
@@ -1393,6 +1458,8 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             const config = pipelineData.config;
             const csvInfo = pipelineData.csvInfo;
             const csvPreview = pipelineData.csvPreview;
+            const csvAllItems = pipelineData.csvAllItems;
+            const showAllRows = pipelineData.showAllRows;
             const resources = pipelineData.resources || [];
             const generateState = pipelineData.generateState;
             const generatedItems = pipelineData.generatedItems;
@@ -1405,7 +1472,7 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
                 if (config.input && config.input.generate) {
                     html = generateGenerateInputDetails(config, generateState, generatedItems);
                 } else {
-                    html = generateInputDetails(config, csvInfo, csvPreview);
+                    html = generateInputDetails(config, csvInfo, csvPreview, csvAllItems, showAllRows);
                 }
             } else if (nodeId === 'MAP') {
                 html = generateMapDetails(config, csvInfo?.headers);
@@ -1428,6 +1495,8 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
                 attachFileClickHandlers();
                 // Re-attach review table handlers if we rendered the review table
                 attachReviewTableHandlers();
+                // Re-attach show all rows handlers
+                attachShowAllRowsHandlers();
             }
             
             // Notify extension
@@ -1438,7 +1507,7 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
         };
 
         // Generate details HTML functions
-        function generateInputDetails(config, csvInfo, csvPreview) {
+        function generateInputDetails(config, csvInfo, csvPreview, csvAllItems, showAllRows) {
             const headers = csvInfo?.headers || [];
             const rowCount = csvInfo?.rowCount || 0;
             
@@ -1456,7 +1525,7 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             html += '</div>';
             
             if (csvPreview && csvPreview.length > 0) {
-                html += generateCSVPreviewTable(headers, csvPreview);
+                html += generateCSVPreviewTable(headers, csvPreview, rowCount, csvAllItems, showAllRows);
             }
             
             html += '</div>';
@@ -1676,14 +1745,33 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             return html;
         }
 
-        function generateCSVPreviewTable(headers, preview) {
+        function generateCSVPreviewTable(headers, preview, totalRowCount, allItems, showAllRows) {
+            const displayItems = showAllRows && allItems ? allItems : preview;
+            const previewCount = preview.length;
+            const hasMoreRows = totalRowCount !== undefined && totalRowCount > previewCount;
+            
+            const titleText = showAllRows 
+                ? '📊 All ' + totalRowCount + ' rows'
+                : '📊 Preview (first ' + previewCount + ' rows)';
+            
+            const showAllButton = hasMoreRows && !showAllRows
+                ? '<button class="btn btn-secondary btn-show-all" id="showAllRowsBtn" title="Show all ' + totalRowCount + ' rows">Show All (' + totalRowCount + ')</button>'
+                : '';
+            
+            const collapseButton = showAllRows && hasMoreRows
+                ? '<button class="btn btn-secondary btn-show-all" id="collapseRowsBtn" title="Show preview only">Collapse</button>'
+                : '';
+            
             let html = '<div class="csv-preview">';
-            html += '<h5 class="preview-title">📊 Preview (first ' + preview.length + ' rows)</h5>';
-            html += '<div class="table-container"><table class="preview-table">';
+            html += '<div class="preview-header">';
+            html += '<h5 class="preview-title">' + titleText + '</h5>';
+            html += showAllButton + collapseButton;
+            html += '</div>';
+            html += '<div class="table-container' + (showAllRows ? ' table-container-expanded' : '') + '"><table class="preview-table">';
             html += '<thead><tr>';
             headers.forEach(h => { html += '<th>' + escapeHtml(h) + '</th>'; });
             html += '</tr></thead><tbody>';
-            preview.forEach(row => {
+            displayItems.forEach(row => {
                 html += '<tr>';
                 headers.forEach(h => { html += '<td>' + escapeHtml(String(row[h] || '')) + '</td>'; });
                 html += '</tr>';
@@ -1894,12 +1982,42 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
                     pipelineData.generateState = message.payload?.generateState || null;
                     pipelineData.generatedItems = message.payload?.generatedItems || null;
                 }
+            } else if (message.type === 'updateShowAllRows') {
+                // Update showAllRows state and re-render input details
+                if (pipelineData) {
+                    pipelineData.showAllRows = message.payload?.showAllRows || false;
+                    // Re-render the details content to reflect the new state
+                    const detailsContent = document.getElementById('detailsContent');
+                    if (detailsContent) {
+                        const config = pipelineData.config;
+                        const csvInfo = pipelineData.csvInfo;
+                        const csvPreview = pipelineData.csvPreview;
+                        const csvAllItems = pipelineData.csvAllItems;
+                        const showAllRows = pipelineData.showAllRows;
+                        const html = generateInputDetails(config, csvInfo, csvPreview, csvAllItems, showAllRows);
+                        detailsContent.innerHTML = html;
+                        attachFileClickHandlers();
+                        attachShowAllRowsHandlers();
+                    }
+                }
             }
         });
+
+        // Attach handlers for show all rows / collapse buttons
+        function attachShowAllRowsHandlers() {
+            document.getElementById('showAllRowsBtn')?.addEventListener('click', () => {
+                vscode.postMessage({ type: 'toggleShowAllRows', payload: { showAllRows: true } });
+            });
+
+            document.getElementById('collapseRowsBtn')?.addEventListener('click', () => {
+                vscode.postMessage({ type: 'toggleShowAllRows', payload: { showAllRows: false } });
+            });
+        }
 
         // Initial setup
         attachFileClickHandlers();
         attachReviewTableHandlers();
+        attachShowAllRowsHandlers();
         
         // Notify extension that webview is ready
         vscode.postMessage({ type: 'ready' });

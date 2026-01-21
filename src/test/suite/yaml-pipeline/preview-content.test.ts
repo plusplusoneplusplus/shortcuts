@@ -379,6 +379,121 @@ suite('Pipeline Preview Content Tests', () => {
         });
     });
 
+    suite('Show All Rows Feature', () => {
+        // Sample CSV with more rows than preview
+        const largeCsvInfo: CSVParseResult = {
+            items: Array.from({ length: 20 }, (_, i) => ({
+                title: `Item ${i + 1}`,
+                description: `Description ${i + 1}`
+            })),
+            headers: ['title', 'description'],
+            rowCount: 20
+        };
+
+        const largePreview = largeCsvInfo.items.slice(0, 5);
+        const allItems = largeCsvInfo.items;
+
+        test('should show "Show All" button when there are more rows than preview', () => {
+            const result = getInputDetails(sampleConfig, largeCsvInfo, largePreview, false, allItems, false);
+            
+            assert.ok(result.includes('showAllRowsBtn'), 'Should have showAllRowsBtn id');
+            assert.ok(result.includes('Show All'), 'Should have "Show All" text');
+            assert.ok(result.includes('(20)'), 'Should show total row count');
+            assert.ok(result.includes('first 5 rows'), 'Should indicate preview count');
+        });
+
+        test('should not show "Show All" button when preview equals total rows', () => {
+            const smallCsvInfo: CSVParseResult = {
+                items: [
+                    { title: 'Item 1', description: 'Desc 1' },
+                    { title: 'Item 2', description: 'Desc 2' }
+                ],
+                headers: ['title', 'description'],
+                rowCount: 2
+            };
+            const smallPreview = smallCsvInfo.items;
+            
+            const result = getInputDetails(sampleConfig, smallCsvInfo, smallPreview, false, smallPreview, false);
+            
+            assert.ok(!result.includes('showAllRowsBtn'), 'Should not have showAllRowsBtn when all rows shown');
+            assert.ok(!result.includes('collapseRowsBtn'), 'Should not have collapseRowsBtn when all rows shown');
+        });
+
+        test('should show "Collapse" button when showAllRows is true', () => {
+            const result = getInputDetails(sampleConfig, largeCsvInfo, largePreview, false, allItems, true);
+            
+            assert.ok(result.includes('collapseRowsBtn'), 'Should have collapseRowsBtn id');
+            assert.ok(result.includes('Collapse'), 'Should have "Collapse" text');
+            assert.ok(!result.includes('showAllRowsBtn'), 'Should not have showAllRowsBtn when showing all');
+        });
+
+        test('should show all rows when showAllRows is true', () => {
+            const result = getInputDetails(sampleConfig, largeCsvInfo, largePreview, false, allItems, true);
+            
+            // Should contain all 20 items
+            assert.ok(result.includes('Item 1'), 'Should have first item');
+            assert.ok(result.includes('Item 20'), 'Should have last item');
+            assert.ok(result.includes('All 20 rows'), 'Should indicate showing all rows');
+        });
+
+        test('should only show preview when showAllRows is false', () => {
+            const result = getInputDetails(sampleConfig, largeCsvInfo, largePreview, false, allItems, false);
+            
+            // Should contain first 5 items
+            assert.ok(result.includes('Item 1'), 'Should have first item');
+            assert.ok(result.includes('Item 5'), 'Should have 5th item');
+            // Should not contain items beyond preview
+            assert.ok(!result.includes('Item 6'), 'Should not have 6th item');
+            assert.ok(!result.includes('Item 20'), 'Should not have 20th item');
+        });
+
+        test('should add expanded class when showAllRows is true', () => {
+            const result = getInputDetails(sampleConfig, largeCsvInfo, largePreview, false, allItems, true);
+            
+            assert.ok(result.includes('table-container-expanded'), 'Should have expanded class');
+        });
+
+        test('should not add expanded class when showAllRows is false', () => {
+            const result = getInputDetails(sampleConfig, largeCsvInfo, largePreview, false, allItems, false);
+            
+            // The class should appear exactly once as "table-container" without "-expanded"
+            const containerWithExpanded = result.includes('table-container-expanded');
+            assert.ok(!containerWithExpanded, 'Should not have expanded class when showAllRows is false');
+        });
+
+        test('should handle undefined allItems gracefully', () => {
+            const result = getInputDetails(sampleConfig, largeCsvInfo, largePreview, false, undefined, true);
+            
+            // Should fall back to preview even when showAllRows is true
+            assert.ok(result.includes('Item 1'), 'Should have first item from preview');
+            // Should only show preview items since allItems is undefined
+            assert.ok(!result.includes('Item 20'), 'Should not have items beyond preview');
+        });
+
+        test('should handle empty preview array', () => {
+            const result = getInputDetails(sampleConfig, sampleCsvInfo, []);
+            
+            // Should not crash and should not show table
+            assert.ok(!result.includes('showAllRowsBtn'), 'Should not show button for empty preview');
+        });
+
+        test('should escape HTML in row data when showing all rows', () => {
+            const xssCsvInfo: CSVParseResult = {
+                items: [
+                    { title: '<script>alert(1)</script>', description: 'Normal' },
+                    { title: 'Item 2', description: '<img onerror="hack">' }
+                ],
+                headers: ['title', 'description'],
+                rowCount: 2
+            };
+            
+            const result = getInputDetails(sampleConfig, xssCsvInfo, xssCsvInfo.items, false, xssCsvInfo.items, true);
+            
+            assert.ok(result.includes('&lt;script&gt;'), 'Should escape script tags');
+            assert.ok(!result.includes('<script>'), 'Should not have unescaped script');
+        });
+    });
+
     suite('Edge Cases', () => {
         test('should handle empty CSV preview', () => {
             const result = getInputDetails(sampleConfig, sampleCsvInfo, []);

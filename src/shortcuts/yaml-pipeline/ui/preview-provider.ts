@@ -55,6 +55,8 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
     private webviewPanels = new Map<string, vscode.WebviewPanel>();
     /** Track message routers per document for cleanup */
     private messageRouters = new Map<string, WebviewMessageRouter<PreviewMessage>>();
+    /** Track showAllRows state per document */
+    private showAllRowsStates = new Map<string, boolean>();
     /** Shared webview setup helper */
     private readonly setupHelper: WebviewSetupHelper;
 
@@ -148,6 +150,7 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             this.generateStates.delete(docKey);
             this.generatedItems.delete(docKey);
             this.messageRouters.delete(docKey);
+            this.showAllRowsStates.delete(docKey);
         });
     }
 
@@ -218,9 +221,35 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             })
             .on('runWithItems', async (message: PreviewMessage) => {
                 await this.handleRunWithItems(document, message.payload?.items || []);
+            })
+            // CSV preview messages
+            .on('toggleShowAllRows', async (message: PreviewMessage) => {
+                await this.handleToggleShowAllRows(document, packagePath, webviewPanel, message.payload?.showAllRows || false);
             });
 
         return router;
+    }
+
+    /**
+     * Handle toggling show all rows for CSV preview
+     */
+    private async handleToggleShowAllRows(
+        document: vscode.TextDocument,
+        packagePath: string,
+        webviewPanel: vscode.WebviewPanel,
+        showAllRows: boolean
+    ): Promise<void> {
+        const docKey = document.uri.toString();
+        this.showAllRowsStates.set(docKey, showAllRows);
+        
+        // Re-render the webview with the updated state
+        await this.updateWebview(webviewPanel.webview, document, packagePath);
+        
+        // Also send state update to keep webview's pipelineData in sync
+        webviewPanel.webview.postMessage({
+            type: 'updateShowAllRows',
+            payload: { showAllRows }
+        });
     }
 
     /**
@@ -314,6 +343,10 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             const docKey = document.uri.toString();
             const generateState = this.generateStates.get(docKey) || { status: 'initial' as const };
             const generatedItems = this.generatedItems.get(docKey);
+            const showAllRows = this.showAllRowsStates.get(docKey) || false;
+
+            // Get all CSV items for "show all rows" feature
+            const csvAllItems = csvInfo?.items;
 
             // Build preview data
             const previewData: PipelinePreviewData = {
@@ -322,6 +355,8 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
                 validation,
                 csvInfo,
                 csvPreview,
+                csvAllItems,
+                showAllRows,
                 generateState: isGenerateConfig(config.input?.generate) ? generateState : undefined,
                 generatedItems: generatedItems
             };
