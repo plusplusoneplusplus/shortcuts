@@ -4,10 +4,21 @@
  * This module contains shared utilities for webview scripts used by:
  * - markdown-comments
  * - git-diff-comments
+ * - yaml-pipeline result viewer
  * 
  * Extracting common code here reduces duplication and ensures
  * consistent behavior across webview features.
+ * 
+ * NOTE: This file is used by BOTH the extension bundle and webview bundles.
+ * Extension-side utilities (that use 'vscode' module) are exported from
+ * a separate file: './extension-webview-utils' to avoid webpack errors
+ * when bundling webview scripts.
  */
+
+// ============================================================================
+// Webview-side utilities (for use in webview scripts bundled by webpack)
+// These are safe to import in browser/webview context
+// ============================================================================
 
 // Base panel manager utilities
 export * from './base-panel-manager';
