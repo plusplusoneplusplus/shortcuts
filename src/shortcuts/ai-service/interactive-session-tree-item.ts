@@ -5,7 +5,7 @@
  */
 
 import * as vscode from 'vscode';
-import { InteractiveSession, InteractiveSessionStatus } from './types';
+import { InteractiveSession, InteractiveSessionStatus, TerminalType } from './types';
 
 /**
  * Tree item representing an interactive CLI session
@@ -35,7 +35,39 @@ export class InteractiveSessionItem extends vscode.TreeItem {
         // Set tooltip with full details
         this.tooltip = this.createTooltip(session);
 
-        // No click command - sessions are external
+        // Add click command to focus the window (Windows only, active sessions with PID)
+        if (this.canFocusWindow(session)) {
+            this.command = {
+                command: 'interactiveSessions.focus',
+                title: 'Focus Session Window',
+                arguments: [this]
+            };
+        }
+    }
+
+    /**
+     * Check if this session's window can be focused
+     * Only supported on Windows with cmd/PowerShell terminals
+     */
+    private canFocusWindow(session: InteractiveSession): boolean {
+        // Only on Windows
+        if (process.platform !== 'win32') {
+            return false;
+        }
+
+        // Must have a PID
+        if (!session.pid) {
+            return false;
+        }
+
+        // Must be active or starting
+        if (session.status !== 'active' && session.status !== 'starting') {
+            return false;
+        }
+
+        // Only cmd and PowerShell support PID-based focusing
+        // Windows Terminal uses a single process for all tabs
+        return session.terminalType === 'cmd' || session.terminalType === 'powershell';
     }
 
     /**

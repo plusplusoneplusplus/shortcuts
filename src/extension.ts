@@ -7,7 +7,8 @@ import {
     AIProcessManager,
     AIProcessTreeDataProvider,
     InteractiveSessionManager,
-    InteractiveSessionItem
+    InteractiveSessionItem,
+    getWindowFocusService
 } from './shortcuts/ai-service';
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
@@ -2119,6 +2120,35 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Register focus session command (Windows only)
+        const focusSessionCommand = vscode.commands.registerCommand(
+            'interactiveSessions.focus',
+            async (item: InteractiveSessionItem) => {
+                if (!item?.session) {
+                    return;
+                }
+
+                const windowFocusService = getWindowFocusService();
+
+                // Check if focusing is supported
+                if (!windowFocusService.isSupported()) {
+                    // Silently ignore on non-Windows platforms
+                    return;
+                }
+
+                const result = await windowFocusService.focusSession(item.session);
+
+                if (!result.success && result.error) {
+                    // Only show error for actual failures, not unsupported cases
+                    if (!result.error.includes('not supported')) {
+                        vscode.window.showWarningMessage(
+                            `Could not focus session window: ${result.error}`
+                        );
+                    }
+                }
+            }
+        );
+
         // Update comments view description with count
         const updateCommentsViewDescription = () => {
             const openCount = commentsManager.getOpenCommentCount();
@@ -2263,6 +2293,7 @@ export async function activate(context: vscode.ExtensionContext) {
             endInteractiveSessionCommand,
             removeInteractiveSessionCommand,
             clearEndedSessionsCommand,
+            focusSessionCommand,
             // Git view disposables
             gitTreeDataProvider,
             gitShowProvider,

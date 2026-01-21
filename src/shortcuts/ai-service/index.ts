@@ -122,3 +122,11 @@ export {
     resetInteractiveSessionManager,
     StartSessionOptions
 } from './interactive-session-manager';
+
+// Export window focus service (Windows-only functionality)
+export {
+    getWindowFocusService,
+    resetWindowFocusService,
+    WindowFocusResult,
+    WindowFocusService
+} from './window-focus-service';
