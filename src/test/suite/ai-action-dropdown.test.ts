@@ -816,5 +816,283 @@ suite('AI Action Dropdown Tests', () => {
             assert.strictEqual(filtered.length, 0);
         });
     });
+
+    suite('Resolve Comments Submenu Structure', () => {
+        // Test the "Resolve Comments" parent menu item with nested submenu structure
+        
+        interface AIActionMenuItem {
+            id: string;
+            label: string;
+            icon: string;
+            hasSubmenu?: boolean;
+            children?: AIActionMenuItem[];
+        }
+
+        /**
+         * Get the AI Action menu structure
+         * This simulates the HTML structure in webview-content.ts
+         */
+        function getAIActionMenuStructure(): AIActionMenuItem[] {
+            return [
+                {
+                    id: 'resolveCommentsItem',
+                    label: 'Resolve Comments',
+                    icon: '✨',
+                    hasSubmenu: true,
+                    children: [
+                        { id: 'sendToNewChatBtn', label: 'Send to New Chat', icon: '💬' },
+                        { id: 'sendToExistingChatBtn', label: 'Send to Existing Chat', icon: '🔄' },
+                        { id: 'sendToCLIInteractiveBtn', label: 'Send to CLI Interactive', icon: '🖥️' },
+                        { id: 'copyPromptBtn', label: 'Copy as Prompt', icon: '📋' }
+                    ]
+                }
+            ];
+        }
+
+        /**
+         * Find a menu item by ID, searching nested children
+         */
+        function findMenuItemById(items: AIActionMenuItem[], id: string): AIActionMenuItem | undefined {
+            for (const item of items) {
+                if (item.id === id) {
+                    return item;
+                }
+                if (item.children) {
+                    const found = findMenuItemById(item.children, id);
+                    if (found) return found;
+                }
+            }
+            return undefined;
+        }
+
+        /**
+         * Get all menu items including nested ones (flat list)
+         */
+        function getAllMenuItems(items: AIActionMenuItem[]): AIActionMenuItem[] {
+            const result: AIActionMenuItem[] = [];
+            for (const item of items) {
+                result.push(item);
+                if (item.children) {
+                    result.push(...getAllMenuItems(item.children));
+                }
+            }
+            return result;
+        }
+
+        test('should have Resolve Comments as parent menu item', () => {
+            const structure = getAIActionMenuStructure();
+            assert.strictEqual(structure.length, 1);
+            assert.strictEqual(structure[0].id, 'resolveCommentsItem');
+            assert.strictEqual(structure[0].label, 'Resolve Comments');
+            assert.strictEqual(structure[0].hasSubmenu, true);
+        });
+
+        test('should have submenu children under Resolve Comments', () => {
+            const structure = getAIActionMenuStructure();
+            const resolveComments = structure[0];
+            assert.ok(resolveComments.children);
+            assert.strictEqual(resolveComments.children!.length, 4);
+        });
+
+        test('should contain Send to New Chat in submenu', () => {
+            const structure = getAIActionMenuStructure();
+            const item = findMenuItemById(structure, 'sendToNewChatBtn');
+            assert.ok(item);
+            assert.strictEqual(item!.label, 'Send to New Chat');
+            assert.strictEqual(item!.icon, '💬');
+        });
+
+        test('should contain Send to Existing Chat in submenu', () => {
+            const structure = getAIActionMenuStructure();
+            const item = findMenuItemById(structure, 'sendToExistingChatBtn');
+            assert.ok(item);
+            assert.strictEqual(item!.label, 'Send to Existing Chat');
+            assert.strictEqual(item!.icon, '🔄');
+        });
+
+        test('should contain Send to CLI Interactive in submenu', () => {
+            const structure = getAIActionMenuStructure();
+            const item = findMenuItemById(structure, 'sendToCLIInteractiveBtn');
+            assert.ok(item);
+            assert.strictEqual(item!.label, 'Send to CLI Interactive');
+            assert.strictEqual(item!.icon, '🖥️');
+        });
+
+        test('should contain Copy as Prompt in submenu', () => {
+            const structure = getAIActionMenuStructure();
+            const item = findMenuItemById(structure, 'copyPromptBtn');
+            assert.ok(item);
+            assert.strictEqual(item!.label, 'Copy as Prompt');
+            assert.strictEqual(item!.icon, '📋');
+        });
+
+        test('should have 5 total menu items (1 parent + 4 children)', () => {
+            const structure = getAIActionMenuStructure();
+            const allItems = getAllMenuItems(structure);
+            assert.strictEqual(allItems.length, 5);
+        });
+
+        test('should not have Send to New Chat at top level', () => {
+            const structure = getAIActionMenuStructure();
+            // Top level should only have Resolve Comments
+            const topLevelIds = structure.map(item => item.id);
+            assert.ok(!topLevelIds.includes('sendToNewChatBtn'));
+        });
+    });
+
+    suite('Submenu State Management', () => {
+        // Test submenu open/close state management
+
+        interface SubmenuState {
+            mainMenuOpen: boolean;
+            resolveCommentsSubmenuOpen: boolean;
+        }
+
+        function createSubmenuState(): SubmenuState {
+            return {
+                mainMenuOpen: false,
+                resolveCommentsSubmenuOpen: false
+            };
+        }
+
+        function openMainMenu(state: SubmenuState): SubmenuState {
+            return { ...state, mainMenuOpen: true };
+        }
+
+        function closeAllMenus(state: SubmenuState): SubmenuState {
+            return { mainMenuOpen: false, resolveCommentsSubmenuOpen: false };
+        }
+
+        function toggleResolveCommentsSubmenu(state: SubmenuState): SubmenuState {
+            if (!state.mainMenuOpen) return state; // Can't open submenu if main menu is closed
+            return { ...state, resolveCommentsSubmenuOpen: !state.resolveCommentsSubmenuOpen };
+        }
+
+        test('should start with all menus closed', () => {
+            const state = createSubmenuState();
+            assert.strictEqual(state.mainMenuOpen, false);
+            assert.strictEqual(state.resolveCommentsSubmenuOpen, false);
+        });
+
+        test('should open main menu', () => {
+            let state = createSubmenuState();
+            state = openMainMenu(state);
+            assert.strictEqual(state.mainMenuOpen, true);
+            assert.strictEqual(state.resolveCommentsSubmenuOpen, false);
+        });
+
+        test('should toggle submenu when main menu is open', () => {
+            let state = createSubmenuState();
+            state = openMainMenu(state);
+            state = toggleResolveCommentsSubmenu(state);
+            assert.strictEqual(state.mainMenuOpen, true);
+            assert.strictEqual(state.resolveCommentsSubmenuOpen, true);
+        });
+
+        test('should not toggle submenu when main menu is closed', () => {
+            let state = createSubmenuState();
+            state = toggleResolveCommentsSubmenu(state);
+            assert.strictEqual(state.mainMenuOpen, false);
+            assert.strictEqual(state.resolveCommentsSubmenuOpen, false);
+        });
+
+        test('should close all menus including submenu', () => {
+            let state = createSubmenuState();
+            state = openMainMenu(state);
+            state = toggleResolveCommentsSubmenu(state);
+            state = closeAllMenus(state);
+            assert.strictEqual(state.mainMenuOpen, false);
+            assert.strictEqual(state.resolveCommentsSubmenuOpen, false);
+        });
+
+        test('should toggle submenu off when toggled twice', () => {
+            let state = createSubmenuState();
+            state = openMainMenu(state);
+            state = toggleResolveCommentsSubmenu(state);
+            state = toggleResolveCommentsSubmenu(state);
+            assert.strictEqual(state.resolveCommentsSubmenuOpen, false);
+        });
+    });
+
+    suite('Resolve Comments Cross-Platform Compatibility', () => {
+        // Test that the submenu structure works correctly on all platforms
+
+        /**
+         * Simulate DOM element class manipulation
+         */
+        interface MockElement {
+            classes: Set<string>;
+            addClass(className: string): void;
+            removeClass(className: string): void;
+            hasClass(className: string): boolean;
+            toggleClass(className: string): void;
+        }
+
+        function createMockElement(): MockElement {
+            return {
+                classes: new Set<string>(),
+                addClass(className: string) {
+                    this.classes.add(className);
+                },
+                removeClass(className: string) {
+                    this.classes.delete(className);
+                },
+                hasClass(className: string) {
+                    return this.classes.has(className);
+                },
+                toggleClass(className: string) {
+                    if (this.classes.has(className)) {
+                        this.classes.delete(className);
+                    } else {
+                        this.classes.add(className);
+                    }
+                }
+            };
+        }
+
+        test('should toggle submenu-open class', () => {
+            const element = createMockElement();
+            assert.strictEqual(element.hasClass('submenu-open'), false);
+            
+            element.toggleClass('submenu-open');
+            assert.strictEqual(element.hasClass('submenu-open'), true);
+            
+            element.toggleClass('submenu-open');
+            assert.strictEqual(element.hasClass('submenu-open'), false);
+        });
+
+        test('should handle show class on main menu', () => {
+            const menu = createMockElement();
+            const button = createMockElement();
+            
+            // Open menu
+            menu.addClass('show');
+            button.addClass('active');
+            assert.strictEqual(menu.hasClass('show'), true);
+            assert.strictEqual(button.hasClass('active'), true);
+            
+            // Close menu
+            menu.removeClass('show');
+            button.removeClass('active');
+            assert.strictEqual(menu.hasClass('show'), false);
+            assert.strictEqual(button.hasClass('active'), false);
+        });
+
+        test('should cleanup submenu state when closing main menu', () => {
+            const menu = createMockElement();
+            const submenuParent = createMockElement();
+            
+            // Open menu and submenu
+            menu.addClass('show');
+            submenuParent.addClass('submenu-open');
+            
+            // Close everything
+            menu.removeClass('show');
+            submenuParent.removeClass('submenu-open');
+            
+            assert.strictEqual(menu.hasClass('show'), false);
+            assert.strictEqual(submenuParent.hasClass('submenu-open'), false);
+        });
+    });
 });
 

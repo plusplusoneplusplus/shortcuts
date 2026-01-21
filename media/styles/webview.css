@@ -218,7 +218,7 @@ body.source-mode .toolbar-review-only {
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     z-index: 1000;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .ai-action-menu.show {
@@ -261,6 +261,54 @@ body.source-mode .toolbar-review-only {
     height: 1px;
     margin: 4px 0;
     background: var(--comment-border);
+}
+
+/* Parent menu item with submenu arrow */
+.ai-action-menu-parent {
+    position: relative;
+    justify-content: flex-start;
+}
+
+.ai-action-arrow {
+    font-size: 10px;
+    margin-left: auto;
+    opacity: 0.7;
+}
+
+/* Nested submenu */
+.ai-action-submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: 0;
+    min-width: 180px;
+    margin-left: 4px;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 1001;
+    overflow: hidden;
+}
+
+/* Show submenu on hover (for mouse users) */
+.ai-action-menu-parent:hover > .ai-action-submenu,
+.ai-action-menu-parent.submenu-open > .ai-action-submenu {
+    display: block;
+}
+
+/* Style nested items without parent border radius */
+.ai-action-submenu .ai-action-menu-item:first-child {
+    border-radius: 5px 5px 0 0;
+}
+
+.ai-action-submenu .ai-action-menu-item:last-child {
+    border-radius: 0 0 5px 5px;
+}
+
+/* Only one item in parent menu - full border radius */
+.ai-action-menu > .ai-action-menu-item:only-child {
+    border-radius: 5px;
 }
 
 .toolbar-checkbox {

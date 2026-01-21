@@ -183,6 +183,7 @@ function setupAIActionDropdown(): void {
     const aiActionDropdown = document.getElementById('aiActionDropdown');
     const aiActionBtn = document.getElementById('aiActionBtn');
     const aiActionMenu = document.getElementById('aiActionMenu');
+    const resolveCommentsItem = document.getElementById('resolveCommentsItem');
     const sendToNewChatBtn = document.getElementById('sendToNewChatBtn');
     const sendToExistingChatBtn = document.getElementById('sendToExistingChatBtn');
     const sendToCLIInteractiveBtn = document.getElementById('sendToCLIInteractiveBtn');
@@ -201,26 +202,39 @@ function setupAIActionDropdown(): void {
         }
     });
 
+    // Handle parent menu item hover/click for submenu
+    if (resolveCommentsItem) {
+        // On click, toggle submenu visibility (for touch/keyboard accessibility)
+        resolveCommentsItem.addEventListener('click', (e) => {
+            e.stopPropagation();
+            resolveCommentsItem.classList.toggle('submenu-open');
+        });
+    }
+
     // Send to New Chat action (starts a new conversation)
-    sendToNewChatBtn?.addEventListener('click', () => {
+    sendToNewChatBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
         hideAIActionMenu();
         requestSendToChat('markdown', true);
     });
 
     // Send to Existing Chat action (uses existing conversation)
-    sendToExistingChatBtn?.addEventListener('click', () => {
+    sendToExistingChatBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
         hideAIActionMenu();
         requestSendToChat('markdown', false);
     });
 
     // Send to CLI Interactive action (opens external terminal with AI CLI)
-    sendToCLIInteractiveBtn?.addEventListener('click', () => {
+    sendToCLIInteractiveBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
         hideAIActionMenu();
         requestSendToCLIInteractive('markdown');
     });
 
     // Copy as Prompt action
-    copyPromptBtn?.addEventListener('click', () => {
+    copyPromptBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
         hideAIActionMenu();
         requestCopyPrompt('markdown');
     });
@@ -258,9 +272,14 @@ function showAIActionMenu(): void {
 function hideAIActionMenu(): void {
     const aiActionMenu = document.getElementById('aiActionMenu');
     const aiActionBtn = document.getElementById('aiActionBtn');
+    const resolveCommentsItem = document.getElementById('resolveCommentsItem');
     if (aiActionMenu && aiActionBtn) {
         aiActionMenu.classList.remove('show');
         aiActionBtn.classList.remove('active');
+    }
+    // Also close any open submenus
+    if (resolveCommentsItem) {
+        resolveCommentsItem.classList.remove('submenu-open');
     }
 }
 
