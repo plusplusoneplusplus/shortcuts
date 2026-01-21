@@ -90,6 +90,23 @@ export type {
     YAMLOptions
 } from './file-utils';
 
+// Read-only document provider with content strategies
+export {
+    ContentStrategy,
+    createSchemeUri,
+    DynamicContentStrategy,
+    DynamicContentStrategyOptions,
+    FileContentStrategy,
+    FileContentStrategyOptions,
+    GitContentStrategy,
+    GitContentStrategyOptions,
+    MemoryContentStrategy,
+    MemoryContentStrategyOptions,
+    ReadOnlyDocumentProvider,
+    registerSchemes,
+    SchemeConfig
+} from './readonly-document-provider';
+
 // Note: Webview utilities are exported separately via './webview'
 // to avoid bundling issues with webview-specific code in the extension bundle
 

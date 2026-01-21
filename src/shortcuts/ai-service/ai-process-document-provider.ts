@@ -3,12 +3,20 @@
  *
  * Uses a virtual document scheme (ai-process:) to display process details
  * without prompting to save when closing.
+ *
+ * Refactored to use the shared ReadOnlyDocumentProvider with DynamicContentStrategy.
  */
 
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { AIProcess, IAIProcessManager } from './';
-import { getExtensionLogger, LogCategory } from '../shared';
+import {
+    createSchemeUri,
+    DynamicContentStrategy,
+    getExtensionLogger,
+    LogCategory,
+    ReadOnlyDocumentProvider,
+} from '../shared';
 
 /**
  * URI scheme for AI process documents
@@ -16,46 +24,70 @@ import { getExtensionLogger, LogCategory } from '../shared';
 export const AI_PROCESS_SCHEME = 'ai-process';
 
 /**
- * Provides read-only content for AI process details
+ * Provides read-only content for AI process details.
+ *
+ * Refactored to use the shared ReadOnlyDocumentProvider with DynamicContentStrategy,
+ * which allows for reactive content updates when processes change.
  */
-export class AIProcessDocumentProvider implements vscode.TextDocumentContentProvider {
-    private processManager: IAIProcessManager;
-    private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
+export class AIProcessDocumentProvider
+    implements vscode.TextDocumentContentProvider, vscode.Disposable
+{
+    private readonly processManager: IAIProcessManager;
+    private readonly provider: ReadOnlyDocumentProvider;
+    private readonly _onDidChange = new vscode.EventEmitter<vscode.Uri>();
+    private readonly processChangeListener: vscode.Disposable;
 
-    readonly onDidChange = this._onDidChange.event;
+    readonly onDidChange: vscode.Event<vscode.Uri>;
 
     constructor(processManager: IAIProcessManager) {
         this.processManager = processManager;
+        this.provider = new ReadOnlyDocumentProvider();
+
+        // Create dynamic strategy that retrieves content from the process manager
+        const strategy = new DynamicContentStrategy<IAIProcessManager>({
+            getContent: (uri, manager) => {
+                if (!manager) {
+                    return '# Process Not Found\n\nThe requested AI process could not be found.';
+                }
+                const processId = uri.path.replace(/\.md$/, '');
+                const process = manager.getProcess(processId);
+
+                if (!process) {
+                    return '# Process Not Found\n\nThe requested AI process could not be found.';
+                }
+
+                return this.formatProcessContent(process);
+            },
+            onChange: this._onDidChange.event,
+            context: processManager,
+        });
+
+        this.provider.registerScheme(AI_PROCESS_SCHEME, strategy);
+        this.onDidChange = this.provider.onDidChange;
 
         // Listen for process changes to update documents
-        this.processManager.onDidChangeProcesses((event) => {
-            if (event.process) {
-                const uri = this.createUri(event.process.id);
-                this._onDidChange.fire(uri);
+        this.processChangeListener = this.processManager.onDidChangeProcesses(
+            (event) => {
+                if (event.process) {
+                    const uri = this.createUri(event.process.id);
+                    this._onDidChange.fire(uri);
+                }
             }
-        });
+        );
     }
 
     /**
      * Create a URI for viewing a process
      */
     createUri(processId: string): vscode.Uri {
-        return vscode.Uri.parse(`${AI_PROCESS_SCHEME}:${processId}.md`);
+        return createSchemeUri(AI_PROCESS_SCHEME, `${processId}.md`);
     }
 
     /**
      * Provide document content for a process
      */
-    provideTextDocumentContent(uri: vscode.Uri): string {
-        // Extract process ID from URI (remove .md extension)
-        const processId = uri.path.replace(/\.md$/, '');
-        const process = this.processManager.getProcess(processId);
-
-        if (!process) {
-            return '# Process Not Found\n\nThe requested AI process could not be found.';
-        }
-
-        return this.formatProcessContent(process);
+    provideTextDocumentContent(uri: vscode.Uri): string | Thenable<string> {
+        return this.provider.provideTextDocumentContent(uri);
     }
 
     /**
@@ -296,5 +328,7 @@ export class AIProcessDocumentProvider implements vscode.TextDocumentContentProv
 
     dispose(): void {
         this._onDidChange.dispose();
+        this.processChangeListener.dispose();
+        this.provider.dispose();
     }
 }

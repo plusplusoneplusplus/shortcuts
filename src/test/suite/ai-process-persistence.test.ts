@@ -815,7 +815,7 @@ suite('AI Process Document Provider - Structured Result Display', () => {
         
         const provider = new AIProcessDocumentProvider(mockManager);
         const uri = provider.createUri(processId);
-        const content = provider.provideTextDocumentContent(uri);
+        const content = await provider.provideTextDocumentContent(uri);
         
         // Verify structured result sections are present
         assert.ok(content.includes('## Structured Result'), 'Should have Structured Result section');
@@ -857,7 +857,7 @@ suite('AI Process Document Provider - Structured Result Display', () => {
         
         const provider = new AIProcessDocumentProvider(mockManager);
         const uri = provider.createUri(processId);
-        const content = provider.provideTextDocumentContent(uri);
+        const content = await provider.provideTextDocumentContent(uri);
         
         // Verify error section is present
         assert.ok(content.includes('### Error'), 'Should have Error subsection');
@@ -891,7 +891,7 @@ suite('AI Process Document Provider - Structured Result Display', () => {
         
         const provider = new AIProcessDocumentProvider(mockManager);
         const uri = provider.createUri(processId);
-        const content = provider.provideTextDocumentContent(uri);
+        const content = await provider.provideTextDocumentContent(uri);
         
         // Verify generic JSON display
         assert.ok(content.includes('## Structured Result'), 'Should have Structured Result section');

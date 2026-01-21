@@ -1,23 +1,50 @@
 /**
  * Code Review Result Viewer
- * 
+ *
  * A dedicated webview panel for displaying structured code review results.
  */
 
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CodeReviewResult, ReviewFinding, ReviewSeverity } from './types';
+import {
+    createSchemeUri,
+    GitContentStrategy,
+    ReadOnlyDocumentProvider,
+} from '../shared';
 
 /**
- * Virtual document provider for showing file content at a specific commit
+ * URI scheme for git snapshot provider
  */
-class GitSnapshotProvider implements vscode.TextDocumentContentProvider {
+const GIT_SNAPSHOT_SCHEME = 'git-snapshot';
+
+/**
+ * Virtual document provider for showing file content at a specific commit.
+ *
+ * Refactored to use the shared ReadOnlyDocumentProvider with GitContentStrategy.
+ */
+class GitSnapshotProvider
+    implements vscode.TextDocumentContentProvider, vscode.Disposable
+{
     private static instance: GitSnapshotProvider | undefined;
-    private onDidChangeEmitter = new vscode.EventEmitter<vscode.Uri>();
-    public onDidChange = this.onDidChangeEmitter.event;
+    private readonly provider: ReadOnlyDocumentProvider;
     private disposable: vscode.Disposable | undefined;
 
-    private constructor() {}
+    public readonly onDidChange: vscode.Event<vscode.Uri>;
+
+    private constructor() {
+        this.provider = new ReadOnlyDocumentProvider();
+
+        // Use GitContentStrategy with file path from query param
+        const strategy = new GitContentStrategy({
+            commitParam: 'commit',
+            repoParam: 'repo',
+            fileParam: 'file', // File path from query param, not URI path
+        });
+
+        this.provider.registerScheme(GIT_SNAPSHOT_SCHEME, strategy);
+        this.onDidChange = this.provider.onDidChange;
+    }
 
     public static getInstance(): GitSnapshotProvider {
         if (!GitSnapshotProvider.instance) {
@@ -28,45 +55,24 @@ class GitSnapshotProvider implements vscode.TextDocumentContentProvider {
 
     public register(): vscode.Disposable {
         if (!this.disposable) {
-            this.disposable = vscode.workspace.registerTextDocumentContentProvider('git-snapshot', this);
+            this.disposable = vscode.workspace.registerTextDocumentContentProvider(
+                GIT_SNAPSHOT_SCHEME,
+                this
+            );
         }
         return this.disposable;
     }
 
-    public provideTextDocumentContent(uri: vscode.Uri): string | Thenable<string> {
-        // URI format: git-snapshot:/{repoRoot}?commit={hash}&file={filePath}
-        const params = new URLSearchParams(uri.query);
-        const commitHash = params.get('commit');
-        const filePath = params.get('file');
-        const repoRoot = params.get('repo');
-
-        if (!commitHash || !filePath || !repoRoot) {
-            return '// Unable to retrieve file content: missing parameters';
-        }
-
-        return this.getFileContentAtCommit(repoRoot, commitHash, filePath);
+    public provideTextDocumentContent(
+        uri: vscode.Uri
+    ): string | Thenable<string> {
+        return this.provider.provideTextDocumentContent(uri);
     }
 
-    private async getFileContentAtCommit(repoRoot: string, commitHash: string, filePath: string): Promise<string> {
-        try {
-            const { execSync } = await import('child_process');
-            // Normalize the file path (use forward slashes for git)
-            const normalizedPath = filePath.replace(/\\/g, '/');
-            
-            // Use git show to get file content at specific commit
-            const command = `git show "${commitHash}:${normalizedPath}"`;
-            const output = execSync(command, {
-                cwd: repoRoot,
-                encoding: 'utf-8',
-                maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-                timeout: 30000
-            });
-            
-            return output;
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return `// Unable to retrieve file content at commit ${commitHash}\n// Error: ${errorMessage}`;
-        }
+    public dispose(): void {
+        this.provider.dispose();
+        this.disposable?.dispose();
+        GitSnapshotProvider.instance = undefined;
     }
 }
 

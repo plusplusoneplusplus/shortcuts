@@ -538,20 +538,40 @@ function formatDuration(ms: number): string {
  */
 export const PIPELINE_RESULTS_SCHEME = 'pipeline-results';
 
-/**
- * Document content provider for pipeline results
- * Provides readonly virtual documents that don't require saving
- */
-export class PipelineResultsDocumentProvider implements vscode.TextDocumentContentProvider {
-    private static instance: PipelineResultsDocumentProvider | undefined;
-    private results: Map<string, string> = new Map();
-    private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
+import {
+    createSchemeUri,
+    MemoryContentStrategy,
+    ReadOnlyDocumentProvider,
+} from '../../shared';
 
-    readonly onDidChange = this._onDidChange.event;
+/**
+ * Document content provider for pipeline results.
+ * Provides readonly virtual documents that don't require saving.
+ *
+ * Refactored to use the shared ReadOnlyDocumentProvider with MemoryContentStrategy.
+ */
+export class PipelineResultsDocumentProvider
+    implements vscode.TextDocumentContentProvider, vscode.Disposable
+{
+    private static instance: PipelineResultsDocumentProvider | undefined;
+    private readonly provider: ReadOnlyDocumentProvider;
+    private readonly strategy: MemoryContentStrategy;
+
+    readonly onDidChange: vscode.Event<vscode.Uri>;
+
+    private constructor() {
+        this.provider = new ReadOnlyDocumentProvider();
+        this.strategy = new MemoryContentStrategy({
+            defaultContent: '# No results available',
+        });
+        this.provider.registerScheme(PIPELINE_RESULTS_SCHEME, this.strategy);
+        this.onDidChange = this.provider.onDidChange;
+    }
 
     static getInstance(): PipelineResultsDocumentProvider {
         if (!PipelineResultsDocumentProvider.instance) {
-            PipelineResultsDocumentProvider.instance = new PipelineResultsDocumentProvider();
+            PipelineResultsDocumentProvider.instance =
+                new PipelineResultsDocumentProvider();
         }
         return PipelineResultsDocumentProvider.instance;
     }
@@ -562,18 +582,21 @@ export class PipelineResultsDocumentProvider implements vscode.TextDocumentConte
     storeResults(pipelineName: string, content: string): vscode.Uri {
         const timestamp = Date.now();
         const safeName = pipelineName.replace(/[^a-zA-Z0-9-_]/g, '-');
-        const uri = vscode.Uri.parse(`${PIPELINE_RESULTS_SCHEME}:${safeName}-${timestamp}.md`);
-        this.results.set(uri.toString(), content);
+        const uri = createSchemeUri(
+            PIPELINE_RESULTS_SCHEME,
+            `${safeName}-${timestamp}.md`
+        );
+        this.strategy.store(uri, content);
         return uri;
     }
 
-    provideTextDocumentContent(uri: vscode.Uri): string {
-        return this.results.get(uri.toString()) || '# No results available';
+    provideTextDocumentContent(uri: vscode.Uri): string | Thenable<string> {
+        return this.provider.provideTextDocumentContent(uri);
     }
 
     dispose(): void {
-        this._onDidChange.dispose();
-        this.results.clear();
+        this.provider.dispose();
+        PipelineResultsDocumentProvider.instance = undefined;
     }
 }
 
@@ -581,9 +604,19 @@ export class PipelineResultsDocumentProvider implements vscode.TextDocumentConte
  * Register the pipeline results document provider
  * Call this during extension activation
  */
-export function registerPipelineResultsProvider(context: vscode.ExtensionContext): vscode.Disposable {
+export function registerPipelineResultsProvider(
+    context: vscode.ExtensionContext
+): vscode.Disposable {
     const provider = PipelineResultsDocumentProvider.getInstance();
-    return vscode.workspace.registerTextDocumentContentProvider(PIPELINE_RESULTS_SCHEME, provider);
+    const disposable = vscode.workspace.registerTextDocumentContentProvider(
+        PIPELINE_RESULTS_SCHEME,
+        provider
+    );
+
+    // Ensure cleanup on context disposal
+    context.subscriptions.push(provider);
+
+    return disposable;
 }
 
 /**
