@@ -4,6 +4,9 @@
  * Generates HTML content for the Pipeline Preview webview panel.
  * Uses Mermaid.js for diagram rendering with interactive node clicks.
  *
+ * Uses shared webview utilities:
+ * - WebviewSetupHelper for nonce generation and HTML escaping
+ *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -14,11 +17,11 @@ import {
     generatePipelineMermaid,
     extractTemplateVariables,
     validateTemplateVariables,
-    estimateExecutionTime,
     formatFileSize,
     PipelineNodeType
 } from './preview-mermaid';
 import { GenerateState, GeneratedItem } from '../input-generator';
+import { WebviewSetupHelper } from '../../shared/webview/extension-webview-utils';
 
 /**
  * Message types for webview communication (from webview to extension)
@@ -106,7 +109,8 @@ export function getPreviewContent(
     extensionUri: vscode.Uri,
     data?: PipelinePreviewData
 ): string {
-    const nonce = getNonce();
+    // Use shared helper for nonce generation
+    const nonce = WebviewSetupHelper.generateNonce();
     const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
         vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
 
@@ -1903,27 +1907,11 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
 }
 
 /**
- * Generate a nonce for script security
- */
-function getNonce(): string {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
-}
-
-/**
  * Escape HTML special characters
+ * Uses the shared WebviewSetupHelper utility
  */
 function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+    return WebviewSetupHelper.escapeHtml(text);
 }
 
 /**

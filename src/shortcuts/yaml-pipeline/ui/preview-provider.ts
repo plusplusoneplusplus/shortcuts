@@ -5,6 +5,10 @@
  * Opens pipeline.yaml files in a read-only visual preview using Mermaid diagrams.
  * Similar to how Markdown Review Editor works.
  *
+ * Uses shared webview utilities:
+ * - WebviewSetupHelper for webview configuration
+ * - WebviewMessageRouter for type-safe message handling
+ *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -28,15 +32,17 @@ import {
     GeneratedItem,
     generateInputItems,
     toGeneratedItems,
-    getSelectedItems,
     createEmptyItem
 } from '../input-generator';
 import { invokeCopilotCLI, getAIToolSetting, copyToClipboard } from '../../ai-service';
 import { getWorkspaceRoot } from '../../shared/workspace-utils';
+import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
 
 /**
  * Pipeline Preview Editor - Custom editor provider for pipeline.yaml files
  * Opens as a read-only visual preview in the main editor area
+ *
+ * Uses shared webview utilities for consistent setup and message handling.
  */
 export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorProvider {
     public static readonly viewType = 'pipelinePreviewEditor';
@@ -47,11 +53,17 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
     private generatedItems = new Map<string, GeneratedItem[]>();
     /** Track webview panels per document for state updates */
     private webviewPanels = new Map<string, vscode.WebviewPanel>();
+    /** Track message routers per document for cleanup */
+    private messageRouters = new Map<string, WebviewMessageRouter<PreviewMessage>>();
+    /** Shared webview setup helper */
+    private readonly setupHelper: WebviewSetupHelper;
 
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly pipelineManager: PipelineManager
-    ) {}
+    ) {
+        this.setupHelper = new WebviewSetupHelper(context.extensionUri);
+    }
 
     /**
      * Register the Pipeline Preview Editor provider
@@ -91,7 +103,6 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
         const docKey = document.uri.toString();
 
         // Set the tab title
-        const fileName = path.basename(document.uri.fsPath);
         webviewPanel.title = `[Preview] ${packageName}`;
 
         // Track webview panel
@@ -102,15 +113,16 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             this.generateStates.set(docKey, { status: 'initial' });
         }
 
-        // Setup webview options
-        webviewPanel.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [
-                vscode.Uri.joinPath(this.context.extensionUri, 'media'),
-                vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
-                vscode.Uri.file(packagePath) // Allow access to pipeline package resources
-            ]
-        };
+        // Setup webview options using shared helper with additional resource roots
+        const additionalRoots = [vscode.Uri.file(packagePath)]; // Allow access to pipeline package resources
+        this.setupHelper.configureWebviewOptions(
+            webviewPanel.webview,
+            { additionalResourceRoots: additionalRoots }
+        );
+
+        // Setup type-safe message routing
+        const router = this.setupMessageRouter(document, packagePath, webviewPanel);
+        this.messageRouters.set(docKey, router);
 
         // Initial render
         await this.updateWebview(webviewPanel.webview, document, packagePath);
@@ -122,19 +134,93 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             }
         });
 
-        // Handle messages from webview
+        // Connect router to panel
         const messageSubscription = webviewPanel.webview.onDidReceiveMessage(
-            (message: PreviewMessage) => this.handleMessage(message, document, packagePath, webviewPanel)
+            (message: PreviewMessage) => router.route(message)
         );
 
         // Clean up on close
         webviewPanel.onDidDispose(() => {
             changeDocumentSubscription.dispose();
             messageSubscription.dispose();
+            router.dispose();
             this.webviewPanels.delete(docKey);
             this.generateStates.delete(docKey);
             this.generatedItems.delete(docKey);
+            this.messageRouters.delete(docKey);
         });
+    }
+
+    /**
+     * Setup message router with type-safe handlers for this document
+     */
+    private setupMessageRouter(
+        document: vscode.TextDocument,
+        packagePath: string,
+        webviewPanel: vscode.WebviewPanel
+    ): WebviewMessageRouter<PreviewMessage> {
+        const docKey = document.uri.toString();
+        const router = new WebviewMessageRouter<PreviewMessage>({
+            logUnhandledMessages: false
+        });
+
+        // Register handlers for all message types
+        router
+            .on('edit', async () => {
+                // Open the YAML file in the default text editor
+                await vscode.commands.executeCommand('vscode.openWith', document.uri, 'default');
+            })
+            .on('execute', async () => {
+                await this.handleExecute(document);
+            })
+            .on('validate', async () => {
+                await this.handleValidate(document);
+            })
+            .on('refresh', () => {
+                // Document change listener will handle refresh
+            })
+            .on('openFile', async (message: PreviewMessage) => {
+                await this.handleOpenFile(message.payload?.filePath, packagePath);
+            })
+            .on('nodeClick', () => {
+                // Handled client-side
+            })
+            .on('ready', () => {
+                // Informational
+            })
+            // Generate flow messages
+            .on('generate', async () => {
+                await this.handleGenerate(document, packagePath, webviewPanel);
+            })
+            .on('regenerate', async () => {
+                await this.handleGenerate(document, packagePath, webviewPanel);
+            })
+            .on('cancelGenerate', async () => {
+                this.generateStates.set(docKey, { status: 'initial' });
+                this.generatedItems.delete(docKey);
+                await this.updateWebview(webviewPanel.webview, document, packagePath);
+                this.sendGenerateStateUpdate(webviewPanel.webview, docKey);
+            })
+            .on('addRow', async () => {
+                await this.handleAddRow(document, packagePath, webviewPanel);
+            })
+            .on('deleteRows', async (message: PreviewMessage) => {
+                await this.handleDeleteRows(document, packagePath, webviewPanel, message.payload?.indices || []);
+            })
+            .on('updateCell', async (message: PreviewMessage) => {
+                await this.handleUpdateCell(document, packagePath, webviewPanel, message.payload as { index: number; field: string; value: string } | undefined);
+            })
+            .on('toggleRow', async (message: PreviewMessage) => {
+                await this.handleToggleRow(document, packagePath, webviewPanel, message.payload as { index: number; selected: boolean } | undefined);
+            })
+            .on('toggleAll', async (message: PreviewMessage) => {
+                await this.handleToggleAll(document, packagePath, webviewPanel, message.payload?.selected || false);
+            })
+            .on('runWithItems', async (message: PreviewMessage) => {
+                await this.handleRunWithItems(document, message.payload?.items || []);
+            });
+
+        return router;
     }
 
     /**
@@ -313,87 +399,6 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
         }
 
         return resources;
-    }
-
-    /**
-     * Handle messages from the webview
-     */
-    private async handleMessage(
-        message: PreviewMessage,
-        document: vscode.TextDocument,
-        packagePath: string,
-        webviewPanel: vscode.WebviewPanel
-    ): Promise<void> {
-        const docKey = document.uri.toString();
-
-        switch (message.type) {
-            case 'edit':
-                // Open the YAML file in the default text editor
-                await vscode.commands.executeCommand('vscode.openWith', document.uri, 'default');
-                break;
-
-            case 'execute':
-                await this.handleExecute(document);
-                break;
-
-            case 'validate':
-                await this.handleValidate(document);
-                break;
-
-            case 'refresh':
-                // Document change listener will handle refresh
-                break;
-
-            case 'openFile':
-                await this.handleOpenFile(message.payload?.filePath, packagePath);
-                break;
-
-            case 'nodeClick':
-            case 'ready':
-                // Handled client-side or informational
-                break;
-
-            // Generate flow messages
-            case 'generate':
-                await this.handleGenerate(document, packagePath, webviewPanel);
-                break;
-
-            case 'regenerate':
-                await this.handleGenerate(document, packagePath, webviewPanel);
-                break;
-
-            case 'cancelGenerate':
-                this.generateStates.set(docKey, { status: 'initial' });
-                this.generatedItems.delete(docKey);
-                await this.updateWebview(webviewPanel.webview, document, packagePath);
-                // Also send state update to keep webview's pipelineData in sync
-                this.sendGenerateStateUpdate(webviewPanel.webview, docKey);
-                break;
-
-            case 'addRow':
-                await this.handleAddRow(document, packagePath, webviewPanel);
-                break;
-
-            case 'deleteRows':
-                await this.handleDeleteRows(document, packagePath, webviewPanel, message.payload?.indices || []);
-                break;
-
-            case 'updateCell':
-                await this.handleUpdateCell(document, packagePath, webviewPanel, message.payload as { index: number; field: string; value: string } | undefined);
-                break;
-
-            case 'toggleRow':
-                await this.handleToggleRow(document, packagePath, webviewPanel, message.payload as { index: number; selected: boolean } | undefined);
-                break;
-
-            case 'toggleAll':
-                await this.handleToggleAll(document, packagePath, webviewPanel, message.payload?.selected || false);
-                break;
-
-            case 'runWithItems':
-                await this.handleRunWithItems(document, message.payload?.items || []);
-                break;
-        }
     }
 
     /**
