@@ -163,6 +163,85 @@ b
             assert.ok(blocks[0].id.includes('codeblock-'));
             assert.ok(blocks[1].id.includes('codeblock-'));
         });
+
+        test('should parse code block with leading spaces (1-3)', () => {
+            const content1 = `Some text
+ \`\`\`rust
+fn main() {}
+ \`\`\`
+More text`;
+
+            const blocks1 = parseCodeBlocks(content1);
+            assert.strictEqual(blocks1.length, 1);
+            assert.strictEqual(blocks1[0].language, 'rust');
+            assert.strictEqual(blocks1[0].code, 'fn main() {}');
+
+            const content2 = `Some text
+  \`\`\`python
+print("hello")
+  \`\`\``;
+
+            const blocks2 = parseCodeBlocks(content2);
+            assert.strictEqual(blocks2.length, 1);
+            assert.strictEqual(blocks2[0].language, 'python');
+
+            const content3 = `Some text
+   \`\`\`cpp
+int x = 0;
+   \`\`\``;
+
+            const blocks3 = parseCodeBlocks(content3);
+            assert.strictEqual(blocks3.length, 1);
+            assert.strictEqual(blocks3[0].language, 'cpp');
+        });
+
+        test('should parse code block with deep indentation (4+ spaces)', () => {
+            // Non-standard markdown, but we're lenient to support various document styles
+            const content1 = `Some text
+    \`\`\`rust
+fn main() {}
+    \`\`\`
+More text`;
+
+            const blocks1 = parseCodeBlocks(content1);
+            assert.strictEqual(blocks1.length, 1);
+            assert.strictEqual(blocks1[0].language, 'rust');
+            assert.strictEqual(blocks1[0].code, 'fn main() {}');
+
+            const content2 = `Some text
+        \`\`\`python
+print("hello")
+        \`\`\``;
+
+            const blocks2 = parseCodeBlocks(content2);
+            assert.strictEqual(blocks2.length, 1);
+            assert.strictEqual(blocks2[0].language, 'python');
+        });
+
+        test('should parse code block with leading tab', () => {
+            const content = `Some text
+\t\`\`\`typescript
+const x: number = 42;
+\t\`\`\`
+More text`;
+
+            const blocks = parseCodeBlocks(content);
+            assert.strictEqual(blocks.length, 1);
+            assert.strictEqual(blocks[0].language, 'typescript');
+            assert.strictEqual(blocks[0].code, 'const x: number = 42;');
+        });
+
+        test('should parse code block with mixed indented opening and closing fences', () => {
+            const content = `Some text
+  \`\`\`go
+func main() {}
+\t\`\`\`
+More text`;
+
+            const blocks = parseCodeBlocks(content);
+            assert.strictEqual(blocks.length, 1);
+            assert.strictEqual(blocks[0].language, 'go');
+        });
     });
 
     suite('hasMermaidBlocks', () => {
@@ -440,6 +519,36 @@ print("hi")
             assert.strictEqual(result.isFence, true);
             assert.strictEqual(result.language, 'python');
         });
+
+        test('should detect code fence with leading spaces (1-3)', () => {
+            const result1 = isCodeFenceStart(' ```rust');
+            assert.strictEqual(result1.isFence, true);
+            assert.strictEqual(result1.language, 'rust');
+
+            const result2 = isCodeFenceStart('  ```python');
+            assert.strictEqual(result2.isFence, true);
+            assert.strictEqual(result2.language, 'python');
+
+            const result3 = isCodeFenceStart('   ```cpp');
+            assert.strictEqual(result3.isFence, true);
+            assert.strictEqual(result3.language, 'cpp');
+        });
+
+        test('should detect code fence with leading tab', () => {
+            const result = isCodeFenceStart('\t```typescript');
+            assert.strictEqual(result.isFence, true);
+            assert.strictEqual(result.language, 'typescript');
+        });
+
+        test('should detect code fence with deep indentation (4+ spaces)', () => {
+            const result1 = isCodeFenceStart('    ```rust');
+            assert.strictEqual(result1.isFence, true);
+            assert.strictEqual(result1.language, 'rust');
+
+            const result2 = isCodeFenceStart('        ```python');
+            assert.strictEqual(result2.isFence, true);
+            assert.strictEqual(result2.language, 'python');
+        });
     });
 
     suite('isCodeFenceEnd', () => {
@@ -453,6 +562,27 @@ print("hi")
 
         test('should return false for fence with language', () => {
             assert.strictEqual(isCodeFenceEnd('```javascript'), false);
+        });
+
+        test('should detect code fence end with leading spaces (1-3)', () => {
+            assert.strictEqual(isCodeFenceEnd(' ```'), true);
+            assert.strictEqual(isCodeFenceEnd('  ```'), true);
+            assert.strictEqual(isCodeFenceEnd('   ```'), true);
+        });
+
+        test('should detect code fence end with leading tab', () => {
+            assert.strictEqual(isCodeFenceEnd('\t```'), true);
+        });
+
+        test('should detect code fence end with leading whitespace and trailing whitespace', () => {
+            assert.strictEqual(isCodeFenceEnd('  ```  '), true);
+            assert.strictEqual(isCodeFenceEnd('\t```  '), true);
+        });
+
+        test('should detect code fence end with deep indentation (4+ spaces)', () => {
+            assert.strictEqual(isCodeFenceEnd('    ```'), true);
+            assert.strictEqual(isCodeFenceEnd('        ```'), true);
+            assert.strictEqual(isCodeFenceEnd('    ```  '), true);
         });
     });
 

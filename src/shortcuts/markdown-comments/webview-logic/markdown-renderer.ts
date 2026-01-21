@@ -82,8 +82,10 @@ export function applySourceModeHighlighting(
     // Strip trailing \r from Windows line endings
     const cleanLine = line.replace(/\r$/, '');
     
-    // Check for code fence (```) - allow up to 3 spaces or tabs before the fence
-    if (cleanLine.match(/^[ \t]{0,3}```/)) {
+    // Check for code fence (```) - allow any amount of leading whitespace.
+    // CommonMark spec only allows 0-3 spaces, but we're lenient here to handle
+    // non-standard markdown (e.g., deeply indented code blocks in documents).
+    if (cleanLine.match(/^[ \t]*```/)) {
         // Toggle code block state, but don't highlight the fence itself
         return {
             html: '<span class="src-code-fence">' + escapeHtml(cleanLine) + '</span>',
@@ -322,8 +324,10 @@ export function applyMarkdownHighlighting(
     const cleanLine = line.replace(/\r$/, '');
 
     // If we're inside a code block, don't apply markdown highlighting
-    // Allow up to 3 spaces or tabs before the closing fence
-    if (inCodeBlock && !cleanLine.match(/^[ \t]{0,3}```/)) {
+    // Allow any amount of leading whitespace before the closing fence.
+    // CommonMark spec only allows 0-3 spaces, but we're lenient here to handle
+    // non-standard markdown (e.g., deeply indented code blocks in documents).
+    if (inCodeBlock && !cleanLine.match(/^[ \t]*```/)) {
         return {
             html: escapeHtml(cleanLine),
             inCodeBlock: true,
@@ -331,8 +335,10 @@ export function applyMarkdownHighlighting(
         };
     }
 
-    // Check for code fence start/end - allow up to 3 spaces or tabs before the fence
-    const codeFenceMatch = cleanLine.match(/^[ \t]{0,3}```(\w*)/);
+    // Check for code fence start/end - allow any amount of leading whitespace.
+    // CommonMark spec only allows 0-3 spaces, but we're lenient here to handle
+    // non-standard markdown (e.g., deeply indented code blocks in documents).
+    const codeFenceMatch = cleanLine.match(/^[ \t]*```(\w*)/);
     if (codeFenceMatch) {
         if (!inCodeBlock) {
             // Starting a code block

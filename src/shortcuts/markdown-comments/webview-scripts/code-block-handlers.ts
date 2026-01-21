@@ -24,7 +24,10 @@ export function parseCodeBlocks(content: string): CodeBlock[] {
     let codeLines: string[] = [];
 
     lines.forEach((line, index) => {
-        const fenceMatch = line.match(/^```(\w*)/);
+        // Allow any amount of leading whitespace before the fence.
+        // CommonMark spec only allows 0-3 spaces, but we're lenient here to handle
+        // non-standard markdown (e.g., deeply indented code blocks in documents).
+        const fenceMatch = line.match(/^[ \t]*```(\w*)/);
 
         if (fenceMatch && !inBlock) {
             inBlock = true;
@@ -34,7 +37,7 @@ export function parseCodeBlocks(content: string): CodeBlock[] {
                 isMermaid: fenceMatch[1] === 'mermaid'
             };
             codeLines = [];
-        } else if (line.startsWith('```') && inBlock) {
+        } else if (line.match(/^[ \t]*```/) && inBlock) {
             inBlock = false;
             if (currentBlock) {
                 currentBlock.endLine = index + 1;

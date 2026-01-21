@@ -45,7 +45,10 @@ suite('Webview Scripts Tests', () => {
             let codeLines: string[] = [];
 
             lines.forEach((line, index) => {
-                const fenceMatch = line.match(/^```(\w*)/);
+                // Allow any amount of leading whitespace before the fence.
+                // CommonMark spec only allows 0-3 spaces, but we're lenient here to handle
+                // non-standard markdown (e.g., deeply indented code blocks in documents).
+                const fenceMatch = line.match(/^[ \t]*```(\w*)/);
 
                 if (fenceMatch && !inBlock) {
                     inBlock = true;
@@ -55,7 +58,7 @@ suite('Webview Scripts Tests', () => {
                         isMermaid: fenceMatch[1] === 'mermaid'
                     };
                     codeLines = [];
-                } else if (line.startsWith('```') && inBlock) {
+                } else if (line.match(/^[ \t]*```/) && inBlock) {
                     inBlock = false;
                     if (currentBlock) {
                         currentBlock.endLine = index + 1;
@@ -171,6 +174,53 @@ suite('Webview Scripts Tests', () => {
             assert.strictEqual(blocks.length, 1);
             assert.strictEqual(blocks[0].code, 'line1\nline2');
             assert.ok(!blocks[0].code.includes('\r'));
+        });
+
+        test('should parse code block with leading spaces (1-3)', () => {
+            const content1 = 'Some text\n ```rust\nfn main() {}\n ```\nMore text';
+            const blocks1 = parseCodeBlocks(content1);
+            assert.strictEqual(blocks1.length, 1);
+            assert.strictEqual(blocks1[0].language, 'rust');
+            assert.strictEqual(blocks1[0].code, 'fn main() {}');
+
+            const content2 = '  ```python\nprint("hello")\n  ```';
+            const blocks2 = parseCodeBlocks(content2);
+            assert.strictEqual(blocks2.length, 1);
+            assert.strictEqual(blocks2[0].language, 'python');
+
+            const content3 = '   ```cpp\nint x = 0;\n   ```';
+            const blocks3 = parseCodeBlocks(content3);
+            assert.strictEqual(blocks3.length, 1);
+            assert.strictEqual(blocks3[0].language, 'cpp');
+        });
+
+        test('should parse code block with leading tab', () => {
+            const content = 'Some text\n\t```typescript\nconst x: number = 42;\n\t```\nMore text';
+            const blocks = parseCodeBlocks(content);
+            assert.strictEqual(blocks.length, 1);
+            assert.strictEqual(blocks[0].language, 'typescript');
+            assert.strictEqual(blocks[0].code, 'const x: number = 42;');
+        });
+
+        test('should parse code block with deep indentation (4+ spaces)', () => {
+            // Non-standard markdown, but we're lenient to support various document styles
+            const content1 = 'Some text\n    ```rust\nfn main() {}\n    ```\nMore text';
+            const blocks1 = parseCodeBlocks(content1);
+            assert.strictEqual(blocks1.length, 1);
+            assert.strictEqual(blocks1[0].language, 'rust');
+            assert.strictEqual(blocks1[0].code, 'fn main() {}');
+
+            const content2 = '        ```python\nprint("hello")\n        ```';
+            const blocks2 = parseCodeBlocks(content2);
+            assert.strictEqual(blocks2.length, 1);
+            assert.strictEqual(blocks2[0].language, 'python');
+        });
+
+        test('should parse code block with mixed indented opening and closing fences', () => {
+            const content = 'Some text\n  ```go\nfunc main() {}\n\t```\nMore text';
+            const blocks = parseCodeBlocks(content);
+            assert.strictEqual(blocks.length, 1);
+            assert.strictEqual(blocks[0].language, 'go');
         });
     });
 
