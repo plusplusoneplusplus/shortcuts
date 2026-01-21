@@ -5,6 +5,10 @@
  * Provides an enhanced view with individual result nodes that can be clicked
  * to display full details. Leverages shared preview components.
  *
+ * Uses shared webview utilities:
+ * - WebviewSetupHelper for webview configuration
+ * - WebviewMessageRouter for type-safe message handling
+ *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -21,6 +25,7 @@ import { PipelineExecutionResult } from '../executor';
 import { MapResult } from '../../map-reduce/types';
 import { PromptMapResult, PromptMapOutput } from '../../map-reduce/jobs/prompt-map-job';
 import { getWorkspaceRoot } from '../../shared/workspace-utils';
+import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
 
 /**
  * URI scheme for exporting results
@@ -29,14 +34,22 @@ export const PIPELINE_RESULTS_EXPORT_SCHEME = 'pipeline-results-export';
 
 /**
  * Manages Pipeline Result Viewer webview panels
+ * 
+ * Uses shared webview utilities for consistent setup and message handling.
  */
 export class PipelineResultViewerProvider {
     public static readonly viewType = 'pipelineResultViewer';
 
     private static currentPanel: vscode.WebviewPanel | undefined;
     private static currentData: PipelineResultViewData | undefined;
+    private static currentRouter: WebviewMessageRouter<ResultViewerMessage> | undefined;
+    
+    /** Shared webview setup helper */
+    private readonly setupHelper: WebviewSetupHelper;
 
-    constructor(private readonly extensionUri: vscode.Uri) {}
+    constructor(private readonly extensionUri: vscode.Uri) {
+        this.setupHelper = new WebviewSetupHelper(extensionUri);
+    }
 
     /**
      * Show pipeline results in a webview panel
@@ -60,19 +73,15 @@ export class PipelineResultViewerProvider {
         if (PipelineResultViewerProvider.currentPanel) {
             PipelineResultViewerProvider.currentPanel.reveal(viewColumn);
             this.updatePanelContent(PipelineResultViewerProvider.currentPanel, viewData);
+            // Update message router handlers with new data
+            this.setupMessageRouter(PipelineResultViewerProvider.currentPanel, viewData);
         } else {
+            // Use shared setup helper for consistent webview options
             const panel = vscode.window.createWebviewPanel(
                 PipelineResultViewerProvider.viewType,
                 `Results: ${pipelineName}`,
                 viewColumn,
-                {
-                    enableScripts: true,
-                    retainContextWhenHidden: true,
-                    localResourceRoots: [
-                        vscode.Uri.joinPath(this.extensionUri, 'media'),
-                        vscode.Uri.joinPath(this.extensionUri, 'dist')
-                    ]
-                }
+                this.setupHelper.getWebviewPanelOptions()
             );
 
             PipelineResultViewerProvider.currentPanel = panel;
@@ -80,19 +89,57 @@ export class PipelineResultViewerProvider {
             // Update content
             this.updatePanelContent(panel, viewData);
 
-            // Handle messages from webview
-            panel.webview.onDidReceiveMessage(
-                (message: ResultViewerMessage) => this.handleMessage(message, viewData),
-                undefined,
-                []
-            );
+            // Setup type-safe message router
+            this.setupMessageRouter(panel, viewData);
 
             // Clean up on close
             panel.onDidDispose(() => {
                 PipelineResultViewerProvider.currentPanel = undefined;
                 PipelineResultViewerProvider.currentData = undefined;
+                PipelineResultViewerProvider.currentRouter?.dispose();
+                PipelineResultViewerProvider.currentRouter = undefined;
             });
         }
+    }
+
+    /**
+     * Setup message router with type-safe handlers
+     */
+    private setupMessageRouter(panel: vscode.WebviewPanel, data: PipelineResultViewData): void {
+        // Dispose previous router if exists
+        PipelineResultViewerProvider.currentRouter?.dispose();
+
+        // Create new router with type-safe handlers
+        const router = new WebviewMessageRouter<ResultViewerMessage>({
+            logUnhandledMessages: false // Don't log client-side only messages
+        });
+
+        // Register handlers
+        // Note: ResultViewerMessage uses a single interface with optional payload,
+        // not discriminated unions, so we access payload directly
+        router
+            .on('exportResults', async (message: ResultViewerMessage) => {
+                await this.handleExport(data, message.payload?.exportFormat || 'json');
+            })
+            .on('copyResults', async () => {
+                await this.handleCopy(data);
+            })
+            .on('ready', () => {
+                // Webview is ready - handled client-side
+            })
+            .on('nodeClick', () => {
+                // Node selection - handled client-side
+            })
+            .on('filterResults', () => {
+                // Filtering - handled client-side
+            });
+
+        // Connect router to panel
+        panel.webview.onDidReceiveMessage(
+            (message: ResultViewerMessage) => router.route(message)
+        );
+
+        PipelineResultViewerProvider.currentRouter = router;
     }
 
     /**
@@ -157,33 +204,6 @@ export class PipelineResultViewerProvider {
             error: result.error,
             completedAt: new Date()
         };
-    }
-
-    /**
-     * Handle messages from the webview
-     */
-    private async handleMessage(
-        message: ResultViewerMessage,
-        data: PipelineResultViewData
-    ): Promise<void> {
-        switch (message.type) {
-            case 'exportResults':
-                await this.handleExport(
-                    data,
-                    message.payload?.exportFormat || 'json'
-                );
-                break;
-
-            case 'copyResults':
-                await this.handleCopy(data);
-                break;
-
-            case 'nodeClick':
-            case 'filterResults':
-            case 'ready':
-                // Handled client-side or informational
-                break;
-        }
     }
 
     /**

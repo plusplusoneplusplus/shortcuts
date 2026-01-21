@@ -5,6 +5,9 @@
  * Displays individual result nodes that can be clicked to see full details.
  * Reuses styling patterns from preview-content.ts for consistency.
  *
+ * Uses shared webview utilities:
+ * - WebviewSetupHelper for nonce generation and HTML escaping
+ *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -12,12 +15,12 @@ import * as vscode from 'vscode';
 import {
     PipelineResultViewData,
     PipelineItemResultNode,
-    ResultViewerMessage,
     formatDuration,
     getStatusIcon,
     getStatusClass,
     getItemPreview
 } from './result-viewer-types';
+import { WebviewSetupHelper } from '../../shared/webview/extension-webview-utils';
 
 /**
  * Generate HTML content for the Pipeline Result Viewer webview
@@ -27,7 +30,8 @@ export function getResultViewerContent(
     extensionUri: vscode.Uri,
     data?: PipelineResultViewData
 ): string {
-    const nonce = getNonce();
+    // Use shared helper for nonce generation
+    const nonce = WebviewSetupHelper.generateNonce();
     const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
         vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
 
@@ -1133,27 +1137,11 @@ function getScript(data: PipelineResultViewData | undefined): string {
 }
 
 /**
- * Generate a nonce for script security
- */
-function getNonce(): string {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
-}
-
-/**
  * Escape HTML special characters
+ * Uses the shared WebviewSetupHelper utility
  */
 function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+    return WebviewSetupHelper.escapeHtml(text);
 }
 
 /**
