@@ -2,19 +2,26 @@
  * Discovery Preview Provider
  * 
  * Webview panel for displaying and managing discovery results.
+ * 
+ * Uses shared webview utilities:
+ * - WebviewSetupHelper for webview configuration
+ * - WebviewMessageRouter for type-safe message handling
  */
 
 import * as vscode from 'vscode';
-import { DiscoveryProcess, DiscoveryResult, DiscoverySourceType } from '../types';
+import { DiscoveryProcess, DiscoveryResult } from '../types';
 import { LogicalGroupItem, LogicalGroup, ShortcutsConfig } from '../../types';
 import { DiscoveryEngine } from '../discovery-engine';
 import { getWebviewContent, WebviewMessage, ExtensionFilters } from './webview-content';
 import { ConfigurationManager } from '../../configuration-manager';
 import { getExtensionLogger, LogCategory } from '../../shared/extension-logger';
+import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
 
 /**
  * Discovery Preview Panel
  * Manages the webview panel for discovery results
+ * 
+ * Uses shared webview utilities for consistent setup and message handling.
  */
 export class DiscoveryPreviewPanel {
     public static currentPanel: DiscoveryPreviewPanel | undefined;
@@ -24,6 +31,8 @@ export class DiscoveryPreviewPanel {
     private readonly _extensionUri: vscode.Uri;
     private readonly _discoveryEngine: DiscoveryEngine;
     private readonly _configManager: ConfigurationManager;
+    private readonly _setupHelper: WebviewSetupHelper;
+    private readonly _messageRouter: WebviewMessageRouter<WebviewMessage>;
     
     private _currentProcess: DiscoveryProcess | undefined;
     private _minScore: number = 30;
@@ -53,18 +62,15 @@ export class DiscoveryPreviewPanel {
             return DiscoveryPreviewPanel.currentPanel;
         }
         
+        // Use shared setup helper for consistent webview options
+        const setupHelper = new WebviewSetupHelper(extensionUri);
+        
         // Otherwise, create a new panel
         const panel = vscode.window.createWebviewPanel(
             DiscoveryPreviewPanel.viewType,
             'Discovery Results',
             column || vscode.ViewColumn.One,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [
-                    vscode.Uri.joinPath(extensionUri, 'media')
-                ]
-            }
+            setupHelper.getWebviewPanelOptions()
         );
         
         DiscoveryPreviewPanel.currentPanel = new DiscoveryPreviewPanel(
@@ -90,11 +96,18 @@ export class DiscoveryPreviewPanel {
         this._discoveryEngine = discoveryEngine;
         this._configManager = configManager;
         this._currentProcess = process;
+        this._setupHelper = new WebviewSetupHelper(extensionUri);
+        this._messageRouter = new WebviewMessageRouter<WebviewMessage>({
+            logUnhandledMessages: false
+        });
         
         // Set the default target group from the process if available
         if (process?.targetGroupPath) {
             this._selectedTargetGroup = process.targetGroupPath;
         }
+        
+        // Setup type-safe message routing
+        this._setupMessageHandlers();
         
         // Set the webview's initial html content
         this._update();
@@ -113,9 +126,9 @@ export class DiscoveryPreviewPanel {
             this._disposables
         );
         
-        // Handle messages from the webview
+        // Connect router to panel
         this._panel.webview.onDidReceiveMessage(
-            message => this._handleMessage(message),
+            (message: WebviewMessage) => this._messageRouter.route(message),
             null,
             this._disposables
         );
@@ -134,6 +147,43 @@ export class DiscoveryPreviewPanel {
     }
     
     /**
+     * Setup message handlers using the type-safe router
+     */
+    private _setupMessageHandlers(): void {
+        this._messageRouter
+            .on('toggleItem', (message: WebviewMessage) => {
+                this._toggleItem(message.payload.id);
+            })
+            .on('selectAll', () => {
+                this._selectAll();
+            })
+            .on('deselectAll', () => {
+                this._deselectAll();
+            })
+            .on('addToGroup', async (message: WebviewMessage) => {
+                await this._addToGroup(message.payload.targetGroup);
+            })
+            .on('filterByScore', (message: WebviewMessage) => {
+                this._minScore = message.payload.minScore;
+                this._update();
+            })
+            .on('filterByExtension', (message: WebviewMessage) => {
+                this._setExtensionFilter(message.payload.sourceType, message.payload.extension);
+            })
+            .on('refresh', () => {
+                this._update();
+            })
+            .on('cancel', () => {
+                if (this._currentProcess) {
+                    this._discoveryEngine.cancelProcess(this._currentProcess.id);
+                }
+            })
+            .on('showWarning', (message: WebviewMessage) => {
+                vscode.window.showWarningMessage(message.payload.message);
+            });
+    }
+    
+    /**
      * Set the current discovery process
      */
     public setProcess(process: DiscoveryProcess): void {
@@ -145,52 +195,6 @@ export class DiscoveryPreviewPanel {
             this._selectedTargetGroup = process.targetGroupPath;
         }
         this._update();
-    }
-    
-    /**
-     * Handle messages from the webview
-     */
-    private async _handleMessage(message: WebviewMessage): Promise<void> {
-        switch (message.type) {
-            case 'toggleItem':
-                this._toggleItem(message.payload.id);
-                break;
-            
-            case 'selectAll':
-                this._selectAll();
-                break;
-            
-            case 'deselectAll':
-                this._deselectAll();
-                break;
-            
-            case 'addToGroup':
-                await this._addToGroup(message.payload.targetGroup);
-                break;
-            
-            case 'filterByScore':
-                this._minScore = message.payload.minScore;
-                this._update();
-                break;
-            
-            case 'filterByExtension':
-                this._setExtensionFilter(message.payload.sourceType, message.payload.extension);
-                break;
-            
-            case 'refresh':
-                this._update();
-                break;
-            
-            case 'cancel':
-                if (this._currentProcess) {
-                    this._discoveryEngine.cancelProcess(this._currentProcess.id);
-                }
-                break;
-            
-            case 'showWarning':
-                vscode.window.showWarningMessage(message.payload.message);
-                break;
-        }
     }
     
     /**
@@ -569,6 +573,7 @@ export class DiscoveryPreviewPanel {
     public dispose(): void {
         DiscoveryPreviewPanel.currentPanel = undefined;
         
+        this._messageRouter.dispose();
         this._panel.dispose();
         
         while (this._disposables.length) {

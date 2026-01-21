@@ -2,11 +2,15 @@
  * Webview Content for Discovery Preview
  * 
  * Generates HTML/CSS/JS for the discovery results webview panel.
+ * 
+ * Uses shared webview utilities:
+ * - WebviewSetupHelper for nonce generation and HTML escaping
  */
 
 import * as vscode from 'vscode';
 import { DiscoveryResult, DiscoveryProcess, DiscoverySourceType } from '../types';
 import { getRelevanceLevel } from '../relevance-scorer';
+import { WebviewSetupHelper } from '../../shared/webview/extension-webview-utils';
 
 /**
  * Message types for webview communication
@@ -48,7 +52,8 @@ export function getWebviewContent(
     selectedTargetGroup: string = '',
     extensionFilters: ExtensionFilters = {}
 ): string {
-    const nonce = getNonce();
+    // Use shared helper for nonce generation
+    const nonce = WebviewSetupHelper.generateNonce();
     
     // Get the local path to main script/style
     const styleUri = webview.asWebviewUri(
@@ -78,18 +83,6 @@ export function getWebviewContent(
     </script>
 </body>
 </html>`;
-}
-
-/**
- * Generate a nonce for script security
- */
-function getNonce(): string {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
 }
 
 /**
@@ -907,15 +900,9 @@ function getTypeLabel(type: DiscoverySourceType): string {
 
 /**
  * Escape HTML special characters
+ * Uses the shared WebviewSetupHelper utility
  */
 function escapeHtml(text: string): string {
-    const map: Record<string, string> = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-    };
-    return text.replace(/[&<>"']/g, m => map[m]);
+    return WebviewSetupHelper.escapeHtml(text);
 }
 
