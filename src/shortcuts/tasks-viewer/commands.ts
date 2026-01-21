@@ -31,6 +31,7 @@ export class TasksCommands {
 
         disposables.push(
             vscode.commands.registerCommand('tasksViewer.create', () => this.createTask()),
+            vscode.commands.registerCommand('tasksViewer.createFeature', () => this.createFeature()),
             vscode.commands.registerCommand('tasksViewer.rename', (item: TaskItem) => this.renameTask(item)),
             vscode.commands.registerCommand('tasksViewer.delete', (item: TaskItem) => this.deleteTask(item)),
             vscode.commands.registerCommand('tasksViewer.archive', (item: TaskItem) => this.archiveTask(item)),
@@ -81,6 +82,40 @@ export class TasksCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to create task: ${err.message}`);
+        }
+    }
+
+    /**
+     * Create a new feature folder
+     */
+    private async createFeature(): Promise<void> {
+        const name = await vscode.window.showInputBox({
+            prompt: 'Enter feature name',
+            placeHolder: 'my-feature',
+            validateInput: (value) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Feature name cannot be empty';
+                }
+                if (value.includes('/') || value.includes('\\')) {
+                    return 'Feature name cannot contain path separators';
+                }
+                return null;
+            }
+        });
+
+        if (!name) {
+            return;
+        }
+
+        try {
+            const folderPath = await this.taskManager.createFeature(name.trim());
+            this.treeDataProvider.refresh();
+
+            // Reveal the folder in the file explorer
+            await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(folderPath));
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to create feature: ${err.message}`);
         }
     }
 

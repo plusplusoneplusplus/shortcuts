@@ -140,6 +140,25 @@ export class TaskManager implements vscode.Disposable {
     }
 
     /**
+     * Create a new feature folder
+     * @returns The path to the created folder
+     */
+    async createFeature(name: string): Promise<string> {
+        this.ensureFoldersExist();
+
+        const sanitizedName = this.sanitizeFileName(name);
+        const folderPath = path.join(this.getTasksFolder(), sanitizedName);
+
+        if (safeExists(folderPath)) {
+            throw new Error(`Feature "${name}" already exists`);
+        }
+
+        ensureDirectoryExists(folderPath);
+
+        return folderPath;
+    }
+
+    /**
      * Rename a task file
      * @returns The new file path
      */

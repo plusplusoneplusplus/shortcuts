@@ -122,6 +122,62 @@ suite('Tasks Viewer Tests', () => {
             });
         });
 
+        suite('Feature Creation', () => {
+            test('should create a new feature folder', async () => {
+                const folderPath = await taskManager.createFeature('My Feature');
+
+                assert.ok(fs.existsSync(folderPath), 'Feature folder should exist');
+                assert.ok(fs.statSync(folderPath).isDirectory(), 'Feature should be a directory');
+            });
+
+            test('should sanitize feature name for folder', async () => {
+                const folderPath = await taskManager.createFeature('Feature: With <Special> Chars!');
+                const folderName = path.basename(folderPath);
+
+                assert.ok(fs.existsSync(folderPath));
+                assert.ok(!folderName.includes(':'), 'Folder name should not contain colon');
+                assert.ok(!folderName.includes('<'), 'Folder name should not contain <');
+                assert.ok(!folderName.includes('>'), 'Folder name should not contain >');
+            });
+
+            test('should throw error if feature already exists', async () => {
+                await taskManager.createFeature('Duplicate Feature');
+
+                await assert.rejects(
+                    async () => await taskManager.createFeature('Duplicate Feature'),
+                    /already exists/i
+                );
+            });
+
+            test('should create feature with spaces in name', async () => {
+                const folderPath = await taskManager.createFeature('Feature With Spaces');
+                assert.ok(fs.existsSync(folderPath));
+                assert.ok(fs.statSync(folderPath).isDirectory());
+            });
+
+            test('should create feature folder inside tasks folder', async () => {
+                const folderPath = await taskManager.createFeature('My Feature');
+                const tasksFolder = taskManager.getTasksFolder();
+
+                assert.ok(folderPath.startsWith(tasksFolder), 'Feature should be inside tasks folder');
+            });
+
+            test('should allow creating tasks inside feature folder', async () => {
+                const featurePath = await taskManager.createFeature('Test Feature');
+
+                // Create a task file inside the feature folder
+                const taskFile = path.join(featurePath, 'task.md');
+                fs.writeFileSync(taskFile, '# Task in Feature');
+
+                assert.ok(fs.existsSync(taskFile));
+
+                // The task should be visible in getTasks (with relativePath)
+                const tasks = await taskManager.getTasks();
+                const featureTask = tasks.find(t => t.relativePath === 'Test-Feature');
+                assert.ok(featureTask, 'Task in feature should be found');
+            });
+        });
+
         suite('Task Reading', () => {
             test('should return empty array when no tasks exist', async () => {
                 taskManager.ensureFoldersExist();

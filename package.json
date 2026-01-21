@@ -1358,6 +1358,12 @@
         "icon": "$(add)"
       },
       {
+        "command": "tasksViewer.createFeature",
+        "title": "Create Feature",
+        "category": "Tasks",
+        "icon": "$(new-folder)"
+      },
+      {
         "command": "tasksViewer.rename",
         "title": "Rename Task",
         "category": "Tasks",
@@ -1498,6 +1504,11 @@
         },
         {
           "command": "tasksViewer.create",
+          "when": "view == tasksView",
+          "group": "navigation"
+        },
+        {
+          "command": "tasksViewer.createFeature",
           "when": "view == tasksView",
           "group": "navigation"
         },
