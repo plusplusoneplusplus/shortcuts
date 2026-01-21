@@ -100,6 +100,36 @@ suite('Source Mode Highlighting Tests', () => {
                 const result = applySourceModeHighlighting('**not bold**', true);
                 assert.ok(!result.html.includes('class="src-bold"'));
             });
+
+            test('should detect code fence with leading tab', () => {
+                const result = applySourceModeHighlighting('\t```cpp', false);
+                assert.ok(result.html.includes('class="src-code-fence"'));
+                assert.strictEqual(result.inCodeBlock, true);
+            });
+
+            test('should detect code fence with 1-3 leading spaces', () => {
+                const result1 = applySourceModeHighlighting(' ```python', false);
+                assert.ok(result1.html.includes('class="src-code-fence"'));
+                assert.strictEqual(result1.inCodeBlock, true);
+
+                const result2 = applySourceModeHighlighting('  ```js', false);
+                assert.ok(result2.html.includes('class="src-code-fence"'));
+                assert.strictEqual(result2.inCodeBlock, true);
+
+                const result3 = applySourceModeHighlighting('   ```rust', false);
+                assert.ok(result3.html.includes('class="src-code-fence"'));
+                assert.strictEqual(result3.inCodeBlock, true);
+            });
+
+            test('should detect closing code fence with leading whitespace', () => {
+                const result1 = applySourceModeHighlighting('\t```', true);
+                assert.ok(result1.html.includes('class="src-code-fence"'));
+                assert.strictEqual(result1.inCodeBlock, false);
+
+                const result2 = applySourceModeHighlighting('  ```', true);
+                assert.ok(result2.html.includes('class="src-code-fence"'));
+                assert.strictEqual(result2.inCodeBlock, false);
+            });
         });
 
         suite('Blockquotes', () => {

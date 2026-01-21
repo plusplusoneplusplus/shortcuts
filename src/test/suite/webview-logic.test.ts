@@ -1160,6 +1160,54 @@ suite('Webview Logic Tests', () => {
                 const result = applyMarkdownHighlighting('```', 1, false, null);
                 assert.strictEqual(result.codeBlockLang, 'plaintext');
             });
+
+            test('should detect code fence with leading tab', () => {
+                const result = applyMarkdownHighlighting('\t```cpp', 1, false, null);
+                assert.strictEqual(result.inCodeBlock, true);
+                assert.strictEqual(result.codeBlockLang, 'cpp');
+                assert.strictEqual(result.isCodeFenceStart, true);
+            });
+
+            test('should detect code fence with 1-3 leading spaces', () => {
+                const result1 = applyMarkdownHighlighting(' ```python', 1, false, null);
+                assert.strictEqual(result1.inCodeBlock, true);
+                assert.strictEqual(result1.codeBlockLang, 'python');
+
+                const result2 = applyMarkdownHighlighting('  ```js', 1, false, null);
+                assert.strictEqual(result2.inCodeBlock, true);
+                assert.strictEqual(result2.codeBlockLang, 'js');
+
+                const result3 = applyMarkdownHighlighting('   ```rust', 1, false, null);
+                assert.strictEqual(result3.inCodeBlock, true);
+                assert.strictEqual(result3.codeBlockLang, 'rust');
+            });
+
+            test('should detect closing code fence with leading whitespace', () => {
+                const result1 = applyMarkdownHighlighting('\t```', 5, true, 'cpp');
+                assert.strictEqual(result1.inCodeBlock, false);
+                assert.strictEqual(result1.codeBlockLang, null);
+                assert.strictEqual(result1.isCodeFenceEnd, true);
+
+                const result2 = applyMarkdownHighlighting('  ```', 5, true, 'python');
+                assert.strictEqual(result2.inCodeBlock, false);
+                assert.strictEqual(result2.codeBlockLang, null);
+                assert.strictEqual(result2.isCodeFenceEnd, true);
+            });
+
+            test('should handle content inside indented code block', () => {
+                // Opening fence with tab
+                const openResult = applyMarkdownHighlighting('\t```cpp', 1, false, null);
+                assert.strictEqual(openResult.inCodeBlock, true);
+
+                // Content inside should not be treated as markdown
+                const contentResult = applyMarkdownHighlighting('# Not a heading', 2, true, 'cpp');
+                assert.ok(!contentResult.html.includes('md-h1'));
+                assert.strictEqual(contentResult.inCodeBlock, true);
+
+                // Closing fence with tab
+                const closeResult = applyMarkdownHighlighting('\t```', 3, true, 'cpp');
+                assert.strictEqual(closeResult.inCodeBlock, false);
+            });
         });
     });
 

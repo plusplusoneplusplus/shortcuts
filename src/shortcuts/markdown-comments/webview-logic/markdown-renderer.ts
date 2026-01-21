@@ -82,8 +82,8 @@ export function applySourceModeHighlighting(
     // Strip trailing \r from Windows line endings
     const cleanLine = line.replace(/\r$/, '');
     
-    // Check for code fence (```)
-    if (cleanLine.match(/^```/)) {
+    // Check for code fence (```) - allow up to 3 spaces or tabs before the fence
+    if (cleanLine.match(/^[ \t]{0,3}```/)) {
         // Toggle code block state, but don't highlight the fence itself
         return {
             html: '<span class="src-code-fence">' + escapeHtml(cleanLine) + '</span>',
@@ -322,7 +322,8 @@ export function applyMarkdownHighlighting(
     const cleanLine = line.replace(/\r$/, '');
 
     // If we're inside a code block, don't apply markdown highlighting
-    if (inCodeBlock && !cleanLine.startsWith('```')) {
+    // Allow up to 3 spaces or tabs before the closing fence
+    if (inCodeBlock && !cleanLine.match(/^[ \t]{0,3}```/)) {
         return {
             html: escapeHtml(cleanLine),
             inCodeBlock: true,
@@ -330,8 +331,8 @@ export function applyMarkdownHighlighting(
         };
     }
 
-    // Check for code fence start/end
-    const codeFenceMatch = cleanLine.match(/^```(\w*)/);
+    // Check for code fence start/end - allow up to 3 spaces or tabs before the fence
+    const codeFenceMatch = cleanLine.match(/^[ \t]{0,3}```(\w*)/);
     if (codeFenceMatch) {
         if (!inCodeBlock) {
             // Starting a code block
