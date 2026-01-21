@@ -254,7 +254,7 @@ suite('Pipeline Preview Content Tests', () => {
             
             assert.ok(result.includes('REDUCE Configuration'), 'Should have title');
             assert.ok(result.includes('Type:'), 'Should have type label');
-            assert.ok(result.includes('json'), 'Should show reduce type');
+            assert.ok(result.includes('JSON'), 'Should show reduce type in uppercase');
         });
 
         test('should show format description for json', () => {
@@ -273,12 +273,12 @@ suite('Pipeline Preview Content Tests', () => {
             assert.ok(result.includes('formatted list'), 'Should describe list format');
         });
 
-        test('should show expected output count when rowCount provided', () => {
+        test('should show input items count when rowCount provided', () => {
             const result = getReduceDetails(sampleConfig, 50);
             
-            assert.ok(result.includes('Expected Output:'), 'Should have expected output');
+            assert.ok(result.includes('Input Items:'), 'Should have input items label');
             assert.ok(result.includes('50'), 'Should show row count');
-            assert.ok(result.includes('items'), 'Should mention items');
+            assert.ok(result.includes('items from map phase'), 'Should mention items from map phase');
         });
 
         test('should show output schema', () => {
@@ -287,6 +287,150 @@ suite('Pipeline Preview Content Tests', () => {
             assert.ok(result.includes('Output Schema'), 'Should have schema section');
             assert.ok(result.includes('result'), 'Should show output fields in schema');
             assert.ok(result.includes('score'), 'Should show output fields in schema');
+        });
+    });
+
+    suite('getReduceDetails - AI Reduce', () => {
+        // Sample AI reduce config
+        const aiReduceConfig: PipelineConfig = {
+            name: 'AI Reduce Pipeline',
+            input: {
+                from: {
+                    type: 'csv',
+                    path: 'bugs.csv'
+                }
+            },
+            map: {
+                prompt: 'Analyze bug: {{title}}',
+                output: ['category', 'severity'],
+                parallel: 5
+            },
+            reduce: {
+                type: 'ai',
+                prompt: 'You analyzed {{COUNT}} bugs:\n\n{{RESULTS}}\n\nCreate executive summary.',
+                output: ['summary', 'criticalIssues', 'recommendations'],
+                model: 'gpt-4'
+            }
+        };
+
+        test('should show AI reduce type', () => {
+            const result = getReduceDetails(aiReduceConfig);
+            
+            assert.ok(result.includes('Type:'), 'Should have type label');
+            assert.ok(result.includes('AI'), 'Should show AI type in uppercase');
+            assert.ok(result.includes('AI-powered synthesis'), 'Should describe AI format');
+        });
+
+        test('should show AI reduce prompt', () => {
+            const result = getReduceDetails(aiReduceConfig);
+            
+            assert.ok(result.includes('AI Reduce Prompt'), 'Should have AI reduce prompt section');
+            assert.ok(result.includes('prompt-template'), 'Should have prompt-template class');
+            assert.ok(result.includes('You analyzed {{COUNT}} bugs'), 'Should show prompt content');
+            assert.ok(result.includes('{{RESULTS}}'), 'Should show RESULTS variable');
+            assert.ok(result.includes('Create executive summary'), 'Should show full prompt');
+        });
+
+        test('should show AI reduce output fields', () => {
+            const result = getReduceDetails(aiReduceConfig);
+            
+            assert.ok(result.includes('Output Fields:'), 'Should have output fields label');
+            assert.ok(result.includes('summary'), 'Should show summary field');
+            assert.ok(result.includes('criticalIssues'), 'Should show criticalIssues field');
+            assert.ok(result.includes('recommendations'), 'Should show recommendations field');
+            assert.ok(result.includes('field-tag'), 'Should use field-tag class');
+        });
+
+        test('should show AI reduce model when specified', () => {
+            const result = getReduceDetails(aiReduceConfig);
+            
+            assert.ok(result.includes('Model:'), 'Should have model label');
+            assert.ok(result.includes('gpt-4'), 'Should show model name');
+        });
+
+        test('should show available template variables for AI reduce', () => {
+            const result = getReduceDetails(aiReduceConfig);
+            
+            assert.ok(result.includes('Available Template Variables'), 'Should have template variables section');
+            assert.ok(result.includes('{{RESULTS}}'), 'Should show RESULTS variable');
+            assert.ok(result.includes('{{RESULTS_FILE}}'), 'Should show RESULTS_FILE variable');
+            assert.ok(result.includes('{{COUNT}}'), 'Should show COUNT variable');
+            assert.ok(result.includes('{{SUCCESS_COUNT}}'), 'Should show SUCCESS_COUNT variable');
+            assert.ok(result.includes('{{FAILURE_COUNT}}'), 'Should show FAILURE_COUNT variable');
+        });
+
+        test('should not show output schema for AI reduce', () => {
+            const result = getReduceDetails(aiReduceConfig);
+            
+            // AI reduce should show prompt instead of schema
+            assert.ok(!result.includes('Output Schema'), 'Should not have output schema section for AI reduce');
+        });
+
+        test('should show input items count for AI reduce', () => {
+            const result = getReduceDetails(aiReduceConfig, 100);
+            
+            assert.ok(result.includes('Input Items:'), 'Should have input items label');
+            assert.ok(result.includes('100'), 'Should show row count');
+            assert.ok(result.includes('items from map phase'), 'Should mention items from map phase');
+        });
+
+        test('should handle AI reduce without output fields', () => {
+            const aiReduceNoOutput: PipelineConfig = {
+                ...aiReduceConfig,
+                reduce: {
+                    type: 'ai',
+                    prompt: 'Summarize: {{RESULTS}}'
+                    // No output fields - returns raw text
+                }
+            };
+            
+            const result = getReduceDetails(aiReduceNoOutput);
+            
+            assert.ok(result.includes('AI Reduce Prompt'), 'Should still show prompt section');
+            assert.ok(result.includes('Summarize: {{RESULTS}}'), 'Should show prompt');
+            assert.ok(!result.includes('Output Fields:'), 'Should not have output fields when not specified');
+        });
+
+        test('should handle AI reduce without model', () => {
+            const aiReduceNoModel: PipelineConfig = {
+                ...aiReduceConfig,
+                reduce: {
+                    type: 'ai',
+                    prompt: 'Summarize: {{RESULTS}}',
+                    output: ['summary']
+                }
+            };
+            
+            const result = getReduceDetails(aiReduceNoModel);
+            
+            assert.ok(!result.includes('Model:'), 'Should not have model label when not specified');
+        });
+
+        test('should escape HTML in AI reduce prompt', () => {
+            const aiReduceWithHtml: PipelineConfig = {
+                ...aiReduceConfig,
+                reduce: {
+                    type: 'ai',
+                    prompt: 'Format as <table>: {{RESULTS}}'
+                }
+            };
+            
+            const result = getReduceDetails(aiReduceWithHtml);
+            
+            assert.ok(result.includes('&lt;table&gt;'), 'Should escape HTML tags in prompt');
+            assert.ok(!result.includes('<table>:'), 'Should not have unescaped HTML');
+        });
+
+        test('should show text reduce type description', () => {
+            const textReduceConfig: PipelineConfig = {
+                ...sampleConfig,
+                reduce: { type: 'text' }
+            };
+            
+            const result = getReduceDetails(textReduceConfig);
+            
+            assert.ok(result.includes('TEXT'), 'Should show TEXT type');
+            assert.ok(result.includes('Plain text concatenation'), 'Should describe text format');
         });
     });
 
@@ -527,7 +671,7 @@ suite('Pipeline Preview Content Tests', () => {
             
             assert.ok(inputResult.includes('data.csv'));
             assert.ok(mapResult.includes('Process'));
-            assert.ok(reduceResult.includes('json'));
+            assert.ok(reduceResult.includes('JSON'), 'Should show JSON type in uppercase');
         });
 
         test('should handle very long prompt templates', () => {

@@ -732,10 +732,13 @@ export function getReduceDetails(config: PipelineConfig, rowCount?: number): str
         'list': 'Outputs results as a formatted list',
         'csv': 'Outputs results as CSV format',
         'markdown': 'Outputs results as Markdown document',
-        'summary': 'Generates a summary of all results'
+        'summary': 'Generates a summary of all results',
+        'ai': 'AI-powered synthesis of results',
+        'text': 'Plain text concatenation'
     };
 
     const description = reduceDescriptions[config.reduce.type] || 'Custom output format';
+    const isAIReduce = config.reduce.type === 'ai';
 
     return `
         <div class="detail-section active">
@@ -743,24 +746,53 @@ export function getReduceDetails(config: PipelineConfig, rowCount?: number): str
             <div class="detail-grid">
                 <div class="detail-item">
                     <span class="detail-label">Type:</span>
-                    <span class="detail-value">${config.reduce.type}</span>
+                    <span class="detail-value">${config.reduce.type.toUpperCase()}</span>
                 </div>
                 <div class="detail-item">
                     <span class="detail-label">Format:</span>
                     <span class="detail-value">${description}</span>
                 </div>
+                ${config.reduce.model ? `
+                <div class="detail-item">
+                    <span class="detail-label">Model:</span>
+                    <span class="detail-value">${escapeHtml(config.reduce.model)}</span>
+                </div>
+                ` : ''}
                 ${rowCount ? `
                 <div class="detail-item">
-                    <span class="detail-label">Expected Output:</span>
-                    <span class="detail-value">${rowCount} items (one per input row)</span>
+                    <span class="detail-label">Input Items:</span>
+                    <span class="detail-value">${rowCount} items from map phase</span>
+                </div>
+                ` : ''}
+                ${isAIReduce && config.reduce.output && config.reduce.output.length > 0 ? `
+                <div class="detail-item">
+                    <span class="detail-label">Output Fields:</span>
+                    <span class="detail-value output-fields">${config.reduce.output.map(o => `<span class="field-tag">${escapeHtml(o)}</span>`).join('')}</span>
                 </div>
                 ` : ''}
             </div>
+            ${isAIReduce && config.reduce.prompt ? `
+            <div class="prompt-section">
+                <h5 class="prompt-title">📝 AI Reduce Prompt</h5>
+                <pre class="prompt-template">${escapeHtml(config.reduce.prompt)}</pre>
+            </div>
             
+            <div class="variables-section">
+                <h5 class="variables-title">🔗 Available Template Variables</h5>
+                <ul class="variables-list">
+                    <li class="variable-found"><code>{{RESULTS}}</code><span class="variable-source">← All successful map outputs (JSON array)</span></li>
+                    <li class="variable-found"><code>{{RESULTS_FILE}}</code><span class="variable-source">← Path to temp file with results (for large data)</span></li>
+                    <li class="variable-found"><code>{{COUNT}}</code><span class="variable-source">← Total number of results</span></li>
+                    <li class="variable-found"><code>{{SUCCESS_COUNT}}</code><span class="variable-source">← Number of successful items</span></li>
+                    <li class="variable-found"><code>{{FAILURE_COUNT}}</code><span class="variable-source">← Number of failed items</span></li>
+                </ul>
+            </div>
+            ` : `
             <div class="output-schema">
                 <h5 class="schema-title">📋 Output Schema</h5>
                 <pre class="schema-preview">${getOutputSchemaPreview(config)}</pre>
             </div>
+            `}
         </div>
     `;
 }
@@ -1703,29 +1735,66 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
                 'list': 'Outputs results as a formatted list',
                 'csv': 'Outputs results as CSV format',
                 'markdown': 'Outputs results as Markdown document',
-                'summary': 'Generates a summary of all results'
+                'summary': 'Generates a summary of all results',
+                'ai': 'AI-powered synthesis of results',
+                'text': 'Plain text concatenation'
             };
             const description = reduceDescriptions[config.reduce.type] || 'Custom output format';
+            const isAIReduce = config.reduce.type === 'ai';
             
             let html = '<div class="detail-section active">';
             html += '<h4 class="detail-title">📤 REDUCE Configuration</h4>';
             html += '<div class="detail-grid">';
-            html += '<div class="detail-item"><span class="detail-label">Type:</span><span class="detail-value">' + config.reduce.type + '</span></div>';
+            html += '<div class="detail-item"><span class="detail-label">Type:</span><span class="detail-value">' + config.reduce.type.toUpperCase() + '</span></div>';
             html += '<div class="detail-item"><span class="detail-label">Format:</span><span class="detail-value">' + description + '</span></div>';
             
+            if (config.reduce.model) {
+                html += '<div class="detail-item"><span class="detail-label">Model:</span><span class="detail-value">' + escapeHtml(config.reduce.model) + '</span></div>';
+            }
+            
             if (rowCount) {
-                html += '<div class="detail-item"><span class="detail-label">Expected Output:</span><span class="detail-value">' + rowCount + ' items (one per input row)</span></div>';
+                html += '<div class="detail-item"><span class="detail-label">Input Items:</span><span class="detail-value">' + rowCount + ' items from map phase</span></div>';
+            }
+            
+            if (isAIReduce && config.reduce.output && config.reduce.output.length > 0) {
+                html += '<div class="detail-item"><span class="detail-label">Output Fields:</span><span class="detail-value output-fields">';
+                config.reduce.output.forEach(o => {
+                    html += '<span class="field-tag">' + escapeHtml(o) + '</span>';
+                });
+                html += '</span></div>';
             }
             
             html += '</div>';
             
-            // Output schema
-            html += '<div class="output-schema">';
-            html += '<h5 class="schema-title">📋 Output Schema</h5>';
-            const schema = {};
-            config.map.output.forEach(f => { schema[f] = 'string | number'; });
-            html += '<pre class="schema-preview">' + JSON.stringify([schema], null, 2) + '</pre>';
-            html += '</div></div>';
+            if (isAIReduce && config.reduce.prompt) {
+                // AI Reduce prompt section
+                html += '<div class="prompt-section">';
+                html += '<h5 class="prompt-title">📝 AI Reduce Prompt</h5>';
+                html += '<pre class="prompt-template">' + escapeHtml(config.reduce.prompt) + '</pre>';
+                html += '</div>';
+                
+                // Available template variables
+                html += '<div class="variables-section">';
+                html += '<h5 class="variables-title">🔗 Available Template Variables</h5>';
+                html += '<ul class="variables-list">';
+                html += '<li class="variable-found"><code>{{RESULTS}}</code><span class="variable-source">← All successful map outputs (JSON array)</span></li>';
+                html += '<li class="variable-found"><code>{{RESULTS_FILE}}</code><span class="variable-source">← Path to temp file with results (for large data)</span></li>';
+                html += '<li class="variable-found"><code>{{COUNT}}</code><span class="variable-source">← Total number of results</span></li>';
+                html += '<li class="variable-found"><code>{{SUCCESS_COUNT}}</code><span class="variable-source">← Number of successful items</span></li>';
+                html += '<li class="variable-found"><code>{{FAILURE_COUNT}}</code><span class="variable-source">← Number of failed items</span></li>';
+                html += '</ul></div>';
+            } else {
+                // Output schema for non-AI reduce
+                html += '<div class="output-schema">';
+                html += '<h5 class="schema-title">📋 Output Schema</h5>';
+                const schema = {};
+                const outputFields = config.map.output || [];
+                outputFields.forEach(f => { schema[f] = 'string | number'; });
+                html += '<pre class="schema-preview">' + JSON.stringify([schema], null, 2) + '</pre>';
+                html += '</div>';
+            }
+            
+            html += '</div>';
             
             return html;
         }
