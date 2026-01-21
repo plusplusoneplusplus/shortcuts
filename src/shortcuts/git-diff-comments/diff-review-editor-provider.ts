@@ -20,6 +20,7 @@ import {
     getRangeDiffContent
 } from './diff-content-provider';
 import { handleDiffAIClarification } from './diff-ai-clarification-handler';
+import { getDisplayRefs } from './git-ref-utils';
 import {
     DiffAskAIContext,
     DiffClarificationContext,
@@ -143,6 +144,9 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
             const isEditable = state.isEditable ?? isEditableDiff(state.gitContext);
 
+            // Get shortened display refs
+            const displayRefs = await getDisplayRefs(state.gitContext);
+
             // Set webview content
             panel.webview.html = this.getWebviewContent(
                 panel.webview,
@@ -150,7 +154,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 state.oldContent,
                 state.newContent,
                 state.gitContext,
-                isEditable
+                isEditable,
+                displayRefs
             );
 
             // Handle messages from webview
@@ -360,7 +365,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 isEditable
             };
             this.webviewStates.set(filePath, webviewState);
-            
+
+            // Get shortened display refs
+            const displayRefs = await getDisplayRefs(gitContext);
+
             // Update webview content
             panel.webview.html = this.getWebviewContent(
                 panel.webview,
@@ -368,9 +376,10 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 diffResult.oldContent,
                 diffResult.newContent,
                 gitContext,
-                isEditable
+                isEditable,
+                displayRefs
             );
-            
+
             // Reveal the panel
             panel.reveal(vscode.ViewColumn.One);
             return;
@@ -416,6 +425,9 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             this.isPreviewMode = true;
         }
 
+        // Get shortened display refs
+        const displayRefs = await getDisplayRefs(gitContext);
+
         // Set webview content
         panel.webview.html = this.getWebviewContent(
             panel.webview,
@@ -423,7 +435,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             diffResult.oldContent,
             diffResult.newContent,
             gitContext,
-            isEditable
+            isEditable,
+            displayRefs
         );
 
         // Handle messages from webview
@@ -972,8 +985,11 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         oldContent: string,
         newContent: string,
         gitContext: DiffGitContext,
-        isEditable: boolean = false
+        isEditable: boolean = false,
+        displayRefs?: { oldRef: string; newRef: string }
     ): string {
+        // Use provided display refs or fall back to full refs
+        const refsToDisplay = displayRefs || { oldRef: gitContext.oldRef, newRef: gitContext.newRef };
         // Get URIs for styles
         const styleUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.context.extensionUri, 'media', 'styles', 'diff-webview.css')
@@ -1056,7 +1072,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 </div>
                 <div class="diff-header-center">
                     <span class="diff-repo">${escapeHtml(gitContext.repositoryName)}</span>
-                    <span class="diff-refs">${escapeHtml(gitContext.oldRef)} → ${escapeHtml(gitContext.newRef)}</span>
+                    <span class="diff-refs">${escapeHtml(refsToDisplay.oldRef)} → ${escapeHtml(refsToDisplay.newRef)}</span>
                 </div>
                 <div class="diff-header-right">
                     <div class="diff-nav-buttons">
