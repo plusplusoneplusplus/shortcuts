@@ -15,11 +15,15 @@ export class InteractiveSessionItem extends vscode.TreeItem {
     public readonly session: InteractiveSession;
 
     constructor(session: InteractiveSession) {
-        // Create label from tool and working directory
-        const dirName = session.workingDirectory.split(/[\\/]/).pop() || session.workingDirectory;
-        const label = session.initialPrompt
-            ? `${session.initialPrompt.substring(0, 40)}${session.initialPrompt.length > 40 ? '...' : ''}`
-            : `${session.tool} session`;
+        // Create label: prefer custom name, then initial prompt, then default
+        let label: string;
+        if (session.customName) {
+            label = session.customName;
+        } else if (session.initialPrompt) {
+            label = `${session.initialPrompt.substring(0, 40)}${session.initialPrompt.length > 40 ? '...' : ''}`;
+        } else {
+            label = `${session.tool} session`;
+        }
 
         super(label, vscode.TreeItemCollapsibleState.None);
 
@@ -116,6 +120,11 @@ export class InteractiveSessionItem extends vscode.TreeItem {
         // Header
         lines.push('🖥️ **Interactive CLI Session**');
         lines.push('');
+
+        // Custom name if set
+        if (session.customName) {
+            lines.push(`**Name:** ${session.customName}`);
+        }
 
         // Tool
         const toolLabel = session.tool === 'copilot' ? 'GitHub Copilot CLI' : 'Claude CLI';

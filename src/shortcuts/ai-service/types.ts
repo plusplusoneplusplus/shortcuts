@@ -421,6 +421,8 @@ export interface InteractiveSession {
     pid?: number;
     /** Error message if status is 'error' */
     error?: string;
+    /** Custom name for the session (user-defined) */
+    customName?: string;
 }
 
 /**

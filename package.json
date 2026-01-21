@@ -1016,6 +1016,12 @@
         "icon": "$(clear-all)"
       },
       {
+        "command": "interactiveSessions.rename",
+        "title": "Rename Session",
+        "category": "AI Processes",
+        "icon": "$(edit)"
+      },
+      {
         "command": "gitView.refresh",
         "title": "Refresh Git View",
         "category": "Git",
@@ -2000,9 +2006,14 @@
           "group": "session@1"
         },
         {
+          "command": "interactiveSessions.rename",
+          "when": "view == clarificationProcessesView && viewItem =~ /^interactiveSession_(starting|active|ended|error)$/",
+          "group": "session@2"
+        },
+        {
           "command": "interactiveSessions.remove",
           "when": "view == clarificationProcessesView && viewItem =~ /^interactiveSession_(ended|error)$/",
-          "group": "session@2"
+          "group": "session@3"
         },
         {
           "command": "interactiveSessions.clearEnded",

@@ -2120,6 +2120,36 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        const renameInteractiveSessionCommand = vscode.commands.registerCommand(
+            'interactiveSessions.rename',
+            async (item: InteractiveSessionItem) => {
+                if (!item?.session?.id) {
+                    return;
+                }
+
+                const currentName = item.session.customName || '';
+                const newName = await vscode.window.showInputBox({
+                    prompt: 'Enter a new name for this session',
+                    placeHolder: 'Session name',
+                    value: currentName,
+                    validateInput: (value) => {
+                        // Allow empty to clear the name, or any non-empty string
+                        if (value.length > 100) {
+                            return 'Name must be 100 characters or less';
+                        }
+                        return undefined;
+                    }
+                });
+
+                // User cancelled
+                if (newName === undefined) {
+                    return;
+                }
+
+                interactiveSessionManager.renameSession(item.session.id, newName);
+            }
+        );
+
         // Register focus session command (Windows only)
         const focusSessionCommand = vscode.commands.registerCommand(
             'interactiveSessions.focus',
@@ -2293,6 +2323,7 @@ export async function activate(context: vscode.ExtensionContext) {
             endInteractiveSessionCommand,
             removeInteractiveSessionCommand,
             clearEndedSessionsCommand,
+            renameInteractiveSessionCommand,
             focusSessionCommand,
             // Git view disposables
             gitTreeDataProvider,

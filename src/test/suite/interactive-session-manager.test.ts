@@ -741,6 +741,274 @@ suite('InteractiveSessionManager - Dispose', () => {
 });
 
 // ============================================================================
+// Session Rename Tests
+// ============================================================================
+
+suite('InteractiveSessionManager - Session Rename', () => {
+    test('should rename a session with a custom name', async () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        const result = manager.renameSession(sessionId, 'My Debug Session');
+        assert.strictEqual(result, true);
+
+        const session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, 'My Debug Session');
+
+        manager.dispose();
+    });
+
+    test('should return false when renaming non-existent session', () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const result = manager.renameSession('non-existent-id', 'New Name');
+        assert.strictEqual(result, false);
+
+        manager.dispose();
+    });
+
+    test('should clear custom name when empty string is provided', async () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        // First set a name
+        manager.renameSession(sessionId, 'My Session');
+        let session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, 'My Session');
+
+        // Then clear it
+        manager.renameSession(sessionId, '');
+        session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, undefined);
+
+        manager.dispose();
+    });
+
+    test('should clear custom name when whitespace-only string is provided', async () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        // First set a name
+        manager.renameSession(sessionId, 'My Session');
+        let session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, 'My Session');
+
+        // Then clear it with whitespace
+        manager.renameSession(sessionId, '   ');
+        session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, undefined);
+
+        manager.dispose();
+    });
+
+    test('should trim whitespace from custom name', async () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        manager.renameSession(sessionId, '  My Session  ');
+        const session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, 'My Session');
+
+        manager.dispose();
+    });
+
+    test('should fire session-updated event when renaming', async () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const events: InteractiveSessionEvent[] = [];
+        manager.onDidChangeSessions(e => events.push(e));
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        // Clear events from session start
+        events.length = 0;
+
+        manager.renameSession(sessionId, 'Renamed Session');
+
+        const updatedEvent = events.find(e => e.type === 'session-updated');
+        assert.ok(updatedEvent);
+        assert.strictEqual(updatedEvent.session.customName, 'Renamed Session');
+
+        manager.dispose();
+    });
+
+    test('should rename an ended session', async () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        // End the session
+        manager.endSession(sessionId);
+
+        // Rename it
+        const result = manager.renameSession(sessionId, 'Archived Session');
+        assert.strictEqual(result, true);
+
+        const session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, 'Archived Session');
+        assert.strictEqual(session?.status, 'ended');
+
+        manager.dispose();
+    });
+
+    test('should rename an error session', async () => {
+        const launcher = createFailingLauncher('Launch failed');
+        const manager = new InteractiveSessionManager(launcher);
+
+        await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        const sessions = manager.getSessions();
+        assert.strictEqual(sessions.length, 1);
+        const sessionId = sessions[0].id;
+
+        // Rename the error session
+        const result = manager.renameSession(sessionId, 'Failed Session');
+        assert.strictEqual(result, true);
+
+        const session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, 'Failed Session');
+        assert.strictEqual(session?.status, 'error');
+
+        manager.dispose();
+    });
+
+    test('should handle special characters in custom name', async () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        const specialName = 'Debug: "main" function (v2.0) - test\'s session!';
+        manager.renameSession(sessionId, specialName);
+
+        const session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, specialName);
+
+        manager.dispose();
+    });
+
+    test('should handle unicode characters in custom name', async () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        const unicodeName = '调试会话 🔧 Debug セッション';
+        manager.renameSession(sessionId, unicodeName);
+
+        const session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, unicodeName);
+
+        manager.dispose();
+    });
+
+    test('should allow renaming multiple times', async () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        manager.renameSession(sessionId, 'First Name');
+        let session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, 'First Name');
+
+        manager.renameSession(sessionId, 'Second Name');
+        session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, 'Second Name');
+
+        manager.renameSession(sessionId, 'Third Name');
+        session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, 'Third Name');
+
+        manager.dispose();
+    });
+
+    test('should preserve custom name across status changes', async () => {
+        const launcher = createSuccessfulLauncher();
+        const manager = new InteractiveSessionManager(launcher);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        // Set custom name while active
+        manager.renameSession(sessionId, 'My Named Session');
+
+        // End the session
+        manager.endSession(sessionId);
+
+        // Custom name should be preserved
+        const session = manager.getSession(sessionId);
+        assert.strictEqual(session?.customName, 'My Named Session');
+        assert.strictEqual(session?.status, 'ended');
+
+        manager.dispose();
+    });
+});
+
+// ============================================================================
 // Edge Cases
 // ============================================================================
 

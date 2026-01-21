@@ -190,6 +190,25 @@ export class InteractiveSessionManager implements vscode.Disposable {
     }
 
     /**
+     * Rename a session with a custom name
+     *
+     * @param sessionId The session ID to rename
+     * @param newName The new custom name for the session (empty string to clear)
+     * @returns True if renamed, false if session not found
+     */
+    renameSession(sessionId: string, newName: string): boolean {
+        const session = this.sessions.get(sessionId);
+        if (!session) {
+            return false;
+        }
+
+        // Set or clear the custom name
+        session.customName = newName.trim() || undefined;
+        this.fireEvent('session-updated', session);
+        return true;
+    }
+
+    /**
      * Get a session by ID
      */
     getSession(sessionId: string): InteractiveSession | undefined {
