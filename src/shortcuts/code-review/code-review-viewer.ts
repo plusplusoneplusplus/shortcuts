@@ -2,21 +2,35 @@
  * Code Review Result Viewer
  *
  * A dedicated webview panel for displaying structured code review results.
+ *
+ * Uses shared webview utilities:
+ * - WebviewSetupHelper for nonce generation and HTML escaping
+ * - WebviewMessageRouter for type-safe message handling
  */
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { CodeReviewResult, ReviewFinding, ReviewSeverity } from './types';
+import { CodeReviewResult, ReviewFinding } from './types';
 import {
-    createSchemeUri,
     GitContentStrategy,
     ReadOnlyDocumentProvider,
 } from '../shared';
+import { WebviewSetupHelper, WebviewMessageRouter } from '../shared/webview/extension-webview-utils';
 
 /**
  * URI scheme for git snapshot provider
  */
 const GIT_SNAPSHOT_SCHEME = 'git-snapshot';
+
+/**
+ * Message types for code review viewer webview communication
+ * Note: Uses 'type' field to conform to BaseWebviewMessage interface
+ */
+interface CodeReviewViewerMessage {
+    type: 'openFile' | 'copyFinding';
+    file?: string;
+    line?: number;
+}
 
 /**
  * Virtual document provider for showing file content at a specific commit.
@@ -78,15 +92,23 @@ class GitSnapshotProvider
 
 /**
  * Manages the code review result viewer webview panel
+ *
+ * Uses shared webview utilities for consistent setup and message handling.
  */
 export class CodeReviewViewer {
     public static currentPanel: CodeReviewViewer | undefined;
     private readonly panel: vscode.WebviewPanel;
+    private readonly setupHelper: WebviewSetupHelper;
+    private readonly messageRouter: WebviewMessageRouter<CodeReviewViewerMessage>;
     private disposables: vscode.Disposable[] = [];
     private currentResult: CodeReviewResult | undefined;
 
     private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
         this.panel = panel;
+        this.setupHelper = new WebviewSetupHelper(extensionUri);
+        this.messageRouter = new WebviewMessageRouter<CodeReviewViewerMessage>({
+            logUnhandledMessages: false
+        });
 
         // Register the git snapshot provider
         this.disposables.push(GitSnapshotProvider.getInstance().register());
@@ -94,12 +116,30 @@ export class CodeReviewViewer {
         // Handle panel disposal
         this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
-        // Handle messages from webview
+        // Setup type-safe message routing
+        this.setupMessageHandlers();
+
+        // Connect router to panel
         this.panel.webview.onDidReceiveMessage(
-            message => this.handleMessage(message),
+            (message: CodeReviewViewerMessage) => this.messageRouter.route(message),
             null,
             this.disposables
         );
+    }
+
+    /**
+     * Setup message handlers using the type-safe router
+     */
+    private setupMessageHandlers(): void {
+        this.messageRouter
+            .on('openFile', (message: CodeReviewViewerMessage) => {
+                if (message.file) {
+                    this.openFileLocation(message.file, message.line);
+                }
+            })
+            .on('copyFinding', () => {
+                // Handle copy to clipboard - placeholder for future implementation
+            });
     }
 
     /**
@@ -120,16 +160,15 @@ export class CodeReviewViewer {
             return CodeReviewViewer.currentPanel;
         }
 
-        // Create a new panel
+        // Use shared setup helper for consistent webview options
+        const setupHelper = new WebviewSetupHelper(extensionUri);
+
+        // Create a new panel with options from the helper
         const panel = vscode.window.createWebviewPanel(
             'codeReviewViewer',
             'Code Review Results',
             column || vscode.ViewColumn.One,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [extensionUri]
-            }
+            setupHelper.getWebviewPanelOptions()
         );
 
         CodeReviewViewer.currentPanel = new CodeReviewViewer(panel, extensionUri);
@@ -156,22 +195,6 @@ export class CodeReviewViewer {
             return 'Review: Pending Changes';
         } else {
             return 'Review: Staged Changes';
-        }
-    }
-
-    /**
-     * Handle messages from the webview
-     */
-    private handleMessage(message: { command: string; file?: string; line?: number }): void {
-        switch (message.command) {
-            case 'openFile':
-                if (message.file) {
-                    this.openFileLocation(message.file, message.line);
-                }
-                break;
-            case 'copyFinding':
-                // Handle copy to clipboard
-                break;
         }
     }
 
@@ -246,6 +269,7 @@ export class CodeReviewViewer {
      */
     public dispose(): void {
         CodeReviewViewer.currentPanel = undefined;
+        this.messageRouter.dispose();
         this.panel.dispose();
         while (this.disposables.length) {
             const disposable = this.disposables.pop();
@@ -259,7 +283,8 @@ export class CodeReviewViewer {
      * Generate the HTML content for the webview
      */
     private getHtmlContent(result: CodeReviewResult): string {
-        const nonce = this.getNonce();
+        // Use shared helper for nonce generation
+        const nonce = WebviewSetupHelper.generateNonce();
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -544,7 +569,7 @@ export class CodeReviewViewer {
                 const line = parseInt(link.getAttribute('data-line') || '0', 10);
                 
                 vscode.postMessage({
-                    command: 'openFile',
+                    type: 'openFile',
                     file: file,
                     line: line
                 });
@@ -736,39 +761,10 @@ export class CodeReviewViewer {
 
     /**
      * Escape HTML special characters
+     * Uses the shared WebviewSetupHelper utility
      */
     private escapeHtml(text: string): string {
-        return text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
-
-    /**
-     * Escape a string for use in JavaScript code
-     * Handles backslashes (Windows paths), quotes, and other special characters
-     */
-    private escapeJsString(text: string): string {
-        return text
-            .replace(/\\/g, '\\\\')  // Escape backslashes first
-            .replace(/'/g, "\\'")    // Escape single quotes
-            .replace(/"/g, '\\"')    // Escape double quotes
-            .replace(/\n/g, '\\n')   // Escape newlines
-            .replace(/\r/g, '\\r');  // Escape carriage returns
-    }
-
-    /**
-     * Generate a nonce for CSP
-     */
-    private getNonce(): string {
-        let text = '';
-        const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        for (let i = 0; i < 32; i++) {
-            text += possible.charAt(Math.floor(Math.random() * possible.length));
-        }
-        return text;
+        return WebviewSetupHelper.escapeHtml(text);
     }
 }
 
