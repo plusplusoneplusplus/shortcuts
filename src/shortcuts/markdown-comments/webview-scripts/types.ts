@@ -81,6 +81,8 @@ export interface WebviewSettings {
     aiMenuConfig?: SerializedAIMenuConfig;
     /** Predefined comment templates */
     predefinedComments?: SerializedPredefinedComment[];
+    /** Collapsed section anchor IDs (for heading collapse persistence) */
+    collapsedSections?: string[];
 }
 
 /**
@@ -158,7 +160,8 @@ export type WebviewMessage =
     | { type: 'resolveImagePath'; path: string; imgId: string }
     | { type: 'openFile'; path: string }
     | { type: 'askAI'; context: AskAIContext }
-    | { type: 'askAIInteractive'; context: AskAIContext };
+    | { type: 'askAIInteractive'; context: AskAIContext }
+    | { type: 'collapsedSectionsChanged'; collapsedSections: string[] };
 
 /**
  * Messages sent from extension to webview

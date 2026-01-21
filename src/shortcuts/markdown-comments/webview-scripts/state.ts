@@ -51,6 +51,9 @@ class WebviewStateManager {
     private _mermaidLoaded: boolean = false;
     private _mermaidLoading: boolean = false;
     private _pendingMermaidBlocks: Array<() => void> = [];
+
+    // Section collapse state - stores collapsed anchor IDs
+    private _collapsedSections: Set<string> = new Set();
     
     // Interaction state (for preventing click-to-close during resize/drag)
     private _isInteracting: boolean = false;
@@ -132,6 +135,13 @@ class WebviewStateManager {
      */
     get hasLineChanges(): boolean {
         return this._lineChanges.size > 0;
+    }
+
+    /**
+     * Get the set of collapsed section anchor IDs
+     */
+    get collapsedSections(): Set<string> {
+        return this._collapsedSections;
     }
 
     // Setters
@@ -246,6 +256,54 @@ class WebviewStateManager {
      */
     clearLineChanges(): void {
         this._lineChanges.clear();
+    }
+
+    /**
+     * Check if a section is collapsed by its anchor ID
+     */
+    isSectionCollapsed(anchorId: string): boolean {
+        return this._collapsedSections.has(anchorId);
+    }
+
+    /**
+     * Toggle the collapsed state of a section
+     */
+    toggleSectionCollapsed(anchorId: string): boolean {
+        if (this._collapsedSections.has(anchorId)) {
+            this._collapsedSections.delete(anchorId);
+            return false; // Now expanded
+        } else {
+            this._collapsedSections.add(anchorId);
+            return true; // Now collapsed
+        }
+    }
+
+    /**
+     * Set the collapsed state of a section
+     */
+    setSectionCollapsed(anchorId: string, collapsed: boolean): void {
+        if (collapsed) {
+            this._collapsedSections.add(anchorId);
+        } else {
+            this._collapsedSections.delete(anchorId);
+        }
+    }
+
+    /**
+     * Get all collapsed section anchor IDs as an array (for serialization)
+     */
+    getCollapsedSectionsArray(): string[] {
+        return Array.from(this._collapsedSections);
+    }
+
+    /**
+     * Set collapsed sections from an array (for deserialization)
+     */
+    setCollapsedSectionsFromArray(anchorIds: string[]): void {
+        this._collapsedSections.clear();
+        for (const id of anchorIds) {
+            this._collapsedSections.add(id);
+        }
     }
 
     // Utility methods

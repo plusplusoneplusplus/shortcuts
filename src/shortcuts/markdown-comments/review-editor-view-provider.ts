@@ -45,7 +45,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged';
     commentId?: string;
     content?: string;
     selection?: {
@@ -69,6 +69,8 @@ interface WebviewMessage {
     context?: AskAIContext;
     // Send comment to chat fields
     newConversation?: boolean;
+    // Collapsed sections for heading collapse feature
+    collapsedSections?: string[];
 }
 
 /**
@@ -88,12 +90,31 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
     private readonly promptGenerator: PromptGenerator;
 
+    /** Storage key prefix for collapsed sections (per file) */
+    private static readonly COLLAPSED_SECTIONS_KEY_PREFIX = 'mdReview.collapsedSections.';
+
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly commentsManager: CommentsManager,
         private readonly aiProcessManager?: IAIProcessManager
     ) {
         this.promptGenerator = new PromptGenerator(commentsManager);
+    }
+
+    /**
+     * Get collapsed sections for a file from storage
+     */
+    private getCollapsedSections(filePath: string): string[] {
+        const key = ReviewEditorViewProvider.COLLAPSED_SECTIONS_KEY_PREFIX + filePath;
+        return this.context.workspaceState.get<string[]>(key, []);
+    }
+
+    /**
+     * Save collapsed sections for a file to storage
+     */
+    private async setCollapsedSections(filePath: string, sections: string[]): Promise<void> {
+        const key = ReviewEditorViewProvider.COLLAPSED_SECTIONS_KEY_PREFIX + filePath;
+        await this.context.workspaceState.update(key, sections);
     }
 
     /**
@@ -241,7 +262,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             const aiCommands = getAICommandRegistry().getSerializedCommands();
             const aiMenuConfig = getAICommandRegistry().getSerializedMenuConfig();
             const predefinedComments = getPredefinedCommentRegistry().getSerializedMarkdownComments();
-            const settings = { ...baseSettings, askAIEnabled, aiCommands, aiMenuConfig, predefinedComments };
+            const collapsedSections = this.getCollapsedSections(relativePath);
+            const settings = { ...baseSettings, askAIEnabled, aiCommands, aiMenuConfig, predefinedComments, collapsedSections };
 
             console.log('[Extension] updateWebview called - content length:', content.length);
             console.log('[Extension] updateWebview - content preview:', content.substring(0, 200));
@@ -296,7 +318,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             const aiCommands = getAICommandRegistry().getSerializedCommands();
             const aiMenuConfig = getAICommandRegistry().getSerializedMenuConfig();
             const predefinedComments = getPredefinedCommentRegistry().getSerializedMarkdownComments();
-            const settings = { ...baseSettings, askAIEnabled, aiCommands, aiMenuConfig, predefinedComments };
+            const collapsedSections = this.getCollapsedSections(relativePath);
+            const settings = { ...baseSettings, askAIEnabled, aiCommands, aiMenuConfig, predefinedComments, collapsedSections };
 
             webviewPanel.webview.postMessage({
                 type: 'update',
@@ -574,6 +597,12 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             case 'askAIInteractive':
                 if (message.context) {
                     await this.handleAskAIInteractive(message.context, relativePath);
+                }
+                break;
+
+            case 'collapsedSectionsChanged':
+                if (message.collapsedSections) {
+                    await this.setCollapsedSections(relativePath, message.collapsedSections);
                 }
                 break;
         }

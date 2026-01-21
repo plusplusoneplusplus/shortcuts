@@ -15,6 +15,12 @@ import { applyMarkdownHighlighting, applySourceModeHighlighting, escapeHtml } fr
 import { applyCommentHighlightToRange, getHighlightColumnsForLine } from '../webview-logic/selection-utils';
 import { parseCodeBlocks, renderCodeBlock, setupCodeBlockHandlers } from './code-block-handlers';
 import { setupCommentInteractions, setupToolbarInteractions } from './dom-handlers';
+import {
+    buildSectionMap,
+    getHeadingAnchorId,
+    getHeadingLevel,
+    setupHeadingCollapseHandlers
+} from './heading-collapse-handlers';
 import { resolveImagePaths, setupImageHandlers } from './image-handlers';
 import { renderMermaidContainer, renderMermaidDiagrams } from './mermaid-handlers';
 import { state } from './state';
@@ -416,6 +422,20 @@ export function render(isExternalChange: boolean = false): void {
         }
     });
 
+    // Build section map for heading collapse functionality
+    const sectionMap = buildSectionMap(normalizedContent);
+
+    // Create a set of lines that should be hidden (in collapsed sections)
+    const hiddenLines = new Set<number>();
+    for (const [anchorId, range] of sectionMap) {
+        if (state.isSectionCollapsed(anchorId)) {
+            // Hide all lines after the heading line up to the end of section
+            for (let i = range.startLine + 1; i <= range.endLine; i++) {
+                hiddenLines.add(i);
+            }
+        }
+    }
+
     let html = '';
     let inCodeBlock = false;
     let currentCodeBlockLang: string | null = null;
@@ -514,6 +534,11 @@ export function render(isExternalChange: boolean = false): void {
             return;
         }
 
+        // Skip lines that are in collapsed sections
+        if (hiddenLines.has(lineNum)) {
+            return;
+        }
+
         const lineComments = commentsMap.get(lineNum) || [];
         const visibleComments = lineComments.filter(c =>
             state.settings.showResolved || c.status !== 'resolved'
@@ -523,6 +548,12 @@ export function render(isExternalChange: boolean = false): void {
         const gutterIcon = hasComments
             ? '<span class="gutter-icon" title="Click to view comments">💬</span>'
             : '';
+
+        // Check if this is a heading line and add collapse button
+        const headingLevel = getHeadingLevel(line);
+        const headingAnchorId = headingLevel > 0 ? getHeadingAnchorId(line) : '';
+        const isCollapsed = headingAnchorId ? state.isSectionCollapsed(headingAnchorId) : false;
+        const hasSection = headingAnchorId && sectionMap.has(headingAnchorId);
 
         // Check if this line starts a code block
         const block = codeBlocks.find(b => b.startLine === lineNum);
@@ -648,10 +679,29 @@ export function render(isExternalChange: boolean = false): void {
         // Create row-based layout with line number and content together
         // Line numbers are not editable
         const changeClass = getLineChangeClass(lineNum);
-        html += '<div class="line-row">' +
-            '<div class="line-number' + changeClass + '" contenteditable="false">' + gutterIcon + lineNum + '</div>' +
-            '<div class="line-content" data-line="' + lineNum + '">' + lineHtml + '</div>' +
-            '</div>';
+
+        // For headings with sections, add collapse button and section attributes
+        if (hasSection && headingAnchorId) {
+            const collapseIcon = isCollapsed ? '▶' : '▼';
+            const collapseTitle = isCollapsed ? 'Expand section' : 'Collapse section';
+            const collapsedClass = isCollapsed ? ' heading-collapsed' : '';
+            const sectionRange = sectionMap.get(headingAnchorId);
+            const contentLineCount = sectionRange ? sectionRange.endLine - sectionRange.startLine : 0;
+
+            html += '<div class="line-row heading-row' + collapsedClass + '" data-section-anchor="' + headingAnchorId + '">' +
+                '<div class="line-number' + changeClass + '" contenteditable="false">' +
+                '<button class="heading-collapse-btn" title="' + collapseTitle + '">' + collapseIcon + '</button>' +
+                gutterIcon + lineNum + '</div>' +
+                '<div class="line-content" data-line="' + lineNum + '">' + lineHtml +
+                (isCollapsed && contentLineCount > 0 ? '<span class="collapsed-section-indicator" title="' + contentLineCount + ' lines hidden"> ⋯ (' + contentLineCount + ' lines)</span>' : '') +
+                '</div>' +
+                '</div>';
+        } else {
+            html += '<div class="line-row">' +
+                '<div class="line-number' + changeClass + '" contenteditable="false">' + gutterIcon + lineNum + '</div>' +
+                '<div class="line-content" data-line="' + lineNum + '">' + lineHtml + '</div>' +
+                '</div>';
+        }
     });
 
     editorWrapper.innerHTML = html;
@@ -682,6 +732,9 @@ export function render(isExternalChange: boolean = false): void {
 
     // Resolve image paths
     resolveImagePaths();
+
+    // Setup heading collapse handlers
+    setupHeadingCollapseHandlers();
 
     // Restore cursor position after re-render
     // Note: For external changes (undo/redo), cursorPosition is null,

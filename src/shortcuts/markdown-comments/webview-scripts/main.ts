@@ -93,6 +93,10 @@ function handleMessage(message: ExtensionMessage): void {
                 if (message.settings.predefinedComments) {
                     rebuildPredefinedSubmenu();
                 }
+                // Restore collapsed sections if provided
+                if (message.settings.collapsedSections) {
+                    state.setCollapsedSectionsFromArray(message.settings.collapsedSections);
+                }
             }
 
             // Re-render with external change flag

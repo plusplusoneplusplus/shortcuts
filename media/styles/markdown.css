@@ -401,3 +401,65 @@
     opacity: 0.7;
 }
 
+/* ==============================
+ * Heading Collapse/Expand
+ * ============================== */
+
+/* Heading row with collapse button */
+.heading-row {
+    position: relative;
+}
+
+.heading-row .line-number {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+/* Collapse button styling */
+.heading-collapse-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 4px;
+    font-size: 10px;
+    line-height: 1;
+    color: var(--md-blockquote-color);
+    opacity: 0.6;
+    transition: opacity 0.2s, color 0.2s;
+    border-radius: 3px;
+    min-width: 16px;
+    text-align: center;
+}
+
+.heading-collapse-btn:hover {
+    opacity: 1;
+    color: var(--md-heading-color);
+    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+}
+
+.heading-collapse-btn:active {
+    transform: scale(0.9);
+}
+
+/* Visual indicator for collapsed state */
+.heading-row.heading-collapsed {
+    border-bottom: 1px dashed var(--border-color);
+    margin-bottom: 2px;
+}
+
+.heading-row.heading-collapsed .line-content {
+    padding-bottom: 4px;
+}
+
+/* Collapsed section indicator */
+.collapsed-section-indicator {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #888);
+    opacity: 0.7;
+    font-style: italic;
+    vertical-align: middle;
+}
+
