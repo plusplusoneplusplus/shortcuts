@@ -688,13 +688,15 @@ export function render(isExternalChange: boolean = false): void {
             const sectionRange = sectionMap.get(headingAnchorId);
             const contentLineCount = sectionRange ? sectionRange.endLine - sectionRange.startLine : 0;
 
+            // Collapse button is placed at the end of the heading line (right side)
+            const collapseBtn = '<button class="heading-collapse-btn" title="' + collapseTitle + '" contenteditable="false">' + collapseIcon + '</button>';
+            const collapsedIndicator = isCollapsed && contentLineCount > 0
+                ? '<span class="collapsed-section-indicator" title="' + contentLineCount + ' lines hidden">(' + contentLineCount + ' lines)</span>'
+                : '';
+
             html += '<div class="line-row heading-row' + collapsedClass + '" data-section-anchor="' + headingAnchorId + '">' +
-                '<div class="line-number' + changeClass + '" contenteditable="false">' +
-                '<button class="heading-collapse-btn" title="' + collapseTitle + '">' + collapseIcon + '</button>' +
-                gutterIcon + lineNum + '</div>' +
-                '<div class="line-content" data-line="' + lineNum + '">' + lineHtml +
-                (isCollapsed && contentLineCount > 0 ? '<span class="collapsed-section-indicator" title="' + contentLineCount + ' lines hidden"> ⋯ (' + contentLineCount + ' lines)</span>' : '') +
-                '</div>' +
+                '<div class="line-number' + changeClass + '" contenteditable="false">' + gutterIcon + lineNum + '</div>' +
+                '<div class="line-content" data-line="' + lineNum + '">' + lineHtml + collapsedIndicator + collapseBtn + '</div>' +
                 '</div>';
         } else {
             html += '<div class="line-row">' +
