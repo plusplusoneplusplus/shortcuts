@@ -533,7 +533,9 @@ suite('AI Process Manager Persistence Tests', () => {
 
     suite('Storage Limits', () => {
 
-        test('should limit persisted processes to MAX_PERSISTED_PROCESSES', async () => {
+        test('should limit persisted processes to MAX_PERSISTED_PROCESSES', async function() {
+            this.timeout(10000);  // Increase timeout for this heavy test
+            
             const context = new MockExtensionContext();
             const manager = new AIProcessManager();
             await manager.initialize(context as any);

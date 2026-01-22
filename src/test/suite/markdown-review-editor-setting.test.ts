@@ -9,7 +9,9 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-suite('Always Open Markdown In Review Editor Setting Tests', () => {
+suite('Always Open Markdown In Review Editor Setting Tests', function() {
+    this.timeout(10000);  // Increase timeout for config operations on Windows
+    
     let tempDir: string;
     let testMarkdownFile: string;
     let testTextFile: string;
