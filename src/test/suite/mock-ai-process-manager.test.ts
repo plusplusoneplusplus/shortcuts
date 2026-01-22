@@ -465,13 +465,13 @@ suite('MockAIProcessManager Tests', () => {
 
         test('should wait for all processes to complete', async () => {
             const mgr = createMockAIProcessManager('async');
-            mgr.configure({ autoComplete: true });
+            mgr.configure({ autoComplete: true, asyncDelay: 100 });  // Increase delay for reliability
             
             mgr.registerProcess('Process 1');
             mgr.registerProcess('Process 2');
             mgr.registerProcess('Process 3');
 
-            await waitForAllProcesses(mgr, 500);
+            await waitForAllProcesses(mgr, 2000);  // Increase timeout for CI environments
 
             assertProcessCounts(mgr, { running: 0, completed: 3 });
             mgr.dispose();

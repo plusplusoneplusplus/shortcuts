@@ -203,6 +203,11 @@ export async function waitForAllProcesses(
         await new Promise(resolve => setTimeout(resolve, 10));
     }
     
+    // Final check after timeout - processes may have completed during the last iteration
+    if (!manager.hasRunningProcesses()) {
+        return;
+    }
+    
     const running = manager.getRunningProcesses();
     throw new Error(
         `${running.length} processes still running after ${timeout}ms: ${running.map(p => p.id).join(', ')}`
