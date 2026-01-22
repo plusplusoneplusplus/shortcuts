@@ -306,6 +306,8 @@ map:
     - severity
     - category
   parallel: 5
+  # timeoutMs: 600000  # Optional: Default is 10 minutes (600000ms)
+                        # On timeout, retries once with doubled timeout (20 minutes)
 
 reduce:
   type: json  # Options: list, table, json, csv, ai

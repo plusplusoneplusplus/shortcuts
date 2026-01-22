@@ -270,7 +270,10 @@ suite('MapReduceExecutor', () => {
         assert.strictEqual(result.executionStats.maxConcurrency, 5);
     });
 
-    test('handles timeout on map operations', async () => {
+    test('handles timeout on map operations after timeout retry', async () => {
+        // With timeout retry, we need the slow mapper to always exceed both timeouts
+        // First timeout: 10ms, retry timeout: 20ms (doubled)
+        // So the mapper needs to take longer than 20ms
         const executor = createExecutor({
             aiInvoker: mockAIInvoker,
             maxConcurrency: 5,
@@ -282,7 +285,7 @@ suite('MapReduceExecutor', () => {
 
         const slowMapper: Mapper<TestWorkItemData, TestMapOutput> = {
             async map(item, context) {
-                await new Promise(resolve => setTimeout(resolve, 100)); // Longer than timeout
+                await new Promise(resolve => setTimeout(resolve, 100)); // Longer than both timeouts (10ms + 20ms)
                 return { doubled: item.data.value * 2 };
             }
         };
@@ -300,6 +303,117 @@ suite('MapReduceExecutor', () => {
         assert.strictEqual(result.success, false);
         assert.strictEqual(result.executionStats.failedMaps, 1);
         assert.ok(result.mapResults[0].error?.includes('timed out'));
+    });
+
+    test('retries timeout with doubled timeout value', async () => {
+        let attemptCount = 0;
+
+        // Mapper that takes 15ms - will timeout on 10ms but succeed on 20ms (doubled)
+        const slowThenFastMapper: Mapper<TestWorkItemData, TestMapOutput> = {
+            async map(item, context) {
+                attemptCount++;
+                await new Promise(resolve => setTimeout(resolve, 15));
+                return { doubled: item.data.value * 2 };
+            }
+        };
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 5,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            timeoutMs: 10 // First timeout at 10ms, retry at 20ms
+        });
+
+        const job: MapReduceJob<TestInput, TestWorkItemData, TestMapOutput, TestReduceOutput> = {
+            id: 'timeout-retry-job',
+            name: 'Timeout Retry Job',
+            splitter: new TestSplitter(),
+            mapper: slowThenFastMapper,
+            reducer: new TestReducer()
+        };
+
+        const result = await executor.execute(job, { items: [1] });
+
+        // Should succeed on the second attempt (with doubled timeout)
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(attemptCount, 2, 'Should have attempted twice (initial + timeout retry)');
+        // The reduce output should have the results array with value 2 (1 * 2)
+        assert.deepStrictEqual(result.output?.results, [2]);
+    });
+
+    test('timeout retry only happens once', async () => {
+        let attemptCount = 0;
+
+        // Mapper that always takes too long - will fail even with doubled timeout
+        const alwaysSlowMapper: Mapper<TestWorkItemData, TestMapOutput> = {
+            async map(item, context) {
+                attemptCount++;
+                await new Promise(resolve => setTimeout(resolve, 100)); // Always too slow
+                return { doubled: item.data.value * 2 };
+            }
+        };
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 5,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            timeoutMs: 10 // First timeout at 10ms, retry at 20ms - both will fail
+        });
+
+        const job: MapReduceJob<TestInput, TestWorkItemData, TestMapOutput, TestReduceOutput> = {
+            id: 'single-timeout-retry-job',
+            name: 'Single Timeout Retry Job',
+            splitter: new TestSplitter(),
+            mapper: alwaysSlowMapper,
+            reducer: new TestReducer()
+        };
+
+        const result = await executor.execute(job, { items: [1] });
+
+        // Should fail after exactly 2 attempts (initial + one timeout retry)
+        assert.strictEqual(result.success, false);
+        assert.strictEqual(attemptCount, 2, 'Should have attempted exactly twice');
+        assert.ok(result.mapResults[0].error?.includes('timed out'));
+    });
+
+    test('non-timeout errors are not retried by timeout retry logic', async () => {
+        let attemptCount = 0;
+
+        // Mapper that throws a non-timeout error
+        const errorMapper: Mapper<TestWorkItemData, TestMapOutput> = {
+            async map(item, context) {
+                attemptCount++;
+                throw new Error('Some other error');
+            }
+        };
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 5,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            timeoutMs: 1000
+        });
+
+        const job: MapReduceJob<TestInput, TestWorkItemData, TestMapOutput, TestReduceOutput> = {
+            id: 'non-timeout-error-job',
+            name: 'Non-Timeout Error Job',
+            splitter: new TestSplitter(),
+            mapper: errorMapper,
+            reducer: new TestReducer()
+        };
+
+        const result = await executor.execute(job, { items: [1] });
+
+        // Should fail after just 1 attempt (no timeout retry for non-timeout errors)
+        assert.strictEqual(result.success, false);
+        assert.strictEqual(attemptCount, 1, 'Should have attempted only once');
+        assert.ok(result.mapResults[0].error?.includes('Some other error'));
     });
 
     test('retries failed operations when configured', async () => {

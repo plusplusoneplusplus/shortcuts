@@ -337,6 +337,7 @@ export class MapReduceExecutor {
     ): Promise<MapResult<TMapOutput>> {
         const startTime = Date.now();
         const maxAttempts = options.retryOnFailure ? (options.retryAttempts || 1) + 1 : 1;
+        const baseTimeoutMs = options.timeoutMs || DEFAULT_MAP_REDUCE_OPTIONS.timeoutMs;
 
         // Register process if tracker available
         let processId: string | undefined;
@@ -349,19 +350,13 @@ export class MapReduceExecutor {
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             try {
-                // Create a timeout promise if configured
-                const timeoutMs = options.timeoutMs || DEFAULT_MAP_REDUCE_OPTIONS.timeoutMs;
-                const mapPromise = job.mapper.map(item, context);
-
-                let output: TMapOutput;
-                if (timeoutMs && timeoutMs > 0) {
-                    output = await Promise.race([
-                        mapPromise,
-                        this.createTimeoutPromise<TMapOutput>(timeoutMs)
-                    ]);
-                } else {
-                    output = await mapPromise;
-                }
+                // Try with timeout, including timeout retry with doubled value
+                const output = await this.executeMapItemWithTimeoutRetry<TWorkItemData, TMapOutput>(
+                    job,
+                    item,
+                    context,
+                    baseTimeoutMs
+                );
 
                 const executionTimeMs = Date.now() - startTime;
 
@@ -418,6 +413,68 @@ export class MapReduceExecutor {
             executionTimeMs: Date.now() - startTime,
             processId
         };
+    }
+
+    /**
+     * Execute a map item with timeout retry support.
+     * On timeout, retries once with doubled timeout value.
+     */
+    private async executeMapItemWithTimeoutRetry<TWorkItemData, TMapOutput>(
+        job: MapReduceJob<unknown, TWorkItemData, TMapOutput, unknown>,
+        item: WorkItem<TWorkItemData>,
+        context: MapContext,
+        baseTimeoutMs: number | undefined
+    ): Promise<TMapOutput> {
+        // First attempt with base timeout
+        try {
+            return await this.executeMapItemWithTimeout<TWorkItemData, TMapOutput>(
+                job,
+                item,
+                context,
+                baseTimeoutMs
+            );
+        } catch (error) {
+            // Check if it's a timeout error
+            const isTimeoutError = error instanceof Error && 
+                error.message.includes('timed out after');
+
+            // If not a timeout error, re-throw immediately
+            if (!isTimeoutError) {
+                throw error;
+            }
+
+            // Timeout occurred - retry once with doubled timeout
+            const doubledTimeoutMs = baseTimeoutMs ? baseTimeoutMs * 2 : undefined;
+            
+            // Second attempt with doubled timeout (no further retries for timeout)
+            return await this.executeMapItemWithTimeout<TWorkItemData, TMapOutput>(
+                job,
+                item,
+                context,
+                doubledTimeoutMs
+            );
+        }
+    }
+
+    /**
+     * Execute a map item with a specific timeout
+     */
+    private async executeMapItemWithTimeout<TWorkItemData, TMapOutput>(
+        job: MapReduceJob<unknown, TWorkItemData, TMapOutput, unknown>,
+        item: WorkItem<TWorkItemData>,
+        context: MapContext,
+        timeoutMs: number | undefined
+    ): Promise<TMapOutput> {
+        const mapPromise = job.mapper.map(item, context);
+
+        if (timeoutMs && timeoutMs > 0) {
+            return await Promise.race([
+                mapPromise,
+                this.createTimeoutPromise<TMapOutput>(timeoutMs)
+            ]);
+        } else {
+            return await mapPromise;
+        }
     }
 
     /**

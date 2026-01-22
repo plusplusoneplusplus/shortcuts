@@ -272,13 +272,14 @@ suite('Pipeline Executor', () => {
                 map: {
                     prompt: 'Analyze: {{title}}',
                     output: ['result'],
-                    timeoutMs: 100 // Very short timeout to trigger timeout
+                    timeoutMs: 50 // Very short timeout to trigger timeout
                 },
                 reduce: { type: 'list' }
             };
 
             const aiInvoker = async (): Promise<AIInvokerResult> => {
-                // Simulate a slow AI response that exceeds timeout
+                // Simulate a slow AI response that exceeds both initial timeout (50ms) 
+                // and doubled retry timeout (100ms)
                 await new Promise(resolve => setTimeout(resolve, 500));
                 return { success: true, response: '{"result": "ok"}' };
             };
@@ -288,14 +289,49 @@ suite('Pipeline Executor', () => {
                 pipelineDirectory: tempDir
             });
 
-            // When a timeout occurs, the overall job is marked as failed
+            // When a timeout occurs (after retry with doubled timeout), the overall job is marked as failed
             assert.strictEqual(result.success, false);
             assert.strictEqual(result.executionStats.failedMaps, 1);
             assert.ok(result.mapResults);
             assert.ok(result.mapResults[0].error?.includes('timed out'), 'Error should mention timeout');
         });
 
-        test('uses default timeout (5 minutes) when not specified', async () => {
+        test('timeout retry succeeds with doubled timeout', async () => {
+            let attemptCount = 0;
+
+            const config: PipelineConfig = {
+                name: 'Timeout Retry Test',
+                input: {
+                    items: [{ id: '1', title: 'Test Item' }]
+                },
+                map: {
+                    prompt: 'Analyze: {{title}}',
+                    output: ['result'],
+                    timeoutMs: 50 // First timeout at 50ms, retry at 100ms
+                },
+                reduce: { type: 'list' }
+            };
+
+            const aiInvoker = async (): Promise<AIInvokerResult> => {
+                attemptCount++;
+                // 75ms delay: will timeout on first attempt (50ms) but succeed on retry (100ms)
+                await new Promise(resolve => setTimeout(resolve, 75));
+                return { success: true, response: '{"result": "ok"}' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            // Should succeed on retry with doubled timeout
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(attemptCount, 2, 'Should have attempted twice (initial + timeout retry)');
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results[0].success, true);
+        });
+
+        test('uses default timeout (10 minutes) when not specified', async () => {
             const config: PipelineConfig = {
                 name: 'Default Timeout Test',
                 input: {
@@ -304,7 +340,7 @@ suite('Pipeline Executor', () => {
                 map: {
                     prompt: 'Analyze: {{title}}',
                     output: ['result']
-                    // No timeout specified - should default to 300000ms (5 minutes)
+                    // No timeout specified - should default to 600000ms (10 minutes)
                 },
                 reduce: { type: 'list' }
             };

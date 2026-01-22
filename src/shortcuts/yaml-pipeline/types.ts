@@ -195,7 +195,10 @@ export interface MapConfig {
      * Dynamic model example: `model: "{{model}}"` (reads from item's model field)
      */
     model?: string;
-    /** Timeout for each AI call in milliseconds (default: 300000 = 5 minutes) */
+    /** 
+     * Timeout for each AI call in milliseconds (default: 600000 = 10 minutes).
+     * On timeout, the system automatically retries once with doubled timeout value.
+     */
     timeoutMs?: number;
 }
 

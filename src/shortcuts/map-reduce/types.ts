@@ -119,7 +119,10 @@ export interface MapReduceOptions {
     retryOnFailure: boolean;
     /** Number of retry attempts for failed operations (default: 1) */
     retryAttempts?: number;
-    /** Timeout for each map operation in ms (default: 30000) */
+    /** 
+     * Timeout for each map operation in ms (default: 600000 = 10 minutes).
+     * On timeout, the system automatically retries once with doubled timeout value.
+     */
     timeoutMs?: number;
     /** Optional job name for display/logging */
     jobName?: string;
@@ -134,7 +137,7 @@ export const DEFAULT_MAP_REDUCE_OPTIONS: MapReduceOptions = {
     showProgress: true,
     retryOnFailure: false,
     retryAttempts: 1,
-    timeoutMs: 30000
+    timeoutMs: 600000 // 10 minutes
 };
 
 /**
