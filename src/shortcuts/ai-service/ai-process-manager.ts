@@ -97,16 +97,17 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             // Convert serialized processes back to AIProcess objects
             for (const s of serialized) {
                 const process = deserializeProcess(s);
-                // Only load completed processes (not running ones - they're stale)
-                if (process.status !== 'running') {
-                    this.processes.set(process.id, process);
-                    // Update counter to avoid ID collisions
-                    const idMatch = process.id.match(/^process-(\d+)-/);
-                    if (idMatch) {
-                        const num = parseInt(idMatch[1], 10);
-                        if (num >= this.processCounter) {
-                            this.processCounter = num + 1;
-                        }
+                // Skip invalid processes (corrupted data) or running ones (stale)
+                if (!process.id || process.status === 'running') {
+                    continue;
+                }
+                this.processes.set(process.id, process);
+                // Update counter to avoid ID collisions
+                const idMatch = process.id.match(/^process-(\d+)-/);
+                if (idMatch) {
+                    const num = parseInt(idMatch[1], 10);
+                    if (num >= this.processCounter) {
+                        this.processCounter = num + 1;
                     }
                 }
             }

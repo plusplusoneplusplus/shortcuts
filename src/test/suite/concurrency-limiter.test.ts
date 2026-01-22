@@ -296,7 +296,7 @@ suite('ConcurrencyLimiter', () => {
     suite('Performance', () => {
         test('parallel execution is faster than sequential', async () => {
             const limiter = new ConcurrencyLimiter(5);
-            const taskDuration = 50;  // Increased from 20ms for more reliable timing
+            const taskDuration = 100;  // Increased for more reliable timing in CI
             const taskCount = 5;
 
             const tasks = Array.from({ length: taskCount }, () => async () => {
@@ -308,13 +308,14 @@ suite('ConcurrencyLimiter', () => {
             await limiter.all(tasks);
             const elapsed = Date.now() - start;
 
-            // With 5 concurrent and 5 tasks of 50ms each:
-            // - Sequential would take 250ms
-            // - Parallel should take ~50ms + overhead
-            // Allow generous margin for CI environments (up to 200ms)
+            // With 5 concurrent and 5 tasks of 100ms each:
+            // - Sequential would take 500ms
+            // - Parallel should take ~100ms + overhead
+            // Allow very generous margin for CI environments (up to 350ms / 70% of sequential)
             const sequentialTime = taskDuration * taskCount;
-            assert.ok(elapsed < sequentialTime - taskDuration,
-                `Expected parallel execution (${elapsed}ms) to be significantly faster than sequential (${sequentialTime}ms)`);
+            const maxAllowedTime = sequentialTime * 0.7; // Allow up to 70% of sequential time
+            assert.ok(elapsed < maxAllowedTime,
+                `Expected parallel execution (${elapsed}ms) to be faster than 70% of sequential time (${maxAllowedTime}ms)`);
         });
     });
 
