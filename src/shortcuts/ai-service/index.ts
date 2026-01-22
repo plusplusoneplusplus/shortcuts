@@ -23,6 +23,8 @@ export {
     // Interface for dependency injection
     IAIProcessManager,
     ProcessCounts,
+    // Process monitoring types
+    ProcessCheckResult,
     // Legacy types (kept for backward compatibility)
     CodeReviewGroupMetadata,
     CodeReviewProcessMetadata,
@@ -122,6 +124,15 @@ export {
     resetInteractiveSessionManager,
     StartSessionOptions
 } from './interactive-session-manager';
+
+// Export process monitor
+export {
+    DEFAULT_POLL_INTERVAL_MS,
+    getProcessMonitor,
+    ProcessMonitor,
+    ProcessMonitorOptions,
+    resetProcessMonitor
+} from './process-monitor';
 
 // Export window focus service (Windows-only functionality)
 export {

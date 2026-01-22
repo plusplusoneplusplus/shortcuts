@@ -14,6 +14,10 @@ import {
     ExternalTerminalLauncher
 } from '../../shortcuts/ai-service/external-terminal-launcher';
 import {
+    ProcessMonitor,
+    ProcessMonitorOptions
+} from '../../shortcuts/ai-service/process-monitor';
+import {
     InteractiveSession,
     InteractiveSessionEvent,
     InteractiveSessionStatus,
@@ -63,6 +67,55 @@ function createFailingLauncher(error: string): ExternalTerminalLauncher {
         terminalType: 'unknown',
         error
     });
+}
+
+/**
+ * Create a mock ProcessMonitor that tracks monitoring calls
+ */
+function createMockProcessMonitor(): {
+    monitor: ProcessMonitor;
+    startMonitoringCalls: Array<{ sessionId: string; pid: number }>;
+    stopMonitoringCalls: string[];
+    triggerTermination: (sessionId: string) => void;
+} {
+    const startMonitoringCalls: Array<{ sessionId: string; pid: number }> = [];
+    const stopMonitoringCalls: string[] = [];
+    const callbacks: Map<string, () => void> = new Map();
+
+    // Create a mock execSync that always returns process running
+    const mockExecSync = (() => Buffer.from('process info')) as unknown as typeof import('child_process').execSync;
+
+    const monitor = new ProcessMonitor({
+        platform: 'darwin',
+        execSyncFn: mockExecSync,
+        pollIntervalMs: 100000 // Very long interval to prevent automatic checks
+    });
+
+    // Override startMonitoring to track calls
+    const originalStartMonitoring = monitor.startMonitoring.bind(monitor);
+    monitor.startMonitoring = (sessionId: string, pid: number, onTerminated: () => void) => {
+        startMonitoringCalls.push({ sessionId, pid });
+        callbacks.set(sessionId, onTerminated);
+        originalStartMonitoring(sessionId, pid, onTerminated);
+    };
+
+    // Override stopMonitoring to track calls
+    const originalStopMonitoring = monitor.stopMonitoring.bind(monitor);
+    monitor.stopMonitoring = (sessionId: string) => {
+        stopMonitoringCalls.push(sessionId);
+        callbacks.delete(sessionId);
+        originalStopMonitoring(sessionId);
+    };
+
+    // Helper to trigger termination callback
+    const triggerTermination = (sessionId: string) => {
+        const callback = callbacks.get(sessionId);
+        if (callback) {
+            callback();
+        }
+    };
+
+    return { monitor, startMonitoringCalls, stopMonitoringCalls, triggerTermination };
 }
 
 // ============================================================================
@@ -1143,5 +1196,247 @@ suite('InteractiveSessionManager - Edge Cases', () => {
         assert.ok(endedSession.endTime <= afterEnd);
 
         manager.dispose();
+    });
+});
+
+// ============================================================================
+// ProcessMonitor Integration Tests
+// ============================================================================
+
+suite('InteractiveSessionManager - ProcessMonitor Integration', () => {
+    test('should register session with ProcessMonitor on successful launch', async () => {
+        const launcher = createSuccessfulLauncher();
+        const { monitor, startMonitoringCalls } = createMockProcessMonitor();
+        const manager = new InteractiveSessionManager(launcher, monitor);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+        assert.strictEqual(startMonitoringCalls.length, 1);
+        assert.strictEqual(startMonitoringCalls[0].sessionId, sessionId);
+        assert.strictEqual(startMonitoringCalls[0].pid, 12345);
+
+        manager.dispose();
+    });
+
+    test('should not register with ProcessMonitor on failed launch', async () => {
+        const launcher = createFailingLauncher('Launch failed');
+        const { monitor, startMonitoringCalls } = createMockProcessMonitor();
+        const manager = new InteractiveSessionManager(launcher, monitor);
+
+        await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.strictEqual(startMonitoringCalls.length, 0);
+
+        manager.dispose();
+    });
+
+    test('should stop monitoring when session is ended manually', async () => {
+        const launcher = createSuccessfulLauncher();
+        const { monitor, stopMonitoringCalls } = createMockProcessMonitor();
+        const manager = new InteractiveSessionManager(launcher, monitor);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        manager.endSession(sessionId);
+
+        assert.strictEqual(stopMonitoringCalls.length, 1);
+        assert.strictEqual(stopMonitoringCalls[0], sessionId);
+
+        manager.dispose();
+    });
+
+    test('should stop monitoring when session is removed', async () => {
+        const launcher = createSuccessfulLauncher();
+        const { monitor, stopMonitoringCalls } = createMockProcessMonitor();
+        const manager = new InteractiveSessionManager(launcher, monitor);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        manager.removeSession(sessionId);
+
+        assert.strictEqual(stopMonitoringCalls.length, 1);
+        assert.strictEqual(stopMonitoringCalls[0], sessionId);
+
+        manager.dispose();
+    });
+
+    test('should end session when process terminates', async () => {
+        const launcher = createSuccessfulLauncher();
+        const { monitor, triggerTermination } = createMockProcessMonitor();
+        const manager = new InteractiveSessionManager(launcher, monitor);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        let session = manager.getSession(sessionId);
+        assert.strictEqual(session?.status, 'active');
+
+        // Simulate process termination
+        triggerTermination(sessionId);
+
+        session = manager.getSession(sessionId);
+        assert.strictEqual(session?.status, 'ended');
+        assert.ok(session?.endTime);
+
+        manager.dispose();
+    });
+
+    test('should fire session-ended event when process terminates', async () => {
+        const launcher = createSuccessfulLauncher();
+        const { monitor, triggerTermination } = createMockProcessMonitor();
+        const manager = new InteractiveSessionManager(launcher, monitor);
+
+        const events: InteractiveSessionEvent[] = [];
+        manager.onDidChangeSessions(e => events.push(e));
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        // Clear events from session start
+        events.length = 0;
+
+        // Simulate process termination
+        triggerTermination(sessionId);
+
+        const endedEvent = events.find(e => e.type === 'session-ended');
+        assert.ok(endedEvent);
+        assert.strictEqual(endedEvent.session.status, 'ended');
+
+        manager.dispose();
+    });
+
+    test('should handle multiple sessions with ProcessMonitor', async () => {
+        const launcher = createSuccessfulLauncher();
+        const { monitor, startMonitoringCalls, triggerTermination } = createMockProcessMonitor();
+        const manager = new InteractiveSessionManager(launcher, monitor);
+
+        const sessionId1 = await manager.startSession({
+            workingDirectory: '/test1',
+            tool: 'copilot'
+        });
+        const sessionId2 = await manager.startSession({
+            workingDirectory: '/test2',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId1);
+        assert.ok(sessionId2);
+        assert.strictEqual(startMonitoringCalls.length, 2);
+
+        // Terminate first session
+        triggerTermination(sessionId1);
+
+        let session1 = manager.getSession(sessionId1);
+        let session2 = manager.getSession(sessionId2);
+
+        assert.strictEqual(session1?.status, 'ended');
+        assert.strictEqual(session2?.status, 'active');
+
+        // Terminate second session
+        triggerTermination(sessionId2);
+
+        session2 = manager.getSession(sessionId2);
+        assert.strictEqual(session2?.status, 'ended');
+
+        manager.dispose();
+    });
+
+    test('should not register with ProcessMonitor when PID is undefined', async () => {
+        // Create a launcher that returns success but no PID
+        const launcher = createMockLauncher({
+            success: true,
+            terminalType: 'terminal.app',
+            pid: undefined
+        });
+        const { monitor, startMonitoringCalls } = createMockProcessMonitor();
+        const manager = new InteractiveSessionManager(launcher, monitor);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+        // Should not have registered with ProcessMonitor since no PID
+        assert.strictEqual(startMonitoringCalls.length, 0);
+
+        manager.dispose();
+    });
+
+    test('should handle termination of already ended session gracefully', async () => {
+        const launcher = createSuccessfulLauncher();
+        const { monitor, triggerTermination } = createMockProcessMonitor();
+        const manager = new InteractiveSessionManager(launcher, monitor);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot'
+        });
+
+        assert.ok(sessionId);
+
+        // End session manually first
+        manager.endSession(sessionId);
+
+        let session = manager.getSession(sessionId);
+        assert.strictEqual(session?.status, 'ended');
+
+        // Simulate process termination (should be no-op since already ended)
+        assert.doesNotThrow(() => {
+            triggerTermination(sessionId);
+        });
+
+        session = manager.getSession(sessionId);
+        assert.strictEqual(session?.status, 'ended');
+
+        manager.dispose();
+    });
+
+    test('should clean up ProcessMonitor on dispose', async () => {
+        const launcher = createSuccessfulLauncher();
+        const { monitor, startMonitoringCalls } = createMockProcessMonitor();
+        const manager = new InteractiveSessionManager(launcher, monitor);
+
+        await manager.startSession({
+            workingDirectory: '/test1',
+            tool: 'copilot'
+        });
+        await manager.startSession({
+            workingDirectory: '/test2',
+            tool: 'copilot'
+        });
+
+        assert.strictEqual(startMonitoringCalls.length, 2);
+
+        // Dispose should clean up
+        manager.dispose();
+
+        // Sessions should be cleared
+        assert.strictEqual(manager.getSessions().length, 0);
     });
 });

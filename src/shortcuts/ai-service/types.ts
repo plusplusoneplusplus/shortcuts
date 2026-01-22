@@ -10,6 +10,16 @@
  */
 
 /**
+ * Result of checking if a process is running
+ */
+export interface ProcessCheckResult {
+    /** Whether the process is currently running */
+    isRunning: boolean;
+    /** Error message if the check failed */
+    error?: string;
+}
+
+/**
  * Supported AI tools for invocation
  */
 export type AIToolType = 'copilot-cli' | 'clipboard';

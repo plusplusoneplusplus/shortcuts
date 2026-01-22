@@ -16,6 +16,7 @@ import {
     ExternalTerminalLaunchOptions
 } from './types';
 import { ExternalTerminalLauncher, getExternalTerminalLauncher } from './external-terminal-launcher';
+import { ProcessMonitor, getProcessMonitor } from './process-monitor';
 
 /**
  * Options for starting an interactive session
@@ -35,17 +36,20 @@ export interface StartSessionOptions {
  * Interactive Session Manager
  *
  * Tracks and manages interactive AI CLI sessions running in external terminals.
+ * Integrates with ProcessMonitor to automatically detect when terminal processes terminate.
  */
 export class InteractiveSessionManager implements vscode.Disposable {
     private sessions: Map<string, InteractiveSession> = new Map();
     private launcher: ExternalTerminalLauncher;
+    private processMonitor: ProcessMonitor;
     private sessionCounter: number = 0;
 
     private readonly _onDidChangeSessions = new vscode.EventEmitter<InteractiveSessionEvent>();
     readonly onDidChangeSessions: vscode.Event<InteractiveSessionEvent> = this._onDidChangeSessions.event;
 
-    constructor(launcher?: ExternalTerminalLauncher) {
+    constructor(launcher?: ExternalTerminalLauncher, processMonitor?: ProcessMonitor) {
         this.launcher = launcher ?? getExternalTerminalLauncher();
+        this.processMonitor = processMonitor ?? getProcessMonitor();
     }
 
     /**
@@ -102,6 +106,15 @@ export class InteractiveSessionManager implements vscode.Disposable {
             session.terminalType = result.terminalType;
             session.pid = result.pid;
             this.fireEvent('session-updated', session);
+
+            // Start monitoring the process if we have a PID
+            if (result.pid) {
+                this.processMonitor.startMonitoring(sessionId, result.pid, () => {
+                    // Process terminated - end the session
+                    this.endSession(sessionId);
+                });
+            }
+
             return sessionId;
         } else {
             // Update session to error
@@ -129,6 +142,9 @@ export class InteractiveSessionManager implements vscode.Disposable {
         if (session.status === 'ended' || session.status === 'error') {
             return false; // Already ended
         }
+
+        // Stop monitoring the process
+        this.processMonitor.stopMonitoring(sessionId);
 
         session.status = 'ended';
         session.endTime = new Date();
@@ -177,6 +193,9 @@ export class InteractiveSessionManager implements vscode.Disposable {
         if (!session) {
             return false;
         }
+
+        // Stop monitoring the process
+        this.processMonitor.stopMonitoring(sessionId);
 
         // If still active, mark as ended first
         if (session.status === 'active' || session.status === 'starting') {
