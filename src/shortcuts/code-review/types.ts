@@ -195,6 +195,11 @@ export const LARGE_DIFF_THRESHOLD = 50 * 1024; // 50KB
 export type ReviewSeverity = 'error' | 'warning' | 'info' | 'suggestion';
 
 /**
+ * State of a finding in the apply workflow
+ */
+export type FindingApplyState = 'pending' | 'selected' | 'applied' | 'failed';
+
+/**
  * A single code review finding/violation
  */
 export interface ReviewFinding {
@@ -210,14 +215,60 @@ export interface ReviewFinding {
     file?: string;
     /** Line number (if applicable) */
     line?: number;
+    /** End line number (if applicable, for multi-line fixes) */
+    endLine?: number;
     /** Description of the issue */
     description: string;
     /** The problematic code snippet */
     codeSnippet?: string;
     /** Suggested fix or improvement */
     suggestion?: string;
+    /** The suggested code replacement (for auto-apply) */
+    suggestedCode?: string;
     /** Additional context or explanation */
     explanation?: string;
+    /** Whether this finding can be auto-applied (has file, line, and suggestedCode) */
+    isApplicable?: boolean;
+}
+
+/**
+ * Extended finding with state information for the viewer
+ */
+export interface FindingWithState extends ReviewFinding {
+    /** Current state in the apply workflow */
+    applyState: FindingApplyState;
+    /** Error message if apply failed */
+    applyError?: string;
+}
+
+/**
+ * Result of applying a single fix
+ */
+export interface ApplyFixResult {
+    /** The finding that was applied */
+    findingId: string;
+    /** Whether the fix was successfully applied */
+    success: boolean;
+    /** Error message if failed */
+    error?: string;
+    /** The file path that was modified */
+    file?: string;
+}
+
+/**
+ * Result of applying multiple fixes
+ */
+export interface ApplyFixesResult {
+    /** Total number of fixes attempted */
+    total: number;
+    /** Number of successful fixes */
+    successful: number;
+    /** Number of failed fixes */
+    failed: number;
+    /** Individual results for each finding */
+    results: ApplyFixResult[];
+    /** Files that were modified (dirty, not saved) */
+    modifiedFiles: string[];
 }
 
 /**

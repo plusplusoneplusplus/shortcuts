@@ -2,6 +2,7 @@
  * Code Review Result Viewer
  *
  * A dedicated webview panel for displaying structured code review results.
+ * Implements the checkbox model UX for applying selected fixes.
  *
  * Uses shared webview utilities:
  * - WebviewSetupHelper for nonce generation and HTML escaping
@@ -10,12 +11,19 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { CodeReviewResult, ReviewFinding } from './types';
+import {
+    ApplyFixesResult,
+    CodeReviewResult,
+    FindingApplyState,
+    FindingWithState,
+    ReviewFinding
+} from './types';
 import {
     GitContentStrategy,
     ReadOnlyDocumentProvider,
 } from '../shared';
 import { WebviewSetupHelper, WebviewMessageRouter } from '../shared/webview/extension-webview-utils';
+import { applySelectedFixes, isApplicableFinding, toFindingWithState } from './fix-applier';
 
 /**
  * URI scheme for git snapshot provider
@@ -23,13 +31,21 @@ import { WebviewSetupHelper, WebviewMessageRouter } from '../shared/webview/exte
 const GIT_SNAPSHOT_SCHEME = 'git-snapshot';
 
 /**
+ * Filter mode for findings
+ */
+type FilterMode = 'all' | 'errors' | 'warnings' | 'suggestions';
+
+/**
  * Message types for code review viewer webview communication
  * Note: Uses 'type' field to conform to BaseWebviewMessage interface
  */
 interface CodeReviewViewerMessage {
-    type: 'openFile' | 'copyFinding';
+    type: 'openFile' | 'copyFinding' | 'toggleSelection' | 'selectAll' | 'applySelected' | 'filterChange' | 'applySingle';
     file?: string;
     line?: number;
+    findingId?: string;
+    selected?: boolean;
+    filter?: FilterMode;
 }
 
 /**
@@ -94,6 +110,7 @@ class GitSnapshotProvider
  * Manages the code review result viewer webview panel
  *
  * Uses shared webview utilities for consistent setup and message handling.
+ * Implements the checkbox model UX for applying selected fixes.
  */
 export class CodeReviewViewer {
     public static currentPanel: CodeReviewViewer | undefined;
@@ -102,6 +119,12 @@ export class CodeReviewViewer {
     private readonly messageRouter: WebviewMessageRouter<CodeReviewViewerMessage>;
     private disposables: vscode.Disposable[] = [];
     private currentResult: CodeReviewResult | undefined;
+
+    /** Findings with state for the checkbox model */
+    private findingsWithState: FindingWithState[] = [];
+
+    /** Current filter mode */
+    private filterMode: FilterMode = 'all';
 
     private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
         this.panel = panel;
@@ -139,7 +162,148 @@ export class CodeReviewViewer {
             })
             .on('copyFinding', () => {
                 // Handle copy to clipboard - placeholder for future implementation
+            })
+            .on('toggleSelection', (message: CodeReviewViewerMessage) => {
+                if (message.findingId !== undefined) {
+                    this.toggleFindingSelection(message.findingId, message.selected);
+                }
+            })
+            .on('selectAll', (message: CodeReviewViewerMessage) => {
+                this.selectAllFindings(message.selected ?? true);
+            })
+            .on('applySelected', () => {
+                this.applySelectedFindings();
+            })
+            .on('applySingle', (message: CodeReviewViewerMessage) => {
+                if (message.findingId) {
+                    this.applySingleFinding(message.findingId);
+                }
+            })
+            .on('filterChange', (message: CodeReviewViewerMessage) => {
+                if (message.filter) {
+                    this.filterMode = message.filter;
+                    this.refreshContent();
+                }
             });
+    }
+
+    /**
+     * Toggle selection state for a single finding
+     */
+    private toggleFindingSelection(findingId: string, selected?: boolean): void {
+        const finding = this.findingsWithState.find(f => f.id === findingId);
+        if (finding && finding.applyState !== 'applied' && finding.applyState !== 'failed') {
+            finding.applyState = selected ?? (finding.applyState !== 'selected') ? 'selected' : 'pending';
+            this.refreshContent();
+        }
+    }
+
+    /**
+     * Select or deselect all applicable findings
+     */
+    private selectAllFindings(select: boolean): void {
+        const filteredFindings = this.getFilteredFindings();
+        for (const finding of filteredFindings) {
+            if (finding.isApplicable && finding.applyState !== 'applied' && finding.applyState !== 'failed') {
+                finding.applyState = select ? 'selected' : 'pending';
+            }
+        }
+        this.refreshContent();
+    }
+
+    /**
+     * Get findings filtered by current filter mode
+     */
+    private getFilteredFindings(): FindingWithState[] {
+        return this.findingsWithState.filter(f => {
+            switch (this.filterMode) {
+                case 'errors':
+                    return f.severity === 'error';
+                case 'warnings':
+                    return f.severity === 'warning';
+                case 'suggestions':
+                    return f.severity === 'suggestion' || f.severity === 'info';
+                default:
+                    return true;
+            }
+        });
+    }
+
+    /**
+     * Get the count of selected findings
+     */
+    private getSelectedCount(): number {
+        return this.findingsWithState.filter(f => f.applyState === 'selected').length;
+    }
+
+    /**
+     * Apply a single finding
+     */
+    private async applySingleFinding(findingId: string): Promise<void> {
+        const finding = this.findingsWithState.find(f => f.id === findingId);
+        if (!finding || !finding.isApplicable) {
+            return;
+        }
+
+        const showPreview = vscode.workspace.getConfiguration('workspaceShortcuts.codeReview.apply')
+            .get('showPreview', true);
+
+        const result = await applySelectedFixes([finding], {
+            repositoryRoot: this.currentResult?.metadata.repositoryRoot,
+            showPreview
+        });
+
+        this.updateFindingStates(result);
+        this.refreshContent();
+    }
+
+    /**
+     * Apply all selected findings
+     */
+    private async applySelectedFindings(): Promise<void> {
+        const selectedFindings = this.findingsWithState.filter(f => f.applyState === 'selected');
+        if (selectedFindings.length === 0) {
+            vscode.window.showInformationMessage('No findings selected to apply.');
+            return;
+        }
+
+        const showPreview = vscode.workspace.getConfiguration('workspaceShortcuts.codeReview.apply')
+            .get('showPreview', true);
+
+        const result = await applySelectedFixes(selectedFindings, {
+            repositoryRoot: this.currentResult?.metadata.repositoryRoot,
+            showPreview
+        });
+
+        this.updateFindingStates(result);
+        this.refreshContent();
+    }
+
+    /**
+     * Update finding states based on apply results
+     */
+    private updateFindingStates(result: ApplyFixesResult): void {
+        for (const applyResult of result.results) {
+            const finding = this.findingsWithState.find(f => f.id === applyResult.findingId);
+            if (finding) {
+                if (applyResult.success) {
+                    finding.applyState = 'applied';
+                    finding.applyError = undefined;
+                } else {
+                    finding.applyState = 'failed';
+                    finding.applyError = applyResult.error;
+                }
+            }
+        }
+    }
+
+    /**
+     * Refresh the webview content
+     */
+    private refreshContent(): void {
+        if (this.currentResult) {
+            this.panel.webview.html = this.getHtmlContent(this.currentResult);
+        }
     }
 
     /**
@@ -181,6 +345,9 @@ export class CodeReviewViewer {
      */
     public updateContent(result: CodeReviewResult): void {
         this.currentResult = result;
+        // Convert findings to findings with state
+        this.findingsWithState = result.findings.map(toFindingWithState);
+        this.filterMode = 'all';
         this.panel.title = this.getTitle(result);
         this.panel.webview.html = this.getHtmlContent(result);
     }
@@ -547,11 +714,175 @@ export class CodeReviewViewer {
             border-radius: 4px;
             font-size: 0.85em;
         }
+
+        /* Action bar styles */
+        .action-bar {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 16px;
+            background-color: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .action-bar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .action-bar-right {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .select-all-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .select-all-label input {
+            cursor: pointer;
+        }
+
+        .selection-count {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+
+        .apply-btn {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+
+        .apply-btn:hover:not(:disabled) {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+
+        .apply-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .filter-select {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 0.9em;
+            cursor: pointer;
+        }
+
+        /* Finding checkbox styles */
+        .finding-checkbox {
+            display: flex;
+            align-items: center;
+            padding-right: 8px;
+        }
+
+        .finding-checkbox input {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .finding-checkbox input:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        /* Finding state styles */
+        .finding.selected {
+            border: 2px solid var(--vscode-focusBorder);
+        }
+
+        .finding.applied {
+            border-left: 4px solid var(--pass-color);
+            background-color: rgba(137, 209, 133, 0.08);
+        }
+
+        .finding.applied .finding-header {
+            opacity: 0.8;
+        }
+
+        .finding.failed {
+            border-left: 4px solid var(--attention-color);
+            background-color: rgba(204, 167, 0, 0.08);
+        }
+
+        .apply-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85em;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .apply-status.applied {
+            color: var(--pass-color);
+            background-color: rgba(137, 209, 133, 0.15);
+        }
+
+        .apply-status.failed {
+            color: var(--attention-color);
+            background-color: rgba(204, 167, 0, 0.15);
+        }
+
+        .apply-error {
+            color: var(--attention-color);
+            font-size: 0.85em;
+            margin-top: 8px;
+            padding: 8px;
+            background-color: rgba(204, 167, 0, 0.1);
+            border-radius: 4px;
+        }
+
+        .apply-single-btn {
+            background-color: transparent;
+            color: var(--vscode-textLink-foreground);
+            border: 1px solid var(--border-color);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            margin-left: auto;
+        }
+
+        .apply-single-btn:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        /* No applicable findings info */
+        .no-applicable-info {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8em;
+            color: var(--text-secondary);
+            padding: 2px 6px;
+            background-color: rgba(55, 148, 255, 0.1);
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
     ${this.renderHeader(result)}
     ${this.renderSummary(result)}
+    ${this.renderActionBar()}
     ${this.renderFindings(result)}
     ${this.renderRulesUsed(result)}
     
@@ -576,17 +907,102 @@ export class CodeReviewViewer {
             }
         });
 
-        // Toggle finding details (only when clicking on the header, not the file link)
+        // Toggle finding details (only when clicking on the header, not the file link or checkbox)
         document.querySelectorAll('.finding-header').forEach(header => {
             header.addEventListener('click', (event) => {
-                // Only toggle if we didn't click on the file link
-                if (!event.target.closest('.finding-location')) {
+                // Only toggle if we didn't click on the file link, checkbox, or apply button
+                if (!event.target.closest('.finding-location') && 
+                    !event.target.closest('.finding-checkbox') &&
+                    !event.target.closest('.apply-single-btn')) {
                     const body = header.nextElementSibling;
                     if (body) {
                         body.style.display = body.style.display === 'none' ? 'block' : 'none';
                     }
                 }
             });
+        });
+
+        // Handle finding checkbox changes
+        document.querySelectorAll('.finding-checkbox input').forEach(checkbox => {
+            checkbox.addEventListener('change', (event) => {
+                event.stopPropagation();
+                const findingId = checkbox.getAttribute('data-finding-id');
+                vscode.postMessage({
+                    type: 'toggleSelection',
+                    findingId: findingId,
+                    selected: checkbox.checked
+                });
+            });
+        });
+
+        // Handle select all checkbox
+        const selectAllCheckbox = document.getElementById('select-all');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', (event) => {
+                vscode.postMessage({
+                    type: 'selectAll',
+                    selected: selectAllCheckbox.checked
+                });
+            });
+        }
+
+        // Handle apply selected button
+        const applyBtn = document.getElementById('apply-selected-btn');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
+                vscode.postMessage({
+                    type: 'applySelected'
+                });
+            });
+        }
+
+        // Handle filter dropdown
+        const filterSelect = document.getElementById('filter-select');
+        if (filterSelect) {
+            filterSelect.addEventListener('change', (event) => {
+                vscode.postMessage({
+                    type: 'filterChange',
+                    filter: filterSelect.value
+                });
+            });
+        }
+
+        // Handle apply single buttons
+        document.querySelectorAll('.apply-single-btn').forEach(btn => {
+            btn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const findingId = btn.getAttribute('data-finding-id');
+                vscode.postMessage({
+                    type: 'applySingle',
+                    findingId: findingId
+                });
+            });
+        });
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (event) => {
+            // Ctrl/Cmd + A to select all
+            if ((event.ctrlKey || event.metaKey) && event.key === 'a') {
+                const selectAll = document.getElementById('select-all');
+                if (selectAll && !selectAll.disabled) {
+                    event.preventDefault();
+                    selectAll.checked = !selectAll.checked;
+                    vscode.postMessage({
+                        type: 'selectAll',
+                        selected: selectAll.checked
+                    });
+                }
+            }
+            // Enter to apply selected
+            if (event.key === 'Enter' && !event.target.closest('input, select, button')) {
+                const applyBtn = document.getElementById('apply-selected-btn');
+                if (applyBtn && !applyBtn.disabled) {
+                    event.preventDefault();
+                    vscode.postMessage({
+                        type: 'applySelected'
+                    });
+                }
+            }
         });
     </script>
 </body>
@@ -670,10 +1086,61 @@ export class CodeReviewViewer {
     }
 
     /**
+     * Render the action bar with select all, apply selected, and filter controls
+     */
+    private renderActionBar(): string {
+        const filteredFindings = this.getFilteredFindings();
+        const applicableCount = filteredFindings.filter(f => f.isApplicable && f.applyState !== 'applied' && f.applyState !== 'failed').length;
+        const selectedCount = this.getSelectedCount();
+        const totalFindings = this.findingsWithState.length;
+        const appliedCount = this.findingsWithState.filter(f => f.applyState === 'applied').length;
+
+        // Check if all applicable findings are selected
+        const allSelected = applicableCount > 0 && 
+            filteredFindings.filter(f => f.isApplicable && f.applyState !== 'applied' && f.applyState !== 'failed')
+                .every(f => f.applyState === 'selected');
+
+        const selectAllDisabled = applicableCount === 0;
+        const applyDisabled = selectedCount === 0;
+
+        let statusText = `${totalFindings} findings`;
+        if (selectedCount > 0) {
+            statusText += ` • ${selectedCount} selected`;
+        }
+        if (appliedCount > 0) {
+            statusText += ` • ${appliedCount} applied`;
+        }
+
+        return `
+        <div class="action-bar">
+            <div class="action-bar-left">
+                <label class="select-all-label">
+                    <input type="checkbox" id="select-all" ${allSelected ? 'checked' : ''} ${selectAllDisabled ? 'disabled' : ''}>
+                    Select all
+                </label>
+                <span class="selection-count">${statusText}</span>
+            </div>
+            <div class="action-bar-right">
+                <select id="filter-select" class="filter-select">
+                    <option value="all" ${this.filterMode === 'all' ? 'selected' : ''}>All</option>
+                    <option value="errors" ${this.filterMode === 'errors' ? 'selected' : ''}>Errors</option>
+                    <option value="warnings" ${this.filterMode === 'warnings' ? 'selected' : ''}>Warnings</option>
+                    <option value="suggestions" ${this.filterMode === 'suggestions' ? 'selected' : ''}>Suggestions</option>
+                </select>
+                <button id="apply-selected-btn" class="apply-btn" ${applyDisabled ? 'disabled' : ''}>
+                    Apply Selected${selectedCount > 0 ? ` (${selectedCount})` : ''}
+                </button>
+            </div>
+        </div>`;
+    }
+
+    /**
      * Render the findings section
      */
     private renderFindings(result: CodeReviewResult): string {
-        if (result.findings.length === 0) {
+        const filteredFindings = this.getFilteredFindings();
+
+        if (this.findingsWithState.length === 0) {
             return `
             <div class="findings-section">
                 <h2>🔍 Findings</h2>
@@ -684,20 +1151,119 @@ export class CodeReviewViewer {
             </div>`;
         }
 
-        const findingsHtml = result.findings.map(finding => this.renderFinding(finding)).join('');
+        if (filteredFindings.length === 0) {
+            return `
+            <div class="findings-section">
+                <h2>🔍 Findings (${this.findingsWithState.length})</h2>
+                <div class="no-findings">
+                    <div class="icon">🔍</div>
+                    <div>No findings match the current filter.</div>
+                </div>
+            </div>`;
+        }
+
+        const findingsHtml = filteredFindings.map(finding => this.renderFindingWithState(finding)).join('');
 
         return `
         <div class="findings-section">
-            <h2>🔍 Findings (${result.findings.length})</h2>
+            <h2>🔍 Findings (${filteredFindings.length}${filteredFindings.length !== this.findingsWithState.length ? ` of ${this.findingsWithState.length}` : ''})</h2>
             ${findingsHtml}
         </div>`;
     }
 
     /**
-     * Render a single finding
+     * Render a single finding with checkbox and state
+     */
+    private renderFindingWithState(finding: FindingWithState): string {
+        const stateClass = finding.applyState === 'selected' ? 'selected' :
+            finding.applyState === 'applied' ? 'applied' :
+            finding.applyState === 'failed' ? 'failed' : '';
+
+        // Checkbox for applicable findings
+        let checkboxHtml = '';
+        if (finding.isApplicable) {
+            if (finding.applyState === 'applied') {
+                checkboxHtml = `<span class="apply-status applied">✓ Applied</span>`;
+            } else if (finding.applyState === 'failed') {
+                checkboxHtml = `<span class="apply-status failed">⚠️ Failed</span>`;
+            } else {
+                const checked = finding.applyState === 'selected' ? 'checked' : '';
+                checkboxHtml = `
+                <span class="finding-checkbox">
+                    <input type="checkbox" ${checked} data-finding-id="${this.escapeHtml(finding.id)}">
+                </span>`;
+            }
+        } else {
+            checkboxHtml = `<span class="no-applicable-info" title="No code fix available">ℹ️</span>`;
+        }
+
+        // Location link
+        const locationHtml = finding.file
+            ? `<span class="finding-location">
+                <a href="#" class="file-link" data-file="${this.escapeHtml(finding.file)}" data-line="${finding.line || 0}">
+                    📁 ${this.escapeHtml(finding.file)}${finding.line ? `:${finding.line}` : ''}
+                </a>
+               </span>`
+            : '';
+
+        // Apply single button for applicable findings that haven't been applied
+        const applySingleHtml = finding.isApplicable && finding.applyState !== 'applied'
+            ? `<button class="apply-single-btn" data-finding-id="${this.escapeHtml(finding.id)}" title="Apply this fix">Apply</button>`
+            : '';
+
+        const codeHtml = finding.codeSnippet
+            ? `<pre class="finding-code"><code>${this.escapeHtml(finding.codeSnippet)}</code></pre>`
+            : '';
+
+        const suggestionHtml = finding.suggestion
+            ? `<div class="finding-suggestion">${this.escapeHtml(finding.suggestion)}</div>`
+            : '';
+
+        const explanationHtml = finding.explanation
+            ? `<div class="finding-explanation">${this.escapeHtml(finding.explanation)}</div>`
+            : '';
+
+        // Show the source rule file if available and different from the rule name
+        const ruleFileHtml = finding.ruleFile && finding.ruleFile !== finding.rule
+            ? `<div class="finding-rule-file">📄 From rule: <strong>${this.escapeHtml(finding.ruleFile)}</strong></div>`
+            : '';
+
+        // Show error message for failed findings
+        const errorHtml = finding.applyError
+            ? `<div class="apply-error">⚠️ ${this.escapeHtml(finding.applyError)}</div>`
+            : '';
+
+        return `
+        <div class="finding ${stateClass}">
+            <div class="finding-header">
+                ${checkboxHtml}
+                <span class="severity-badge ${finding.severity}">${finding.severity}</span>
+                <span class="finding-rule">${this.escapeHtml(finding.rule)}</span>
+                ${locationHtml}
+                ${applySingleHtml}
+            </div>
+            <div class="finding-body">
+                ${ruleFileHtml}
+                <div class="finding-description">${this.escapeHtml(finding.description)}</div>
+                ${codeHtml}
+                ${suggestionHtml}
+                ${explanationHtml}
+                ${errorHtml}
+            </div>
+        </div>`;
+    }
+
+    /**
+     * Render a single finding (legacy method for backward compatibility)
      */
     private renderFinding(finding: ReviewFinding): string {
-        // Use data attributes for file path to avoid escaping issues
+        // Convert to FindingWithState and use the new renderer
+        const findingWithState = this.findingsWithState.find(f => f.id === finding.id);
+        if (findingWithState) {
+            return this.renderFindingWithState(findingWithState);
+        }
+
+        // Fallback for findings not in state (shouldn't happen)
         const locationHtml = finding.file
             ? `<span class="finding-location">
                 <a href="#" class="file-link" data-file="${this.escapeHtml(finding.file)}" data-line="${finding.line || 0}">
@@ -718,7 +1284,6 @@ export class CodeReviewViewer {
             ? `<div class="finding-explanation">${this.escapeHtml(finding.explanation)}</div>`
             : '';
 
-        // Show the source rule file if available and different from the rule name
         const ruleFileHtml = finding.ruleFile && finding.ruleFile !== finding.rule
             ? `<div class="finding-rule-file">📄 From rule: <strong>${this.escapeHtml(finding.ruleFile)}</strong></div>`
             : '';

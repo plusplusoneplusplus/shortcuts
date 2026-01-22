@@ -483,6 +483,11 @@
           ],
           "markdownDescription": "Mode for aggregating results from multiple rule reviews. **Deterministic** uses programmatic deduplication and is the default. **AI** uses an additional AI call to synthesize findings intelligently."
         },
+        "workspaceShortcuts.codeReview.apply.showPreview": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a diff preview before applying selected fixes. When enabled, clicking 'Apply Selected' will show a preview with Confirm/Cancel options."
+        },
         "workspaceShortcuts.discovery.enabled": {
           "type": "boolean",
           "default": false,
