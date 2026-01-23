@@ -107,17 +107,24 @@ export function validateAndTruncatePromptBase(
 }
 
 /**
+ * Result from SDK invocation with session ID for process tracking
+ */
+interface SDKInvocationResultWithSession extends AIInvocationResult {
+    sessionId?: string;
+}
+
+/**
  * Invoke the Copilot SDK to get a clarification.
  * Uses session-per-request pattern (creates new session, destroys after).
  *
  * @param prompt - The prompt to send
  * @param workspaceRoot - The workspace root directory
- * @returns The AI invocation result
+ * @returns The AI invocation result with optional session ID
  */
 async function invokeCopilotSDK(
     prompt: string,
     workspaceRoot: string
-): Promise<AIInvocationResult> {
+): Promise<SDKInvocationResultWithSession> {
     const logger = getExtensionLogger();
     const sdkService = getCopilotSDKService();
 
@@ -150,7 +157,8 @@ async function invokeCopilotSDK(
     return {
         success: result.success,
         response: result.response,
-        error: result.error
+        error: result.error,
+        sessionId: result.sessionId
     };
 }
 
@@ -188,37 +196,70 @@ export async function handleAIClarificationBase(
 
     // Handle copilot-sdk backend
     if (backend === 'copilot-sdk') {
-        const sdkResult = await invokeCopilotSDK(prompt, workspaceRoot);
-
-        if (sdkResult.success) {
-            return toClarificationResult(sdkResult);
+        // Register the process before starting the SDK call
+        let processId: string | undefined;
+        if (processManager) {
+            processId = processManager.registerProcess(prompt);
+            logger.debug(LogCategory.AI, `AI Clarification: Registered process ${processId}`);
         }
 
-        // SDK failed, fall back to CLI
-        logger.debug(LogCategory.AI, 'AI Clarification: SDK failed, falling back to CLI');
-        vscode.window.showWarningMessage(
-            `Copilot SDK failed: ${sdkResult.error}. Falling back to CLI...`
-        );
+        try {
+            const sdkResult = await invokeCopilotSDK(prompt, workspaceRoot);
 
-        // Try CLI as fallback
-        const cliResult = await invokeCopilotCLI(prompt, workspaceRoot, processManager);
-        const clarificationResult = toClarificationResult(cliResult);
-
-        if (clarificationResult.success) {
-            return clarificationResult;
-        }
-
-        // Both SDK and CLI failed, fall back to clipboard
-        await copyToClipboard(prompt);
-        vscode.window.showWarningMessage(
-            `${clarificationResult.error || 'Failed to get AI clarification'}. Prompt copied to clipboard.`,
-            'Open Terminal'
-        ).then(selection => {
-            if (selection === 'Open Terminal') {
-                vscode.commands.executeCommand('workbench.action.terminal.new');
+            // Attach SDK session ID for potential cancellation (if we got one)
+            if (processId && sdkResult.sessionId && processManager) {
+                processManager.attachSdkSessionId(processId, sdkResult.sessionId);
             }
-        });
-        return clarificationResult;
+
+            if (sdkResult.success) {
+                // Mark process as completed
+                if (processId && processManager) {
+                    processManager.completeProcess(processId, sdkResult.response);
+                }
+                return toClarificationResult(sdkResult);
+            }
+
+            // SDK failed, mark process and fall back to CLI
+            if (processId && processManager) {
+                processManager.failProcess(processId, sdkResult.error || 'SDK request failed');
+            }
+
+            logger.debug(LogCategory.AI, 'AI Clarification: SDK failed, falling back to CLI');
+            vscode.window.showWarningMessage(
+                `Copilot SDK failed: ${sdkResult.error}. Falling back to CLI...`
+            );
+
+            // Try CLI as fallback (will register its own process)
+            const cliResult = await invokeCopilotCLI(prompt, workspaceRoot, processManager);
+            const clarificationResult = toClarificationResult(cliResult);
+
+            if (clarificationResult.success) {
+                return clarificationResult;
+            }
+
+            // Both SDK and CLI failed, fall back to clipboard
+            await copyToClipboard(prompt);
+            vscode.window.showWarningMessage(
+                `${clarificationResult.error || 'Failed to get AI clarification'}. Prompt copied to clipboard.`,
+                'Open Terminal'
+            ).then(selection => {
+                if (selection === 'Open Terminal') {
+                    vscode.commands.executeCommand('workbench.action.terminal.new');
+                }
+            });
+            return clarificationResult;
+        } catch (error) {
+            // Handle unexpected errors
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (processId && processManager) {
+                processManager.failProcess(processId, errorMessage);
+            }
+            logger.error(LogCategory.AI, 'AI Clarification: Unexpected error', error instanceof Error ? error : undefined);
+            return {
+                success: false,
+                error: errorMessage
+            };
+        }
     }
 
     // Handle copilot-cli backend (legacy)
