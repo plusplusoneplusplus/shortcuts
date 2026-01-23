@@ -35,9 +35,9 @@ suite('Debug Panel Tests', () => {
             assert.strictEqual(openChat?.commandId, 'workbench.panel.chat.view.copilot.focus');
         });
 
-        test('should have exactly 7 commands', () => {
+        test('should have exactly 8 commands', () => {
             const commands = getDefaultDebugCommands();
-            assert.strictEqual(commands.length, 7);
+            assert.strictEqual(commands.length, 8);
         });
 
         test('should include read-setting command', () => {
@@ -47,12 +47,19 @@ suite('Debug Panel Tests', () => {
             assert.strictEqual(readSetting?.commandId, 'debugPanel.readSetting');
         });
 
-        test('should include run-custom-command as first command', () => {
+        test('should include test-copilot-sdk as first command', () => {
+            const commands = getDefaultDebugCommands();
+            const testCopilotSdk = commands.find(c => c.id === 'test-copilot-sdk');
+            assert.ok(testCopilotSdk);
+            assert.strictEqual(testCopilotSdk?.commandId, 'debugPanel.testCopilotSDK');
+            assert.strictEqual(commands[0].id, 'test-copilot-sdk');
+        });
+
+        test('should include run-custom-command command', () => {
             const commands = getDefaultDebugCommands();
             const runCustomCommand = commands.find(c => c.id === 'run-custom-command');
             assert.ok(runCustomCommand);
             assert.strictEqual(runCustomCommand?.commandId, 'debugPanel.runCustomCommand');
-            assert.strictEqual(commands[0].id, 'run-custom-command');
         });
 
         test('should include new-chat-conversation command', () => {

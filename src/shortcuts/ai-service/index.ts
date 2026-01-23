@@ -14,6 +14,7 @@ export {
     AIProcessStatus,
     AIProcessType,
     AIToolType,
+    AIBackendType,
     // Generic metadata types (preferred for new features)
     GenericProcessMetadata,
     GenericGroupMetadata,
@@ -141,3 +142,16 @@ export {
     WindowFocusResult,
     WindowFocusService
 } from './window-focus-service';
+
+// Export Copilot SDK service
+export {
+    CopilotSDKService,
+    getCopilotSDKService,
+    resetCopilotSDKService,
+    getAIBackendSetting,
+    getSDKMaxSessionsSetting,
+    getSDKSessionTimeoutSetting,
+    SendMessageOptions,
+    SDKInvocationResult,
+    SDKAvailabilityResult
+} from './copilot-sdk-service';

@@ -322,6 +322,35 @@
           "default": "copilot-cli",
           "description": "Target AI tool for requests"
         },
+        "workspaceShortcuts.aiService.backend": {
+          "type": "string",
+          "enum": [
+            "copilot-sdk",
+            "copilot-cli",
+            "clipboard"
+          ],
+          "enumDescriptions": [
+            "Use Copilot SDK for structured JSON-RPC communication (recommended)",
+            "Use Copilot CLI via child process (legacy)",
+            "Copy prompt to clipboard for manual use"
+          ],
+          "default": "copilot-cli",
+          "markdownDescription": "AI backend for requests. **copilot-sdk** is recommended for better session management and reliability. Falls back to **copilot-cli** if SDK is unavailable."
+        },
+        "workspaceShortcuts.aiService.sdk.maxSessions": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20,
+          "markdownDescription": "Maximum number of concurrent SDK sessions for parallel operations (e.g., code review, pipeline execution)."
+        },
+        "workspaceShortcuts.aiService.sdk.sessionTimeout": {
+          "type": "number",
+          "default": 300000,
+          "minimum": 30000,
+          "maximum": 600000,
+          "markdownDescription": "Session timeout in milliseconds. Sessions idle longer than this will be cleaned up. Default: 300000 (5 minutes)."
+        },
         "workspaceShortcuts.aiService.model": {
           "type": "string",
           "enum": [

@@ -19,7 +19,6 @@ Replace the current child-process-based Copilot CLI invocation with the `@github
 ## Architecture
 
 ### New Files
-
 ```
 src/shortcuts/ai-service/
 ├── copilot-sdk-service.ts      # New: SDK wrapper (singleton client, session pool)
@@ -29,7 +28,6 @@ src/shortcuts/ai-service/
 ```
 
 ### CopilotSDKService Design
-
 ```typescript
 class CopilotSDKService {
     private client: CopilotClient | null = null;
@@ -48,9 +46,8 @@ class CopilotSDKService {
 ```
 
 ### Session Strategy
-
 | Use Case | Strategy |
-|----------|----------|
+| --- | --- |
 | Clarification (Markdown/Diff) | New session per request, destroy after |
 | Code Review (parallel) | Session pool - reuse sessions |
 | YAML Pipeline (parallel) | Session pool - reuse sessions |
@@ -74,7 +71,6 @@ class CopilotSDKService {
 - [ ] Update `ai-clarification-handler-base.ts` to use SDK
 - [ ] Test Markdown Comments clarification
 - [ ] Test Git Diff Comments clarification
-- [ ] Verify fallback to CLI works
 
 ### Phase 4: Migrate Parallel Consumers
 - [ ] Update Code Review to use session pool
@@ -90,7 +86,6 @@ class CopilotSDKService {
 ## Configuration Changes
 
 Add to `package.json`:
-
 ```json
 "workspaceShortcuts.aiService.backend": {
     "type": "string",
@@ -120,7 +115,6 @@ Add to `package.json`:
 8. **`package.json`** - New configuration settings
 
 ## Fallback Strategy
-
 ```typescript
 async function invokeAI(prompt, options): Promise<AIInvocationResult> {
     const backend = getAIBackendSetting();

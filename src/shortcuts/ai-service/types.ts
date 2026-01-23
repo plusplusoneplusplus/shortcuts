@@ -25,6 +25,14 @@ export interface ProcessCheckResult {
 export type AIToolType = 'copilot-cli' | 'clipboard';
 
 /**
+ * Supported AI backends for invocation.
+ * - 'copilot-sdk': Use the @github/copilot-sdk for structured JSON-RPC communication
+ * - 'copilot-cli': Use the copilot CLI via child process (legacy)
+ * - 'clipboard': Copy prompt to clipboard for manual use
+ */
+export type AIBackendType = 'copilot-sdk' | 'copilot-cli' | 'clipboard';
+
+/**
  * Valid AI model options for Copilot CLI
  */
 export const VALID_MODELS = [
