@@ -10,6 +10,7 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/node_modules/**
+!node_modules/@github/copilot-sdk/**
 **/.DS_Store
 **/Thumbs.db
 **/*.log

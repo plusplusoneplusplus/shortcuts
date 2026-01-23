@@ -20,6 +20,14 @@ export interface DebugCommand {
 export function getDefaultDebugCommands(): DebugCommand[] {
     return [
         {
+            id: 'test-copilot-sdk',
+            label: 'Test Copilot SDK',
+            description: 'Experiment with SDK',
+            tooltip: 'Test GitHub Copilot SDK with a custom prompt\n\nSend a message to Copilot CLI via the SDK and see the response',
+            icon: 'beaker',
+            commandId: 'debugPanel.testCopilotSDK'
+        },
+        {
             id: 'run-custom-command',
             label: 'Run Custom Command',
             description: 'Execute any VSCode command',

@@ -2546,6 +2546,7 @@
     "webpack-cli": "^5.0.0"
   },
   "dependencies": {
+    "@github/copilot-sdk": "^0.1.16",
     "diff": "^5.2.0",
     "js-yaml": "^4.1.0"
   }

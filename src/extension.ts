@@ -13,7 +13,7 @@ import {
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
 import { ConfigurationManager } from './shortcuts/configuration-manager';
-import { DebugPanelTreeDataProvider } from './shortcuts/debug-panel';
+import { DebugPanelTreeDataProvider, testCopilotSDK } from './shortcuts/debug-panel';
 import { DiscoveryEngine, registerDiscoveryCommands } from './shortcuts/discovery';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
@@ -486,6 +486,12 @@ export async function activate(context: vscode.ExtensionContext) {
                     });
                 }
             }
+        );
+
+        // Register command to test Copilot SDK
+        const testCopilotSDKCommand = vscode.commands.registerCommand(
+            'debugPanel.testCopilotSDK',
+            testCopilotSDK
         );
 
         // Initialize Git Diff Comments feature (must be before git tree provider)
@@ -2365,7 +2371,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitCopyRangeSummaryCommand) disposables.push(gitCopyRangeSummaryCommand);
 
         // Add Debug Panel disposables
-        disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand, runCustomCommand, readSettingCommand);
+        disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand, runCustomCommand, readSettingCommand, testCopilotSDKCommand);
 
         // Register code review commands (requires git log service)
         if (gitInitialized) {
