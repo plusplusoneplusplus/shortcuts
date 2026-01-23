@@ -28,14 +28,16 @@ import { SessionPool, IPoolableSession, SessionPoolStats } from './session-pool'
 export interface SendMessageOptions {
     /** The prompt to send */
     prompt: string;
-    /** Optional model override */
+    /** Optional model override (e.g., 'gpt-5', 'claude-sonnet-4.5') */
     model?: string;
-    /** Optional working directory for context */
+    /** Optional working directory for context (set at client level) */
     workingDirectory?: string;
     /** Optional timeout in milliseconds (default: 300000 = 5 minutes) */
     timeoutMs?: number;
     /** Use session pool for efficient parallel requests (default: false) */
     usePool?: boolean;
+    /** Enable streaming for real-time response chunks (default: false) */
+    streaming?: boolean;
 }
 
 /**
@@ -69,11 +71,21 @@ interface ICopilotClientOptions {
 }
 
 /**
+ * Options for creating a session
+ */
+interface ISessionOptions {
+    /** AI model to use (e.g., 'gpt-5', 'claude-sonnet-4.5') */
+    model?: string;
+    /** Enable streaming for real-time response chunks */
+    streaming?: boolean;
+}
+
+/**
  * Interface for the CopilotClient from @github/copilot-sdk
  * We define this interface to avoid direct type dependency on the SDK
  */
 interface ICopilotClient {
-    createSession(): Promise<ICopilotSession>;
+    createSession(options?: ISessionOptions): Promise<ICopilotSession>;
     stop(): Promise<void>;
 }
 
@@ -84,6 +96,21 @@ interface ICopilotSession {
     sessionId: string;
     sendAndWait(options: { prompt: string }): Promise<{ data?: { content?: string } }>;
     destroy(): Promise<void>;
+    /** Event handler for streaming responses */
+    on?(handler: (event: ISessionEvent) => void): void;
+    /** Send a message without waiting (for streaming) */
+    send?(options: { prompt: string }): Promise<void>;
+}
+
+/**
+ * Interface for session events (streaming)
+ */
+interface ISessionEvent {
+    type: { value: string };
+    data?: {
+        content?: string;
+        delta_content?: string;
+    };
 }
 
 /**
@@ -381,15 +408,35 @@ export class CopilotSDKService {
             // Create/reuse client with the specified working directory
             const client = await this.ensureClient(options.workingDirectory);
 
-            logger.debug(LogCategory.AI, `CopilotSDKService: Creating session for request (cwd: ${options.workingDirectory || '(default)'})`);
-            session = await client.createSession();
+            // Build session options
+            const sessionOptions: ISessionOptions = {};
+            if (options.model) {
+                sessionOptions.model = options.model;
+            }
+            if (options.streaming) {
+                sessionOptions.streaming = options.streaming;
+            }
+
+            const sessionOptionsStr = Object.keys(sessionOptions).length > 0 
+                ? JSON.stringify(sessionOptions) 
+                : '(default)';
+            logger.debug(LogCategory.AI, `CopilotSDKService: Creating session (cwd: ${options.workingDirectory || '(default)'}, options: ${sessionOptionsStr})`);
+
+            session = await client.createSession(sessionOptions);
             logger.debug(LogCategory.AI, `CopilotSDKService: Session created: ${session.sessionId}`);
 
             // Send the message with timeout
             const timeoutMs = options.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
-            const result = await this.sendWithTimeout(session, options.prompt, timeoutMs);
 
-            const response = result?.data?.content || '';
+            // Use streaming mode if enabled and supported
+            let response: string;
+            if (options.streaming && session.on && session.send) {
+                response = await this.sendWithStreaming(session, options.prompt, timeoutMs);
+            } else {
+                const result = await this.sendWithTimeout(session, options.prompt, timeoutMs);
+                response = result?.data?.content || '';
+            }
+
             const durationMs = Date.now() - startTime;
 
             logger.debug(LogCategory.AI, `CopilotSDKService: Request completed in ${durationMs}ms`);
@@ -405,8 +452,7 @@ export class CopilotSDKService {
             return {
                 success: true,
                 response,
-                sessionId: session.sessionId,
-                rawResponse: result
+                sessionId: session.sessionId
             };
 
         } catch (error) {
@@ -621,7 +667,7 @@ export class CopilotSDKService {
     }
 
     /**
-     * Send a message with timeout support.
+     * Send a message with timeout support (non-streaming).
      */
     private async sendWithTimeout(
         session: ICopilotSession,
@@ -642,6 +688,55 @@ export class CopilotSDKService {
                     clearTimeout(timeoutId);
                     reject(error);
                 });
+        });
+    }
+
+    /**
+     * Send a message with streaming support.
+     * Accumulates delta_content chunks until session.idle event.
+     */
+    private async sendWithStreaming(
+        session: ICopilotSession,
+        prompt: string,
+        timeoutMs: number
+    ): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const logger = getExtensionLogger();
+            let response = '';
+            let finalMessage = '';
+
+            const timeoutId = setTimeout(() => {
+                reject(new Error(`Request timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+
+            // Set up event handler for streaming
+            session.on!((event: ISessionEvent) => {
+                const eventType = event.type?.value;
+
+                if (eventType === 'assistant.message_delta') {
+                    // Accumulate streaming chunks
+                    const delta = event.data?.delta_content || '';
+                    response += delta;
+                    logger.debug(LogCategory.AI, `CopilotSDKService: Received delta chunk (${delta.length} chars)`);
+                } else if (eventType === 'assistant.message') {
+                    // Final message - use this as the complete content
+                    finalMessage = event.data?.content || '';
+                    logger.debug(LogCategory.AI, `CopilotSDKService: Received final message (${finalMessage.length} chars)`);
+                } else if (eventType === 'session.idle') {
+                    // Session finished processing
+                    clearTimeout(timeoutId);
+                    // Prefer final message if available, otherwise use accumulated response
+                    const result = finalMessage || response;
+                    logger.debug(LogCategory.AI, `CopilotSDKService: Streaming completed (${result.length} chars total)`);
+                    resolve(result);
+                }
+            });
+
+            // Send the message (without waiting)
+            session.send!({ prompt }).catch(error => {
+                clearTimeout(timeoutId);
+                reject(error);
+            });
         });
     }
 }
