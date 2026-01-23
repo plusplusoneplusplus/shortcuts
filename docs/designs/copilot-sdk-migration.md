@@ -77,11 +77,75 @@ class CopilotSDKService {
 - [ ] Update YAML Pipeline to use session pool
 - [ ] Performance test parallel requests
 
-### Phase 5: Complete Migration
+### Phase 5: AI Processes Panel Integration
+- [ ] Add `sdkSessionId` field to internal `TrackedProcess` interface
+- [ ] Update `AIProcessManager.cancelProcess()` to handle SDK session abort
+- [ ] Ensure status mapping (SDK states → `AIProcessStatus`) works correctly
+- [ ] Test panel displays processes identically for CLI and SDK backends
+- [ ] Verify cancellation from panel context menu works with SDK
+
+### Phase 6: Complete Migration
 - [ ] Update AI Discovery engine
-- [ ] Update `AIProcessManager` for SDK session tracking
 - [ ] Add streaming support where beneficial
 - [ ] Update documentation
+
+## AI Processes Panel Compatibility
+
+The AI Processes panel (`AIProcessTreeDataProvider`) displays running and completed AI processes. The SDK migration must maintain the same interface so the panel works identically regardless of backend.
+
+### Interface Unchanged
+
+The public `AIProcess` interface is already backend-agnostic:
+```typescript
+interface AIProcess {
+    id: string;
+    type: AIProcessType;
+    promptPreview: string;
+    fullPrompt: string;
+    status: AIProcessStatus;  // 'running' | 'completed' | 'failed' | 'cancelled'
+    startTime: Date;
+    endTime?: Date;
+    error?: string;
+    result?: string;
+    // ... metadata fields
+}
+```
+
+The `ChildProcess` reference is internal to `TrackedProcess` (not exposed). For SDK, we add an optional session reference:
+
+```typescript
+// Internal tracking (not public API)
+interface TrackedProcess extends AIProcess {
+    childProcess?: ChildProcess;      // CLI backend
+    sdkSessionId?: string;            // SDK backend
+}
+```
+
+### No Changes Required
+
+| Component | Changes |
+| --- | --- |
+| `AIProcess` interface | None - already backend-agnostic |
+| `AIProcessStatus` enum | None - SDK maps to same states |
+| `AIProcessTreeDataProvider` | None - uses stable `AIProcess` interface |
+| `IAIProcessManager` interface | None - public API unchanged |
+
+### Internal Changes (AIProcessManager)
+
+1. **Session tracking**: Store `sdkSessionId` alongside or instead of `childProcess`
+2. **Cancellation**: Call `copilotSDKService.abortSession(sessionId)` instead of `childProcess.kill()`
+3. **Status mapping**: SDK session states map directly to existing `AIProcessStatus`:
+   - SDK active → `'running'`
+   - SDK success → `'completed'`
+   - SDK error → `'failed'`
+   - SDK aborted → `'cancelled'`
+
+### Verification
+
+- Panel displays processes identically for CLI and SDK backends
+- Process status updates in real-time
+- Cancellation works from panel context menu
+- Persistence/restore works on extension restart
 
 ## Configuration Changes
 
