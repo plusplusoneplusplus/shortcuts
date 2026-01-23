@@ -6,11 +6,10 @@
  * sending messages and managing sessions.
  *
  * Key Features:
- * - Singleton client pattern for efficient resource usage
+ * - Creates a new client per working directory (cwd is set at client init time)
  * - Lazy initialization with ESM dynamic import workaround
  * - Graceful fallback when SDK is unavailable
- * - Session management for conversation persistence
- * - Session pool for efficient parallel request handling
+ * - Session-per-request pattern for simple one-off requests
  *
  * @see https://github.com/github/copilot-sdk
  */
@@ -20,6 +19,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { AIInvocationResult, AIBackendType } from './types';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
+// Note: SessionPool is kept for backward compatibility but not used for clarification requests
 import { SessionPool, IPoolableSession, SessionPoolStats } from './session-pool';
 
 /**
@@ -61,6 +61,14 @@ export interface SDKAvailabilityResult {
 }
 
 /**
+ * Options for creating a CopilotClient
+ */
+interface ICopilotClientOptions {
+    /** Working directory for the CLI process */
+    cwd?: string;
+}
+
+/**
  * Interface for the CopilotClient from @github/copilot-sdk
  * We define this interface to avoid direct type dependency on the SDK
  */
@@ -80,16 +88,19 @@ interface ICopilotSession {
 
 /**
  * Singleton service for interacting with the Copilot SDK.
+ * 
+ * Creates a new client per working directory since the SDK's `cwd` option
+ * is set at client initialization time (not per-request).
  *
  * Usage:
  * ```typescript
  * const service = CopilotSDKService.getInstance();
  * if (await service.isAvailable()) {
- *     // Simple request (creates and destroys session)
- *     const result = await service.sendMessage({ prompt: 'Hello' });
- *
- *     // Pooled request (reuses sessions for parallel workloads)
- *     const pooledResult = await service.sendMessage({ prompt: 'Hello', usePool: true });
+ *     // Request with working directory (creates client with cwd, then session)
+ *     const result = await service.sendMessage({ 
+ *         prompt: 'Hello',
+ *         workingDirectory: '/path/to/project'
+ *     });
  * }
  * ```
  */
@@ -97,7 +108,8 @@ export class CopilotSDKService {
     private static instance: CopilotSDKService | null = null;
 
     private client: ICopilotClient | null = null;
-    private sdkModule: { CopilotClient: new () => ICopilotClient } | null = null;
+    private clientCwd: string | undefined = undefined;
+    private sdkModule: { CopilotClient: new (options?: ICopilotClientOptions) => ICopilotClient } | null = null;
     private initializationPromise: Promise<void> | null = null;
     private availabilityCache: SDKAvailabilityResult | null = null;
     private sessionPool: SessionPool | null = null;
@@ -189,32 +201,48 @@ export class CopilotSDKService {
     }
 
     /**
-     * Ensure the SDK client is initialized.
+     * Ensure the SDK client is initialized with the specified working directory.
+     * If the working directory changes, a new client is created.
      * Uses lazy initialization to avoid startup overhead.
      *
+     * @param cwd Optional working directory for the client
      * @throws Error if SDK is not available or initialization fails
      */
-    public async ensureClient(): Promise<ICopilotClient> {
+    public async ensureClient(cwd?: string): Promise<ICopilotClient> {
         if (this.disposed) {
             throw new Error('CopilotSDKService has been disposed');
         }
 
-        if (this.client) {
+        // Check if we can reuse the existing client (same cwd)
+        if (this.client && this.clientCwd === cwd) {
             return this.client;
+        }
+
+        // If cwd changed, stop the old client first
+        if (this.client && this.clientCwd !== cwd) {
+            const logger = getExtensionLogger();
+            logger.debug(LogCategory.AI, `CopilotSDKService: Working directory changed from '${this.clientCwd}' to '${cwd}', creating new client`);
+            try {
+                await this.client.stop();
+            } catch (error) {
+                logger.debug(LogCategory.AI, `CopilotSDKService: Warning: Error stopping old client: ${error}`);
+            }
+            this.client = null;
+            this.clientCwd = undefined;
         }
 
         // Use a promise to prevent concurrent initialization
         if (this.initializationPromise) {
             await this.initializationPromise;
-            if (this.client) {
+            if (this.client && this.clientCwd === cwd) {
                 return this.client;
             }
         }
 
         const logger = getExtensionLogger();
-        logger.debug(LogCategory.AI, 'CopilotSDKService: Initializing SDK client');
+        logger.debug(LogCategory.AI, `CopilotSDKService: Initializing SDK client with cwd: ${cwd || '(default)'}`);
 
-        this.initializationPromise = this.initializeClient();
+        this.initializationPromise = this.initializeClient(cwd);
         await this.initializationPromise;
         this.initializationPromise = null;
 
@@ -328,8 +356,8 @@ export class CopilotSDKService {
     }
 
     /**
-     * Send a message directly (creates and destroys session).
-     * This is the original behavior, suitable for one-off requests.
+     * Send a message directly (creates client with cwd, creates session, destroys session).
+     * This creates a fresh client with the specified working directory.
      *
      * @param options Message options including prompt and optional settings
      * @returns Invocation result with response or error
@@ -350,9 +378,10 @@ export class CopilotSDKService {
         let session: ICopilotSession | null = null;
 
         try {
-            const client = await this.ensureClient();
+            // Create/reuse client with the specified working directory
+            const client = await this.ensureClient(options.workingDirectory);
 
-            logger.debug(LogCategory.AI, 'CopilotSDKService: Creating session for request');
+            logger.debug(LogCategory.AI, `CopilotSDKService: Creating session for request (cwd: ${options.workingDirectory || '(default)'})`);
             session = await client.createSession();
             logger.debug(LogCategory.AI, `CopilotSDKService: Session created: ${session.sessionId}`);
 
@@ -488,6 +517,7 @@ export class CopilotSDKService {
                 logger.debug(LogCategory.AI, `CopilotSDKService: Warning: Error stopping client: ${error}`);
             }
             this.client = null;
+            this.clientCwd = undefined;
         }
 
         this.sdkModule = null;
@@ -561,9 +591,11 @@ export class CopilotSDKService {
     }
 
     /**
-     * Initialize the SDK client.
+     * Initialize the SDK client with optional working directory.
+     * 
+     * @param cwd Optional working directory for the CLI process
      */
-    private async initializeClient(): Promise<void> {
+    private async initializeClient(cwd?: string): Promise<void> {
         const sdkPath = this.findSDKPath();
         if (!sdkPath) {
             throw new Error('Copilot SDK not found');
@@ -575,7 +607,17 @@ export class CopilotSDKService {
             throw new Error('SDK module not loaded');
         }
 
-        this.client = new this.sdkModule.CopilotClient();
+        // Create client with cwd option if specified
+        const options: ICopilotClientOptions = {};
+        if (cwd) {
+            options.cwd = cwd;
+        }
+
+        const logger = getExtensionLogger();
+        logger.debug(LogCategory.AI, `CopilotSDKService: Creating CopilotClient with options: ${JSON.stringify(options)}`);
+
+        this.client = new this.sdkModule.CopilotClient(options);
+        this.clientCwd = cwd;
     }
 
     /**
