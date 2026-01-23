@@ -2,10 +2,12 @@
  * Base AI Clarification Handler
  *
  * Provides shared functionality for AI clarification requests.
- * Routes requests to configured AI tools (Copilot CLI or clipboard).
- * Can capture Copilot CLI output and return it for adding as a comment.
+ * Routes requests to configured AI backends:
+ * - copilot-sdk: Use the @github/copilot-sdk for structured JSON-RPC communication (recommended)
+ * - copilot-cli: Use the copilot CLI via child process (legacy)
+ * - clipboard: Copy prompt to clipboard for manual use
  *
- * This module uses the generic ai-service for CLI invocation while
+ * This module uses the generic ai-service for backend invocation while
  * providing a base for system-specific prompt building and orchestration.
  */
 
@@ -16,7 +18,11 @@ import {
     copyToClipboard,
     getAICommandRegistry,
     getAIToolSetting,
-    invokeCopilotCLI
+    invokeCopilotCLI,
+    getCopilotSDKService,
+    getAIBackendSetting,
+    getExtensionLogger,
+    LogCategory
 } from '../ai-service';
 
 /** Maximum prompt size in characters */
@@ -101,13 +107,65 @@ export function validateAndTruncatePromptBase(
 }
 
 /**
+ * Invoke the Copilot SDK to get a clarification.
+ * Uses session-per-request pattern (creates new session, destroys after).
+ *
+ * @param prompt - The prompt to send
+ * @param workspaceRoot - The workspace root directory
+ * @returns The AI invocation result
+ */
+async function invokeCopilotSDK(
+    prompt: string,
+    workspaceRoot: string
+): Promise<AIInvocationResult> {
+    const logger = getExtensionLogger();
+    const sdkService = getCopilotSDKService();
+
+    logger.debug(LogCategory.AI, 'AI Clarification: Using Copilot SDK backend');
+
+    // Check SDK availability
+    const availability = await sdkService.isAvailable();
+    if (!availability.available) {
+        logger.debug(LogCategory.AI, `AI Clarification: SDK not available - ${availability.error}`);
+        return {
+            success: false,
+            error: availability.error || 'Copilot SDK is not available'
+        };
+    }
+
+    // Send message using direct mode (creates new session, destroys after)
+    // This is appropriate for clarification requests which are one-off operations
+    const result = await sdkService.sendMessage({
+        prompt,
+        workingDirectory: workspaceRoot,
+        usePool: false // Use direct mode for simple clarification requests
+    });
+
+    if (result.success) {
+        logger.debug(LogCategory.AI, 'AI Clarification: SDK request completed successfully');
+    } else {
+        logger.debug(LogCategory.AI, `AI Clarification: SDK request failed - ${result.error}`);
+    }
+
+    return {
+        success: result.success,
+        response: result.response,
+        error: result.error
+    };
+}
+
+/**
  * Handle an AI clarification request.
- * Routes to the configured AI tool (Copilot CLI or clipboard).
- * Falls back to clipboard if Copilot CLI fails.
+ * Routes to the configured AI backend:
+ * - copilot-sdk: Use the @github/copilot-sdk for structured communication (recommended)
+ * - copilot-cli: Use the copilot CLI via child process (legacy)
+ * - clipboard: Copy prompt to clipboard for manual use
+ *
+ * Falls back to CLI if SDK fails, then to clipboard if CLI also fails.
  *
  * @param prompt - The prompt to send
  * @param truncated - Whether the prompt was truncated
- * @param workspaceRoot - The workspace root directory (needed for copilot CLI)
+ * @param workspaceRoot - The workspace root directory (needed for copilot CLI/SDK)
  * @param processManager - Optional process manager for tracking running processes
  * @returns The clarification result if successful
  */
@@ -117,54 +175,97 @@ export async function handleAIClarificationBase(
     workspaceRoot: string,
     processManager?: IAIProcessManager
 ): Promise<BaseClarificationResult> {
+    const logger = getExtensionLogger();
+
     // Show truncation warning if necessary
     if (truncated) {
         vscode.window.showWarningMessage('AI clarification prompt was truncated to fit size limits.');
     }
 
-    // Get the configured AI tool
-    const tool = getAIToolSetting();
+    // Get the configured AI backend
+    const backend = getAIBackendSetting();
+    logger.debug(LogCategory.AI, `AI Clarification: Using backend '${backend}'`);
 
-    if (tool === 'copilot-cli') {
-        // Try to invoke Copilot CLI and capture output
-        const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager);
-        const clarificationResult = toClarificationResult(result);
+    // Handle copilot-sdk backend
+    if (backend === 'copilot-sdk') {
+        const sdkResult = await invokeCopilotSDK(prompt, workspaceRoot);
 
-        if (!clarificationResult.success) {
-            // Fall back to clipboard
-            await copyToClipboard(prompt);
-            vscode.window.showWarningMessage(
-                `${clarificationResult.error || 'Failed to get AI clarification'}. Prompt copied to clipboard.`,
-                'Open Terminal'
-            ).then(selection => {
-                if (selection === 'Open Terminal') {
-                    vscode.commands.executeCommand('workbench.action.terminal.new');
-                }
-            });
+        if (sdkResult.success) {
+            return toClarificationResult(sdkResult);
+        }
+
+        // SDK failed, fall back to CLI
+        logger.debug(LogCategory.AI, 'AI Clarification: SDK failed, falling back to CLI');
+        vscode.window.showWarningMessage(
+            `Copilot SDK failed: ${sdkResult.error}. Falling back to CLI...`
+        );
+
+        // Try CLI as fallback
+        const cliResult = await invokeCopilotCLI(prompt, workspaceRoot, processManager);
+        const clarificationResult = toClarificationResult(cliResult);
+
+        if (clarificationResult.success) {
             return clarificationResult;
         }
 
-        return clarificationResult;
-    } else {
-        // Copy to clipboard
+        // Both SDK and CLI failed, fall back to clipboard
         await copyToClipboard(prompt);
-        vscode.window.showInformationMessage(
-            'AI clarification prompt copied to clipboard!',
-            'Open Copilot Chat'
+        vscode.window.showWarningMessage(
+            `${clarificationResult.error || 'Failed to get AI clarification'}. Prompt copied to clipboard.`,
+            'Open Terminal'
         ).then(selection => {
-            if (selection === 'Open Copilot Chat') {
-                // Try to open Copilot chat if available
-                vscode.commands.executeCommand('github.copilot.chat.focus').then(
-                    () => { /* success */ },
-                    () => { /* Copilot chat not available, ignore */ }
-                );
+            if (selection === 'Open Terminal') {
+                vscode.commands.executeCommand('workbench.action.terminal.new');
             }
         });
-
-        return {
-            success: false,
-            error: 'Using clipboard mode - no automatic clarification'
-        };
+        return clarificationResult;
     }
+
+    // Handle copilot-cli backend (legacy)
+    if (backend === 'copilot-cli') {
+        const tool = getAIToolSetting();
+
+        if (tool === 'copilot-cli') {
+            // Try to invoke Copilot CLI and capture output
+            const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager);
+            const clarificationResult = toClarificationResult(result);
+
+            if (!clarificationResult.success) {
+                // Fall back to clipboard
+                await copyToClipboard(prompt);
+                vscode.window.showWarningMessage(
+                    `${clarificationResult.error || 'Failed to get AI clarification'}. Prompt copied to clipboard.`,
+                    'Open Terminal'
+                ).then(selection => {
+                    if (selection === 'Open Terminal') {
+                        vscode.commands.executeCommand('workbench.action.terminal.new');
+                    }
+                });
+                return clarificationResult;
+            }
+
+            return clarificationResult;
+        }
+    }
+
+    // Handle clipboard backend (or fallback)
+    await copyToClipboard(prompt);
+    vscode.window.showInformationMessage(
+        'AI clarification prompt copied to clipboard!',
+        'Open Copilot Chat'
+    ).then(selection => {
+        if (selection === 'Open Copilot Chat') {
+            // Try to open Copilot chat if available
+            vscode.commands.executeCommand('github.copilot.chat.focus').then(
+                () => { /* success */ },
+                () => { /* Copilot chat not available, ignore */ }
+            );
+        }
+    });
+
+    return {
+        success: false,
+        error: 'Using clipboard mode - no automatic clarification'
+    };
 }
 

@@ -68,9 +68,9 @@ class CopilotSDKService {
 - [x] Add max concurrency limiting
 
 ### Phase 3: Migrate Simple Consumers
-- [ ] Update `ai-clarification-handler-base.ts` to use SDK
-- [ ] Test Markdown Comments clarification
-- [ ] Test Git Diff Comments clarification
+- [x] Update `ai-clarification-handler-base.ts` to use SDK
+- [x] Test Markdown Comments clarification
+- [x] Test Git Diff Comments clarification
 
 ### Phase 4: Migrate Parallel Consumers
 - [ ] Update Code Review to use session pool
