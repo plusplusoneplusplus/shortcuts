@@ -155,3 +155,12 @@ export {
     SDKInvocationResult,
     SDKAvailabilityResult
 } from './copilot-sdk-service';
+
+// Export session pool for advanced use cases
+export {
+    SessionPool,
+    SessionPoolOptions,
+    SessionPoolStats,
+    IPoolableSession,
+    SessionFactory
+} from './session-pool';

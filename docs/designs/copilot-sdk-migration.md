@@ -56,16 +56,16 @@ class CopilotSDKService {
 ## Migration Phases
 
 ### Phase 1: Foundation
-- [ ] Create `copilot-sdk-service.ts` with singleton client
-- [ ] Implement ESM import workaround (from `copilot-sdk-experiment.ts`)
-- [ ] Add `isAvailable()` check and graceful fallback
-- [ ] Add configuration settings for SDK backend selection
+- [x] Create `copilot-sdk-service.ts` with singleton client
+- [x] Implement ESM import workaround (from `copilot-sdk-experiment.ts`)
+- [x] Add `isAvailable()` check and graceful fallback
+- [x] Add configuration settings for SDK backend selection
 
 ### Phase 2: Session Pool
-- [ ] Create `session-pool.ts` for concurrent request handling
-- [ ] Implement acquire/release/destroy lifecycle
-- [ ] Add idle timeout cleanup
-- [ ] Add max concurrency limiting
+- [x] Create `session-pool.ts` for concurrent request handling
+- [x] Implement acquire/release/destroy lifecycle
+- [x] Add idle timeout cleanup
+- [x] Add max concurrency limiting
 
 ### Phase 3: Migrate Simple Consumers
 - [ ] Update `ai-clarification-handler-base.ts` to use SDK
