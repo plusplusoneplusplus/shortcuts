@@ -73,9 +73,9 @@ class CopilotSDKService {
 - [x] Test Git Diff Comments clarification
 
 ### Phase 4: Migrate Parallel Consumers
-- [ ] Update Code Review to use session pool
-- [ ] Update YAML Pipeline to use session pool
-- [ ] Performance test parallel requests
+- [x] Update Code Review to use session pool
+- [x] Update YAML Pipeline to use session pool
+- [x] Performance test parallel requests
 
 ### Phase 5: AI Processes Panel Integration
 - [ ] Add `sdkSessionId` field to internal `TrackedProcess` interface

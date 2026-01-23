@@ -10,7 +10,15 @@
 
 import * as vscode from 'vscode';
 import { IAIProcessManager } from '../ai-service/types';
-import { copyToClipboard, getAIToolSetting, invokeCopilotCLI } from '../ai-service/copilot-cli-invoker';
+import { 
+    copyToClipboard, 
+    getAIToolSetting, 
+    invokeCopilotCLI,
+    getCopilotSDKService,
+    getAIBackendSetting,
+    getExtensionLogger,
+    LogCategory
+} from '../ai-service';
 import { GitCommitItem } from '../git/git-commit-item';
 import { GitCommitRangeItem } from '../git/git-commit-range-item';
 import { GitLogService } from '../git/git-log-service';
@@ -300,8 +308,38 @@ export function registerCodeReviewCommands(
                         message: `Starting parallel review against ${totalRules} rules (max ${config.maxConcurrency} concurrent)...`
                     });
 
-                    // Create AI invoker that wraps invokeCopilotCLI
+                    // Create AI invoker that routes to SDK or CLI based on backend setting
+                    const backend = getAIBackendSetting();
+                    const logger = getExtensionLogger();
+                    
                     const aiInvoker: AIInvoker = async (prompt, options) => {
+                        // Try SDK backend first if configured
+                        if (backend === 'copilot-sdk') {
+                            const sdkService = getCopilotSDKService();
+                            const availability = await sdkService.isAvailable();
+                            
+                            if (availability.available) {
+                                logger.debug(LogCategory.AI, 'Code Review: Using SDK session pool for parallel request');
+                                const result = await sdkService.sendMessage({
+                                    prompt,
+                                    model: options?.model,
+                                    workingDirectory: workspaceRoot,
+                                    usePool: true // Use session pool for parallel workloads
+                                });
+                                
+                                if (result.success) {
+                                    return {
+                                        success: true,
+                                        response: result.response
+                                    };
+                                }
+                                
+                                // SDK failed, fall back to CLI
+                                logger.debug(LogCategory.AI, `Code Review: SDK failed, falling back to CLI: ${result.error}`);
+                            }
+                        }
+                        
+                        // Use CLI as primary (for copilot-cli backend) or fallback (when SDK fails)
                         return invokeCopilotCLI(
                             prompt,
                             workspaceRoot,

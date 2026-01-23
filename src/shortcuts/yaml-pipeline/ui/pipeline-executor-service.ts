@@ -10,7 +10,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { IAIProcessManager, invokeCopilotCLI, getAIModelSetting } from '../../ai-service';
+import { 
+    IAIProcessManager, 
+    invokeCopilotCLI, 
+    getAIModelSetting,
+    getCopilotSDKService,
+    getAIBackendSetting,
+    getExtensionLogger,
+    LogCategory
+} from '../../ai-service';
 import {
     executePipeline,
     executePipelineWithItems as coreExecutePipelineWithItems,
@@ -91,13 +99,43 @@ export async function executeVSCodePipeline(
         );
     }
 
-    // Create AI invoker that uses Copilot CLI
+    // Create AI invoker that routes to SDK or CLI based on backend setting
     // The invoker receives per-item model from options (resolved from template like {{model}})
     const defaultModel = getAIModelSetting();
+    const backend = getAIBackendSetting();
+    const logger = getExtensionLogger();
+    
     const aiInvoker: AIInvoker = async (prompt: string, options?: { model?: string }): Promise<AIInvokerResult> => {
         // Use per-item model from options, fall back to default setting
         const model = options?.model || defaultModel;
         
+        // Try SDK backend first if configured
+        if (backend === 'copilot-sdk') {
+            const sdkService = getCopilotSDKService();
+            const availability = await sdkService.isAvailable();
+            
+            if (availability.available) {
+                logger.debug(LogCategory.AI, 'Pipeline: Using SDK session pool for parallel request');
+                const result = await sdkService.sendMessage({
+                    prompt,
+                    model,
+                    workingDirectory: workspaceRoot,
+                    usePool: true // Use session pool for parallel workloads
+                });
+                
+                if (result.success) {
+                    return {
+                        success: true,
+                        response: result.response
+                    };
+                }
+                
+                // SDK failed, fall back to CLI
+                logger.debug(LogCategory.AI, `Pipeline: SDK failed, falling back to CLI: ${result.error}`);
+            }
+        }
+        
+        // Use CLI as primary (for copilot-cli backend) or fallback (when SDK fails)
         const result = await invokeCopilotCLI(
             prompt,
             workspaceRoot,
@@ -252,11 +290,41 @@ export async function executeVSCodePipelineWithItems(
         );
     }
 
-    // Create AI invoker that uses Copilot CLI
+    // Create AI invoker that routes to SDK or CLI based on backend setting
     const defaultModel = getAIModelSetting();
+    const backend2 = getAIBackendSetting();
+    const logger2 = getExtensionLogger();
+    
     const aiInvoker: AIInvoker = async (prompt: string, options?: { model?: string }): Promise<AIInvokerResult> => {
         const model = options?.model || defaultModel;
         
+        // Try SDK backend first if configured
+        if (backend2 === 'copilot-sdk') {
+            const sdkService = getCopilotSDKService();
+            const availability = await sdkService.isAvailable();
+            
+            if (availability.available) {
+                logger2.debug(LogCategory.AI, 'Pipeline (with items): Using SDK session pool for parallel request');
+                const sdkResult = await sdkService.sendMessage({
+                    prompt,
+                    model,
+                    workingDirectory: workspaceRoot,
+                    usePool: true // Use session pool for parallel workloads
+                });
+                
+                if (sdkResult.success) {
+                    return {
+                        success: true,
+                        response: sdkResult.response
+                    };
+                }
+                
+                // SDK failed, fall back to CLI
+                logger2.debug(LogCategory.AI, `Pipeline (with items): SDK failed, falling back to CLI: ${sdkResult.error}`);
+            }
+        }
+        
+        // Use CLI as primary (for copilot-cli backend) or fallback (when SDK fails)
         const result = await invokeCopilotCLI(
             prompt,
             workspaceRoot,
