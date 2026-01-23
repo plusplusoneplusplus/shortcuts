@@ -54,13 +54,29 @@ export interface ExtractionContext {
 }
 
 /**
- * Default classes to skip during content extraction
+ * Default classes to skip during content extraction.
+ * These are UI elements that should not be included in the markdown content.
+ * Any element containing icons (▼/▶) or other non-content UI text should be listed here.
  */
 export const DEFAULT_SKIP_CLASSES = new Set([
     'inline-comment-bubble',
     'gutter-icon',
     'line-number',
-    'line-number-column'
+    'line-number-column',
+    // Heading collapse UI elements (contain ▼/▶ icons)
+    'heading-collapse-btn',
+    'collapsed-section-indicator',
+    // Code block collapse UI elements
+    'code-collapse-btn',
+    'code-action-btn',
+    // Mermaid diagram UI elements
+    'mermaid-collapse-btn',
+    'mermaid-action-btn',
+    // Dropdown/menu UI elements
+    'dropdown-arrow',
+    'search-btn-icon',
+    'ai-action-arrow',
+    'context-menu-arrow'
 ]);
 
 /**
