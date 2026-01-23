@@ -78,11 +78,11 @@ class CopilotSDKService {
 - [x] Performance test parallel requests
 
 ### Phase 5: AI Processes Panel Integration
-- [ ] Add `sdkSessionId` field to internal `TrackedProcess` interface
-- [ ] Update `AIProcessManager.cancelProcess()` to handle SDK session abort
-- [ ] Ensure status mapping (SDK states → `AIProcessStatus`) works correctly
-- [ ] Test panel displays processes identically for CLI and SDK backends
-- [ ] Verify cancellation from panel context menu works with SDK
+- [x] Add `sdkSessionId` field to internal `TrackedProcess` interface
+- [x] Update `AIProcessManager.cancelProcess()` to handle SDK session abort
+- [x] Ensure status mapping (SDK states → `AIProcessStatus`) works correctly
+- [x] Test panel displays processes identically for CLI and SDK backends
+- [x] Verify cancellation from panel context menu works with SDK
 
 ### Phase 6: Complete Migration
 - [ ] Update AI Discovery engine

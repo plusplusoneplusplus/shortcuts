@@ -12,6 +12,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
+import { getCopilotSDKService } from './copilot-sdk-service';
 import {
     AIProcess,
     AIProcessStatus,
@@ -52,6 +53,8 @@ const RAW_STDOUT_DIR_NAME = 'shortcuts-ai-processes';
  */
 interface TrackedProcess extends AIProcess {
     childProcess?: ChildProcess;
+    /** SDK session ID for processes using the Copilot SDK backend */
+    sdkSessionId?: string;
 }
 
 /**
@@ -601,6 +604,33 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
     }
 
     /**
+     * Attach an SDK session ID to an existing tracked process.
+     * This allows the process to be cancelled via the SDK abort mechanism.
+     * 
+     * @param id Process ID
+     * @param sessionId The SDK session ID to attach
+     */
+    attachSdkSessionId(id: string, sessionId: string): void {
+        const process = this.processes.get(id);
+        if (!process) {
+            return;
+        }
+
+        process.sdkSessionId = sessionId;
+    }
+
+    /**
+     * Get the SDK session ID for a tracked process.
+     * 
+     * @param id Process ID
+     * @returns The SDK session ID if attached, undefined otherwise
+     */
+    getSdkSessionId(id: string): string | undefined {
+        const process = this.processes.get(id);
+        return process?.sdkSessionId;
+    }
+
+    /**
      * Save raw stdout to a temp file and attach it to the process.
      */
     attachRawStdout(id: string, stdout: string): string | undefined {
@@ -745,7 +775,8 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
 
     /**
      * Cancel a running process
-     * If the process is a group (has child processes), also cancels all children
+     * If the process is a group (has child processes), also cancels all children.
+     * Supports both CLI child processes and SDK sessions.
      */
     cancelProcess(id: string): boolean {
         const process = this.processes.get(id);
@@ -759,22 +790,48 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             for (const childId of childIds) {
                 const child = this.processes.get(childId);
                 if (child && child.status === 'running') {
-                    // Kill child process if available
+                    // Kill CLI child process if available
                     if (child.childProcess) {
                         child.childProcess.kill();
+                    }
+                    // Abort SDK session if available (fire and forget)
+                    if (child.sdkSessionId) {
+                        this.abortSdkSession(child.sdkSessionId);
                     }
                     this.updateProcess(childId, 'cancelled', undefined, 'Cancelled by user (parent cancelled)');
                 }
             }
         }
 
-        // Kill the parent's child process if available
+        // Kill the parent's CLI child process if available
         if (process.childProcess) {
             process.childProcess.kill();
         }
 
+        // Abort SDK session if available (fire and forget)
+        if (process.sdkSessionId) {
+            this.abortSdkSession(process.sdkSessionId);
+        }
+
         this.updateProcess(id, 'cancelled', undefined, 'Cancelled by user');
         return true;
+    }
+
+    /**
+     * Helper to abort an SDK session asynchronously.
+     * Fire-and-forget pattern to avoid blocking cancellation.
+     * @param sessionId The SDK session ID to abort
+     */
+    private abortSdkSession(sessionId: string): void {
+        const logger = getExtensionLogger();
+        try {
+            const sdkService = getCopilotSDKService();
+            sdkService.abortSession(sessionId).catch(error => {
+                logger.debug(LogCategory.AI, `AIProcessManager: Warning: Error aborting SDK session ${sessionId}: ${error}`);
+            });
+        } catch (error) {
+            logger.debug(LogCategory.AI, `AIProcessManager: Warning: Could not get SDK service for session abort: ${error}`);
+        }
     }
 
     /**

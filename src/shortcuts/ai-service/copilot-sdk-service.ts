@@ -142,6 +142,9 @@ export class CopilotSDKService {
     private sessionPool: SessionPool | null = null;
     private disposed = false;
 
+    /** Map of active sessions for cancellation support */
+    private activeSessions: Map<string, ICopilotSession> = new Map();
+
     /** Default timeout for SDK requests (5 minutes) */
     private static readonly DEFAULT_TIMEOUT_MS = 300000;
 
@@ -425,6 +428,9 @@ export class CopilotSDKService {
             session = await client.createSession(sessionOptions);
             logger.debug(LogCategory.AI, `CopilotSDKService: Session created: ${session.sessionId}`);
 
+            // Track the session for potential cancellation
+            this.trackSession(session);
+
             // Send the message with timeout
             const timeoutMs = options.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
 
@@ -470,6 +476,8 @@ export class CopilotSDKService {
         } finally {
             // Clean up session
             if (session) {
+                // Untrack the session first
+                this.untrackSession(session.sessionId);
                 try {
                     await session.destroy();
                     logger.debug(LogCategory.AI, 'CopilotSDKService: Session destroyed');
@@ -538,13 +546,91 @@ export class CopilotSDKService {
     }
 
     /**
+     * Abort an active session by its ID.
+     * This destroys the session and removes it from tracking.
+     * Used for cancellation support in the AI Processes panel.
+     *
+     * @param sessionId The session ID to abort
+     * @returns True if the session was found and aborted, false otherwise
+     */
+    public async abortSession(sessionId: string): Promise<boolean> {
+        const logger = getExtensionLogger();
+        
+        const session = this.activeSessions.get(sessionId);
+        if (!session) {
+            logger.debug(LogCategory.AI, `CopilotSDKService: Session ${sessionId} not found for abort`);
+            return false;
+        }
+
+        logger.debug(LogCategory.AI, `CopilotSDKService: Aborting session ${sessionId}`);
+
+        try {
+            await session.destroy();
+            this.activeSessions.delete(sessionId);
+            logger.debug(LogCategory.AI, `CopilotSDKService: Session ${sessionId} aborted successfully`);
+            return true;
+        } catch (error) {
+            logger.error(LogCategory.AI, `CopilotSDKService: Error aborting session ${sessionId}`, error instanceof Error ? error : undefined);
+            // Still remove from tracking even if destroy failed
+            this.activeSessions.delete(sessionId);
+            return false;
+        }
+    }
+
+    /**
+     * Check if a session is currently active.
+     *
+     * @param sessionId The session ID to check
+     * @returns True if the session is active
+     */
+    public hasActiveSession(sessionId: string): boolean {
+        return this.activeSessions.has(sessionId);
+    }
+
+    /**
+     * Get the count of currently active sessions.
+     *
+     * @returns Number of active sessions
+     */
+    public getActiveSessionCount(): number {
+        return this.activeSessions.size;
+    }
+
+    /**
+     * Track an active session for potential cancellation.
+     * Called internally when a session is created.
+     *
+     * @param session The session to track
+     */
+    private trackSession(session: ICopilotSession): void {
+        this.activeSessions.set(session.sessionId, session);
+    }
+
+    /**
+     * Untrack a session (called when session is destroyed normally).
+     *
+     * @param sessionId The session ID to untrack
+     */
+    private untrackSession(sessionId: string): void {
+        this.activeSessions.delete(sessionId);
+    }
+
+    /**
      * Clean up resources. Should be called when the extension deactivates.
      */
     public async cleanup(): Promise<void> {
         const logger = getExtensionLogger();
         logger.debug(LogCategory.AI, 'CopilotSDKService: Cleaning up SDK service');
 
-        // Dispose session pool first
+        // Abort all active sessions first
+        const abortPromises: Promise<void>[] = [];
+        for (const [sessionId] of this.activeSessions) {
+            abortPromises.push(this.abortSession(sessionId).then(() => {}));
+        }
+        await Promise.allSettled(abortPromises);
+        this.activeSessions.clear();
+
+        // Dispose session pool
         if (this.sessionPool) {
             try {
                 await this.sessionPool.dispose();

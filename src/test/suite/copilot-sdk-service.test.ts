@@ -711,3 +711,114 @@ suite('CopilotSDKService - Pool Options', () => {
         assert.strictEqual(options.usePool, false);
     });
 });
+
+// ============================================================================
+// Session Abort Tests
+// ============================================================================
+
+suite('CopilotSDKService - Session Abort', () => {
+    setup(() => {
+        resetCopilotSDKService();
+    });
+
+    teardown(() => {
+        resetCopilotSDKService();
+    });
+
+    test('abortSession should return false for non-existent session', async () => {
+        const service = getCopilotSDKService();
+        
+        const result = await service.abortSession('non-existent-session-id');
+        
+        assert.strictEqual(result, false, 'Should return false for non-existent session');
+    });
+
+    test('hasActiveSession should return false for non-existent session', () => {
+        const service = getCopilotSDKService();
+        
+        const result = service.hasActiveSession('non-existent-session-id');
+        
+        assert.strictEqual(result, false, 'Should return false for non-existent session');
+    });
+
+    test('getActiveSessionCount should return 0 initially', () => {
+        const service = getCopilotSDKService();
+        
+        const count = service.getActiveSessionCount();
+        
+        assert.strictEqual(count, 0, 'Should return 0 when no sessions exist');
+    });
+
+    test('getActiveSessionCount should return 0 after dispose', () => {
+        const service = getCopilotSDKService();
+        service.dispose();
+        
+        const count = service.getActiveSessionCount();
+        
+        assert.strictEqual(count, 0, 'Should return 0 after dispose');
+    });
+
+    test('abortSession should return false after dispose', async () => {
+        const service = getCopilotSDKService();
+        service.dispose();
+        
+        // Try to abort a session after dispose
+        const result = await service.abortSession('any-session-id');
+        
+        assert.strictEqual(result, false, 'Should return false after dispose');
+    });
+
+    test('cleanup should clear all active sessions', async () => {
+        const service = getCopilotSDKService();
+        
+        // Cleanup should not throw and should clear any sessions
+        await service.cleanup();
+        
+        assert.strictEqual(service.getActiveSessionCount(), 0, 'Should have no active sessions after cleanup');
+    });
+});
+
+// ============================================================================
+// Session Tracking Tests
+// ============================================================================
+
+suite('CopilotSDKService - Session Tracking', () => {
+    setup(() => {
+        resetCopilotSDKService();
+    });
+
+    teardown(() => {
+        resetCopilotSDKService();
+    });
+
+    test('hasActiveSession should be a function', () => {
+        const service = getCopilotSDKService();
+        
+        assert.ok(typeof service.hasActiveSession === 'function', 'Should have hasActiveSession method');
+    });
+
+    test('abortSession should be a function', () => {
+        const service = getCopilotSDKService();
+        
+        assert.ok(typeof service.abortSession === 'function', 'Should have abortSession method');
+    });
+
+    test('getActiveSessionCount should be a function', () => {
+        const service = getCopilotSDKService();
+        
+        assert.ok(typeof service.getActiveSessionCount === 'function', 'Should have getActiveSessionCount method');
+    });
+
+    test('abortSession should handle concurrent calls', async () => {
+        const service = getCopilotSDKService();
+        
+        // Multiple concurrent abort calls should all return false (no session exists)
+        const results = await Promise.all([
+            service.abortSession('session-1'),
+            service.abortSession('session-2'),
+            service.abortSession('session-3')
+        ]);
+        
+        assert.deepStrictEqual(results, [false, false, false], 'All calls should return false for non-existent sessions');
+    });
+});

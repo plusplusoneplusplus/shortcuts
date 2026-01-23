@@ -424,6 +424,25 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
         // Mock doesn't track child processes, but record the call
     }
 
+    attachSdkSessionId(id: string, sessionId: string): void {
+        this.recordCall('attachSdkSessionId', id, [id, sessionId]);
+        // Track SDK session ID in a separate map for mock
+        const process = this.processes.get(id);
+        if (process) {
+            // Store in a separate field for mock purposes
+            (process as unknown as { sdkSessionId?: string }).sdkSessionId = sessionId;
+        }
+    }
+
+    getSdkSessionId(id: string): string | undefined {
+        this.recordCall('getSdkSessionId', id, [id]);
+        const process = this.processes.get(id);
+        if (process) {
+            return (process as unknown as { sdkSessionId?: string }).sdkSessionId;
+        }
+        return undefined;
+    }
+
     attachRawStdout(id: string, stdout: string): string | undefined {
         this.recordCall('attachRawStdout', id, [id, stdout]);
         // Mock doesn't save to file, but we can attach it to the process

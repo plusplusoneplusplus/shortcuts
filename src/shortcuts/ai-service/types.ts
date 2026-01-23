@@ -649,6 +649,23 @@ export interface IAIProcessManager {
     attachChildProcess(id: string, childProcess: import('child_process').ChildProcess): void;
 
     /**
+     * Attach an SDK session ID to an existing tracked process.
+     * This allows the process to be cancelled via the SDK abort mechanism.
+     * 
+     * @param id Process ID
+     * @param sessionId The SDK session ID to attach
+     */
+    attachSdkSessionId(id: string, sessionId: string): void;
+
+    /**
+     * Get the SDK session ID for a tracked process.
+     * 
+     * @param id Process ID
+     * @returns The SDK session ID if attached, undefined otherwise
+     */
+    getSdkSessionId(id: string): string | undefined;
+
+    /**
      * Save raw stdout to a temp file and attach it to the process
      * @returns The file path if saved successfully, undefined otherwise
      */
