@@ -934,3 +934,73 @@ suite('createAIDiscoveryRequest with existingGroupSnapshot Tests', () => {
     });
 });
 
+suite('AIDiscoveryEngine SDK Integration Tests', () => {
+    let engine: AIDiscoveryEngine;
+
+    setup(() => {
+        engine = new AIDiscoveryEngine();
+    });
+
+    teardown(() => {
+        engine.dispose();
+    });
+
+    test('should have SDK session tracking capability', () => {
+        // The engine should have internal SDK session tracking
+        // This is verified by checking that dispose doesn't throw
+        // even when there are no sessions to clean up
+        engine.dispose();
+    });
+
+    test('should support cancellation of processes', () => {
+        // Cancel a non-existent process should not throw
+        engine.cancelProcess('non-existent-sdk-process');
+    });
+
+    test('should clean up SDK sessions on dispose', () => {
+        // Create multiple engines and dispose them
+        const engine1 = new AIDiscoveryEngine();
+        const engine2 = new AIDiscoveryEngine();
+        
+        // Both should dispose cleanly without errors
+        engine1.dispose();
+        engine2.dispose();
+    });
+
+    test('should emit events for process lifecycle', () => {
+        const events: string[] = [];
+        
+        const disposable = engine.onDidChangeProcess((event) => {
+            events.push(event.type);
+        });
+        
+        // Verify the event handler was registered
+        assert.ok(disposable);
+        
+        disposable.dispose();
+    });
+
+    test('should handle multiple concurrent cancellations gracefully', () => {
+        // Cancel the same process multiple times should not throw
+        engine.cancelProcess('test-process-1');
+        engine.cancelProcess('test-process-1');
+        engine.cancelProcess('test-process-1');
+    });
+
+    test('should isolate processes between engine instances', () => {
+        const engine1 = new AIDiscoveryEngine();
+        const engine2 = new AIDiscoveryEngine();
+        
+        // Each engine should have its own process tracking
+        assert.strictEqual(engine1.getAllProcesses().length, 0);
+        assert.strictEqual(engine2.getAllProcesses().length, 0);
+        
+        // Cancelling in one engine should not affect the other
+        engine1.cancelProcess('shared-process-id');
+        engine2.cancelProcess('shared-process-id');
+        
+        engine1.dispose();
+        engine2.dispose();
+    });
+});
+

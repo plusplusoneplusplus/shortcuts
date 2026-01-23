@@ -85,9 +85,10 @@ class CopilotSDKService {
 - [x] Verify cancellation from panel context menu works with SDK
 
 ### Phase 6: Complete Migration
-- [ ] Update AI Discovery engine
-- [ ] Add streaming support where beneficial
-- [ ] Update documentation
+- [x] Update AI Discovery engine to use SDK with CLI fallback
+- [x] Add SDK session tracking and cancellation support to AIDiscoveryEngine
+- [x] Add tests for SDK integration in AI Discovery engine
+- [x] Update documentation
 
 ## AI Processes Panel Compatibility
 

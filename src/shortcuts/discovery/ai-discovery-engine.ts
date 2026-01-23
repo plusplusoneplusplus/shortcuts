@@ -2,14 +2,21 @@
  * AI-Powered Discovery Engine
  * 
  * Replaces keyword-based discovery with true AI-powered semantic search.
- * Uses a single Copilot CLI call that autonomously explores the codebase
- * to find all documentation, source code, tests, and recent commits
+ * Uses the Copilot SDK (preferred) or CLI (fallback) to autonomously explore
+ * the codebase to find all documentation, source code, tests, and recent commits
  * related to a feature.
+ * 
+ * Backend Selection:
+ * - copilot-sdk: Use the @github/copilot-sdk for structured JSON-RPC communication (recommended)
+ * - copilot-cli: Use the copilot CLI via child process (fallback)
+ * 
+ * The engine automatically falls back to CLI if SDK is unavailable or fails.
  */
 
 import * as vscode from 'vscode';
 import { exec, ChildProcess } from 'child_process';
 import { escapeShellArg, getAIModelSetting, getWorkingDirectory } from '../ai-service/copilot-cli-invoker';
+import { getCopilotSDKService, getAIBackendSetting } from '../ai-service/copilot-sdk-service';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 import {
     DiscoveryRequest,
@@ -303,7 +310,11 @@ function convertToDiscoveryResults(
 
 /**
  * AI-Powered Discovery Engine
- * Uses Copilot CLI to semantically search the codebase
+ * Uses Copilot SDK (preferred) or CLI (fallback) to semantically search the codebase.
+ * 
+ * The engine supports cancellation via:
+ * - SDK: Uses session abort mechanism
+ * - CLI: Uses child process kill
  */
 export class AIDiscoveryEngine implements vscode.Disposable {
     private readonly _onDidChangeProcess = new vscode.EventEmitter<DiscoveryEvent>();
@@ -311,6 +322,8 @@ export class AIDiscoveryEngine implements vscode.Disposable {
 
     private processes: Map<string, DiscoveryProcess> = new Map();
     private runningProcesses: Map<string, ChildProcess> = new Map();
+    /** Tracks SDK session IDs for processes (for cancellation) */
+    private sdkSessionIds: Map<string, string> = new Map();
     private disposables: vscode.Disposable[] = [];
 
     constructor() {
@@ -334,7 +347,8 @@ export class AIDiscoveryEngine implements vscode.Disposable {
     }
 
     /**
-     * Start a new AI-powered discovery process
+     * Start a new AI-powered discovery process.
+     * Uses SDK backend if configured and available, falls back to CLI otherwise.
      */
     async discover(request: DiscoveryRequest): Promise<DiscoveryProcess> {
         // Create new process
@@ -363,8 +377,8 @@ export class AIDiscoveryEngine implements vscode.Disposable {
             // Phase 2: AI is exploring the codebase
             await this.updatePhase(process, 'scanning-files', 10);
 
-            // Invoke Copilot CLI
-            const result = await this.invokeCopilotCLI(
+            // Try SDK first if configured, fall back to CLI
+            const result = await this.invokeAI(
                 prompt,
                 request.repositoryRoot,
                 config.timeout,
@@ -413,8 +427,133 @@ export class AIDiscoveryEngine implements vscode.Disposable {
 
             return process;
         } finally {
-            // Clean up running process reference
+            // Clean up running process references
             this.runningProcesses.delete(process.id);
+            this.sdkSessionIds.delete(process.id);
+        }
+    }
+
+    /**
+     * Invoke AI using SDK (if configured and available) or CLI (fallback).
+     * This method handles backend selection and automatic fallback.
+     */
+    private async invokeAI(
+        prompt: string,
+        workspaceRoot: string,
+        timeoutSeconds: number,
+        processId: string
+    ): Promise<{ success: boolean; response?: string; error?: string }> {
+        const logger = getExtensionLogger();
+        const backend = getAIBackendSetting();
+
+        // Try SDK if configured
+        if (backend === 'copilot-sdk') {
+            logger.debug(LogCategory.DISCOVERY, `AI Discovery: Attempting SDK backend for process ${processId}`);
+            
+            const sdkResult = await this.invokeCopilotSDK(
+                prompt,
+                workspaceRoot,
+                timeoutSeconds,
+                processId
+            );
+
+            if (sdkResult.success) {
+                return sdkResult;
+            }
+
+            // SDK failed, fall back to CLI
+            logger.debug(LogCategory.DISCOVERY, `AI Discovery: SDK failed, falling back to CLI - ${sdkResult.error}`);
+        }
+
+        // Use CLI (either as primary backend or as fallback)
+        logger.debug(LogCategory.DISCOVERY, `AI Discovery: Using CLI backend for process ${processId}`);
+        return this.invokeCopilotCLI(
+            prompt,
+            workspaceRoot,
+            timeoutSeconds,
+            processId
+        );
+    }
+
+    /**
+     * Invoke Copilot SDK for discovery.
+     * Uses direct mode (session-per-request) since discovery is a one-off operation.
+     */
+    private async invokeCopilotSDK(
+        prompt: string,
+        workspaceRoot: string,
+        timeoutSeconds: number,
+        processId: string
+    ): Promise<{ success: boolean; response?: string; error?: string }> {
+        const logger = getExtensionLogger();
+        const startTime = Date.now();
+        const sdkService = getCopilotSDKService();
+
+        logger.logOperationStart(LogCategory.DISCOVERY, 'AI discovery SDK invocation', {
+            processId,
+            workingDirectory: workspaceRoot,
+            timeoutSeconds
+        });
+
+        // Check SDK availability
+        const availability = await sdkService.isAvailable();
+        if (!availability.available) {
+            logger.debug(LogCategory.DISCOVERY, `AI Discovery SDK: Not available - ${availability.error}`);
+            return {
+                success: false,
+                error: availability.error || 'Copilot SDK is not available'
+            };
+        }
+
+        try {
+            // Send message using direct mode (creates new session, destroys after)
+            // Discovery is a one-off operation, so we don't use the pool
+            const result = await sdkService.sendMessage({
+                prompt,
+                workingDirectory: workspaceRoot,
+                timeoutMs: timeoutSeconds * 1000,
+                usePool: false
+            });
+
+            const durationMs = Date.now() - startTime;
+
+            // Track the session ID for potential cancellation
+            if (result.sessionId) {
+                this.sdkSessionIds.set(processId, result.sessionId);
+            }
+
+            if (result.success) {
+                logger.logOperationComplete(LogCategory.DISCOVERY, 'AI discovery SDK invocation', durationMs, {
+                    processId,
+                    responseLength: result.response?.length || 0
+                });
+                return {
+                    success: true,
+                    response: result.response
+                };
+            }
+
+            logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery SDK invocation', undefined, {
+                processId,
+                durationMs,
+                error: result.error
+            });
+            return {
+                success: false,
+                error: result.error
+            };
+        } catch (error) {
+            const durationMs = Date.now() - startTime;
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            
+            logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery SDK invocation', error instanceof Error ? error : undefined, {
+                processId,
+                durationMs
+            });
+            return {
+                success: false,
+                error: `Copilot SDK error: ${errorMessage}`
+            };
         }
     }
 
@@ -590,14 +729,30 @@ export class AIDiscoveryEngine implements vscode.Disposable {
     }
 
     /**
-     * Cancel a running discovery process
+     * Cancel a running discovery process.
+     * Supports both SDK session abort and CLI child process kill.
      */
     cancelProcess(processId: string): void {
         const process = this.processes.get(processId);
         if (process && process.status === 'running') {
-            // Kill the child process if running
+            const logger = getExtensionLogger();
+
+            // Try to abort SDK session if it exists
+            const sessionId = this.sdkSessionIds.get(processId);
+            if (sessionId) {
+                logger.debug(LogCategory.DISCOVERY, `AI Discovery: Aborting SDK session ${sessionId} for process ${processId}`);
+                const sdkService = getCopilotSDKService();
+                // Fire and forget - we don't need to wait for the abort to complete
+                sdkService.abortSession(sessionId).catch(error => {
+                    logger.debug(LogCategory.DISCOVERY, `AI Discovery: Warning: Error aborting SDK session: ${error}`);
+                });
+                this.sdkSessionIds.delete(processId);
+            }
+
+            // Kill the child process if running (CLI backend)
             const childProcess = this.runningProcesses.get(processId);
             if (childProcess) {
+                logger.debug(LogCategory.DISCOVERY, `AI Discovery: Killing CLI child process for process ${processId}`);
                 childProcess.kill();
                 this.runningProcesses.delete(processId);
             }
@@ -679,11 +834,25 @@ export class AIDiscoveryEngine implements vscode.Disposable {
      * Dispose of resources
      */
     dispose(): void {
+        const logger = getExtensionLogger();
+
         // Cancel all running processes
         for (const [id, childProcess] of this.runningProcesses.entries()) {
+            logger.debug(LogCategory.DISCOVERY, `AI Discovery: Killing CLI child process ${id} during dispose`);
             childProcess.kill();
         }
         this.runningProcesses.clear();
+
+        // Abort all SDK sessions
+        const sdkService = getCopilotSDKService();
+        for (const [processId, sessionId] of this.sdkSessionIds.entries()) {
+            logger.debug(LogCategory.DISCOVERY, `AI Discovery: Aborting SDK session ${sessionId} (process ${processId}) during dispose`);
+            sdkService.abortSession(sessionId).catch(() => {
+                // Ignore errors during dispose
+            });
+        }
+        this.sdkSessionIds.clear();
+
         this.processes.clear();
 
         for (const disposable of this.disposables) {
