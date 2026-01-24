@@ -370,7 +370,7 @@ export function getItemDetailContent(result: PipelineItemResultNode): string {
             
             ${result.rawResponse ? `
                 <div class="detail-subsection collapsible">
-                    <h5 class="subsection-title toggle-header" onclick="toggleRawResponse(this)">
+                    <h5 class="subsection-title toggle-header" data-toggle="raw-response">
                         🔧 Raw AI Response <span class="toggle-icon">▶</span>
                     </h5>
                     <pre class="raw-response collapsed">${escapeHtml(result.rawResponse)}</pre>
@@ -1036,7 +1036,7 @@ function getScript(data: PipelineResultViewData | undefined): string {
             
             if (result.rawResponse) {
                 html += '<div class="detail-subsection collapsible">' +
-                    '<h5 class="subsection-title toggle-header" onclick="toggleRawResponse(this)">' +
+                    '<h5 class="subsection-title toggle-header" data-toggle="raw-response">' +
                     '🔧 Raw AI Response <span class="toggle-icon">▶</span>' +
                     '</h5>' +
                     '<pre class="raw-response collapsed">' + escapeHtml(result.rawResponse) + '</pre>' +
@@ -1047,14 +1047,24 @@ function getScript(data: PipelineResultViewData | undefined): string {
             return html;
         }
 
-        // Toggle raw response visibility
-        window.toggleRawResponse = function(header) {
+        // Toggle raw response visibility using event delegation
+        function toggleRawResponse(header) {
             header.classList.toggle('open');
             const rawResponse = header.nextElementSibling;
             if (rawResponse) {
                 rawResponse.classList.toggle('collapsed');
             }
-        };
+        }
+        
+        // Set up event delegation for toggle headers
+        document.addEventListener('click', function(e) {
+            const target = e.target;
+            // Find the toggle-header element (could be the element itself or a parent)
+            const toggleHeader = target.closest('[data-toggle="raw-response"]');
+            if (toggleHeader) {
+                toggleRawResponse(toggleHeader);
+            }
+        });
 
         // Filter results
         function applyFilter(filter) {

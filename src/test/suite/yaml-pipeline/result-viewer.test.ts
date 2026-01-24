@@ -332,6 +332,15 @@ suite('Pipeline Result Viewer Tests', () => {
             assert.ok(html.includes('raw-response'), 'Should have raw-response class');
         });
 
+        test('should use data attribute for toggle instead of inline onclick', () => {
+            const html = getItemDetailContent(sampleSuccessNode);
+
+            // Should use data-toggle attribute for CSP compliance
+            assert.ok(html.includes('data-toggle="raw-response"'), 'Should use data-toggle attribute');
+            // Should NOT use inline onclick (blocked by CSP)
+            assert.ok(!html.includes('onclick='), 'Should not use inline onclick handler');
+        });
+
         test('should not include raw response section when not available', () => {
             const nodeWithoutRaw: PipelineItemResultNode = {
                 ...sampleSuccessNode,
