@@ -36,18 +36,27 @@ import { CodeReviewMetadata } from '../../shortcuts/code-review/types';
 /**
  * Mock extension context for testing
  */
-function createMockContext(): { globalState: { get: () => unknown[]; update: () => Promise<void> } } {
-    const storage = new Map<string, unknown>();
+function createMockContext(): { globalState: { get: () => unknown[]; update: () => Promise<void> }; workspaceState: { get: () => unknown[]; update: () => Promise<void> } } {
+    const globalStorage = new Map<string, unknown>();
+    const workspaceStorage = new Map<string, unknown>();
     return {
         globalState: {
             get: <T>(key: string, defaultValue: T): T => {
-                return (storage.get(key) as T) ?? defaultValue;
+                return (globalStorage.get(key) as T) ?? defaultValue;
             },
             update: async (key: string, value: unknown): Promise<void> => {
-                storage.set(key, value);
+                globalStorage.set(key, value);
+            }
+        },
+        workspaceState: {
+            get: <T>(key: string, defaultValue: T): T => {
+                return (workspaceStorage.get(key) as T) ?? defaultValue;
+            },
+            update: async (key: string, value: unknown): Promise<void> => {
+                workspaceStorage.set(key, value);
             }
         }
-    } as unknown as { globalState: { get: () => unknown[]; update: () => Promise<void> } };
+    } as unknown as { globalState: { get: () => unknown[]; update: () => Promise<void> }; workspaceState: { get: () => unknown[]; update: () => Promise<void> } };
 }
 
 suite('AI Service / Code Review Decoupling Tests', () => {

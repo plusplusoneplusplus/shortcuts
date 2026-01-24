@@ -3,7 +3,8 @@
  *
  * Generic process manager for tracking AI CLI invocations.
  * Provides events for process lifecycle and methods for managing processes.
- * Persists completed processes to VSCode's Memento storage for review.
+ * Persists completed processes to VSCode's workspace-scoped Memento storage,
+ * keeping AI process history isolated per workspace.
  */
 
 import { ChildProcess } from 'child_process';
@@ -95,7 +96,7 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
         }
 
         try {
-            const serialized = this.context.globalState.get<SerializedAIProcess[]>(STORAGE_KEY, []);
+            const serialized = this.context.workspaceState.get<SerializedAIProcess[]>(STORAGE_KEY, []);
 
             // Convert serialized processes back to AIProcess objects
             for (const s of serialized) {
@@ -159,7 +160,7 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
                     parentProcessId: p.parentProcessId
                 }));
 
-            await this.context.globalState.update(STORAGE_KEY, toSave);
+            await this.context.workspaceState.update(STORAGE_KEY, toSave);
         } catch (error) {
             const logger = getExtensionLogger();
             logger.error(LogCategory.AI, 'Failed to save AI processes to storage', error instanceof Error ? error : new Error(String(error)));

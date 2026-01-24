@@ -30,6 +30,7 @@ class MockGlobalState {
 
 class MockExtensionContext {
     globalState = new MockGlobalState();
+    workspaceState = new MockGlobalState();
 }
 
 // ============================================================================

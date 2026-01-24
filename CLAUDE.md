@@ -85,7 +85,7 @@ Test files are in `src/test/suite/` and include:
 - `AIProcessTreeDataProvider` - Shows running/completed AI processes
 - `CopilotCLIInvoker` - Invokes GitHub Copilot CLI or copies to clipboard
 - Working directory defaults to `{workspaceFolder}/src` if the src directory exists, otherwise falls back to workspace root
-- AI processes are persisted using VSCode's Memento API (globalState) and restored on extension restart
+- AI processes are persisted using VSCode's Memento API (workspaceState) and restored on extension restart, keeping history isolated per workspace
 - Supports viewing full process details, removing individual processes, and clearing all history
 
 **Code Review (`src/shortcuts/code-review/`)**

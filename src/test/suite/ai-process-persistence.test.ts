@@ -28,6 +28,7 @@ class MockGlobalState {
 
 class MockExtensionContext {
     globalState = new MockGlobalState();
+    workspaceState = new MockGlobalState();
 }
 
 /**
@@ -311,7 +312,7 @@ suite('AI Process Manager Persistence Tests', () => {
                     error: 'Error message'
                 }
             ];
-            await context.globalState.update('aiProcesses.history', serializedProcesses);
+            await context.workspaceState.update('aiProcesses.history', serializedProcesses);
 
             const manager = new AIProcessManager();
             await manager.initialize(context as any);
@@ -341,7 +342,7 @@ suite('AI Process Manager Persistence Tests', () => {
                     endTime: '2024-01-15T10:45:00.000Z'
                 }
             ];
-            await context.globalState.update('aiProcesses.history', serializedProcesses);
+            await context.workspaceState.update('aiProcesses.history', serializedProcesses);
 
             const manager = new AIProcessManager();
             await manager.initialize(context as any);
@@ -365,7 +366,7 @@ suite('AI Process Manager Persistence Tests', () => {
                     endTime: '2024-01-15T10:35:00.000Z'
                 }
             ];
-            await context.globalState.update('aiProcesses.history', serializedProcesses);
+            await context.workspaceState.update('aiProcesses.history', serializedProcesses);
 
             const manager = new AIProcessManager();
             await manager.initialize(context as any);
@@ -389,7 +390,7 @@ suite('AI Process Manager Persistence Tests', () => {
             manager.completeProcess(processId, 'Result');
 
             // Check storage
-            const stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            const stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             assert.strictEqual(stored.length, 1);
             assert.strictEqual(stored[0].status, 'completed');
         });
@@ -402,7 +403,7 @@ suite('AI Process Manager Persistence Tests', () => {
             const processId = manager.registerProcess('Test prompt');
             manager.failProcess(processId, 'Error message');
 
-            const stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            const stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             assert.strictEqual(stored.length, 1);
             assert.strictEqual(stored[0].status, 'failed');
             assert.strictEqual(stored[0].error, 'Error message');
@@ -416,7 +417,7 @@ suite('AI Process Manager Persistence Tests', () => {
             const processId = manager.registerProcess('Test prompt');
             manager.cancelProcess(processId);
 
-            const stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            const stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             assert.strictEqual(stored.length, 1);
             assert.strictEqual(stored[0].status, 'cancelled');
         });
@@ -429,7 +430,7 @@ suite('AI Process Manager Persistence Tests', () => {
             // Register but don't complete
             manager.registerProcess('Running process');
 
-            const stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            const stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             assert.strictEqual(stored.length, 0);
         });
 
@@ -444,13 +445,13 @@ suite('AI Process Manager Persistence Tests', () => {
             manager.completeProcess(id2, 'Result 2');
 
             // Both should be stored
-            let stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            let stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             assert.strictEqual(stored.length, 2);
 
             // Remove one
             manager.removeProcess(id1);
 
-            stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             assert.strictEqual(stored.length, 1);
             assert.strictEqual(stored[0].id, id2);
         });
@@ -466,13 +467,13 @@ suite('AI Process Manager Persistence Tests', () => {
             manager.failProcess(id2, 'Error');
 
             // Both should be stored
-            let stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            let stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             assert.strictEqual(stored.length, 2);
 
             // Clear completed
             manager.clearCompletedProcesses();
 
-            stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             assert.strictEqual(stored.length, 0);
         });
     });
@@ -494,7 +495,7 @@ suite('AI Process Manager Persistence Tests', () => {
             const processes = manager.getProcesses();
             assert.strictEqual(processes.length, 0);
 
-            const stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            const stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             assert.strictEqual(stored.length, 0);
         });
 
@@ -546,7 +547,7 @@ suite('AI Process Manager Persistence Tests', () => {
                 manager.completeProcess(id, `Result ${i}`);
             }
 
-            const stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            const stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             assert.ok(stored.length <= 100);
         });
 
@@ -561,7 +562,7 @@ suite('AI Process Manager Persistence Tests', () => {
                 manager.completeProcess(id, `Result ${i}`);
             }
 
-            const stored = context.globalState.get<SerializedAIProcess[]>('aiProcesses.history', []);
+            const stored = context.workspaceState.get<SerializedAIProcess[]>('aiProcesses.history', []);
             
             // Should have kept the most recent 100
             assert.ok(stored.length <= 100);
@@ -581,7 +582,7 @@ suite('AI Process Manager Persistence Tests', () => {
             const context = new MockExtensionContext();
             
             // Set invalid data in storage
-            await context.globalState.update('aiProcesses.history', 'not an array');
+            await context.workspaceState.update('aiProcesses.history', 'not an array');
 
             const manager = new AIProcessManager();
             
