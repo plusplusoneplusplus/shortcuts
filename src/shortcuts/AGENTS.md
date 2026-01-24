@@ -2,6 +2,13 @@
 
 This is the main module directory for the "Markdown Review & Workspace Shortcuts" VSCode extension. Each subdirectory is a self-contained feature module with its own AGENTS.md for detailed documentation.
 
+## Recent Refactoring (2026-01)
+
+**Tree Data Provider Base Classes** - Eliminated code duplication across tree data providers:
+- Created 5 new shared modules: `base-tree-data-provider`, `filterable-tree-data-provider`, `tree-filter-utils`, `tree-icon-utils`, `tree-error-handler`
+- Migrated 4 providers to extend base classes: GlobalNotesTreeDataProvider, TasksTreeDataProvider, PipelinesTreeDataProvider, LogicalTreeDataProvider
+- Result: Eliminated ~210 lines of duplication, all 5690 tests passing, 100% backward compatible
+
 ## Module Overview
 
 | Module | Description |
@@ -16,7 +23,7 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 | **lm-tools** | Language model tools for Copilot Chat integration |
 | **map-reduce** | Parallel AI processing framework |
 | **markdown-comments** | Inline commenting on markdown files |
-| **shared** | Shared utilities (logging, text matching, base classes) |
+| **shared** | Shared utilities (logging, text matching, **tree provider base classes**) |
 | **sync** | Cloud synchronization via VSCode Settings Sync |
 | **tasks-viewer** | Markdown task list management |
 | **yaml-pipeline** | YAML configuration layer for map-reduce |
@@ -26,7 +33,7 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         shared                                  │
-│  (logging, text-matching, base classes, webview utils)          │
+│  (logging, text-matching, **tree base classes**, webview utils) │
 └─────────────────────────────────────────────────────────────────┘
         ▲           ▲           ▲           ▲           ▲
         │           │           │           │           │
