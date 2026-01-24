@@ -17,12 +17,10 @@ import {
     IAIProcessManager,
     copyToClipboard,
     getAICommandRegistry,
-    getAIToolSetting,
-    invokeCopilotCLI,
-    getCopilotSDKService,
     getAIBackendSetting,
     getExtensionLogger,
-    LogCategory
+    LogCategory,
+    invokeAIWithFallback
 } from '../ai-service';
 
 /** Maximum prompt size in characters */
@@ -107,62 +105,6 @@ export function validateAndTruncatePromptBase(
 }
 
 /**
- * Result from SDK invocation with session ID for process tracking
- */
-interface SDKInvocationResultWithSession extends AIInvocationResult {
-    sessionId?: string;
-}
-
-/**
- * Invoke the Copilot SDK to get a clarification.
- * Uses session-per-request pattern (creates new session, destroys after).
- *
- * @param prompt - The prompt to send
- * @param workspaceRoot - The workspace root directory
- * @returns The AI invocation result with optional session ID
- */
-async function invokeCopilotSDK(
-    prompt: string,
-    workspaceRoot: string
-): Promise<SDKInvocationResultWithSession> {
-    const logger = getExtensionLogger();
-    const sdkService = getCopilotSDKService();
-
-    logger.debug(LogCategory.AI, 'AI Clarification: Using Copilot SDK backend');
-
-    // Check SDK availability
-    const availability = await sdkService.isAvailable();
-    if (!availability.available) {
-        logger.debug(LogCategory.AI, `AI Clarification: SDK not available - ${availability.error}`);
-        return {
-            success: false,
-            error: availability.error || 'Copilot SDK is not available'
-        };
-    }
-
-    // Send message using direct mode (creates new session, destroys after)
-    // This is appropriate for clarification requests which are one-off operations
-    const result = await sdkService.sendMessage({
-        prompt,
-        workingDirectory: workspaceRoot,
-        usePool: false // Use direct mode for simple clarification requests
-    });
-
-    if (result.success) {
-        logger.debug(LogCategory.AI, 'AI Clarification: SDK request completed successfully');
-    } else {
-        logger.debug(LogCategory.AI, `AI Clarification: SDK request failed - ${result.error}`);
-    }
-
-    return {
-        success: result.success,
-        response: result.response,
-        error: result.error,
-        sessionId: result.sessionId
-    };
-}
-
-/**
  * Handle an AI clarification request.
  * Routes to the configured AI backend:
  * - copilot-sdk: Use the @github/copilot-sdk for structured communication (recommended)
@@ -190,123 +132,88 @@ export async function handleAIClarificationBase(
         vscode.window.showWarningMessage('AI clarification prompt was truncated to fit size limits.');
     }
 
-    // Get the configured AI backend
+    // Get the configured AI backend for special handling
     const backend = getAIBackendSetting();
     logger.debug(LogCategory.AI, `AI Clarification: Using backend '${backend}'`);
 
-    // Handle copilot-sdk backend
-    if (backend === 'copilot-sdk') {
-        // Register the process before starting the SDK call
-        let processId: string | undefined;
-        if (processManager) {
-            processId = processManager.registerProcess(prompt);
-            logger.debug(LogCategory.AI, `AI Clarification: Registered process ${processId}`);
+    // Handle clipboard-only backend
+    if (backend === 'clipboard') {
+        await copyToClipboard(prompt);
+        vscode.window.showInformationMessage(
+            'AI clarification prompt copied to clipboard!',
+            'Open Copilot Chat'
+        ).then(selection => {
+            if (selection === 'Open Copilot Chat') {
+                vscode.commands.executeCommand('github.copilot.chat.focus').then(
+                    () => { /* success */ },
+                    () => { /* Copilot chat not available, ignore */ }
+                );
+            }
+        });
+        return {
+            success: false,
+            error: 'Using clipboard mode - no automatic clarification'
+        };
+    }
+
+    // Register the process before starting the AI call
+    let processId: string | undefined;
+    if (processManager) {
+        processId = processManager.registerProcess(prompt);
+        logger.debug(LogCategory.AI, `AI Clarification: Registered process ${processId}`);
+    }
+
+    try {
+        // Use the unified AI invoker with SDK/CLI fallback and clipboard fallback
+        const result = await invokeAIWithFallback(prompt, {
+            usePool: false, // Clarification is a one-off request
+            workingDirectory: workspaceRoot,
+            clipboardFallback: true,
+            featureName: 'Clarification'
+        });
+
+        // Attach SDK session ID for potential cancellation (if we got one)
+        if (processId && result.sessionId && processManager) {
+            processManager.attachSdkSessionId(processId, result.sessionId);
         }
 
-        try {
-            const sdkResult = await invokeCopilotSDK(prompt, workspaceRoot);
-
-            // Attach SDK session ID for potential cancellation (if we got one)
-            if (processId && sdkResult.sessionId && processManager) {
-                processManager.attachSdkSessionId(processId, sdkResult.sessionId);
-            }
-
-            if (sdkResult.success) {
-                // Mark process as completed
-                if (processId && processManager) {
-                    processManager.completeProcess(processId, sdkResult.response);
-                }
-                return toClarificationResult(sdkResult);
-            }
-
-            // SDK failed, mark process and fall back to CLI
+        if (result.success) {
+            // Mark process as completed
             if (processId && processManager) {
-                processManager.failProcess(processId, sdkResult.error || 'SDK request failed');
+                processManager.completeProcess(processId, result.response);
             }
+            return toClarificationResult(result);
+        }
 
-            logger.debug(LogCategory.AI, 'AI Clarification: SDK failed, falling back to CLI');
+        // Failed - mark process and show UI message
+        if (processId && processManager) {
+            processManager.failProcess(processId, result.error || 'Request failed');
+        }
+
+        // Show clipboard fallback message if prompt was copied
+        if (result.error?.includes('copied to clipboard')) {
             vscode.window.showWarningMessage(
-                `Copilot SDK failed: ${sdkResult.error}. Falling back to CLI...`
-            );
-
-            // Try CLI as fallback (will register its own process)
-            const cliResult = await invokeCopilotCLI(prompt, workspaceRoot, processManager);
-            const clarificationResult = toClarificationResult(cliResult);
-
-            if (clarificationResult.success) {
-                return clarificationResult;
-            }
-
-            // Both SDK and CLI failed, fall back to clipboard
-            await copyToClipboard(prompt);
-            vscode.window.showWarningMessage(
-                `${clarificationResult.error || 'Failed to get AI clarification'}. Prompt copied to clipboard.`,
+                result.error,
                 'Open Terminal'
             ).then(selection => {
                 if (selection === 'Open Terminal') {
                     vscode.commands.executeCommand('workbench.action.terminal.new');
                 }
             });
-            return clarificationResult;
-        } catch (error) {
-            // Handle unexpected errors
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            if (processId && processManager) {
-                processManager.failProcess(processId, errorMessage);
-            }
-            logger.error(LogCategory.AI, 'AI Clarification: Unexpected error', error instanceof Error ? error : undefined);
-            return {
-                success: false,
-                error: errorMessage
-            };
         }
+
+        return toClarificationResult(result);
+    } catch (error) {
+        // Handle unexpected errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (processId && processManager) {
+            processManager.failProcess(processId, errorMessage);
+        }
+        logger.error(LogCategory.AI, 'AI Clarification: Unexpected error', error instanceof Error ? error : undefined);
+        return {
+            success: false,
+            error: errorMessage
+        };
     }
-
-    // Handle copilot-cli backend (legacy)
-    if (backend === 'copilot-cli') {
-        const tool = getAIToolSetting();
-
-        if (tool === 'copilot-cli') {
-            // Try to invoke Copilot CLI and capture output
-            const result = await invokeCopilotCLI(prompt, workspaceRoot, processManager);
-            const clarificationResult = toClarificationResult(result);
-
-            if (!clarificationResult.success) {
-                // Fall back to clipboard
-                await copyToClipboard(prompt);
-                vscode.window.showWarningMessage(
-                    `${clarificationResult.error || 'Failed to get AI clarification'}. Prompt copied to clipboard.`,
-                    'Open Terminal'
-                ).then(selection => {
-                    if (selection === 'Open Terminal') {
-                        vscode.commands.executeCommand('workbench.action.terminal.new');
-                    }
-                });
-                return clarificationResult;
-            }
-
-            return clarificationResult;
-        }
-    }
-
-    // Handle clipboard backend (or fallback)
-    await copyToClipboard(prompt);
-    vscode.window.showInformationMessage(
-        'AI clarification prompt copied to clipboard!',
-        'Open Copilot Chat'
-    ).then(selection => {
-        if (selection === 'Open Copilot Chat') {
-            // Try to open Copilot chat if available
-            vscode.commands.executeCommand('github.copilot.chat.focus').then(
-                () => { /* success */ },
-                () => { /* Copilot chat not available, ignore */ }
-            );
-        }
-    });
-
-    return {
-        success: false,
-        error: 'Using clipboard mode - no automatic clarification'
-    };
 }
 

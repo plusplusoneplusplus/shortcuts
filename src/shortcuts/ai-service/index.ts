@@ -164,3 +164,12 @@ export {
     IPoolableSession,
     SessionFactory
 } from './session-pool';
+
+// Export AI invoker factory for unified SDK/CLI fallback handling
+export {
+    createAIInvoker,
+    invokeAIWithFallback,
+    AIInvokerFactoryOptions,
+    AIInvokerResult,
+    AIInvoker
+} from './ai-invoker-factory';

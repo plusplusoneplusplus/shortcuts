@@ -14,9 +14,9 @@
  */
 
 import * as vscode from 'vscode';
-import { exec, ChildProcess } from 'child_process';
-import { escapeShellArg, getAIModelSetting, getWorkingDirectory } from '../ai-service/copilot-cli-invoker';
-import { getCopilotSDKService, getAIBackendSetting } from '../ai-service/copilot-sdk-service';
+import { ChildProcess } from 'child_process';
+import { getCopilotSDKService } from '../ai-service/copilot-sdk-service';
+import { invokeAIWithFallback } from '../ai-service/ai-invoker-factory';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 import {
     DiscoveryRequest,
@@ -434,8 +434,8 @@ export class AIDiscoveryEngine implements vscode.Disposable {
     }
 
     /**
-     * Invoke AI using SDK (if configured and available) or CLI (fallback).
-     * This method handles backend selection and automatic fallback.
+     * Invoke AI using the unified factory with SDK/CLI fallback.
+     * Tracks SDK session ID for cancellation support.
      */
     private async invokeAI(
         prompt: string,
@@ -444,288 +444,48 @@ export class AIDiscoveryEngine implements vscode.Disposable {
         processId: string
     ): Promise<{ success: boolean; response?: string; error?: string }> {
         const logger = getExtensionLogger();
-        const backend = getAIBackendSetting();
 
-        // Try SDK if configured
-        if (backend === 'copilot-sdk') {
-            logger.debug(LogCategory.DISCOVERY, `AI Discovery: Attempting SDK backend for process ${processId}`);
-            
-            const sdkResult = await this.invokeCopilotSDK(
-                prompt,
-                workspaceRoot,
-                timeoutSeconds,
-                processId
-            );
-
-            if (sdkResult.success) {
-                return sdkResult;
-            }
-
-            // SDK failed, fall back to CLI
-            logger.debug(LogCategory.DISCOVERY, `AI Discovery: SDK failed, falling back to CLI - ${sdkResult.error}`);
-        }
-
-        // Use CLI (either as primary backend or as fallback)
-        logger.debug(LogCategory.DISCOVERY, `AI Discovery: Using CLI backend for process ${processId}`);
-        return this.invokeCopilotCLI(
-            prompt,
-            workspaceRoot,
-            timeoutSeconds,
-            processId
-        );
-    }
-
-    /**
-     * Invoke Copilot SDK for discovery.
-     * Uses direct mode (session-per-request) since discovery is a one-off operation.
-     */
-    private async invokeCopilotSDK(
-        prompt: string,
-        workspaceRoot: string,
-        timeoutSeconds: number,
-        processId: string
-    ): Promise<{ success: boolean; response?: string; error?: string }> {
-        const logger = getExtensionLogger();
-        const startTime = Date.now();
-        const sdkService = getCopilotSDKService();
-
-        logger.logOperationStart(LogCategory.DISCOVERY, 'AI discovery SDK invocation', {
+        logger.logOperationStart(LogCategory.DISCOVERY, 'AI discovery invocation', {
             processId,
             workingDirectory: workspaceRoot,
             timeoutSeconds
         });
 
-        // Check SDK availability
-        const availability = await sdkService.isAvailable();
-        if (!availability.available) {
-            logger.debug(LogCategory.DISCOVERY, `AI Discovery SDK: Not available - ${availability.error}`);
-            return {
-                success: false,
-                error: availability.error || 'Copilot SDK is not available'
-            };
+        const startTime = Date.now();
+
+        // Use the unified AI invoker with SDK/CLI fallback
+        const result = await invokeAIWithFallback(prompt, {
+            usePool: false, // Discovery is a one-off operation
+            workingDirectory: workspaceRoot,
+            timeoutMs: timeoutSeconds * 1000,
+            featureName: 'Discovery'
+        });
+
+        const durationMs = Date.now() - startTime;
+
+        // Track SDK session ID for cancellation if available
+        if (result.sessionId) {
+            this.sdkSessionIds.set(processId, result.sessionId);
         }
 
-        try {
-            // Send message using direct mode (creates new session, destroys after)
-            // Discovery is a one-off operation, so we don't use the pool
-            const result = await sdkService.sendMessage({
-                prompt,
-                workingDirectory: workspaceRoot,
-                timeoutMs: timeoutSeconds * 1000,
-                usePool: false
+        if (result.success) {
+            logger.logOperationComplete(LogCategory.DISCOVERY, 'AI discovery invocation', durationMs, {
+                processId,
+                responseLength: result.response?.length || 0
             });
-
-            const durationMs = Date.now() - startTime;
-
-            // Track the session ID for potential cancellation
-            if (result.sessionId) {
-                this.sdkSessionIds.set(processId, result.sessionId);
-            }
-
-            if (result.success) {
-                logger.logOperationComplete(LogCategory.DISCOVERY, 'AI discovery SDK invocation', durationMs, {
-                    processId,
-                    responseLength: result.response?.length || 0
-                });
-                return {
-                    success: true,
-                    response: result.response
-                };
-            }
-
-            logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery SDK invocation', undefined, {
+        } else {
+            logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery invocation', undefined, {
                 processId,
                 durationMs,
                 error: result.error
             });
-            return {
-                success: false,
-                error: result.error
-            };
-        } catch (error) {
-            const durationMs = Date.now() - startTime;
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            
-            logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery SDK invocation', error instanceof Error ? error : undefined, {
-                processId,
-                durationMs
-            });
-            return {
-                success: false,
-                error: `Copilot SDK error: ${errorMessage}`
-            };
-        }
-    }
-
-    /**
-     * Invoke Copilot CLI and capture output
-     */
-    private async invokeCopilotCLI(
-        prompt: string,
-        workspaceRoot: string,
-        timeoutSeconds: number,
-        processId: string
-    ): Promise<{ success: boolean; response?: string; error?: string }> {
-        const logger = getExtensionLogger();
-        const startTime = Date.now();
-        
-        return new Promise((resolve) => {
-            const escapedPrompt = escapeShellArg(prompt);
-            const model = getAIModelSetting();
-            const cwd = getWorkingDirectory(workspaceRoot);
-
-            let command = `copilot --allow-all-tools -p ${escapedPrompt}`;
-            if (model) {
-                command = `copilot --allow-all-tools --model ${model} -p ${escapedPrompt}`;
-            }
-
-            logger.logOperationStart(LogCategory.DISCOVERY, 'AI discovery CLI invocation', {
-                processId,
-                workingDirectory: cwd,
-                model: model || 'default',
-                timeoutSeconds
-            });
-
-            const childProcess = exec(command, {
-                cwd,
-                timeout: timeoutSeconds * 1000,
-                maxBuffer: 1024 * 1024 * 10 // 10MB buffer
-            }, (error, stdout, stderr) => {
-                const durationMs = Date.now() - startTime;
-                
-                if (error) {
-                    if (error.killed) {
-                        const errorMsg = `AI discovery timed out after ${timeoutSeconds} seconds`;
-                        logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery CLI invocation', error, {
-                            processId,
-                            durationMs,
-                            reason: 'timeout',
-                            timeoutSeconds
-                        });
-                        resolve({
-                            success: false,
-                            error: errorMsg
-                        });
-                        return;
-                    }
-
-                    if (error.message.includes('command not found') ||
-                        error.message.includes('not recognized')) {
-                        const errorMsg = 'Copilot CLI is not installed. Please install it with: npm install -g @anthropic-ai/claude-code';
-                        logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery CLI invocation', error, {
-                            processId,
-                            durationMs,
-                            reason: 'cli_not_found'
-                        });
-                        resolve({
-                            success: false,
-                            error: errorMsg
-                        });
-                        return;
-                    }
-
-                    logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery CLI invocation', error, {
-                        processId,
-                        durationMs,
-                        reason: 'cli_error',
-                        stderr: stderr ? stderr.substring(0, 500) : undefined
-                    });
-                    resolve({
-                        success: false,
-                        error: `Copilot CLI error: ${error.message}`
-                    });
-                    return;
-                }
-
-                // Parse the output to extract just the response
-                const response = this.parseCopilotOutput(stdout);
-
-                if (!response) {
-                    logger.logOperationFailed(LogCategory.DISCOVERY, 'AI discovery CLI invocation', undefined, {
-                        processId,
-                        durationMs,
-                        reason: 'empty_response',
-                        stdoutLength: stdout?.length || 0
-                    });
-                    resolve({
-                        success: false,
-                        error: 'No response received from Copilot CLI'
-                    });
-                    return;
-                }
-
-                logger.logOperationComplete(LogCategory.DISCOVERY, 'AI discovery CLI invocation', durationMs, {
-                    processId,
-                    responseLength: response.length
-                });
-                resolve({
-                    success: true,
-                    response
-                });
-            });
-
-            // Store reference for cancellation
-            this.runningProcesses.set(processId, childProcess);
-        });
-    }
-
-    /**
-     * Parse Copilot CLI output to extract the response
-     */
-    private parseCopilotOutput(output: string): string {
-        const lines = output.split('\n');
-        const resultLines: string[] = [];
-        let inContent = false;
-
-        for (const line of lines) {
-            // Skip ANSI escape codes and clean the line
-            const cleanLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
-
-            // Skip empty lines at the start
-            if (!inContent && cleanLine === '') {
-                continue;
-            }
-
-            // Skip copilot status/operation lines
-            if (cleanLine.startsWith('✓') ||
-                cleanLine.startsWith('✗') ||
-                cleanLine.startsWith('└') ||
-                cleanLine.startsWith('├')) {
-                continue;
-            }
-
-            // Skip error/info messages from copilot tools
-            if (cleanLine.startsWith('Invalid session') ||
-                cleanLine.includes('session ID') ||
-                cleanLine.startsWith('Error:') ||
-                cleanLine.startsWith('Warning:')) {
-                continue;
-            }
-
-            // Skip lines that look like tool invocations
-            if (cleanLine.match(/^(Read|Glob|Search|List|Edit|Write|Delete|Run)\s/i)) {
-                continue;
-            }
-
-            // Stop at usage statistics
-            if (cleanLine.startsWith('Total usage') ||
-                cleanLine.startsWith('Total duration') ||
-                cleanLine.startsWith('Total code changes') ||
-                cleanLine.startsWith('Usage by model')) {
-                break;
-            }
-
-            // Start capturing content
-            inContent = true;
-            resultLines.push(cleanLine);
         }
 
-        // Trim trailing empty lines
-        while (resultLines.length > 0 && resultLines[resultLines.length - 1] === '') {
-            resultLines.pop();
-        }
-
-        return resultLines.join('\n').trim();
+        return {
+            success: result.success,
+            response: result.response,
+            error: result.error
+        };
     }
 
     /**
