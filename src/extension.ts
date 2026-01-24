@@ -488,11 +488,8 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
-        // Register command to test Copilot SDK
-        const testCopilotSDKCommand = vscode.commands.registerCommand(
-            'debugPanel.testCopilotSDK',
-            testCopilotSDK
-        );
+        // Note: testCopilotSDK command is registered later after aiProcessManager is initialized
+        // to allow tracking SDK test requests in the AI Processes panel
 
         // Initialize Git Diff Comments feature (must be before git tree provider)
         const diffCommentsManager = new DiffCommentsManager(workspaceRoot);
@@ -1772,6 +1769,12 @@ export async function activate(context: vscode.ExtensionContext) {
         // Initialize AI Process Manager with persistence (must be before ReviewEditorViewProvider and DiffReviewEditorProvider)
         const aiProcessManager = new AIProcessManager();
         await aiProcessManager.initialize(context);
+
+        // Register command to test Copilot SDK (now that aiProcessManager is available)
+        const testCopilotSDKCommand = vscode.commands.registerCommand(
+            'debugPanel.testCopilotSDK',
+            () => testCopilotSDK(aiProcessManager)
+        );
 
         // Register diff review commands (diffCommentsManager already initialized above)
         // Pass aiProcessManager so AI clarification requests from diff view are tracked
