@@ -440,4 +440,167 @@ suite('AI Session Resume', () => {
             assert.ok(!tooltipValue.includes('This session can be resumed'));
         });
     });
+
+    suite('Pipeline Item Session Resume', () => {
+        test('should set resumable context value for resumable pipeline items', () => {
+            const process: AIProcess = {
+                id: 'pipeline-item-1',
+                type: 'pipeline-item',
+                promptPreview: 'Process item 1/5',
+                fullPrompt: 'Process the bug report',
+                status: 'completed',
+                startTime: new Date(),
+                endTime: new Date(),
+                result: '{"severity": "high"}',
+                sdkSessionId: 'session-pipeline-123',
+                backend: 'copilot-sdk',
+                workingDirectory: '/workspace'
+            };
+
+            const item = new AIProcessItem(process);
+
+            assert.strictEqual(item.contextValue, 'pipelineItemProcess_completed_resumable');
+        });
+
+        test('should set resumable context value for resumable pipeline item children', () => {
+            const process: AIProcess = {
+                id: 'pipeline-item-2',
+                type: 'pipeline-item',
+                promptPreview: 'Process item 2/5',
+                fullPrompt: 'Process the bug report',
+                status: 'completed',
+                startTime: new Date(),
+                endTime: new Date(),
+                result: '{"severity": "low"}',
+                sdkSessionId: 'session-pipeline-456',
+                backend: 'copilot-sdk',
+                workingDirectory: '/workspace',
+                parentProcessId: 'pipeline-group-1'
+            };
+
+            // Create as child (isChild = true)
+            const item = new AIProcessItem(process, true);
+
+            assert.strictEqual(item.contextValue, 'pipelineItemProcess_completed_child_resumable');
+        });
+
+        test('should set regular context value for non-resumable pipeline items', () => {
+            const process: AIProcess = {
+                id: 'pipeline-item-3',
+                type: 'pipeline-item',
+                promptPreview: 'Process item 3/5',
+                fullPrompt: 'Process the bug report',
+                status: 'completed',
+                startTime: new Date(),
+                endTime: new Date(),
+                result: '{"severity": "medium"}'
+                // No session metadata
+            };
+
+            const item = new AIProcessItem(process);
+
+            assert.strictEqual(item.contextValue, 'pipelineItemProcess_completed');
+        });
+
+        test('should set regular context value for pipeline items with CLI backend', () => {
+            const process: AIProcess = {
+                id: 'pipeline-item-4',
+                type: 'pipeline-item',
+                promptPreview: 'Process item 4/5',
+                fullPrompt: 'Process the bug report',
+                status: 'completed',
+                startTime: new Date(),
+                endTime: new Date(),
+                result: '{"severity": "critical"}',
+                sdkSessionId: 'session-pipeline-789',
+                backend: 'copilot-cli' // CLI backend, not resumable
+            };
+
+            const item = new AIProcessItem(process);
+
+            assert.strictEqual(item.contextValue, 'pipelineItemProcess_completed');
+        });
+
+        test('should set regular context value for running pipeline items', () => {
+            const process: AIProcess = {
+                id: 'pipeline-item-5',
+                type: 'pipeline-item',
+                promptPreview: 'Process item 5/5',
+                fullPrompt: 'Process the bug report',
+                status: 'running',
+                startTime: new Date(),
+                sdkSessionId: 'session-pipeline-running',
+                backend: 'copilot-sdk'
+            };
+
+            const item = new AIProcessItem(process);
+
+            assert.strictEqual(item.contextValue, 'pipelineItemProcess_running');
+        });
+
+        test('should set regular context value for failed pipeline items', () => {
+            const process: AIProcess = {
+                id: 'pipeline-item-6',
+                type: 'pipeline-item',
+                promptPreview: 'Process item',
+                fullPrompt: 'Process the bug report',
+                status: 'failed',
+                startTime: new Date(),
+                endTime: new Date(),
+                error: 'AI service timeout',
+                sdkSessionId: 'session-pipeline-failed',
+                backend: 'copilot-sdk'
+            };
+
+            const item = new AIProcessItem(process);
+
+            assert.strictEqual(item.contextValue, 'pipelineItemProcess_failed');
+        });
+
+        test('should include resume hint in tooltip for resumable pipeline items', () => {
+            const process: AIProcess = {
+                id: 'pipeline-item-tooltip',
+                type: 'pipeline-item',
+                promptPreview: 'Process item',
+                fullPrompt: 'Process the bug report',
+                status: 'completed',
+                startTime: new Date(),
+                endTime: new Date(),
+                result: '{"severity": "high"}',
+                sdkSessionId: 'session-pipeline-tooltip',
+                backend: 'copilot-sdk',
+                workingDirectory: '/workspace'
+            };
+
+            const item = new AIProcessItem(process);
+            const tooltip = item.tooltip;
+
+            assert.ok(tooltip instanceof Object);
+            const tooltipValue = (tooltip as { value: string }).value;
+            assert.ok(tooltipValue.includes('This session can be resumed'),
+                'Pipeline item tooltip should include resume hint');
+        });
+
+        test('should not include resume hint in tooltip for non-resumable pipeline items', () => {
+            const process: AIProcess = {
+                id: 'pipeline-item-no-resume',
+                type: 'pipeline-item',
+                promptPreview: 'Process item',
+                fullPrompt: 'Process the bug report',
+                status: 'completed',
+                startTime: new Date(),
+                endTime: new Date(),
+                result: '{"severity": "low"}'
+                // No session metadata
+            };
+
+            const item = new AIProcessItem(process);
+            const tooltip = item.tooltip;
+
+            assert.ok(tooltip instanceof Object);
+            const tooltipValue = (tooltip as { value: string }).value;
+            assert.ok(!tooltipValue.includes('This session can be resumed'),
+                'Pipeline item tooltip should not include resume hint when not resumable');
+        });
+    });
 });

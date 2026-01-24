@@ -25,7 +25,8 @@ import {
     AIInvokerResult,
     JobProgress,
     ProcessTracker,
-    PromptItem
+    PromptItem,
+    SessionMetadata
 } from '../index';
 import { PipelineInfo } from './types';
 
@@ -396,6 +397,16 @@ function createProcessTracker(
                 processManager.failProcess(processId, error || 'Unknown error');
             }
             // 'running' status is set on registration
+        },
+
+        attachSessionMetadata(processId: string, metadata: SessionMetadata): void {
+            // Attach session metadata for session resume functionality
+            if (metadata.sessionId) {
+                processManager.attachSdkSessionId(processId, metadata.sessionId);
+            }
+            if (metadata.backend) {
+                processManager.attachSessionMetadata(processId, metadata.backend, metadata.workingDirectory);
+            }
         },
 
         registerGroup(_description: string): string {

@@ -29,6 +29,7 @@ export type {
     AIInvokerOptions,
     AIInvokerResult,
     ProcessTracker,
+    SessionMetadata,
     ExecutorOptions,
     JobProgress,
     MapReduceResult,

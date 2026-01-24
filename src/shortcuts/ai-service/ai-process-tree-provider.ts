@@ -46,9 +46,17 @@ export class AIProcessItem extends vscode.TreeItem {
         } else if (process.type === 'pipeline-execution') {
             this.contextValue = `pipelineExecutionProcess_${process.status}`;
         } else if (process.type === 'pipeline-item') {
-            this.contextValue = isChild
-                ? `pipelineItemProcess_${process.status}_child`
-                : `pipelineItemProcess_${process.status}`;
+            // For pipeline items, check if resumable (has session ID, completed, SDK backend)
+            const isResumable = this.isProcessResumable(process);
+            if (isChild) {
+                this.contextValue = isResumable
+                    ? `pipelineItemProcess_${process.status}_child_resumable`
+                    : `pipelineItemProcess_${process.status}_child`;
+            } else {
+                this.contextValue = isResumable
+                    ? `pipelineItemProcess_${process.status}_resumable`
+                    : `pipelineItemProcess_${process.status}`;
+            }
         } else {
             // For clarification processes, check if resumable
             const isResumable = this.isProcessResumable(process);
@@ -428,8 +436,8 @@ export class AIProcessItem extends vscode.TreeItem {
             }
         }
 
-        // Session resume info (for clarification processes)
-        if (process.type === 'clarification' && this.isProcessResumable(process)) {
+        // Session resume info (for clarification and pipeline item processes)
+        if ((process.type === 'clarification' || process.type === 'pipeline-item') && this.isProcessResumable(process)) {
             lines.push('');
             lines.push('---');
             lines.push('💡 *This session can be resumed*');

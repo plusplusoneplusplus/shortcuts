@@ -313,6 +313,20 @@ export interface AIInvokerResult {
     response?: string;
     /** Error message (if failed) */
     error?: string;
+    /** SDK session ID if the request was made via SDK (for session resume) */
+    sessionId?: string;
+}
+
+/**
+ * Session metadata for session resume functionality
+ */
+export interface SessionMetadata {
+    /** SDK session ID for resuming sessions */
+    sessionId?: string;
+    /** Backend type used for this process */
+    backend?: 'copilot-sdk' | 'copilot-cli' | 'clipboard';
+    /** Working directory used for the session */
+    workingDirectory?: string;
 }
 
 /**
@@ -342,6 +356,14 @@ export interface ProcessTracker {
         error?: string,
         structuredResult?: string
     ): void;
+
+    /**
+     * Attach session metadata to a process for session resume functionality.
+     * This should be called after the AI invocation completes with the session ID.
+     * @param processId Process ID
+     * @param metadata Session metadata (sessionId, backend, workingDirectory)
+     */
+    attachSessionMetadata?(processId: string, metadata: SessionMetadata): void;
 
     /**
      * Register a group of processes

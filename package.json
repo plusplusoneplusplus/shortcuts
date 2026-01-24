@@ -2075,6 +2075,11 @@
           "group": "process@2"
         },
         {
+          "command": "clarificationProcesses.resumeSession",
+          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineItemProcess_completed(_child)?_resumable$/",
+          "group": "process@2"
+        },
+        {
           "command": "clarificationProcesses.remove",
           "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_(completed|failed|cancelled)/",
           "group": "process@3"
@@ -2117,6 +2122,11 @@
         {
           "command": "clarificationProcesses.copySessionId",
           "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_completed_resumable$/",
+          "group": "copy@2"
+        },
+        {
+          "command": "clarificationProcesses.copySessionId",
+          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineItemProcess_completed(_child)?_resumable$/",
           "group": "copy@2"
         },
         {

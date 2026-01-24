@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { MockAIProcessManager } from '../../../shortcuts/ai-service/mock-ai-process-manager';
-import { ProcessTracker, ExecutionStats } from '../../../shortcuts/map-reduce/types';
+import { ProcessTracker, ExecutionStats, SessionMetadata } from '../../../shortcuts/map-reduce/types';
 import { AIProcess } from '../../../shortcuts/ai-service/types';
 
 // Import the module under test
@@ -63,6 +63,16 @@ function createTestProcessTracker(
                 processManager.failProcess(processId, error || 'Unknown error');
             }
             // 'running' status is set on registration
+        },
+
+        attachSessionMetadata(processId: string, metadata: SessionMetadata): void {
+            // Attach session metadata for session resume functionality
+            if (metadata.sessionId) {
+                processManager.attachSdkSessionId(processId, metadata.sessionId);
+            }
+            if (metadata.backend) {
+                processManager.attachSessionMetadata(processId, metadata.backend, metadata.workingDirectory);
+            }
         },
 
         registerGroup(_description: string): string {
@@ -1100,6 +1110,194 @@ input:
                 const parsed = JSON.parse(process?.structuredResult || '{}');
                 assert.strictEqual(parsed.severity, 'high');
                 assert.strictEqual(parsed.effort_hours, 4);
+            });
+        });
+
+        suite('Session Metadata Attachment', () => {
+            test('attachSessionMetadata attaches session ID to process', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const processId = tracker.registerProcess('Test item');
+
+                // Attach session metadata
+                tracker.attachSessionMetadata!(processId, {
+                    sessionId: 'session-abc-123',
+                    backend: 'copilot-sdk',
+                    workingDirectory: '/workspace'
+                });
+
+                // Verify session metadata was attached
+                const sessionMetadata = processManager.getSessionMetadata(processId);
+                assert.strictEqual(sessionMetadata?.sdkSessionId, 'session-abc-123');
+                assert.strictEqual(sessionMetadata?.backend, 'copilot-sdk');
+                assert.strictEqual(sessionMetadata?.workingDirectory, '/workspace');
+            });
+
+            test('attachSessionMetadata makes completed pipeline item resumable', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const processId = tracker.registerProcess('Test item');
+
+                // Initially not resumable (running, no session metadata)
+                assert.strictEqual(processManager.isProcessResumable(processId), false);
+
+                // Attach session metadata
+                tracker.attachSessionMetadata!(processId, {
+                    sessionId: 'session-resumable',
+                    backend: 'copilot-sdk'
+                });
+
+                // Still not resumable (still running)
+                assert.strictEqual(processManager.isProcessResumable(processId), false);
+
+                // Complete the process
+                tracker.updateProcess(processId, 'completed', 'Success');
+
+                // Now should be resumable
+                assert.strictEqual(processManager.isProcessResumable(processId), true);
+            });
+
+            test('attachSessionMetadata with CLI backend does not make process resumable', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const processId = tracker.registerProcess('Test item');
+
+                // Attach session metadata with CLI backend
+                tracker.attachSessionMetadata!(processId, {
+                    sessionId: 'session-cli',
+                    backend: 'copilot-cli'
+                });
+
+                // Complete the process
+                tracker.updateProcess(processId, 'completed', 'Success');
+
+                // Should NOT be resumable (CLI backend)
+                assert.strictEqual(processManager.isProcessResumable(processId), false);
+            });
+
+            test('attachSessionMetadata without sessionId does not make process resumable', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const processId = tracker.registerProcess('Test item');
+
+                // Attach session metadata without sessionId
+                tracker.attachSessionMetadata!(processId, {
+                    backend: 'copilot-sdk',
+                    workingDirectory: '/workspace'
+                });
+
+                // Complete the process
+                tracker.updateProcess(processId, 'completed', 'Success');
+
+                // Should NOT be resumable (no session ID)
+                assert.strictEqual(processManager.isProcessResumable(processId), false);
+            });
+
+            test('session metadata persists through getProcesses', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                const processId = tracker.registerProcess('Test item');
+
+                // Attach session metadata
+                tracker.attachSessionMetadata!(processId, {
+                    sessionId: 'session-persist',
+                    backend: 'copilot-sdk',
+                    workingDirectory: '/test/workspace'
+                });
+                tracker.updateProcess(processId, 'completed', 'Success');
+
+                // Get process via getProcesses
+                const processes = processManager.getProcesses();
+                const process = processes.find((p: AIProcess) => p.id === processId);
+
+                assert.ok(process, 'Process should be found');
+                assert.strictEqual(process.sdkSessionId, 'session-persist');
+                assert.strictEqual(process.backend, 'copilot-sdk');
+                assert.strictEqual(process.workingDirectory, '/test/workspace');
+            });
+
+            test('multiple pipeline items can have different session IDs', () => {
+                const parentGroupId = processManager.registerProcessGroup(
+                    'Pipeline: Test',
+                    {
+                        type: 'pipeline-execution',
+                        idPrefix: 'pipeline',
+                        metadata: { type: 'pipeline-execution' }
+                    }
+                );
+
+                const tracker = createTestProcessTracker(processManager, parentGroupId);
+                
+                // Create multiple items
+                const processId1 = tracker.registerProcess('Item 1');
+                const processId2 = tracker.registerProcess('Item 2');
+                const processId3 = tracker.registerProcess('Item 3');
+
+                // Attach different session IDs
+                tracker.attachSessionMetadata!(processId1, {
+                    sessionId: 'session-item-1',
+                    backend: 'copilot-sdk'
+                });
+                tracker.attachSessionMetadata!(processId2, {
+                    sessionId: 'session-item-2',
+                    backend: 'copilot-sdk'
+                });
+                // Item 3 has no session metadata (e.g., failed before AI call)
+
+                // Complete all
+                tracker.updateProcess(processId1, 'completed', 'Success 1');
+                tracker.updateProcess(processId2, 'completed', 'Success 2');
+                tracker.updateProcess(processId3, 'failed', undefined, 'Error before AI call');
+
+                // Verify each has correct session metadata
+                assert.strictEqual(processManager.getSessionMetadata(processId1)?.sdkSessionId, 'session-item-1');
+                assert.strictEqual(processManager.getSessionMetadata(processId2)?.sdkSessionId, 'session-item-2');
+                assert.strictEqual(processManager.getSessionMetadata(processId3)?.sdkSessionId, undefined);
+
+                // Verify resumability
+                assert.strictEqual(processManager.isProcessResumable(processId1), true);
+                assert.strictEqual(processManager.isProcessResumable(processId2), true);
+                assert.strictEqual(processManager.isProcessResumable(processId3), false);
             });
         });
 

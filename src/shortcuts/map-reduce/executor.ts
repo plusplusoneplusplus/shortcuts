@@ -19,7 +19,8 @@ import {
     MapReduceResult,
     MapResult,
     ReduceContext,
-    WorkItem
+    WorkItem,
+    SessionMetadata
 } from './types';
 
 /**
@@ -370,6 +371,18 @@ export class MapReduceExecutor {
                         // Ignore serialization errors
                     }
                     this.options.processTracker.updateProcess(processId, 'completed', undefined, undefined, structuredResult);
+                    
+                    // Attach session metadata if the output contains sessionId (for session resume)
+                    // This is used by pipeline items to enable session resume functionality
+                    if (this.options.processTracker.attachSessionMetadata) {
+                        const outputWithSession = output as { sessionId?: string };
+                        if (outputWithSession?.sessionId) {
+                            this.options.processTracker.attachSessionMetadata(processId, {
+                                sessionId: outputWithSession.sessionId,
+                                backend: 'copilot-sdk' // If we have a sessionId, it came from SDK
+                            });
+                        }
+                    }
                 }
 
                 return {

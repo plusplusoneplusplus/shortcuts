@@ -77,6 +77,8 @@ export interface PromptMapResult {
     error?: string;
     /** Raw AI response */
     rawResponse?: string;
+    /** SDK session ID for session resume functionality */
+    sessionId?: string;
 }
 
 /**
@@ -231,21 +233,23 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
                         output: {},
                         rawText: result.response,
                         success: true,
-                        rawResponse: result.response
+                        rawResponse: result.response,
+                        sessionId: result.sessionId
                     };
                 }
 
                 // Structured mode - parse JSON response
                 try {
                     const output = parseAIResponse(result.response, outputFields);
-                    return { item, output, success: true, rawResponse: result.response };
+                    return { item, output, success: true, rawResponse: result.response, sessionId: result.sessionId };
                 } catch (parseError) {
                     return {
                         item,
                         output: this.emptyOutput(outputFields),
                         success: false,
                         error: `Failed to parse AI response: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-                        rawResponse: result.response
+                        rawResponse: result.response,
+                        sessionId: result.sessionId
                     };
                 }
             }
@@ -255,7 +259,8 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
                 output: isTextMode ? {} : this.emptyOutput(outputFields),
                 success: false,
                 error: result.error || 'AI invocation failed',
-                rawResponse: result.response
+                rawResponse: result.response,
+                sessionId: result.sessionId
             };
         } catch (error) {
             return {
