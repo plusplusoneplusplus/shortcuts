@@ -19,6 +19,7 @@ import { GitRangeService } from './git-range-service';
 import { GitService } from './git-service';
 import { LoadMoreItem } from './load-more-item';
 import { LookedUpCommitItem } from './looked-up-commit-item';
+import { LookedUpCommitsSectionItem } from './looked-up-commits-section-item';
 import { SectionHeaderItem } from './section-header-item';
 import { StageSectionItem } from './stage-section-item';
 import { GitChange, GitChangeCounts, GitChangeStage, GitCommentCounts, GitCommit, GitCommitRange, GitViewCounts } from './types';
@@ -331,6 +332,11 @@ export class GitTreeDataProvider
                 return this.getCommitFileItems(element.commit);
             }
 
+            // Looked-up commits section - return looked-up commit items
+            if (element instanceof LookedUpCommitsSectionItem) {
+                return this.getLookedUpCommitItems();
+            }
+
             // Looked-up commit item - return files changed in this commit
             if (element instanceof LookedUpCommitItem) {
                 return this.getCommitFileItems(element.commit);
@@ -383,9 +389,9 @@ export class GitTreeDataProvider
             items.push(new SectionHeaderItem('comments', commentCount, false));
         }
 
-        // Looked-up commits at the bottom (newest first)
-        for (let i = 0; i < this.lookedUpCommits.length; i++) {
-            items.push(new LookedUpCommitItem(this.lookedUpCommits[i], i));
+        // Looked-up commits section at the bottom (only show if there are looked-up commits)
+        if (this.lookedUpCommits.length > 0) {
+            items.push(new LookedUpCommitsSectionItem(this.lookedUpCommits.length));
         }
 
         return items;
@@ -472,6 +478,16 @@ export class GitTreeDataProvider
         }
 
         return items;
+    }
+
+    /**
+     * Get looked-up commit items for the Looked Up Commits section
+     * Returns commits with their index for context menu handling
+     */
+    private getLookedUpCommitItems(): vscode.TreeItem[] {
+        return this.lookedUpCommits.map(
+            (commit, index) => new LookedUpCommitItem(commit, index)
+        );
     }
 
     /**

@@ -19,6 +19,7 @@ export * from './branch-changes-section-item';
 export * from './branch-item';
 export * from './load-more-item';
 export * from './looked-up-commit-item';
+export * from './looked-up-commits-section-item';
 
 // Provider
 export * from './tree-data-provider';
