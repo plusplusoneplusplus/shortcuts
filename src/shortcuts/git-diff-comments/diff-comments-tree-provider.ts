@@ -34,7 +34,7 @@ export class DiffCommentCategoryItem extends vscode.TreeItem {
             ? 'Pending Changes'
             : `Commit ${commitHash?.slice(0, 7) || 'unknown'}`;
 
-        super(label, vscode.TreeItemCollapsibleState.Expanded);
+        super(label, vscode.TreeItemCollapsibleState.Collapsed);
 
         this.category = category;
         this.commitHash = commitHash;

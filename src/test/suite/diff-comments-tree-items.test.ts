@@ -115,10 +115,10 @@ suite('DiffCommentCategoryItem', () => {
         assert.strictEqual(item.commitHash, 'abc123def');
     });
 
-    test('should have expanded collapsible state', () => {
+    test('should have collapsed collapsible state', () => {
         const item = new DiffCommentCategoryItem('pending', 1, 0);
-        // TreeItemCollapsibleState.Expanded = 2
-        assert.strictEqual(item.collapsibleState, 2);
+        // TreeItemCollapsibleState.Collapsed = 1
+        assert.strictEqual(item.collapsibleState, 1);
     });
 });
 
