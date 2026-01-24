@@ -685,7 +685,7 @@ await showPipelineResults(result, pipelineName);
 
 ### PipelinesTreeDataProvider
 
-Tree data provider for the Pipelines Viewer. Extends `FilterableTreeDataProvider` for built-in search and filtering capabilities.
+Tree data provider for the Pipelines Viewer. **Extends `FilterableTreeDataProvider`** (as of 2026-01 refactoring) for built-in search, filtering, EventEmitter, refresh, dispose, and error handling capabilities.
 
 ```typescript
 import { PipelineManager } from '../yaml-pipeline';
@@ -723,8 +723,9 @@ import {
     ResourceItem
 } from '../yaml-pipeline';
 
-// Tree data provider extends FilterableTreeDataProvider
-// Provides built-in filter management, EventEmitter, and error handling
+// Tree data provider extends FilterableTreeDataProvider (refactored in 2026-01)
+// Inherits from BaseTreeDataProvider → FilterableTreeDataProvider
+// All common tree provider functionality built-in
 const provider = new PipelinesTreeDataProvider(pipelineManager);
 
 // Set filter (inherited from FilterableTreeDataProvider)

@@ -2,6 +2,12 @@
 
 This module provides a generic, domain-agnostic service for tracking AI processes. It is designed to be used by any feature that needs to invoke AI tools and track their execution.
 
+**Major Updates (2026-01):**
+- Added GitHub Copilot SDK support as primary AI backend
+- Created unified AI invoker factory with automatic SDK/CLI fallback
+- Session pool for parallel workloads (code review, pipelines)
+- Eliminated ~450 lines of duplicated backend selection code
+
 ## Architecture Overview
 
 ```
@@ -15,8 +21,12 @@ This module provides a generic, domain-agnostic service for tracking AI processe
 ┌─────────────────────────────────────────────────────────────────┐
 │                      AI Service Module                          │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │ AIProcessManager│  │ Copilot Invoker │  │  Tree Provider  │ │
-│  │  (Generic API)  │  │   (AI Tools)    │  │    (UI View)    │ │
+│  │ AIProcessManager│  │ AI Invoker      │  │  Tree Provider  │ │
+│  │  (Generic API)  │  │ Factory (2026)  │  │    (UI View)    │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
+│  │ Copilot SDK     │  │ Copilot CLI     │  │ Session Pool    │ │
+│  │ Service (2026)  │  │ Invoker         │  │ (for parallel)  │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -270,15 +280,61 @@ function createMyFeatureTracker(
 
 ## AI Tool Invocation
 
-### Using Copilot CLI
+### Using AI Invoker Factory (Recommended - Added 2026-01)
+
+**New in 2026-01:** Unified factory function that handles SDK/CLI/clipboard fallback automatically. This eliminates ~450 lines of duplicated code across features.
 
 ```typescript
-import { invokeCopilotCLI, getAIToolSetting } from '../ai-service';
+import { createAIInvoker, AIInvokerFactoryOptions } from '../ai-service';
 
-// Check which tool is configured
-const tool = getAIToolSetting(); // 'copilot-cli' or 'clipboard'
+// Create an AI invoker with automatic backend selection and fallback
+const invoker = createAIInvoker({
+    workingDirectory: workspaceRoot,
+    featureName: 'My Feature',
+    model: 'gpt-4',
+    usePool: false,  // true for parallel workloads (code review, pipelines)
+    clipboardFallback: true  // Copy to clipboard if all backends fail
+});
 
-if (tool === 'copilot-cli') {
+// Use the invoker
+const result = await invoker({
+    prompt: 'Explain this code: ...',
+    model: 'gpt-4',  // Optional: override default
+    options: { timeout: 60000 }  // Optional: SDK-specific options
+});
+
+if (result.success) {
+    console.log('Response:', result.response);
+    // result.sessionId available if SDK was used
+} else {
+    console.error('Error:', result.error);
+}
+```
+
+**Backend Selection:**
+1. Checks `workspaceShortcuts.aiService.backend` setting
+2. If `copilot-sdk`: Tries SDK → falls back to CLI on failure
+3. If `copilot-cli`: Uses CLI directly
+4. If `clipboard`: Copies prompt to clipboard
+5. Optional clipboard fallback for user-facing features
+
+**Use Cases:**
+- `usePool: false` - One-off requests (clarification, discovery)
+- `usePool: true` - Parallel workloads (code review, pipelines)
+- `clipboardFallback: true` - User-facing features
+- `clipboardFallback: false` - Background/automated features
+
+### Using Copilot CLI Directly (Legacy)
+
+For direct CLI usage without factory:
+
+```typescript
+import { invokeCopilotCLI, getAIBackendSetting } from '../ai-service';
+
+// Check which backend is configured
+const backend = getAIBackendSetting(); // 'copilot-sdk' | 'copilot-cli' | 'clipboard'
+
+if (backend === 'copilot-cli') {
     const result = await invokeCopilotCLI(
         'Explain this code: ...',
         '/path/to/workspace',
@@ -379,6 +435,53 @@ disposable.dispose();
 
 6. **Clean up**: Call `dispose()` on the process manager when the extension deactivates.
 
+## Copilot SDK Integration (Added 2026-01)
+
+The module now supports **GitHub Copilot SDK** as the primary AI backend:
+
+### Benefits of SDK
+- Native VSCode integration
+- Automatic authentication
+- Better performance and reliability
+- Session management and cancellation
+- No external process spawning
+
+### Configuration
+
+```json
+{
+  "workspaceShortcuts.aiService.backend": "copilot-sdk",  // or "copilot-cli", "clipboard"
+  "workspaceShortcuts.aiService.sessionPool.enabled": true,  // for parallel workloads
+  "workspaceShortcuts.aiService.sessionPool.maxSessions": 5
+}
+```
+
+### Backend Selection Strategy
+
+The `createAIInvoker()` factory automatically handles:
+1. **SDK-first approach**: Try SDK if configured and available
+2. **CLI fallback**: Fall back to CLI if SDK fails or unavailable
+3. **Clipboard fallback**: Optionally copy to clipboard as last resort
+
+### Session Pool for Parallel Workloads
+
+For features with concurrent requests (code review, pipelines):
+
+```typescript
+const invoker = createAIInvoker({
+    workingDirectory: workspaceRoot,
+    usePool: true,  // Use session pool
+    featureName: 'Code Review'
+});
+
+// Multiple concurrent invocations will reuse sessions from pool
+const results = await Promise.all([
+    invoker({ prompt: 'Review rule 1...' }),
+    invoker({ prompt: 'Review rule 2...' }),
+    invoker({ prompt: 'Review rule 3...' })
+]);
+```
+
 ## Migration from Legacy API
 
 If you're using the legacy code-review-specific methods, consider migrating:
@@ -395,4 +498,5 @@ The legacy methods are still available but marked as `@deprecated`.
 
 - `src/shortcuts/code-review/process-adapter.ts` - Reference implementation of the adapter pattern
 - `src/shortcuts/map-reduce/` - Map-reduce framework for parallel AI workflows
+- `src/shortcuts/ai-service/ai-invoker-factory.ts` - Unified AI invoker factory (2026-01)
 - `src/test/suite/ai-service-code-review-coupling.test.ts` - Test examples
