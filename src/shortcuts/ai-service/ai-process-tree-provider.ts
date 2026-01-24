@@ -221,6 +221,10 @@ export class AIProcessItem extends vscode.TreeItem {
             lines.push('📋 **Code Review**');
         } else if (process.type === 'discovery') {
             lines.push('🔍 **Auto Discovery**');
+        } else if (process.type === 'pipeline-execution') {
+            lines.push('🔄 **Pipeline Execution**');
+        } else if (process.type === 'pipeline-item') {
+            lines.push('⚙️ **Pipeline Item**');
         } else {
             lines.push('💬 **AI Clarification**');
         }
@@ -337,6 +341,52 @@ export class AIProcessItem extends vscode.TreeItem {
             lines.push('');
         }
 
+        // Pipeline execution specific info
+        if (process.type === 'pipeline-execution' && process.groupMetadata) {
+            const meta = process.groupMetadata as Record<string, unknown>;
+            if (meta.pipelineName) {
+                lines.push(`**Pipeline:** ${meta.pipelineName}`);
+            }
+            if (meta.packageName) {
+                lines.push(`**Package:** ${meta.packageName}`);
+            }
+            if (meta.itemCount !== undefined) {
+                lines.push(`**Items:** ${meta.itemCount}`);
+            }
+            if (meta.childProcessIds && Array.isArray(meta.childProcessIds)) {
+                const completed = (meta.childProcessIds as string[]).length;
+                lines.push(`**Progress:** ${completed} child process(es)`);
+            }
+            lines.push('');
+        }
+
+        // Pipeline item specific info
+        if (process.type === 'pipeline-item' && process.metadata) {
+            const meta = process.metadata as Record<string, unknown>;
+            if (meta.description) {
+                lines.push(`**Item:** ${meta.description}`);
+            }
+            // Show prompt preview for pipeline items
+            if (process.fullPrompt) {
+                const cleanedPrompt = process.fullPrompt.replace(/\s+/g, ' ').trim();
+                const promptPreview = cleanedPrompt.length > 150
+                    ? cleanedPrompt.substring(0, 147) + '...'
+                    : cleanedPrompt;
+                lines.push('**Prompt:**');
+                lines.push(`> ${promptPreview}`);
+            }
+            // Show response preview if completed
+            if (process.result) {
+                const cleanedResult = process.result.replace(/\s+/g, ' ').trim();
+                const resultPreview = cleanedResult.length > 200
+                    ? cleanedResult.substring(0, 197) + '...'
+                    : cleanedResult;
+                lines.push('**Response:**');
+                lines.push(`> ${resultPreview}`);
+            }
+            lines.push('');
+        }
+
         // Timing
         lines.push(`**Started:** ${process.startTime.toLocaleString()}`);
         if (process.endTime) {
@@ -355,10 +405,27 @@ export class AIProcessItem extends vscode.TreeItem {
             lines.push('');
         }
 
-        // Prompt preview (only for clarification, discovery shows feature description above)
+        // Prompt and response preview (only for clarification, discovery shows feature description above)
         if (process.type === 'clarification') {
+            // Show longer prompt preview (up to 200 chars)
+            const promptText = process.fullPrompt || process.promptPreview;
+            const cleanedPrompt = promptText.replace(/\s+/g, ' ').trim();
+            const promptPreview = cleanedPrompt.length > 200
+                ? cleanedPrompt.substring(0, 197) + '...'
+                : cleanedPrompt;
             lines.push('**Prompt:**');
-            lines.push(`> ${process.promptPreview}`);
+            lines.push(`> ${promptPreview}`);
+            lines.push('');
+
+            // Show response preview if completed
+            if (process.result) {
+                const cleanedResult = process.result.replace(/\s+/g, ' ').trim();
+                const resultPreview = cleanedResult.length > 300
+                    ? cleanedResult.substring(0, 297) + '...'
+                    : cleanedResult;
+                lines.push('**Response:**');
+                lines.push(`> ${resultPreview}`);
+            }
         }
 
         // Session resume info (for clarification processes)
