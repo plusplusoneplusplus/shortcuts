@@ -320,13 +320,23 @@ function getValidationErrors(validation: ValidationResult): string {
 function getDiagramSection(mermaidDiagram: string): string {
     return `
         <div class="diagram-section">
-            <h3 class="section-title">Pipeline Flow</h3>
-            <div class="diagram-container">
-                <div class="mermaid" id="pipelineDiagram">
-${mermaidDiagram}
+            <div class="diagram-header">
+                <h3 class="section-title">Pipeline Flow</h3>
+                <div class="diagram-zoom-controls">
+                    <button class="diagram-zoom-btn" id="zoomOutBtn" title="Zoom out (Ctrl+Scroll down)">−</button>
+                    <span class="diagram-zoom-level" id="zoomLevel">100%</span>
+                    <button class="diagram-zoom-btn" id="zoomInBtn" title="Zoom in (Ctrl+Scroll up)">+</button>
+                    <button class="diagram-zoom-btn diagram-zoom-reset" id="zoomResetBtn" title="Reset zoom">⟲</button>
                 </div>
             </div>
-            <p class="diagram-hint">Click on a node to see details</p>
+            <div class="diagram-container" id="diagramContainer">
+                <div class="diagram-wrapper" id="diagramWrapper">
+                    <div class="mermaid" id="pipelineDiagram">
+${mermaidDiagram}
+                    </div>
+                </div>
+            </div>
+            <p class="diagram-hint">Click on a node to see details • Ctrl+Scroll to zoom • Drag to pan</p>
         </div>
     `;
 }
@@ -1016,11 +1026,65 @@ function getStyles(isDark: boolean): string {
             margin-bottom: 20px;
         }
 
+        .diagram-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
         .section-title {
             font-size: 14px;
             font-weight: 600;
-            margin: 0 0 12px 0;
+            margin: 0;
             color: var(--text-color);
+        }
+
+        .diagram-zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--code-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
+
+        .diagram-zoom-btn {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: transparent;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .diagram-zoom-btn:hover {
+            background: var(--hover-bg);
+        }
+
+        .diagram-zoom-btn:active {
+            background: var(--border-color);
+        }
+
+        .diagram-zoom-level {
+            font-size: 11px;
+            min-width: 40px;
+            text-align: center;
+            color: ${isDark ? '#9d9d9d' : '#666666'};
+        }
+
+        .diagram-zoom-reset {
+            margin-left: 4px;
+            border-left: 1px solid var(--border-color);
+            padding-left: 8px;
         }
 
         .diagram-container {
@@ -1029,7 +1093,28 @@ function getStyles(isDark: boolean): string {
             border-radius: 8px;
             padding: 20px;
             text-align: center;
-            overflow-x: auto;
+            overflow: hidden;
+            position: relative;
+            cursor: grab;
+            min-height: 200px;
+        }
+
+        .diagram-container:active {
+            cursor: grabbing;
+        }
+
+        .diagram-container.dragging {
+            cursor: grabbing;
+        }
+
+        .diagram-wrapper {
+            display: inline-block;
+            transform-origin: center center;
+            transition: transform 0.1s ease-out;
+        }
+
+        .diagram-wrapper.no-transition {
+            transition: none;
         }
 
         .diagram-hint {
@@ -2081,6 +2166,141 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             document.getElementById('collapseRowsBtn')?.addEventListener('click', () => {
                 vscode.postMessage({ type: 'toggleShowAllRows', payload: { showAllRows: false } });
             });
+        }
+
+        // Zoom/Pan state
+        const zoomState = {
+            scale: 1,
+            translateX: 0,
+            translateY: 0,
+            isDragging: false,
+            dragStartX: 0,
+            dragStartY: 0,
+            lastTranslateX: 0,
+            lastTranslateY: 0
+        };
+
+        const MIN_ZOOM = 0.25;
+        const MAX_ZOOM = 4;
+        const ZOOM_STEP = 0.25;
+
+        // Apply transform to diagram
+        function applyDiagramTransform() {
+            const wrapper = document.getElementById('diagramWrapper');
+            const zoomDisplay = document.getElementById('zoomLevel');
+            
+            if (wrapper) {
+                wrapper.style.transform = 'translate(' + zoomState.translateX + 'px, ' + zoomState.translateY + 'px) scale(' + zoomState.scale + ')';
+            }
+            
+            if (zoomDisplay) {
+                zoomDisplay.textContent = Math.round(zoomState.scale * 100) + '%';
+            }
+        }
+
+        // Zoom in button
+        document.getElementById('zoomInBtn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            zoomState.scale = Math.min(MAX_ZOOM, zoomState.scale + ZOOM_STEP);
+            applyDiagramTransform();
+        });
+
+        // Zoom out button
+        document.getElementById('zoomOutBtn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            zoomState.scale = Math.max(MIN_ZOOM, zoomState.scale - ZOOM_STEP);
+            applyDiagramTransform();
+        });
+
+        // Reset zoom button
+        document.getElementById('zoomResetBtn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            zoomState.scale = 1;
+            zoomState.translateX = 0;
+            zoomState.translateY = 0;
+            applyDiagramTransform();
+        });
+
+        // Mouse wheel zoom
+        const diagramContainer = document.getElementById('diagramContainer');
+        if (diagramContainer) {
+            diagramContainer.addEventListener('wheel', (e) => {
+                // Only zoom if Ctrl/Cmd is held
+                if (!e.ctrlKey && !e.metaKey) return;
+
+                e.preventDefault();
+                e.stopPropagation();
+
+                const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+                const newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomState.scale + delta));
+
+                // Zoom towards mouse position
+                if (newScale !== zoomState.scale) {
+                    const rect = diagramContainer.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
+
+                    // Calculate the point under the mouse in diagram coordinates
+                    const pointX = (mouseX - zoomState.translateX) / zoomState.scale;
+                    const pointY = (mouseY - zoomState.translateY) / zoomState.scale;
+
+                    zoomState.scale = newScale;
+
+                    // Adjust translation to keep the point under the mouse
+                    zoomState.translateX = mouseX - pointX * zoomState.scale;
+                    zoomState.translateY = mouseY - pointY * zoomState.scale;
+
+                    applyDiagramTransform();
+                }
+            }, { passive: false });
+
+            // Mouse drag for panning
+            diagramContainer.addEventListener('mousedown', (e) => {
+                // Only pan with left click when not clicking on a node
+                const target = e.target;
+                const isNode = target.closest('.node, .cluster, .label');
+
+                if (e.button === 0 && !isNode) {
+                    zoomState.isDragging = true;
+                    zoomState.dragStartX = e.clientX;
+                    zoomState.dragStartY = e.clientY;
+                    zoomState.lastTranslateX = zoomState.translateX;
+                    zoomState.lastTranslateY = zoomState.translateY;
+                    diagramContainer.classList.add('dragging');
+                    
+                    // Disable transition during drag for smooth movement
+                    const wrapper = document.getElementById('diagramWrapper');
+                    if (wrapper) wrapper.classList.add('no-transition');
+                    
+                    e.preventDefault();
+                }
+            });
+
+            diagramContainer.addEventListener('mousemove', (e) => {
+                if (!zoomState.isDragging) return;
+
+                const deltaX = e.clientX - zoomState.dragStartX;
+                const deltaY = e.clientY - zoomState.dragStartY;
+
+                zoomState.translateX = zoomState.lastTranslateX + deltaX;
+                zoomState.translateY = zoomState.lastTranslateY + deltaY;
+
+                applyDiagramTransform();
+            });
+
+            const stopDragging = () => {
+                if (zoomState.isDragging) {
+                    zoomState.isDragging = false;
+                    diagramContainer.classList.remove('dragging');
+                    
+                    // Re-enable transition
+                    const wrapper = document.getElementById('diagramWrapper');
+                    if (wrapper) wrapper.classList.remove('no-transition');
+                }
+            };
+
+            diagramContainer.addEventListener('mouseup', stopDragging);
+            diagramContainer.addEventListener('mouseleave', stopDragging);
         }
 
         // Initial setup
