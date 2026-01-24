@@ -1600,6 +1600,13 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
                 html = generateMapDetails(config, csvInfo?.headers);
             } else if (nodeId === 'REDUCE') {
                 html = generateReduceDetails(config, csvInfo?.rowCount);
+            } else if (nodeId === 'CSV_FILE') {
+                // Show CSV file details
+                const inputPath = config.input?.from?.path;
+                const inputResource = inputPath ? resources.find(r => 
+                    r.relativePath === inputPath || r.fileName === inputPath
+                ) : null;
+                html = generateCSVFileDetails(inputPath, csvInfo, inputResource);
             } else if (nodeId.startsWith('RES')) {
                 const idx = parseInt(nodeId.replace('RES', ''), 10);
                 const inputPath = config.input?.from?.path || config.input?.path;
@@ -1931,6 +1938,48 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             html += '<div class="resource-actions">';
             html += '<button class="btn btn-secondary" onclick="openFile(\\'' + escapeHtml(resource.filePath) + '\\')">Open File</button>';
             html += '</div></div>';
+            return html;
+        }
+
+        function generateCSVFileDetails(csvPath, csvInfo, resource) {
+            let html = '<div class="detail-section active">';
+            html += '<h4 class="detail-title">📄 CSV Input File</h4>';
+            html += '<div class="detail-grid">';
+            
+            if (csvPath) {
+                html += '<div class="detail-item"><span class="detail-label">File:</span><span class="detail-value file-link" data-path="' + escapeHtml(csvPath) + '">' + escapeHtml(csvPath) + '</span></div>';
+            }
+            
+            if (resource) {
+                html += '<div class="detail-item"><span class="detail-label">Size:</span><span class="detail-value">' + formatFileSize(resource.size) + '</span></div>';
+            }
+            
+            if (csvInfo) {
+                html += '<div class="detail-item"><span class="detail-label">Rows:</span><span class="detail-value">' + csvInfo.rowCount + '</span></div>';
+                html += '<div class="detail-item"><span class="detail-label">Columns:</span><span class="detail-value">' + csvInfo.headers.length + '</span></div>';
+            }
+            
+            html += '</div>';
+            
+            // Show column names
+            if (csvInfo && csvInfo.headers && csvInfo.headers.length > 0) {
+                html += '<div class="variables-section">';
+                html += '<h5 class="variables-title">📋 Columns</h5>';
+                html += '<ul class="variables-list">';
+                csvInfo.headers.forEach(h => {
+                    html += '<li class="variable-found"><code>' + escapeHtml(h) + '</code></li>';
+                });
+                html += '</ul></div>';
+            }
+            
+            // Open file button
+            if (resource && resource.filePath) {
+                html += '<div class="resource-actions">';
+                html += '<button class="btn btn-secondary" onclick="openFile(\\'' + escapeHtml(resource.filePath) + '\\')">Open File</button>';
+                html += '</div>';
+            }
+            
+            html += '</div>';
             return html;
         }
 

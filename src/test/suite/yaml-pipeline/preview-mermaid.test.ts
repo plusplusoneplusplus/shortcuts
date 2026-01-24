@@ -279,7 +279,7 @@ suite('Pipeline Preview Mermaid Tests', () => {
             assert.ok(result.includes('Type: json'), 'Should show reduce type');
         });
 
-        test('should add resource nodes when provided', () => {
+        test('should add CSV_FILE node when CSV source is used', () => {
             const result = generatePipelineMermaid(
                 sampleConfig,
                 sampleCsvInfo,
@@ -287,12 +287,12 @@ suite('Pipeline Preview Mermaid Tests', () => {
                 { includeResources: true }
             );
             
-            // Should include resource nodes (excluding input.csv which is the main input)
-            assert.ok(result.includes('RES0['), 'Should have resource node');
-            assert.ok(result.includes('rules.csv'), 'Should include rules.csv');
+            // Should include CSV_FILE node for the input file
+            assert.ok(result.includes('CSV_FILE['), 'Should have CSV_FILE node');
+            assert.ok(result.includes('input.csv'), 'Should include input.csv filename');
         });
 
-        test('should filter out main input from resources', () => {
+        test('should connect CSV_FILE to INPUT node', () => {
             const result = generatePipelineMermaid(
                 sampleConfig,
                 sampleCsvInfo,
@@ -300,24 +300,12 @@ suite('Pipeline Preview Mermaid Tests', () => {
                 { includeResources: true }
             );
             
-            // Should not duplicate input.csv as a resource
-            const inputMatches = (result.match(/input\.csv/g) || []).length;
-            // Should appear only once (in the INPUT node)
-            assert.ok(inputMatches <= 2, 'Should not duplicate input file as resource');
+            // CSV_FILE should connect to INPUT, not directly to MAP
+            assert.ok(result.includes('CSV_FILE -->'), 'Should have connection from CSV_FILE');
+            assert.ok(result.includes('| INPUT'), 'Should connect to INPUT node');
         });
 
-        test('should not include resources when disabled', () => {
-            const result = generatePipelineMermaid(
-                sampleConfig,
-                sampleCsvInfo,
-                sampleResources,
-                { includeResources: false }
-            );
-            
-            assert.ok(!result.includes('RES0'), 'Should not have resource nodes');
-        });
-
-        test('should use dotted lines for resource connections', () => {
+        test('should not include other resource files as separate nodes', () => {
             const result = generatePipelineMermaid(
                 sampleConfig,
                 sampleCsvInfo,
@@ -325,7 +313,21 @@ suite('Pipeline Preview Mermaid Tests', () => {
                 { includeResources: true }
             );
             
-            assert.ok(result.includes('-.->'), 'Should use dotted arrow for resources');
+            // Should NOT have RES0, RES1, etc. nodes anymore
+            assert.ok(!result.includes('RES0'), 'Should not have RES0 node');
+            // rules.csv should not appear as a separate node
+            assert.ok(!result.includes('rules.csv'), 'Should not include other resource files');
+        });
+
+        test('should include click handler for CSV_FILE', () => {
+            const result = generatePipelineMermaid(
+                sampleConfig,
+                sampleCsvInfo,
+                sampleResources,
+                { includeResources: true }
+            );
+            
+            assert.ok(result.includes('click CSV_FILE'), 'Should have CSV_FILE click handler');
         });
     });
 
@@ -412,7 +414,11 @@ suite('Pipeline Preview Mermaid Tests', () => {
             assert.ok(result.includes('3 fields'));
             assert.ok(result.includes('10 parallel'));
             assert.ok(result.includes('Type: json'));
-            assert.ok(result.includes('template.txt'));
+            // CSV_FILE node should show the input file
+            assert.ok(result.includes('CSV_FILE['), 'Should have CSV_FILE node');
+            assert.ok(result.includes('data/input.csv') || result.includes('input.csv'), 'Should show input file');
+            // Other resources (template.txt) should NOT be shown as separate nodes
+            assert.ok(!result.includes('template.txt'), 'Should not show other resource files');
         });
     });
 

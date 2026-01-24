@@ -104,6 +104,21 @@ export function generatePipelineMermaid(
         'prompt' in config.input.generate &&
         'schema' in config.input.generate;
 
+    // Check if there's a CSV source file
+    const hasCSVSource = isCSVSource(config.input.from);
+    const csvPath = hasCSVSource ? (config.input.from as { path: string }).path : undefined;
+
+    // Find the input file resource info (if available)
+    const inputFileResource = csvPath && resources
+        ? resources.find(r => r.relativePath === csvPath || r.fileName === csvPath)
+        : undefined;
+
+    // CSV_FILE node (only if using CSV source)
+    if (hasCSVSource && csvPath) {
+        const csvFileLabel = buildCSVFileNodeLabel(csvPath, csvInfo, inputFileResource);
+        lines.push(`    CSV_FILE["${csvFileLabel}"]`);
+    }
+
     // GENERATE node (if applicable)
     if (hasGenerateConfig) {
         const generateLabel = buildGenerateNodeLabel(config);
@@ -122,25 +137,18 @@ export function generatePipelineMermaid(
     const reduceLabel = buildReduceNodeLabel(config);
     lines.push(`    REDUCE["${reduceLabel}"]`);
 
-    // Add resource nodes if enabled
-    if (opts.includeResources && resources && resources.length > 0) {
-        // Filter out the main input file to avoid duplication
-        const csvPath = isCSVSource(config.input.from) ? config.input.from.path : undefined;
-        const otherResources = resources.filter(r =>
-            !csvPath || (r.relativePath !== csvPath && r.fileName !== csvPath)
-        );
-
-        otherResources.forEach((resource, idx) => {
-            const resId = `RES${idx}`;
-            const resLabel = buildResourceNodeLabel(resource);
-            lines.push(`    ${resId}["${resLabel}"]`);
-        });
-    }
-
     // Add empty line before links
     lines.push('');
 
     // Links between nodes
+    // CSV file -> INPUT (if CSV source)
+    if (hasCSVSource && csvPath) {
+        const csvLinkLabel = csvInfo
+            ? `${csvInfo.rowCount} rows`
+            : 'reads';
+        lines.push(`    CSV_FILE -->|"${csvLinkLabel}"| INPUT`);
+    }
+
     if (hasGenerateConfig) {
         lines.push(`    GENERATE -->|"AI generates"| INPUT`);
     }
@@ -154,23 +162,13 @@ export function generatePipelineMermaid(
     const mapLinkLabel = outputFields.length > 0 ? `${outputFields.length} fields` : 'text';
     lines.push(`    MAP -->|"${mapLinkLabel}"| REDUCE`);
 
-    // Add resource links
-    if (opts.includeResources && resources && resources.length > 0) {
-        const csvPath = isCSVSource(config.input.from) ? config.input.from.path : undefined;
-        const otherResources = resources.filter(r =>
-            !csvPath || (r.relativePath !== csvPath && r.fileName !== csvPath)
-        );
-
-        otherResources.forEach((_, idx) => {
-            const resId = `RES${idx}`;
-            lines.push(`    ${resId} -.->|"referenced"| MAP`);
-        });
-    }
-
     // Add empty line before click handlers
     lines.push('');
 
     // Click handlers - these will be handled by the webview
+    if (hasCSVSource && csvPath) {
+        lines.push('    click CSV_FILE nodeClick');
+    }
     if (hasGenerateConfig) {
         lines.push('    click GENERATE nodeClick');
     }
@@ -178,38 +176,19 @@ export function generatePipelineMermaid(
     lines.push('    click MAP nodeClick');
     lines.push('    click REDUCE nodeClick');
 
-    if (opts.includeResources && resources && resources.length > 0) {
-        const csvPath = isCSVSource(config.input.from) ? config.input.from.path : undefined;
-        const otherResources = resources.filter(r =>
-            !csvPath || (r.relativePath !== csvPath && r.fileName !== csvPath)
-        );
-
-        otherResources.forEach((_, idx) => {
-            lines.push(`    click RES${idx} nodeClick`);
-        });
-    }
-
     // Add empty line before styles
     lines.push('');
 
     // Styling
+    if (hasCSVSource && csvPath) {
+        lines.push('    style CSV_FILE fill:#9E9E9E,stroke:#616161,color:#fff');
+    }
     if (hasGenerateConfig) {
         lines.push('    style GENERATE fill:#9C27B0,stroke:#6A1B9A,color:#fff');
     }
     lines.push('    style INPUT fill:#4CAF50,stroke:#2E7D32,color:#fff');
     lines.push('    style MAP fill:#2196F3,stroke:#1565C0,color:#fff');
     lines.push('    style REDUCE fill:#FF9800,stroke:#E65100,color:#fff');
-
-    if (opts.includeResources && resources && resources.length > 0) {
-        const csvPath = isCSVSource(config.input.from) ? config.input.from.path : undefined;
-        const otherResources = resources.filter(r =>
-            !csvPath || (r.relativePath !== csvPath && r.fileName !== csvPath)
-        );
-
-        otherResources.forEach((_, idx) => {
-            lines.push(`    style RES${idx} fill:#9E9E9E,stroke:#616161,color:#fff`);
-        });
-    }
 
     return lines.join('\n');
 }
@@ -224,6 +203,26 @@ function buildGenerateNodeLabel(config: PipelineConfig): string {
     const generateConfig = config.input?.generate;
     if (generateConfig && 'schema' in generateConfig) {
         parts.push(`${generateConfig.schema.length} fields`);
+    }
+
+    return escapeMermaidLabel(parts.join('<br/>'));
+}
+
+/**
+ * Build the label for the CSV_FILE node (input file)
+ */
+function buildCSVFileNodeLabel(
+    csvPath: string,
+    csvInfo?: CSVParseResult,
+    resourceInfo?: ResourceFileInfo
+): string {
+    const parts: string[] = ['📄 CSV File'];
+    parts.push(truncateText(csvPath, 18));
+
+    if (resourceInfo) {
+        parts.push(formatFileSize(resourceInfo.size));
+    } else if (csvInfo) {
+        parts.push(`${csvInfo.headers.length} cols`);
     }
 
     return escapeMermaidLabel(parts.join('<br/>'));
