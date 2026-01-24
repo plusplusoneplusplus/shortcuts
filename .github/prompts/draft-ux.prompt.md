@@ -32,4 +32,4 @@ Draft a user experience specification for the requested feature or ask. Include:
 
 7. **Discoverability**: How will users learn about this feature?
 
-Focus on clarity and simplicity. Prefer conventions already established in this extension.
+Focus on clarity and simplicity. Prefer conventions already established in this extension. No code details.

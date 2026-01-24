@@ -233,22 +233,22 @@ export interface AIProcess {
     resultFilePath?: string;
     /** Path to the file containing raw stdout from the AI tool */
     rawStdoutFilePath?: string;
-    
+
     // ========================================================================
     // Generic metadata (preferred for new features)
     // ========================================================================
-    
+
     /** Generic feature-specific metadata. Feature modules should use this. */
     metadata?: GenericProcessMetadata;
-    
+
     /** Generic group metadata for grouped processes */
     groupMetadata?: GenericGroupMetadata;
-    
+
     // ========================================================================
     // Legacy metadata fields (kept for backward compatibility)
     // New features should use `metadata` and `groupMetadata` instead.
     // ========================================================================
-    
+
     /** @deprecated Use metadata with type='code-review' instead */
     codeReviewMetadata?: CodeReviewProcessMetadata;
     /** Discovery specific metadata (if type is 'discovery') */
@@ -287,12 +287,36 @@ export interface SerializedAIProcess {
     codeReviewGroupMetadata?: CodeReviewGroupMetadata;
     structuredResult?: string;
     parentProcessId?: string;
+
+    // ========================================================================
+    // Session Resume Fields (Added 2026-01)
+    // ========================================================================
+
+    /** SDK session ID for resuming sessions (only for copilot-sdk backend) */
+    sdkSessionId?: string;
+    /** Backend type used for this process */
+    backend?: AIBackendType;
+    /** Working directory used for the original session */
+    workingDirectory?: string;
+}
+
+/**
+ * Extended AIProcess with session resume fields (internal use)
+ * These fields are tracked in-memory and persisted for session resume functionality.
+ */
+export interface TrackedProcessFields {
+    /** SDK session ID for resuming sessions */
+    sdkSessionId?: string;
+    /** Backend type used for this process */
+    backend?: AIBackendType;
+    /** Working directory used for the original session */
+    workingDirectory?: string;
 }
 
 /**
  * Convert AIProcess to serialized format for storage
  */
-export function serializeProcess(process: AIProcess): SerializedAIProcess {
+export function serializeProcess(process: AIProcess & Partial<TrackedProcessFields>): SerializedAIProcess {
     return {
         id: process.id,
         type: process.type,
@@ -311,7 +335,11 @@ export function serializeProcess(process: AIProcess): SerializedAIProcess {
         discoveryMetadata: process.discoveryMetadata,
         codeReviewGroupMetadata: process.codeReviewGroupMetadata,
         structuredResult: process.structuredResult,
-        parentProcessId: process.parentProcessId
+        parentProcessId: process.parentProcessId,
+        // Session resume fields
+        sdkSessionId: process.sdkSessionId,
+        backend: process.backend,
+        workingDirectory: process.workingDirectory
     };
 }
 
