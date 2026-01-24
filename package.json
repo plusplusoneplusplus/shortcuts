@@ -1212,6 +1212,18 @@
         "icon": "$(trash)"
       },
       {
+        "command": "gitDiffComments.resolveAll",
+        "title": "Resolve All Comments",
+        "category": "Git Diff Comments",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "gitDiffComments.deleteAll",
+        "title": "Delete All Comments",
+        "category": "Git Diff Comments",
+        "icon": "$(trash)"
+      },
+      {
         "command": "gitView.openWithMarkdownReview",
         "title": "Open with Markdown Review Editor",
         "category": "Git",
@@ -2335,12 +2347,17 @@
         {
           "command": "gitDiffComments.cleanupObsolete",
           "when": "view == gitView && viewItem == gitSection_comments",
-          "group": "inline"
+          "group": "inline@1"
         },
         {
-          "command": "gitDiffComments.deleteAllResolved",
+          "command": "gitDiffComments.resolveAll",
           "when": "view == gitView && viewItem == gitSection_comments",
-          "group": "inline"
+          "group": "inline@2"
+        },
+        {
+          "command": "gitDiffComments.deleteAll",
+          "when": "view == gitView && viewItem == gitSection_comments",
+          "group": "inline@3"
         },
         {
           "command": "shortcuts.reviewPendingAgainstRules",

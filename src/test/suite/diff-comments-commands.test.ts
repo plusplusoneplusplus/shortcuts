@@ -500,6 +500,66 @@ suite('MockDiffCommentsManager Operations', () => {
         assert.strictEqual(manager.getOpenCommentCount(), 2);
         assert.strictEqual(manager.getResolvedCommentCount(), 1);
     });
+
+    test('should resolve all open comments', async () => {
+        const comments = [
+            createTestComment('1', 'src/parser.ts', 'Open 1', { status: 'open' }),
+            createTestComment('2', 'src/parser.ts', 'Open 2', { status: 'open' }),
+            createTestComment('3', 'src/parser.ts', 'Already resolved', { status: 'resolved' })
+        ];
+        const manager = new MockDiffCommentsManager(comments);
+
+        // Resolve all open comments
+        const openComments = manager.getOpenComments();
+        for (const comment of openComments) {
+            await manager.resolveComment(comment.id);
+        }
+
+        assert.strictEqual(manager.getOpenCommentCount(), 0);
+        assert.strictEqual(manager.getResolvedCommentCount(), 3);
+        assert.strictEqual(manager.getComment('1')?.status, 'resolved');
+        assert.strictEqual(manager.getComment('2')?.status, 'resolved');
+        assert.strictEqual(manager.getComment('3')?.status, 'resolved');
+    });
+
+    test('should delete all comments regardless of status', async () => {
+        const comments = [
+            createTestComment('1', 'src/parser.ts', 'Open 1', { status: 'open' }),
+            createTestComment('2', 'src/parser.ts', 'Open 2', { status: 'open' }),
+            createTestComment('3', 'src/parser.ts', 'Resolved', { status: 'resolved' })
+        ];
+        const manager = new MockDiffCommentsManager(comments);
+
+        // Delete all comments
+        const allComments = [...manager.getAllComments()];
+        for (const comment of allComments) {
+            await manager.deleteComment(comment.id);
+        }
+
+        assert.strictEqual(manager.getAllComments().length, 0);
+        assert.strictEqual(manager.getOpenCommentCount(), 0);
+        assert.strictEqual(manager.getResolvedCommentCount(), 0);
+    });
+
+    test('should delete all comments from multiple categories', async () => {
+        const comments = [
+            createTestComment('1', 'src/parser.ts', 'Pending open', { status: 'open' }),
+            createTestComment('2', 'src/utils.ts', 'Pending resolved', { status: 'resolved' }),
+            createTestComment('3', 'src/api.ts', 'Committed open', { status: 'open', commitHash: 'abc123' }),
+            createTestComment('4', 'src/api.ts', 'Committed resolved', { status: 'resolved', commitHash: 'abc123' })
+        ];
+        const manager = new MockDiffCommentsManager(comments);
+
+        assert.strictEqual(manager.getAllComments().length, 4);
+
+        // Delete all comments
+        const allComments = [...manager.getAllComments()];
+        for (const comment of allComments) {
+            await manager.deleteComment(comment.id);
+        }
+
+        assert.strictEqual(manager.getAllComments().length, 0);
+    });
 });
 
 suite('Prompt Output Format Validation', () => {

@@ -126,6 +126,22 @@ export class DiffCommentsCommands implements vscode.Disposable {
                 () => this.deleteAllResolvedComments()
             )
         );
+
+        // Resolve all comments command (view title action)
+        this.disposables.push(
+            vscode.commands.registerCommand(
+                'gitDiffComments.resolveAll',
+                () => this.resolveAllComments()
+            )
+        );
+
+        // Delete all comments command (view title action)
+        this.disposables.push(
+            vscode.commands.registerCommand(
+                'gitDiffComments.deleteAll',
+                () => this.deleteAllComments()
+            )
+        );
     }
 
     /**
@@ -454,6 +470,80 @@ export class DiffCommentsCommands implements vscode.Disposable {
 
         vscode.window.showInformationMessage(
             `🗑 Deleted ${resolvedComments.length} resolved comment(s)`
+        );
+    }
+
+    /**
+     * Resolve all open comments across all categories
+     */
+    private async resolveAllComments(): Promise<void> {
+        const allComments = this.commentsManager.getAllComments();
+        const openComments = allComments.filter(c => c.status === 'open');
+
+        if (openComments.length === 0) {
+            vscode.window.showInformationMessage('No open comments to resolve.');
+            return;
+        }
+
+        // Resolve all comments
+        const resolvedIds: string[] = [];
+        for (const comment of openComments) {
+            await this.commentsManager.resolveComment(comment.id);
+            resolvedIds.push(comment.id);
+        }
+
+        // Store undo state
+        this.lastResolveUndo = {
+            commentIds: resolvedIds,
+            timestamp: Date.now()
+        };
+
+        // Show notification with undo option
+        const action = await vscode.window.showInformationMessage(
+            `✓ Resolved ${openComments.length} comment(s)`,
+            'Undo'
+        );
+
+        if (action === 'Undo') {
+            await this.undoResolve();
+        }
+    }
+
+    /**
+     * Delete all comments across all categories regardless of status
+     */
+    private async deleteAllComments(): Promise<void> {
+        const allComments = this.commentsManager.getAllComments();
+
+        if (allComments.length === 0) {
+            vscode.window.showInformationMessage('No comments to delete.');
+            return;
+        }
+
+        const openCount = allComments.filter(c => c.status === 'open').length;
+        const resolvedCount = allComments.filter(c => c.status === 'resolved').length;
+        
+        let description = `${allComments.length} comment(s)`;
+        if (openCount > 0 && resolvedCount > 0) {
+            description = `${allComments.length} comment(s) (${openCount} open, ${resolvedCount} resolved)`;
+        }
+
+        const confirmed = await vscode.window.showWarningMessage(
+            `Are you sure you want to delete all ${description}?`,
+            { modal: true },
+            'Delete All'
+        );
+
+        if (confirmed !== 'Delete All') {
+            return;
+        }
+
+        for (const comment of allComments) {
+            await this.commentsManager.deleteComment(comment.id);
+        }
+
+        vscode.window.showInformationMessage(
+            `🗑 Deleted ${allComments.length} comment(s)`
         );
     }
 
