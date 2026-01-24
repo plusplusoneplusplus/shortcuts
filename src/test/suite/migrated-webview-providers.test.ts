@@ -948,7 +948,10 @@ suite('Integration Tests - Message Flow', () => {
         assert.strictEqual(received.length, 100, 'Should receive all messages');
     });
 
-    test('should handle async handlers correctly', async () => {
+    test('should handle async handlers correctly', async function() {
+        // Increase timeout for CI environments (especially Windows)
+        this.timeout(5000);
+        
         interface TestMsg { type: string; delay: number; }
         const router = new TestMessageRouter<TestMsg>();
         const completionOrder: number[] = [];

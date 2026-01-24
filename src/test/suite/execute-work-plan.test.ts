@@ -101,9 +101,13 @@ suite('Execute Work Plan - Working Directory Resolution', () => {
 
         const configPath = '{workspaceFolder}/src';
         const resolved = configPath.replace('{workspaceFolder}', tempDir);
+        
+        // Normalize path separators for cross-platform comparison
+        const normalizedResolved = resolved.replace(/\//g, path.sep);
+        const expectedPath = path.join(tempDir, 'src');
 
-        assert.strictEqual(resolved, path.join(tempDir, 'src'));
-        assert.ok(fs.existsSync(resolved));
+        assert.strictEqual(normalizedResolved, expectedPath);
+        assert.ok(fs.existsSync(normalizedResolved));
     });
 
     test('should fallback to workspace root if src does not exist', () => {
@@ -124,9 +128,12 @@ suite('Execute Work Plan - Working Directory Resolution', () => {
 
         const configPath = '{workspaceFolder}/packages/app';
         const resolved = configPath.replace('{workspaceFolder}', tempDir);
+        
+        // Normalize path separators for cross-platform comparison
+        const normalizedResolved = resolved.replace(/\//g, path.sep);
 
-        assert.strictEqual(resolved, customDir);
-        assert.ok(fs.existsSync(resolved));
+        assert.strictEqual(normalizedResolved, customDir);
+        assert.ok(fs.existsSync(normalizedResolved));
     });
 
     test('should handle absolute path configuration', () => {
