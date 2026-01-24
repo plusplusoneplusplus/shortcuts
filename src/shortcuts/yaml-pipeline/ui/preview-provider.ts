@@ -16,7 +16,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
-import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig, AIInvoker } from '../types';
+import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig } from '../types';
 import { readCSVFile, resolveCSVPath, getCSVPreview } from '../csv-reader';
 import { PipelineInfo, ValidationResult, PipelineSource } from './types';
 import { PipelineManager } from './pipeline-manager';
@@ -34,7 +34,7 @@ import {
     toGeneratedItems,
     createEmptyItem
 } from '../input-generator';
-import { invokeCopilotCLI, getAIToolSetting, copyToClipboard } from '../../ai-service';
+import { createAIInvoker } from '../../ai-service';
 import { getWorkspaceRoot } from '../../shared/workspace-utils';
 import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
 
@@ -462,30 +462,13 @@ export class PipelinePreviewEditorProvider implements vscode.CustomTextEditorPro
             this.generateStates.set(docKey, { status: 'generating' });
             await this.updateWebview(webviewPanel.webview, document, packagePath);
 
-            // Create AI invoker
-            const aiTool = getAIToolSetting();
+            // Create AI invoker using unified factory (supports SDK → CLI fallback)
             const workspaceRoot = getWorkspaceRoot() || packagePath;
-
-            const aiInvoker: AIInvoker = async (prompt: string, options?: { model?: string }): Promise<{ success: boolean; response?: string; error?: string }> => {
-                if (aiTool === 'clipboard') {
-                    await copyToClipboard(prompt);
-                    // In clipboard mode, we can't get a response automatically
-                    // Show a dialog for the user to paste the response
-                    const response = await vscode.window.showInputBox({
-                        prompt: 'Paste the AI response (JSON array)',
-                        placeHolder: '[{"field1": "value1", ...}, ...]',
-                        ignoreFocusOut: true
-                    });
-                    if (response) {
-                        return { success: true, response };
-                    }
-                    return { success: false, error: 'No response provided' };
-                } else {
-                    // Use Copilot CLI with optional model
-                    const result = await invokeCopilotCLI(prompt, workspaceRoot, undefined, undefined, options?.model);
-                    return result;
-                }
-            };
+            const aiInvoker = createAIInvoker({
+                workingDirectory: workspaceRoot,
+                featureName: 'Pipeline Input Generation',
+                clipboardFallback: true
+            });
 
             // Generate items
             const result = await generateInputItems(generateConfig, aiInvoker);

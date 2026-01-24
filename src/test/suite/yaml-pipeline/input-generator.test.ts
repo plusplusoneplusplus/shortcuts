@@ -613,4 +613,96 @@ suite('Input Generator', () => {
             assert.strictEqual(error.cause, cause);
         });
     });
+
+    suite('Unified AI Invoker Factory Integration', () => {
+        // Note: The PipelinePreviewEditorProvider now uses createAIInvoker from ai-invoker-factory
+        // instead of directly calling invokeCopilotCLI. This test verifies the factory is
+        // compatible with the generateInputItems function signature.
+
+        test('createAIInvoker returns a function compatible with generateInputItems', async () => {
+            // Import the factory to verify it exports correctly
+            const { createAIInvoker } = await import('../../../shortcuts/ai-service/ai-invoker-factory');
+
+            // Verify the factory function exists
+            assert.strictEqual(typeof createAIInvoker, 'function');
+
+            // Create an invoker with pipeline-appropriate options
+            const invoker = createAIInvoker({
+                workingDirectory: '/test/workspace',
+                featureName: 'Pipeline Input Generation',
+                clipboardFallback: true
+            });
+
+            // Verify the invoker is a function
+            assert.strictEqual(typeof invoker, 'function');
+        });
+
+        test('unified invoker can be used with generateInputItems', async () => {
+            // This test verifies that the function signature is compatible
+            const config: GenerateInputConfig = {
+                prompt: 'Generate test cases',
+                schema: ['name', 'value']
+            };
+
+            // Create a mock invoker that mimics the unified invoker's signature
+            // The actual unified invoker uses SDK → CLI → clipboard fallback
+            const mockUnifiedInvoker = async (
+                prompt: string,
+                options?: { model?: string }
+            ): Promise<{ success: boolean; response?: string; error?: string; sessionId?: string }> => {
+                // Verify the prompt was built correctly
+                assert.ok(prompt.includes('Generate test cases'));
+                assert.ok(prompt.includes('name, value'));
+
+                return {
+                    success: true,
+                    response: '[{"name": "Test 1", "value": "100"}]',
+                    sessionId: 'mock-session-123'  // SDK sessions include sessionId
+                };
+            };
+
+            const result = await generateInputItems(config, mockUnifiedInvoker);
+
+            assert.strictEqual(result.success, true);
+            assert.ok(result.items);
+            assert.strictEqual(result.items.length, 1);
+            assert.strictEqual(result.items[0].name, 'Test 1');
+        });
+
+        test('unified invoker handles SDK failure gracefully', async () => {
+            const config: GenerateInputConfig = {
+                prompt: 'Generate items',
+                schema: ['name']
+            };
+
+            // Mock invoker that simulates SDK failure with fallback message
+            const mockFailedInvoker = async () => ({
+                success: false,
+                error: 'SDK failed, falling back to CLI: Connection timeout'
+            });
+
+            const result = await generateInputItems(config, mockFailedInvoker);
+
+            assert.strictEqual(result.success, false);
+            assert.ok(result.error?.includes('SDK failed'));
+        });
+
+        test('unified invoker handles clipboard mode', async () => {
+            const config: GenerateInputConfig = {
+                prompt: 'Generate items',
+                schema: ['name']
+            };
+
+            // Mock invoker that simulates clipboard mode response
+            const mockClipboardInvoker = async () => ({
+                success: false,
+                error: 'Using clipboard mode - prompt copied to clipboard'
+            });
+
+            const result = await generateInputItems(config, mockClipboardInvoker);
+
+            assert.strictEqual(result.success, false);
+            assert.ok(result.error?.includes('clipboard'));
+        });
+    });
 });
