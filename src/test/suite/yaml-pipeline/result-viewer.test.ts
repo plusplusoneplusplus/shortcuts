@@ -16,7 +16,10 @@ import {
     getStatusClass,
     PipelineResultViewData,
     PipelineItemResultNode,
-    ResultViewerFilterState
+    ResultViewerFilterState,
+    RetryState,
+    ResultViewerMessage,
+    ResultViewerExtensionMessage
 } from '../../../shortcuts/yaml-pipeline/ui/result-viewer-types';
 import {
     getItemDetailContent,
@@ -1195,5 +1198,283 @@ suite('Pipeline Result Viewer - Reduce Result Display Tests', () => {
         const parsed = JSON.parse(formattedOutput);
         assert.strictEqual(parsed.analysis.bugs.length, 2);
         assert.strictEqual(parsed.analysis.bugs[0].severity, 'high');
+    });
+});
+
+suite('Pipeline Result Viewer - Retry Functionality Tests', () => {
+    // Sample execution stats for testing
+    const baseExecutionStats: ExecutionStats = {
+        totalItems: 5,
+        successfulMaps: 3,
+        failedMaps: 2,
+        mapPhaseTimeMs: 4000,
+        reducePhaseTimeMs: 1000,
+        maxConcurrency: 3
+    };
+
+    test('PipelineItemResultNode should support retry-related fields', () => {
+        const nodeWithRetry: PipelineItemResultNode = {
+            id: 'item-0',
+            index: 0,
+            input: { id: '1', title: 'Test' },
+            output: { result: 'success' },
+            success: true,
+            retryCount: 2,
+            originalError: 'Connection timeout',
+            retriedAt: new Date('2024-01-15T10:30:00Z'),
+            executionTimeMs: 1500
+        };
+
+        assert.strictEqual(nodeWithRetry.retryCount, 2);
+        assert.strictEqual(nodeWithRetry.originalError, 'Connection timeout');
+        assert.ok(nodeWithRetry.retriedAt instanceof Date);
+    });
+
+    test('PipelineItemResultNode retry fields should be optional', () => {
+        const nodeWithoutRetry: PipelineItemResultNode = {
+            id: 'item-0',
+            index: 0,
+            input: { id: '1', title: 'Test' },
+            output: { result: 'success' },
+            success: true
+        };
+
+        assert.strictEqual(nodeWithoutRetry.retryCount, undefined);
+        assert.strictEqual(nodeWithoutRetry.originalError, undefined);
+        assert.strictEqual(nodeWithoutRetry.retriedAt, undefined);
+    });
+
+    test('PipelineResultViewData should support pipelineConfig for retry', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'Test Pipeline',
+            packageName: 'test-pkg',
+            success: false,
+            totalTimeMs: 5000,
+            executionStats: baseExecutionStats,
+            itemResults: [],
+            completedAt: new Date(),
+            pipelineConfig: {
+                name: 'Test Pipeline',
+                input: { items: [{ id: '1' }] },
+                map: { prompt: 'Test {{id}}', output: ['result'], parallel: 5 },
+                reduce: { type: 'json' }
+            },
+            pipelineDirectory: '/path/to/pipeline'
+        };
+
+        assert.ok(viewData.pipelineConfig);
+        assert.strictEqual(viewData.pipelineConfig.name, 'Test Pipeline');
+        assert.strictEqual(viewData.pipelineDirectory, '/path/to/pipeline');
+    });
+
+    test('PipelineResultViewData should support lastRetryAt timestamp', () => {
+        const viewData: PipelineResultViewData = {
+            pipelineName: 'Test Pipeline',
+            packageName: 'test-pkg',
+            success: true,
+            totalTimeMs: 5000,
+            executionStats: baseExecutionStats,
+            itemResults: [],
+            completedAt: new Date('2024-01-15T10:00:00Z'),
+            lastRetryAt: new Date('2024-01-15T10:30:00Z')
+        };
+
+        assert.ok(viewData.lastRetryAt);
+        assert.ok(viewData.lastRetryAt > viewData.completedAt);
+    });
+
+    test('getItemDetailContent should show retry information for retried items', () => {
+        const retriedNode: PipelineItemResultNode = {
+            id: 'item-0',
+            index: 0,
+            input: { id: '1', title: 'Test Bug' },
+            output: { severity: 'high' },
+            success: true,
+            retryCount: 1,
+            originalError: 'Connection timeout after 600000ms',
+            retriedAt: new Date('2024-01-15T10:30:00Z'),
+            executionTimeMs: 2500
+        };
+
+        const html = getItemDetailContent(retriedNode);
+
+        // Should show retry info section
+        assert.ok(html.includes('Retry Information'), 'Should show retry info section');
+        assert.ok(html.includes('🔄'), 'Should have retry emoji');
+        assert.ok(html.includes('Succeeded (after retry)'), 'Should show success after retry');
+        assert.ok(html.includes('Original Error'), 'Should show original error');
+        assert.ok(html.includes('Connection timeout'), 'Should show original error message');
+        assert.ok(html.includes('Retry Attempts'), 'Should show retry count');
+        assert.ok(html.includes('retry-badge-large'), 'Should have retry badge');
+    });
+
+    test('getItemDetailContent should show retry failed state', () => {
+        const stillFailedNode: PipelineItemResultNode = {
+            id: 'item-1',
+            index: 1,
+            input: { id: '2', title: 'Failing Bug' },
+            output: {},
+            success: false,
+            error: 'Rate limit exceeded',
+            retryCount: 2,
+            originalError: 'Connection timeout',
+            retriedAt: new Date('2024-01-15T10:30:00Z'),
+            executionTimeMs: 500
+        };
+
+        const html = getItemDetailContent(stillFailedNode);
+
+        // Should show retry info with failed state
+        assert.ok(html.includes('Retry Information'), 'Should show retry info section');
+        assert.ok(html.includes('Still failed'), 'Should show still failed status');
+        assert.ok(html.includes('Original Error'), 'Should show original error');
+        assert.ok(html.includes('Connection timeout'), 'Should show original error');
+        assert.ok(html.includes('Rate limit exceeded'), 'Should show current error');
+    });
+
+    test('getItemDetailContent should not show retry info for non-retried items', () => {
+        const normalNode: PipelineItemResultNode = {
+            id: 'item-0',
+            index: 0,
+            input: { id: '1', title: 'Normal Bug' },
+            output: { severity: 'low' },
+            success: true,
+            executionTimeMs: 1000
+        };
+
+        const html = getItemDetailContent(normalNode);
+
+        assert.ok(!html.includes('Retry Information'), 'Should not show retry info');
+        assert.ok(!html.includes('retry-badge-large'), 'Should not have retry badge');
+    });
+
+    test('mapResultToNode should preserve retry fields', () => {
+        const resultWithRetry: PromptMapResult = {
+            item: { id: '1', title: 'Test' },
+            output: { result: 'ok' },
+            success: true,
+            rawResponse: '{"result": "ok"}'
+        };
+
+        const node = mapResultToNode(resultWithRetry, 0, 1500);
+
+        // Default values - no retry info
+        assert.strictEqual(node.retryCount, undefined);
+        assert.strictEqual(node.originalError, undefined);
+        assert.strictEqual(node.retriedAt, undefined);
+    });
+
+    test('should calculate correct statistics after retry', () => {
+        const itemResults: PipelineItemResultNode[] = [
+            { id: 'item-0', index: 0, input: {}, output: {}, success: true },
+            { id: 'item-1', index: 1, input: {}, output: {}, success: true, retryCount: 1, originalError: 'Timeout' },
+            { id: 'item-2', index: 2, input: {}, output: {}, success: false, error: 'Still failing', retryCount: 2 },
+            { id: 'item-3', index: 3, input: {}, output: {}, success: true },
+            { id: 'item-4', index: 4, input: {}, output: {}, success: false, error: 'New failure' }
+        ];
+
+        const successCount = itemResults.filter(r => r.success).length;
+        const failedCount = itemResults.filter(r => !r.success).length;
+        const retriedCount = itemResults.filter(r => r.retryCount && r.retryCount > 0).length;
+        const retriedSuccessCount = itemResults.filter(r => r.success && r.retryCount && r.retryCount > 0).length;
+
+        assert.strictEqual(successCount, 3, 'Should have 3 successful items');
+        assert.strictEqual(failedCount, 2, 'Should have 2 failed items');
+        assert.strictEqual(retriedCount, 2, 'Should have 2 retried items');
+        assert.strictEqual(retriedSuccessCount, 1, 'Should have 1 item that succeeded after retry');
+    });
+
+    test('should track max retry attempts correctly', () => {
+        const itemsAtMaxRetry: PipelineItemResultNode[] = [
+            { id: 'item-0', index: 0, input: {}, output: {}, success: false, error: 'Error', retryCount: 2 },
+            { id: 'item-1', index: 1, input: {}, output: {}, success: false, error: 'Error', retryCount: 1 },
+            { id: 'item-2', index: 2, input: {}, output: {}, success: false, error: 'Error' }
+        ];
+
+        const maxRetryAttempts = 2;
+        
+        // Items that can still be retried
+        const canRetry = itemsAtMaxRetry.filter(r => 
+            !r.success && (r.retryCount ?? 0) < maxRetryAttempts
+        );
+
+        assert.strictEqual(canRetry.length, 2, 'Should have 2 items that can still be retried');
+        assert.ok(canRetry.some(r => r.id === 'item-1'), 'item-1 should be retryable');
+        assert.ok(canRetry.some(r => r.id === 'item-2'), 'item-2 should be retryable');
+        assert.ok(!canRetry.some(r => r.id === 'item-0'), 'item-0 should not be retryable (max attempts)');
+    });
+
+    test('should handle empty retry scenario', () => {
+        const allSuccessful: PipelineItemResultNode[] = [
+            { id: 'item-0', index: 0, input: {}, output: {}, success: true },
+            { id: 'item-1', index: 1, input: {}, output: {}, success: true },
+            { id: 'item-2', index: 2, input: {}, output: {}, success: true }
+        ];
+
+        const failedItems = allSuccessful.filter(r => !r.success);
+        assert.strictEqual(failedItems.length, 0, 'Should have no failed items to retry');
+    });
+
+    test('should preserve original error through multiple retries', () => {
+        const multiRetryNode: PipelineItemResultNode = {
+            id: 'item-0',
+            index: 0,
+            input: { id: '1' },
+            output: {},
+            success: false,
+            error: 'Third attempt: Rate limit exceeded',
+            retryCount: 3,
+            originalError: 'First attempt: Connection timeout',
+            retriedAt: new Date()
+        };
+
+        // Original error should be preserved from first failure
+        assert.strictEqual(multiRetryNode.originalError, 'First attempt: Connection timeout');
+        // Current error should reflect latest attempt
+        assert.strictEqual(multiRetryNode.error, 'Third attempt: Rate limit exceeded');
+        // Retry count should reflect total attempts
+        assert.strictEqual(multiRetryNode.retryCount, 3);
+    });
+
+    test('should handle retry with different error types', () => {
+        const errorTypes = [
+            'Connection timeout after 600000ms',
+            'Rate limit exceeded',
+            'AI service unavailable',
+            'Failed to parse AI response: Unexpected token',
+            'Network error: ECONNREFUSED'
+        ];
+
+        errorTypes.forEach((error, index) => {
+            const node: PipelineItemResultNode = {
+                id: `item-${index}`,
+                index,
+                input: { id: String(index) },
+                output: {},
+                success: false,
+                error,
+                retryCount: 1,
+                originalError: 'Initial error'
+            };
+
+            const html = getItemDetailContent(node);
+            assert.ok(html.includes('Retry Information'), `Should show retry info for error: ${error}`);
+            assert.ok(html.includes('Still failed'), `Should show failed status for error: ${error}`);
+        });
+    });
+
+    test('PipelineResultViewData pipelineConfig should be optional', () => {
+        const viewDataWithoutConfig: PipelineResultViewData = {
+            pipelineName: 'Test Pipeline',
+            packageName: 'test-pkg',
+            success: true,
+            totalTimeMs: 5000,
+            executionStats: baseExecutionStats,
+            itemResults: [],
+            completedAt: new Date()
+        };
+
+        assert.strictEqual(viewDataWithoutConfig.pipelineConfig, undefined);
+        assert.strictEqual(viewDataWithoutConfig.pipelineDirectory, undefined);
     });
 });

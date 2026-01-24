@@ -238,7 +238,10 @@ export class PipelineCommands {
                         await this.resultViewerProvider.showResults(
                             executionResult.result,
                             item.pipeline.name,
-                            item.pipeline.packageName
+                            item.pipeline.packageName,
+                            vscode.ViewColumn.Beside,
+                            executionResult.pipelineConfig,
+                            executionResult.pipelineDirectory
                         );
                     } else {
                         // Fallback to basic viewer
@@ -314,7 +317,10 @@ export class PipelineCommands {
                         await this.resultViewerProvider.showResults(
                             executionResult.result,
                             item.pipeline.name,
-                            item.pipeline.packageName
+                            item.pipeline.packageName,
+                            vscode.ViewColumn.Beside,
+                            executionResult.pipelineConfig,
+                            executionResult.pipelineDirectory
                         );
                     } else {
                         // Fallback to basic viewer

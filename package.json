@@ -693,6 +693,28 @@
           "default": "name",
           "description": "How to sort pipelines in the Pipelines Viewer"
         },
+        "workspaceShortcuts.pipeline.retryBehavior": {
+          "type": "string",
+          "enum": [
+            "prompt",
+            "immediate",
+            "disabled"
+          ],
+          "enumDescriptions": [
+            "Show confirmation dialog before retrying",
+            "Retry immediately without confirmation",
+            "Disable retry functionality"
+          ],
+          "default": "immediate",
+          "description": "Behavior when clicking Retry Failed button in pipeline results"
+        },
+        "workspaceShortcuts.pipeline.maxRetryAttempts": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Maximum retry attempts per failed item"
+        },
         "workspaceShortcuts.gitView.maxLookedUpCommits": {
           "type": "number",
           "default": 10,

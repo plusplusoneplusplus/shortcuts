@@ -55,6 +55,10 @@ export interface VSCodePipelineResult {
     error?: string;
     /** Process ID in the AI process manager */
     processId?: string;
+    /** The parsed pipeline configuration (for retry support) */
+    pipelineConfig?: PipelineConfig;
+    /** The pipeline directory path (for retry support) */
+    pipelineDirectory?: string;
 }
 
 /**
@@ -172,7 +176,9 @@ export async function executeVSCodePipeline(
             return {
                 success: result.success,
                 result,
-                processId: groupProcessId
+                processId: groupProcessId,
+                pipelineConfig: config,
+                pipelineDirectory: pipeline.packagePath
             };
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
@@ -185,7 +191,9 @@ export async function executeVSCodePipeline(
             return {
                 success: false,
                 error: errorMsg,
-                processId: groupProcessId
+                processId: groupProcessId,
+                pipelineConfig: config,
+                pipelineDirectory: pipeline.packagePath
             };
         }
     });
@@ -320,7 +328,9 @@ export async function executeVSCodePipelineWithItems(
             return {
                 success: result.success,
                 result,
-                processId: groupProcessId
+                processId: groupProcessId,
+                pipelineConfig: config,
+                pipelineDirectory: pipeline.packagePath
             };
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
@@ -333,7 +343,9 @@ export async function executeVSCodePipelineWithItems(
             return {
                 success: false,
                 error: errorMsg,
-                processId: groupProcessId
+                processId: groupProcessId,
+                pipelineConfig: config,
+                pipelineDirectory: pipeline.packagePath
             };
         }
     });

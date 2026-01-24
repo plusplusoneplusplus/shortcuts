@@ -88,13 +88,27 @@ function getEmptyContent(): string {
  * Generate toolbar section
  */
 function getToolbar(data: PipelineResultViewData): string {
+    const failedCount = data.itemResults.filter(r => !r.success).length;
+    const hasRetrySupport = !!data.pipelineConfig;
+    
     return `
         <div class="toolbar">
             <div class="toolbar-left">
                 <span class="filter-label">Filter:</span>
                 <button class="filter-btn active" data-filter="all">All (${data.itemResults.length})</button>
                 <button class="filter-btn" data-filter="success">✅ Success (${data.itemResults.filter(r => r.success).length})</button>
-                <button class="filter-btn" data-filter="failed">❌ Failed (${data.itemResults.filter(r => !r.success).length})</button>
+                <button class="filter-btn" data-filter="failed">❌ Failed (${failedCount})</button>
+            </div>
+            <div class="toolbar-center">
+                ${failedCount > 0 && hasRetrySupport ? `
+                    <button class="toolbar-btn retry-btn" id="retryFailedBtn" title="Retry all failed items with same pipeline configuration">
+                        <span class="retry-icon">🔄</span>
+                        <span class="retry-text">Retry Failed (${failedCount})</span>
+                    </button>
+                    <button class="toolbar-btn cancel-btn hidden" id="cancelRetryBtn" title="Cancel retry operation">
+                        <span class="icon">⏹️</span> Cancel
+                    </button>
+                ` : ''}
             </div>
             <div class="toolbar-right">
                 <button class="toolbar-btn" id="exportJsonBtn" title="Export as JSON">
@@ -277,16 +291,20 @@ function getResultNode(result: PipelineItemResultNode, index: number): string {
     const statusClass = getStatusClass(result.success);
     const preview = getItemPreview(result, 30);
     const timeInfo = result.executionTimeMs ? formatDuration(result.executionTimeMs) : '';
+    const retryBadge = result.retryCount && result.retryCount > 0 
+        ? `<span class="retry-badge">retry ${result.retryCount}</span>` 
+        : '';
+    const retriedClass = result.retriedAt ? (result.success ? 'retried-success' : 'retried-failed') : '';
 
     return `
-        <div class="result-node ${statusClass}" data-index="${index}" data-success="${result.success}">
+        <div class="result-node ${statusClass} ${retriedClass}" data-index="${index}" data-id="${result.id}" data-success="${result.success}">
             <div class="node-header">
-                <span class="node-index">#${index + 1}</span>
+                <span class="node-index">#${index + 1}${retryBadge}</span>
                 <span class="node-status">${statusIcon}</span>
             </div>
             <div class="node-preview">${escapeHtml(preview)}</div>
             ${timeInfo ? `<div class="node-time">${timeInfo}</div>` : ''}
-            ${!result.success && result.error ? `<div class="node-error-hint">Error</div>` : ''}
+            ${!result.success && result.error ? `<div class="node-error-hint">${result.retryCount ? 'Retry failed' : 'Error'}</div>` : ''}
         </div>
     `;
 }
@@ -347,12 +365,44 @@ export function getItemDetailContent(result: PipelineItemResultNode): string {
             `).join('')
         : `<div class="error-message">${escapeHtml(result.error || 'Unknown error')}</div>`;
 
+    // Build retry info section if item was retried
+    const retryInfoHtml = result.retryCount && result.retryCount > 0 ? `
+        <div class="detail-subsection retry-info">
+            <h5 class="subsection-title">🔄 Retry Information</h5>
+            <div class="fields-list">
+                <div class="detail-field">
+                    <span class="field-label">Status:</span>
+                    <span class="field-value">${result.success ? '✅ Succeeded (after retry)' : '❌ Still failed'}</span>
+                </div>
+                ${result.originalError ? `
+                    <div class="detail-field">
+                        <span class="field-label">Original Error:</span>
+                        <span class="field-value">${escapeHtml(result.originalError)}</span>
+                    </div>
+                ` : ''}
+                <div class="detail-field">
+                    <span class="field-label">Retry Attempts:</span>
+                    <span class="field-value">${result.retryCount}</span>
+                </div>
+                ${result.executionTimeMs ? `
+                    <div class="detail-field">
+                        <span class="field-label">Final Execution Time:</span>
+                        <span class="field-value">${formatDuration(result.executionTimeMs)}</span>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    ` : '';
+
     return `
         <div class="detail-section">
             <h4 class="detail-title">
                 <span class="status-icon ${statusClass}">${statusIcon}</span>
                 Item #${result.index + 1}
+                ${result.retryCount ? `<span class="retry-badge-large">retried ${result.retryCount}x</span>` : ''}
             </h4>
+            
+            ${retryInfoHtml}
             
             <div class="detail-subsection">
                 <h5 class="subsection-title">📥 Input</h5>
@@ -523,6 +573,64 @@ function getStyles(isDark: boolean): string {
 
         .toolbar-btn .icon {
             font-size: 14px;
+        }
+
+        .toolbar-center {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Retry Button Styles */
+        .retry-btn {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+            font-weight: 500;
+        }
+
+        .retry-btn:hover:not(:disabled) {
+            background: ${isDark ? '#4a8bc4' : '#0055aa'};
+            border-color: ${isDark ? '#4a8bc4' : '#0055aa'};
+        }
+
+        .retry-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .retry-btn.retrying {
+            background: ${isDark ? '#4a5568' : '#a0aec0'};
+            border-color: ${isDark ? '#4a5568' : '#a0aec0'};
+        }
+
+        .retry-btn .retry-icon {
+            display: inline-block;
+            font-size: 14px;
+        }
+
+        .retry-btn.retrying .retry-icon {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .cancel-btn {
+            background: var(--error-color);
+            color: white;
+            border-color: var(--error-color);
+        }
+
+        .cancel-btn:hover {
+            background: ${isDark ? '#c53030' : '#e53e3e'};
+            border-color: ${isDark ? '#c53030' : '#e53e3e'};
+        }
+
+        .hidden {
+            display: none !important;
         }
 
         /* Header */
@@ -759,6 +867,111 @@ function getStyles(isDark: boolean): string {
             display: none;
         }
 
+        .result-node.retrying {
+            position: relative;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .result-node.retrying::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .result-node.retry-success {
+            animation: flashSuccess 0.5s ease;
+        }
+
+        .result-node.retry-failed {
+            animation: flashFailed 0.5s ease;
+        }
+
+        @keyframes flashSuccess {
+            0%, 100% { background: var(--card-bg); }
+            50% { background: rgba(76, 175, 80, 0.3); }
+        }
+
+        @keyframes flashFailed {
+            0%, 100% { background: var(--card-bg); }
+            50% { background: rgba(244, 67, 54, 0.3); }
+        }
+
+        .retry-badge {
+            font-size: 9px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            background: ${isDark ? '#4a5568' : '#e2e8f0'};
+            color: ${isDark ? '#a0aec0' : '#4a5568'};
+            margin-left: 4px;
+        }
+
+        .retry-badge-large {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: ${isDark ? '#4a5568' : '#e2e8f0'};
+            color: ${isDark ? '#a0aec0' : '#4a5568'};
+            margin-left: 8px;
+            font-weight: normal;
+        }
+
+        .retry-info {
+            background: ${isDark ? 'rgba(86, 156, 214, 0.1)' : 'rgba(0, 102, 204, 0.05)'};
+            border: 1px solid ${isDark ? 'rgba(86, 156, 214, 0.3)' : 'rgba(0, 102, 204, 0.2)'};
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 16px;
+        }
+
+        .retry-info .subsection-title {
+            margin-top: 0;
+        }
+
+        .retried-success {
+            border-left-color: var(--success-color) !important;
+        }
+
+        .retried-failed {
+            border-left-color: var(--error-color) !important;
+        }
+
+        /* Context menu for individual item retry */
+        .result-node {
+            position: relative;
+        }
+
+        .result-node .context-menu-trigger {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 20px;
+            height: 20px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            color: ${isDark ? '#9d9d9d' : '#666666'};
+        }
+
+        .result-node:hover .context-menu-trigger {
+            display: flex;
+        }
+
+        .result-node .context-menu-trigger:hover {
+            background: var(--hover-bg);
+        }
+
         .node-header {
             display: flex;
             justify-content: space-between;
@@ -965,10 +1178,12 @@ function getScript(data: PipelineResultViewData | undefined): string {
         
         // Parse result data
         const dataElement = document.getElementById('resultData');
-        const resultData = dataElement ? JSON.parse(dataElement.textContent) : null;
+        let resultData = dataElement ? JSON.parse(dataElement.textContent) : null;
         
         let selectedNodeIndex = 0;
         let currentFilter = 'all';
+        let isRetrying = false;
+        let retryingItemIds = [];
 
         // Node click handler
         function selectNode(index) {
@@ -993,6 +1208,15 @@ function getScript(data: PipelineResultViewData | undefined): string {
                 type: 'nodeClick',
                 payload: { nodeIndex: index, nodeId: result.id }
             });
+        }
+
+        // Format duration
+        function formatDuration(ms) {
+            if (ms < 1000) return ms + 'ms';
+            if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+            const minutes = Math.floor(ms / 60000);
+            const seconds = ((ms % 60000) / 1000).toFixed(0);
+            return minutes + 'm ' + seconds + 's';
         }
 
         // Generate item detail HTML
@@ -1020,11 +1244,46 @@ function getScript(data: PipelineResultViewData | undefined): string {
                 outputHtml = '<div class="error-message">' + escapeHtml(result.error || 'Unknown error') + '</div>';
             }
             
+            // Build retry info section if item was retried
+            let retryInfoHtml = '';
+            if (result.retryCount && result.retryCount > 0) {
+                retryInfoHtml = '<div class="detail-subsection retry-info">' +
+                    '<h5 class="subsection-title">🔄 Retry Information</h5>' +
+                    '<div class="fields-list">' +
+                    '<div class="detail-field">' +
+                    '<span class="field-label">Status:</span>' +
+                    '<span class="field-value">' + (result.success ? '✅ Succeeded (after retry)' : '❌ Still failed') + '</span>' +
+                    '</div>';
+                
+                if (result.originalError) {
+                    retryInfoHtml += '<div class="detail-field">' +
+                        '<span class="field-label">Original Error:</span>' +
+                        '<span class="field-value">' + escapeHtml(result.originalError) + '</span>' +
+                        '</div>';
+                }
+                
+                retryInfoHtml += '<div class="detail-field">' +
+                    '<span class="field-label">Retry Attempts:</span>' +
+                    '<span class="field-value">' + result.retryCount + '</span>' +
+                    '</div>';
+                
+                if (result.executionTimeMs) {
+                    retryInfoHtml += '<div class="detail-field">' +
+                        '<span class="field-label">Final Execution Time:</span>' +
+                        '<span class="field-value">' + formatDuration(result.executionTimeMs) + '</span>' +
+                        '</div>';
+                }
+                
+                retryInfoHtml += '</div></div>';
+            }
+            
             let html = '<div class="detail-section">' +
                 '<h4 class="detail-title">' +
                 '<span class="status-icon ' + statusClass + '">' + statusIcon + '</span>' +
                 'Item #' + (result.index + 1) +
+                (result.retryCount ? '<span class="retry-badge-large">retried ' + result.retryCount + 'x</span>' : '') +
                 '</h4>' +
+                retryInfoHtml +
                 '<div class="detail-subsection">' +
                 '<h5 class="subsection-title">📥 Input</h5>' +
                 '<div class="fields-list">' + inputHtml + '</div>' +
@@ -1105,6 +1364,190 @@ function getScript(data: PipelineResultViewData | undefined): string {
             vscode.postMessage({ type: 'copyResults' });
         }
 
+        // Retry all failed items
+        function retryFailed() {
+            if (isRetrying) return;
+            vscode.postMessage({ type: 'retryFailed' });
+        }
+
+        // Retry single item
+        function retryItem(itemId) {
+            if (isRetrying) return;
+            vscode.postMessage({
+                type: 'retryItem',
+                payload: { nodeId: itemId }
+            });
+        }
+
+        // Cancel retry
+        function cancelRetry() {
+            vscode.postMessage({ type: 'cancelRetry' });
+        }
+
+        // Update retry button state
+        function updateRetryButtonState(retrying, completed, total) {
+            const retryBtn = document.getElementById('retryFailedBtn');
+            const cancelBtn = document.getElementById('cancelRetryBtn');
+            
+            if (!retryBtn) return;
+            
+            isRetrying = retrying;
+            
+            if (retrying) {
+                retryBtn.classList.add('retrying');
+                retryBtn.disabled = true;
+                retryBtn.querySelector('.retry-text').textContent = 'Retrying... (' + completed + '/' + total + ')';
+                if (cancelBtn) cancelBtn.classList.remove('hidden');
+            } else {
+                retryBtn.classList.remove('retrying');
+                retryBtn.disabled = false;
+                const failedCount = resultData.itemResults.filter(r => !r.success).length;
+                if (failedCount > 0) {
+                    retryBtn.querySelector('.retry-text').textContent = 'Retry Failed (' + failedCount + ')';
+                    retryBtn.classList.remove('hidden');
+                } else {
+                    retryBtn.classList.add('hidden');
+                }
+                if (cancelBtn) cancelBtn.classList.add('hidden');
+            }
+        }
+
+        // Update filter button counts
+        function updateFilterCounts() {
+            const allCount = resultData.itemResults.length;
+            const successCount = resultData.itemResults.filter(r => r.success).length;
+            const failedCount = resultData.itemResults.filter(r => !r.success).length;
+            
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                const filter = btn.dataset.filter;
+                if (filter === 'all') btn.textContent = 'All (' + allCount + ')';
+                else if (filter === 'success') btn.textContent = '✅ Success (' + successCount + ')';
+                else if (filter === 'failed') btn.textContent = '❌ Failed (' + failedCount + ')';
+            });
+        }
+
+        // Update a result node in the grid
+        function updateResultNode(itemId, result) {
+            const node = document.querySelector('.result-node[data-id="' + itemId + '"]');
+            if (!node) return;
+            
+            // Remove retrying state
+            node.classList.remove('retrying');
+            
+            // Update success state
+            node.dataset.success = result.success ? 'true' : 'false';
+            node.classList.toggle('status-success', result.success);
+            node.classList.toggle('status-error', !result.success);
+            
+            // Add flash animation
+            node.classList.add(result.success ? 'retry-success' : 'retry-failed');
+            setTimeout(() => {
+                node.classList.remove('retry-success', 'retry-failed');
+            }, 500);
+            
+            // Update status icon
+            const statusSpan = node.querySelector('.node-status');
+            if (statusSpan) statusSpan.textContent = result.success ? '✅' : '❌';
+            
+            // Update retry badge
+            const indexSpan = node.querySelector('.node-index');
+            if (indexSpan && result.retryCount) {
+                const existingBadge = indexSpan.querySelector('.retry-badge');
+                if (existingBadge) {
+                    existingBadge.textContent = 'retry ' + result.retryCount;
+                } else {
+                    indexSpan.innerHTML = '#' + (result.index + 1) + '<span class="retry-badge">retry ' + result.retryCount + '</span>';
+                }
+            }
+            
+            // Update error hint
+            const errorHint = node.querySelector('.node-error-hint');
+            if (!result.success && result.error) {
+                if (errorHint) {
+                    errorHint.textContent = result.retryCount ? 'Retry failed' : 'Error';
+                } else {
+                    const hintDiv = document.createElement('div');
+                    hintDiv.className = 'node-error-hint';
+                    hintDiv.textContent = result.retryCount ? 'Retry failed' : 'Error';
+                    node.appendChild(hintDiv);
+                }
+            } else if (errorHint) {
+                errorHint.remove();
+            }
+            
+            // Update in resultData
+            const dataIndex = resultData.itemResults.findIndex(r => r.id === itemId);
+            if (dataIndex !== -1) {
+                resultData.itemResults[dataIndex] = result;
+            }
+            
+            // If this node is selected, update details panel
+            if (selectedNodeIndex === result.index) {
+                const detailsContent = document.getElementById('detailsContent');
+                if (detailsContent) {
+                    detailsContent.innerHTML = generateItemDetail(result);
+                }
+            }
+        }
+
+        // Set retrying state on nodes
+        function setNodesRetrying(itemIds) {
+            retryingItemIds = itemIds;
+            itemIds.forEach(id => {
+                const node = document.querySelector('.result-node[data-id="' + id + '"]');
+                if (node) node.classList.add('retrying');
+            });
+        }
+
+        // Handle messages from extension
+        window.addEventListener('message', event => {
+            const message = event.data;
+            
+            switch (message.type) {
+                case 'retryStarted':
+                    setNodesRetrying(message.payload.itemIds || []);
+                    updateRetryButtonState(true, 0, message.payload.total);
+                    break;
+                    
+                case 'retryProgress':
+                    updateRetryButtonState(true, message.payload.completed, message.payload.total);
+                    break;
+                    
+                case 'itemRetryResult':
+                    if (message.payload.result) {
+                        updateResultNode(message.payload.itemId, message.payload.result);
+                    }
+                    break;
+                    
+                case 'retryComplete':
+                    updateRetryButtonState(false, 0, 0);
+                    updateFilterCounts();
+                    // Re-apply current filter to update visibility
+                    applyFilter(currentFilter);
+                    break;
+                    
+                case 'retryError':
+                    updateRetryButtonState(false, 0, 0);
+                    // Remove retrying state from all nodes
+                    retryingItemIds.forEach(id => {
+                        const node = document.querySelector('.result-node[data-id="' + id + '"]');
+                        if (node) node.classList.remove('retrying');
+                    });
+                    retryingItemIds = [];
+                    break;
+                    
+                case 'retryCancelled':
+                    updateRetryButtonState(false, 0, 0);
+                    // Remove retrying state from remaining nodes
+                    retryingItemIds.forEach(id => {
+                        const node = document.querySelector('.result-node[data-id="' + id + '"]');
+                        if (node) node.classList.remove('retrying');
+                    });
+                    retryingItemIds = [];
+                    break;
+            }
+        });
+
         // Escape HTML
         function escapeHtml(text) {
             const div = document.createElement('div');
@@ -1126,6 +1569,16 @@ function getScript(data: PipelineResultViewData | undefined): string {
         // Event listeners
         document.querySelectorAll('.result-node').forEach((node, index) => {
             node.addEventListener('click', () => selectNode(index));
+            
+            // Add context menu for individual retry
+            node.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const itemId = node.dataset.id;
+                const success = node.dataset.success === 'true';
+                if (!success && !isRetrying) {
+                    retryItem(itemId);
+                }
+            });
         });
 
         document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -1135,6 +1588,8 @@ function getScript(data: PipelineResultViewData | undefined): string {
         document.getElementById('exportJsonBtn')?.addEventListener('click', () => exportResults('json'));
         document.getElementById('exportCsvBtn')?.addEventListener('click', () => exportResults('csv'));
         document.getElementById('copyBtn')?.addEventListener('click', copyResults);
+        document.getElementById('retryFailedBtn')?.addEventListener('click', retryFailed);
+        document.getElementById('cancelRetryBtn')?.addEventListener('click', cancelRetry);
 
         // Select first node initially
         if (resultData && resultData.itemResults.length > 0) {

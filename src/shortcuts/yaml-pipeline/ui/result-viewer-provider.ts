@@ -9,6 +9,8 @@
  * - WebviewSetupHelper for webview configuration
  * - WebviewMessageRouter for type-safe message handling
  *
+ * Supports retry functionality for failed map items.
+ *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -18,14 +20,19 @@ import {
     PipelineResultViewData,
     PipelineItemResultNode,
     ResultViewerMessage,
+    ResultViewerExtensionMessage,
+    RetryState,
     mapResultToNode
 } from './result-viewer-types';
 import { getResultViewerContent } from './result-viewer-content';
 import { PipelineExecutionResult } from '../executor';
-import { MapResult } from '../../map-reduce/types';
-import { PromptMapResult, PromptMapOutput } from '../../map-reduce/jobs/prompt-map-job';
+import { MapResult, AIInvoker, ExecutionStats } from '../../map-reduce/types';
+import { PromptMapResult, PromptMapOutput, PromptItem } from '../../map-reduce/jobs/prompt-map-job';
 import { getWorkspaceRoot } from '../../shared/workspace-utils';
 import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
+import { PipelineConfig } from '../types';
+import { createAIInvoker, getAIModelSetting } from '../../ai-service';
+import { ConcurrencyLimiter } from '../../map-reduce/concurrency-limiter';
 
 /**
  * URI scheme for exporting results
@@ -36,6 +43,7 @@ export const PIPELINE_RESULTS_EXPORT_SCHEME = 'pipeline-results-export';
  * Manages Pipeline Result Viewer webview panels
  * 
  * Uses shared webview utilities for consistent setup and message handling.
+ * Supports retry functionality for failed map items.
  */
 export class PipelineResultViewerProvider {
     public static readonly viewType = 'pipelineResultViewer';
@@ -43,6 +51,13 @@ export class PipelineResultViewerProvider {
     private static currentPanel: vscode.WebviewPanel | undefined;
     private static currentData: PipelineResultViewData | undefined;
     private static currentRouter: WebviewMessageRouter<ResultViewerMessage> | undefined;
+    private static retryState: RetryState = {
+        isRetrying: false,
+        completedCount: 0,
+        totalCount: 0,
+        retryingItemIds: [],
+        cancelled: false
+    };
     
     /** Shared webview setup helper */
     private readonly setupHelper: WebviewSetupHelper;
@@ -58,15 +73,28 @@ export class PipelineResultViewerProvider {
      * @param pipelineName Name of the pipeline
      * @param packageName Package name of the pipeline
      * @param viewColumn View column to show the panel in
+     * @param pipelineConfig Optional pipeline configuration for retry support
+     * @param pipelineDirectory Optional pipeline directory for retry support
      */
     public async showResults(
         result: PipelineExecutionResult,
         pipelineName: string,
         packageName: string,
-        viewColumn: vscode.ViewColumn = vscode.ViewColumn.Beside
+        viewColumn: vscode.ViewColumn = vscode.ViewColumn.Beside,
+        pipelineConfig?: PipelineConfig,
+        pipelineDirectory?: string
     ): Promise<void> {
+        // Reset retry state
+        PipelineResultViewerProvider.retryState = {
+            isRetrying: false,
+            completedCount: 0,
+            totalCount: 0,
+            retryingItemIds: [],
+            cancelled: false
+        };
+
         // Convert execution result to view data
-        const viewData = this.convertToViewData(result, pipelineName, packageName);
+        const viewData = this.convertToViewData(result, pipelineName, packageName, pipelineConfig, pipelineDirectory);
         PipelineResultViewerProvider.currentData = viewData;
 
         // Reuse existing panel or create a new one
@@ -132,6 +160,24 @@ export class PipelineResultViewerProvider {
             })
             .on('filterResults', () => {
                 // Filtering - handled client-side
+            })
+            .on('retryFailed', async () => {
+                await this.handleRetryFailed(panel);
+            })
+            .on('retryItem', async (message: ResultViewerMessage) => {
+                const itemId = message.payload?.nodeId;
+                if (itemId) {
+                    await this.handleRetryItem(panel, itemId);
+                }
+            })
+            .on('retrySelected', async (message: ResultViewerMessage) => {
+                const itemIds = message.payload?.itemIds;
+                if (itemIds && itemIds.length > 0) {
+                    await this.handleRetrySelected(panel, itemIds);
+                }
+            })
+            .on('cancelRetry', () => {
+                this.handleCancelRetry(panel);
             });
 
         // Connect router to panel
@@ -163,7 +209,9 @@ export class PipelineResultViewerProvider {
     private convertToViewData(
         result: PipelineExecutionResult,
         pipelineName: string,
-        packageName: string
+        packageName: string,
+        pipelineConfig?: PipelineConfig,
+        pipelineDirectory?: string
     ): PipelineResultViewData {
         // Convert map results to item result nodes
         const itemResults: PipelineItemResultNode[] = [];
@@ -202,7 +250,9 @@ export class PipelineResultViewerProvider {
             output: result.output as PromptMapOutput | undefined,
             itemResults,
             error: result.error,
-            completedAt: new Date()
+            completedAt: new Date(),
+            pipelineConfig,
+            pipelineDirectory
         };
     }
 
@@ -262,6 +312,399 @@ export class PipelineResultViewerProvider {
         const content = this.formatAsMarkdown(data);
         await vscode.env.clipboard.writeText(content);
         vscode.window.showInformationMessage('Results copied to clipboard');
+    }
+
+    /**
+     * Handle retry all failed items
+     */
+    private async handleRetryFailed(panel: vscode.WebviewPanel): Promise<void> {
+        const data = PipelineResultViewerProvider.currentData;
+        if (!data) {
+            vscode.window.showErrorMessage('No result data available for retry');
+            return;
+        }
+
+        // Get all failed item IDs
+        const failedItemIds = data.itemResults
+            .filter(r => !r.success)
+            .map(r => r.id);
+
+        if (failedItemIds.length === 0) {
+            vscode.window.showInformationMessage('No failed items to retry');
+            return;
+        }
+
+        await this.executeRetry(panel, failedItemIds);
+    }
+
+    /**
+     * Handle retry single item
+     */
+    private async handleRetryItem(panel: vscode.WebviewPanel, itemId: string): Promise<void> {
+        await this.executeRetry(panel, [itemId]);
+    }
+
+    /**
+     * Handle retry selected items
+     */
+    private async handleRetrySelected(panel: vscode.WebviewPanel, itemIds: string[]): Promise<void> {
+        await this.executeRetry(panel, itemIds);
+    }
+
+    /**
+     * Handle cancel retry
+     */
+    private handleCancelRetry(panel: vscode.WebviewPanel): void {
+        PipelineResultViewerProvider.retryState.cancelled = true;
+        
+        // Notify webview
+        this.sendToWebview(panel, {
+            type: 'retryCancelled',
+            payload: {
+                completed: PipelineResultViewerProvider.retryState.completedCount,
+                total: PipelineResultViewerProvider.retryState.totalCount
+            }
+        });
+    }
+
+    /**
+     * Execute retry for specified items
+     */
+    private async executeRetry(panel: vscode.WebviewPanel, itemIds: string[]): Promise<void> {
+        const data = PipelineResultViewerProvider.currentData;
+        if (!data) {
+            vscode.window.showErrorMessage('No result data available for retry');
+            return;
+        }
+
+        // Check if retry is already in progress
+        if (PipelineResultViewerProvider.retryState.isRetrying) {
+            vscode.window.showWarningMessage('Retry already in progress');
+            return;
+        }
+
+        // Check if pipeline config is available
+        if (!data.pipelineConfig) {
+            vscode.window.showErrorMessage('Pipeline configuration not available. Cannot retry.');
+            return;
+        }
+
+        // Get max retry attempts from settings
+        const maxRetryAttempts = vscode.workspace.getConfiguration('workspaceShortcuts.pipeline')
+            .get<number>('maxRetryAttempts', 2);
+
+        // Filter items that can be retried (failed and under max retry count)
+        const itemsToRetry = data.itemResults.filter(r => 
+            itemIds.includes(r.id) && 
+            !r.success && 
+            (r.retryCount ?? 0) < maxRetryAttempts
+        );
+
+        if (itemsToRetry.length === 0) {
+            vscode.window.showInformationMessage('No items available for retry (max attempts reached or all succeeded)');
+            return;
+        }
+
+        // Initialize retry state
+        PipelineResultViewerProvider.retryState = {
+            isRetrying: true,
+            completedCount: 0,
+            totalCount: itemsToRetry.length,
+            retryingItemIds: itemsToRetry.map(r => r.id),
+            cancelled: false
+        };
+
+        // Notify webview that retry is starting
+        this.sendToWebview(panel, {
+            type: 'retryStarted',
+            payload: {
+                total: itemsToRetry.length,
+                itemIds: itemsToRetry.map(r => r.id)
+            }
+        });
+
+        // Create AI invoker
+        const workspaceRoot = getWorkspaceRoot() || '';
+        const defaultModel = getAIModelSetting();
+        const aiInvoker: AIInvoker = createAIInvoker({
+            usePool: true,
+            workingDirectory: data.pipelineDirectory || workspaceRoot,
+            model: data.pipelineConfig.map.model || defaultModel,
+            featureName: 'Pipeline Retry'
+        });
+
+        // Get concurrency from pipeline config
+        const parallelLimit = data.pipelineConfig.map.parallel ?? 5;
+        const limiter = new ConcurrencyLimiter(parallelLimit);
+
+        // Create retry tasks
+        const retryTasks = itemsToRetry.map(item => {
+            return async () => {
+                // Check for cancellation
+                if (PipelineResultViewerProvider.retryState.cancelled) {
+                    return null;
+                }
+
+                try {
+                    const result = await this.retryMapItem(
+                        item,
+                        data.pipelineConfig!,
+                        aiInvoker
+                    );
+
+                    // Update the item in the data
+                    const itemIndex = data.itemResults.findIndex(r => r.id === item.id);
+                    if (itemIndex !== -1) {
+                        data.itemResults[itemIndex] = result;
+                    }
+
+                    // Update retry state
+                    PipelineResultViewerProvider.retryState.completedCount++;
+
+                    // Notify webview of item result
+                    this.sendToWebview(panel, {
+                        type: 'itemRetryResult',
+                        payload: {
+                            itemId: item.id,
+                            result,
+                            completed: PipelineResultViewerProvider.retryState.completedCount,
+                            total: PipelineResultViewerProvider.retryState.totalCount
+                        }
+                    });
+
+                    // Send progress update
+                    this.sendToWebview(panel, {
+                        type: 'retryProgress',
+                        payload: {
+                            completed: PipelineResultViewerProvider.retryState.completedCount,
+                            total: PipelineResultViewerProvider.retryState.totalCount
+                        }
+                    });
+
+                    return result;
+                } catch (error) {
+                    // Update retry state even on error
+                    PipelineResultViewerProvider.retryState.completedCount++;
+
+                    // Create failed result
+                    const failedResult: PipelineItemResultNode = {
+                        ...item,
+                        success: false,
+                        error: `Retry failed: ${error instanceof Error ? error.message : String(error)}`,
+                        retryCount: (item.retryCount ?? 0) + 1,
+                        originalError: item.originalError || item.error,
+                        retriedAt: new Date()
+                    };
+
+                    // Update the item in the data
+                    const itemIndex = data.itemResults.findIndex(r => r.id === item.id);
+                    if (itemIndex !== -1) {
+                        data.itemResults[itemIndex] = failedResult;
+                    }
+
+                    // Notify webview
+                    this.sendToWebview(panel, {
+                        type: 'itemRetryResult',
+                        payload: {
+                            itemId: item.id,
+                            result: failedResult,
+                            completed: PipelineResultViewerProvider.retryState.completedCount,
+                            total: PipelineResultViewerProvider.retryState.totalCount
+                        }
+                    });
+
+                    return failedResult;
+                }
+            };
+        });
+
+        try {
+            // Execute retries with concurrency limit
+            await limiter.all(retryTasks, () => PipelineResultViewerProvider.retryState.cancelled);
+
+            // Update execution stats
+            const successfulMaps = data.itemResults.filter(r => r.success).length;
+            const failedMaps = data.itemResults.filter(r => !r.success).length;
+            data.executionStats = {
+                ...data.executionStats,
+                successfulMaps,
+                failedMaps
+            };
+            data.success = failedMaps === 0;
+            data.lastRetryAt = new Date();
+
+            // Notify webview of completion
+            this.sendToWebview(panel, {
+                type: 'retryComplete',
+                payload: {
+                    stats: data.executionStats,
+                    completed: PipelineResultViewerProvider.retryState.completedCount,
+                    total: PipelineResultViewerProvider.retryState.totalCount
+                }
+            });
+
+            // Show completion message
+            const retrySuccessCount = itemsToRetry.filter(item => {
+                const updated = data.itemResults.find(r => r.id === item.id);
+                return updated?.success;
+            }).length;
+
+            if (PipelineResultViewerProvider.retryState.cancelled) {
+                vscode.window.showWarningMessage(
+                    `Retry cancelled - ${PipelineResultViewerProvider.retryState.completedCount} of ${itemsToRetry.length} items completed`
+                );
+            } else if (retrySuccessCount === itemsToRetry.length) {
+                vscode.window.showInformationMessage(
+                    `All ${itemsToRetry.length} items succeeded on retry`
+                );
+            } else {
+                vscode.window.showInformationMessage(
+                    `Retry complete - ${retrySuccessCount} of ${itemsToRetry.length} items succeeded`
+                );
+            }
+        } catch (error) {
+            // Notify webview of error
+            this.sendToWebview(panel, {
+                type: 'retryError',
+                payload: {
+                    error: error instanceof Error ? error.message : String(error)
+                }
+            });
+
+            vscode.window.showErrorMessage(
+                `Retry failed: ${error instanceof Error ? error.message : String(error)}`
+            );
+        } finally {
+            // Reset retry state
+            PipelineResultViewerProvider.retryState.isRetrying = false;
+        }
+    }
+
+    /**
+     * Retry a single map item
+     */
+    private async retryMapItem(
+        item: PipelineItemResultNode,
+        config: PipelineConfig,
+        aiInvoker: AIInvoker
+    ): Promise<PipelineItemResultNode> {
+        const timeoutMs = config.map.timeoutMs ?? 600000;
+        const outputFields = config.map.output || [];
+        const isTextMode = outputFields.length === 0;
+
+        // Build the prompt with template substitution
+        let prompt = config.map.prompt;
+        for (const [key, value] of Object.entries(item.input)) {
+            prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+        }
+
+        // Add output format instruction for structured mode
+        if (!isTextMode) {
+            prompt = `${prompt}\n\nReturn JSON with these fields: ${outputFields.join(', ')}`;
+        }
+
+        // Resolve model template if needed
+        let model = config.map.model;
+        if (model) {
+            for (const [key, value] of Object.entries(item.input)) {
+                model = model.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+            }
+        }
+
+        const startTime = Date.now();
+
+        // Execute with timeout
+        const result = await Promise.race([
+            aiInvoker(prompt, { model, timeoutMs }),
+            new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs)
+            )
+        ]);
+
+        const executionTimeMs = Date.now() - startTime;
+
+        if (result.success && result.response) {
+            if (isTextMode) {
+                // Text mode - return raw response
+                return {
+                    ...item,
+                    output: {},
+                    rawText: result.response,
+                    success: true,
+                    error: undefined,
+                    rawResponse: result.response,
+                    executionTimeMs,
+                    retryCount: (item.retryCount ?? 0) + 1,
+                    originalError: item.originalError || item.error,
+                    retriedAt: new Date()
+                };
+            }
+
+            // Structured mode - parse JSON
+            try {
+                const output = this.parseAIResponse(result.response, outputFields);
+                return {
+                    ...item,
+                    output,
+                    success: true,
+                    error: undefined,
+                    rawResponse: result.response,
+                    executionTimeMs,
+                    retryCount: (item.retryCount ?? 0) + 1,
+                    originalError: item.originalError || item.error,
+                    retriedAt: new Date()
+                };
+            } catch (parseError) {
+                return {
+                    ...item,
+                    success: false,
+                    error: `Failed to parse AI response: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+                    rawResponse: result.response,
+                    executionTimeMs,
+                    retryCount: (item.retryCount ?? 0) + 1,
+                    originalError: item.originalError || item.error,
+                    retriedAt: new Date()
+                };
+            }
+        }
+
+        return {
+            ...item,
+            success: false,
+            error: result.error || 'AI invocation failed',
+            rawResponse: result.response,
+            executionTimeMs,
+            retryCount: (item.retryCount ?? 0) + 1,
+            originalError: item.originalError || item.error,
+            retriedAt: new Date()
+        };
+    }
+
+    /**
+     * Parse AI response to extract output fields
+     */
+    private parseAIResponse(response: string, outputFields: string[]): Record<string, unknown> {
+        // Try to extract JSON from the response
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            throw new Error('No JSON found in response');
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const output: Record<string, unknown> = {};
+
+        for (const field of outputFields) {
+            output[field] = parsed[field] ?? null;
+        }
+
+        return output;
+    }
+
+    /**
+     * Send message to webview
+     */
+    private sendToWebview(panel: vscode.WebviewPanel, message: ResultViewerExtensionMessage): void {
+        panel.webview.postMessage(message);
     }
 
     /**

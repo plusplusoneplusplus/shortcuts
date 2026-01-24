@@ -7,8 +7,25 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { ExecutionStats, ReduceStats } from '../../map-reduce/types';
+import { ExecutionStats, ReduceStats, AIInvoker } from '../../map-reduce/types';
 import { PromptMapResult, PromptMapOutput, PromptMapSummary, PromptItem } from '../../map-reduce/jobs/prompt-map-job';
+import { PipelineConfig } from '../types';
+
+/**
+ * Retry state for tracking retry operations
+ */
+export interface RetryState {
+    /** Whether a retry operation is in progress */
+    isRetrying: boolean;
+    /** Number of items completed in current retry batch */
+    completedCount: number;
+    /** Total number of items being retried */
+    totalCount: number;
+    /** IDs of items currently being retried */
+    retryingItemIds: string[];
+    /** Whether the retry was cancelled */
+    cancelled: boolean;
+}
 
 /**
  * Complete result from a pipeline execution for display
@@ -34,6 +51,12 @@ export interface PipelineResultViewData {
     error?: string;
     /** Timestamp when execution completed */
     completedAt: Date;
+    /** Original pipeline configuration (stored for retry consistency) */
+    pipelineConfig?: PipelineConfig;
+    /** Path to the pipeline package directory */
+    pipelineDirectory?: string;
+    /** Timestamp of last retry operation */
+    lastRetryAt?: Date;
 }
 
 /**
@@ -58,6 +81,12 @@ export interface PipelineItemResultNode {
     rawResponse?: string;
     /** Execution time for this item in milliseconds */
     executionTimeMs?: number;
+    /** Number of retry attempts for this item */
+    retryCount?: number;
+    /** Error from the first attempt (if retried) */
+    originalError?: string;
+    /** Timestamp of the last retry */
+    retriedAt?: Date;
 }
 
 /**
@@ -70,7 +99,11 @@ export type ResultViewerMessageType =
     | 'refresh'
     | 'openItem'
     | 'filterResults'
-    | 'ready';
+    | 'ready'
+    | 'retryFailed'
+    | 'retryItem'
+    | 'retrySelected'
+    | 'cancelRetry';
 
 /**
  * Message from result viewer webview to extension
@@ -82,6 +115,42 @@ export interface ResultViewerMessage {
         nodeIndex?: number;
         filterType?: 'all' | 'success' | 'failed';
         exportFormat?: 'json' | 'csv' | 'markdown';
+        /** Item IDs to retry (for retrySelected) */
+        itemIds?: string[];
+    };
+}
+
+/**
+ * Message types from extension to webview
+ */
+export type ResultViewerExtensionMessageType =
+    | 'retryProgress'
+    | 'itemRetryResult'
+    | 'retryComplete'
+    | 'retryError'
+    | 'retryStarted'
+    | 'retryCancelled';
+
+/**
+ * Message from extension to result viewer webview
+ */
+export interface ResultViewerExtensionMessage {
+    type: ResultViewerExtensionMessageType;
+    payload?: {
+        /** Number of completed retry items */
+        completed?: number;
+        /** Total number of items being retried */
+        total?: number;
+        /** Item ID that was retried */
+        itemId?: string;
+        /** Updated result for the item */
+        result?: PipelineItemResultNode;
+        /** Updated execution stats */
+        stats?: ExecutionStats;
+        /** Error message */
+        error?: string;
+        /** IDs of items being retried */
+        itemIds?: string[];
     };
 }
 
