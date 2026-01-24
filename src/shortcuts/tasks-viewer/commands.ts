@@ -108,11 +108,8 @@ export class TasksCommands {
         }
 
         try {
-            const folderPath = await this.taskManager.createFeature(name.trim());
+            await this.taskManager.createFeature(name.trim());
             this.treeDataProvider.refresh();
-
-            // Reveal the folder in the file explorer
-            await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(folderPath));
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to create feature: ${err.message}`);

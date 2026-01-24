@@ -162,6 +162,26 @@ suite('Tasks Viewer Tests', () => {
                 assert.ok(folderPath.startsWith(tasksFolder), 'Feature should be inside tasks folder');
             });
 
+            test('should create meta.md file in feature folder', async () => {
+                const folderPath = await taskManager.createFeature('My Feature');
+                const metaFilePath = path.join(folderPath, 'meta.md');
+                
+                assert.ok(fs.existsSync(metaFilePath), 'meta.md should exist in feature folder');
+                
+                const content = fs.readFileSync(metaFilePath, 'utf8');
+                assert.strictEqual(content, '', 'meta.md should be empty initially');
+            });
+
+            test('should make feature visible in task tree after creation', async () => {
+                await taskManager.createFeature('Test Feature');
+
+                // The meta.md file should make the feature visible
+                const tasks = await taskManager.getTasks();
+                const featureTask = tasks.find(t => t.relativePath === 'Test-Feature');
+                assert.ok(featureTask, 'Feature should be visible with meta.md file');
+                assert.strictEqual(featureTask.name, 'meta', 'meta.md should be found');
+            });
+
             test('should allow creating tasks inside feature folder', async () => {
                 const featurePath = await taskManager.createFeature('Test Feature');
 

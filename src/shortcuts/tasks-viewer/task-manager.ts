@@ -155,6 +155,10 @@ export class TaskManager implements vscode.Disposable {
 
         ensureDirectoryExists(folderPath);
 
+        // Create meta.md file so the feature appears in the tree view
+        const metaFilePath = path.join(folderPath, 'meta.md');
+        safeWriteFile(metaFilePath, '');
+
         return folderPath;
     }
 
