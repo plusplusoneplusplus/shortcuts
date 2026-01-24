@@ -108,7 +108,8 @@ export {
     PROBLEMATIC_CHARS_PATTERN,
     shouldUseFileDelivery,
     writePromptToTempFile,
-    BuildCliCommandResult
+    BuildCliCommandResult,
+    BuildCliCommandOptions
 } from './cli-utils';
 
 // Export external terminal launcher

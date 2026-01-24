@@ -259,6 +259,17 @@ export interface AIProcess {
     structuredResult?: string; // JSON string of CodeReviewResult
     /** Parent process ID (for child processes in a group) */
     parentProcessId?: string;
+
+    // ========================================================================
+    // Session Resume Fields (Added 2026-01)
+    // ========================================================================
+
+    /** SDK session ID for resuming sessions (only for copilot-sdk backend) */
+    sdkSessionId?: string;
+    /** Backend type used for this process */
+    backend?: AIBackendType;
+    /** Working directory used for the original session */
+    workingDirectory?: string;
 }
 
 /**
@@ -365,7 +376,11 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         discoveryMetadata: serialized.discoveryMetadata,
         codeReviewGroupMetadata: serialized.codeReviewGroupMetadata,
         structuredResult: serialized.structuredResult,
-        parentProcessId: serialized.parentProcessId
+        parentProcessId: serialized.parentProcessId,
+        // Session resume fields
+        sdkSessionId: serialized.sdkSessionId,
+        backend: serialized.backend,
+        workingDirectory: serialized.workingDirectory
     };
 }
 
@@ -485,6 +500,8 @@ export interface ExternalTerminalLaunchOptions {
     preferredTerminal?: TerminalType;
     /** Model to use (optional, uses default if not specified) */
     model?: string;
+    /** Session ID to resume (for session resume functionality) */
+    resumeSessionId?: string;
 }
 
 /**
@@ -692,6 +709,32 @@ export interface IAIProcessManager {
      * @returns The SDK session ID if attached, undefined otherwise
      */
     getSdkSessionId(id: string): string | undefined;
+
+    /**
+     * Attach session metadata to an existing tracked process.
+     * This stores the backend type and working directory for session resume functionality.
+     * 
+     * @param id Process ID
+     * @param backend The AI backend type used
+     * @param workingDirectory The working directory used for the session
+     */
+    attachSessionMetadata(id: string, backend: AIBackendType, workingDirectory?: string): void;
+
+    /**
+     * Get session metadata for a tracked process (for session resume).
+     * 
+     * @param id Process ID
+     * @returns Session metadata if available
+     */
+    getSessionMetadata(id: string): { sdkSessionId?: string; backend?: AIBackendType; workingDirectory?: string } | undefined;
+
+    /**
+     * Check if a process is resumable (has session ID, completed, SDK backend).
+     * 
+     * @param id Process ID
+     * @returns True if the process can be resumed
+     */
+    isProcessResumable(id: string): boolean;
 
     /**
      * Save raw stdout to a temp file and attach it to the process

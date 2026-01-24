@@ -2055,6 +2055,111 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Command to resume a completed AI session in interactive mode
+        const resumeSessionCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.resumeSession',
+            async (item: { process?: { id: string; sdkSessionId?: string; backend?: string; workingDirectory?: string; fullPrompt?: string } }) => {
+                if (!item?.process?.id) {
+                    vscode.window.showWarningMessage('No process selected.');
+                    return;
+                }
+
+                const processId = item.process.id;
+                
+                // Check if the process is resumable
+                if (!aiProcessManager.isProcessResumable(processId)) {
+                    // Get session metadata to provide a more specific error message
+                    const metadata = aiProcessManager.getSessionMetadata(processId);
+                    const process = aiProcessManager.getProcess(processId);
+                    
+                    if (!metadata?.sdkSessionId) {
+                        // No session ID - offer to start a new session with the original prompt
+                        const action = await vscode.window.showWarningMessage(
+                            'This process does not have a resumable session ID. Would you like to start a new interactive session with the original prompt?',
+                            'Start New Session',
+                            'Cancel'
+                        );
+                        
+                        if (action === 'Start New Session' && process?.fullPrompt) {
+                            const sessionId = await interactiveSessionManager.startSession({
+                                workingDirectory: metadata?.workingDirectory || workspaceRoot,
+                                tool: 'copilot',
+                                initialPrompt: process.fullPrompt
+                            });
+                            
+                            if (sessionId) {
+                                vscode.window.showInformationMessage('New interactive session started with original prompt.');
+                            }
+                        }
+                        return;
+                    }
+                    
+                    if (metadata?.backend !== 'copilot-sdk') {
+                        vscode.window.showWarningMessage(
+                            `Session resume is only available for processes using the Copilot SDK backend. This process used: ${metadata?.backend || 'unknown'}`
+                        );
+                        return;
+                    }
+                    
+                    if (process?.status !== 'completed') {
+                        vscode.window.showWarningMessage(
+                            `Only completed processes can be resumed. Current status: ${process?.status || 'unknown'}`
+                        );
+                        return;
+                    }
+                    
+                    vscode.window.showWarningMessage('This process cannot be resumed.');
+                    return;
+                }
+
+                // Get session metadata for resume
+                const metadata = aiProcessManager.getSessionMetadata(processId);
+                if (!metadata?.sdkSessionId) {
+                    vscode.window.showErrorMessage('Session ID not found. Cannot resume session.');
+                    return;
+                }
+
+                // Launch external terminal with session resume
+                const sessionId = await interactiveSessionManager.startSession({
+                    workingDirectory: metadata.workingDirectory || workspaceRoot,
+                    tool: 'copilot',
+                    // Note: We don't pass initialPrompt when resuming - the CLI will restore the conversation
+                });
+
+                // The startSession doesn't support resumeSessionId yet, so we need to launch directly
+                // For now, use the external terminal launcher directly
+                const { getExternalTerminalLauncher } = await import('./shortcuts/ai-service');
+                const launcher = getExternalTerminalLauncher();
+                
+                const result = await launcher.launch({
+                    workingDirectory: metadata.workingDirectory || workspaceRoot,
+                    tool: 'copilot',
+                    resumeSessionId: metadata.sdkSessionId
+                });
+
+                if (result.success) {
+                    vscode.window.showInformationMessage('Session resumed in external terminal.');
+                } else {
+                    // Session might have expired - offer to start a new session
+                    const process = aiProcessManager.getProcess(processId);
+                    const action = await vscode.window.showWarningMessage(
+                        `Could not resume session: ${result.error}. The session may have expired. Would you like to start a new session with the original prompt?`,
+                        'Start New Session',
+                        'Cancel'
+                    );
+                    
+                    if (action === 'Start New Session' && process?.fullPrompt) {
+                        await interactiveSessionManager.startSession({
+                            workingDirectory: metadata.workingDirectory || workspaceRoot,
+                            tool: 'copilot',
+                            initialPrompt: process.fullPrompt
+                        });
+                        vscode.window.showInformationMessage('New interactive session started with original prompt.');
+                    }
+                }
+            }
+        );
+
         // Register Interactive Session commands
         const startInteractiveSessionCommand = vscode.commands.registerCommand(
             'interactiveSessions.start',
@@ -2323,6 +2428,7 @@ export async function activate(context: vscode.ExtensionContext) {
             viewRawResponseCommand,
             viewDiscoveryResultsCommand,
             refreshProcessesCommand,
+            resumeSessionCommand,
             // Interactive Session disposables
             interactiveSessionManager,
             startInteractiveSessionCommand,

@@ -50,7 +50,11 @@ export class AIProcessItem extends vscode.TreeItem {
                 ? `pipelineItemProcess_${process.status}_child`
                 : `pipelineItemProcess_${process.status}`;
         } else {
-            this.contextValue = `clarificationProcess_${process.status}`;
+            // For clarification processes, check if resumable
+            const isResumable = this.isProcessResumable(process);
+            this.contextValue = isResumable
+                ? `clarificationProcess_${process.status}_resumable`
+                : `clarificationProcess_${process.status}`;
         }
 
         // Set description based on status
@@ -357,9 +361,27 @@ export class AIProcessItem extends vscode.TreeItem {
             lines.push(`> ${process.promptPreview}`);
         }
 
+        // Session resume info (for clarification processes)
+        if (process.type === 'clarification' && this.isProcessResumable(process)) {
+            lines.push('');
+            lines.push('---');
+            lines.push('💡 *This session can be resumed*');
+        }
+
         const tooltip = new vscode.MarkdownString(lines.join('\n'));
         tooltip.supportHtml = true;
         return tooltip;
+    }
+
+    /**
+     * Check if a process is resumable (has session ID, completed, SDK backend)
+     */
+    private isProcessResumable(process: AIProcess): boolean {
+        return !!(
+            process.sdkSessionId &&
+            process.status === 'completed' &&
+            process.backend === 'copilot-sdk'
+        );
     }
 
     /**

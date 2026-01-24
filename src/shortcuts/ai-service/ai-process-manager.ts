@@ -54,8 +54,6 @@ const RAW_STDOUT_DIR_NAME = 'shortcuts-ai-processes';
  */
 interface TrackedProcess extends AIProcess {
     childProcess?: ChildProcess;
-    /** SDK session ID for processes using the Copilot SDK backend */
-    sdkSessionId?: string;
 }
 
 /**
@@ -157,7 +155,11 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
                     discoveryMetadata: p.discoveryMetadata,
                     codeReviewGroupMetadata: p.codeReviewGroupMetadata,
                     structuredResult: p.structuredResult,
-                    parentProcessId: p.parentProcessId
+                    parentProcessId: p.parentProcessId,
+                    // Session resume fields
+                    sdkSessionId: p.sdkSessionId,
+                    backend: p.backend,
+                    workingDirectory: p.workingDirectory
                 }));
 
             await this.context.workspaceState.update(STORAGE_KEY, toSave);
@@ -629,6 +631,63 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
     getSdkSessionId(id: string): string | undefined {
         const process = this.processes.get(id);
         return process?.sdkSessionId;
+    }
+
+    /**
+     * Attach session metadata to an existing tracked process.
+     * This stores the backend type and working directory for session resume functionality.
+     * 
+     * @param id Process ID
+     * @param backend The AI backend type used
+     * @param workingDirectory The working directory used for the session
+     */
+    attachSessionMetadata(id: string, backend: import('./types').AIBackendType, workingDirectory?: string): void {
+        const process = this.processes.get(id);
+        if (!process) {
+            return;
+        }
+
+        process.backend = backend;
+        if (workingDirectory) {
+            process.workingDirectory = workingDirectory;
+        }
+    }
+
+    /**
+     * Get session metadata for a tracked process (for session resume).
+     * 
+     * @param id Process ID
+     * @returns Session metadata if available
+     */
+    getSessionMetadata(id: string): { sdkSessionId?: string; backend?: import('./types').AIBackendType; workingDirectory?: string } | undefined {
+        const process = this.processes.get(id);
+        if (!process) {
+            return undefined;
+        }
+        return {
+            sdkSessionId: process.sdkSessionId,
+            backend: process.backend,
+            workingDirectory: process.workingDirectory
+        };
+    }
+
+    /**
+     * Check if a process is resumable (has session ID, completed, SDK backend).
+     * 
+     * @param id Process ID
+     * @returns True if the process can be resumed
+     */
+    isProcessResumable(id: string): boolean {
+        const process = this.processes.get(id);
+        if (!process) {
+            return false;
+        }
+
+        return !!(
+            process.sdkSessionId &&
+            process.status === 'completed' &&
+            process.backend === 'copilot-sdk'
+        );
     }
 
     /**

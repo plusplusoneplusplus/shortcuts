@@ -132,9 +132,23 @@ export interface BuildCliCommandResult {
     /** The complete command string to execute */
     command: string;
     /** The delivery method used for the prompt */
-    deliveryMethod: 'direct' | 'file';
+    deliveryMethod: 'direct' | 'file' | 'resume';
     /** Path to the temp file if file-based delivery was used */
     tempFilePath?: string;
+}
+
+/**
+ * Options for building a CLI command
+ */
+export interface BuildCliCommandOptions {
+    /** Initial prompt to send */
+    prompt?: string;
+    /** Model to use (e.g., 'gpt-4') */
+    model?: string;
+    /** Platform override for shell escaping (defaults to process.platform) */
+    platform?: NodeJS.Platform;
+    /** Session ID to resume (for session resume functionality) */
+    resumeSessionId?: string;
 }
 
 /**
@@ -146,25 +160,27 @@ export interface BuildCliCommandResult {
  * Uses smart prompt delivery:
  * - Direct: For short, simple prompts without shell-problematic characters
  * - File-based: For long prompts or those containing special characters
+ * - Resume: For resuming an existing session with --resume flag
  *
  * @param tool - The CLI tool to use ('copilot' or 'claude')
  * @param options - Optional command options
- * @param options.prompt - Initial prompt to send
- * @param options.model - Model to use (e.g., 'gpt-4')
- * @param options.platform - Platform override for shell escaping (defaults to process.platform)
  * @returns Object containing the command string and delivery metadata
  */
 export function buildCliCommand(
     tool: InteractiveToolType,
-    options?: {
-        prompt?: string;
-        model?: string;
-        platform?: NodeJS.Platform;
-    }
+    options?: BuildCliCommandOptions
 ): BuildCliCommandResult {
     const baseCommand = tool === 'copilot' ? 'copilot' : 'claude';
-    const { prompt, model, platform } = options ?? {};
+    const { prompt, model, platform, resumeSessionId } = options ?? {};
     const modelFlag = model ? ` --model ${model}` : '';
+
+    // Session resume mode: use --resume flag
+    if (resumeSessionId) {
+        return {
+            command: `${baseCommand} ${COPILOT_BASE_FLAGS}${modelFlag} --resume=${resumeSessionId}`,
+            deliveryMethod: 'resume'
+        };
+    }
 
     if (!prompt) {
         return {

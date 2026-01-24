@@ -241,7 +241,7 @@ export class ExternalTerminalLauncher {
      * Launch an external terminal with the specified options
      */
     async launch(options: ExternalTerminalLaunchOptions): Promise<ExternalTerminalLaunchResult> {
-        const { workingDirectory, tool, initialPrompt, preferredTerminal, model } = options;
+        const { workingDirectory, tool, initialPrompt, preferredTerminal, model, resumeSessionId } = options;
 
         // Determine which terminal to use
         let terminalType: TerminalType;
@@ -260,8 +260,8 @@ export class ExternalTerminalLauncher {
             };
         }
 
-        // Build the CLI command
-        const result = buildCliCommand(tool, { prompt: initialPrompt, model });
+        // Build the CLI command (with optional session resume)
+        const result = buildCliCommand(tool, { prompt: initialPrompt, model, resumeSessionId });
         const command = result.command;
 
         // Get the terminal configuration

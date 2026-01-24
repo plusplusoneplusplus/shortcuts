@@ -177,6 +177,11 @@ export async function handleAIClarificationBase(
             processManager.attachSdkSessionId(processId, result.sessionId);
         }
 
+        // Attach session metadata for session resume functionality
+        if (processId && processManager) {
+            processManager.attachSessionMetadata(processId, backend, workspaceRoot);
+        }
+
         if (result.success) {
             // Mark process as completed
             if (processId && processManager) {

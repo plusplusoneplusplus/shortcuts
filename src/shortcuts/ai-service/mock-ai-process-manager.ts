@@ -443,6 +443,43 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
         return undefined;
     }
 
+    attachSessionMetadata(id: string, backend: import('./types').AIBackendType, workingDirectory?: string): void {
+        this.recordCall('attachSessionMetadata', id, [id, backend, workingDirectory]);
+        const process = this.processes.get(id);
+        if (process) {
+            process.backend = backend;
+            if (workingDirectory) {
+                process.workingDirectory = workingDirectory;
+            }
+        }
+    }
+
+    getSessionMetadata(id: string): { sdkSessionId?: string; backend?: import('./types').AIBackendType; workingDirectory?: string } | undefined {
+        this.recordCall('getSessionMetadata', id, [id]);
+        const process = this.processes.get(id);
+        if (!process) {
+            return undefined;
+        }
+        return {
+            sdkSessionId: process.sdkSessionId,
+            backend: process.backend,
+            workingDirectory: process.workingDirectory
+        };
+    }
+
+    isProcessResumable(id: string): boolean {
+        this.recordCall('isProcessResumable', id, [id]);
+        const process = this.processes.get(id);
+        if (!process) {
+            return false;
+        }
+        return !!(
+            process.sdkSessionId &&
+            process.status === 'completed' &&
+            process.backend === 'copilot-sdk'
+        );
+    }
+
     attachRawStdout(id: string, stdout: string): string | undefined {
         this.recordCall('attachRawStdout', id, [id, stdout]);
         // Mock doesn't save to file, but we can attach it to the process

@@ -1044,6 +1044,12 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "clarificationProcesses.resumeSession",
+        "title": "Resume Session...",
+        "category": "AI Processes",
+        "icon": "$(debug-continue)"
+      },
+      {
         "command": "interactiveSessions.start",
         "title": "Start Interactive Session",
         "category": "AI Processes",
@@ -2030,8 +2036,13 @@
           "group": "process@2"
         },
         {
+          "command": "clarificationProcesses.resumeSession",
+          "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_completed_resumable$/",
+          "group": "process@2"
+        },
+        {
           "command": "clarificationProcesses.remove",
-          "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_(completed|failed|cancelled)$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_(completed|failed|cancelled)/",
           "group": "process@3"
         },
         {
