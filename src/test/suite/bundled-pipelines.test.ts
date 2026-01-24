@@ -459,10 +459,10 @@ reduce:
             assert.strictEqual(item.contextValue, 'pipelineCategory_workspace');
         });
 
-        test('should be expanded by default', () => {
+        test('should be collapsed by default', () => {
             const item = new PipelineCategoryItem('Test', 'bundled', 0, 'Test');
 
-            assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.Expanded);
+            assert.strictEqual(item.collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
         });
     });
 
