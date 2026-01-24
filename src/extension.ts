@@ -2122,15 +2122,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     return;
                 }
 
-                // Launch external terminal with session resume
-                const sessionId = await interactiveSessionManager.startSession({
-                    workingDirectory: metadata.workingDirectory || workspaceRoot,
-                    tool: 'copilot',
-                    // Note: We don't pass initialPrompt when resuming - the CLI will restore the conversation
-                });
-
-                // The startSession doesn't support resumeSessionId yet, so we need to launch directly
-                // For now, use the external terminal launcher directly
+                // Launch external terminal with session resume using the --resume flag
                 const { getExternalTerminalLauncher } = await import('./shortcuts/ai-service');
                 const launcher = getExternalTerminalLauncher();
                 

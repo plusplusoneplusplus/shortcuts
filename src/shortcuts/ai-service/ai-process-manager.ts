@@ -969,7 +969,11 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             discoveryMetadata: p.discoveryMetadata,
             codeReviewGroupMetadata: p.codeReviewGroupMetadata,
             structuredResult: p.structuredResult,
-            parentProcessId: p.parentProcessId
+            parentProcessId: p.parentProcessId,
+            // Session resume fields
+            sdkSessionId: p.sdkSessionId,
+            backend: p.backend,
+            workingDirectory: p.workingDirectory
         }));
     }
 
@@ -1006,7 +1010,11 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             discoveryMetadata: process.discoveryMetadata,
             codeReviewGroupMetadata: process.codeReviewGroupMetadata,
             structuredResult: process.structuredResult,
-            parentProcessId: process.parentProcessId
+            parentProcessId: process.parentProcessId,
+            // Session resume fields
+            sdkSessionId: process.sdkSessionId,
+            backend: process.backend,
+            workingDirectory: process.workingDirectory
         };
     }
 

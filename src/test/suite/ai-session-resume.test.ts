@@ -157,6 +157,78 @@ suite('AI Session Resume', () => {
 
             assert.strictEqual(processManager.isProcessResumable(processId), false);
         });
+
+        // ========================================================================
+        // Regression tests for bug: getProcesses/getProcess not including session fields
+        // ========================================================================
+
+        test('getProcesses should include session resume fields (regression)', () => {
+            // This test prevents regression of the bug where getProcesses() 
+            // was not including sdkSessionId, backend, and workingDirectory fields
+            const processId = processManager.registerProcess('Test prompt');
+
+            // Attach session metadata
+            processManager.attachSdkSessionId(processId, 'session-regression-test');
+            processManager.attachSessionMetadata(processId, 'copilot-sdk', '/test/workspace');
+            processManager.completeProcess(processId, 'Result');
+
+            // Get all processes and find our process
+            const processes = processManager.getProcesses();
+            const process = processes.find(p => p.id === processId);
+
+            assert.ok(process, 'Process should be found in getProcesses()');
+            assert.strictEqual(process.sdkSessionId, 'session-regression-test', 
+                'getProcesses() must include sdkSessionId field');
+            assert.strictEqual(process.backend, 'copilot-sdk', 
+                'getProcesses() must include backend field');
+            assert.strictEqual(process.workingDirectory, '/test/workspace', 
+                'getProcesses() must include workingDirectory field');
+        });
+
+        test('getProcess should include session resume fields (regression)', () => {
+            // This test prevents regression of the bug where getProcess() 
+            // was not including sdkSessionId, backend, and workingDirectory fields
+            const processId = processManager.registerProcess('Test prompt');
+
+            // Attach session metadata
+            processManager.attachSdkSessionId(processId, 'session-get-single');
+            processManager.attachSessionMetadata(processId, 'copilot-sdk', '/single/workspace');
+            processManager.completeProcess(processId, 'Result');
+
+            // Get single process by ID
+            const process = processManager.getProcess(processId);
+
+            assert.ok(process, 'Process should be found by getProcess()');
+            assert.strictEqual(process.sdkSessionId, 'session-get-single', 
+                'getProcess() must include sdkSessionId field');
+            assert.strictEqual(process.backend, 'copilot-sdk', 
+                'getProcess() must include backend field');
+            assert.strictEqual(process.workingDirectory, '/single/workspace', 
+                'getProcess() must include workingDirectory field');
+        });
+
+        test('AIProcessItem should receive session fields from getProcesses (integration)', () => {
+            // Integration test: ensures the full flow works - 
+            // getProcesses() returns session fields, which AIProcessItem uses for context value
+            const processId = processManager.registerProcess('Test prompt');
+
+            processManager.attachSdkSessionId(processId, 'session-integration');
+            processManager.attachSessionMetadata(processId, 'copilot-sdk', '/integration/workspace');
+            processManager.completeProcess(processId, 'Result');
+
+            // Simulate what the tree provider does: get processes and create tree items
+            const processes = processManager.getProcesses();
+            const process = processes.find(p => p.id === processId);
+
+            assert.ok(process, 'Process should be found');
+
+            // Create AIProcessItem with the process from getProcesses()
+            const item = new AIProcessItem(process);
+
+            // The context value should be resumable because session fields are present
+            assert.strictEqual(item.contextValue, 'clarificationProcess_completed_resumable',
+                'AIProcessItem should detect resumable status from getProcesses() data');
+        });
     });
 
     suite('CLI Command Building with Resume', () => {
@@ -197,6 +269,53 @@ suite('AI Session Resume', () => {
 
             assert.ok(!result.command.includes('--resume'));
             assert.ok(result.command.includes('Hello world') || result.deliveryMethod === 'file');
+        });
+
+        // ========================================================================
+        // Regression test: ensure resume-only command doesn't include prompt
+        // This prevents the bug where both a normal session AND resume session were launched
+        // ========================================================================
+
+        test('resume command should not include any prompt-related content (regression)', () => {
+            // When resuming, we should ONLY have the --resume flag, not any prompt
+            // This ensures only one terminal is needed (the resume one)
+            const result = buildCliCommand('copilot', {
+                resumeSessionId: 'session-abc-123'
+            });
+
+            // Should have resume flag
+            assert.ok(result.command.includes('--resume=session-abc-123'), 
+                'Resume command must include --resume flag');
+            
+            // Should NOT have prompt-related flags or content
+            assert.ok(!result.command.includes('-p '), 
+                'Resume command should not include -p flag');
+            assert.ok(!result.command.includes('--prompt'), 
+                'Resume command should not include --prompt flag');
+            
+            // Delivery method should be 'resume', not 'direct' or 'file'
+            assert.strictEqual(result.deliveryMethod, 'resume',
+                'Resume should use "resume" delivery method, not "direct" or "file"');
+        });
+
+        test('resume command should be a single complete command (regression)', () => {
+            // Ensure the resume command is self-contained and doesn't require
+            // additional commands or sessions to be started
+            const result = buildCliCommand('copilot', {
+                resumeSessionId: 'session-single-command'
+            });
+
+            // The command should start with 'copilot' (the tool)
+            assert.ok(result.command.startsWith('copilot'), 
+                'Resume command should start with the tool name');
+            
+            // Should be a single command (no && or ; separators for additional commands)
+            assert.ok(!result.command.includes(' && '), 
+                'Resume command should not chain additional commands');
+            
+            // No temp file should be created for resume
+            assert.strictEqual(result.tempFilePath, undefined,
+                'Resume should not create temp files');
         });
     });
 
