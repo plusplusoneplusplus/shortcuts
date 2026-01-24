@@ -437,7 +437,6 @@ export class AIProcessItem extends vscode.TreeItem {
 
         const tooltip = new vscode.MarkdownString(lines.join('\n'));
         tooltip.supportHtml = true;
-        tooltip.isTrusted = true;  // Allows tooltip to stay visible when hovering over it for copying
         return tooltip;
     }
 
