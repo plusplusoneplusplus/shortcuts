@@ -109,9 +109,28 @@ export function initSearchElements(): SearchElements | null {
 
 /**
  * Open search bar
+ * @param elements - Search UI elements
+ * @param state - Search state
+ * @param initialQuery - Optional initial query to populate the search box (e.g., selected text)
+ * @param getContainer - Optional function to get the search container for immediate search execution
  */
-export function openSearchBar(elements: SearchElements, state: SearchState): void {
+export function openSearchBar(
+    elements: SearchElements, 
+    state: SearchState, 
+    initialQuery?: string,
+    getContainer?: () => HTMLElement | null
+): void {
     elements.searchBar.style.display = 'flex';
+    
+    // If there's an initial query (e.g., selected text), populate the search box
+    if (initialQuery && initialQuery.trim()) {
+        elements.searchInput.value = initialQuery.trim();
+        // Execute search immediately if we have a container getter
+        if (getContainer) {
+            executeSearch(elements, state, getContainer());
+        }
+    }
+    
     elements.searchInput.focus();
     elements.searchInput.select();
     state.isOpen = true;
@@ -455,7 +474,14 @@ export function setupSearchKeyboardShortcuts(
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
-            openSearchBar(elements, state);
+            
+            // Capture selected text before opening search bar
+            const selection = window.getSelection();
+            const selectedText = selection && !selection.isCollapsed 
+                ? selection.toString().trim() 
+                : undefined;
+            
+            openSearchBar(elements, state, selectedText, getContainer);
             return;
         }
 

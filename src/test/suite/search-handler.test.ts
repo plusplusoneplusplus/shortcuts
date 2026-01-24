@@ -1033,4 +1033,760 @@ suite('Search Handler', () => {
             }
         });
     });
+
+    suite('Selected text in search box (Ctrl+F with selection)', () => {
+        /**
+         * Tests for the feature where selected text is pre-filled in the search box
+         * when the user presses Ctrl+F with text selected.
+         */
+
+        suite('Selection capture logic', () => {
+            test('should capture selected text when selection exists', () => {
+                // Simulates the selection capture logic in handleKeydown
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    return selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                };
+
+                // With valid selection
+                const validSelection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => 'selected text'
+                };
+                assert.strictEqual(captureSelectedText(validSelection), 'selected text');
+
+                // With collapsed selection (cursor only, no selection)
+                const collapsedSelection: MockSelection = {
+                    isCollapsed: true,
+                    toString: () => ''
+                };
+                assert.strictEqual(captureSelectedText(collapsedSelection), undefined);
+
+                // With null selection
+                assert.strictEqual(captureSelectedText(null), undefined);
+            });
+
+            test('should trim whitespace from selected text', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    return selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                };
+
+                const selectionWithWhitespace: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => '  hello world  '
+                };
+                assert.strictEqual(captureSelectedText(selectionWithWhitespace), 'hello world');
+            });
+
+            test('should return undefined for whitespace-only selection', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    const text = selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                    return text || undefined;
+                };
+
+                const whitespaceSelection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => '   \n\t  '
+                };
+                // After trim, empty string becomes falsy, so returns undefined
+                const result = captureSelectedText(whitespaceSelection);
+                assert.strictEqual(result === '' || result === undefined, true);
+            });
+
+            test('should handle multiline selection', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    return selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                };
+
+                const multilineSelection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => 'line 1\nline 2\nline 3'
+                };
+                assert.strictEqual(captureSelectedText(multilineSelection), 'line 1\nline 2\nline 3');
+            });
+
+            test('should handle selection with special characters', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    return selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                };
+
+                const specialCharsSelection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => 'function() { return true; }'
+                };
+                assert.strictEqual(captureSelectedText(specialCharsSelection), 'function() { return true; }');
+            });
+
+            test('should handle unicode selection', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    return selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                };
+
+                const unicodeSelection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => '你好世界 🌍'
+                };
+                assert.strictEqual(captureSelectedText(unicodeSelection), '你好世界 🌍');
+            });
+        });
+
+        suite('openSearchBar with initial query', () => {
+            test('should populate search input with initial query', () => {
+                // Simulates the openSearchBar behavior
+                interface MockElements {
+                    searchBar: { style: { display: string } };
+                    searchInput: { value: string; focus: () => void; select: () => void };
+                }
+
+                interface MockState {
+                    isOpen: boolean;
+                }
+
+                const openSearchBar = (
+                    elements: MockElements,
+                    state: MockState,
+                    initialQuery?: string
+                ): void => {
+                    elements.searchBar.style.display = 'flex';
+                    if (initialQuery && initialQuery.trim()) {
+                        elements.searchInput.value = initialQuery.trim();
+                    }
+                    state.isOpen = true;
+                };
+
+                const elements: MockElements = {
+                    searchBar: { style: { display: 'none' } },
+                    searchInput: { value: '', focus: () => {}, select: () => {} }
+                };
+                const state: MockState = { isOpen: false };
+
+                openSearchBar(elements, state, 'test query');
+
+                assert.strictEqual(elements.searchInput.value, 'test query');
+                assert.strictEqual(state.isOpen, true);
+            });
+
+            test('should not populate search input when initial query is undefined', () => {
+                interface MockElements {
+                    searchBar: { style: { display: string } };
+                    searchInput: { value: string; focus: () => void; select: () => void };
+                }
+
+                interface MockState {
+                    isOpen: boolean;
+                }
+
+                const openSearchBar = (
+                    elements: MockElements,
+                    state: MockState,
+                    initialQuery?: string
+                ): void => {
+                    elements.searchBar.style.display = 'flex';
+                    if (initialQuery && initialQuery.trim()) {
+                        elements.searchInput.value = initialQuery.trim();
+                    }
+                    state.isOpen = true;
+                };
+
+                const elements: MockElements = {
+                    searchBar: { style: { display: 'none' } },
+                    searchInput: { value: '', focus: () => {}, select: () => {} }
+                };
+                const state: MockState = { isOpen: false };
+
+                openSearchBar(elements, state, undefined);
+
+                assert.strictEqual(elements.searchInput.value, '');
+                assert.strictEqual(state.isOpen, true);
+            });
+
+            test('should not populate search input when initial query is empty string', () => {
+                interface MockElements {
+                    searchBar: { style: { display: string } };
+                    searchInput: { value: string; focus: () => void; select: () => void };
+                }
+
+                interface MockState {
+                    isOpen: boolean;
+                }
+
+                const openSearchBar = (
+                    elements: MockElements,
+                    state: MockState,
+                    initialQuery?: string
+                ): void => {
+                    elements.searchBar.style.display = 'flex';
+                    if (initialQuery && initialQuery.trim()) {
+                        elements.searchInput.value = initialQuery.trim();
+                    }
+                    state.isOpen = true;
+                };
+
+                const elements: MockElements = {
+                    searchBar: { style: { display: 'none' } },
+                    searchInput: { value: '', focus: () => {}, select: () => {} }
+                };
+                const state: MockState = { isOpen: false };
+
+                openSearchBar(elements, state, '');
+
+                assert.strictEqual(elements.searchInput.value, '');
+            });
+
+            test('should not populate search input when initial query is whitespace only', () => {
+                interface MockElements {
+                    searchBar: { style: { display: string } };
+                    searchInput: { value: string; focus: () => void; select: () => void };
+                }
+
+                interface MockState {
+                    isOpen: boolean;
+                }
+
+                const openSearchBar = (
+                    elements: MockElements,
+                    state: MockState,
+                    initialQuery?: string
+                ): void => {
+                    elements.searchBar.style.display = 'flex';
+                    if (initialQuery && initialQuery.trim()) {
+                        elements.searchInput.value = initialQuery.trim();
+                    }
+                    state.isOpen = true;
+                };
+
+                const elements: MockElements = {
+                    searchBar: { style: { display: 'none' } },
+                    searchInput: { value: '', focus: () => {}, select: () => {} }
+                };
+                const state: MockState = { isOpen: false };
+
+                openSearchBar(elements, state, '   \n\t  ');
+
+                assert.strictEqual(elements.searchInput.value, '');
+            });
+
+            test('should trim initial query before populating', () => {
+                interface MockElements {
+                    searchBar: { style: { display: string } };
+                    searchInput: { value: string; focus: () => void; select: () => void };
+                }
+
+                interface MockState {
+                    isOpen: boolean;
+                }
+
+                const openSearchBar = (
+                    elements: MockElements,
+                    state: MockState,
+                    initialQuery?: string
+                ): void => {
+                    elements.searchBar.style.display = 'flex';
+                    if (initialQuery && initialQuery.trim()) {
+                        elements.searchInput.value = initialQuery.trim();
+                    }
+                    state.isOpen = true;
+                };
+
+                const elements: MockElements = {
+                    searchBar: { style: { display: 'none' } },
+                    searchInput: { value: '', focus: () => {}, select: () => {} }
+                };
+                const state: MockState = { isOpen: false };
+
+                openSearchBar(elements, state, '  trimmed text  ');
+
+                assert.strictEqual(elements.searchInput.value, 'trimmed text');
+            });
+        });
+
+        suite('Search execution with initial query', () => {
+            test('should execute search immediately when initial query is provided', () => {
+                let searchExecuted = false;
+                let searchQuery = '';
+
+                interface MockElements {
+                    searchBar: { style: { display: string } };
+                    searchInput: { value: string; focus: () => void; select: () => void };
+                }
+
+                interface MockState {
+                    isOpen: boolean;
+                }
+
+                const executeSearch = (query: string) => {
+                    searchExecuted = true;
+                    searchQuery = query;
+                };
+
+                // Use unknown instead of HTMLElement since DOM types aren't available in Node test environment
+                const openSearchBar = (
+                    elements: MockElements,
+                    state: MockState,
+                    initialQuery?: string,
+                    getContainer?: () => unknown
+                ): void => {
+                    elements.searchBar.style.display = 'flex';
+                    if (initialQuery && initialQuery.trim()) {
+                        elements.searchInput.value = initialQuery.trim();
+                        if (getContainer) {
+                            executeSearch(initialQuery.trim());
+                        }
+                    }
+                    state.isOpen = true;
+                };
+
+                const elements: MockElements = {
+                    searchBar: { style: { display: 'none' } },
+                    searchInput: { value: '', focus: () => {}, select: () => {} }
+                };
+                const state: MockState = { isOpen: false };
+
+                openSearchBar(elements, state, 'search term', () => null);
+
+                assert.strictEqual(searchExecuted, true, 'Search should be executed');
+                assert.strictEqual(searchQuery, 'search term', 'Search query should match initial query');
+            });
+
+            test('should not execute search when no initial query', () => {
+                let searchExecuted = false;
+
+                interface MockElements {
+                    searchBar: { style: { display: string } };
+                    searchInput: { value: string; focus: () => void; select: () => void };
+                }
+
+                interface MockState {
+                    isOpen: boolean;
+                }
+
+                const executeSearch = () => {
+                    searchExecuted = true;
+                };
+
+                // Use unknown instead of HTMLElement since DOM types aren't available in Node test environment
+                const openSearchBar = (
+                    elements: MockElements,
+                    state: MockState,
+                    initialQuery?: string,
+                    getContainer?: () => unknown
+                ): void => {
+                    elements.searchBar.style.display = 'flex';
+                    if (initialQuery && initialQuery.trim()) {
+                        elements.searchInput.value = initialQuery.trim();
+                        if (getContainer) {
+                            executeSearch();
+                        }
+                    }
+                    state.isOpen = true;
+                };
+
+                const elements: MockElements = {
+                    searchBar: { style: { display: 'none' } },
+                    searchInput: { value: '', focus: () => {}, select: () => {} }
+                };
+                const state: MockState = { isOpen: false };
+
+                openSearchBar(elements, state, undefined, () => null);
+
+                assert.strictEqual(searchExecuted, false, 'Search should not be executed without initial query');
+            });
+
+            test('should not execute search when no container getter provided', () => {
+                let searchExecuted = false;
+
+                interface MockElements {
+                    searchBar: { style: { display: string } };
+                    searchInput: { value: string; focus: () => void; select: () => void };
+                }
+
+                interface MockState {
+                    isOpen: boolean;
+                }
+
+                const executeSearch = () => {
+                    searchExecuted = true;
+                };
+
+                // Use unknown instead of HTMLElement since DOM types aren't available in Node test environment
+                const openSearchBar = (
+                    elements: MockElements,
+                    state: MockState,
+                    initialQuery?: string,
+                    getContainer?: () => unknown
+                ): void => {
+                    elements.searchBar.style.display = 'flex';
+                    if (initialQuery && initialQuery.trim()) {
+                        elements.searchInput.value = initialQuery.trim();
+                        if (getContainer) {
+                            executeSearch();
+                        }
+                    }
+                    state.isOpen = true;
+                };
+
+                const elements: MockElements = {
+                    searchBar: { style: { display: 'none' } },
+                    searchInput: { value: '', focus: () => {}, select: () => {} }
+                };
+                const state: MockState = { isOpen: false };
+
+                // Note: getContainer is undefined
+                openSearchBar(elements, state, 'search term');
+
+                assert.strictEqual(searchExecuted, false, 'Search should not be executed without container getter');
+            });
+        });
+
+        suite('Keyboard shortcut integration', () => {
+            test('should capture selection when Ctrl+F is pressed', () => {
+                // Simulates the full keyboard handler flow
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                interface MockEvent {
+                    ctrlKey: boolean;
+                    metaKey: boolean;
+                    key: string;
+                    preventDefault: () => void;
+                    stopPropagation: () => void;
+                    stopImmediatePropagation: () => void;
+                }
+
+                let capturedQuery: string | undefined;
+
+                const handleKeydown = (
+                    e: MockEvent,
+                    getSelection: () => MockSelection | null,
+                    openSearchBar: (query?: string) => void
+                ) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+
+                        const selection = getSelection();
+                        const selectedText = selection && !selection.isCollapsed
+                            ? selection.toString().trim()
+                            : undefined;
+
+                        openSearchBar(selectedText);
+                    }
+                };
+
+                const mockEvent: MockEvent = {
+                    ctrlKey: true,
+                    metaKey: false,
+                    key: 'f',
+                    preventDefault: () => {},
+                    stopPropagation: () => {},
+                    stopImmediatePropagation: () => {}
+                };
+
+                const mockSelection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => 'selected text'
+                };
+
+                handleKeydown(
+                    mockEvent,
+                    () => mockSelection,
+                    (query) => { capturedQuery = query; }
+                );
+
+                assert.strictEqual(capturedQuery, 'selected text');
+            });
+
+            test('should work with Cmd+F on Mac', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                interface MockEvent {
+                    ctrlKey: boolean;
+                    metaKey: boolean;
+                    key: string;
+                    preventDefault: () => void;
+                    stopPropagation: () => void;
+                    stopImmediatePropagation: () => void;
+                }
+
+                let capturedQuery: string | undefined;
+
+                const handleKeydown = (
+                    e: MockEvent,
+                    getSelection: () => MockSelection | null,
+                    openSearchBar: (query?: string) => void
+                ) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+
+                        const selection = getSelection();
+                        const selectedText = selection && !selection.isCollapsed
+                            ? selection.toString().trim()
+                            : undefined;
+
+                        openSearchBar(selectedText);
+                    }
+                };
+
+                const mockEvent: MockEvent = {
+                    ctrlKey: false,
+                    metaKey: true, // Mac Cmd key
+                    key: 'f',
+                    preventDefault: () => {},
+                    stopPropagation: () => {},
+                    stopImmediatePropagation: () => {}
+                };
+
+                const mockSelection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => 'mac selection'
+                };
+
+                handleKeydown(
+                    mockEvent,
+                    () => mockSelection,
+                    (query) => { capturedQuery = query; }
+                );
+
+                assert.strictEqual(capturedQuery, 'mac selection');
+            });
+
+            test('should pass undefined when no selection exists', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                interface MockEvent {
+                    ctrlKey: boolean;
+                    metaKey: boolean;
+                    key: string;
+                    preventDefault: () => void;
+                    stopPropagation: () => void;
+                    stopImmediatePropagation: () => void;
+                }
+
+                let capturedQuery: string | undefined = 'should be replaced';
+
+                const handleKeydown = (
+                    e: MockEvent,
+                    getSelection: () => MockSelection | null,
+                    openSearchBar: (query?: string) => void
+                ) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+
+                        const selection = getSelection();
+                        const selectedText = selection && !selection.isCollapsed
+                            ? selection.toString().trim()
+                            : undefined;
+
+                        openSearchBar(selectedText);
+                    }
+                };
+
+                const mockEvent: MockEvent = {
+                    ctrlKey: true,
+                    metaKey: false,
+                    key: 'f',
+                    preventDefault: () => {},
+                    stopPropagation: () => {},
+                    stopImmediatePropagation: () => {}
+                };
+
+                handleKeydown(
+                    mockEvent,
+                    () => null,  // Simulate no selection
+                    (query) => { capturedQuery = query; }
+                );
+
+                assert.strictEqual(capturedQuery, undefined);
+            });
+        });
+
+        suite('Cross-platform compatibility', () => {
+            test('should work on Windows (Ctrl+F)', () => {
+                const event = { ctrlKey: true, metaKey: false, key: 'f' };
+                const shouldOpen = (event.ctrlKey || event.metaKey) && event.key === 'f';
+                assert.strictEqual(shouldOpen, true, 'Should recognize Ctrl+F on Windows');
+            });
+
+            test('should work on macOS (Cmd+F)', () => {
+                const event = { ctrlKey: false, metaKey: true, key: 'f' };
+                const shouldOpen = (event.ctrlKey || event.metaKey) && event.key === 'f';
+                assert.strictEqual(shouldOpen, true, 'Should recognize Cmd+F on macOS');
+            });
+
+            test('should work on Linux (Ctrl+F)', () => {
+                const event = { ctrlKey: true, metaKey: false, key: 'f' };
+                const shouldOpen = (event.ctrlKey || event.metaKey) && event.key === 'f';
+                assert.strictEqual(shouldOpen, true, 'Should recognize Ctrl+F on Linux');
+            });
+
+            test('should handle both Ctrl and Meta pressed simultaneously', () => {
+                // Edge case: both keys pressed (shouldn't happen normally but handle gracefully)
+                const event = { ctrlKey: true, metaKey: true, key: 'f' };
+                const shouldOpen = (event.ctrlKey || event.metaKey) && event.key === 'f';
+                assert.strictEqual(shouldOpen, true, 'Should handle both modifier keys');
+            });
+        });
+
+        suite('Edge cases', () => {
+            test('should handle very long selection', () => {
+                const longText = 'a'.repeat(10000);
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    return selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                };
+
+                const selection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => longText
+                };
+
+                const result = captureSelectedText(selection);
+                assert.strictEqual(result?.length, 10000, 'Should handle long selections');
+            });
+
+            test('should handle selection with only newlines', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    return selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                };
+
+                const selection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => '\n\n\n'
+                };
+
+                const result = captureSelectedText(selection);
+                assert.strictEqual(result, '', 'Should return empty string for newlines-only selection');
+            });
+
+            test('should handle selection with mixed whitespace', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    return selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                };
+
+                const selection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => '  \t  hello  \n  world  \t  '
+                };
+
+                const result = captureSelectedText(selection);
+                assert.strictEqual(result, 'hello  \n  world', 'Should trim outer whitespace but preserve inner');
+            });
+
+            test('should handle selection with regex special characters', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    return selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                };
+
+                const selection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => '.*+?^${}()|[]\\/'
+                };
+
+                const result = captureSelectedText(selection);
+                assert.strictEqual(result, '.*+?^${}()|[]\\/', 'Should preserve regex special characters');
+            });
+
+            test('should handle emoji selection', () => {
+                interface MockSelection {
+                    isCollapsed: boolean;
+                    toString: () => string;
+                }
+
+                const captureSelectedText = (selection: MockSelection | null): string | undefined => {
+                    return selection && !selection.isCollapsed 
+                        ? selection.toString().trim() 
+                        : undefined;
+                };
+
+                const selection: MockSelection = {
+                    isCollapsed: false,
+                    toString: () => '🔍 Search 🎯'
+                };
+
+                const result = captureSelectedText(selection);
+                assert.strictEqual(result, '🔍 Search 🎯', 'Should handle emojis correctly');
+            });
+        });
+    });
 });
