@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import {
     AI_PROCESS_SCHEME,
     AIProcessDocumentProvider,
+    AIProcessItem,
     AIProcessManager,
     AIProcessTreeDataProvider,
     InteractiveSessionManager,
@@ -2155,6 +2156,78 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         );
 
+        // Command to copy process details to clipboard
+        const copyDetailsCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.copyDetails',
+            async (item: AIProcessItem) => {
+                if (!item?.process) {
+                    vscode.window.showWarningMessage('No process selected.');
+                    return;
+                }
+
+                const process = item.process;
+                const lines: string[] = [];
+
+                // Type and status
+                lines.push(`Type: ${process.type}`);
+                lines.push(`Status: ${process.status}`);
+                lines.push('');
+
+                // Timing
+                lines.push(`Started: ${process.startTime.toLocaleString()}`);
+                if (process.endTime) {
+                    lines.push(`Ended: ${process.endTime.toLocaleString()}`);
+                    const durationMs = process.endTime.getTime() - process.startTime.getTime();
+                    const durationSec = Math.round(durationMs / 1000);
+                    lines.push(`Duration: ${durationSec}s`);
+                }
+                lines.push('');
+
+                // Error if any
+                if (process.error) {
+                    lines.push(`Error: ${process.error}`);
+                    lines.push('');
+                }
+
+                // Full prompt
+                if (process.fullPrompt) {
+                    lines.push('--- Prompt ---');
+                    lines.push(process.fullPrompt);
+                    lines.push('');
+                }
+
+                // Result/response
+                if (process.result) {
+                    lines.push('--- Response ---');
+                    lines.push(process.result);
+                }
+
+                // Session ID if available
+                if (process.sdkSessionId) {
+                    lines.push('');
+                    lines.push(`Session ID: ${process.sdkSessionId}`);
+                }
+
+                const text = lines.join('\n');
+                await vscode.env.clipboard.writeText(text);
+                vscode.window.showInformationMessage('Process details copied to clipboard.');
+            }
+        );
+
+        // Command to copy session ID to clipboard
+        const copySessionIdCommand = vscode.commands.registerCommand(
+            'clarificationProcesses.copySessionId',
+            async (item: AIProcessItem) => {
+                if (!item?.process?.sdkSessionId) {
+                    vscode.window.showWarningMessage('No session ID available for this process.');
+                    return;
+                }
+
+                await vscode.env.clipboard.writeText(item.process.sdkSessionId);
+                vscode.window.showInformationMessage('Session ID copied to clipboard.');
+            }
+        );
+
         // Register Interactive Session commands
         const startInteractiveSessionCommand = vscode.commands.registerCommand(
             'interactiveSessions.start',
@@ -2424,6 +2497,8 @@ export async function activate(context: vscode.ExtensionContext) {
             viewDiscoveryResultsCommand,
             refreshProcessesCommand,
             resumeSessionCommand,
+            copyDetailsCommand,
+            copySessionIdCommand,
             // Interactive Session disposables
             interactiveSessionManager,
             startInteractiveSessionCommand,

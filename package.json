@@ -1072,6 +1072,18 @@
         "icon": "$(debug-continue)"
       },
       {
+        "command": "clarificationProcesses.copyDetails",
+        "title": "Copy Details",
+        "category": "AI Processes",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "clarificationProcesses.copySessionId",
+        "title": "Copy Session ID",
+        "category": "AI Processes",
+        "icon": "$(key)"
+      },
+      {
         "command": "interactiveSessions.start",
         "title": "Start Interactive Session",
         "category": "AI Processes",
@@ -2096,6 +2108,16 @@
           "command": "clarificationProcesses.remove",
           "when": "view == clarificationProcessesView && viewItem =~ /^discoveryProcess_(completed|failed|cancelled)$/",
           "group": "process@3"
+        },
+        {
+          "command": "clarificationProcesses.copyDetails",
+          "when": "view == clarificationProcessesView && viewItem =~ /Process_(completed|failed|cancelled)/",
+          "group": "copy@1"
+        },
+        {
+          "command": "clarificationProcesses.copySessionId",
+          "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_completed_resumable$/",
+          "group": "copy@2"
         },
         {
           "command": "interactiveSessions.end",
