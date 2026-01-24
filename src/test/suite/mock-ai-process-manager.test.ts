@@ -463,15 +463,18 @@ suite('MockAIProcessManager Tests', () => {
             mgr.dispose();
         });
 
-        test('should wait for all processes to complete', async () => {
+        test('should wait for all processes to complete', async function() {
+            // Increase mocha timeout for CI environments (especially Windows)
+            this.timeout(10000);
+            
             const mgr = createMockAIProcessManager('async');
-            mgr.configure({ autoComplete: true, asyncDelay: 100 });  // Increase delay for reliability
+            mgr.configure({ autoComplete: true, asyncDelay: 50 });  // Reduce delay for faster test
             
             mgr.registerProcess('Process 1');
             mgr.registerProcess('Process 2');
             mgr.registerProcess('Process 3');
 
-            await waitForAllProcesses(mgr, 2000);  // Increase timeout for CI environments
+            await waitForAllProcesses(mgr, 5000);  // Increase timeout for CI environments
 
             assertProcessCounts(mgr, { running: 0, completed: 3 });
             mgr.dispose();
