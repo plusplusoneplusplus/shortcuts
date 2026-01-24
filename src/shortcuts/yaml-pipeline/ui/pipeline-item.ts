@@ -22,7 +22,7 @@ export class PipelineCategoryItem extends vscode.TreeItem {
         count: number,
         tooltip: string
     ) {
-        super(label, vscode.TreeItemCollapsibleState.Expanded);
+        super(label, vscode.TreeItemCollapsibleState.Collapsed);
         this.categoryType = categoryType;
         this.description = `(${count})`;
         this.tooltip = tooltip;
