@@ -246,6 +246,35 @@ suite('Pipeline Preview Content Tests', () => {
             const result = getMapDetails(configNoParallel);
             assert.ok(result.includes('5'), 'Should show default parallelism of 5');
         });
+
+        test('should show text mode indicator when no output fields', () => {
+            const textModeConfig: PipelineConfig = {
+                ...sampleConfig,
+                map: {
+                    prompt: 'Process: {{title}}',
+                    // No output field - text mode
+                    parallel: 5
+                }
+            };
+            
+            const result = getMapDetails(textModeConfig);
+            assert.ok(result.includes('text (raw)'), 'Should show text mode indicator');
+            assert.ok(result.includes('text-mode'), 'Should have text-mode class');
+        });
+
+        test('should show text mode indicator when output is empty array', () => {
+            const textModeConfig: PipelineConfig = {
+                ...sampleConfig,
+                map: {
+                    prompt: 'Process: {{title}}',
+                    output: [], // Empty array - text mode
+                    parallel: 5
+                }
+            };
+            
+            const result = getMapDetails(textModeConfig);
+            assert.ok(result.includes('text (raw)'), 'Should show text mode indicator for empty array');
+        });
     });
 
     suite('getReduceDetails', () => {

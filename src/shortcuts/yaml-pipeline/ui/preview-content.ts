@@ -1274,6 +1274,11 @@ function getStyles(isDark: boolean): string {
             font-size: 11px;
         }
 
+        .field-tag.text-mode {
+            background: ${isDark ? '#666' : '#999'};
+            font-style: italic;
+        }
+
         /* Prompt section */
         .prompt-section,
         .variables-section,
@@ -1628,15 +1633,40 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             const headers = csvInfo?.headers || [];
             const rowCount = csvInfo?.rowCount || 0;
             
+            // Determine input type and path based on new config structure
+            const hasInlineItems = config.input.items && config.input.items.length > 0;
+            const hasCSVSource = config.input.from && typeof config.input.from === 'object' && 'path' in config.input.from;
+            const hasInlineArrayFrom = Array.isArray(config.input.from);
+            const inputType = hasInlineItems ? 'INLINE' : (hasCSVSource ? 'CSV' : (hasInlineArrayFrom ? 'INLINE_ARRAY' : 'UNKNOWN'));
+            const csvPath = hasCSVSource ? config.input.from.path : '';
+            const delimiter = hasCSVSource ? config.input.from.delimiter : undefined;
+            const itemCount = hasInlineItems ? config.input.items.length : (hasInlineArrayFrom ? config.input.from.length : rowCount);
+            const limit = config.input.limit;
+            
             let html = '<div class="detail-section active">';
             html += '<h4 class="detail-title">📥 INPUT Configuration</h4>';
             html += '<div class="detail-grid">';
-            html += '<div class="detail-item"><span class="detail-label">Type:</span><span class="detail-value">' + config.input.type.toUpperCase() + '</span></div>';
-            html += '<div class="detail-item"><span class="detail-label">File:</span><span class="detail-value file-link" data-path="' + escapeHtml(config.input.path) + '">' + escapeHtml(config.input.path) + '</span></div>';
+            html += '<div class="detail-item"><span class="detail-label">Type:</span><span class="detail-value">' + inputType + '</span></div>';
+            
+            if (hasCSVSource) {
+                html += '<div class="detail-item"><span class="detail-label">File:</span><span class="detail-value file-link" data-path="' + escapeHtml(csvPath) + '">' + escapeHtml(csvPath) + '</span></div>';
+            }
+            
+            if (hasInlineItems) {
+                html += '<div class="detail-item"><span class="detail-label">Inline Items:</span><span class="detail-value">' + itemCount + ' items</span></div>';
+            }
             
             if (csvInfo) {
                 html += '<div class="detail-item"><span class="detail-label">Rows:</span><span class="detail-value">' + rowCount + '</span></div>';
                 html += '<div class="detail-item"><span class="detail-label">Columns:</span><span class="detail-value">' + headers.join(', ') + '</span></div>';
+            }
+            
+            if (delimiter && delimiter !== ',') {
+                html += '<div class="detail-item"><span class="detail-label">Delimiter:</span><span class="detail-value">' + escapeHtml(delimiter) + '</span></div>';
+            }
+            
+            if (limit) {
+                html += '<div class="detail-item"><span class="detail-label">Limit:</span><span class="detail-value">' + limit + ' items</span></div>';
             }
             
             html += '</div>';
@@ -1773,6 +1803,7 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             const parallel = config.map.parallel || 5;
             const variables = extractTemplateVariables(config.map.prompt);
             const headerSet = new Set(headers || []);
+            const outputFields = config.map.output || [];
             
             let html = '<div class="detail-section active">';
             html += '<h4 class="detail-title">🔄 MAP Configuration</h4>';
@@ -1784,9 +1815,13 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             }
             
             html += '<div class="detail-item"><span class="detail-label">Output Fields:</span><span class="detail-value output-fields">';
-            config.map.output.forEach(o => {
-                html += '<span class="field-tag">' + escapeHtml(o) + '</span>';
-            });
+            if (outputFields.length > 0) {
+                outputFields.forEach(o => {
+                    html += '<span class="field-tag">' + escapeHtml(o) + '</span>';
+                });
+            } else {
+                html += '<span class="field-tag text-mode">text (raw)</span>';
+            }
             html += '</span></div></div>';
             
             // Prompt template
