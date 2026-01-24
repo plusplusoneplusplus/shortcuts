@@ -144,7 +144,7 @@ export function getWebviewContent(
                 <div class="ai-action-menu" id="aiActionMenu">
                     <div class="ai-action-menu-item ai-action-menu-parent" id="executeWorkPlanItem">
                         <span class="ai-action-icon">🚀</span>
-                        <span class="ai-action-label">Execute Work Plan</span>
+                        <span class="ai-action-label">Follow Prompt</span>
                         <span class="ai-action-arrow">▶</span>
                         <div class="ai-action-submenu" id="executeWorkPlanSubmenu">
                             <!-- Dynamically populated with prompt files -->
