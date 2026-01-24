@@ -161,7 +161,23 @@ export type WebviewMessage =
     | { type: 'openFile'; path: string }
     | { type: 'askAI'; context: AskAIContext }
     | { type: 'askAIInteractive'; context: AskAIContext }
-    | { type: 'collapsedSectionsChanged'; collapsedSections: string[] };
+    | { type: 'collapsedSectionsChanged'; collapsedSections: string[] }
+    | { type: 'requestPromptFiles' }
+    | { type: 'executeWorkPlan'; promptFilePath: string };
+
+/**
+ * Prompt file info for Execute Work Plan feature
+ */
+export interface PromptFileInfo {
+    /** Absolute path to the prompt file */
+    absolutePath: string;
+    /** Path relative to the workspace root */
+    relativePath: string;
+    /** File name without .prompt.md extension */
+    name: string;
+    /** The folder this file was found in (from settings) */
+    sourceFolder: string;
+}
 
 /**
  * Messages sent from extension to webview
@@ -181,7 +197,8 @@ export type ExtensionMessage =
         lineChanges?: LineChange[];
     }
     | { type: 'imageResolved'; imgId: string; uri?: string; alt?: string; error?: string }
-    | { type: 'scrollToComment'; commentId: string };
+    | { type: 'scrollToComment'; commentId: string }
+    | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[] };
 
 /**
  * Parsed code block structure

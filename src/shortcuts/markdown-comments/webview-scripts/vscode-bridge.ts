@@ -190,6 +190,21 @@ export function requestAskAIInteractive(context: {
 }
 
 /**
+ * Request the list of available prompt files from the extension
+ */
+export function requestPromptFiles(): void {
+    postMessage({ type: 'requestPromptFiles' });
+}
+
+/**
+ * Request to execute a work plan with a specific prompt file
+ * @param promptFilePath - Absolute path to the selected prompt file
+ */
+export function requestExecuteWorkPlan(promptFilePath: string): void {
+    postMessage({ type: 'executeWorkPlan', promptFilePath });
+}
+
+/**
  * Message handler type
  * Re-exported from shared module for backward compatibility
  */

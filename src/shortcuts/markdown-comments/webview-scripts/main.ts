@@ -6,7 +6,7 @@
  * with the VS Code extension.
  */
 
-import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu } from './dom-handlers';
+import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu, updateExecuteWorkPlanSubmenu } from './dom-handlers';
 import { updateResolvedImage } from './image-handlers';
 import { initPanelManager, scrollToComment } from './panel-manager';
 import { render } from './render';
@@ -112,6 +112,11 @@ function handleMessage(message: ExtensionMessage): void {
         case 'scrollToComment':
             // Scroll to and highlight the specified comment
             scrollToComment(message.commentId);
+            break;
+
+        case 'promptFilesResponse':
+            // Update the Execute Work Plan submenu with available prompt files
+            updateExecuteWorkPlanSubmenu(message.promptFiles || []);
             break;
     }
 }

@@ -462,6 +462,24 @@
           "default": "copilot",
           "markdownDescription": "Default CLI tool for interactive sessions. Set to `ask` to be prompted each time."
         },
+        "workspaceShortcuts.workPlan.defaultTool": {
+          "type": "string",
+          "enum": [
+            "copilot",
+            "claude"
+          ],
+          "enumDescriptions": [
+            "Copilot CLI - Use GitHub Copilot CLI for work plan execution",
+            "Claude CLI - Use Claude CLI for work plan execution"
+          ],
+          "default": "copilot",
+          "markdownDescription": "Default CLI tool for executing work plans. The AI will read both the prompt file and the plan file to guide the work."
+        },
+        "workspaceShortcuts.workPlan.workingDirectory": {
+          "type": "string",
+          "default": "{workspaceFolder}/src",
+          "markdownDescription": "Working directory for work plan execution. Supports `{workspaceFolder}` variable. If the specified directory doesn't exist, falls back to workspace root."
+        },
         "workspaceShortcuts.codeReview.rulesFolder": {
           "type": "string",
           "default": ".github/cr-rules",

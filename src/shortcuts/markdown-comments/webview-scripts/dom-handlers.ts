@@ -20,8 +20,8 @@ import {
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
-import { AICommandMode } from './types';
-import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, updateContent } from './vscode-bridge';
+import { AICommandMode, PromptFileInfo } from './types';
+import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestPromptFiles, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -118,6 +118,97 @@ export function rebuildAISubmenu(): void {
 }
 
 /**
+ * Update the Execute Work Plan submenu with available prompt files
+ * @param promptFiles - Array of prompt file info from the extension
+ */
+export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[]): void {
+    const submenu = document.getElementById('executeWorkPlanSubmenu');
+    if (!submenu) return;
+
+    // Clear existing content
+    submenu.innerHTML = '';
+
+    if (promptFiles.length === 0) {
+        // Show "No prompts found" message
+        const noPromptsItem = document.createElement('div');
+        noPromptsItem.className = 'ai-action-menu-item ai-action-disabled';
+        noPromptsItem.innerHTML = `
+            <span class="ai-action-icon">📭</span>
+            <span class="ai-action-label">No .prompt.md files found</span>
+        `;
+        submenu.appendChild(noPromptsItem);
+
+        // Add help text
+        const helpItem = document.createElement('div');
+        helpItem.className = 'ai-action-menu-item ai-action-help';
+        helpItem.innerHTML = `
+            <span class="ai-action-icon">💡</span>
+            <span class="ai-action-label">Add prompts to .github/prompts/</span>
+        `;
+        submenu.appendChild(helpItem);
+        return;
+    }
+
+    // Group prompt files by source folder
+    const groupedFiles = new Map<string, PromptFileInfo[]>();
+    for (const file of promptFiles) {
+        const group = groupedFiles.get(file.sourceFolder) || [];
+        group.push(file);
+        groupedFiles.set(file.sourceFolder, group);
+    }
+
+    // Add prompt files to submenu
+    let isFirstGroup = true;
+    for (const [sourceFolder, files] of groupedFiles) {
+        // Add separator between groups (except for the first group)
+        if (!isFirstGroup) {
+            const divider = document.createElement('div');
+            divider.className = 'ai-action-menu-divider';
+            submenu.appendChild(divider);
+        }
+        isFirstGroup = false;
+
+        // Add group header if there are multiple groups
+        if (groupedFiles.size > 1) {
+            const header = document.createElement('div');
+            header.className = 'ai-action-menu-header';
+            header.textContent = sourceFolder;
+            submenu.appendChild(header);
+        }
+
+        // Add each prompt file as a menu item
+        for (const file of files) {
+            const item = document.createElement('div');
+            item.className = 'ai-action-menu-item';
+            item.dataset.promptPath = file.absolutePath;
+            item.innerHTML = `
+                <span class="ai-action-icon">📝</span>
+                <span class="ai-action-label">${escapeHtml(file.name)}</span>
+            `;
+            item.title = file.relativePath;
+
+            // Add click handler
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                hideAIActionMenu();
+                requestExecuteWorkPlan(file.absolutePath);
+            });
+
+            submenu.appendChild(item);
+        }
+    }
+}
+
+/**
+ * Escape HTML special characters to prevent XSS
+ */
+function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
  * Get the predefined comments from settings or defaults
  */
 function getPredefinedComments(): SerializedPredefinedComment[] {
@@ -184,6 +275,7 @@ function setupAIActionDropdown(): void {
     const aiActionBtn = document.getElementById('aiActionBtn');
     const aiActionMenu = document.getElementById('aiActionMenu');
     const resolveCommentsItem = document.getElementById('resolveCommentsItem');
+    const executeWorkPlanItem = document.getElementById('executeWorkPlanItem');
     const sendToNewChatBtn = document.getElementById('sendToNewChatBtn');
     const sendToExistingChatBtn = document.getElementById('sendToExistingChatBtn');
     const sendToCLIInteractiveBtn = document.getElementById('sendToCLIInteractiveBtn');
@@ -201,6 +293,21 @@ function setupAIActionDropdown(): void {
             showAIActionMenu();
         }
     });
+
+    // Handle Execute Work Plan menu item hover/click
+    if (executeWorkPlanItem) {
+        // Request prompt files when hovering over the menu item
+        executeWorkPlanItem.addEventListener('mouseenter', () => {
+            requestPromptFiles();
+        });
+
+        // On click, toggle submenu visibility (for touch/keyboard accessibility)
+        executeWorkPlanItem.addEventListener('click', (e) => {
+            e.stopPropagation();
+            executeWorkPlanItem.classList.toggle('submenu-open');
+            requestPromptFiles();
+        });
+    }
 
     // Handle parent menu item hover/click for submenu
     if (resolveCommentsItem) {
@@ -273,6 +380,7 @@ function hideAIActionMenu(): void {
     const aiActionMenu = document.getElementById('aiActionMenu');
     const aiActionBtn = document.getElementById('aiActionBtn');
     const resolveCommentsItem = document.getElementById('resolveCommentsItem');
+    const executeWorkPlanItem = document.getElementById('executeWorkPlanItem');
     if (aiActionMenu && aiActionBtn) {
         aiActionMenu.classList.remove('show');
         aiActionBtn.classList.remove('active');
@@ -280,6 +388,9 @@ function hideAIActionMenu(): void {
     // Also close any open submenus
     if (resolveCommentsItem) {
         resolveCommentsItem.classList.remove('submenu-open');
+    }
+    if (executeWorkPlanItem) {
+        executeWorkPlanItem.classList.remove('submenu-open');
     }
 }
 

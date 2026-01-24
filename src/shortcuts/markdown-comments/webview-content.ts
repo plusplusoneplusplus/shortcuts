@@ -142,6 +142,19 @@ export function getWebviewContent(
                     <span class="dropdown-arrow">▼</span>
                 </button>
                 <div class="ai-action-menu" id="aiActionMenu">
+                    <div class="ai-action-menu-item ai-action-menu-parent" id="executeWorkPlanItem">
+                        <span class="ai-action-icon">🚀</span>
+                        <span class="ai-action-label">Execute Work Plan</span>
+                        <span class="ai-action-arrow">▶</span>
+                        <div class="ai-action-submenu" id="executeWorkPlanSubmenu">
+                            <!-- Dynamically populated with prompt files -->
+                            <div class="ai-action-menu-item ai-action-loading" id="executeWorkPlanLoading">
+                                <span class="ai-action-icon">⏳</span>
+                                <span class="ai-action-label">Loading prompts...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ai-action-menu-divider"></div>
                     <div class="ai-action-menu-item ai-action-menu-parent" id="resolveCommentsItem">
                         <span class="ai-action-icon">✨</span>
                         <span class="ai-action-label">Resolve Comments</span>

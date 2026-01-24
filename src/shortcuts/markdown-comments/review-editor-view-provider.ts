@@ -3,10 +3,12 @@
  * Provides a rich editing experience with comments displayed alongside content
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { IAIProcessManager, getAICommandRegistry, getInteractiveSessionManager } from '../ai-service';
 import { getPredefinedCommentRegistry } from '../shared/predefined-comment-registry';
+import { getPromptFiles } from '../shared/prompt-files-utils';
 import { getWorkspaceRoot, getWorkspaceRootUri } from '../shared/workspace-utils';
 import { handleAIClarification } from './ai-clarification-handler';
 import { CodeBlockTheme } from './code-block-themes';
@@ -45,7 +47,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'executeWorkPlan';
     commentId?: string;
     content?: string;
     selection?: {
@@ -71,6 +73,8 @@ interface WebviewMessage {
     newConversation?: boolean;
     // Collapsed sections for heading collapse feature
     collapsedSections?: string[];
+    // Execute Work Plan fields
+    promptFilePath?: string;
 }
 
 /**
@@ -605,6 +609,16 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                     await this.setCollapsedSections(relativePath, message.collapsedSections);
                 }
                 break;
+
+            case 'requestPromptFiles':
+                await this.handleRequestPromptFiles(webviewPanel);
+                break;
+
+            case 'executeWorkPlan':
+                if (message.promptFilePath) {
+                    await this.handleExecuteWorkPlan(document.uri.fsPath, message.promptFilePath);
+                }
+                break;
         }
     }
 
@@ -1111,5 +1125,90 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             await vscode.env.clipboard.writeText(prompt);
             vscode.window.showWarningMessage('Failed to start interactive AI session. Prompt copied to clipboard.');
         }
+    }
+
+    /**
+     * Handle request for prompt files from the webview.
+     * Returns a list of available .prompt.md files from configured locations.
+     */
+    private async handleRequestPromptFiles(webviewPanel: vscode.WebviewPanel): Promise<void> {
+        const workspaceRoot = getWorkspaceRoot();
+        const promptFiles = await getPromptFiles(workspaceRoot || undefined);
+
+        webviewPanel.webview.postMessage({
+            type: 'promptFilesResponse',
+            promptFiles: promptFiles.map(f => ({
+                absolutePath: f.absolutePath,
+                relativePath: f.relativePath,
+                name: f.name,
+                sourceFolder: f.sourceFolder
+            }))
+        });
+    }
+
+    /**
+     * Handle work plan execution request from webview.
+     * Launches an interactive AI session with a simple prompt referencing both files.
+     * 
+     * @param planFilePath - Absolute path to the plan file (the current document)
+     * @param promptFilePath - Absolute path to the selected prompt file
+     */
+    private async handleExecuteWorkPlan(
+        planFilePath: string,
+        promptFilePath: string
+    ): Promise<void> {
+        const sessionManager = getInteractiveSessionManager();
+
+        // Simple prompt: just reference both file paths
+        const fullPrompt = `Follow ${promptFilePath} for ${planFilePath}`;
+
+        // Get settings
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts.workPlan');
+        const tool = config.get<'copilot' | 'claude'>('defaultTool', 'copilot');
+        const workingDirectory = this.resolveWorkPlanWorkingDirectory(planFilePath);
+
+        // Launch interactive session
+        const sessionId = await sessionManager.startSession({
+            workingDirectory,
+            tool,
+            initialPrompt: fullPrompt
+        });
+
+        if (sessionId) {
+            vscode.window.showInformationMessage(
+                `Interactive session started: ${path.basename(promptFilePath)} → ${path.basename(planFilePath)}`
+            );
+        } else {
+            vscode.window.showErrorMessage(
+                'Failed to start interactive session. Please check that the AI CLI tool is installed.'
+            );
+        }
+    }
+
+    /**
+     * Resolve working directory for work plan execution from settings or workspace root.
+     * Supports {workspaceFolder} placeholder.
+     * 
+     * @param planFilePath - Path to the plan file (used as fallback)
+     * @returns Resolved working directory path
+     */
+    private resolveWorkPlanWorkingDirectory(planFilePath: string): string {
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts.workPlan');
+        const configPath = config.get<string>('workingDirectory', '{workspaceFolder}/src');
+
+        const workspaceRoot = getWorkspaceRoot();
+        if (!workspaceRoot) {
+            return path.dirname(planFilePath);
+        }
+
+        // Replace {workspaceFolder} placeholder
+        const resolved = configPath.replace('{workspaceFolder}', workspaceRoot);
+
+        // Check if /src exists, fallback to workspace root
+        if (resolved.endsWith('/src') && !fs.existsSync(resolved)) {
+            return workspaceRoot;
+        }
+
+        return resolved;
     }
 }
