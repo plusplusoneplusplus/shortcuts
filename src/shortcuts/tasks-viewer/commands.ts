@@ -36,8 +36,6 @@ export class TasksCommands {
             vscode.commands.registerCommand('tasksViewer.delete', (item: TaskItem) => this.deleteTask(item)),
             vscode.commands.registerCommand('tasksViewer.archive', (item: TaskItem) => this.archiveTask(item)),
             vscode.commands.registerCommand('tasksViewer.unarchive', (item: TaskItem) => this.unarchiveTask(item)),
-            vscode.commands.registerCommand('tasksViewer.filter', () => this.filterTasks()),
-            vscode.commands.registerCommand('tasksViewer.clearFilter', () => this.clearFilter()),
             vscode.commands.registerCommand('tasksViewer.refresh', () => this.refreshTasks()),
             vscode.commands.registerCommand('tasksViewer.openFolder', () => this.openTasksFolder()),
             vscode.commands.registerCommand('tasksViewer.copyRelativePath', (item: TaskItem) => this.copyPath(item, false)),
@@ -214,31 +212,6 @@ export class TasksCommands {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to unarchive task: ${err.message}`);
         }
-    }
-
-    /**
-     * Filter tasks by name
-     */
-    private async filterTasks(): Promise<void> {
-        const currentFilter = this.treeDataProvider.getFilter();
-        const filter = await vscode.window.showInputBox({
-            prompt: 'Filter tasks by name',
-            value: currentFilter,
-            placeHolder: 'Enter filter text'
-        });
-
-        if (filter === undefined) {
-            return; // User cancelled
-        }
-
-        this.treeDataProvider.setFilter(filter);
-    }
-
-    /**
-     * Clear the filter
-     */
-    private clearFilter(): void {
-        this.treeDataProvider.clearFilter();
     }
 
     /**

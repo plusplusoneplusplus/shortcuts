@@ -1498,18 +1498,6 @@
         "icon": "$(history)"
       },
       {
-        "command": "tasksViewer.filter",
-        "title": "Filter Tasks",
-        "category": "Tasks",
-        "icon": "$(filter)"
-      },
-      {
-        "command": "tasksViewer.clearFilter",
-        "title": "Clear Filter",
-        "category": "Tasks",
-        "icon": "$(clear-all)"
-      },
-      {
         "command": "tasksViewer.refresh",
         "title": "Refresh Tasks",
         "category": "Tasks",
@@ -1619,11 +1607,6 @@
         },
         {
           "command": "tasksViewer.createFeature",
-          "when": "view == tasksView",
-          "group": "navigation"
-        },
-        {
-          "command": "tasksViewer.filter",
           "when": "view == tasksView",
           "group": "navigation"
         },

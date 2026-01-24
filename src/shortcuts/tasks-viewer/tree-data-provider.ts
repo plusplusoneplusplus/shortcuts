@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { LogCategory } from '../shared';
-import { FilterableTreeDataProvider } from '../shared/filterable-tree-data-provider';
+import { BaseTreeDataProvider } from '../shared/base-tree-data-provider';
 import { TaskManager } from './task-manager';
 import { TaskItem } from './task-item';
 import { TaskGroupItem } from './task-group-item';
@@ -14,7 +14,7 @@ import { Task, TaskDocument, TaskDocumentGroup, TaskFolder } from './types';
  * Displays task markdown files from the configured tasks folder with hierarchical folder support
  * Groups tasks into Active/Archived sections when Show Archived is enabled
  */
-export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.TreeItem> {
+export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem> {
     private cachedTasks: Task[] = [];
     private tasksByGroup: Map<'active' | 'archived', Task[]> = new Map();
     private cachedDocumentGroups: TaskDocumentGroup[] = [];
@@ -94,15 +94,7 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
         }
 
         // Legacy behavior - flat list of tasks
-        let tasks = await this.taskManager.getTasks();
-
-        // Apply filter
-        if (this.hasFilter) {
-            const filter = this.getFilter();
-            tasks = tasks.filter(task =>
-                task.name.toLowerCase().includes(filter)
-            );
-        }
+        const tasks = await this.taskManager.getTasks();
 
         // Cache tasks for group children
         this.cachedTasks = tasks;
@@ -123,12 +115,7 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
         const settings = this.taskManager.getSettings();
         
         // Build folder hierarchy
-        let rootFolder = await this.taskManager.getTaskFolderHierarchy();
-
-        // Apply filter to the hierarchy
-        if (this.hasFilter) {
-            rootFolder = this.filterFolderHierarchy(rootFolder, this.getFilter());
-        }
+        const rootFolder = await this.taskManager.getTaskFolderHierarchy();
 
         this.cachedFolderHierarchy = rootFolder;
         
@@ -148,37 +135,6 @@ export class TasksTreeDataProvider extends FilterableTreeDataProvider<vscode.Tre
 
         // Flat hierarchical view (show all folders/items at root)
         return this.getFolderChildren(rootFolder);
-    }
-
-    /**
-     * Filter a folder hierarchy by name
-     * Returns a new folder with only items matching the filter
-     */
-    private filterFolderHierarchy(folder: TaskFolder, filter: string): TaskFolder {
-        const filteredFolder: TaskFolder = {
-            ...folder,
-            children: [],
-            documentGroups: folder.documentGroups.filter(g => 
-                g.baseName.toLowerCase().includes(filter)
-            ),
-            singleDocuments: folder.singleDocuments.filter(d => 
-                d.baseName.toLowerCase().includes(filter)
-            ),
-            tasks: folder.tasks.filter(t => 
-                t.name.toLowerCase().includes(filter)
-            )
-        };
-
-        // Recursively filter child folders
-        for (const child of folder.children) {
-            const filteredChild = this.filterFolderHierarchy(child, filter);
-            // Include child folder if it has any matching items
-            if (this.countFolderItems(filteredChild) > 0) {
-                filteredFolder.children.push(filteredChild);
-            }
-        }
-
-        return filteredFolder;
     }
 
     /**

@@ -555,36 +555,37 @@ suite('Tasks Viewer Tests', () => {
             treeDataProvider.refresh();
         });
 
-        test('should filter tasks by name', async () => {
+        // Filter functionality removed - tests disabled
+        test.skip('should filter tasks by name', async () => {
             await taskManager.createTask('Apple Task');
             await taskManager.createTask('Banana Task');
             await taskManager.createTask('Cherry Task');
 
-            treeDataProvider.setFilter('banana');
+            // treeDataProvider.setFilter('banana');
 
             const children = await treeDataProvider.getChildren();
             assert.strictEqual(children.length, 1);
-            assert.strictEqual((children[0] as TaskItem).label, 'Banana-Task');
+            // assert.strictEqual((children[0] as TaskItem).label, 'Banana-Task');
         });
 
-        test('should clear filter', async () => {
+        test.skip('should clear filter', async () => {
             await taskManager.createTask('Task 1');
             await taskManager.createTask('Task 2');
 
-            treeDataProvider.setFilter('1');
+            // treeDataProvider.setFilter('1');
             let children = await treeDataProvider.getChildren();
             assert.strictEqual(children.length, 1);
 
-            treeDataProvider.clearFilter();
+            // treeDataProvider.clearFilter();
             children = await treeDataProvider.getChildren();
             assert.strictEqual(children.length, 2);
         });
 
-        test('should get current filter', () => {
-            assert.strictEqual(treeDataProvider.getFilter(), '');
+        test.skip('should get current filter', () => {
+            // assert.strictEqual(treeDataProvider.getFilter(), '');
 
-            treeDataProvider.setFilter('test');
-            assert.strictEqual(treeDataProvider.getFilter(), 'test');
+            // treeDataProvider.setFilter('test');
+            // assert.strictEqual(treeDataProvider.getFilter(), 'test');
         });
 
         test('should sort tasks by name', async () => {
@@ -831,21 +832,22 @@ suite('Tasks Viewer Tests', () => {
             assert.strictEqual(archivedChildren.length, 0);
         });
 
-        test('should apply filter to grouped view', async () => {
+        // Filter functionality removed - test disabled
+        test.skip('should apply filter to grouped view', async () => {
             await taskManager.createTask('Apple Task');
             await taskManager.createTask('Banana Task');
             const toArchive = await taskManager.createTask('Apple Archived');
             await taskManager.archiveTask(toArchive);
 
-            treeDataProvider.setFilter('apple');
+            // treeDataProvider.setFilter('apple');
 
             const rootChildren = await treeDataProvider.getChildren();
             const activeGroup = rootChildren[0] as TaskGroupItem;
             const archivedGroup = rootChildren[1] as TaskGroupItem;
 
             // Should filter both active and archived
-            assert.strictEqual(activeGroup.taskCount, 1);
-            assert.strictEqual(archivedGroup.taskCount, 1);
+            // assert.strictEqual(activeGroup.taskCount, 1);
+            // assert.strictEqual(archivedGroup.taskCount, 1);
         });
     });
 
@@ -1451,7 +1453,8 @@ suite('Tasks Viewer Tests', () => {
             assert.ok(groupChildren.every(c => c instanceof TaskDocumentItem));
         });
 
-        test('should filter document groups by name', async () => {
+        // Filter functionality removed - test disabled
+        test.skip('should filter document groups by name', async () => {
             taskManager.ensureFoldersExist();
             const tasksFolder = taskManager.getTasksFolder();
 
@@ -1460,12 +1463,12 @@ suite('Tasks Viewer Tests', () => {
             fs.writeFileSync(path.join(tasksFolder, 'banana.md'), '# Banana');
             fs.writeFileSync(path.join(tasksFolder, 'banana.plan.md'), '# Banana Plan');
 
-            treeDataProvider.setFilter('apple');
+            // treeDataProvider.setFilter('apple');
 
             const children = await treeDataProvider.getChildren();
-            assert.strictEqual(children.length, 1);
-            assert.ok(children[0] instanceof TaskDocumentGroupItem);
-            assert.strictEqual((children[0] as TaskDocumentGroupItem).baseName, 'apple');
+            // assert.strictEqual(children.length, 1);
+            // assert.ok(children[0] instanceof TaskDocumentGroupItem);
+            // assert.strictEqual((children[0] as TaskDocumentGroupItem).baseName, 'apple');
         });
 
         test('should mix groups and singles', async () => {
