@@ -34,7 +34,7 @@ import {
 } from './types';
 import { validateGenerateConfig } from './input-generator';
 import { executeFilter } from './filter-executor';
-import { resolvePromptFile, validatePromptFile } from './prompt-resolver';
+import { resolvePromptFile } from './prompt-resolver';
 
 /**
  * Default parallel concurrency limit
@@ -82,6 +82,14 @@ export interface PipelineExecutionResult extends MapReduceResult<PromptMapResult
 }
 
 /**
+ * Resolved prompts from config (either inline or from files)
+ */
+interface ResolvedPrompts {
+    mapPrompt: string;
+    reducePrompt?: string;
+}
+
+/**
  * Execute a pipeline from a YAML configuration
  * 
  * @param config Pipeline configuration (parsed from YAML)
@@ -95,187 +103,17 @@ export async function executePipeline(
     // Validate config
     validatePipelineConfig(config);
 
-    // Resolve map prompt (from inline or file)
-    let mapPrompt: string;
-    try {
-        mapPrompt = await resolveMapPrompt(config, options.pipelineDirectory);
-    } catch (error) {
-        throw new PipelineExecutionError(
-            `Failed to resolve map prompt: ${error instanceof Error ? error.message : String(error)}`,
-            'map'
-        );
-    }
+    // Resolve prompts (from inline or files)
+    const prompts = await resolvePrompts(config, options.pipelineDirectory);
 
-    // Resolve reduce prompt if AI reduce is used
-    let reducePrompt: string | undefined;
-    if (config.reduce.type === 'ai') {
-        try {
-            reducePrompt = await resolveReducePrompt(config, options.pipelineDirectory);
-        } catch (error) {
-            throw new PipelineExecutionError(
-                `Failed to resolve reduce prompt: ${error instanceof Error ? error.message : String(error)}`,
-                'reduce'
-            );
-        }
-    }
+    // Load items from input source
+    let items = await loadInputItems(config, options.pipelineDirectory);
 
-    // 1. Input Phase: Load items (inline, from CSV, or from inline array)
-    let items: PromptItem[];
-    try {
-        if (config.input.items) {
-            // Direct inline items
-            items = config.input.items;
-        } else if (config.input.from) {
-            if (isCSVSource(config.input.from)) {
-                // Load from CSV file
-                items = await loadFromCSV(config.input.from, options.pipelineDirectory);
-            } else if (Array.isArray(config.input.from)) {
-                // Inline array (useful for multi-model fanout)
-                items = config.input.from;
-            } else {
-                throw new PipelineExecutionError('Invalid "from" configuration', 'input');
-            }
-        } else {
-            // This should be caught by validation, but be defensive
-            throw new PipelineExecutionError('Input must have either "items" or "from"', 'input');
-        }
+    // Apply limit and merge parameters
+    items = prepareItems(items, config, prompts.mapPrompt);
 
-        // Apply limit
-        const limit = config.input.limit ?? items.length;
-        items = items.slice(0, limit);
-
-        // Merge parameters into each item (parameters take lower precedence than item fields)
-        if (config.input.parameters && config.input.parameters.length > 0) {
-            const paramValues = convertParametersToObject(config.input.parameters);
-            items = items.map(item => ({ ...paramValues, ...item }));
-        }
-
-        if (items.length === 0) {
-            // Allow empty input - results will just be empty
-            // This is consistent with the previous behavior for empty CSV
-        } else {
-            // Validate that items have required template variables
-            const templateVars = extractVariables(mapPrompt);
-            const firstItem = items[0];
-            const missingVars = templateVars.filter(v => !(v in firstItem));
-            if (missingVars.length > 0) {
-                throw new PipelineExecutionError(
-                    `Items missing required fields: ${missingVars.join(', ')}`,
-                    'input'
-                );
-            }
-        }
-    } catch (error) {
-        if (error instanceof PipelineExecutionError) {
-            throw error;
-        }
-        throw new PipelineExecutionError(
-            `Failed to read input: ${error instanceof Error ? error.message : String(error)}`,
-            'input'
-        );
-    }
-
-    // 2. Filter Phase (optional): Filter items before map phase
-    let filterResult: FilterResult | undefined;
-    if (config.filter) {
-        try {
-            filterResult = await executeFilter(items, config.filter, {
-                aiInvoker: options.aiInvoker,
-                processTracker: options.processTracker,
-                onProgress: (progress) => {
-                    // Report as splitting phase since filter happens before map
-                    options.onProgress?.({
-                        phase: 'splitting',
-                        totalItems: progress.total,
-                        completedItems: progress.processed,
-                        failedItems: 0,
-                        percentage: Math.round((progress.processed / progress.total) * 100)
-                    });
-                },
-                isCancelled: options.isCancelled
-            });
-
-            // Replace items with filtered results
-            items = filterResult.included;
-
-            // Log filter stats
-            console.log(
-                `Filter: ${filterResult.stats.includedCount}/${filterResult.stats.totalItems} items passed ` +
-                `(${filterResult.stats.excludedCount} excluded, ${filterResult.stats.executionTimeMs}ms)`
-            );
-
-            if (items.length === 0) {
-                console.warn('Filter excluded all items - map phase will have no work');
-            }
-        } catch (error) {
-            if (error instanceof PipelineExecutionError) {
-                throw error;
-            }
-            throw new PipelineExecutionError(
-                `Failed to execute filter: ${error instanceof Error ? error.message : String(error)}`,
-                'filter'
-            );
-        }
-    }
-
-    // 3. Create and execute map-reduce job
-    const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
-    const model = config.map.model;
-    const timeoutMs = config.map.timeoutMs ?? 600000; // Default to 10 minutes
-
-    const executorOptions: ExecutorOptions = {
-        aiInvoker: options.aiInvoker,
-        maxConcurrency: parallelLimit,
-        reduceMode: 'deterministic',
-        showProgress: true,
-        retryOnFailure: false,
-        processTracker: options.processTracker,
-        onProgress: options.onProgress,
-        jobName: config.name,
-        timeoutMs,
-        isCancelled: options.isCancelled
-    };
-
-    const executor = createExecutor(executorOptions);
-
-    // Convert parameters to object for reduce phase
-    const reduceParameters = config.input.parameters
-        ? convertParametersToObject(config.input.parameters)
-        : undefined;
-
-    const job = createPromptMapJob({
-        aiInvoker: options.aiInvoker,
-        outputFormat: config.reduce.type,
-        model,
-        maxConcurrency: parallelLimit,
-        ...(config.reduce.type === 'ai' && {
-            aiReducePrompt: reducePrompt,
-            aiReduceOutput: config.reduce.output,
-            aiReduceModel: config.reduce.model,
-            aiReduceParameters: reduceParameters
-        })
-    });
-
-    const jobInput = createPromptMapInput(
-        items,
-        mapPrompt,
-        config.map.output || []  // Empty array for text mode
-    );
-
-    try {
-        const result = await executor.execute(job, jobInput);
-        
-        // Attach filter result if filter was used
-        return {
-            ...result,
-            filterResult
-        };
-    } catch (error) {
-        throw new PipelineExecutionError(
-            `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,
-            'map'
-        );
-    }
+    // Execute the pipeline with resolved prompts and items
+    return executeWithItems(config, items, prompts, options);
 }
 
 /**
@@ -297,23 +135,70 @@ export async function executePipelineWithItems(
     // Validate basic config structure (but skip input validation since we're using pre-approved items)
     validatePipelineConfigForExecution(config);
 
-    // Resolve map prompt (from inline or file)
+    // Resolve prompts (from inline or files)
+    const prompts = await resolvePrompts(config, options.pipelineDirectory);
+
+    // Apply limit and merge parameters to provided items
+    const processItems = prepareItems(items, config, prompts.mapPrompt);
+
+    // Execute the pipeline with resolved prompts and items
+    return executeWithItems(config, processItems, prompts, options);
+}
+
+/**
+ * Validate pipeline configuration for execution (without input source validation)
+ * Used when executing with pre-approved items.
+ */
+function validatePipelineConfigForExecution(config: PipelineConfig): void {
+    if (!config.name) {
+        throw new PipelineExecutionError('Pipeline config missing "name"');
+    }
+
+    validateMapConfig(config);
+    validateReduceConfig(config);
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Resolve all prompts from config (either inline or from files)
+ */
+async function resolvePrompts(config: PipelineConfig, pipelineDirectory: string): Promise<ResolvedPrompts> {
     let mapPrompt: string;
     try {
-        mapPrompt = await resolveMapPrompt(config, options.pipelineDirectory);
+        if (config.map.prompt) {
+            mapPrompt = config.map.prompt;
+        } else if (config.map.promptFile) {
+            mapPrompt = await resolvePromptFile(config.map.promptFile, pipelineDirectory);
+        } else {
+            throw new PipelineExecutionError('Map phase must have either "prompt" or "promptFile"', 'map');
+        }
     } catch (error) {
+        if (error instanceof PipelineExecutionError) {
+            throw error;
+        }
         throw new PipelineExecutionError(
             `Failed to resolve map prompt: ${error instanceof Error ? error.message : String(error)}`,
             'map'
         );
     }
 
-    // Resolve reduce prompt if AI reduce is used
     let reducePrompt: string | undefined;
     if (config.reduce.type === 'ai') {
         try {
-            reducePrompt = await resolveReducePrompt(config, options.pipelineDirectory);
+            if (config.reduce.prompt) {
+                reducePrompt = config.reduce.prompt;
+            } else if (config.reduce.promptFile) {
+                reducePrompt = await resolvePromptFile(config.reduce.promptFile, pipelineDirectory);
+            } else {
+                throw new PipelineExecutionError('AI reduce must have either "prompt" or "promptFile"', 'reduce');
+            }
         } catch (error) {
+            if (error instanceof PipelineExecutionError) {
+                throw error;
+            }
             throw new PipelineExecutionError(
                 `Failed to resolve reduce prompt: ${error instanceof Error ? error.message : String(error)}`,
                 'reduce'
@@ -321,20 +206,64 @@ export async function executePipelineWithItems(
         }
     }
 
-    // Apply limit if specified
+    return { mapPrompt, reducePrompt };
+}
+
+/**
+ * Load items from input source (inline items, CSV, or inline array)
+ */
+async function loadInputItems(config: PipelineConfig, pipelineDirectory: string): Promise<PromptItem[]> {
+    try {
+        if (config.input.items) {
+            return config.input.items;
+        }
+        
+        if (config.input.from) {
+            if (isCSVSource(config.input.from)) {
+                const csvPath = resolveCSVPath(config.input.from.path, pipelineDirectory);
+                const result = await readCSVFile(csvPath, {
+                    delimiter: config.input.from.delimiter
+                });
+                return result.items;
+            }
+            
+            if (Array.isArray(config.input.from)) {
+                return config.input.from;
+            }
+            
+            throw new PipelineExecutionError('Invalid "from" configuration', 'input');
+        }
+        
+        throw new PipelineExecutionError('Input must have either "items" or "from"', 'input');
+    } catch (error) {
+        if (error instanceof PipelineExecutionError) {
+            throw error;
+        }
+        throw new PipelineExecutionError(
+            `Failed to read input: ${error instanceof Error ? error.message : String(error)}`,
+            'input'
+        );
+    }
+}
+
+/**
+ * Prepare items by applying limit, merging parameters, and validating template variables
+ */
+function prepareItems(items: PromptItem[], config: PipelineConfig, mapPrompt: string): PromptItem[] {
+    // Apply limit
     const limit = config.input.limit ?? items.length;
-    let processItems = items.slice(0, limit);
+    let result = items.slice(0, limit);
 
     // Merge parameters into each item (parameters take lower precedence than item fields)
     if (config.input.parameters && config.input.parameters.length > 0) {
         const paramValues = convertParametersToObject(config.input.parameters);
-        processItems = processItems.map(item => ({ ...paramValues, ...item }));
+        result = result.map(item => ({ ...paramValues, ...item }));
     }
 
-    // Validate that items have required template variables (if any items exist)
-    if (processItems.length > 0) {
+    // Validate that items have required template variables
+    if (result.length > 0) {
         const templateVars = extractVariables(mapPrompt);
-        const firstItem = processItems[0];
+        const firstItem = result[0];
         const missingVars = templateVars.filter(v => !(v in firstItem));
         if (missingVars.length > 0) {
             throw new PipelineExecutionError(
@@ -344,7 +273,22 @@ export async function executePipelineWithItems(
         }
     }
 
-    // Apply filter phase if configured
+    return result;
+}
+
+/**
+ * Execute the pipeline with resolved prompts and prepared items
+ * This is the core execution logic shared by both executePipeline and executePipelineWithItems
+ */
+async function executeWithItems(
+    config: PipelineConfig,
+    items: PromptItem[],
+    prompts: ResolvedPrompts,
+    options: ExecutePipelineOptions
+): Promise<PipelineExecutionResult> {
+    let processItems = items;
+    
+    // Filter Phase (optional): Filter items before map phase
     let filterResult: FilterResult | undefined;
     if (config.filter) {
         try {
@@ -352,7 +296,6 @@ export async function executePipelineWithItems(
                 aiInvoker: options.aiInvoker,
                 processTracker: options.processTracker,
                 onProgress: (progress) => {
-                    // Report as splitting phase since filter happens before map
                     options.onProgress?.({
                         phase: 'splitting',
                         totalItems: progress.total,
@@ -364,10 +307,8 @@ export async function executePipelineWithItems(
                 isCancelled: options.isCancelled
             });
 
-            // Replace items with filtered results
             processItems = filterResult.included;
 
-            // Log filter stats
             console.log(
                 `Filter: ${filterResult.stats.includedCount}/${filterResult.stats.totalItems} items passed ` +
                 `(${filterResult.stats.excludedCount} excluded, ${filterResult.stats.executionTimeMs}ms)`
@@ -389,8 +330,7 @@ export async function executePipelineWithItems(
 
     // Create and execute map-reduce job
     const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
-    const model = config.map.model;
-    const timeoutMs = config.map.timeoutMs ?? 600000; // Default to 10 minutes
+    const timeoutMs = config.map.timeoutMs ?? 600000;
 
     const executorOptions: ExecutorOptions = {
         aiInvoker: options.aiInvoker,
@@ -407,7 +347,6 @@ export async function executePipelineWithItems(
 
     const executor = createExecutor(executorOptions);
 
-    // Convert parameters to object for reduce phase
     const reduceParameters = config.input.parameters
         ? convertParametersToObject(config.input.parameters)
         : undefined;
@@ -415,10 +354,10 @@ export async function executePipelineWithItems(
     const job = createPromptMapJob({
         aiInvoker: options.aiInvoker,
         outputFormat: config.reduce.type,
-        model,
+        model: config.map.model,
         maxConcurrency: parallelLimit,
         ...(config.reduce.type === 'ai' && {
-            aiReducePrompt: reducePrompt,
+            aiReducePrompt: prompts.reducePrompt,
             aiReduceOutput: config.reduce.output,
             aiReduceModel: config.reduce.model,
             aiReduceParameters: reduceParameters
@@ -427,130 +366,19 @@ export async function executePipelineWithItems(
 
     const jobInput = createPromptMapInput(
         processItems,
-        mapPrompt,
+        prompts.mapPrompt,
         config.map.output || []
     );
 
     try {
         const result = await executor.execute(job, jobInput);
-        
-        // Attach filter result if filter was used
-        return {
-            ...result,
-            filterResult
-        };
+        return { ...result, filterResult };
     } catch (error) {
         throw new PipelineExecutionError(
             `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,
             'map'
         );
     }
-}
-
-/**
- * Validate pipeline configuration for execution (without input source validation)
- * Used when executing with pre-approved items.
- */
-function validatePipelineConfigForExecution(config: PipelineConfig): void {
-    if (!config.name) {
-        throw new PipelineExecutionError('Pipeline config missing "name"');
-    }
-
-    if (!config.map) {
-        throw new PipelineExecutionError('Pipeline config missing "map"');
-    }
-
-    // Validate map prompt configuration (must have exactly one of prompt or promptFile)
-    const hasMapPrompt = !!config.map.prompt;
-    const hasMapPromptFile = !!config.map.promptFile;
-    if (!hasMapPrompt && !hasMapPromptFile) {
-        throw new PipelineExecutionError('Pipeline config must have either "map.prompt" or "map.promptFile"');
-    }
-    if (hasMapPrompt && hasMapPromptFile) {
-        throw new PipelineExecutionError('Pipeline config cannot have both "map.prompt" and "map.promptFile"');
-    }
-
-    // map.output is optional - if omitted, text mode is used
-    if (config.map.output !== undefined) {
-        if (!Array.isArray(config.map.output)) {
-            throw new PipelineExecutionError('Pipeline config "map.output" must be an array if provided');
-        }
-    }
-
-    if (!config.reduce) {
-        throw new PipelineExecutionError('Pipeline config missing "reduce"');
-    }
-
-    const validReduceTypes = ['list', 'table', 'json', 'csv', 'ai', 'text'];
-    if (!validReduceTypes.includes(config.reduce.type)) {
-        throw new PipelineExecutionError(`Unsupported reduce type: ${config.reduce.type}. Supported types: ${validReduceTypes.join(', ')}`);
-    }
-
-    // Validate AI reduce configuration
-    if (config.reduce.type === 'ai') {
-        const hasReducePrompt = !!config.reduce.prompt;
-        const hasReducePromptFile = !!config.reduce.promptFile;
-        if (!hasReducePrompt && !hasReducePromptFile) {
-            throw new PipelineExecutionError('Pipeline config must have either "reduce.prompt" or "reduce.promptFile" when reduce.type is "ai"');
-        }
-        if (hasReducePrompt && hasReducePromptFile) {
-            throw new PipelineExecutionError('Pipeline config cannot have both "reduce.prompt" and "reduce.promptFile"');
-        }
-        if (config.reduce.output !== undefined && !Array.isArray(config.reduce.output)) {
-            throw new PipelineExecutionError('Pipeline config "reduce.output" must be an array if provided');
-        }
-    }
-}
-
-/**
- * Load items from CSV file
- */
-async function loadFromCSV(
-    source: CSVSource,
-    baseDir: string
-): Promise<PromptItem[]> {
-    const csvPath = resolveCSVPath(source.path, baseDir);
-    const result = await readCSVFile(csvPath, {
-        delimiter: source.delimiter
-    });
-    return result.items;
-}
-
-/**
- * Resolve the map prompt from config (either inline or from file)
- * @param config Pipeline configuration
- * @param pipelineDirectory Pipeline package directory
- * @returns Resolved prompt string
- */
-async function resolveMapPrompt(config: PipelineConfig, pipelineDirectory: string): Promise<string> {
-    if (config.map.prompt) {
-        return config.map.prompt;
-    }
-    if (config.map.promptFile) {
-        return resolvePromptFile(config.map.promptFile, pipelineDirectory);
-    }
-    // This should be caught by validation, but be defensive
-    throw new PipelineExecutionError('Map phase must have either "prompt" or "promptFile"', 'map');
-}
-
-/**
- * Resolve the reduce prompt from config (either inline or from file)
- * @param config Pipeline configuration
- * @param pipelineDirectory Pipeline package directory
- * @returns Resolved prompt string, or undefined if not AI reduce
- */
-async function resolveReducePrompt(config: PipelineConfig, pipelineDirectory: string): Promise<string | undefined> {
-    if (config.reduce.type !== 'ai') {
-        return undefined;
-    }
-    if (config.reduce.prompt) {
-        return config.reduce.prompt;
-    }
-    if (config.reduce.promptFile) {
-        return resolvePromptFile(config.reduce.promptFile, pipelineDirectory);
-    }
-    // This should be caught by validation, but be defensive
-    throw new PipelineExecutionError('AI reduce must have either "prompt" or "promptFile"', 'reduce');
 }
 
 /**
@@ -564,14 +392,71 @@ function convertParametersToObject(parameters: PipelineParameter[]): Record<stri
     return result;
 }
 
+// ============================================================================
+// Validation Functions
+// ============================================================================
+
 /**
- * Validate pipeline configuration
+ * Validate map configuration (prompt/promptFile and output)
  */
-function validatePipelineConfig(config: PipelineConfig): void {
-    if (!config.name) {
-        throw new PipelineExecutionError('Pipeline config missing "name"');
+function validateMapConfig(config: PipelineConfig): void {
+    if (!config.map) {
+        throw new PipelineExecutionError('Pipeline config missing "map"');
     }
 
+    // Validate prompt configuration (must have exactly one of prompt or promptFile)
+    const hasPrompt = !!config.map.prompt;
+    const hasPromptFile = !!config.map.promptFile;
+    if (!hasPrompt && !hasPromptFile) {
+        throw new PipelineExecutionError('Pipeline config must have either "map.prompt" or "map.promptFile"');
+    }
+    if (hasPrompt && hasPromptFile) {
+        throw new PipelineExecutionError('Pipeline config cannot have both "map.prompt" and "map.promptFile"');
+    }
+
+    // map.output is optional - if omitted, text mode is used
+    if (config.map.output !== undefined && !Array.isArray(config.map.output)) {
+        throw new PipelineExecutionError('Pipeline config "map.output" must be an array if provided');
+    }
+}
+
+/**
+ * Validate reduce configuration
+ */
+function validateReduceConfig(config: PipelineConfig): void {
+    if (!config.reduce) {
+        throw new PipelineExecutionError('Pipeline config missing "reduce"');
+    }
+
+    const validReduceTypes = ['list', 'table', 'json', 'csv', 'ai', 'text'];
+    if (!validReduceTypes.includes(config.reduce.type)) {
+        throw new PipelineExecutionError(
+            `Unsupported reduce type: ${config.reduce.type}. Supported types: ${validReduceTypes.join(', ')}`
+        );
+    }
+
+    // Validate AI reduce configuration
+    if (config.reduce.type === 'ai') {
+        const hasPrompt = !!config.reduce.prompt;
+        const hasPromptFile = !!config.reduce.promptFile;
+        if (!hasPrompt && !hasPromptFile) {
+            throw new PipelineExecutionError(
+                'Pipeline config must have either "reduce.prompt" or "reduce.promptFile" when reduce.type is "ai"'
+            );
+        }
+        if (hasPrompt && hasPromptFile) {
+            throw new PipelineExecutionError('Pipeline config cannot have both "reduce.prompt" and "reduce.promptFile"');
+        }
+        if (config.reduce.output !== undefined && !Array.isArray(config.reduce.output)) {
+            throw new PipelineExecutionError('Pipeline config "reduce.output" must be an array if provided');
+        }
+    }
+}
+
+/**
+ * Validate input configuration
+ */
+function validateInputConfig(config: PipelineConfig): void {
     if (!config.input) {
         throw new PipelineExecutionError('Pipeline config missing "input"');
     }
@@ -582,11 +467,9 @@ function validatePipelineConfig(config: PipelineConfig): void {
     const hasGenerate = !!config.input.generate;
     const sourceCount = [hasItems, hasFrom, hasGenerate].filter(Boolean).length;
 
-    // Must have exactly one of items, from, or generate
     if (sourceCount === 0) {
         throw new PipelineExecutionError('Input must have one of "items", "from", or "generate"');
     }
-
     if (sourceCount > 1) {
         throw new PipelineExecutionError('Input can only have one of "items", "from", or "generate"');
     }
@@ -602,27 +485,15 @@ function validatePipelineConfig(config: PipelineConfig): void {
                 `Invalid generate configuration: ${validation.errors.join('; ')}`
             );
         }
-        // Generate config requires interactive approval before execution
-        // The executor cannot directly execute pipelines with generate config
-        // They must go through the preview UI first
         throw new PipelineExecutionError(
             'Pipelines with "generate" input require interactive approval. Use the Pipeline Preview to generate and approve items first.',
             'input'
         );
     }
 
-    // Validate from source if present (can be CSVSource or inline array)
+    // Validate from source if present
     if (config.input.from) {
-        if (Array.isArray(config.input.from)) {
-            // Inline array - validate it's not empty or has valid items
-            // Empty arrays are allowed (will produce no results)
-        } else if (isCSVSource(config.input.from)) {
-            // CSV source - validate path exists
-            if (!config.input.from.path) {
-                throw new PipelineExecutionError('Pipeline config missing "input.from.path"');
-            }
-        } else {
-            // Unknown format - check if it looks like a malformed CSV source
+        if (!Array.isArray(config.input.from) && !isCSVSource(config.input.from)) {
             const fromObj = config.input.from as Record<string, unknown>;
             if (fromObj.type && fromObj.type !== 'csv') {
                 throw new PipelineExecutionError(
@@ -633,13 +504,14 @@ function validatePipelineConfig(config: PipelineConfig): void {
                 'Invalid "from" configuration. Must be either a CSV source {type: "csv", path: "..."} or an inline array.'
             );
         }
+        if (isCSVSource(config.input.from) && !config.input.from.path) {
+            throw new PipelineExecutionError('Pipeline config missing "input.from.path"');
+        }
     }
 
     // Validate inline items if present
-    if (config.input.items) {
-        if (!Array.isArray(config.input.items)) {
-            throw new PipelineExecutionError('Pipeline config "input.items" must be an array');
-        }
+    if (config.input.items && !Array.isArray(config.input.items)) {
+        throw new PipelineExecutionError('Pipeline config "input.items" must be an array');
     }
 
     // Validate parameters if present
@@ -656,54 +528,19 @@ function validatePipelineConfig(config: PipelineConfig): void {
             }
         }
     }
+}
 
-    if (!config.map) {
-        throw new PipelineExecutionError('Pipeline config missing "map"');
-    }
-
-    // Validate map prompt configuration (must have exactly one of prompt or promptFile)
-    const hasMapPrompt = !!config.map.prompt;
-    const hasMapPromptFile = !!config.map.promptFile;
-    if (!hasMapPrompt && !hasMapPromptFile) {
-        throw new PipelineExecutionError('Pipeline config must have either "map.prompt" or "map.promptFile"');
-    }
-    if (hasMapPrompt && hasMapPromptFile) {
-        throw new PipelineExecutionError('Pipeline config cannot have both "map.prompt" and "map.promptFile"');
+/**
+ * Validate full pipeline configuration (including input)
+ */
+function validatePipelineConfig(config: PipelineConfig): void {
+    if (!config.name) {
+        throw new PipelineExecutionError('Pipeline config missing "name"');
     }
 
-    // map.output is optional - if omitted, text mode is used (raw AI response)
-    // If provided, must be a non-empty array
-    if (config.map.output !== undefined) {
-        if (!Array.isArray(config.map.output)) {
-            throw new PipelineExecutionError('Pipeline config "map.output" must be an array if provided');
-        }
-        // Empty array is allowed - equivalent to text mode
-    }
-
-    if (!config.reduce) {
-        throw new PipelineExecutionError('Pipeline config missing "reduce"');
-    }
-
-    const validReduceTypes = ['list', 'table', 'json', 'csv', 'ai', 'text'];
-    if (!validReduceTypes.includes(config.reduce.type)) {
-        throw new PipelineExecutionError(`Unsupported reduce type: ${config.reduce.type}. Supported types: ${validReduceTypes.join(', ')}`);
-    }
-
-    // Validate AI reduce configuration
-    if (config.reduce.type === 'ai') {
-        const hasReducePrompt = !!config.reduce.prompt;
-        const hasReducePromptFile = !!config.reduce.promptFile;
-        if (!hasReducePrompt && !hasReducePromptFile) {
-            throw new PipelineExecutionError('Pipeline config must have either "reduce.prompt" or "reduce.promptFile" when reduce.type is "ai"');
-        }
-        if (hasReducePrompt && hasReducePromptFile) {
-            throw new PipelineExecutionError('Pipeline config cannot have both "reduce.prompt" and "reduce.promptFile"');
-        }
-        // reduce.output is optional for AI reduce - if omitted, returns raw text response
-        if (config.reduce.output !== undefined && !Array.isArray(config.reduce.output)) {
-            throw new PipelineExecutionError('Pipeline config "reduce.output" must be an array if provided');
-        }
-    }
+    validateInputConfig(config);
+    validateMapConfig(config);
+    validateReduceConfig(config);
 }
 
 /**
