@@ -107,6 +107,9 @@ export {
     SchemeConfig
 } from './readonly-document-provider';
 
+// Shell command execution utilities
+export { execAsync } from './exec-utils';
+
 // Note: Webview utilities are exported separately via './webview'
 // to avoid bundling issues with webview-specific code in the extension bundle
 

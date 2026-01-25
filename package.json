@@ -748,6 +748,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show commit range even when on the default branch (for unpushed commits)"
+        },
+        "workspaceShortcuts.skills.installPath": {
+          "type": "string",
+          "default": ".github/skills",
+          "description": "Path to install skills (relative to workspace root)"
         }
       }
     },
@@ -1591,6 +1596,12 @@
         "title": "View Pipeline",
         "category": "Pipelines",
         "icon": "$(eye)"
+      },
+      {
+        "command": "skills.install",
+        "title": "Skills: Install...",
+        "category": "Skills",
+        "icon": "$(extensions)"
       }
     ],
     "menus": {

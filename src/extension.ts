@@ -50,6 +50,7 @@ import {
     registerPipelinePreview,
     registerBundledPipelineProvider
 } from './shortcuts/yaml-pipeline';
+import { SkillsCommands } from './shortcuts/skills';
 
 /**
  * Get a stable global configuration path when no workspace is open
@@ -251,6 +252,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
             // Add watcher to disposables
             pipelinesCommandDisposables.push(pipelinesWatcherDisposable);
+        }
+
+        // Initialize Skills commands (always available when workspace is open)
+        let skillsCommandDisposables: vscode.Disposable[] = [];
+        if (workspaceFolder) {
+            const skillsCommands = new SkillsCommands();
+            skillsCommandDisposables = skillsCommands.registerCommands(context);
         }
 
         // Initialize Debug Panel (always register, visibility controlled by when clause in package.json)
@@ -2462,6 +2470,8 @@ export async function activate(context: vscode.ExtensionContext) {
             ...(pipelineManager ? [pipelineManager] : []),
             ...(pipelinesTreeDataProvider ? [pipelinesTreeDataProvider] : []),
             ...pipelinesCommandDisposables,
+            // Skills disposables
+            ...skillsCommandDisposables,
             treeDataProvider,
             globalNotesTreeDataProvider,
             configurationManager,
