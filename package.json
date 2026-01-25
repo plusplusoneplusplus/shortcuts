@@ -1602,6 +1602,12 @@
         "title": "Skills: Install...",
         "category": "Skills",
         "icon": "$(extensions)"
+      },
+      {
+        "command": "skills.installBuiltIn",
+        "title": "Skills: Install Built-in...",
+        "category": "Skills",
+        "icon": "$(package)"
       }
     ],
     "menus": {

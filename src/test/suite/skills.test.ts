@@ -524,4 +524,156 @@ suite('Skills Module Tests', () => {
             }
         });
     });
+
+    suite('Bundled Skills', () => {
+        let installDir: string;
+        let mockExtensionPath: string;
+
+        setup(() => {
+            // Create temporary directories
+            installDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-skills-install-'));
+            mockExtensionPath = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-extension-'));
+            
+            // Create mock bundled skills structure
+            const bundledSkillsDir = path.join(mockExtensionPath, 'resources', 'bundled-skills');
+            fs.mkdirSync(bundledSkillsDir, { recursive: true });
+            
+            // Create pipeline-generator skill
+            const pipelineGeneratorDir = path.join(bundledSkillsDir, 'pipeline-generator');
+            fs.mkdirSync(pipelineGeneratorDir);
+            fs.writeFileSync(
+                path.join(pipelineGeneratorDir, 'SKILL.md'),
+                '# Pipeline Generator\n\nGenerate optimized YAML pipeline configurations.'
+            );
+            
+            // Create references subdirectory
+            const referencesDir = path.join(pipelineGeneratorDir, 'references');
+            fs.mkdirSync(referencesDir);
+            fs.writeFileSync(
+                path.join(referencesDir, 'patterns.md'),
+                '# Pipeline Patterns\n\nCommon patterns for pipelines.'
+            );
+            fs.writeFileSync(
+                path.join(referencesDir, 'schema.md'),
+                '# Pipeline Schema\n\nYAML schema reference.'
+            );
+        });
+
+        teardown(() => {
+            // Clean up
+            if (installDir && fs.existsSync(installDir)) {
+                fs.rmSync(installDir, { recursive: true, force: true });
+            }
+            if (mockExtensionPath && fs.existsSync(mockExtensionPath)) {
+                fs.rmSync(mockExtensionPath, { recursive: true, force: true });
+            }
+        });
+
+        test('should install bundled skill with nested directories', async () => {
+            const { installBundledSkills } = await import('../../shortcuts/skills/bundled-skills-provider');
+            
+            const bundledSkillPath = path.join(mockExtensionPath, 'resources', 'bundled-skills', 'pipeline-generator');
+            
+            const result = await installBundledSkills(
+                [{ name: 'pipeline-generator', path: bundledSkillPath, description: 'Test' }],
+                installDir,
+                async () => true
+            );
+
+            assert.strictEqual(result.installed, 1);
+            assert.strictEqual(result.failed, 0);
+            assert.strictEqual(result.skipped, 0);
+
+            // Verify files were copied
+            const installedSkillDir = path.join(installDir, 'pipeline-generator');
+            assert.ok(fs.existsSync(installedSkillDir), 'Skill directory should exist');
+            assert.ok(fs.existsSync(path.join(installedSkillDir, 'SKILL.md')), 'SKILL.md should exist');
+            assert.ok(fs.existsSync(path.join(installedSkillDir, 'references', 'patterns.md')), 'patterns.md should exist');
+            assert.ok(fs.existsSync(path.join(installedSkillDir, 'references', 'schema.md')), 'schema.md should exist');
+        });
+
+        test('should skip bundled skill when user declines replacement', async () => {
+            // Create existing skill in install dir
+            const existingDir = path.join(installDir, 'pipeline-generator');
+            fs.mkdirSync(existingDir);
+            fs.writeFileSync(path.join(existingDir, 'SKILL.md'), '# Old Version');
+
+            const { installBundledSkills } = await import('../../shortcuts/skills/bundled-skills-provider');
+            
+            const bundledSkillPath = path.join(mockExtensionPath, 'resources', 'bundled-skills', 'pipeline-generator');
+            
+            const result = await installBundledSkills(
+                [{ name: 'pipeline-generator', path: bundledSkillPath, description: 'Test', alreadyExists: true }],
+                installDir,
+                async () => false // Decline replacement
+            );
+
+            assert.strictEqual(result.installed, 0);
+            assert.strictEqual(result.skipped, 1);
+
+            // Verify old version is preserved
+            const content = fs.readFileSync(path.join(existingDir, 'SKILL.md'), 'utf-8');
+            assert.ok(content.includes('Old Version'));
+        });
+
+        test('should replace bundled skill when user confirms', async () => {
+            // Create existing skill
+            const existingDir = path.join(installDir, 'pipeline-generator');
+            fs.mkdirSync(existingDir);
+            fs.writeFileSync(path.join(existingDir, 'SKILL.md'), '# Old Version');
+
+            const { installBundledSkills } = await import('../../shortcuts/skills/bundled-skills-provider');
+            
+            const bundledSkillPath = path.join(mockExtensionPath, 'resources', 'bundled-skills', 'pipeline-generator');
+            
+            const result = await installBundledSkills(
+                [{ name: 'pipeline-generator', path: bundledSkillPath, description: 'Test', alreadyExists: true }],
+                installDir,
+                async () => true // Confirm replacement
+            );
+
+            assert.strictEqual(result.installed, 1);
+            assert.strictEqual(result.details[0].action, 'replaced');
+
+            // Verify new version is installed
+            const content = fs.readFileSync(path.join(installDir, 'pipeline-generator', 'SKILL.md'), 'utf-8');
+            assert.ok(content.includes('Pipeline Generator'));
+        });
+
+        test('should create install directory if it does not exist', async () => {
+            const newInstallDir = path.join(installDir, 'new', 'nested', 'path');
+            
+            const { installBundledSkills } = await import('../../shortcuts/skills/bundled-skills-provider');
+            
+            const bundledSkillPath = path.join(mockExtensionPath, 'resources', 'bundled-skills', 'pipeline-generator');
+            
+            const result = await installBundledSkills(
+                [{ name: 'pipeline-generator', path: bundledSkillPath, description: 'Test' }],
+                newInstallDir,
+                async () => true
+            );
+
+            assert.strictEqual(result.installed, 1);
+            assert.ok(fs.existsSync(path.join(newInstallDir, 'pipeline-generator', 'SKILL.md')));
+        });
+
+        test('should preserve file contents during copy', async () => {
+            const { installBundledSkills } = await import('../../shortcuts/skills/bundled-skills-provider');
+            
+            const bundledSkillPath = path.join(mockExtensionPath, 'resources', 'bundled-skills', 'pipeline-generator');
+            
+            await installBundledSkills(
+                [{ name: 'pipeline-generator', path: bundledSkillPath, description: 'Test' }],
+                installDir,
+                async () => true
+            );
+
+            // Verify content is preserved
+            const skillMd = fs.readFileSync(path.join(installDir, 'pipeline-generator', 'SKILL.md'), 'utf-8');
+            assert.ok(skillMd.includes('Generate optimized YAML pipeline configurations'));
+
+            const patternsMd = fs.readFileSync(path.join(installDir, 'pipeline-generator', 'references', 'patterns.md'), 'utf-8');
+            assert.ok(patternsMd.includes('Common patterns for pipelines'));
+        });
+    });
 });

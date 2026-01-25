@@ -60,6 +60,10 @@ const extensionConfig = {
         {
           from: 'resources/bundled-pipelines',
           to: 'resources/bundled-pipelines'
+        },
+        {
+          from: 'resources/bundled-skills',
+          to: 'resources/bundled-skills'
         }
       ]
     })

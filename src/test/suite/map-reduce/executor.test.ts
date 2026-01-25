@@ -309,11 +309,12 @@ suite('MapReduceExecutor', () => {
     test('retries timeout with doubled timeout value', async () => {
         let attemptCount = 0;
 
-        // Mapper that takes 15ms - will timeout on 10ms but succeed on 20ms (doubled)
+        // Mapper that takes 75ms - will timeout on 50ms but succeed on 100ms (doubled)
+        // Using larger values for reliable timing on CI environments
         const slowThenFastMapper: Mapper<TestWorkItemData, TestMapOutput> = {
             async map(item, context) {
                 attemptCount++;
-                await new Promise(resolve => setTimeout(resolve, 15));
+                await new Promise(resolve => setTimeout(resolve, 75));
                 return { doubled: item.data.value * 2 };
             }
         };
@@ -324,7 +325,7 @@ suite('MapReduceExecutor', () => {
             reduceMode: 'deterministic',
             showProgress: false,
             retryOnFailure: false,
-            timeoutMs: 10 // First timeout at 10ms, retry at 20ms
+            timeoutMs: 50 // First timeout at 50ms, retry at 100ms
         });
 
         const job: MapReduceJob<TestInput, TestWorkItemData, TestMapOutput, TestReduceOutput> = {
@@ -348,10 +349,11 @@ suite('MapReduceExecutor', () => {
         let attemptCount = 0;
 
         // Mapper that always takes too long - will fail even with doubled timeout
+        // Using larger values for reliable timing on CI environments
         const alwaysSlowMapper: Mapper<TestWorkItemData, TestMapOutput> = {
             async map(item, context) {
                 attemptCount++;
-                await new Promise(resolve => setTimeout(resolve, 100)); // Always too slow
+                await new Promise(resolve => setTimeout(resolve, 500)); // Always too slow (500ms > 50ms + 100ms)
                 return { doubled: item.data.value * 2 };
             }
         };
@@ -362,7 +364,7 @@ suite('MapReduceExecutor', () => {
             reduceMode: 'deterministic',
             showProgress: false,
             retryOnFailure: false,
-            timeoutMs: 10 // First timeout at 10ms, retry at 20ms - both will fail
+            timeoutMs: 50 // First timeout at 50ms, retry at 100ms - both will fail
         });
 
         const job: MapReduceJob<TestInput, TestWorkItemData, TestMapOutput, TestReduceOutput> = {
