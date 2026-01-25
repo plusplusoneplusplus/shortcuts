@@ -34,6 +34,7 @@ import {
 } from './types';
 import { validateGenerateConfig } from './input-generator';
 import { executeFilter } from './filter-executor';
+import { resolvePromptFile, validatePromptFile } from './prompt-resolver';
 
 /**
  * Default parallel concurrency limit
@@ -94,6 +95,30 @@ export async function executePipeline(
     // Validate config
     validatePipelineConfig(config);
 
+    // Resolve map prompt (from inline or file)
+    let mapPrompt: string;
+    try {
+        mapPrompt = await resolveMapPrompt(config, options.pipelineDirectory);
+    } catch (error) {
+        throw new PipelineExecutionError(
+            `Failed to resolve map prompt: ${error instanceof Error ? error.message : String(error)}`,
+            'map'
+        );
+    }
+
+    // Resolve reduce prompt if AI reduce is used
+    let reducePrompt: string | undefined;
+    if (config.reduce.type === 'ai') {
+        try {
+            reducePrompt = await resolveReducePrompt(config, options.pipelineDirectory);
+        } catch (error) {
+            throw new PipelineExecutionError(
+                `Failed to resolve reduce prompt: ${error instanceof Error ? error.message : String(error)}`,
+                'reduce'
+            );
+        }
+    }
+
     // 1. Input Phase: Load items (inline, from CSV, or from inline array)
     let items: PromptItem[];
     try {
@@ -130,7 +155,7 @@ export async function executePipeline(
             // This is consistent with the previous behavior for empty CSV
         } else {
             // Validate that items have required template variables
-            const templateVars = extractVariables(config.map.prompt);
+            const templateVars = extractVariables(mapPrompt);
             const firstItem = items[0];
             const missingVars = templateVars.filter(v => !(v in firstItem));
             if (missingVars.length > 0) {
@@ -224,7 +249,7 @@ export async function executePipeline(
         model,
         maxConcurrency: parallelLimit,
         ...(config.reduce.type === 'ai' && {
-            aiReducePrompt: config.reduce.prompt,
+            aiReducePrompt: reducePrompt,
             aiReduceOutput: config.reduce.output,
             aiReduceModel: config.reduce.model,
             aiReduceParameters: reduceParameters
@@ -233,7 +258,7 @@ export async function executePipeline(
 
     const jobInput = createPromptMapInput(
         items,
-        config.map.prompt,
+        mapPrompt,
         config.map.output || []  // Empty array for text mode
     );
 
@@ -272,6 +297,30 @@ export async function executePipelineWithItems(
     // Validate basic config structure (but skip input validation since we're using pre-approved items)
     validatePipelineConfigForExecution(config);
 
+    // Resolve map prompt (from inline or file)
+    let mapPrompt: string;
+    try {
+        mapPrompt = await resolveMapPrompt(config, options.pipelineDirectory);
+    } catch (error) {
+        throw new PipelineExecutionError(
+            `Failed to resolve map prompt: ${error instanceof Error ? error.message : String(error)}`,
+            'map'
+        );
+    }
+
+    // Resolve reduce prompt if AI reduce is used
+    let reducePrompt: string | undefined;
+    if (config.reduce.type === 'ai') {
+        try {
+            reducePrompt = await resolveReducePrompt(config, options.pipelineDirectory);
+        } catch (error) {
+            throw new PipelineExecutionError(
+                `Failed to resolve reduce prompt: ${error instanceof Error ? error.message : String(error)}`,
+                'reduce'
+            );
+        }
+    }
+
     // Apply limit if specified
     const limit = config.input.limit ?? items.length;
     let processItems = items.slice(0, limit);
@@ -284,7 +333,7 @@ export async function executePipelineWithItems(
 
     // Validate that items have required template variables (if any items exist)
     if (processItems.length > 0) {
-        const templateVars = extractVariables(config.map.prompt);
+        const templateVars = extractVariables(mapPrompt);
         const firstItem = processItems[0];
         const missingVars = templateVars.filter(v => !(v in firstItem));
         if (missingVars.length > 0) {
@@ -369,7 +418,7 @@ export async function executePipelineWithItems(
         model,
         maxConcurrency: parallelLimit,
         ...(config.reduce.type === 'ai' && {
-            aiReducePrompt: config.reduce.prompt,
+            aiReducePrompt: reducePrompt,
             aiReduceOutput: config.reduce.output,
             aiReduceModel: config.reduce.model,
             aiReduceParameters: reduceParameters
@@ -378,7 +427,7 @@ export async function executePipelineWithItems(
 
     const jobInput = createPromptMapInput(
         processItems,
-        config.map.prompt,
+        mapPrompt,
         config.map.output || []
     );
 
@@ -411,8 +460,14 @@ function validatePipelineConfigForExecution(config: PipelineConfig): void {
         throw new PipelineExecutionError('Pipeline config missing "map"');
     }
 
-    if (!config.map.prompt) {
-        throw new PipelineExecutionError('Pipeline config missing "map.prompt"');
+    // Validate map prompt configuration (must have exactly one of prompt or promptFile)
+    const hasMapPrompt = !!config.map.prompt;
+    const hasMapPromptFile = !!config.map.promptFile;
+    if (!hasMapPrompt && !hasMapPromptFile) {
+        throw new PipelineExecutionError('Pipeline config must have either "map.prompt" or "map.promptFile"');
+    }
+    if (hasMapPrompt && hasMapPromptFile) {
+        throw new PipelineExecutionError('Pipeline config cannot have both "map.prompt" and "map.promptFile"');
     }
 
     // map.output is optional - if omitted, text mode is used
@@ -433,8 +488,13 @@ function validatePipelineConfigForExecution(config: PipelineConfig): void {
 
     // Validate AI reduce configuration
     if (config.reduce.type === 'ai') {
-        if (!config.reduce.prompt) {
-            throw new PipelineExecutionError('Pipeline config "reduce.prompt" is required when reduce.type is "ai"');
+        const hasReducePrompt = !!config.reduce.prompt;
+        const hasReducePromptFile = !!config.reduce.promptFile;
+        if (!hasReducePrompt && !hasReducePromptFile) {
+            throw new PipelineExecutionError('Pipeline config must have either "reduce.prompt" or "reduce.promptFile" when reduce.type is "ai"');
+        }
+        if (hasReducePrompt && hasReducePromptFile) {
+            throw new PipelineExecutionError('Pipeline config cannot have both "reduce.prompt" and "reduce.promptFile"');
         }
         if (config.reduce.output !== undefined && !Array.isArray(config.reduce.output)) {
             throw new PipelineExecutionError('Pipeline config "reduce.output" must be an array if provided');
@@ -454,6 +514,43 @@ async function loadFromCSV(
         delimiter: source.delimiter
     });
     return result.items;
+}
+
+/**
+ * Resolve the map prompt from config (either inline or from file)
+ * @param config Pipeline configuration
+ * @param pipelineDirectory Pipeline package directory
+ * @returns Resolved prompt string
+ */
+async function resolveMapPrompt(config: PipelineConfig, pipelineDirectory: string): Promise<string> {
+    if (config.map.prompt) {
+        return config.map.prompt;
+    }
+    if (config.map.promptFile) {
+        return resolvePromptFile(config.map.promptFile, pipelineDirectory);
+    }
+    // This should be caught by validation, but be defensive
+    throw new PipelineExecutionError('Map phase must have either "prompt" or "promptFile"', 'map');
+}
+
+/**
+ * Resolve the reduce prompt from config (either inline or from file)
+ * @param config Pipeline configuration
+ * @param pipelineDirectory Pipeline package directory
+ * @returns Resolved prompt string, or undefined if not AI reduce
+ */
+async function resolveReducePrompt(config: PipelineConfig, pipelineDirectory: string): Promise<string | undefined> {
+    if (config.reduce.type !== 'ai') {
+        return undefined;
+    }
+    if (config.reduce.prompt) {
+        return config.reduce.prompt;
+    }
+    if (config.reduce.promptFile) {
+        return resolvePromptFile(config.reduce.promptFile, pipelineDirectory);
+    }
+    // This should be caught by validation, but be defensive
+    throw new PipelineExecutionError('AI reduce must have either "prompt" or "promptFile"', 'reduce');
 }
 
 /**
@@ -564,8 +661,14 @@ function validatePipelineConfig(config: PipelineConfig): void {
         throw new PipelineExecutionError('Pipeline config missing "map"');
     }
 
-    if (!config.map.prompt) {
-        throw new PipelineExecutionError('Pipeline config missing "map.prompt"');
+    // Validate map prompt configuration (must have exactly one of prompt or promptFile)
+    const hasMapPrompt = !!config.map.prompt;
+    const hasMapPromptFile = !!config.map.promptFile;
+    if (!hasMapPrompt && !hasMapPromptFile) {
+        throw new PipelineExecutionError('Pipeline config must have either "map.prompt" or "map.promptFile"');
+    }
+    if (hasMapPrompt && hasMapPromptFile) {
+        throw new PipelineExecutionError('Pipeline config cannot have both "map.prompt" and "map.promptFile"');
     }
 
     // map.output is optional - if omitted, text mode is used (raw AI response)
@@ -588,8 +691,13 @@ function validatePipelineConfig(config: PipelineConfig): void {
 
     // Validate AI reduce configuration
     if (config.reduce.type === 'ai') {
-        if (!config.reduce.prompt) {
-            throw new PipelineExecutionError('Pipeline config "reduce.prompt" is required when reduce.type is "ai"');
+        const hasReducePrompt = !!config.reduce.prompt;
+        const hasReducePromptFile = !!config.reduce.promptFile;
+        if (!hasReducePrompt && !hasReducePromptFile) {
+            throw new PipelineExecutionError('Pipeline config must have either "reduce.prompt" or "reduce.promptFile" when reduce.type is "ai"');
+        }
+        if (hasReducePrompt && hasReducePromptFile) {
+            throw new PipelineExecutionError('Pipeline config cannot have both "reduce.prompt" and "reduce.promptFile"');
         }
         // reduce.output is optional for AI reduce - if omitted, returns raw text response
         if (config.reduce.output !== undefined && !Array.isArray(config.reduce.output)) {

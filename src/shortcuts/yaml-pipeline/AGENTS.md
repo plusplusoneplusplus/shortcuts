@@ -220,6 +220,166 @@ reduce:
   type: json
 ```
 
+### Using Prompt Files
+
+Instead of inline prompts, you can store prompts in separate `.md` files for better organization, version control, and reuse.
+
+#### Prompt File Structure
+
+```
+.vscode/pipelines/
+├── run-tests/                    # Pipeline package
+│   ├── pipeline.yaml             # Pipeline definition
+│   ├── test-suite.csv            # Input data
+│   ├── analyze.prompt.md         # Prompt file (same folder)
+│   └── prompts/                  # Optional prompts subfolder
+│       ├── map.prompt.md
+│       └── reduce.prompt.md
+├── shared/                       # Shared across pipelines
+│   └── prompts/
+│       └── common-analysis.prompt.md
+└── prompts/                      # Shared prompts folder at root
+    └── global.prompt.md
+```
+
+#### Path Resolution Rules
+
+| promptFile Value | Resolved Path |
+|------------------|---------------|
+| `"analyze.prompt.md"` | `{pipelineDir}/analyze.prompt.md` |
+| `"prompts/map.prompt.md"` | `{pipelineDir}/prompts/map.prompt.md` |
+| `"../shared/prompts/common.prompt.md"` | `{pipelinesRoot}/shared/prompts/common.prompt.md` |
+| `"/absolute/path/prompt.md"` | `/absolute/path/prompt.md` |
+
+#### Search Order for Bare Filenames
+
+When `promptFile` is just a filename (no path separators):
+
+1. **Pipeline package directory** - `{pipelineDir}/analyze.prompt.md`
+2. **prompts/ subfolder** - `{pipelineDir}/prompts/analyze.prompt.md`
+3. **Shared prompts folder** - `{pipelinesRoot}/prompts/analyze.prompt.md`
+
+First match wins. If not found anywhere, throws a clear error listing searched paths.
+
+#### YAML Examples with promptFile
+
+**Simple (prompt in same folder):**
+```yaml
+name: "Run Tests Pipeline"
+input:
+  from:
+    type: csv
+    path: "test-suite.csv"
+
+map:
+  promptFile: "run-test.prompt.md"  # Searches pipeline folder
+  output: [status, passed, failed]
+
+reduce:
+  type: list
+```
+
+**With prompts subfolder:**
+```yaml
+map:
+  promptFile: "prompts/analyze.prompt.md"  # Explicit path
+
+reduce:
+  type: ai
+  promptFile: "prompts/summarize.prompt.md"
+  output:
+    - summary
+```
+
+**Using shared prompts:**
+```yaml
+map:
+  promptFile: "../shared/prompts/code-review.prompt.md"
+```
+
+#### Prompt File Format
+
+Prompt files support both plain text and markdown with optional frontmatter:
+
+**Simple (analyze.prompt.md):**
+```markdown
+Analyze this bug report:
+
+Title: {{title}}
+Description: {{description}}
+Priority: {{priority}}
+
+Return JSON with severity and category.
+```
+
+**With metadata (optional, for future use):**
+```markdown
+---
+version: 1.0
+description: Bug analysis prompt
+variables: [title, description, priority]
+---
+
+Analyze this bug report:
+
+Title: {{title}}
+Description: {{description}}
+...
+```
+
+The frontmatter (if present) is automatically stripped when loading the prompt.
+
+#### Validation Rules
+
+1. **Mutual exclusion**: Error if both `prompt` and `promptFile` are specified
+2. **Required**: Map phase must have either `prompt` or `promptFile`
+3. **AI reduce**: If `reduce.type` is `"ai"`, must have either `prompt` or `promptFile`
+4. **File exists**: Error with searched paths if file not found
+5. **Non-empty**: Error if file is empty after stripping frontmatter
+
+#### Programmatic API
+
+```typescript
+import {
+    resolvePromptFile,
+    resolvePromptFileSync,
+    resolvePromptPath,
+    getSearchPaths,
+    extractPromptContent,
+    promptFileExists,
+    validatePromptFile,
+    PromptResolverError
+} from '../yaml-pipeline';
+
+// Resolve and load a prompt file
+const prompt = await resolvePromptFile('analyze.prompt.md', pipelineDirectory);
+
+// Synchronous version
+const promptSync = resolvePromptFileSync('analyze.prompt.md', pipelineDirectory);
+
+// Just resolve the path without loading
+const resolvedPath = resolvePromptPath('analyze.prompt.md', pipelineDirectory);
+
+// Get search paths for a bare filename
+const paths = getSearchPaths('analyze.prompt.md', pipelineDirectory);
+// Returns: ['{pipelineDir}/analyze.prompt.md', '{pipelineDir}/prompts/analyze.prompt.md', '{pipelinesRoot}/prompts/analyze.prompt.md']
+
+// Check if prompt file exists
+if (promptFileExists('analyze.prompt.md', pipelineDirectory)) {
+    // File found
+}
+
+// Validate prompt file for config validation
+const validation = validatePromptFile('analyze.prompt.md', pipelineDirectory);
+if (!validation.valid) {
+    console.error(validation.error);
+    console.error('Searched:', validation.searchedPaths);
+}
+
+// Extract content from file with frontmatter
+const { content, hadFrontmatter } = extractPromptContent(fileContent);
+```
+
 ### Advanced Configuration with Shared Resources
 
 ```yaml

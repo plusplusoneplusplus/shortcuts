@@ -690,9 +690,10 @@ function getCSVPreviewTable(
  */
 export function getMapDetails(config: PipelineConfig, csvHeaders?: string[]): string {
     const parallel = config.map.parallel || 5;
-    const variables = extractTemplateVariables(config.map.prompt);
+    const promptContent = config.map.prompt || (config.map.promptFile ? `[From file: ${config.map.promptFile}]` : '');
+    const variables = extractTemplateVariables(promptContent);
     const validation = csvHeaders
-        ? validateTemplateVariables(config.map.prompt, csvHeaders)
+        ? validateTemplateVariables(promptContent, csvHeaders)
         : { valid: true, missingVariables: [] as string[] };
 
     return `
@@ -719,7 +720,10 @@ export function getMapDetails(config: PipelineConfig, csvHeaders?: string[]): st
             
             <div class="prompt-section">
                 <h5 class="prompt-title">📝 Prompt Template</h5>
-                <pre class="prompt-template">${escapeHtml(config.map.prompt)}</pre>
+                ${config.map.promptFile 
+                    ? `<div class="prompt-file-reference">📄 From file: <code>${escapeHtml(config.map.promptFile)}</code></div>`
+                    : ''}
+                <pre class="prompt-template">${escapeHtml(config.map.prompt || '')}</pre>
             </div>
             
             <div class="variables-section">

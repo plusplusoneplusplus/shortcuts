@@ -593,7 +593,8 @@ export class PipelineResultViewerProvider {
         const isTextMode = outputFields.length === 0;
 
         // Build the prompt with template substitution
-        let prompt = config.map.prompt;
+        // Note: For promptFile, the prompt should have been resolved before calling this function
+        let prompt = config.map.prompt || '';
         for (const [key, value] of Object.entries(item.input)) {
             prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
         }

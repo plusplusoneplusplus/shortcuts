@@ -68,6 +68,20 @@ export {
     TemplateError
 } from './template';
 
+// Prompt Resolver utilities
+export {
+    resolvePromptFile,
+    resolvePromptFileSync,
+    resolvePromptFileWithDetails,
+    resolvePromptPath,
+    getSearchPaths,
+    extractPromptContent,
+    promptFileExists,
+    validatePromptFile,
+    PromptResolverError
+} from './prompt-resolver';
+export type { PromptResolutionResult } from './prompt-resolver';
+
 // Input Generator (AI-powered input generation)
 export {
     buildGeneratePrompt,

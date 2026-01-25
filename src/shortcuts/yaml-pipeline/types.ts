@@ -185,8 +185,21 @@ export interface InputConfig {
  * Map phase configuration
  */
 export interface MapConfig {
-    /** Prompt template with {{column}} placeholders */
-    prompt: string;
+    /** 
+     * Prompt template with {{column}} placeholders.
+     * Either `prompt` or `promptFile` must be specified, but not both.
+     */
+    prompt?: string;
+    /** 
+     * Path to a prompt file. Supports:
+     * - Bare filename: "analyze.prompt.md" (searches pipeline dir, prompts/ subfolder, shared prompts)
+     * - Relative path: "prompts/map.prompt.md" (relative to pipeline directory)
+     * - Parent path: "../shared/prompts/common.prompt.md" (relative to pipeline directory)
+     * - Absolute path: "/absolute/path/prompt.md"
+     * 
+     * Either `prompt` or `promptFile` must be specified, but not both.
+     */
+    promptFile?: string;
     /** Output field names expected from AI. If omitted, text mode is used (raw AI response) */
     output?: string[];
     /** Maximum concurrent AI calls (default: 5) */
@@ -211,8 +224,21 @@ export interface MapConfig {
 export interface ReduceConfig {
     /** Reduce type / output format (includes 'text' for pure text concatenation) */
     type: MROutputFormat;
-    /** AI prompt template (required if type is 'ai') */
+    /** 
+     * AI prompt template (required if type is 'ai', unless promptFile is specified).
+     * Either `prompt` or `promptFile` must be specified for AI reduce, but not both.
+     */
     prompt?: string;
+    /** 
+     * Path to a prompt file for AI reduce. Supports:
+     * - Bare filename: "summarize.prompt.md" (searches pipeline dir, prompts/ subfolder, shared prompts)
+     * - Relative path: "prompts/reduce.prompt.md" (relative to pipeline directory)
+     * - Parent path: "../shared/prompts/common.prompt.md" (relative to pipeline directory)
+     * - Absolute path: "/absolute/path/prompt.md"
+     * 
+     * Either `prompt` or `promptFile` must be specified for AI reduce, but not both.
+     */
+    promptFile?: string;
     /** AI output fields. If omitted with type 'ai', returns raw AI text response */
     output?: string[];
     /** Model to use for AI reduce (optional) */

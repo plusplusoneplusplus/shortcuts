@@ -1322,7 +1322,7 @@ reduce:
                 assert.strictEqual(config.input.from.type, 'csv');
                 assert.strictEqual(config.input.from.path, './bugs.csv');
             }
-            assert.ok(config.map.prompt.includes('Analyze: {{title}}'));
+            assert.ok(config.map.prompt?.includes('Analyze: {{title}}'));
             assert.deepStrictEqual(config.map.output, ['severity', 'category']);
             assert.strictEqual(config.reduce.type, 'list');
         });
