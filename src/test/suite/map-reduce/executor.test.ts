@@ -272,20 +272,21 @@ suite('MapReduceExecutor', () => {
 
     test('handles timeout on map operations after timeout retry', async () => {
         // With timeout retry, we need the slow mapper to always exceed both timeouts
-        // First timeout: 10ms, retry timeout: 20ms (doubled)
-        // So the mapper needs to take longer than 20ms
+        // First timeout: 50ms, retry timeout: 100ms (doubled)
+        // So the mapper needs to take longer than 100ms
+        // Using larger values for more reliable timing on CI environments
         const executor = createExecutor({
             aiInvoker: mockAIInvoker,
             maxConcurrency: 5,
             reduceMode: 'deterministic',
             showProgress: false,
             retryOnFailure: false,
-            timeoutMs: 10 // Very short timeout
+            timeoutMs: 50 // Short timeout but not too aggressive
         });
 
         const slowMapper: Mapper<TestWorkItemData, TestMapOutput> = {
             async map(item, context) {
-                await new Promise(resolve => setTimeout(resolve, 100)); // Longer than both timeouts (10ms + 20ms)
+                await new Promise(resolve => setTimeout(resolve, 500)); // Much longer than both timeouts (50ms + 100ms)
                 return { doubled: item.data.value * 2 };
             }
         };

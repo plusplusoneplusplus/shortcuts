@@ -5,7 +5,7 @@
 /**
  * Source type for skill installation
  */
-export type SkillSourceType = 'github' | 'local';
+export type SkillSourceType = 'github' | 'local' | 'bundled';
 
 /**
  * Represents a discovered skill from a source
@@ -92,3 +92,15 @@ export interface SkillsSettings {
 export const DEFAULT_SKILLS_SETTINGS: SkillsSettings = {
     installPath: '.github/skills'
 };
+
+/**
+ * Represents a bundled skill that ships with the extension
+ */
+export interface BundledSkill {
+    /** Skill name (directory name) */
+    name: string;
+    /** Description extracted from SKILL.md */
+    description: string;
+    /** Relative path within the extension's bundled-skills directory */
+    relativePath: string;
+}

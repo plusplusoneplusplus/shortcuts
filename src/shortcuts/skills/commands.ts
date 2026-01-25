@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { detectSource, SourceDetectionErrors } from './source-detector';
 import { scanForSkills } from './skill-scanner';
 import { installSkills } from './skill-installer';
+import { getBundledSkills, installBundledSkills } from './bundled-skills-provider';
 import { DEFAULT_SKILLS_SETTINGS, DiscoveredSkill, SkillsSettings } from './types';
 import { getExtensionLogger, LogCategory, getWorkspaceRoot } from '../shared';
 
