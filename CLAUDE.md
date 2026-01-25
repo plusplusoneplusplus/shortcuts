@@ -296,6 +296,19 @@ input:
   type: csv
   path: "input.csv"  # Relative to package directory
 
+# Optional: Filter phase to reduce items before map
+filter:
+  type: rule  # Options: rule, ai, hybrid
+  rule:
+    rules:
+      - field: severity
+        operator: in
+        values: [critical, high]
+      - field: status
+        operator: equals
+        value: open
+    mode: all  # Options: all (AND), any (OR)
+
 map:
   prompt: |
     Analyze: {{title}}
@@ -312,6 +325,72 @@ map:
 reduce:
   type: json  # Options: list, table, json, csv, ai
 ```
+
+**Filter Phase (Optional):**
+
+The optional filter phase reduces the number of items before the expensive map phase. Three filter types are supported:
+
+**1. Rule-Based Filter** (fast, synchronous):
+```yaml
+filter:
+  type: rule
+  rule:
+    rules:
+      - field: priority
+        operator: gte
+        value: 5
+      - field: category
+        operator: in
+        values: [bug, security]
+    mode: all  # Both rules must match (AND)
+```
+
+Supported operators:
+- `equals`, `not_equals` - Exact match
+- `in`, `not_in` - Value in array
+- `contains`, `not_contains` - Substring match (case-insensitive)
+- `greater_than`, `less_than`, `gte`, `lte` - Numeric comparison
+- `matches` - Regex pattern matching
+
+**2. AI-Based Filter** (intelligent, uses AI):
+```yaml
+filter:
+  type: ai
+  ai:
+    prompt: |
+      Ticket: {{title}}
+      Description: {{description}}
+      
+      Is this actionable for engineering?
+      Return JSON: {"include": true/false, "reason": "explanation"}
+    output:
+      - include  # Required boolean field
+      - reason
+    parallel: 10
+    timeoutMs: 30000  # Default: 30 seconds
+```
+
+**3. Hybrid Filter** (combines both):
+```yaml
+filter:
+  type: hybrid
+  rule:
+    rules:
+      - field: status
+        operator: equals
+        value: open
+  ai:
+    prompt: |
+      Review ticket {{id}}: {{title}}
+      Should this be prioritized?
+      Return JSON: {"include": true/false}
+    output:
+      - include
+  combineMode: and  # Options: and (default), or
+```
+
+- `combineMode: and` - Item must pass BOTH rule and AI filters
+- `combineMode: or` - Item passes if EITHER rule OR AI filter accepts it
 
 **AI-Powered Reduce:**
 Use AI to synthesize, deduplicate, or prioritize map results.
