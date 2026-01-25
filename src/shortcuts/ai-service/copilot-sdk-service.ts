@@ -132,6 +132,29 @@ export interface SendMessageOptions {
      * @example { 'my-server': { command: 'my-mcp-server', args: ['--port', '8080'] } }
      */
     mcpServers?: Record<string, MCPServerConfig>;
+
+    /**
+     * Handler for permission requests from the Copilot CLI.
+     * When the AI needs permission to perform operations (file reads/writes, shell commands, etc.),
+     * this handler is called to approve or deny the request.
+     * 
+     * Without a handler, all permission requests are denied by default.
+     * 
+     * Note: Only applies to direct sessions (usePool: false).
+     * Session pool sessions use default permission handling (deny all).
+     * 
+     * @example
+     * // Approve all permissions
+     * onPermissionRequest: () => ({ kind: 'approved' })
+     * 
+     * @example
+     * // Selective approval
+     * onPermissionRequest: (request) => {
+     *   if (request.kind === 'read') return { kind: 'approved' };
+     *   return { kind: 'denied-by-rules' };
+     * }
+     */
+    onPermissionRequest?: PermissionHandler;
 }
 
 /**
@@ -165,6 +188,38 @@ interface ICopilotClientOptions {
 }
 
 /**
+ * Permission request from the Copilot CLI.
+ * Maps to SDK's PermissionRequest interface.
+ */
+export interface PermissionRequest {
+    /** Type of permission being requested */
+    kind: 'shell' | 'write' | 'mcp' | 'read' | 'url';
+    /** Associated tool call ID (if applicable) */
+    toolCallId?: string;
+    /** Additional request-specific data */
+    [key: string]: unknown;
+}
+
+/**
+ * Result of a permission request.
+ * Maps to SDK's PermissionRequestResult interface.
+ */
+export interface PermissionRequestResult {
+    /** The decision kind */
+    kind: 'approved' | 'denied-by-rules' | 'denied-no-approval-rule-and-could-not-request-from-user' | 'denied-interactively-by-user';
+    /** Optional rules that led to this decision */
+    rules?: unknown[];
+}
+
+/**
+ * Handler function for permission requests.
+ */
+export type PermissionHandler = (
+    request: PermissionRequest,
+    invocation: { sessionId: string }
+) => Promise<PermissionRequestResult> | PermissionRequestResult;
+
+/**
  * Options for creating a session.
  * Maps to the SDK's SessionConfig interface.
  */
@@ -179,6 +234,8 @@ interface ISessionOptions {
     excludedTools?: string[];
     /** Custom MCP server configurations */
     mcpServers?: Record<string, MCPServerConfig>;
+    /** Handler for permission requests from the CLI */
+    onPermissionRequest?: PermissionHandler;
 }
 
 /**
@@ -530,6 +587,11 @@ export class CopilotSDKService {
             }
             if (options.mcpServers !== undefined) {
                 sessionOptions.mcpServers = options.mcpServers;
+            }
+
+            // Permission handler
+            if (options.onPermissionRequest) {
+                sessionOptions.onPermissionRequest = options.onPermissionRequest;
             }
 
             const sessionOptionsStr = Object.keys(sessionOptions).length > 0 
@@ -999,3 +1061,46 @@ export function getCopilotSDKService(): CopilotSDKService {
 export function resetCopilotSDKService(): void {
     CopilotSDKService.resetInstance();
 }
+
+// ============================================================================
+// Permission Handler Helpers
+// ============================================================================
+
+/**
+ * Permission handler that approves all permission requests.
+ * 
+ * **WARNING**: This allows the AI to perform any operation without restrictions:
+ * - Read/write any file
+ * - Execute any shell command
+ * - Access any URL
+ * - Use any MCP server
+ * 
+ * Only use this in trusted environments or for testing purposes.
+ * 
+ * @example
+ * ```typescript
+ * const result = await copilotSDKService.sendMessage({
+ *     prompt: 'List files in the current directory',
+ *     onPermissionRequest: approveAllPermissions
+ * });
+ * ```
+ */
+export const approveAllPermissions: PermissionHandler = () => {
+    return { kind: 'approved' };
+};
+
+/**
+ * Permission handler that denies all permission requests.
+ * This is the default behavior when no handler is provided.
+ * 
+ * @example
+ * ```typescript
+ * const result = await copilotSDKService.sendMessage({
+ *     prompt: 'Just answer this question',
+ *     onPermissionRequest: denyAllPermissions
+ * });
+ * ```
+ */
+export const denyAllPermissions: PermissionHandler = () => {
+    return { kind: 'denied-by-rules' };
+};
