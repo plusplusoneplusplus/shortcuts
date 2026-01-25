@@ -433,6 +433,115 @@ Classify this bug.
         });
     });
 
+    suite('{{ITEMS}} special variable', () => {
+        test('substitutes {{ITEMS}} with JSON array of all items', () => {
+            const allItems: PromptItem[] = [
+                { id: '1', title: 'Bug A' },
+                { id: '2', title: 'Bug B' },
+                { id: '3', title: 'Bug C' }
+            ];
+            
+            const result = substituteTemplate(
+                'Current: {{title}}\nAll items: {{ITEMS}}',
+                { id: '1', title: 'Bug A' },
+                { allItems }
+            );
+            
+            assert.ok(result.includes('Current: Bug A'));
+            assert.ok(result.includes('"id": "1"'));
+            assert.ok(result.includes('"id": "2"'));
+            assert.ok(result.includes('"id": "3"'));
+            assert.ok(result.includes('"title": "Bug A"'));
+            assert.ok(result.includes('"title": "Bug B"'));
+            assert.ok(result.includes('"title": "Bug C"'));
+        });
+
+        test('{{ITEMS}} returns empty array when allItems is empty', () => {
+            const result = substituteTemplate(
+                'Items: {{ITEMS}}',
+                { id: '1' },
+                { allItems: [] }
+            );
+            
+            assert.ok(result.includes('[]'));
+        });
+
+        test('{{ITEMS}} is preserved when allItems not provided', () => {
+            const result = substituteTemplate(
+                'Items: {{ITEMS}}',
+                { id: '1' }
+            );
+            
+            // Special variables are preserved as-is when not provided
+            assert.strictEqual(result, 'Items: {{ITEMS}}');
+        });
+
+        test('extractVariables excludes ITEMS by default', () => {
+            const vars = extractVariables('{{title}} {{ITEMS}} {{description}}');
+            assert.deepStrictEqual(vars.sort(), ['description', 'title']);
+            assert.ok(!vars.includes('ITEMS'));
+        });
+
+        test('extractVariables includes ITEMS when excludeSpecial is false', () => {
+            const vars = extractVariables('{{title}} {{ITEMS}} {{description}}', false);
+            assert.deepStrictEqual(vars.sort(), ['ITEMS', 'description', 'title']);
+        });
+
+        test('extractVariables excludes all special variables by default', () => {
+            const template = '{{field}} {{ITEMS}} {{RESULTS}} {{COUNT}} {{SUCCESS_COUNT}} {{FAILURE_COUNT}} {{RESULTS_FILE}}';
+            const vars = extractVariables(template);
+            assert.deepStrictEqual(vars, ['field']);
+        });
+
+        test('validateItemForTemplate ignores ITEMS in validation', () => {
+            // ITEMS is a special variable, so it should not cause validation to fail
+            const result = validateItemForTemplate(
+                '{{title}} {{ITEMS}}',
+                { title: 'Test' }
+            );
+            assert.strictEqual(result.valid, true);
+            assert.deepStrictEqual(result.missingVariables, []);
+        });
+
+        test('previewTemplate supports {{ITEMS}}', () => {
+            const allItems: PromptItem[] = [
+                { id: '1', name: 'Item 1' },
+                { id: '2', name: 'Item 2' }
+            ];
+            
+            const result = previewTemplate(
+                'Current: {{name}}, All: {{ITEMS}}',
+                { id: '1', name: 'Item 1' },
+                500,
+                allItems
+            );
+            
+            assert.ok(result.includes('Current: Item 1'));
+            assert.ok(result.includes('"id": "1"'));
+            assert.ok(result.includes('"id": "2"'));
+        });
+
+        test('{{ITEMS}} works with complex nested data', () => {
+            const allItems: PromptItem[] = [
+                { id: '1', data: '{"nested": true}' },
+                { id: '2', data: '{"nested": false}' }
+            ];
+            
+            const result = substituteTemplate(
+                'Processing {{id}}\nContext: {{ITEMS}}',
+                { id: '1', data: '{"nested": true}' },
+                { allItems }
+            );
+            
+            assert.ok(result.includes('Processing 1'));
+            // Verify JSON is properly formatted
+            const parsed = JSON.parse(result.split('Context: ')[1]);
+            assert.strictEqual(parsed.length, 2);
+            assert.strictEqual(parsed[0].id, '1');
+            assert.strictEqual(parsed[1].id, '2');
+        });
+    });
+
     suite('integration scenarios', () => {
         test('full pipeline prompt generation', () => {
             const template = `Analyze this bug report:
@@ -496,6 +605,38 @@ Let me know if you need more details.`;
 
             // Verify extra_note is excluded
             assert.ok(!('extra_note' in result));
+        });
+
+        test('pipeline prompt with {{ITEMS}} for context-aware processing', () => {
+            const template = `Analyze bug {{id}}: {{title}}
+
+For context, here are all bugs in this batch:
+{{ITEMS}}
+
+Determine if this bug is related to any others in the batch.`;
+
+            const allItems: PromptItem[] = [
+                { id: '1', title: 'Login fails' },
+                { id: '2', title: 'Auth token expired' },
+                { id: '3', title: 'Session timeout' }
+            ];
+
+            const result = substituteTemplate(
+                template,
+                allItems[0],
+                { allItems }
+            );
+
+            // Verify current item substitution
+            assert.ok(result.includes('Analyze bug 1: Login fails'));
+            
+            // Verify all items are included as JSON
+            assert.ok(result.includes('"id": "1"'));
+            assert.ok(result.includes('"id": "2"'));
+            assert.ok(result.includes('"id": "3"'));
+            assert.ok(result.includes('"title": "Login fails"'));
+            assert.ok(result.includes('"title": "Auth token expired"'));
+            assert.ok(result.includes('"title": "Session timeout"'));
         });
     });
 });

@@ -59,6 +59,8 @@ export interface PromptWorkItemData {
     outputFields: string[];
     /** Original index in input */
     index: number;
+    /** All items in the input (for {{ITEMS}} template variable) */
+    allItems: PromptItem[];
 }
 
 /**
@@ -146,8 +148,23 @@ export interface PromptMapJobOptions {
 
 const TEMPLATE_VARIABLE_REGEX = /\{\{(\w+)\}\}/g;
 
-function substituteTemplate(template: string, item: PromptItem): string {
+/**
+ * Substitute template variables with values from a pipeline item
+ * 
+ * Supports special variable {{ITEMS}} which is replaced with JSON array of all items.
+ * This allows prompts to reference the full context of all items being processed.
+ * 
+ * @param template Template string with {{variable}} placeholders
+ * @param item Current pipeline item containing values
+ * @param allItems Optional array of all items (for {{ITEMS}} variable)
+ * @returns Substituted string
+ */
+function substituteTemplate(template: string, item: PromptItem, allItems?: PromptItem[]): string {
     return template.replace(TEMPLATE_VARIABLE_REGEX, (_, variableName) => {
+        // Handle special {{ITEMS}} variable - returns JSON array of all items
+        if (variableName === 'ITEMS' && allItems) {
+            return JSON.stringify(allItems, null, 2);
+        }
         return variableName in item ? item[variableName] : '';
     });
 }
@@ -187,7 +204,8 @@ class PromptMapSplitter implements Splitter<PromptMapInput, PromptWorkItemData> 
                 item,
                 promptTemplate: input.promptTemplate,
                 outputFields: input.outputFields,
-                index
+                index,
+                allItems: input.items
             },
             metadata: { index, totalItems: input.items.length }
         }));
@@ -208,18 +226,18 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
         workItem: WorkItem<PromptWorkItemData>,
         _context: MapContext
     ): Promise<PromptMapResult> {
-        const { item, promptTemplate, outputFields } = workItem.data;
+        const { item, promptTemplate, outputFields, allItems } = workItem.data;
         const isTextMode = !outputFields || outputFields.length === 0;
 
         try {
-            const substituted = substituteTemplate(promptTemplate, item);
+            const substituted = substituteTemplate(promptTemplate, item, allItems);
             const prompt = buildFullPrompt(substituted, outputFields);
             
             // Support template substitution in model (e.g., "{{model}}" reads from item.model)
             // Ensure modelTemplate is a string before substitution
             let model: string | undefined;
             if (this.modelTemplate && typeof this.modelTemplate === 'string') {
-                const substitutedModel = substituteTemplate(this.modelTemplate, item);
+                const substitutedModel = substituteTemplate(this.modelTemplate, item, allItems);
                 model = substitutedModel || undefined;
             }
             

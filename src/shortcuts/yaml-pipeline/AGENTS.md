@@ -220,6 +220,59 @@ reduce:
   type: json
 ```
 
+### Map Phase Template Variables
+
+In the map phase, you can use template variables in your prompt:
+
+#### Item Variables (from CSV/input)
+CSV columns become directly accessible as template variables:
+
+```yaml
+# CSV: id, title, priority
+map:
+  prompt: "Analyze {{title}} (priority: {{priority}})"
+```
+
+- Each row becomes a PromptItem object: `{id: "123", title: "Bug", priority: "high"}`
+- Column headers are trimmed but not transformed (original case preserved)
+- Empty cells become empty strings `""`
+- No nested/complex types (flat string key-value pairs only)
+
+#### Special Variable: {{ITEMS}}
+
+The `{{ITEMS}}` variable provides access to **all input items** as a JSON array. This enables context-aware processing where each item can reference the full batch:
+
+```yaml
+map:
+  prompt: |
+    Analyze bug {{id}}: {{title}}
+    
+    For context, here are all bugs in this batch:
+    {{ITEMS}}
+    
+    Determine if this bug is related to any others.
+  output:
+    - analysis
+    - related_bugs
+```
+
+**Use cases for {{ITEMS}}:**
+- Cross-referencing items to find relationships or duplicates
+- Providing batch context for more informed analysis
+- Comparative analysis (e.g., "rank this item relative to others")
+- Deduplication detection during map phase
+
+**Example output of {{ITEMS}}:**
+```json
+[
+  {"id": "1", "title": "Login fails", "priority": "high"},
+  {"id": "2", "title": "Auth token expired", "priority": "medium"},
+  {"id": "3", "title": "Session timeout", "priority": "low"}
+]
+```
+
+**Note:** `{{ITEMS}}` is a special system variable and is automatically excluded from validation. You don't need to have an "ITEMS" column in your CSV.
+
 ### Using Prompt Files
 
 Instead of inline prompts, you can store prompts in separate `.md` files for better organization, version control, and reuse.

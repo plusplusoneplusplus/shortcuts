@@ -67,6 +67,7 @@ export {
     previewTemplate,
     TemplateError
 } from './template';
+export type { SubstituteTemplateOptions } from './template';
 
 // Prompt Resolver utilities
 export {
