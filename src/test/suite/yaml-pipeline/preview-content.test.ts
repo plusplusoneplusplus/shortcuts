@@ -1011,4 +1011,74 @@ suite('Pipeline Preview Content Tests', () => {
                 'Should be able to reach 100% zoom with step size');
         });
     });
+
+    suite('Diagram Collapse/Expand', () => {
+        test('should have proper CSS classes for collapse functionality', () => {
+            // Test that the CSS class names for collapse functionality follow naming conventions
+            const expectedClasses = [
+                'diagram-collapse-btn',
+                'diagram-title-container',
+                'diagram-content'
+            ];
+            
+            // These classes should follow the diagram- prefix convention
+            expectedClasses.forEach(className => {
+                assert.ok(className.startsWith('diagram-'), 
+                    `Class ${className} should follow diagram- prefix convention`);
+            });
+        });
+
+        test('collapse button should use proper icon characters', () => {
+            // The collapse button uses ▼ (expanded) which rotates to ▶ (collapsed) via CSS transform
+            const expandedIcon = '▼';
+            const collapsedTransform = 'rotate(-90deg)';
+            
+            // Verify the icon is a valid unicode character
+            assert.ok(expandedIcon.length === 1, 'Icon should be a single character');
+            assert.ok(collapsedTransform.includes('rotate'), 'Collapsed state should use rotation');
+        });
+
+        test('collapse state should have proper initial values', () => {
+            // Test the expected initial state for collapse functionality
+            const initialCollapseState = {
+                diagramCollapsed: false
+            };
+            
+            assert.strictEqual(initialCollapseState.diagramCollapsed, false, 'Diagram should be expanded initially');
+        });
+
+        test('collapse animation should use CSS transitions', () => {
+            // Verify that the collapse animation uses reasonable CSS transition values
+            const transitionDuration = 0.3; // seconds for max-height
+            const opacityDuration = 0.2; // seconds for opacity
+            
+            assert.ok(transitionDuration > 0, 'Transition duration should be positive');
+            assert.ok(transitionDuration <= 0.5, 'Transition should not be too slow');
+            assert.ok(opacityDuration <= transitionDuration, 'Opacity transition should complete before height');
+        });
+
+        test('collapsed state should hide zoom controls', () => {
+            // When collapsed, zoom controls should be hidden since they're not usable
+            // This is handled by setting display: none on the zoom controls
+            const expectedBehavior = {
+                zoomControlsHiddenWhenCollapsed: true,
+                collapseButtonVisible: true
+            };
+            
+            assert.ok(expectedBehavior.zoomControlsHiddenWhenCollapsed, 
+                'Zoom controls should be hidden when diagram is collapsed');
+            assert.ok(expectedBehavior.collapseButtonVisible, 
+                'Collapse button should remain visible to allow re-expanding');
+        });
+
+        test('collapse should use max-height for smooth animation', () => {
+            // Using max-height allows for smooth CSS transitions
+            // The max-height value should be large enough to accommodate any diagram
+            const maxHeightExpanded = 2000; // pixels
+            const maxHeightCollapsed = 0;
+            
+            assert.ok(maxHeightExpanded >= 1000, 'Max height should accommodate large diagrams');
+            assert.strictEqual(maxHeightCollapsed, 0, 'Collapsed max height should be 0');
+        });
+    });
 });

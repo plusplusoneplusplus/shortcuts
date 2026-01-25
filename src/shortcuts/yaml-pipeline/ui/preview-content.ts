@@ -321,22 +321,27 @@ function getDiagramSection(mermaidDiagram: string): string {
     return `
         <div class="diagram-section">
             <div class="diagram-header">
-                <h3 class="section-title">Pipeline Flow</h3>
-                <div class="diagram-zoom-controls">
+                <div class="diagram-title-container">
+                    <button class="diagram-collapse-btn" id="diagramCollapseBtn" title="Collapse/Expand Pipeline Flow">▼</button>
+                    <h3 class="section-title">Pipeline Flow</h3>
+                </div>
+                <div class="diagram-zoom-controls" id="diagramZoomControls">
                     <button class="diagram-zoom-btn" id="zoomOutBtn" title="Zoom out (Ctrl+Scroll down)">−</button>
                     <span class="diagram-zoom-level" id="zoomLevel">100%</span>
                     <button class="diagram-zoom-btn" id="zoomInBtn" title="Zoom in (Ctrl+Scroll up)">+</button>
                     <button class="diagram-zoom-btn diagram-zoom-reset" id="zoomResetBtn" title="Reset zoom">⟲</button>
                 </div>
             </div>
-            <div class="diagram-container" id="diagramContainer">
-                <div class="diagram-wrapper" id="diagramWrapper">
-                    <div class="mermaid" id="pipelineDiagram">
+            <div class="diagram-content" id="diagramContent">
+                <div class="diagram-container" id="diagramContainer">
+                    <div class="diagram-wrapper" id="diagramWrapper">
+                        <div class="mermaid" id="pipelineDiagram">
 ${mermaidDiagram}
+                        </div>
                     </div>
                 </div>
+                <p class="diagram-hint">Click on a node to see details • Ctrl+Scroll to zoom • Drag to pan</p>
             </div>
-            <p class="diagram-hint">Click on a node to see details • Ctrl+Scroll to zoom • Drag to pan</p>
         </div>
     `;
 }
@@ -1031,6 +1036,53 @@ function getStyles(isDark: boolean): string {
             justify-content: space-between;
             align-items: center;
             margin-bottom: 12px;
+        }
+
+        .diagram-title-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .diagram-collapse-btn {
+            width: 20px;
+            height: 20px;
+            border: none;
+            background: transparent;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            transition: background 0.2s, transform 0.2s;
+        }
+
+        .diagram-collapse-btn:hover {
+            background: var(--hover-bg);
+        }
+
+        .diagram-collapse-btn.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .diagram-content {
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+            max-height: 2000px;
+            opacity: 1;
+        }
+
+        .diagram-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin-bottom: 0;
+        }
+
+        .diagram-section.collapsed .diagram-header {
+            margin-bottom: 0;
         }
 
         .section-title {
@@ -2386,6 +2438,35 @@ function getScript(data: PipelinePreviewData | undefined, isDark: boolean): stri
             diagramContainer.addEventListener('mouseup', stopDragging);
             diagramContainer.addEventListener('mouseleave', stopDragging);
         }
+
+        // Diagram collapse/expand state
+        let diagramCollapsed = false;
+
+        // Toggle diagram collapse/expand
+        function toggleDiagramCollapse() {
+            diagramCollapsed = !diagramCollapsed;
+            
+            const collapseBtn = document.getElementById('diagramCollapseBtn');
+            const diagramContent = document.getElementById('diagramContent');
+            const diagramSection = document.querySelector('.diagram-section');
+            const zoomControls = document.getElementById('diagramZoomControls');
+            
+            if (collapseBtn) {
+                collapseBtn.classList.toggle('collapsed', diagramCollapsed);
+            }
+            if (diagramContent) {
+                diagramContent.classList.toggle('collapsed', diagramCollapsed);
+            }
+            if (diagramSection) {
+                diagramSection.classList.toggle('collapsed', diagramCollapsed);
+            }
+            if (zoomControls) {
+                zoomControls.style.display = diagramCollapsed ? 'none' : 'flex';
+            }
+        }
+
+        // Attach diagram collapse handler
+        document.getElementById('diagramCollapseBtn')?.addEventListener('click', toggleDiagramCollapse);
 
         // Initial setup
         attachFileClickHandlers();
