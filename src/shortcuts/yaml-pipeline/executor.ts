@@ -29,9 +29,11 @@ import {
     isGenerateConfig,
     PipelineConfig,
     PipelineParameter,
-    ProcessTracker
+    ProcessTracker,
+    FilterResult
 } from './types';
 import { validateGenerateConfig } from './input-generator';
+import { executeFilter } from './filter-executor';
 
 /**
  * Default parallel concurrency limit
@@ -44,7 +46,7 @@ export const DEFAULT_PARALLEL_LIMIT = 5;
 export class PipelineExecutionError extends Error {
     constructor(
         message: string,
-        public readonly phase?: 'input' | 'map' | 'reduce'
+        public readonly phase?: 'input' | 'filter' | 'map' | 'reduce'
     ) {
         super(message);
         this.name = 'PipelineExecutionError';
@@ -73,7 +75,10 @@ export interface ExecutePipelineOptions {
 /**
  * Result type from pipeline execution
  */
-export type PipelineExecutionResult = MapReduceResult<PromptMapResult, PromptMapOutput>;
+export interface PipelineExecutionResult extends MapReduceResult<PromptMapResult, PromptMapOutput> {
+    /** Filter result if filter was used */
+    filterResult?: FilterResult;
+}
 
 /**
  * Execute a pipeline from a YAML configuration
@@ -145,7 +150,50 @@ export async function executePipeline(
         );
     }
 
-    // 2. Create and execute map-reduce job
+    // 2. Filter Phase (optional): Filter items before map phase
+    let filterResult: FilterResult | undefined;
+    if (config.filter) {
+        try {
+            filterResult = await executeFilter(items, config.filter, {
+                aiInvoker: options.aiInvoker,
+                processTracker: options.processTracker,
+                onProgress: (progress) => {
+                    // Report as splitting phase since filter happens before map
+                    options.onProgress?.({
+                        phase: 'splitting',
+                        totalItems: progress.total,
+                        completedItems: progress.processed,
+                        failedItems: 0,
+                        percentage: Math.round((progress.processed / progress.total) * 100)
+                    });
+                },
+                isCancelled: options.isCancelled
+            });
+
+            // Replace items with filtered results
+            items = filterResult.included;
+
+            // Log filter stats
+            console.log(
+                `Filter: ${filterResult.stats.includedCount}/${filterResult.stats.totalItems} items passed ` +
+                `(${filterResult.stats.excludedCount} excluded, ${filterResult.stats.executionTimeMs}ms)`
+            );
+
+            if (items.length === 0) {
+                console.warn('Filter excluded all items - map phase will have no work');
+            }
+        } catch (error) {
+            if (error instanceof PipelineExecutionError) {
+                throw error;
+            }
+            throw new PipelineExecutionError(
+                `Failed to execute filter: ${error instanceof Error ? error.message : String(error)}`,
+                'filter'
+            );
+        }
+    }
+
+    // 3. Create and execute map-reduce job
     const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
     const model = config.map.model;
     const timeoutMs = config.map.timeoutMs ?? 600000; // Default to 10 minutes
@@ -190,7 +238,13 @@ export async function executePipeline(
     );
 
     try {
-        return await executor.execute(job, jobInput);
+        const result = await executor.execute(job, jobInput);
+        
+        // Attach filter result if filter was used
+        return {
+            ...result,
+            filterResult
+        };
     } catch (error) {
         throw new PipelineExecutionError(
             `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -241,6 +295,49 @@ export async function executePipelineWithItems(
         }
     }
 
+    // Apply filter phase if configured
+    let filterResult: FilterResult | undefined;
+    if (config.filter) {
+        try {
+            filterResult = await executeFilter(processItems, config.filter, {
+                aiInvoker: options.aiInvoker,
+                processTracker: options.processTracker,
+                onProgress: (progress) => {
+                    // Report as splitting phase since filter happens before map
+                    options.onProgress?.({
+                        phase: 'splitting',
+                        totalItems: progress.total,
+                        completedItems: progress.processed,
+                        failedItems: 0,
+                        percentage: Math.round((progress.processed / progress.total) * 100)
+                    });
+                },
+                isCancelled: options.isCancelled
+            });
+
+            // Replace items with filtered results
+            processItems = filterResult.included;
+
+            // Log filter stats
+            console.log(
+                `Filter: ${filterResult.stats.includedCount}/${filterResult.stats.totalItems} items passed ` +
+                `(${filterResult.stats.excludedCount} excluded, ${filterResult.stats.executionTimeMs}ms)`
+            );
+
+            if (processItems.length === 0) {
+                console.warn('Filter excluded all items - map phase will have no work');
+            }
+        } catch (error) {
+            if (error instanceof PipelineExecutionError) {
+                throw error;
+            }
+            throw new PipelineExecutionError(
+                `Failed to execute filter: ${error instanceof Error ? error.message : String(error)}`,
+                'filter'
+            );
+        }
+    }
+
     // Create and execute map-reduce job
     const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
     const model = config.map.model;
@@ -286,7 +383,13 @@ export async function executePipelineWithItems(
     );
 
     try {
-        return await executor.execute(job, jobInput);
+        const result = await executor.execute(job, jobInput);
+        
+        // Attach filter result if filter was used
+        return {
+            ...result,
+            filterResult
+        };
     } catch (error) {
         throw new PipelineExecutionError(
             `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,

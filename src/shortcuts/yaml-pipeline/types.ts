@@ -39,6 +39,8 @@ export interface PipelineConfig {
     name: string;
     /** Input configuration */
     input: InputConfig;
+    /** Optional filter phase configuration */
+    filter?: FilterConfig;
     /** Map phase configuration */
     map: MapConfig;
     /** Reduce phase configuration */
@@ -239,4 +241,98 @@ export interface CSVParseResult {
     headers: string[];
     /** Number of rows (excluding header) */
     rowCount: number;
+}
+
+/**
+ * Filter operators for rule-based filtering
+ */
+export type FilterOperator = 
+    | 'equals' | 'not_equals'
+    | 'in' | 'not_in'
+    | 'contains' | 'not_contains'
+    | 'greater_than' | 'less_than' | 'gte' | 'lte'
+    | 'matches';
+
+/**
+ * Single filter rule for rule-based filtering
+ */
+export interface FilterRule {
+    /** Field name to evaluate */
+    field: string;
+    /** Comparison operator */
+    operator: FilterOperator;
+    /** Single value for comparison (for equals, greater_than, etc.) */
+    value?: any;
+    /** Multiple values for comparison (for in, not_in) */
+    values?: any[];
+    /** Regex pattern (for matches operator) */
+    pattern?: string;
+}
+
+/**
+ * Rule-based filter configuration
+ */
+export interface RuleFilterConfig {
+    /** List of filter rules */
+    rules: FilterRule[];
+    /** How to combine multiple rules (default: "all") */
+    mode?: 'all' | 'any';
+}
+
+/**
+ * AI-based filter configuration
+ */
+export interface AIFilterConfig {
+    /** Prompt template with {{field}} placeholders */
+    prompt: string;
+    /** Output fields - must include 'include' boolean */
+    output?: string[];
+    /** Maximum concurrent AI calls (default: 5) */
+    parallel?: number;
+    /** Optional model to use */
+    model?: string;
+    /** Timeout per AI call in milliseconds (default: 30000 = 30s) */
+    timeoutMs?: number;
+}
+
+/**
+ * Filter configuration - optional phase between input and map
+ */
+export interface FilterConfig {
+    /** Filter type */
+    type: 'rule' | 'ai' | 'hybrid';
+    /** Rule-based filter configuration (required for rule/hybrid) */
+    rule?: RuleFilterConfig;
+    /** AI-based filter configuration (required for ai/hybrid) */
+    ai?: AIFilterConfig;
+    /** For hybrid: how to combine rule and AI (default: "and") */
+    combineMode?: 'and' | 'or';
+}
+
+/**
+ * Filter statistics
+ */
+export interface FilterStats {
+    /** Total input items */
+    totalItems: number;
+    /** Number of items included */
+    includedCount: number;
+    /** Number of items excluded */
+    excludedCount: number;
+    /** Execution time in milliseconds */
+    executionTimeMs: number;
+    /** Filter type used */
+    filterType: 'rule' | 'ai' | 'hybrid';
+}
+
+/**
+ * Result from filter execution
+ */
+export interface FilterResult {
+    /** Items that passed the filter */
+    included: MRPromptItem[];
+    /** Items that were filtered out */
+    excluded: MRPromptItem[];
+    /** Filter statistics */
+    stats: FilterStats;
 }
