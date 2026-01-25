@@ -413,34 +413,43 @@ suite('MockAIProcessManager Tests', () => {
     });
 
     suite('Auto-Complete Configuration', () => {
-        test('should auto-complete processes when configured', async () => {
+        test('should auto-complete processes when configured', async function() {
+            // Increase mocha timeout for CI environments (especially Windows)
+            this.timeout(10000);
+            
             const mgr = createMockAIProcessManager('auto-complete');
             
             const id = mgr.registerProcess('Test');
 
-            // Wait for auto-complete
-            await waitForProcessCompletion(mgr, id);
+            // Wait for auto-complete with increased timeout for CI
+            await waitForProcessCompletion(mgr, id, 5000);
 
             assertProcessCompleted(mgr, id, 'Mock result');
             mgr.dispose();
         });
 
-        test('should auto-fail processes when configured', async () => {
+        test('should auto-fail processes when configured', async function() {
+            // Increase mocha timeout for CI environments (especially Windows)
+            this.timeout(10000);
+            
             const mgr = createMockAIProcessManager('auto-fail');
             
             const id = mgr.registerProcess('Test');
 
-            await waitForProcessCompletion(mgr, id);
+            await waitForProcessCompletion(mgr, id, 5000);
 
             assertProcessFailed(mgr, id, 'Mock error');
             mgr.dispose();
         });
 
-        test('should reconfigure after construction', async () => {
+        test('should reconfigure after construction', async function() {
+            // Increase mocha timeout for CI environments (especially Windows)
+            this.timeout(10000);
+            
             manager.configure({ autoComplete: true });
             
             const id = manager.registerProcess('Test');
-            await waitForProcessCompletion(manager, id);
+            await waitForProcessCompletion(manager, id, 5000);
 
             assertProcessCompleted(manager, id);
         });
