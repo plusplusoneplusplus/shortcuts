@@ -11,6 +11,8 @@ vsc-extension-quickstart.md
 **/*.ts
 **/node_modules/**
 !node_modules/@github/copilot-sdk/**
+!node_modules/vscode-jsonrpc/**
+!node_modules/zod/**
 **/.DS_Store
 **/Thumbs.db
 **/*.log
