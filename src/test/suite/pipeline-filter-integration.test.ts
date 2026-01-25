@@ -37,9 +37,10 @@ suite('Pipeline Filter Integration Tests', () => {
     // Mock AI invoker for testing
     const createMockAIInvoker = (mapResponse: string, filterResponse?: (id: string) => boolean): AIInvoker => {
         return async (prompt) => {
-            // Handle filter prompts (contains "Should include")
-            if (filterResponse && prompt.includes('Should include')) {
-                const match = prompt.match(/id[:\s]+(\d+)/i);
+            // Handle filter prompts - if filterResponse is provided and prompt contains 'include'
+            // Extract ID from the rendered prompt (e.g., "Should include 1?" or "Include '3'?")
+            if (filterResponse && prompt.toLowerCase().includes('include')) {
+                const match = prompt.match(/['"]?(\d+)['"]?/) || prompt.match(/id[:\s]+['"]?(\d+)/i);
                 if (match) {
                     const id = match[1];
                     const include = filterResponse(id);
@@ -147,7 +148,7 @@ suite('Pipeline Filter Integration Tests', () => {
             assert.strictEqual(result.filterResult.stats.includedCount, 1);
             
             const included = result.filterResult.included[0];
-            assert.strictEqual(included.id, 1);
+            assert.strictEqual(included.id, '1');
         });
 
         test('filter with OR mode', async () => {
@@ -190,7 +191,7 @@ suite('Pipeline Filter Integration Tests', () => {
             assert.strictEqual(result.filterResult.stats.includedCount, 2);
             
             const includedIds = result.filterResult.included.map(i => i.id).sort();
-            assert.deepStrictEqual(includedIds, [1, 3]);
+            assert.deepStrictEqual(includedIds, ['1', '3']);
         });
 
         test('filter excludes all items', async () => {
@@ -277,7 +278,7 @@ suite('Pipeline Filter Integration Tests', () => {
             assert.strictEqual(result.filterResult.stats.includedCount, 2);
             
             const includedIds = result.filterResult.included.map(i => i.id).sort();
-            assert.deepStrictEqual(includedIds, [1, 3]);
+            assert.deepStrictEqual(includedIds, ['1', '3']);
         });
     });
 
