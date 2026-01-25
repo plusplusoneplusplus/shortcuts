@@ -23,6 +23,60 @@ import { getExtensionLogger, LogCategory } from './ai-service-logger';
 import { SessionPool, IPoolableSession, SessionPoolStats } from './session-pool';
 
 /**
+ * MCP (Model Context Protocol) server configuration.
+ * Allows configuring custom MCP servers for a session.
+ */
+export interface MCPServerConfig {
+    /** Server command or executable path */
+    command?: string;
+    /** Arguments to pass to the server */
+    args?: string[];
+    /** Environment variables for the server */
+    env?: Record<string, string>;
+    /** Whether the server is enabled */
+    enabled?: boolean;
+}
+
+/**
+ * Options for controlling MCP tools at the session level.
+ * These options map directly to the SDK's SessionConfig parameters.
+ * 
+ * Tool filtering behavior:
+ * - If `availableTools` is specified, only those tools are available (whitelist mode)
+ * - If `excludedTools` is specified, those tools are disabled (blacklist mode)
+ * - `availableTools` takes precedence over `excludedTools` if both are specified
+ * - If neither is specified, all tools are available (default SDK behavior)
+ */
+export interface MCPControlOptions {
+    /**
+     * Whitelist of tool names to make available.
+     * When specified, only these tools will be available for the session.
+     * Takes precedence over `excludedTools`.
+     * 
+     * @example ['bash', 'view', 'edit'] - Only allow these specific tools
+     */
+    availableTools?: string[];
+
+    /**
+     * Blacklist of tool names to exclude.
+     * When specified, these tools will be disabled for the session.
+     * Ignored if `availableTools` is also specified.
+     * 
+     * @example ['github_*', 'mcp_*'] - Disable all github and mcp tools
+     */
+    excludedTools?: string[];
+
+    /**
+     * Custom MCP server configurations.
+     * Allows overriding or adding MCP servers for the session.
+     * Pass an empty object `{}` to disable all MCP servers.
+     * 
+     * @example { 'my-server': { command: 'my-mcp-server', args: ['--port', '8080'] } }
+     */
+    mcpServers?: Record<string, MCPServerConfig>;
+}
+
+/**
  * Options for sending a message via the SDK
  */
 export interface SendMessageOptions {
@@ -38,6 +92,46 @@ export interface SendMessageOptions {
     usePool?: boolean;
     /** Enable streaming for real-time response chunks (default: false) */
     streaming?: boolean;
+
+    // ========================================================================
+    // MCP Control Options (Session-level tool filtering)
+    // ========================================================================
+
+    /**
+     * Whitelist of tool names to make available.
+     * When specified, only these tools will be available for the session.
+     * Takes precedence over `excludedTools`.
+     * 
+     * Note: Only applies to direct sessions (usePool: false).
+     * Session pool sessions use default tool configuration.
+     * 
+     * @example ['bash', 'view', 'edit'] - Only allow these specific tools
+     */
+    availableTools?: string[];
+
+    /**
+     * Blacklist of tool names to exclude.
+     * When specified, these tools will be disabled for the session.
+     * Ignored if `availableTools` is also specified.
+     * 
+     * Note: Only applies to direct sessions (usePool: false).
+     * Session pool sessions use default tool configuration.
+     * 
+     * @example ['github_*', 'mcp_*'] - Disable all github and mcp tools
+     */
+    excludedTools?: string[];
+
+    /**
+     * Custom MCP server configurations.
+     * Allows overriding or adding MCP servers for the session.
+     * Pass an empty object `{}` to disable all MCP servers.
+     * 
+     * Note: Only applies to direct sessions (usePool: false).
+     * Session pool sessions use default MCP configuration.
+     * 
+     * @example { 'my-server': { command: 'my-mcp-server', args: ['--port', '8080'] } }
+     */
+    mcpServers?: Record<string, MCPServerConfig>;
 }
 
 /**
@@ -71,13 +165,20 @@ interface ICopilotClientOptions {
 }
 
 /**
- * Options for creating a session
+ * Options for creating a session.
+ * Maps to the SDK's SessionConfig interface.
  */
 interface ISessionOptions {
     /** AI model to use (e.g., 'gpt-5', 'claude-sonnet-4.5') */
     model?: string;
     /** Enable streaming for real-time response chunks */
     streaming?: boolean;
+    /** Whitelist of tool names to make available (takes precedence over excludedTools) */
+    availableTools?: string[];
+    /** Blacklist of tool names to exclude */
+    excludedTools?: string[];
+    /** Custom MCP server configurations */
+    mcpServers?: Record<string, MCPServerConfig>;
 }
 
 /**
@@ -418,6 +519,17 @@ export class CopilotSDKService {
             }
             if (options.streaming) {
                 sessionOptions.streaming = options.streaming;
+            }
+
+            // MCP control options (tool filtering)
+            if (options.availableTools) {
+                sessionOptions.availableTools = options.availableTools;
+            }
+            if (options.excludedTools) {
+                sessionOptions.excludedTools = options.excludedTools;
+            }
+            if (options.mcpServers !== undefined) {
+                sessionOptions.mcpServers = options.mcpServers;
             }
 
             const sessionOptionsStr = Object.keys(sessionOptions).length > 0 

@@ -84,9 +84,59 @@ Test files are in `src/test/suite/` and include:
 - `AIProcessManager` - Manages running AI clarification requests with persistence
 - `AIProcessTreeDataProvider` - Shows running/completed AI processes
 - `CopilotCLIInvoker` - Invokes GitHub Copilot CLI or copies to clipboard
+- `CopilotSDKService` - Wrapper around @github/copilot-sdk for structured AI interactions
 - Working directory defaults to `{workspaceFolder}/src` if the src directory exists, otherwise falls back to workspace root
 - AI processes are persisted using VSCode's Memento API (workspaceState) and restored on extension restart, keeping history isolated per workspace
 - Supports viewing full process details, removing individual processes, and clearing all history
+
+**MCP Control API (SDK Tool Filtering)**
+
+The `SendMessageOptions` interface exposes the SDK's MCP control capabilities for session-level tool filtering:
+
+```typescript
+interface SendMessageOptions {
+    prompt: string;
+    model?: string;
+    workingDirectory?: string;
+    timeoutMs?: number;
+    usePool?: boolean;
+    streaming?: boolean;
+    
+    // MCP Control Options
+    availableTools?: string[];  // Whitelist (takes precedence)
+    excludedTools?: string[];   // Blacklist
+    mcpServers?: Record<string, MCPServerConfig>;  // Custom MCP servers
+}
+```
+
+**Tool Filtering Behavior:**
+- `availableTools`: Whitelist mode - only specified tools are available
+- `excludedTools`: Blacklist mode - specified tools are disabled
+- `availableTools` takes precedence over `excludedTools` if both specified
+- If neither specified, SDK uses default behavior (all tools available)
+
+**Important:** MCP options only apply to direct sessions (`usePool: false`). Session pool sessions use default tool configuration since pool sessions are created without per-request options.
+
+**Example Usage:**
+```typescript
+// Disable all MCP tools
+const result = await service.sendMessage({
+    prompt: 'Analyze this code',
+    mcpServers: {}  // Empty object disables all MCP servers
+});
+
+// Only allow specific tools
+const result = await service.sendMessage({
+    prompt: 'Review this file',
+    availableTools: ['bash', 'view', 'edit']
+});
+
+// Exclude specific tools
+const result = await service.sendMessage({
+    prompt: 'Explain this code',
+    excludedTools: ['github_*', 'mcp_*']
+});
+```
 
 **Code Review (`src/shortcuts/code-review/`)**
 - `CodeReviewService` - Orchestrates code review against custom rules
