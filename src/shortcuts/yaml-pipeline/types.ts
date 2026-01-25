@@ -188,6 +188,8 @@ export interface MapConfig {
     /** 
      * Prompt template with {{column}} placeholders.
      * Either `prompt` or `promptFile` must be specified (mutually exclusive).
+     * 
+     * When batchSize > 1, use {{ITEMS}} to access the batch as a JSON array.
      */
     prompt?: string;
     /** 
@@ -228,6 +230,22 @@ export interface MapConfig {
      * On timeout, the system automatically retries once with doubled timeout value.
      */
     timeoutMs?: number;
+    /**
+     * Number of items to process per AI call (default: 1).
+     * 
+     * When batchSize > 1:
+     * - Items are grouped into batches of the specified size
+     * - Use {{ITEMS}} in the prompt to access the batch as a JSON array
+     * - AI must return a JSON array with one result per input item
+     * - If AI returns wrong count, the batch is marked as failed
+     * 
+     * Example with 95 items and batchSize: 10:
+     * - 10 AI calls instead of 95 (9 batches of 10, 1 batch of 5)
+     * - Progress shows "Processing batch 3/10..."
+     * 
+     * Backward compatible: default is 1 (current behavior).
+     */
+    batchSize?: number;
 }
 
 /**

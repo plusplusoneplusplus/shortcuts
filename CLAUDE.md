@@ -384,12 +384,36 @@ map:
     - severity
     - category
   parallel: 5
+  # batchSize: 10  # Optional: Items per AI call (default: 1)
+                   # When > 1, use {{ITEMS}} in prompt for batch processing
   # timeoutMs: 600000  # Optional: Default is 10 minutes (600000ms)
                         # On timeout, retries once with doubled timeout (20 minutes)
 
 reduce:
   type: json  # Options: list, table, json, csv, ai
 ```
+
+**Batch Mapping (Optional):**
+
+For efficiency, group items into batches instead of one AI call per item:
+
+```yaml
+map:
+  prompt: |
+    Analyze these items:
+    {{ITEMS}}
+    
+    Return JSON array with results for each.
+  batchSize: 10  # Process 10 items per AI call
+  output:
+    - severity
+    - category
+```
+
+- Default: 1 (current behavior, backward compatible)
+- `{{ITEMS}}`: JSON array of all items in the batch
+- AI must return array with one result per input item
+- On wrong count, batch is marked as failed
 
 **Filter Phase (Optional):**
 

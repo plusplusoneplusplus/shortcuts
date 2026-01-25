@@ -273,6 +273,70 @@ map:
 
 **Note:** `{{ITEMS}}` is a special system variable and is automatically excluded from validation. You don't need to have an "ITEMS" column in your CSV.
 
+### Batch Mapping (batchSize)
+
+By default, each input item is processed with a separate AI call (batchSize: 1). For efficiency, you can group items into batches:
+
+```yaml
+map:
+  prompt: |
+    Analyze these items:
+    {{ITEMS}}
+    
+    Return JSON array with results for each.
+  batchSize: 10  # Process 10 items per AI call
+  output:
+    - severity
+    - category
+```
+
+**How it works:**
+- Items are grouped into batches of the specified size
+- Each batch is sent to AI as a single call with `{{ITEMS}}` containing the batch
+- AI must return a JSON array with one result per input item
+- Results are flattened back into individual results
+
+**Example with 95 items and batchSize: 10:**
+- 10 AI calls instead of 95 (9 batches of 10, 1 batch of 5)
+- Progress shows "Processing batch 3/10..."
+
+**Configuration:**
+```yaml
+map:
+  prompt: |
+    Analyze these bugs:
+    {{ITEMS}}
+    
+    For each bug, determine severity and category.
+    Return a JSON array with one object per bug.
+  batchSize: 10      # Items per AI call (default: 1)
+  output:
+    - severity
+    - category
+  parallel: 5        # Concurrent batch calls (default: 5)
+  timeoutMs: 600000  # Timeout per batch (default: 10 min)
+```
+
+**Error Handling:**
+
+| Scenario | Behavior |
+|----------|----------|
+| AI returns wrong count | Error the batch, report mismatch |
+| Batch timeout | Retry once with 2× timeout |
+| AI failure | All items in batch marked as failed |
+| Invalid JSON | All items in batch marked as failed |
+
+**Best Practices:**
+1. Use `{{ITEMS}}` in your prompt when batchSize > 1
+2. Instruct AI to return a JSON array with one result per item
+3. Keep batchSize reasonable (10-20) to balance efficiency vs. context length
+4. Use with structured output fields (not text mode) for reliable parsing
+
+**Backward Compatibility:**
+- Default batchSize is 1 (current behavior)
+- Existing pipelines without batchSize work unchanged
+- Parameters are available via template variables (e.g., `{{project}}`)
+
 ### Using Prompt Files
 
 Instead of inline prompts, you can store prompts in separate `.md` files for better organization, version control, and reuse.
@@ -955,6 +1019,12 @@ interface MapConfig {
         format: 'json' | 'text' | 'markdown';
         schema?: object;
     };
+    /** 
+     * Number of items to process per AI call (default: 1).
+     * When > 1, use {{ITEMS}} in prompt to access batch as JSON array.
+     * AI must return array with one result per item.
+     */
+    batchSize?: number;
 }
 ```
 

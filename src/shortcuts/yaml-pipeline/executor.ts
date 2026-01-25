@@ -18,7 +18,8 @@ import {
     createPromptMapInput,
     PromptItem,
     PromptMapResult,
-    PromptMapOutput
+    PromptMapOutput,
+    PromptMapSummary
 } from '../map-reduce/jobs/prompt-map-job';
 import { readCSVFile, resolveCSVPath } from './csv-reader';
 import { extractVariables } from './template';
@@ -413,7 +414,28 @@ async function executeWithItems(
         }
     }
 
-    // Create and execute map-reduce job
+    // Check if batch mode is enabled
+    const batchSize = config.map.batchSize ?? 1;
+    
+    if (batchSize > 1) {
+        // Batch mode: process items in batches
+        return executeBatchMode(config, processItems, prompts, options, filterResult);
+    }
+
+    // Standard mode: process items individually
+    return executeStandardMode(config, processItems, prompts, options, filterResult);
+}
+
+/**
+ * Execute pipeline in standard mode (one item per AI call)
+ */
+async function executeStandardMode(
+    config: PipelineConfig,
+    processItems: PromptItem[],
+    prompts: ResolvedPrompts,
+    options: ExecutePipelineOptions,
+    filterResult?: FilterResult
+): Promise<PipelineExecutionResult> {
     const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
     const timeoutMs = config.map.timeoutMs ?? 600000;
 
@@ -467,6 +489,812 @@ async function executeWithItems(
 }
 
 /**
+ * Split items into batches of specified size
+ */
+function splitIntoBatches(items: PromptItem[], batchSize: number): PromptItem[][] {
+    const batches: PromptItem[][] = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+        batches.push(items.slice(i, i + batchSize));
+    }
+    return batches;
+}
+
+/**
+ * Execute pipeline in batch mode (multiple items per AI call)
+ * 
+ * In batch mode:
+ * - Items are grouped into batches of `batchSize`
+ * - Each batch is sent to AI as a single call with {{ITEMS}} containing the batch
+ * - AI must return a JSON array with one result per input item
+ * - Results are flattened back into individual PromptMapResult objects
+ */
+async function executeBatchMode(
+    config: PipelineConfig,
+    processItems: PromptItem[],
+    prompts: ResolvedPrompts,
+    options: ExecutePipelineOptions,
+    filterResult?: FilterResult
+): Promise<PipelineExecutionResult> {
+    const batchSize = config.map.batchSize ?? 1;
+    const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
+    const timeoutMs = config.map.timeoutMs ?? 600000;
+    const outputFields = config.map.output || [];
+    const isTextMode = outputFields.length === 0;
+
+    // Split items into batches
+    const batches = splitIntoBatches(processItems, batchSize);
+    const totalBatches = batches.length;
+
+    // Register group process if tracker is available
+    let groupId: string | undefined;
+    if (options.processTracker && totalBatches > 1) {
+        groupId = options.processTracker.registerGroup(`${config.name} (${totalBatches} batches)`);
+    }
+
+    // Report initial progress
+    options.onProgress?.({
+        phase: 'mapping',
+        totalItems: totalBatches,
+        completedItems: 0,
+        failedItems: 0,
+        percentage: 0,
+        message: `Processing ${totalBatches} batches (${processItems.length} items, batch size ${batchSize})...`
+    });
+
+    // Process batches with concurrency limit
+    const startTime = Date.now();
+    const allResults: PromptMapResult[] = [];
+    let completedBatches = 0;
+    let failedBatches = 0;
+
+    // Create a simple concurrency limiter for batch processing
+    const processBatch = async (batch: PromptItem[], batchIndex: number): Promise<PromptMapResult[]> => {
+        // Check for cancellation
+        if (options.isCancelled?.()) {
+            return batch.map(item => ({
+                item,
+                output: isTextMode ? {} : createEmptyOutput(outputFields),
+                success: false,
+                error: 'Operation cancelled'
+            }));
+        }
+
+        // Register batch process
+        let processId: string | undefined;
+        if (options.processTracker) {
+            processId = options.processTracker.registerProcess(
+                `Processing batch ${batchIndex + 1}/${totalBatches} (${batch.length} items)`,
+                groupId
+            );
+        }
+
+        try {
+            // Build the prompt with {{ITEMS}} containing the batch
+            const batchPrompt = buildBatchPrompt(prompts.mapPrompt, batch, outputFields);
+            
+            // Resolve model (use first item for template substitution if model is templated)
+            let model: string | undefined;
+            if (config.map.model && typeof config.map.model === 'string') {
+                // For batch mode, use the first item for model template substitution
+                const substitutedModel = config.map.model.replace(/\{\{(\w+)\}\}/g, (_, varName) => {
+                    return varName in batch[0] ? batch[0][varName] : '';
+                });
+                model = substitutedModel || undefined;
+            }
+
+            // Call AI with timeout
+            const aiResult = await Promise.race([
+                options.aiInvoker(batchPrompt, { model }),
+                createTimeoutPromise(timeoutMs, batchIndex, totalBatches)
+            ]);
+
+            if (!aiResult.success || !aiResult.response) {
+                // AI call failed - mark all items in batch as failed
+                if (options.processTracker && processId) {
+                    options.processTracker.updateProcess(processId, 'failed', undefined, aiResult.error || 'AI invocation failed');
+                }
+                return batch.map(item => ({
+                    item,
+                    output: isTextMode ? {} : createEmptyOutput(outputFields),
+                    success: false,
+                    error: aiResult.error || 'AI invocation failed',
+                    rawResponse: aiResult.response,
+                    sessionId: aiResult.sessionId
+                }));
+            }
+
+            // Parse batch response
+            const batchResults = parseBatchResponse(
+                aiResult.response,
+                batch,
+                outputFields,
+                isTextMode,
+                aiResult.sessionId
+            );
+
+            // Update process status
+            if (options.processTracker && processId) {
+                const successCount = batchResults.filter(r => r.success).length;
+                options.processTracker.updateProcess(
+                    processId,
+                    'completed',
+                    `${successCount}/${batch.length} items succeeded`,
+                    undefined,
+                    JSON.stringify(batchResults.map(r => r.output))
+                );
+            }
+
+            return batchResults;
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            
+            // Check if it's a timeout - retry with doubled timeout
+            if (errorMsg.includes('timed out')) {
+                try {
+                    const batchPrompt = buildBatchPrompt(prompts.mapPrompt, batch, outputFields);
+                    let model: string | undefined;
+                    if (config.map.model && typeof config.map.model === 'string') {
+                        const substitutedModel = config.map.model.replace(/\{\{(\w+)\}\}/g, (_, varName) => {
+                            return varName in batch[0] ? batch[0][varName] : '';
+                        });
+                        model = substitutedModel || undefined;
+                    }
+
+                    const aiResult = await Promise.race([
+                        options.aiInvoker(batchPrompt, { model }),
+                        createTimeoutPromise(timeoutMs * 2, batchIndex, totalBatches)
+                    ]);
+
+                    if (aiResult.success && aiResult.response) {
+                        const batchResults = parseBatchResponse(
+                            aiResult.response,
+                            batch,
+                            outputFields,
+                            isTextMode,
+                            aiResult.sessionId
+                        );
+
+                        if (options.processTracker && processId) {
+                            const successCount = batchResults.filter(r => r.success).length;
+                            options.processTracker.updateProcess(
+                                processId,
+                                'completed',
+                                `${successCount}/${batch.length} items succeeded (after retry)`,
+                                undefined,
+                                JSON.stringify(batchResults.map(r => r.output))
+                            );
+                        }
+
+                        return batchResults;
+                    }
+                } catch (retryError) {
+                    // Retry also failed
+                }
+            }
+
+            // Mark all items in batch as failed
+            if (options.processTracker && processId) {
+                options.processTracker.updateProcess(processId, 'failed', undefined, errorMsg);
+            }
+            return batch.map(item => ({
+                item,
+                output: isTextMode ? {} : createEmptyOutput(outputFields),
+                success: false,
+                error: errorMsg
+            }));
+        }
+    };
+
+    // Process batches with concurrency limit
+    const batchPromises: Promise<PromptMapResult[]>[] = [];
+    const activeBatches: Promise<void>[] = [];
+
+    for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        
+        // Wait if we've reached the concurrency limit
+        if (activeBatches.length >= parallelLimit) {
+            await Promise.race(activeBatches);
+        }
+
+        const batchPromise = processBatch(batch, i).then(results => {
+            allResults.push(...results);
+            
+            // Update progress
+            const hasFailures = results.some(r => !r.success);
+            if (hasFailures) {
+                failedBatches++;
+            } else {
+                completedBatches++;
+            }
+
+            options.onProgress?.({
+                phase: 'mapping',
+                totalItems: totalBatches,
+                completedItems: completedBatches,
+                failedItems: failedBatches,
+                percentage: Math.round(((completedBatches + failedBatches) / totalBatches) * 85),
+                message: `Processing batch ${completedBatches + failedBatches}/${totalBatches}...`
+            });
+
+            return results;
+        });
+
+        batchPromises.push(batchPromise);
+        
+        // Track active batch for concurrency limiting
+        const activePromise = batchPromise.then(() => {
+            const index = activeBatches.indexOf(activePromise);
+            if (index > -1) {
+                activeBatches.splice(index, 1);
+            }
+        });
+        activeBatches.push(activePromise);
+    }
+
+    // Wait for all batches to complete
+    await Promise.all(batchPromises);
+
+    const mapPhaseTimeMs = Date.now() - startTime;
+
+    // Calculate statistics
+    const successfulMaps = allResults.filter(r => r.success).length;
+    const failedMaps = allResults.filter(r => !r.success).length;
+
+    // Report map complete
+    options.onProgress?.({
+        phase: 'reducing',
+        totalItems: processItems.length,
+        completedItems: successfulMaps,
+        failedItems: failedMaps,
+        percentage: 90,
+        message: 'Aggregating results...'
+    });
+
+    // Execute reduce phase
+    const reduceStartTime = Date.now();
+    const reduceParameters = config.input.parameters
+        ? convertParametersToObject(config.input.parameters)
+        : undefined;
+
+    const reduceResult = await executeReducePhase(
+        allResults,
+        config,
+        prompts,
+        options,
+        reduceParameters,
+        groupId
+    );
+
+    const reducePhaseTimeMs = Date.now() - reduceStartTime;
+    const totalTimeMs = Date.now() - startTime;
+
+    // Build execution stats
+    const executionStats = {
+        totalItems: processItems.length,
+        successfulMaps,
+        failedMaps,
+        mapPhaseTimeMs,
+        reducePhaseTimeMs,
+        maxConcurrency: parallelLimit
+    };
+
+    // Complete group process if registered
+    if (options.processTracker && groupId) {
+        options.processTracker.completeGroup(
+            groupId,
+            `Completed: ${successfulMaps}/${processItems.length} items processed in ${totalBatches} batches`,
+            executionStats
+        );
+    }
+
+    // Report complete
+    options.onProgress?.({
+        phase: 'complete',
+        totalItems: processItems.length,
+        completedItems: successfulMaps,
+        failedItems: failedMaps,
+        percentage: 100,
+        message: `Complete: ${successfulMaps} succeeded, ${failedMaps} failed (${totalBatches} batches)`
+    });
+
+    // Build map results for compatibility with existing result structure
+    const mapResults = allResults.map(r => ({
+        workItemId: `item-${allResults.indexOf(r)}`,
+        success: r.success,
+        output: r,
+        error: r.error,
+        executionTimeMs: 0 // Not tracked per-item in batch mode
+    }));
+
+    const overallSuccess = failedMaps === 0;
+    const result: PipelineExecutionResult = {
+        success: overallSuccess,
+        output: reduceResult,
+        mapResults,
+        reduceStats: {
+            inputCount: allResults.length,
+            outputCount: reduceResult ? 1 : 0,
+            mergedCount: successfulMaps,
+            reduceTimeMs: reducePhaseTimeMs,
+            usedAIReduce: config.reduce.type === 'ai'
+        },
+        totalTimeMs,
+        executionStats,
+        filterResult
+    };
+
+    if (!overallSuccess) {
+        const failedResults = allResults.filter(r => !r.success);
+        if (failedResults.length === 1) {
+            result.error = `1 item failed: ${failedResults[0].error || 'Unknown error'}`;
+        } else {
+            const uniqueErrors = [...new Set(failedResults.map(r => r.error || 'Unknown error'))];
+            if (uniqueErrors.length === 1) {
+                result.error = `${failedResults.length} items failed: ${uniqueErrors[0]}`;
+            } else {
+                result.error = `${failedResults.length} items failed with ${uniqueErrors.length} different errors`;
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Build the prompt for a batch, substituting {{ITEMS}} with the batch JSON
+ * and other template variables from the first item (for parameters)
+ */
+function buildBatchPrompt(promptTemplate: string, batch: PromptItem[], outputFields: string[]): string {
+    // Replace {{ITEMS}} with the batch JSON
+    const batchJson = JSON.stringify(batch, null, 2);
+    let prompt = promptTemplate.replace(/\{\{ITEMS\}\}/g, batchJson);
+    
+    // Substitute other template variables from the first item
+    // This allows parameters (which are merged into all items) to be used in the prompt
+    if (batch.length > 0) {
+        const firstItem = batch[0];
+        prompt = prompt.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+            // Skip special variables that are handled elsewhere
+            if (['ITEMS', 'RESULTS', 'RESULTS_FILE', 'COUNT', 'SUCCESS_COUNT', 'FAILURE_COUNT'].includes(varName)) {
+                return match;
+            }
+            return varName in firstItem ? firstItem[varName] : match;
+        });
+    }
+    
+    // Add output instruction if we have output fields
+    if (outputFields.length > 0) {
+        prompt += `\n\nReturn a JSON array with ${batch.length} objects, one for each input item. Each object must have these fields: ${outputFields.join(', ')}`;
+    }
+    
+    return prompt;
+}
+
+/**
+ * Create an empty output object with null values for all fields
+ */
+function createEmptyOutput(fields: string[]): Record<string, unknown> {
+    const output: Record<string, unknown> = {};
+    for (const field of fields) {
+        output[field] = null;
+    }
+    return output;
+}
+
+/**
+ * Create a timeout promise for batch processing
+ */
+function createTimeoutPromise(timeoutMs: number, batchIndex: number, totalBatches: number): Promise<never> {
+    return new Promise((_, reject) => {
+        setTimeout(() => {
+            reject(new Error(`Batch ${batchIndex + 1}/${totalBatches} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+    });
+}
+
+/**
+ * Parse the AI response for a batch
+ * 
+ * Expected response format:
+ * - JSON array with one object per input item
+ * - Each object contains the output fields
+ * 
+ * If the response count doesn't match the batch size, all items are marked as failed.
+ */
+function parseBatchResponse(
+    response: string,
+    batch: PromptItem[],
+    outputFields: string[],
+    isTextMode: boolean,
+    sessionId?: string
+): PromptMapResult[] {
+    // Text mode - not supported for batch processing
+    if (isTextMode) {
+        return batch.map(item => ({
+            item,
+            output: {},
+            rawText: response,
+            success: true,
+            rawResponse: response,
+            sessionId
+        }));
+    }
+
+    try {
+        // Extract JSON array from response
+        const jsonMatch = response.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) {
+            throw new Error('Response does not contain a JSON array');
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        if (!Array.isArray(parsed)) {
+            throw new Error('Parsed response is not an array');
+        }
+
+        // Validate count matches
+        if (parsed.length !== batch.length) {
+            const errorMsg = `AI returned ${parsed.length} results but batch has ${batch.length} items`;
+            return batch.map(item => ({
+                item,
+                output: createEmptyOutput(outputFields),
+                success: false,
+                error: errorMsg,
+                rawResponse: response,
+                sessionId
+            }));
+        }
+
+        // Map results to items
+        return batch.map((item, index) => {
+            const resultObj = parsed[index];
+            
+            if (typeof resultObj !== 'object' || resultObj === null) {
+                return {
+                    item,
+                    output: createEmptyOutput(outputFields),
+                    success: false,
+                    error: `Result at index ${index} is not an object`,
+                    rawResponse: response,
+                    sessionId
+                };
+            }
+
+            // Extract only the declared output fields
+            const output: Record<string, unknown> = {};
+            for (const field of outputFields) {
+                output[field] = field in resultObj ? resultObj[field] : null;
+            }
+
+            return {
+                item,
+                output,
+                success: true,
+                rawResponse: response,
+                sessionId
+            };
+        });
+    } catch (error) {
+        const errorMsg = `Failed to parse batch response: ${error instanceof Error ? error.message : String(error)}`;
+        return batch.map(item => ({
+            item,
+            output: createEmptyOutput(outputFields),
+            success: false,
+            error: errorMsg,
+            rawResponse: response,
+            sessionId
+        }));
+    }
+}
+
+/**
+ * Execute the reduce phase for batch mode results
+ */
+async function executeReducePhase(
+    results: PromptMapResult[],
+    config: PipelineConfig,
+    prompts: ResolvedPrompts,
+    options: ExecutePipelineOptions,
+    reduceParameters?: Record<string, string>,
+    parentGroupId?: string
+): Promise<PromptMapOutput> {
+    const outputFields = config.map.output || [];
+    const successfulItems = results.filter(r => r.success).length;
+    const failedItems = results.filter(r => !r.success).length;
+
+    const summary: PromptMapSummary = {
+        totalItems: results.length,
+        successfulItems,
+        failedItems,
+        outputFields
+    };
+
+    // Handle AI reduce
+    if (config.reduce.type === 'ai' && prompts.reducePrompt) {
+        return await performAIReduce(
+            results,
+            summary,
+            prompts.reducePrompt,
+            config.reduce.output,
+            config.reduce.model,
+            reduceParameters,
+            options,
+            parentGroupId
+        );
+    }
+
+    // Handle deterministic reduce
+    const formattedOutput = formatResults(results, summary, config.reduce.type);
+
+    return {
+        results,
+        formattedOutput,
+        summary
+    };
+}
+
+/**
+ * Perform AI-powered reduce for batch mode
+ */
+async function performAIReduce(
+    results: PromptMapResult[],
+    summary: PromptMapSummary,
+    reducePrompt: string,
+    reduceOutput?: string[],
+    reduceModel?: string,
+    reduceParameters?: Record<string, string>,
+    options?: ExecutePipelineOptions,
+    parentGroupId?: string
+): Promise<PromptMapOutput> {
+    const isTextMode = !reduceOutput || reduceOutput.length === 0;
+
+    // Register reduce process
+    let reduceProcessId: string | undefined;
+    if (options?.processTracker) {
+        reduceProcessId = options.processTracker.registerProcess(
+            'AI Reduce: Synthesizing results',
+            parentGroupId
+        );
+    }
+
+    // Build prompt with template substitution
+    const successfulResults = results.filter(r => r.success);
+    const resultsForPrompt = successfulResults.map(r => r.rawText !== undefined ? r.rawText : r.output);
+    const resultsString = JSON.stringify(resultsForPrompt, null, 2);
+
+    let prompt = reducePrompt
+        .replace(/\{\{RESULTS\}\}/g, resultsString)
+        .replace(/\{\{COUNT\}\}/g, String(summary.totalItems))
+        .replace(/\{\{SUCCESS_COUNT\}\}/g, String(summary.successfulItems))
+        .replace(/\{\{FAILURE_COUNT\}\}/g, String(summary.failedItems));
+
+    // Substitute input parameters
+    if (reduceParameters) {
+        for (const [key, value] of Object.entries(reduceParameters)) {
+            prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+        }
+    }
+
+    // Add output instruction if not text mode
+    if (!isTextMode) {
+        prompt += `\n\nReturn JSON with these fields: ${reduceOutput!.join(', ')}`;
+    }
+
+    // Call AI
+    const aiResult = await options?.aiInvoker(prompt, { model: reduceModel });
+
+    if (!aiResult?.success || !aiResult.response) {
+        if (options?.processTracker && reduceProcessId) {
+            options.processTracker.updateProcess(
+                reduceProcessId,
+                'failed',
+                undefined,
+                aiResult?.error || 'Unknown error'
+            );
+        }
+        throw new PipelineExecutionError(
+            `AI reduce failed: ${aiResult?.error || 'Unknown error'}`,
+            'reduce'
+        );
+    }
+
+    // Text mode - return raw response
+    if (isTextMode) {
+        if (options?.processTracker && reduceProcessId) {
+            options.processTracker.updateProcess(
+                reduceProcessId,
+                'completed',
+                aiResult.response
+            );
+        }
+        return {
+            results,
+            formattedOutput: aiResult.response,
+            summary: { ...summary, outputFields: [] }
+        };
+    }
+
+    // Parse structured response
+    try {
+        const jsonMatch = aiResult.response.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            throw new Error('Response does not contain JSON object');
+        }
+        const parsed = JSON.parse(jsonMatch[0]);
+        const formattedOutput = JSON.stringify(parsed, null, 2);
+
+        if (options?.processTracker && reduceProcessId) {
+            options.processTracker.updateProcess(
+                reduceProcessId,
+                'completed',
+                formattedOutput,
+                undefined,
+                JSON.stringify(parsed)
+            );
+        }
+
+        return {
+            results,
+            formattedOutput,
+            summary: { ...summary, outputFields: reduceOutput! }
+        };
+    } catch (error) {
+        if (options?.processTracker && reduceProcessId) {
+            options.processTracker.updateProcess(
+                reduceProcessId,
+                'failed',
+                undefined,
+                error instanceof Error ? error.message : String(error)
+            );
+        }
+        throw new PipelineExecutionError(
+            `Failed to parse AI reduce response: ${error instanceof Error ? error.message : String(error)}`,
+            'reduce'
+        );
+    }
+}
+
+/**
+ * Format results based on reduce type
+ */
+function formatResults(
+    results: PromptMapResult[],
+    summary: PromptMapSummary,
+    reduceType: string
+): string {
+    switch (reduceType) {
+        case 'table':
+            return formatAsTable(results);
+        case 'json':
+            return formatAsJSON(results);
+        case 'csv':
+            return formatAsCSV(results);
+        case 'text':
+            return formatAsText(results);
+        default:
+            return formatAsList(results, summary);
+    }
+}
+
+// Formatting utilities for batch mode reduce
+function formatAsList(results: PromptMapResult[], summary: PromptMapSummary): string {
+    const lines: string[] = [`## Results (${summary.totalItems} items)`, ''];
+    if (summary.failedItems > 0) {
+        lines.push(`**Warning: ${summary.failedItems} items failed**`, '');
+    }
+
+    results.forEach((r, i) => {
+        lines.push(`### Item ${i + 1}`);
+        const inputStr = Object.entries(r.item).map(([k, v]) => `${k}=${truncate(v, 30)}`).join(', ');
+        lines.push(`**Input:** ${inputStr}`);
+        if (r.success) {
+            const outputStr = Object.entries(r.output).map(([k, v]) => `${k}=${formatValue(v)}`).join(', ');
+            lines.push(`**Output:** ${outputStr}`);
+        } else {
+            lines.push(`**Error:** ${r.error || 'Unknown error'}`);
+        }
+        lines.push('');
+    });
+
+    lines.push('---', `**Stats:** ${summary.successfulItems} succeeded, ${summary.failedItems} failed`);
+    return lines.join('\n');
+}
+
+function formatAsTable(results: PromptMapResult[]): string {
+    if (results.length === 0) return 'No results to display.';
+
+    const inKeys = [...new Set(results.flatMap(r => Object.keys(r.item)))];
+    const outKeys = [...new Set(results.flatMap(r => Object.keys(r.output)))];
+    const headers = ['#', ...inKeys.map(k => `[in] ${k}`), ...outKeys.map(k => `[out] ${k}`), 'Status'];
+
+    const lines = [
+        '| ' + headers.join(' | ') + ' |',
+        '| ' + headers.map(() => '---').join(' | ') + ' |'
+    ];
+
+    results.forEach((r, i) => {
+        const cells = [
+            String(i + 1),
+            ...inKeys.map(k => truncate(r.item[k] ?? '', 20)),
+            ...outKeys.map(k => formatValue(r.output[k])),
+            r.success ? 'OK' : 'FAIL'
+        ];
+        lines.push('| ' + cells.join(' | ') + ' |');
+    });
+
+    return lines.join('\n');
+}
+
+function formatAsJSON(results: PromptMapResult[]): string {
+    return JSON.stringify(results.map(r => ({
+        input: r.item,
+        output: r.output,
+        success: r.success,
+        ...(r.error && { error: r.error })
+    })), null, 2);
+}
+
+function formatAsCSV(results: PromptMapResult[]): string {
+    if (results.length === 0) return '';
+
+    const inKeys = [...new Set(results.flatMap(r => Object.keys(r.item)))];
+    const outKeys = [...new Set(results.flatMap(r => Object.keys(r.output)))];
+    const headers = [...inKeys, ...outKeys.map(k => `out_${k}`), 'success'];
+
+    const lines = [headers.join(',')];
+    for (const r of results) {
+        const values = [
+            ...inKeys.map(k => escapeCSV(r.item[k] ?? '')),
+            ...outKeys.map(k => escapeCSV(formatValue(r.output[k]))),
+            r.success ? 'true' : 'false'
+        ];
+        lines.push(values.join(','));
+    }
+    return lines.join('\n');
+}
+
+function formatAsText(results: PromptMapResult[]): string {
+    const successfulResults = results.filter(r => r.success);
+    if (successfulResults.length === 0) {
+        return 'No successful results.';
+    }
+
+    if (successfulResults.length === 1) {
+        const r = successfulResults[0];
+        return r.rawText || JSON.stringify(r.output, null, 2);
+    }
+
+    return successfulResults
+        .map((r, i) => {
+            const text = r.rawText || JSON.stringify(r.output, null, 2);
+            return `--- Item ${i + 1} ---\n${text}`;
+        })
+        .join('\n\n');
+}
+
+function formatValue(value: unknown): string {
+    if (value === null || value === undefined) return 'null';
+    if (typeof value === 'string') return value.length > 50 ? value.substring(0, 47) + '...' : value;
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'number') return String(value);
+    if (Array.isArray(value)) return `[${value.length} items]`;
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+}
+
+function truncate(value: string, max: number = 30): string {
+    return value.length <= max ? value : value.substring(0, max - 3) + '...';
+}
+
+function escapeCSV(value: string): string {
+    return (value.includes(',') || value.includes('"') || value.includes('\n'))
+        ? `"${value.replace(/"/g, '""')}"`
+        : value;
+}
+
+/**
  * Convert parameters array to object for merging with items
  */
 function convertParametersToObject(parameters: PipelineParameter[]): Record<string, string> {
@@ -508,6 +1336,23 @@ function validateMapConfig(config: PipelineConfig): void {
     // map.output is optional - if omitted, text mode is used
     if (config.map.output !== undefined && !Array.isArray(config.map.output)) {
         throw new PipelineExecutionError('Pipeline config "map.output" must be an array if provided');
+    }
+
+    // Validate batchSize if provided
+    if (config.map.batchSize !== undefined) {
+        if (typeof config.map.batchSize !== 'number' || !Number.isInteger(config.map.batchSize)) {
+            throw new PipelineExecutionError('Pipeline config "map.batchSize" must be a positive integer');
+        }
+        if (config.map.batchSize < 1) {
+            throw new PipelineExecutionError('Pipeline config "map.batchSize" must be at least 1');
+        }
+        // When batchSize > 1, prompt should contain {{ITEMS}}
+        if (config.map.batchSize > 1) {
+            const prompt = config.map.prompt || '';
+            if (!prompt.includes('{{ITEMS}}')) {
+                console.warn('Warning: batchSize > 1 but prompt does not contain {{ITEMS}}. Consider using {{ITEMS}} to access batch items.');
+            }
+        }
     }
 }
 
