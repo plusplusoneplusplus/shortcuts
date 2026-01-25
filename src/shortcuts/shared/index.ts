@@ -110,6 +110,10 @@ export {
 // Shell command execution utilities
 export { execAsync } from './exec-utils';
 
+// Cross-platform HTTP utilities (uses native Node.js, no external dependencies)
+export { httpDownload, httpGet, httpGetJson } from './http-utils';
+export type { HttpResponse } from './http-utils';
+
 // Note: Webview utilities are exported separately via './webview'
 // to avoid bundling issues with webview-specific code in the extension bundle
 

@@ -5,7 +5,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { DiscoveredSkill, ParsedSource, ScanResult } from './types';
-import { safeExists, safeReadDir, safeReadFile, safeStats, getExtensionLogger, LogCategory, execAsync } from '../shared';
+import { safeExists, safeReadDir, safeReadFile, safeStats, getExtensionLogger, LogCategory, execAsync, httpGetJson } from '../shared';
 
 /**
  * Skill file that identifies a valid skill directory
@@ -57,7 +57,7 @@ export async function scanForSkills(source: ParsedSource, installPath: string): 
 
 /**
  * Scan a GitHub repository for skills
- * Uses gh CLI if available, falls back to curl with GitHub API
+ * Uses gh CLI if available, falls back to native HTTP (cross-platform)
  */
 async function scanGitHubSource(
     github: { owner: string; repo: string; branch: string; path: string },
@@ -69,12 +69,12 @@ async function scanGitHubSource(
     const repoPath = github.path || '';
     const ghPath = repoPath ? `${github.owner}/${github.repo}:${repoPath}` : `${github.owner}/${github.repo}`;
     
-    logger.info(LogCategory.EXTENSION, `Scanning GitHub repository: ${ghPath} (branch: ${github.branch}, using ${useGhCli ? 'gh CLI' : 'curl'})`);
+    logger.info(LogCategory.EXTENSION, `Scanning GitHub repository: ${ghPath} (branch: ${github.branch}, using ${useGhCli ? 'gh CLI' : 'native HTTP'})`);
 
     if (useGhCli) {
         return scanGitHubWithGhCli(github, installPath);
     } else {
-        return scanGitHubWithCurl(github, installPath);
+        return scanGitHubWithHttp(github, installPath);
     }
 }
 
@@ -169,10 +169,10 @@ async function scanGitHubWithGhCli(
 }
 
 /**
- * Scan GitHub repository using curl (no authentication, lower rate limits)
+ * Scan GitHub repository using native HTTP (cross-platform, no external dependencies)
  * This is the fallback when gh CLI is not available
  */
-async function scanGitHubWithCurl(
+async function scanGitHubWithHttp(
     github: { owner: string; repo: string; branch: string; path: string },
     installPath: string
 ): Promise<ScanResult> {
@@ -181,26 +181,19 @@ async function scanGitHubWithCurl(
     const repoPath = github.path || '';
 
     try {
-        // Use GitHub API directly with curl
+        // Use GitHub API directly with native HTTP
         const apiUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${repoPath}?ref=${github.branch}`;
-        const listCmd = `curl -sL "${apiUrl}"`;
         
         let response: any[];
         try {
-            const { stdout } = await execAsync(listCmd);
-            const parsed = JSON.parse(stdout);
-            
-            // Check if it's an error response
-            if (parsed.message) {
-                throw new Error(parsed.message);
-            }
+            const parsed = await httpGetJson(apiUrl);
             
             // If it's a single file (SKILL.md at root), the response is an object, not array
             if (!Array.isArray(parsed)) {
                 // Check if the path itself is a skill directory
                 if (parsed.name === SKILL_FILE) {
                     const skillName = path.basename(repoPath) || github.repo;
-                    const description = await getGitHubSkillDescriptionWithCurl(github, path.dirname(repoPath) || repoPath);
+                    const description = await getGitHubSkillDescriptionWithHttp(github, path.dirname(repoPath) || repoPath);
                     skills.push({
                         name: skillName,
                         description,
@@ -217,11 +210,10 @@ async function scanGitHubWithCurl(
             // Try checking if the path itself is a skill directory
             const skillFileUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${repoPath}/${SKILL_FILE}?ref=${github.branch}`;
             try {
-                const { stdout } = await execAsync(`curl -sL "${skillFileUrl}"`);
-                const parsed = JSON.parse(stdout);
+                const parsed = await httpGetJson(skillFileUrl);
                 if (parsed.name === SKILL_FILE) {
                     const skillName = path.basename(repoPath) || github.repo;
-                    const description = await getGitHubSkillDescriptionWithCurl(github, repoPath);
+                    const description = await getGitHubSkillDescriptionWithHttp(github, repoPath);
                     skills.push({
                         name: skillName,
                         description,
@@ -235,7 +227,7 @@ async function scanGitHubWithCurl(
             }
 
             const err = error instanceof Error ? error : new Error(String(error));
-            logger.warn(LogCategory.EXTENSION, 'Failed to list GitHub directory with curl', { error: err.message });
+            logger.warn(LogCategory.EXTENSION, 'Failed to list GitHub directory with HTTP', { error: err.message });
             return {
                 success: false,
                 error: `Failed to access GitHub repository. The repository may be private or the path may not exist. Error: ${err.message}`,
@@ -252,10 +244,9 @@ async function scanGitHubWithCurl(
             const skillFileUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch}`;
             
             try {
-                const { stdout } = await execAsync(`curl -sL "${skillFileUrl}"`);
-                const parsed = JSON.parse(stdout);
+                const parsed = await httpGetJson(skillFileUrl);
                 if (parsed.name === SKILL_FILE) {
-                    const description = await getGitHubSkillDescriptionWithCurl(github, skillPath);
+                    const description = await getGitHubSkillDescriptionWithHttp(github, skillPath);
                     skills.push({
                         name: dir,
                         description,
@@ -280,7 +271,7 @@ async function scanGitHubWithCurl(
 
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
-        logger.error(LogCategory.EXTENSION, 'Error scanning GitHub source with curl', err);
+        logger.error(LogCategory.EXTENSION, 'Error scanning GitHub source with HTTP', err);
         return {
             success: false,
             error: `Failed to scan GitHub repository: ${err.message}`,
@@ -306,16 +297,15 @@ async function getGitHubSkillDescriptionWithGhCli(
 }
 
 /**
- * Get skill description from GitHub SKILL.md using curl
+ * Get skill description from GitHub SKILL.md using native HTTP
  */
-async function getGitHubSkillDescriptionWithCurl(
+async function getGitHubSkillDescriptionWithHttp(
     github: { owner: string; repo: string; branch: string },
     skillPath: string
 ): Promise<string | undefined> {
     try {
         const apiUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch}`;
-        const { stdout } = await execAsync(`curl -sL "${apiUrl}"`);
-        const parsed = JSON.parse(stdout);
+        const parsed = await httpGetJson(apiUrl);
         
         if (parsed.content) {
             // Content is base64 encoded

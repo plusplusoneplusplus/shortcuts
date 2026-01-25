@@ -5,7 +5,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { DiscoveredSkill, InstallDetail, InstallResult, ParsedSource } from './types';
-import { ensureDirectoryExists, safeExists, safeReadDir, safeStats, safeCopyFile, safeWriteFile, getExtensionLogger, LogCategory, execAsync } from '../shared';
+import { ensureDirectoryExists, safeExists, safeReadDir, safeStats, safeCopyFile, safeWriteFile, getExtensionLogger, LogCategory, execAsync, httpGetJson, httpDownload } from '../shared';
 
 /**
  * Cache for gh CLI availability check
@@ -115,7 +115,7 @@ export async function installSkills(
 
 /**
  * Install a skill from GitHub
- * Uses gh CLI if available, falls back to curl with GitHub API
+ * Uses gh CLI if available, falls back to native HTTP (cross-platform)
  */
 async function installFromGitHub(
     github: { owner: string; repo: string; branch: string },
@@ -127,12 +127,13 @@ async function installFromGitHub(
     if (useGhCli) {
         await installFromGitHubWithGhCli(github, skillPath, targetPath);
     } else {
-        await installFromGitHubWithCurl(github, skillPath, targetPath);
+        await installFromGitHubWithHttp(github, skillPath, targetPath);
     }
 }
 
 /**
  * Install a skill from GitHub using gh CLI (authenticated, higher rate limits)
+ * Note: gh CLI uses curl internally for downloads, but provides authentication
  */
 async function installFromGitHubWithGhCli(
     github: { owner: string; repo: string; branch: string },
@@ -159,19 +160,19 @@ async function installFromGitHubWithGhCli(
             const subPath = skillPath ? `${skillPath}/${name}` : name;
             await installFromGitHubWithGhCli(github, subPath, itemTargetPath);
         } else if (type === 'file' && downloadUrl) {
-            // Download file using curl
-            const downloadCmd = `curl -sL "${downloadUrl}" -o "${itemTargetPath}"`;
-            await execAsync(downloadCmd);
+            // Download file using native HTTP (works on all platforms)
+            const content = await httpDownload(downloadUrl);
+            safeWriteFile(itemTargetPath, content);
             logger.debug(LogCategory.EXTENSION, `Downloaded: ${name}`);
         }
     }
 }
 
 /**
- * Install a skill from GitHub using curl (no authentication, lower rate limits)
+ * Install a skill from GitHub using native HTTP (cross-platform, no external dependencies)
  * This is the fallback when gh CLI is not available
  */
-async function installFromGitHubWithCurl(
+async function installFromGitHubWithHttp(
     github: { owner: string; repo: string; branch: string },
     skillPath: string,
     targetPath: string
@@ -183,14 +184,7 @@ async function installFromGitHubWithCurl(
 
     // Get list of files in the skill directory using GitHub API
     const apiUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${skillPath}?ref=${github.branch}`;
-    const { stdout } = await execAsync(`curl -sL "${apiUrl}"`);
-    
-    const parsed = JSON.parse(stdout);
-    
-    // Check for error response
-    if (parsed.message) {
-        throw new Error(parsed.message);
-    }
+    const parsed = await httpGetJson(apiUrl);
     
     // Handle single file response
     const items = Array.isArray(parsed) ? parsed : [parsed];
@@ -201,12 +195,12 @@ async function installFromGitHubWithCurl(
         if (item.type === 'dir') {
             // Recursively download directory
             const subPath = skillPath ? `${skillPath}/${item.name}` : item.name;
-            await installFromGitHubWithCurl(github, subPath, itemTargetPath);
+            await installFromGitHubWithHttp(github, subPath, itemTargetPath);
         } else if (item.type === 'file') {
             if (item.download_url) {
-                // Download file using curl
-                const downloadCmd = `curl -sL "${item.download_url}" -o "${itemTargetPath}"`;
-                await execAsync(downloadCmd);
+                // Download file using native HTTP
+                const content = await httpDownload(item.download_url);
+                safeWriteFile(itemTargetPath, content);
                 logger.debug(LogCategory.EXTENSION, `Downloaded: ${item.name}`);
             } else if (item.content) {
                 // Content is embedded (base64 encoded)
