@@ -10,7 +10,10 @@ import { execSync } from 'child_process';
 import { GitSearchProvider } from '../../shortcuts/discovery/search-providers/git-search-provider';
 import { DEFAULT_DISCOVERY_SCOPE, DiscoveryScope } from '../../shortcuts/discovery/types';
 
-suite('GitSearchProvider Tests', () => {
+suite('GitSearchProvider Tests', function() {
+    // Increase timeout for all tests in this suite - git operations can be slow on Windows CI
+    this.timeout(10000);
+
     let tempDir: string;
     let provider: GitSearchProvider;
     let isGitRepo = false;
