@@ -35,6 +35,7 @@ import {
 import { validateGenerateConfig } from './input-generator';
 import { executeFilter } from './filter-executor';
 import { resolvePromptFile } from './prompt-resolver';
+import { resolveSkill } from './skill-resolver';
 
 /**
  * Default parallel concurrency limit
@@ -65,6 +66,12 @@ export interface ExecutePipelineOptions {
      * All CSV and resource paths in the pipeline config are resolved relative to this directory.
      */
     pipelineDirectory: string;
+    /**
+     * Workspace root directory for resolving skills.
+     * Skills are located at {workspaceRoot}/.github/skills/{name}/prompt.md.
+     * If not provided, defaults to pipelineDirectory's grandparent (assuming standard .vscode/pipelines/ structure).
+     */
+    workspaceRoot?: string;
     /** Optional process tracker for AI process manager integration */
     processTracker?: ProcessTracker;
     /** Progress callback */
@@ -103,8 +110,8 @@ export async function executePipeline(
     // Validate config
     validatePipelineConfig(config);
 
-    // Resolve prompts (from inline or files)
-    const prompts = await resolvePrompts(config, options.pipelineDirectory);
+    // Resolve prompts (from inline, files, or skills)
+    const prompts = await resolvePrompts(config, options.pipelineDirectory, options.workspaceRoot);
 
     // Load items from input source
     let items = await loadInputItems(config, options.pipelineDirectory);
@@ -135,8 +142,8 @@ export async function executePipelineWithItems(
     // Validate basic config structure (but skip input validation since we're using pre-approved items)
     validatePipelineConfigForExecution(config);
 
-    // Resolve prompts (from inline or files)
-    const prompts = await resolvePrompts(config, options.pipelineDirectory);
+    // Resolve prompts (from inline, files, or skills)
+    const prompts = await resolvePrompts(config, options.pipelineDirectory, options.workspaceRoot);
 
     // Apply limit and merge parameters to provided items
     const processItems = prepareItems(items, config, prompts.mapPrompt);
@@ -163,18 +170,79 @@ function validatePipelineConfigForExecution(config: PipelineConfig): void {
 // ============================================================================
 
 /**
- * Resolve all prompts from config (either inline or from files)
+ * Derive workspace root from pipeline directory if not provided.
+ * Assumes standard structure: {workspaceRoot}/.vscode/pipelines/{package}/
  */
-async function resolvePrompts(config: PipelineConfig, pipelineDirectory: string): Promise<ResolvedPrompts> {
+function deriveWorkspaceRoot(pipelineDirectory: string, providedWorkspaceRoot?: string): string {
+    if (providedWorkspaceRoot) {
+        return providedWorkspaceRoot;
+    }
+    // Go up from pipeline package directory to workspace root
+    // .vscode/pipelines/my-pipeline/ -> workspace root (3 levels up)
+    const path = require('path');
+    return path.resolve(pipelineDirectory, '..', '..', '..');
+}
+
+/**
+ * Build a prompt with optional skill context prepended
+ * 
+ * When a skill is attached, the skill's prompt content is prepended as guidance:
+ * ```
+ * [Skill Guidance: {skillName}]
+ * {skill prompt content}
+ * 
+ * [Task]
+ * {main prompt}
+ * ```
+ */
+function buildPromptWithSkill(mainPrompt: string, skillContent?: string, skillName?: string): string {
+    if (!skillContent || !skillName) {
+        return mainPrompt;
+    }
+    
+    return `[Skill Guidance: ${skillName}]
+${skillContent}
+
+[Task]
+${mainPrompt}`;
+}
+
+/**
+ * Resolve all prompts from config (either inline or from files, with optional skill context)
+ */
+async function resolvePrompts(
+    config: PipelineConfig,
+    pipelineDirectory: string,
+    workspaceRoot?: string
+): Promise<ResolvedPrompts> {
+    const effectiveWorkspaceRoot = deriveWorkspaceRoot(pipelineDirectory, workspaceRoot);
+    
     let mapPrompt: string;
     try {
+        // Resolve main prompt (either inline or from file)
+        let mainMapPrompt: string;
         if (config.map.prompt) {
-            mapPrompt = config.map.prompt;
+            mainMapPrompt = config.map.prompt;
         } else if (config.map.promptFile) {
-            mapPrompt = await resolvePromptFile(config.map.promptFile, pipelineDirectory);
+            mainMapPrompt = await resolvePromptFile(config.map.promptFile, pipelineDirectory);
         } else {
             throw new PipelineExecutionError('Map phase must have either "prompt" or "promptFile"', 'map');
         }
+        
+        // Optionally load and attach skill context
+        let skillContent: string | undefined;
+        if (config.map.skill) {
+            try {
+                skillContent = await resolveSkill(config.map.skill, effectiveWorkspaceRoot);
+            } catch (error) {
+                throw new PipelineExecutionError(
+                    `Failed to resolve map skill "${config.map.skill}": ${error instanceof Error ? error.message : String(error)}`,
+                    'map'
+                );
+            }
+        }
+        
+        mapPrompt = buildPromptWithSkill(mainMapPrompt, skillContent, config.map.skill);
     } catch (error) {
         if (error instanceof PipelineExecutionError) {
             throw error;
@@ -188,13 +256,30 @@ async function resolvePrompts(config: PipelineConfig, pipelineDirectory: string)
     let reducePrompt: string | undefined;
     if (config.reduce.type === 'ai') {
         try {
+            // Resolve main reduce prompt (either inline or from file)
+            let mainReducePrompt: string;
             if (config.reduce.prompt) {
-                reducePrompt = config.reduce.prompt;
+                mainReducePrompt = config.reduce.prompt;
             } else if (config.reduce.promptFile) {
-                reducePrompt = await resolvePromptFile(config.reduce.promptFile, pipelineDirectory);
+                mainReducePrompt = await resolvePromptFile(config.reduce.promptFile, pipelineDirectory);
             } else {
                 throw new PipelineExecutionError('AI reduce must have either "prompt" or "promptFile"', 'reduce');
             }
+            
+            // Optionally load and attach skill context
+            let skillContent: string | undefined;
+            if (config.reduce.skill) {
+                try {
+                    skillContent = await resolveSkill(config.reduce.skill, effectiveWorkspaceRoot);
+                } catch (error) {
+                    throw new PipelineExecutionError(
+                        `Failed to resolve reduce skill "${config.reduce.skill}": ${error instanceof Error ? error.message : String(error)}`,
+                        'reduce'
+                    );
+                }
+            }
+            
+            reducePrompt = buildPromptWithSkill(mainReducePrompt, skillContent, config.reduce.skill);
         } catch (error) {
             if (error instanceof PipelineExecutionError) {
                 throw error;
@@ -397,7 +482,7 @@ function convertParametersToObject(parameters: PipelineParameter[]): Record<stri
 // ============================================================================
 
 /**
- * Validate map configuration (prompt/promptFile and output)
+ * Validate map configuration (prompt/promptFile and optional skill)
  */
 function validateMapConfig(config: PipelineConfig): void {
     if (!config.map) {
@@ -407,11 +492,17 @@ function validateMapConfig(config: PipelineConfig): void {
     // Validate prompt configuration (must have exactly one of prompt or promptFile)
     const hasPrompt = !!config.map.prompt;
     const hasPromptFile = !!config.map.promptFile;
+    
     if (!hasPrompt && !hasPromptFile) {
         throw new PipelineExecutionError('Pipeline config must have either "map.prompt" or "map.promptFile"');
     }
     if (hasPrompt && hasPromptFile) {
         throw new PipelineExecutionError('Pipeline config cannot have both "map.prompt" and "map.promptFile"');
+    }
+
+    // Validate skill name if provided (skill is optional and can be combined with prompt/promptFile)
+    if (config.map.skill !== undefined && typeof config.map.skill !== 'string') {
+        throw new PipelineExecutionError('Pipeline config "map.skill" must be a string');
     }
 
     // map.output is optional - if omitted, text mode is used
@@ -439,6 +530,7 @@ function validateReduceConfig(config: PipelineConfig): void {
     if (config.reduce.type === 'ai') {
         const hasPrompt = !!config.reduce.prompt;
         const hasPromptFile = !!config.reduce.promptFile;
+        
         if (!hasPrompt && !hasPromptFile) {
             throw new PipelineExecutionError(
                 'Pipeline config must have either "reduce.prompt" or "reduce.promptFile" when reduce.type is "ai"'
@@ -447,6 +539,12 @@ function validateReduceConfig(config: PipelineConfig): void {
         if (hasPrompt && hasPromptFile) {
             throw new PipelineExecutionError('Pipeline config cannot have both "reduce.prompt" and "reduce.promptFile"');
         }
+        
+        // Validate skill name if provided (skill is optional and can be combined with prompt/promptFile)
+        if (config.reduce.skill !== undefined && typeof config.reduce.skill !== 'string') {
+            throw new PipelineExecutionError('Pipeline config "reduce.skill" must be a string');
+        }
+        
         if (config.reduce.output !== undefined && !Array.isArray(config.reduce.output)) {
             throw new PipelineExecutionError('Pipeline config "reduce.output" must be an array if provided');
         }

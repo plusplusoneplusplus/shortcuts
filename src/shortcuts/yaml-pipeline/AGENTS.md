@@ -337,6 +337,173 @@ The frontmatter (if present) is automatically stripped when loading the prompt.
 4. **File exists**: Error with searched paths if file not found
 5. **Non-empty**: Error if file is empty after stripping frontmatter
 
+### Using Skills
+
+Skills provide reusable guidance/context that can be attached to pipeline prompts. Skills are stored in `.github/skills/` at the workspace root.
+
+**Key Concept:** Skills are **additional context**, not a replacement for prompts. You must still provide either `prompt` or `promptFile`, and optionally attach a `skill` for guidance.
+
+#### Skill Directory Structure
+
+```
+.github/skills/
+├── go-deep/
+│   ├── SKILL.md              # Metadata + documentation (optional)
+│   └── prompt.md             # The skill guidance content (required)
+├── summarizer/
+│   ├── SKILL.md
+│   └── prompt.md
+└── code-reviewer/
+    └── prompt.md
+```
+
+#### How Skills Work
+
+When you specify `skill: "go-deep"`, the system:
+1. Loads the skill content from `.github/skills/go-deep/prompt.md`
+2. Prepends it to your main prompt as guidance:
+
+```
+[Skill Guidance: go-deep]
+{skill prompt content}
+
+[Task]
+{your main prompt}
+```
+
+#### YAML Examples with Skills
+
+**Attaching a skill to a prompt:**
+```yaml
+name: "Deep Research Pipeline"
+
+input:
+  items:
+    - topic: "AI Safety"
+
+map:
+  prompt: "Research the topic: {{topic}}"  # Main prompt (required)
+  skill: "go-deep"                          # Optional skill guidance
+  output: [findings, sources, confidence]
+  parallel: 3
+
+reduce:
+  type: ai
+  prompt: "Summarize {{COUNT}} results:\n{{RESULTS}}"
+  skill: "summarizer"                       # Optional skill for reduce
+  output: [summary, key_insights]
+```
+
+**Skill with promptFile:**
+```yaml
+name: "Analysis Pipeline"
+
+input:
+  items:
+    - topic: "Machine Learning"
+
+map:
+  promptFile: "analyze.prompt.md"  # Main prompt from file
+  skill: "analyzer"                 # Attach skill guidance
+  output: [findings, recommendations]
+
+reduce:
+  type: json
+```
+
+**Without skill (skill is optional):**
+```yaml
+name: "Simple Pipeline"
+
+input:
+  items:
+    - name: "Test"
+
+map:
+  prompt: "Process: {{name}}"  # Just the prompt, no skill
+  output: [result]
+
+reduce:
+  type: list
+```
+
+#### Skill Metadata (SKILL.md)
+
+The optional `SKILL.md` file can contain metadata in YAML frontmatter:
+
+```markdown
+---
+name: Deep Research Skill
+description: Performs deep research on a given topic
+version: 1.0.0
+variables: [topic, depth, focus_areas]
+output: [findings, sources, confidence]
+---
+
+# Deep Research Skill
+
+This skill performs comprehensive research on any topic.
+
+## Usage
+
+Provide a topic and optional depth/focus parameters.
+
+## Expected Output
+
+Returns findings, sources, and confidence scores.
+```
+
+#### Programmatic API
+
+```typescript
+import {
+    resolveSkill,
+    resolveSkillSync,
+    resolveSkillWithDetails,
+    skillExists,
+    listSkills,
+    validateSkill,
+    getSkillsDirectory,
+    SkillResolverError
+} from '../yaml-pipeline';
+
+// Resolve and load a skill prompt
+const prompt = await resolveSkill('go-deep', workspaceRoot);
+
+// Synchronous version
+const promptSync = resolveSkillSync('go-deep', workspaceRoot);
+
+// Get full details including metadata
+const details = await resolveSkillWithDetails('go-deep', workspaceRoot);
+console.log(details.content);        // The prompt content
+console.log(details.resolvedPath);   // Path to prompt.md
+console.log(details.metadata);       // Parsed SKILL.md metadata
+
+// Check if skill exists
+if (skillExists('go-deep', workspaceRoot)) {
+    // Skill found
+}
+
+// List all available skills
+const skills = listSkills(workspaceRoot);
+// Returns: ['analyzer', 'go-deep', 'summarizer']
+
+// Validate skill for config validation
+const validation = validateSkill('go-deep', workspaceRoot);
+if (!validation.valid) {
+    console.error(validation.error);
+}
+```
+
+#### Custom Skills Directory
+
+By default, skills are loaded from `.github/skills/`. You can specify a custom path:
+
+```typescript
+// Use custom skills directory
+const prompt = await resolveSkill('my-skill', workspaceRoot, 'custom/skills/path');
+```
+
 #### Programmatic API
 
 ```typescript

@@ -187,7 +187,7 @@ export interface InputConfig {
 export interface MapConfig {
     /** 
      * Prompt template with {{column}} placeholders.
-     * Either `prompt` or `promptFile` must be specified, but not both.
+     * Either `prompt` or `promptFile` must be specified (mutually exclusive).
      */
     prompt?: string;
     /** 
@@ -197,9 +197,21 @@ export interface MapConfig {
      * - Parent path: "../shared/prompts/common.prompt.md" (relative to pipeline directory)
      * - Absolute path: "/absolute/path/prompt.md"
      * 
-     * Either `prompt` or `promptFile` must be specified, but not both.
+     * Either `prompt` or `promptFile` must be specified (mutually exclusive).
      */
     promptFile?: string;
+    /**
+     * Optional skill to attach as additional context/guidance.
+     * Skills are located at `.github/skills/{name}/prompt.md`.
+     * 
+     * When specified, the skill's prompt content is prepended to the main prompt
+     * as recommended guidance for the AI to follow.
+     * 
+     * Example: `skill: "go-deep"` → loads `.github/skills/go-deep/prompt.md`
+     * 
+     * Can be combined with either `prompt` or `promptFile`.
+     */
+    skill?: string;
     /** Output field names expected from AI. If omitted, text mode is used (raw AI response) */
     output?: string[];
     /** Maximum concurrent AI calls (default: 5) */
@@ -226,7 +238,7 @@ export interface ReduceConfig {
     type: MROutputFormat;
     /** 
      * AI prompt template (required if type is 'ai', unless promptFile is specified).
-     * Either `prompt` or `promptFile` must be specified for AI reduce, but not both.
+     * Either `prompt` or `promptFile` must be specified for AI reduce (mutually exclusive).
      */
     prompt?: string;
     /** 
@@ -236,9 +248,21 @@ export interface ReduceConfig {
      * - Parent path: "../shared/prompts/common.prompt.md" (relative to pipeline directory)
      * - Absolute path: "/absolute/path/prompt.md"
      * 
-     * Either `prompt` or `promptFile` must be specified for AI reduce, but not both.
+     * Either `prompt` or `promptFile` must be specified for AI reduce (mutually exclusive).
      */
     promptFile?: string;
+    /**
+     * Optional skill to attach as additional context/guidance for AI reduce.
+     * Skills are located at `.github/skills/{name}/prompt.md`.
+     * 
+     * When specified, the skill's prompt content is prepended to the reduce prompt
+     * as recommended guidance for the AI to follow.
+     * 
+     * Example: `skill: "summarizer"` → loads `.github/skills/summarizer/prompt.md`
+     * 
+     * Can be combined with either `prompt` or `promptFile`.
+     */
+    skill?: string;
     /** AI output fields. If omitted with type 'ai', returns raw AI text response */
     output?: string[];
     /** Model to use for AI reduce (optional) */

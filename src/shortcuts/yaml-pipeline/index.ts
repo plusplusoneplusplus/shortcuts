@@ -82,6 +82,25 @@ export {
 } from './prompt-resolver';
 export type { PromptResolutionResult } from './prompt-resolver';
 
+// Skill Resolver utilities
+export {
+    resolveSkill,
+    resolveSkillSync,
+    resolveSkillWithDetails,
+    resolveSkillWithDetailsSync,
+    skillExists,
+    listSkills,
+    validateSkill,
+    getSkillsDirectory,
+    getSkillDirectory,
+    getSkillPromptPath,
+    SkillResolverError,
+    DEFAULT_SKILLS_DIRECTORY,
+    SKILL_PROMPT_FILENAME,
+    SKILL_METADATA_FILENAME
+} from './skill-resolver';
+export type { SkillResolutionResult, SkillMetadata } from './skill-resolver';
+
 // Input Generator (AI-powered input generation)
 export {
     buildGeneratePrompt,

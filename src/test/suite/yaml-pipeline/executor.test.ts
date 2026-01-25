@@ -2139,4 +2139,305 @@ What are the next steps?`,
             assert.ok(result.executionStats.reducePhaseTimeMs >= 0);
         });
     });
+
+    suite('Skill-based prompts', () => {
+        let skillsDir: string;
+
+        setup(async () => {
+            // Create .github/skills directory structure
+            skillsDir = path.join(tempDir, '.github', 'skills');
+            await fs.promises.mkdir(skillsDir, { recursive: true });
+        });
+
+        async function createSkill(name: string, promptContent: string): Promise<void> {
+            const skillDir = path.join(skillsDir, name);
+            await fs.promises.mkdir(skillDir, { recursive: true });
+            await fs.promises.writeFile(
+                path.join(skillDir, 'prompt.md'),
+                promptContent
+            );
+        }
+
+        test('executes pipeline with skill attached to map prompt', async () => {
+            // Create a skill that provides guidance
+            await createSkill('analyzer', 'You are an expert bug analyzer. Focus on severity and impact.');
+
+            const config: PipelineConfig = {
+                name: 'Skill Test',
+                input: {
+                    items: [
+                        { id: '1', title: 'Bug A' },
+                        { id: '2', title: 'Bug B' }
+                    ]
+                },
+                map: {
+                    prompt: 'Analyze: {{title}}',
+                    skill: 'analyzer',  // Skill is attached as additional context
+                    output: ['severity']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const receivedPrompts: string[] = [];
+            const aiInvoker = async (prompt: string) => {
+                receivedPrompts.push(prompt);
+                if (prompt.includes('Bug A')) {
+                    return { success: true, response: '{"severity": "high"}' };
+                }
+                return { success: true, response: '{"severity": "low"}' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir,
+                workspaceRoot: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            assert.ok(result.output);
+            assert.strictEqual(result.output.results.length, 2);
+            
+            // Verify skill guidance was prepended to the prompt
+            assert.ok(receivedPrompts.some(p => 
+                p.includes('[Skill Guidance: analyzer]') && 
+                p.includes('expert bug analyzer') &&
+                p.includes('[Task]') &&
+                p.includes('Analyze:')
+            ));
+        });
+
+        test('executes pipeline with skill attached to reduce prompt', async () => {
+            // Create a skill for reduce
+            await createSkill('summarizer', 'You are an expert at synthesizing information. Be concise.');
+
+            const config: PipelineConfig = {
+                name: 'Reduce Skill Test',
+                input: {
+                    items: [
+                        { name: 'Item A' },
+                        { name: 'Item B' }
+                    ]
+                },
+                map: {
+                    prompt: 'Process: {{name}}',
+                    output: ['result']
+                },
+                reduce: {
+                    type: 'ai',
+                    prompt: 'Summarize {{COUNT}} results:\n{{RESULTS}}',
+                    skill: 'summarizer',  // Skill attached to reduce
+                    output: ['summary']
+                }
+            };
+
+            let reducePromptReceived = '';
+            const aiInvoker = async (prompt: string) => {
+                if (prompt.includes('Summarize')) {
+                    reducePromptReceived = prompt;
+                    return { success: true, response: '{"summary": "All items processed"}' };
+                }
+                return { success: true, response: '{"result": "processed"}' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir,
+                workspaceRoot: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            // Verify skill guidance was prepended to reduce prompt
+            assert.ok(reducePromptReceived.includes('[Skill Guidance: summarizer]'));
+            assert.ok(reducePromptReceived.includes('synthesizing information'));
+            assert.ok(reducePromptReceived.includes('[Task]'));
+            assert.ok(reducePromptReceived.includes('Summarize'));
+        });
+
+        test('throws error for non-existent skill', async () => {
+            const config: PipelineConfig = {
+                name: 'Missing Skill Test',
+                input: {
+                    items: [{ name: 'Test' }]
+                },
+                map: {
+                    prompt: 'Process: {{name}}',
+                    skill: 'non-existent-skill',  // This skill doesn't exist
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir,
+                    workspaceRoot: tempDir
+                }),
+                /not found/
+            );
+        });
+
+        test('prompt and promptFile are mutually exclusive', async () => {
+            const config = {
+                name: 'Invalid Config',
+                input: {
+                    items: [{ name: 'Test' }]
+                },
+                map: {
+                    prompt: 'Inline prompt',
+                    promptFile: 'some-file.md',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir,
+                    workspaceRoot: tempDir
+                }),
+                /cannot have both/
+            );
+        });
+
+        test('validates that prompt or promptFile is required', async () => {
+            const config = {
+                name: 'No Prompt Config',
+                input: {
+                    items: [{ name: 'Test' }]
+                },
+                map: {
+                    skill: 'some-skill',  // Skill alone is not enough
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            } as unknown as PipelineConfig;
+
+            await assert.rejects(
+                async () => executePipeline(config, {
+                    aiInvoker: createMockAIInvoker(new Map()),
+                    pipelineDirectory: tempDir,
+                    workspaceRoot: tempDir
+                }),
+                /must have either/
+            );
+        });
+
+        test('skill can be combined with promptFile', async () => {
+            // Create a skill
+            await createSkill('guidance', 'Follow best practices for analysis.');
+            
+            // Create a prompt file
+            const promptFile = path.join(tempDir, 'analyze.prompt.md');
+            await fs.promises.writeFile(promptFile, 'Analyze: {{name}}');
+
+            const config: PipelineConfig = {
+                name: 'Skill with PromptFile Test',
+                input: {
+                    items: [{ name: 'Test Item' }]
+                },
+                map: {
+                    promptFile: 'analyze.prompt.md',
+                    skill: 'guidance',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const receivedPrompts: string[] = [];
+            const aiInvoker = async (prompt: string) => {
+                receivedPrompts.push(prompt);
+                return { success: true, response: '{"result": "done"}' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir,
+                workspaceRoot: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            // Verify both skill guidance and prompt file content are in the final prompt
+            assert.ok(receivedPrompts.some(p => 
+                p.includes('[Skill Guidance: guidance]') &&
+                p.includes('best practices') &&
+                p.includes('Analyze: Test Item')
+            ));
+        });
+
+        test('pipeline works without skill (skill is optional)', async () => {
+            const config: PipelineConfig = {
+                name: 'No Skill Test',
+                input: {
+                    items: [{ name: 'Test' }]
+                },
+                map: {
+                    prompt: 'Process: {{name}}',
+                    // No skill attached
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const receivedPrompts: string[] = [];
+            const aiInvoker = async (prompt: string) => {
+                receivedPrompts.push(prompt);
+                return { success: true, response: '{"result": "done"}' };
+            };
+
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: tempDir
+            });
+
+            assert.strictEqual(result.success, true);
+            // Verify no skill guidance prefix
+            assert.ok(receivedPrompts.some(p => 
+                !p.includes('[Skill Guidance:') &&
+                p.includes('Process: Test')
+            ));
+        });
+
+        test('derives workspace root from pipeline directory when not provided', async () => {
+            // Create a more realistic directory structure
+            // workspace/.vscode/pipelines/my-pipeline/
+            const workspaceRoot = tempDir;
+            const pipelineDir = path.join(workspaceRoot, '.vscode', 'pipelines', 'my-pipeline');
+            await fs.promises.mkdir(pipelineDir, { recursive: true });
+
+            // Create skill in workspace root
+            await createSkill('auto-derive', 'Auto-derived skill guidance');
+
+            const config: PipelineConfig = {
+                name: 'Auto Derive Test',
+                input: {
+                    items: [{ name: 'Test' }]
+                },
+                map: {
+                    prompt: 'Process: {{name}}',
+                    skill: 'auto-derive',
+                    output: ['result']
+                },
+                reduce: { type: 'list' }
+            };
+
+            const receivedPrompts: string[] = [];
+            const aiInvoker = async (prompt: string) => {
+                receivedPrompts.push(prompt);
+                return { success: true, response: '{"result": "done"}' };
+            };
+
+            // Don't provide workspaceRoot - it should be derived
+            const result = await executePipeline(config, {
+                aiInvoker,
+                pipelineDirectory: pipelineDir
+                // workspaceRoot not provided
+            });
+
+            assert.strictEqual(result.success, true);
+            // Verify skill was found via derived workspace root
+            assert.ok(receivedPrompts.some(p => p.includes('Auto-derived skill guidance')));
+        });
+    });
 });
