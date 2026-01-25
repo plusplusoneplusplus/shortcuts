@@ -651,6 +651,160 @@ reduce:
                 assert.strictEqual(result.valid, true);
                 assert.ok(result.warnings.some(w => w.includes('empty')));
             });
+
+            test('should validate pipeline with map.promptFile instead of map.prompt', async () => {
+                createPipelinePackage('prompt-file', `
+name: "Prompt File Pipeline"
+input:
+  items:
+    - title: "Item 1"
+map:
+  promptFile: "analyze.prompt.md"
+  output:
+    - result
+reduce:
+  type: json
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, true, `Validation errors: ${result.errors.join(', ')}`);
+                assert.strictEqual(result.errors.length, 0);
+            });
+
+            test('should reject pipeline with both map.prompt and map.promptFile', async () => {
+                createPipelinePackage('both-prompts', `
+name: "Both Prompts"
+input:
+  items:
+    - title: "Item 1"
+map:
+  prompt: "Inline prompt"
+  promptFile: "external.prompt.md"
+  output:
+    - result
+reduce:
+  type: json
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, false);
+                assert.ok(result.errors.some(e => e.includes('both') && e.includes('prompt')));
+            });
+
+            test('should reject pipeline with neither map.prompt nor map.promptFile', async () => {
+                createPipelinePackage('no-prompt', `
+name: "No Prompt"
+input:
+  items:
+    - title: "Item 1"
+map:
+  output:
+    - result
+reduce:
+  type: json
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, false);
+                assert.ok(result.errors.some(e => e.includes('map.prompt') || e.includes('map.promptFile')));
+            });
+
+            test('should validate AI reduce with reduce.promptFile', async () => {
+                createPipelinePackage('reduce-prompt-file', `
+name: "AI Reduce with PromptFile"
+input:
+  items:
+    - title: "Item 1"
+map:
+  prompt: "Process: {{title}}"
+  output:
+    - result
+reduce:
+  type: ai
+  promptFile: "summarize.prompt.md"
+  output:
+    - summary
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, true, `Validation errors: ${result.errors.join(', ')}`);
+            });
+
+            test('should reject AI reduce with both reduce.prompt and reduce.promptFile', async () => {
+                createPipelinePackage('both-reduce-prompts', `
+name: "Both Reduce Prompts"
+input:
+  items:
+    - title: "Item 1"
+map:
+  prompt: "Process: {{title}}"
+  output:
+    - result
+reduce:
+  type: ai
+  prompt: "Inline reduce prompt"
+  promptFile: "external-reduce.prompt.md"
+  output:
+    - summary
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, false);
+                assert.ok(result.errors.some(e => e.includes('both') && e.includes('reduce')));
+            });
+
+            test('should reject AI reduce with neither reduce.prompt nor reduce.promptFile', async () => {
+                createPipelinePackage('no-reduce-prompt', `
+name: "No Reduce Prompt"
+input:
+  items:
+    - title: "Item 1"
+map:
+  prompt: "Process: {{title}}"
+  output:
+    - result
+reduce:
+  type: ai
+  output:
+    - summary
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, false);
+                assert.ok(result.errors.some(e => e.includes('reduce.prompt') || e.includes('reduce.promptFile')));
+            });
+
+            test('should allow non-AI reduce without prompt or promptFile', async () => {
+                createPipelinePackage('json-reduce', `
+name: "JSON Reduce"
+input:
+  items:
+    - title: "Item 1"
+map:
+  promptFile: "analyze.prompt.md"
+  output:
+    - result
+reduce:
+  type: json
+`);
+
+                const pipelines = await pipelineManager.getPipelines();
+                const result = await pipelineManager.validatePipeline(pipelines[0].filePath);
+
+                assert.strictEqual(result.valid, true, `Validation errors: ${result.errors.join(', ')}`);
+            });
         });
 
         suite('Path Resolution', () => {

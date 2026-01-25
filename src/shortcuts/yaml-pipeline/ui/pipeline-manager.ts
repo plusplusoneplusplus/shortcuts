@@ -492,9 +492,16 @@ export class PipelineManager implements vscode.Disposable {
                 errors.push('Missing "map" field');
             } else {
                 const map = parsed.map as Record<string, unknown>;
-                if (!map.prompt) {
-                    errors.push('Missing "map.prompt" field');
+                const hasPrompt = !!map.prompt;
+                const hasPromptFile = !!map.promptFile;
+                
+                // Must have exactly one of prompt or promptFile
+                if (!hasPrompt && !hasPromptFile) {
+                    errors.push('Missing "map.prompt" or "map.promptFile" field');
+                } else if (hasPrompt && hasPromptFile) {
+                    errors.push('Cannot have both "map.prompt" and "map.promptFile"');
                 }
+                
                 // map.output is optional - if omitted, text mode is used (raw AI response)
                 if (map.output !== undefined && !Array.isArray(map.output)) {
                     errors.push('"map.output" must be an array if provided');
@@ -512,9 +519,16 @@ export class PipelineManager implements vscode.Disposable {
 
                 // Validate AI reduce configuration
                 if (reduce.type === 'ai') {
-                    if (!reduce.prompt || typeof reduce.prompt !== 'string') {
-                        errors.push('reduce.prompt is required when reduce.type is "ai"');
+                    const hasReducePrompt = !!reduce.prompt;
+                    const hasReducePromptFile = !!reduce.promptFile;
+                    
+                    // Must have exactly one of prompt or promptFile for AI reduce
+                    if (!hasReducePrompt && !hasReducePromptFile) {
+                        errors.push('reduce.prompt or reduce.promptFile is required when reduce.type is "ai"');
+                    } else if (hasReducePrompt && hasReducePromptFile) {
+                        errors.push('Cannot have both "reduce.prompt" and "reduce.promptFile"');
                     }
+                    
                     // reduce.output is optional for AI reduce - if omitted, returns raw text
                     if (reduce.output !== undefined && !Array.isArray(reduce.output)) {
                         errors.push('reduce.output must be an array if provided');
