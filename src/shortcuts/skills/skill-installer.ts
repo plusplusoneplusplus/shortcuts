@@ -5,7 +5,30 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { DiscoveredSkill, InstallDetail, InstallResult, ParsedSource } from './types';
-import { ensureDirectoryExists, safeExists, safeReadDir, safeStats, safeCopyFile, getExtensionLogger, LogCategory, execAsync } from '../shared';
+import { ensureDirectoryExists, safeExists, safeReadDir, safeStats, safeCopyFile, safeWriteFile, getExtensionLogger, LogCategory, execAsync } from '../shared';
+
+/**
+ * Cache for gh CLI availability check
+ */
+let ghCliAvailable: boolean | undefined;
+
+/**
+ * Check if gh CLI is available
+ */
+async function isGhCliAvailable(): Promise<boolean> {
+    if (ghCliAvailable !== undefined) {
+        return ghCliAvailable;
+    }
+
+    try {
+        await execAsync('gh --version');
+        ghCliAvailable = true;
+    } catch {
+        ghCliAvailable = false;
+    }
+
+    return ghCliAvailable;
+}
 
 /**
  * Install selected skills to the target directory
@@ -91,9 +114,27 @@ export async function installSkills(
 }
 
 /**
- * Install a skill from GitHub using gh CLI
+ * Install a skill from GitHub
+ * Uses gh CLI if available, falls back to curl with GitHub API
  */
 async function installFromGitHub(
+    github: { owner: string; repo: string; branch: string },
+    skillPath: string,
+    targetPath: string
+): Promise<void> {
+    const useGhCli = await isGhCliAvailable();
+    
+    if (useGhCli) {
+        await installFromGitHubWithGhCli(github, skillPath, targetPath);
+    } else {
+        await installFromGitHubWithCurl(github, skillPath, targetPath);
+    }
+}
+
+/**
+ * Install a skill from GitHub using gh CLI (authenticated, higher rate limits)
+ */
+async function installFromGitHubWithGhCli(
     github: { owner: string; repo: string; branch: string },
     skillPath: string,
     targetPath: string
@@ -107,7 +148,7 @@ async function installFromGitHub(
     const listCmd = `gh api repos/${github.owner}/${github.repo}/contents/${skillPath}?ref=${github.branch} --jq '.[] | "\\(.name)|\\(.type)|\\(.download_url // "")"'`;
     
     const { stdout } = await execAsync(listCmd);
-    const items = stdout.trim().split('\n').filter(l => l.length > 0);
+    const items = stdout.trim().split('\n').filter((l: string) => l.length > 0);
 
     for (const item of items) {
         const [name, type, downloadUrl] = item.split('|');
@@ -116,12 +157,63 @@ async function installFromGitHub(
         if (type === 'dir') {
             // Recursively download directory
             const subPath = skillPath ? `${skillPath}/${name}` : name;
-            await installFromGitHub(github, subPath, itemTargetPath);
+            await installFromGitHubWithGhCli(github, subPath, itemTargetPath);
         } else if (type === 'file' && downloadUrl) {
             // Download file using curl
             const downloadCmd = `curl -sL "${downloadUrl}" -o "${itemTargetPath}"`;
             await execAsync(downloadCmd);
             logger.debug(LogCategory.EXTENSION, `Downloaded: ${name}`);
+        }
+    }
+}
+
+/**
+ * Install a skill from GitHub using curl (no authentication, lower rate limits)
+ * This is the fallback when gh CLI is not available
+ */
+async function installFromGitHubWithCurl(
+    github: { owner: string; repo: string; branch: string },
+    skillPath: string,
+    targetPath: string
+): Promise<void> {
+    const logger = getExtensionLogger();
+    
+    // Create target directory
+    ensureDirectoryExists(targetPath);
+
+    // Get list of files in the skill directory using GitHub API
+    const apiUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${skillPath}?ref=${github.branch}`;
+    const { stdout } = await execAsync(`curl -sL "${apiUrl}"`);
+    
+    const parsed = JSON.parse(stdout);
+    
+    // Check for error response
+    if (parsed.message) {
+        throw new Error(parsed.message);
+    }
+    
+    // Handle single file response
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+
+    for (const item of items) {
+        const itemTargetPath = path.join(targetPath, item.name);
+
+        if (item.type === 'dir') {
+            // Recursively download directory
+            const subPath = skillPath ? `${skillPath}/${item.name}` : item.name;
+            await installFromGitHubWithCurl(github, subPath, itemTargetPath);
+        } else if (item.type === 'file') {
+            if (item.download_url) {
+                // Download file using curl
+                const downloadCmd = `curl -sL "${item.download_url}" -o "${itemTargetPath}"`;
+                await execAsync(downloadCmd);
+                logger.debug(LogCategory.EXTENSION, `Downloaded: ${item.name}`);
+            } else if (item.content) {
+                // Content is embedded (base64 encoded)
+                const content = Buffer.from(item.content, 'base64').toString('utf-8');
+                safeWriteFile(itemTargetPath, content);
+                logger.debug(LogCategory.EXTENSION, `Wrote: ${item.name}`);
+            }
         }
     }
 }

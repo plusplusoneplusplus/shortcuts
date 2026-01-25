@@ -13,6 +13,29 @@ import { safeExists, safeReadDir, safeReadFile, safeStats, getExtensionLogger, L
 const SKILL_FILE = 'SKILL.md';
 
 /**
+ * Cache for gh CLI availability check
+ */
+let ghCliAvailable: boolean | undefined;
+
+/**
+ * Check if gh CLI is available
+ */
+async function isGhCliAvailable(): Promise<boolean> {
+    if (ghCliAvailable !== undefined) {
+        return ghCliAvailable;
+    }
+
+    try {
+        await execAsync('gh --version');
+        ghCliAvailable = true;
+    } catch {
+        ghCliAvailable = false;
+    }
+
+    return ghCliAvailable;
+}
+
+/**
  * Scan a source for skills
  * @param source Parsed source information
  * @param installPath Target installation path (to check for existing skills)
@@ -33,38 +56,55 @@ export async function scanForSkills(source: ParsedSource, installPath: string): 
 }
 
 /**
- * Scan a GitHub repository for skills using gh CLI
+ * Scan a GitHub repository for skills
+ * Uses gh CLI if available, falls back to curl with GitHub API
  */
 async function scanGitHubSource(
     github: { owner: string; repo: string; branch: string; path: string },
     installPath: string
 ): Promise<ScanResult> {
     const logger = getExtensionLogger();
+    const useGhCli = await isGhCliAvailable();
+
+    const repoPath = github.path || '';
+    const ghPath = repoPath ? `${github.owner}/${github.repo}:${repoPath}` : `${github.owner}/${github.repo}`;
+    
+    logger.info(LogCategory.EXTENSION, `Scanning GitHub repository: ${ghPath} (branch: ${github.branch}, using ${useGhCli ? 'gh CLI' : 'curl'})`);
+
+    if (useGhCli) {
+        return scanGitHubWithGhCli(github, installPath);
+    } else {
+        return scanGitHubWithCurl(github, installPath);
+    }
+}
+
+/**
+ * Scan GitHub repository using gh CLI (authenticated, higher rate limits)
+ */
+async function scanGitHubWithGhCli(
+    github: { owner: string; repo: string; branch: string; path: string },
+    installPath: string
+): Promise<ScanResult> {
+    const logger = getExtensionLogger();
     const skills: DiscoveredSkill[] = [];
+    const repoPath = github.path || '';
 
     try {
-        // Use gh CLI to list directory contents
-        const repoPath = github.path || '';
-        const ghPath = repoPath ? `${github.owner}/${github.repo}:${repoPath}` : `${github.owner}/${github.repo}`;
-        
-        logger.info(LogCategory.EXTENSION, `Scanning GitHub repository: ${ghPath} (branch: ${github.branch})`);
-
         // List contents of the directory
         const listCmd = `gh api repos/${github.owner}/${github.repo}/contents/${repoPath}?ref=${github.branch} --jq '.[] | select(.type == "dir") | .name'`;
         
         let directories: string[];
         try {
             const { stdout } = await execAsync(listCmd);
-            directories = stdout.trim().split('\n').filter(d => d.length > 0);
+            directories = stdout.trim().split('\n').filter((d: string) => d.length > 0);
         } catch (error) {
             // If the path itself is a skill directory (contains SKILL.md), treat it as a single skill
             const checkSkillCmd = `gh api repos/${github.owner}/${github.repo}/contents/${repoPath}/${SKILL_FILE}?ref=${github.branch} --jq '.name' 2>/dev/null || echo ''`;
             try {
                 const { stdout: skillCheck } = await execAsync(checkSkillCmd);
                 if (skillCheck.trim() === SKILL_FILE) {
-                    // The path itself is a skill
                     const skillName = path.basename(repoPath) || github.repo;
-                    const description = await getGitHubSkillDescription(github, repoPath);
+                    const description = await getGitHubSkillDescriptionWithGhCli(github, repoPath);
                     skills.push({
                         name: skillName,
                         description,
@@ -78,10 +118,10 @@ async function scanGitHubSource(
             }
 
             const err = error instanceof Error ? error : new Error(String(error));
-            logger.warn(LogCategory.EXTENSION, 'Failed to list GitHub directory', { error: err.message });
+            logger.warn(LogCategory.EXTENSION, 'Failed to list GitHub directory with gh CLI', { error: err.message });
             return {
                 success: false,
-                error: `Failed to access GitHub repository. Make sure gh CLI is installed and authenticated. Error: ${err.message}`,
+                error: `Failed to access GitHub repository: ${err.message}`,
                 skills: []
             };
         }
@@ -94,7 +134,7 @@ async function scanGitHubSource(
             try {
                 const { stdout } = await execAsync(skillFileCheck);
                 if (stdout.trim() === SKILL_FILE) {
-                    const description = await getGitHubSkillDescription(github, skillPath);
+                    const description = await getGitHubSkillDescriptionWithGhCli(github, skillPath);
                     skills.push({
                         name: dir,
                         description,
@@ -119,7 +159,7 @@ async function scanGitHubSource(
 
     } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
-        logger.error(LogCategory.EXTENSION, 'Error scanning GitHub source', err);
+        logger.error(LogCategory.EXTENSION, 'Error scanning GitHub source with gh CLI', err);
         return {
             success: false,
             error: `Failed to scan GitHub repository: ${err.message}`,
@@ -129,9 +169,130 @@ async function scanGitHubSource(
 }
 
 /**
- * Get skill description from GitHub SKILL.md
+ * Scan GitHub repository using curl (no authentication, lower rate limits)
+ * This is the fallback when gh CLI is not available
  */
-async function getGitHubSkillDescription(
+async function scanGitHubWithCurl(
+    github: { owner: string; repo: string; branch: string; path: string },
+    installPath: string
+): Promise<ScanResult> {
+    const logger = getExtensionLogger();
+    const skills: DiscoveredSkill[] = [];
+    const repoPath = github.path || '';
+
+    try {
+        // Use GitHub API directly with curl
+        const apiUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${repoPath}?ref=${github.branch}`;
+        const listCmd = `curl -sL "${apiUrl}"`;
+        
+        let response: any[];
+        try {
+            const { stdout } = await execAsync(listCmd);
+            const parsed = JSON.parse(stdout);
+            
+            // Check if it's an error response
+            if (parsed.message) {
+                throw new Error(parsed.message);
+            }
+            
+            // If it's a single file (SKILL.md at root), the response is an object, not array
+            if (!Array.isArray(parsed)) {
+                // Check if the path itself is a skill directory
+                if (parsed.name === SKILL_FILE) {
+                    const skillName = path.basename(repoPath) || github.repo;
+                    const description = await getGitHubSkillDescriptionWithCurl(github, path.dirname(repoPath) || repoPath);
+                    skills.push({
+                        name: skillName,
+                        description,
+                        path: repoPath,
+                        alreadyExists: safeExists(path.join(installPath, skillName))
+                    });
+                    return { success: true, skills };
+                }
+                response = [parsed];
+            } else {
+                response = parsed;
+            }
+        } catch (error) {
+            // Try checking if the path itself is a skill directory
+            const skillFileUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${repoPath}/${SKILL_FILE}?ref=${github.branch}`;
+            try {
+                const { stdout } = await execAsync(`curl -sL "${skillFileUrl}"`);
+                const parsed = JSON.parse(stdout);
+                if (parsed.name === SKILL_FILE) {
+                    const skillName = path.basename(repoPath) || github.repo;
+                    const description = await getGitHubSkillDescriptionWithCurl(github, repoPath);
+                    skills.push({
+                        name: skillName,
+                        description,
+                        path: repoPath,
+                        alreadyExists: safeExists(path.join(installPath, skillName))
+                    });
+                    return { success: true, skills };
+                }
+            } catch {
+                // Not a skill directory
+            }
+
+            const err = error instanceof Error ? error : new Error(String(error));
+            logger.warn(LogCategory.EXTENSION, 'Failed to list GitHub directory with curl', { error: err.message });
+            return {
+                success: false,
+                error: `Failed to access GitHub repository. The repository may be private or the path may not exist. Error: ${err.message}`,
+                skills: []
+            };
+        }
+
+        // Filter to directories only
+        const directories = response.filter((item: any) => item.type === 'dir').map((item: any) => item.name);
+
+        // Check each directory for SKILL.md
+        for (const dir of directories) {
+            const skillPath = repoPath ? `${repoPath}/${dir}` : dir;
+            const skillFileUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch}`;
+            
+            try {
+                const { stdout } = await execAsync(`curl -sL "${skillFileUrl}"`);
+                const parsed = JSON.parse(stdout);
+                if (parsed.name === SKILL_FILE) {
+                    const description = await getGitHubSkillDescriptionWithCurl(github, skillPath);
+                    skills.push({
+                        name: dir,
+                        description,
+                        path: skillPath,
+                        alreadyExists: safeExists(path.join(installPath, dir))
+                    });
+                }
+            } catch {
+                // Not a skill directory, skip
+            }
+        }
+
+        if (skills.length === 0) {
+            return {
+                success: false,
+                error: 'No valid skills found at this location.',
+                skills: []
+            };
+        }
+
+        return { success: true, skills };
+
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        logger.error(LogCategory.EXTENSION, 'Error scanning GitHub source with curl', err);
+        return {
+            success: false,
+            error: `Failed to scan GitHub repository: ${err.message}`,
+            skills: []
+        };
+    }
+}
+
+/**
+ * Get skill description from GitHub SKILL.md using gh CLI
+ */
+async function getGitHubSkillDescriptionWithGhCli(
     github: { owner: string; repo: string; branch: string },
     skillPath: string
 ): Promise<string | undefined> {
@@ -139,6 +300,29 @@ async function getGitHubSkillDescription(
         const cmd = `gh api repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch} --jq '.content' | base64 -d | head -5`;
         const { stdout } = await execAsync(cmd);
         return extractDescriptionFromMarkdown(stdout);
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Get skill description from GitHub SKILL.md using curl
+ */
+async function getGitHubSkillDescriptionWithCurl(
+    github: { owner: string; repo: string; branch: string },
+    skillPath: string
+): Promise<string | undefined> {
+    try {
+        const apiUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch}`;
+        const { stdout } = await execAsync(`curl -sL "${apiUrl}"`);
+        const parsed = JSON.parse(stdout);
+        
+        if (parsed.content) {
+            // Content is base64 encoded
+            const content = Buffer.from(parsed.content, 'base64').toString('utf-8');
+            return extractDescriptionFromMarkdown(content);
+        }
+        return undefined;
     } catch {
         return undefined;
     }
