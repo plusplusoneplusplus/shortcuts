@@ -19,7 +19,7 @@
     },
     "typescript.tsc.autoDetect": "off",
     "npm.packageManager": "npm",
-    "extensions.ignoreRecommendations": false,
+    "extensions.ignoreRecommendations": true,
     "chat.promptFilesRecommendations": {
         "speckit.constitution": true,
         "speckit.specify": true,
