@@ -32,7 +32,8 @@ export type {
     AIInvokerOptions,
     AIInvokerResult,
     ProcessTracker,
-    ExecutorOptions
+    ExecutorOptions,
+    SessionMetadata
 } from './types';
 export { DEFAULT_MAP_REDUCE_OPTIONS } from './types';
 
