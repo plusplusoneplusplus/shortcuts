@@ -8,6 +8,9 @@
     "type": "git",
     "url": "https://github.com/plusplusoneplusplus/shortcuts.git"
   },
+  "workspaces": [
+    "packages/pipeline-core"
+  ],
   "engines": {
     "vscode": "^1.95.0"
   },
@@ -2690,6 +2693,7 @@
     "webpack-cli": "^5.0.0"
   },
   "dependencies": {
+    "@anthropic-ai/pipeline-core": "file:packages/pipeline-core",
     "@github/copilot-sdk": "^0.1.16",
     "diff": "^5.2.0",
     "js-yaml": "^4.1.0"
