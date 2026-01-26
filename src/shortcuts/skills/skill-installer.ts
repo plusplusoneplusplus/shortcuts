@@ -132,8 +132,20 @@ async function installFromGitHub(
 }
 
 /**
+ * Parse GitHub API response from gh CLI (cross-platform)
+ * Handles the JSON response without relying on --jq flag or shell piping
+ */
+function parseGitHubApiResponse(stdout: string): any {
+    try {
+        return JSON.parse(stdout);
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Install a skill from GitHub using gh CLI (authenticated, higher rate limits)
- * Note: gh CLI uses curl internally for downloads, but provides authentication
+ * Uses cross-platform approach: gh CLI for API calls, Node.js for JSON parsing
  */
 async function installFromGitHubWithGhCli(
     github: { owner: string; repo: string; branch: string },
@@ -145,25 +157,38 @@ async function installFromGitHubWithGhCli(
     // Create target directory
     ensureDirectoryExists(targetPath);
 
-    // Get list of files in the skill directory
-    const listCmd = `gh api repos/${github.owner}/${github.repo}/contents/${skillPath}?ref=${github.branch} --jq '.[] | "\\(.name)|\\(.type)|\\(.download_url // "")"'`;
+    // Get list of files in the skill directory (no --jq flag for cross-platform compatibility)
+    const listCmd = `gh api repos/${github.owner}/${github.repo}/contents/${skillPath}?ref=${github.branch}`;
     
     const { stdout } = await execAsync(listCmd);
-    const items = stdout.trim().split('\n').filter((l: string) => l.length > 0);
+    const parsed = parseGitHubApiResponse(stdout);
+    
+    if (!parsed) {
+        throw new Error('Failed to parse GitHub API response');
+    }
+    
+    // Handle single file response or array
+    const items = Array.isArray(parsed) ? parsed : [parsed];
 
     for (const item of items) {
-        const [name, type, downloadUrl] = item.split('|');
-        const itemTargetPath = path.join(targetPath, name);
+        const itemTargetPath = path.join(targetPath, item.name);
 
-        if (type === 'dir') {
+        if (item.type === 'dir') {
             // Recursively download directory
-            const subPath = skillPath ? `${skillPath}/${name}` : name;
+            const subPath = skillPath ? `${skillPath}/${item.name}` : item.name;
             await installFromGitHubWithGhCli(github, subPath, itemTargetPath);
-        } else if (type === 'file' && downloadUrl) {
-            // Download file using native HTTP (works on all platforms)
-            const content = await httpDownload(downloadUrl);
-            safeWriteFile(itemTargetPath, content);
-            logger.debug(LogCategory.EXTENSION, `Downloaded: ${name}`);
+        } else if (item.type === 'file') {
+            if (item.download_url) {
+                // Download file using native HTTP (works on all platforms)
+                const content = await httpDownload(item.download_url);
+                safeWriteFile(itemTargetPath, content);
+                logger.debug(LogCategory.EXTENSION, `Downloaded: ${item.name}`);
+            } else if (item.content) {
+                // Content is embedded (base64 encoded) - decode using Node.js Buffer
+                const content = Buffer.from(item.content, 'base64').toString('utf-8');
+                safeWriteFile(itemTargetPath, content);
+                logger.debug(LogCategory.EXTENSION, `Wrote: ${item.name}`);
+            }
         }
     }
 }

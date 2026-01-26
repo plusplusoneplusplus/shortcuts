@@ -79,7 +79,20 @@ async function scanGitHubSource(
 }
 
 /**
+ * Parse GitHub API response from gh CLI (cross-platform)
+ * Handles the JSON response without relying on --jq flag or shell piping
+ */
+function parseGitHubApiResponse(stdout: string): any {
+    try {
+        return JSON.parse(stdout);
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Scan GitHub repository using gh CLI (authenticated, higher rate limits)
+ * Uses cross-platform approach: gh CLI for API calls, Node.js for JSON parsing
  */
 async function scanGitHubWithGhCli(
     github: { owner: string; repo: string; branch: string; path: string },
@@ -90,19 +103,30 @@ async function scanGitHubWithGhCli(
     const repoPath = github.path || '';
 
     try {
-        // List contents of the directory
-        const listCmd = `gh api repos/${github.owner}/${github.repo}/contents/${repoPath}?ref=${github.branch} --jq '.[] | select(.type == "dir") | .name'`;
+        // List contents of the directory (no --jq flag for cross-platform compatibility)
+        const listCmd = `gh api repos/${github.owner}/${github.repo}/contents/${repoPath}?ref=${github.branch}`;
         
         let directories: string[];
         try {
             const { stdout } = await execAsync(listCmd);
-            directories = stdout.trim().split('\n').filter((d: string) => d.length > 0);
+            const parsed = parseGitHubApiResponse(stdout);
+            
+            if (!parsed) {
+                throw new Error('Failed to parse GitHub API response');
+            }
+            
+            // Handle array response (directory listing)
+            const items = Array.isArray(parsed) ? parsed : [parsed];
+            directories = items
+                .filter((item: any) => item.type === 'dir')
+                .map((item: any) => item.name);
         } catch (error) {
             // If the path itself is a skill directory (contains SKILL.md), treat it as a single skill
-            const checkSkillCmd = `gh api repos/${github.owner}/${github.repo}/contents/${repoPath}/${SKILL_FILE}?ref=${github.branch} --jq '.name' 2>/dev/null || echo ''`;
+            const checkSkillCmd = `gh api repos/${github.owner}/${github.repo}/contents/${repoPath}/${SKILL_FILE}?ref=${github.branch}`;
             try {
                 const { stdout: skillCheck } = await execAsync(checkSkillCmd);
-                if (skillCheck.trim() === SKILL_FILE) {
+                const parsed = parseGitHubApiResponse(skillCheck);
+                if (parsed && parsed.name === SKILL_FILE) {
                     const skillName = path.basename(repoPath) || github.repo;
                     const description = await getGitHubSkillDescriptionWithGhCli(github, repoPath);
                     skills.push({
@@ -129,11 +153,12 @@ async function scanGitHubWithGhCli(
         // Check each directory for SKILL.md
         for (const dir of directories) {
             const skillPath = repoPath ? `${repoPath}/${dir}` : dir;
-            const skillFileCheck = `gh api repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch} --jq '.name' 2>/dev/null || echo ''`;
+            const skillFileCheck = `gh api repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch}`;
             
             try {
                 const { stdout } = await execAsync(skillFileCheck);
-                if (stdout.trim() === SKILL_FILE) {
+                const parsed = parseGitHubApiResponse(stdout);
+                if (parsed && parsed.name === SKILL_FILE) {
                     const description = await getGitHubSkillDescriptionWithGhCli(github, skillPath);
                     skills.push({
                         name: dir,
@@ -282,15 +307,23 @@ async function scanGitHubWithHttp(
 
 /**
  * Get skill description from GitHub SKILL.md using gh CLI
+ * Uses cross-platform approach: Node.js for base64 decoding instead of shell commands
  */
 async function getGitHubSkillDescriptionWithGhCli(
     github: { owner: string; repo: string; branch: string },
     skillPath: string
 ): Promise<string | undefined> {
     try {
-        const cmd = `gh api repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch} --jq '.content' | base64 -d | head -5`;
+        const cmd = `gh api repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch}`;
         const { stdout } = await execAsync(cmd);
-        return extractDescriptionFromMarkdown(stdout);
+        const parsed = parseGitHubApiResponse(stdout);
+        
+        if (parsed && parsed.content) {
+            // Content is base64 encoded - decode using Node.js Buffer (cross-platform)
+            const content = Buffer.from(parsed.content, 'base64').toString('utf-8');
+            return extractDescriptionFromMarkdown(content);
+        }
+        return undefined;
     } catch {
         return undefined;
     }

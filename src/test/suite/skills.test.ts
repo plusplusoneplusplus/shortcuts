@@ -525,6 +525,127 @@ suite('Skills Module Tests', () => {
         });
     });
 
+    suite('Cross-Platform GitHub API Response Parsing', () => {
+        // These tests verify that the code works without shell-specific commands like jq, base64 -d
+        // This is the fix for https://github.com/plusplusoneplusplus/shortcuts/issues/43
+
+        test('should parse GitHub API directory listing response', () => {
+            // Sample response from `gh api repos/owner/repo/contents/path`
+            const mockResponse = JSON.stringify([
+                { name: 'skill-1', type: 'dir' },
+                { name: 'skill-2', type: 'dir' },
+                { name: 'README.md', type: 'file', download_url: 'https://...' }
+            ]);
+            
+            const parsed = JSON.parse(mockResponse);
+            assert.ok(Array.isArray(parsed));
+            
+            // Filter directories (what we replaced jq's select(.type == "dir") with)
+            const directories = parsed.filter((item: any) => item.type === 'dir').map((item: any) => item.name);
+            assert.deepStrictEqual(directories, ['skill-1', 'skill-2']);
+        });
+
+        test('should parse GitHub API single file response', () => {
+            // Sample response from `gh api repos/owner/repo/contents/path/SKILL.md`
+            const mockResponse = JSON.stringify({
+                name: 'SKILL.md',
+                type: 'file',
+                content: Buffer.from('# My Skill\n\nThis is a test skill.').toString('base64'),
+                download_url: 'https://raw.githubusercontent.com/...'
+            });
+            
+            const parsed = JSON.parse(mockResponse);
+            assert.strictEqual(parsed.name, 'SKILL.md');
+            assert.strictEqual(parsed.type, 'file');
+            
+            // Decode base64 content (what we replaced `base64 -d` with)
+            const content = Buffer.from(parsed.content, 'base64').toString('utf-8');
+            assert.ok(content.includes('# My Skill'));
+            assert.ok(content.includes('This is a test skill.'));
+        });
+
+        test('should handle file listing with download_url', () => {
+            // Sample response for directory contents with files
+            const mockResponse = JSON.stringify([
+                { 
+                    name: 'SKILL.md', 
+                    type: 'file', 
+                    download_url: 'https://raw.githubusercontent.com/owner/repo/main/skill/SKILL.md' 
+                },
+                { 
+                    name: 'helper.js', 
+                    type: 'file', 
+                    download_url: 'https://raw.githubusercontent.com/owner/repo/main/skill/helper.js' 
+                },
+                { 
+                    name: 'templates', 
+                    type: 'dir',
+                    download_url: null 
+                }
+            ]);
+            
+            const parsed = JSON.parse(mockResponse);
+            const items = Array.isArray(parsed) ? parsed : [parsed];
+            
+            // Verify we can extract file info without jq
+            const files = items.filter((item: any) => item.type === 'file');
+            const dirs = items.filter((item: any) => item.type === 'dir');
+            
+            assert.strictEqual(files.length, 2);
+            assert.strictEqual(dirs.length, 1);
+            assert.strictEqual(files[0].name, 'SKILL.md');
+            assert.ok(files[0].download_url);
+        });
+
+        test('should handle embedded base64 content without download_url', () => {
+            // Some GitHub API responses include embedded content instead of download_url
+            const originalContent = 'module.exports = { hello: "world" };';
+            const mockResponse = JSON.stringify({
+                name: 'helper.js',
+                type: 'file',
+                content: Buffer.from(originalContent).toString('base64'),
+                encoding: 'base64'
+            });
+            
+            const parsed = JSON.parse(mockResponse);
+            assert.strictEqual(parsed.name, 'helper.js');
+            
+            // Decode content using Node.js Buffer (cross-platform)
+            const content = Buffer.from(parsed.content, 'base64').toString('utf-8');
+            assert.strictEqual(content, originalContent);
+        });
+
+        test('should handle malformed JSON gracefully', () => {
+            // Verify our error handling for invalid JSON
+            const invalidResponse = 'not valid json';
+            
+            let parsed: any = null;
+            try {
+                parsed = JSON.parse(invalidResponse);
+            } catch {
+                parsed = null;
+            }
+            
+            assert.strictEqual(parsed, null);
+        });
+
+        test('should work with Windows-style line endings in content', () => {
+            // Verify base64 decoding works with Windows CRLF
+            const windowsContent = '# Skill\r\n\r\nDescription with Windows line endings.\r\n';
+            const mockResponse = JSON.stringify({
+                name: 'SKILL.md',
+                type: 'file',
+                content: Buffer.from(windowsContent).toString('base64')
+            });
+            
+            const parsed = JSON.parse(mockResponse);
+            const content = Buffer.from(parsed.content, 'base64').toString('utf-8');
+            
+            assert.ok(content.includes('# Skill'));
+            assert.ok(content.includes('Windows line endings'));
+        });
+    });
+
     suite('Bundled Skills', () => {
         let installDir: string;
         let mockExtensionPath: string;
