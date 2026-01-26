@@ -7,5 +7,5 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-// Re-export from map-reduce framework
-export { ConcurrencyLimiter, DEFAULT_MAX_CONCURRENCY } from '../map-reduce/concurrency-limiter';
+// Re-export from map-reduce framework (now from pipeline-core)
+export { ConcurrencyLimiter, DEFAULT_MAX_CONCURRENCY } from '../map-reduce';

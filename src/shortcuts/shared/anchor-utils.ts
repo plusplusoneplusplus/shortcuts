@@ -20,7 +20,7 @@ import {
     offsetToLineColumn,
     scoreMatch,
     splitIntoLines
-} from './text-matching';
+} from '@anthropic-ai/pipeline-core';
 
 // Re-export commonly used functions
 export {

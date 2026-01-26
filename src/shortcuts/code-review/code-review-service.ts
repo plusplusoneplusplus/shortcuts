@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { glob } from '../shared/glob-utils';
+import { glob } from '../shared';
 import { parseFrontMatter } from './front-matter-parser';
 import {
     CodeReviewConfig,

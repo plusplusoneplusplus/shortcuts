@@ -34,7 +34,7 @@ export {
     offsetToLineColumn,
     scoreMatch,
     splitIntoLines
-} from '../shared/text-matching';
+} from '../shared';
 
 /**
  * Configuration for anchor creation and matching

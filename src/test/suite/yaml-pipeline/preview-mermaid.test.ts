@@ -15,7 +15,7 @@ import {
     estimateExecutionTime,
     generatePipelineTextDiagram
 } from '../../../shortcuts/yaml-pipeline/ui/preview-mermaid';
-import { PipelineConfig, CSVParseResult } from '../../../shortcuts/yaml-pipeline/types';
+import { PipelineConfig, CSVParseResult } from '../../../shortcuts/yaml-pipeline';
 import { ResourceFileInfo } from '../../../shortcuts/yaml-pipeline/ui/types';
 
 suite('Pipeline Preview Mermaid Tests', () => {

@@ -11,7 +11,7 @@
  */
 
 import * as vscode from 'vscode';
-import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig } from '../types';
+import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig, GenerateState, GeneratedItem } from '..';
 import { PipelineInfo, ResourceFileInfo, ValidationResult } from './types';
 import {
     generatePipelineMermaid,
@@ -20,7 +20,6 @@ import {
     formatFileSize,
     PipelineNodeType
 } from './preview-mermaid';
-import { GenerateState, GeneratedItem } from '../input-generator';
 import { WebviewSetupHelper } from '../../shared/webview/extension-webview-utils';
 
 /**

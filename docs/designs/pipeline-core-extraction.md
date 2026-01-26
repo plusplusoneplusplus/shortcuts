@@ -398,24 +398,24 @@ shortcuts/
 - [x] Update extension to import from `pipeline-core` instead of local files
 - [x] Initialize logger bridge in extension activation
 - [x] Verify all functionality works with core package imports (6900 tests passing)
-- [ ] Remove duplicated files from `src/shortcuts/` (deferred to Phase 5)
+- [x] Remove duplicated files from `src/shortcuts/`
 
 **Current state:** Extension index files re-export from `pipeline-core`. Duplicated source files
-remain in extension for safety but are no longer the primary source. Files that import directly
-have been updated to use `pipeline-core` imports.
+have been removed from the extension. All imports now use either the index files (which re-export
+from pipeline-core) or import directly from `@anthropic-ai/pipeline-core`.
 
 ### Phase 4: Test Migration ✅ COMPLETED
 - [x] Set up vitest for core package (`vitest.config.ts`)
 - [x] Migrated all pure logic tests (see Test Migration Map below)
 - [x] All 569 tests passing in pipeline-core package
 - [x] All 6900 extension tests passing
-- [ ] Remove duplicated tests from extension after Phase 3 completion
+- [x] Remove duplicated tests from extension after Phase 3 completion
 
-### Phase 5: Cleanup 🔲 NOT STARTED
-- [ ] Remove duplicated source files from extension after Phase 3
-- [ ] Remove duplicated test files from extension after Phase 4
-- [ ] Update all AGENTS.md files
-- [ ] Final documentation updates
+### Phase 5: Cleanup ✅ COMPLETED
+- [x] Remove duplicated source files from extension after Phase 3
+- [x] Remove duplicated test files from extension after Phase 4
+- [x] Update all AGENTS.md files
+- [x] Final documentation updates
 
 ## Test Migration Map
 

@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { PipelineConfig, CSVParseResult, isCSVSource, PromptItem } from '../types';
+import { PipelineConfig, CSVParseResult, isCSVSource, PromptItem } from '..';
 import { ResourceFileInfo } from './types';
 
 /**

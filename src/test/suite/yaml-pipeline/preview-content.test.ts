@@ -12,9 +12,8 @@ import {
     getResourceDetails,
     PipelinePreviewData
 } from '../../../shortcuts/yaml-pipeline/ui/preview-content';
-import { PipelineConfig, CSVParseResult } from '../../../shortcuts/yaml-pipeline/types';
+import { PipelineConfig, CSVParseResult, GeneratedItem } from '../../../shortcuts/yaml-pipeline';
 import { ResourceFileInfo, PipelineInfo, ValidationResult, PipelineSource } from '../../../shortcuts/yaml-pipeline/ui/types';
-import { GeneratedItem } from '../../../shortcuts/yaml-pipeline/input-generator';
 
 suite('Pipeline Preview Content Tests', () => {
     // Sample pipeline config with CSV source

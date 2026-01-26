@@ -5,8 +5,7 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { getExtensionLogger, LogCategory } from '../shared';
-import { ensureDirectoryExists, safeExists, safeReadFile, safeWriteFile } from '../shared/file-utils';
+import { getExtensionLogger, LogCategory, ensureDirectoryExists, safeExists, safeReadFile, safeWriteFile } from '../shared';
 import {
     BaseAnchor,
     BaseComment,

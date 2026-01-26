@@ -40,7 +40,7 @@ export {
     offsetToLineColumn,
     scoreMatch,
     splitIntoLines
-} from '../shared/text-matching';
+} from '../shared';
 
 /**
  * Extract text from document content given line range

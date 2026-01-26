@@ -25,14 +25,20 @@ import {
     mapResultToNode
 } from './result-viewer-types';
 import { getResultViewerContent } from './result-viewer-content';
-import { PipelineExecutionResult } from '../executor';
-import { MapResult, AIInvoker, ExecutionStats } from '../../map-reduce/types';
-import { PromptMapResult, PromptMapOutput, PromptItem } from '../../map-reduce/jobs/prompt-map-job';
+import {
+    PipelineExecutionResult,
+    MapResult,
+    AIInvoker,
+    ExecutionStats,
+    PromptMapResult,
+    PromptMapOutput,
+    PromptItem,
+    PipelineConfig,
+    ConcurrencyLimiter
+} from '..';
 import { getWorkspaceRoot } from '../../shared/workspace-utils';
 import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
-import { PipelineConfig } from '../types';
 import { createAIInvoker, getAIModelSetting } from '../../ai-service';
-import { ConcurrencyLimiter } from '../../map-reduce/concurrency-limiter';
 
 /**
  * URI scheme for exporting results

@@ -7,9 +7,16 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { ExecutionStats, ReduceStats, AIInvoker } from '../../map-reduce/types';
-import { PromptMapResult, PromptMapOutput, PromptMapSummary, PromptItem } from '../../map-reduce/jobs/prompt-map-job';
-import { PipelineConfig } from '../types';
+import {
+    ExecutionStats,
+    ReduceStats,
+    AIInvoker,
+    PromptMapResult,
+    PromptMapOutput,
+    PromptMapSummary,
+    PromptItem,
+    PipelineConfig
+} from '..';
 
 /**
  * Retry state for tracking retry operations

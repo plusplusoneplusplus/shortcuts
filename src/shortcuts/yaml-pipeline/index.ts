@@ -119,6 +119,9 @@ export type {
     ExecutorOptions,
     JobProgress,
     MapReduceResult,
+    MapResult,
+    ExecutionStats,
+    ReduceStats,
     PromptItem,
     PromptMapResult,
     PromptMapInput,
@@ -127,6 +130,9 @@ export type {
     PromptMapJobOptions,
     OutputFormat
 } from '@anthropic-ai/pipeline-core';
+
+// Re-export ConcurrencyLimiter from pipeline-core
+export { ConcurrencyLimiter } from '@anthropic-ai/pipeline-core';
 
 // Re-export extractVariables and parseAIResponse/extractJSON from pipeline-core
 export { extractVariables, parseAIResponse, extractJSON } from '@anthropic-ai/pipeline-core';

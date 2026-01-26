@@ -43,12 +43,28 @@ packages/pipeline-core/
 │       ├── http-utils.ts     # HTTP requests
 │       ├── text-matching.ts  # Fuzzy matching
 │       └── ai-response-parser.ts  # JSON extraction
-├── test/                     # Vitest tests
-│   ├── map-reduce/
-│   │   ├── concurrency-limiter.test.ts
-│   │   └── temp-file-utils.test.ts
-│   └── pipeline/
-│       └── csv-reader.test.ts
+├── test/                     # Vitest tests (569 tests total)
+│   ├── map-reduce/           # 162 tests
+│   │   ├── concurrency-limiter.test.ts (21)
+│   │   ├── executor.test.ts (19)
+│   │   ├── prompt-template.test.ts (35)
+│   │   ├── reduce-process-tracking.test.ts (6)
+│   │   ├── reducers.test.ts (20)
+│   │   ├── splitters.test.ts (23)
+│   │   └── temp-file-utils.test.ts (38)
+│   └── pipeline/             # 407 tests
+│       ├── ai-reduce.test.ts (19)
+│       ├── batch-mapping.test.ts (26)
+│       ├── csv-reader.test.ts (40)
+│       ├── edge-cases.test.ts (22)
+│       ├── executor.test.ts (56)
+│       ├── index.test.ts (25)
+│       ├── input-generator.test.ts (48)
+│       ├── multi-model-fanout.test.ts (32)
+│       ├── results-file.test.ts (12)
+│       ├── skill-resolver.test.ts (42)
+│       ├── template.test.ts (65)
+│       └── text-mode.test.ts (38)
 ├── package.json
 ├── tsconfig.json
 └── vitest.config.ts

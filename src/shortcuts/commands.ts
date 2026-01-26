@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { GlobalNotesTreeDataProvider } from './global-notes';
 import { LogicalTreeDataProvider } from './logical-tree-data-provider';
 import { NotificationManager } from './notification-manager';
-import { ensureDirectoryExists, safeExists, safeIsDirectory, safeStats, safeWriteFile } from './shared/file-utils';
+import { ensureDirectoryExists, safeExists, safeIsDirectory, safeStats, safeWriteFile } from './shared';
 import { CommandShortcutItem, CommitShortcutItem, FileShortcutItem, FolderShortcutItem, GlobalNoteItem, LogicalGroupChildItem, LogicalGroupItem, NoteShortcutItem, TaskShortcutItem } from './tree-items';
 import { getExtensionLogger, LogCategory } from './shared/extension-logger';
 import { getWorkspaceRoot, getWorkspaceRootUri } from './shared/workspace-utils';

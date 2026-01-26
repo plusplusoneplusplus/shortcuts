@@ -24,7 +24,7 @@ import {
 } from '../../shortcuts/code-review/types';
 import { aggregateReviewResults } from '../../shortcuts/code-review/response-parser';
 import { parseFrontMatter } from '../../shortcuts/code-review/front-matter-parser';
-import { glob, getFilesWithExtension } from '../../shortcuts/shared/glob-utils';
+import { glob, getFilesWithExtension } from '../../shortcuts/shared';
 
 suite('Code Review Types', () => {
     test('DEFAULT_CODE_REVIEW_CONFIG has correct default values', () => {

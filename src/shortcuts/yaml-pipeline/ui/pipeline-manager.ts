@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
-import { ensureDirectoryExists, readYAML, safeCopyFile, safeExists, safeReadDir, safeReadFile, safeRemove, safeRename, safeStats, safeWriteFile } from '../../shared/file-utils';
+import { ensureDirectoryExists, readYAML, safeCopyFile, safeExists, safeReadDir, safeReadFile, safeRemove, safeRename, safeStats, safeWriteFile } from '../../shared';
 import { PipelineInfo, ValidationResult, PipelinesViewerSettings, PipelineSortBy, ResourceFileInfo, PipelineTemplateType, PIPELINE_TEMPLATES, PipelineSource, BundledPipelineManifest } from './types';
 import { BUNDLED_PIPELINES, getBundledPipelinesPath, getBundledPipelineManifest } from '../bundled';
 

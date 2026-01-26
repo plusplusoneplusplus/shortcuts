@@ -25,8 +25,7 @@ import {
     getItemDetailContent,
     getReduceResultSection
 } from '../../../shortcuts/yaml-pipeline/ui/result-viewer-content';
-import { PromptMapResult } from '../../../shortcuts/map-reduce/jobs/prompt-map-job';
-import { ExecutionStats, ReduceStats } from '../../../shortcuts/map-reduce/types';
+import { PromptMapResult, ExecutionStats, ReduceStats } from '../../../shortcuts/map-reduce';
 
 suite('Pipeline Result Viewer Tests', () => {
     // Sample execution stats

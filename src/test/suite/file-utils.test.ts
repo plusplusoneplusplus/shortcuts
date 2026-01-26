@@ -24,7 +24,7 @@ import {
     safeStats,
     safeWriteFile,
     writeYAML
-} from '../../shortcuts/shared/file-utils';
+} from '../../shortcuts/shared';
 
 suite('File Utilities Tests', function() {
     // Increase timeout for file operations

@@ -6,7 +6,7 @@
 import * as path from 'path';
 import * as os from 'os';
 import { ParsedSource, SkillSourceType } from './types';
-import { safeExists } from '../shared/file-utils';
+import { safeExists } from '../shared';
 
 /**
  * Error messages for source detection

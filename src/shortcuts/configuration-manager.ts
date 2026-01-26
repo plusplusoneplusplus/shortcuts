@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { CURRENT_CONFIG_VERSION, detectConfigVersion, migrateConfig } from './config-migrations';
 import { NotificationManager } from './notification-manager';
 import { getExtensionLogger, LogCategory } from './shared/extension-logger';
-import { ensureDirectoryExists, readYAML, safeExists, safeIsDirectory, safeStats, safeWriteFile, writeYAML } from './shared/file-utils';
+import { ensureDirectoryExists, readYAML, safeExists, safeIsDirectory, safeStats, safeWriteFile, writeYAML } from './shared';
 import { SyncManager } from './sync/sync-manager';
 import { BasePath, CONFIG_DIRECTORY, CONFIG_FILE_NAME, DEFAULT_SHORTCUTS_CONFIG, GlobalNote, LogicalGroup, LogicalGroupItem, ShortcutsConfig, SyncConfig } from './types';
 

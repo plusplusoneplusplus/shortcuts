@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { MockAIProcessManager } from '../../../shortcuts/ai-service/mock-ai-process-manager';
-import { ProcessTracker, ExecutionStats, SessionMetadata } from '../../../shortcuts/map-reduce/types';
+import { ProcessTracker, ExecutionStats, SessionMetadata } from '../../../shortcuts/map-reduce';
 import { AIProcess } from '../../../shortcuts/ai-service/types';
 
 // Import the module under test

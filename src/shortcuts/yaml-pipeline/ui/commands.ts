@@ -17,7 +17,7 @@ import {
     showPipelineResults,
     VSCodePipelineResult
 } from './pipeline-executor-service';
-import { PromptItem } from '../types';
+import { PromptItem } from '..';
 import { PipelineResultViewerProvider } from './result-viewer-provider';
 import { PipelineTemplateType, PIPELINE_TEMPLATES, PipelineSource } from './types';
 import { createBundledPipelineUri } from './bundled-readonly-provider';

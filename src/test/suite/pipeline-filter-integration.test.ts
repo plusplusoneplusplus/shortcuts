@@ -11,13 +11,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import {
     executePipeline,
-    PipelineExecutionError
-} from '../../shortcuts/yaml-pipeline/executor';
-import {
+    PipelineExecutionError,
     PipelineConfig,
     AIInvoker,
     PromptItem
-} from '../../shortcuts/yaml-pipeline/types';
+} from '../../shortcuts/yaml-pipeline';
 
 suite('Pipeline Filter Integration Tests', () => {
     let tempDir: string;

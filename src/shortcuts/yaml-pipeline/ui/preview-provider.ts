@@ -16,8 +16,21 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
-import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig } from '../types';
-import { readCSVFile, resolveCSVPath, getCSVPreview } from '../csv-reader';
+import {
+    PipelineConfig,
+    CSVParseResult,
+    PromptItem,
+    isCSVSource,
+    isGenerateConfig,
+    readCSVFile,
+    resolveCSVPath,
+    getCSVPreview,
+    GenerateState,
+    GeneratedItem,
+    generateInputItems,
+    toGeneratedItems,
+    createEmptyItem
+} from '..';
 import { PipelineInfo, ValidationResult, PipelineSource } from './types';
 import { PipelineManager } from './pipeline-manager';
 import { PipelineItem } from './pipeline-item';
@@ -27,13 +40,6 @@ import {
     PipelinePreviewData,
     ExtensionMessage
 } from './preview-content';
-import {
-    GenerateState,
-    GeneratedItem,
-    generateInputItems,
-    toGeneratedItems,
-    createEmptyItem
-} from '../input-generator';
 import { createAIInvoker } from '../../ai-service';
 import { getWorkspaceRoot } from '../../shared/workspace-utils';
 import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
