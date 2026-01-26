@@ -149,12 +149,12 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
-    getAIBackendSetting,
-    getSDKMaxSessionsSetting,
-    getSDKSessionTimeoutSetting,
     SendMessageOptions,
     SDKInvocationResult,
     SDKAvailabilityResult,
+    // Session pool configuration (for VS Code-free usage)
+    SessionPoolConfig,
+    DEFAULT_SESSION_POOL_CONFIG,
     // Permission handling types and helpers
     PermissionRequest,
     PermissionRequestResult,
@@ -162,6 +162,13 @@ export {
     approveAllPermissions,
     denyAllPermissions
 } from './copilot-sdk-service';
+
+// Export AI config helpers (VS Code-specific)
+export {
+    getAIBackendSetting,
+    getSDKMaxSessionsSetting,
+    getSDKSessionTimeoutSetting
+} from './ai-config-helpers';
 
 // Export session pool for advanced use cases
 export {

@@ -14,7 +14,8 @@
  */
 
 import { copyToClipboard, invokeCopilotCLI } from './copilot-cli-invoker';
-import { getCopilotSDKService, getAIBackendSetting } from './copilot-sdk-service';
+import { getCopilotSDKService } from './copilot-sdk-service';
+import { getAIBackendSetting } from './ai-config-helpers';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
 import { AIInvocationResult } from './types';
 

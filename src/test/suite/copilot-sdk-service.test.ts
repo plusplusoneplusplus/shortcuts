@@ -17,13 +17,15 @@ import {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
-    getAIBackendSetting,
-    getSDKMaxSessionsSetting,
-    getSDKSessionTimeoutSetting,
     SDKAvailabilityResult,
     SDKInvocationResult,
     SendMessageOptions
 } from '../../shortcuts/ai-service/copilot-sdk-service';
+import {
+    getAIBackendSetting,
+    getSDKMaxSessionsSetting,
+    getSDKSessionTimeoutSetting
+} from '../../shortcuts/ai-service/ai-config-helpers';
 import { AIBackendType } from '../../shortcuts/ai-service/types';
 
 // ============================================================================

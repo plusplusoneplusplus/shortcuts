@@ -14,10 +14,9 @@
  * @see https://github.com/github/copilot-sdk
  */
 
-import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { AIInvocationResult, AIBackendType } from './types';
+import { AIInvocationResult } from './types';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
 // Note: SessionPool is kept for backward compatibility but not used for clarification requests
 import { SessionPool, IPoolableSession, SessionPoolStats } from './session-pool';
@@ -289,6 +288,26 @@ interface ISessionEvent {
  * }
  * ```
  */
+/**
+ * Configuration options for the session pool.
+ * These are passed to the service to avoid VS Code dependencies.
+ */
+export interface SessionPoolConfig {
+    /** Maximum number of concurrent sessions in the pool (default: 5) */
+    maxSessions?: number;
+    /** Idle timeout in milliseconds before sessions are destroyed (default: 300000 = 5 minutes) */
+    idleTimeoutMs?: number;
+}
+
+/**
+ * Default session pool configuration values.
+ * These match the VS Code setting defaults.
+ */
+export const DEFAULT_SESSION_POOL_CONFIG: Required<SessionPoolConfig> = {
+    maxSessions: 5,
+    idleTimeoutMs: 300000
+};
+
 export class CopilotSDKService {
     private static instance: CopilotSDKService | null = null;
 
@@ -298,6 +317,7 @@ export class CopilotSDKService {
     private initializationPromise: Promise<void> | null = null;
     private availabilityCache: SDKAvailabilityResult | null = null;
     private sessionPool: SessionPool | null = null;
+    private sessionPoolConfig: Required<SessionPoolConfig> = { ...DEFAULT_SESSION_POOL_CONFIG };
     private disposed = false;
 
     /** Map of active sessions for cancellation support */
@@ -328,6 +348,26 @@ export class CopilotSDKService {
             CopilotSDKService.instance.dispose();
             CopilotSDKService.instance = null;
         }
+    }
+
+    /**
+     * Configure the session pool settings.
+     * Call this before using the session pool to override default values.
+     * Typically called during extension activation with values from VS Code settings.
+     *
+     * @param config Session pool configuration
+     */
+    public configureSessionPool(config: SessionPoolConfig): void {
+        this.sessionPoolConfig = {
+            maxSessions: config.maxSessions ?? DEFAULT_SESSION_POOL_CONFIG.maxSessions,
+            idleTimeoutMs: config.idleTimeoutMs ?? DEFAULT_SESSION_POOL_CONFIG.idleTimeoutMs
+        };
+
+        const logger = getExtensionLogger();
+        logger.debug(
+            LogCategory.AI,
+            `CopilotSDKService: Session pool configured with maxSessions=${this.sessionPoolConfig.maxSessions}, idleTimeoutMs=${this.sessionPoolConfig.idleTimeoutMs}`
+        );
     }
 
     /**
@@ -691,8 +731,8 @@ export class CopilotSDKService {
                 return session as IPoolableSession;
             },
             {
-                maxSessions: getSDKMaxSessionsSetting(),
-                idleTimeoutMs: getSDKSessionTimeoutSetting()
+                maxSessions: this.sessionPoolConfig.maxSessions,
+                idleTimeoutMs: this.sessionPoolConfig.idleTimeoutMs
             }
         );
 
@@ -999,48 +1039,6 @@ export class CopilotSDKService {
             });
         });
     }
-}
-
-// ============================================================================
-// Configuration Helpers
-// ============================================================================
-
-/**
- * Get the configured AI backend from VS Code settings.
- *
- * @returns The configured backend type
- */
-export function getAIBackendSetting(): AIBackendType {
-    const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService');
-    const backend = config.get<string>('backend', 'copilot-cli');
-
-    // Validate the backend setting
-    if (backend === 'copilot-sdk' || backend === 'copilot-cli' || backend === 'clipboard') {
-        return backend;
-    }
-
-    // Default to copilot-cli if invalid value
-    return 'copilot-cli';
-}
-
-/**
- * Get the SDK max sessions setting.
- *
- * @returns Maximum number of concurrent SDK sessions
- */
-export function getSDKMaxSessionsSetting(): number {
-    const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
-    return config.get<number>('maxSessions', 5);
-}
-
-/**
- * Get the SDK session timeout setting.
- *
- * @returns Session timeout in milliseconds
- */
-export function getSDKSessionTimeoutSetting(): number {
-    const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
-    return config.get<number>('sessionTimeout', 300000);
 }
 
 // ============================================================================
