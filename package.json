@@ -2652,12 +2652,6 @@
         "key": "ctrl+z",
         "mac": "cmd+z",
         "when": "focusedView == shortcutsView"
-      },
-      {
-        "command": "gitDiffComments.addComment",
-        "key": "ctrl+shift+m",
-        "mac": "cmd+shift+m",
-        "when": "activeCustomEditorId == gitDiffReviewEditor"
       }
     ]
   },
