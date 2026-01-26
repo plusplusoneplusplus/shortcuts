@@ -15,7 +15,7 @@ import {
     PipelineConfig,
     AIInvoker,
     PromptItem
-} from '../../shortcuts/yaml-pipeline';
+} from '@plusplusoneplusplus/pipeline-core';
 
 suite('Pipeline Filter Integration Tests', () => {
     let tempDir: string;

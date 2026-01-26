@@ -16,7 +16,7 @@ import {
     PromptMapSummary,
     PromptItem,
     PipelineConfig
-} from '..';
+} from '@plusplusoneplusplus/pipeline-core';
 
 /**
  * Retry state for tracking retry operations

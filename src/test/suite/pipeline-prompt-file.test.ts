@@ -6,7 +6,7 @@ import {
   parsePipelineYAML,
   parsePipelineYAMLSync,
   PipelineExecutionError
-} from '../../shortcuts/yaml-pipeline';
+} from '@plusplusoneplusplus/pipeline-core';
 
 suite('Pipeline Prompt File Integration Tests', () => {
   let tempDir: string;

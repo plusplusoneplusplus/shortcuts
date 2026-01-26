@@ -12,7 +12,7 @@ import {
     getResourceDetails,
     PipelinePreviewData
 } from '../../../shortcuts/yaml-pipeline/ui/preview-content';
-import { PipelineConfig, CSVParseResult, GeneratedItem } from '../../../shortcuts/yaml-pipeline';
+import { PipelineConfig, CSVParseResult, GeneratedItem } from '@plusplusoneplusplus/pipeline-core';
 import { ResourceFileInfo, PipelineInfo, ValidationResult, PipelineSource } from '../../../shortcuts/yaml-pipeline/ui/types';
 
 suite('Pipeline Preview Content Tests', () => {

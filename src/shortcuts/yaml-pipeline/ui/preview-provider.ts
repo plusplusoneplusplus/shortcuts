@@ -30,7 +30,7 @@ import {
     generateInputItems,
     toGeneratedItems,
     createEmptyItem
-} from '..';
+} from '@plusplusoneplusplus/pipeline-core';
 import { PipelineInfo, ValidationResult, PipelineSource } from './types';
 import { PipelineManager } from './pipeline-manager';
 import { PipelineItem } from './pipeline-item';

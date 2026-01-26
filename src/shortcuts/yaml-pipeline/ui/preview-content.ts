@@ -11,7 +11,7 @@
  */
 
 import * as vscode from 'vscode';
-import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig, GenerateState, GeneratedItem } from '..';
+import { PipelineConfig, CSVParseResult, PromptItem, isCSVSource, isGenerateConfig, GenerateState, GeneratedItem } from '@plusplusoneplusplus/pipeline-core';
 import { PipelineInfo, ResourceFileInfo, ValidationResult } from './types';
 import {
     generatePipelineMermaid,

@@ -12,7 +12,7 @@ import {
     promptFileExists,
     validatePromptFile,
     PromptResolverError
-} from '../../shortcuts/yaml-pipeline';
+} from '@plusplusoneplusplus/pipeline-core';
 
 suite('Prompt Resolver Tests', () => {
     let tempDir: string;
