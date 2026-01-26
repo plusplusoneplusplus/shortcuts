@@ -128,7 +128,7 @@ export function getLogger(): Logger {
 
 ```typescript
 // vscode-extension/src/adapters/logger-adapter.ts
-import { Logger, setLogger } from '@anthropic-ai/pipeline-core';
+import { Logger, setLogger } from 'pipeline-core';
 import { getExtensionLogger, LogCategory } from './shared/extension-logger';
 
 export function initializeCoreLogger(): void {
@@ -202,7 +202,7 @@ export function initializeCoreLogger(): void {
 
 ```json
 {
-  "name": "@anthropic-ai/pipeline-core",
+  "name": "pipeline-core",
   "version": "1.0.0",
   "description": "AI pipeline execution engine with map-reduce framework",
   "main": "dist/index.js",
@@ -286,7 +286,7 @@ import {
     executePipeline,
     consoleLogger,
     setLogger
-} from '@anthropic-ai/pipeline-core';
+} from 'pipeline-core';
 import { readFileSync } from 'fs';
 
 // Use console logger (default)
@@ -320,7 +320,7 @@ console.log('Results:', result.outputs);
 import {
     CopilotSDKService,
     setLogger
-} from '@anthropic-ai/pipeline-core';
+} from 'pipeline-core';
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from './shared/extension-logger';
 
@@ -352,11 +352,11 @@ export function activate(context: vscode.ExtensionContext) {
 shortcuts/
 ├── package.json                  # Workspace root
 ├── packages/
-│   └── pipeline-core/            # @anthropic-ai/pipeline-core
+│   └── pipeline-core/            # pipeline-core
 │       ├── package.json
 │       └── src/
 └── vscode-extension/             # VS Code extension
-    ├── package.json              # depends on @anthropic-ai/pipeline-core
+    ├── package.json              # depends on pipeline-core
     └── src/
         ├── extension.ts
         └── shortcuts/
@@ -383,29 +383,82 @@ shortcuts/
 
 ## Implementation Tasks
 
-### Phase 1: Setup
-- [ ] Create monorepo structure with npm workspaces
-- [ ] Set up `packages/pipeline-core/` with package.json and tsconfig
-- [ ] Create logger abstraction module
+### Phase 1: Setup ✅ COMPLETED
+- [x] Create monorepo structure with npm workspaces
+- [x] Set up `packages/pipeline-core/` with package.json and tsconfig
+- [x] Create logger abstraction module
 
-### Phase 2: Move Files
-- [ ] Move map-reduce module (no changes needed)
-- [ ] Move pipeline module (no changes needed)
-- [ ] Move utils module (no changes needed)
-- [ ] Move ai module, update logger imports
+### Phase 2: Copy Files ✅ COMPLETED
+- [x] Copy map-reduce module to core package
+- [x] Copy pipeline module to core package
+- [x] Copy utils module to core package
+- [x] Copy ai module to core package
 
-### Phase 3: Update Extension
-- [ ] Move extension source to `vscode-extension/`
-- [ ] Add dependency on `@anthropic-ai/pipeline-core`
-- [ ] Create logger bridge in extension activation
-- [ ] Update all imports to use core package
-- [ ] Remove migrated files
+### Phase 3: Update Extension ⚠️ NOT STARTED
+- [ ] Update extension to import from `pipeline-core` instead of local files
+- [ ] Remove duplicated files from `src/shortcuts/` after migration
+- [ ] Initialize logger bridge in extension activation
+- [ ] Verify all functionality works with core package imports
 
-### Phase 4: Testing
-- [ ] Set up vitest for core package
-- [ ] Move/create pure Node.js tests
-- [ ] Update extension tests
-- [ ] Verify end-to-end functionality
+**Current state:** Files exist in BOTH locations (duplicated):
+- `packages/pipeline-core/src/ai/copilot-sdk-service.ts` (core)
+- `src/shortcuts/ai-service/copilot-sdk-service.ts` (extension - still used)
+
+### Phase 4: Test Migration ✅ COMPLETED
+- [x] Set up vitest for core package (`vitest.config.ts`)
+- [x] Migrated all pure logic tests (see Test Migration Map below)
+- [x] All 569 tests passing in pipeline-core package
+- [x] All 6900 extension tests passing
+- [ ] Remove duplicated tests from extension after Phase 3 completion
+
+### Phase 5: Cleanup 🔲 NOT STARTED
+- [ ] Remove duplicated source files from extension after Phase 3
+- [ ] Remove duplicated test files from extension after Phase 4
+- [ ] Update all AGENTS.md files
+- [ ] Final documentation updates
+
+## Test Migration Map
+
+### Map-Reduce Tests
+
+| Test File | Status | Tests | Destination |
+|-----------|--------|-------|-------------|
+| `concurrency-limiter.test.ts` | ✅ Migrated | 21 | `test/map-reduce/` |
+| `temp-file-utils.test.ts` | ✅ Migrated | 38 | `test/map-reduce/` |
+| `executor.test.ts` | ✅ Migrated | 19 | `test/map-reduce/` |
+| `prompt-template.test.ts` | ✅ Migrated | 35 | `test/map-reduce/` |
+| `reducers.test.ts` | ✅ Migrated | 20 | `test/map-reduce/` |
+| `splitters.test.ts` | ✅ Migrated | 23 | `test/map-reduce/` |
+| `reduce-process-tracking.test.ts` | ✅ Migrated | 6 | `test/map-reduce/` |
+
+### Pipeline Tests
+
+| Test File | Status | Tests | Destination |
+|-----------|--------|-------|-------------|
+| `csv-reader.test.ts` | ✅ Migrated | 40 | `test/pipeline/` |
+| `executor.test.ts` | ✅ Migrated | 56 | `test/pipeline/` |
+| `template.test.ts` | ✅ Migrated | 65 | `test/pipeline/` |
+| `skill-resolver.test.ts` | ✅ Migrated | 42 | `test/pipeline/` |
+| `input-generator.test.ts` | ✅ Migrated | 48 | `test/pipeline/` |
+| `edge-cases.test.ts` | ✅ Migrated | 22 | `test/pipeline/` |
+| `ai-reduce.test.ts` | ✅ Migrated | 19 | `test/pipeline/` |
+| `batch-mapping.test.ts` | ✅ Migrated | 26 | `test/pipeline/` |
+| `text-mode.test.ts` | ✅ Migrated | 38 | `test/pipeline/` |
+| `results-file.test.ts` | ✅ Migrated | 12 | `test/pipeline/` |
+| `multi-model-fanout.test.ts` | ✅ Migrated | 32 | `test/pipeline/` |
+| `index.test.ts` | ✅ Migrated | 25 | `test/pipeline/` |
+
+**Total: 569 tests migrated to pipeline-core package**
+
+### Tests That Stay in Extension (VS Code UI)
+
+| Test File | Reason |
+|-----------|--------|
+| `commands.test.ts` | Tests VS Code commands |
+| `pipeline-executor-service.test.ts` | Uses MockAIProcessManager, VS Code integration |
+| `preview-content.test.ts` | Tests UI, imports from `ui/types` |
+| `preview-mermaid.test.ts` | Tests UI, imports from `ui/types` |
+| `result-viewer.test.ts` | Tests UI content generation |
 
 ## What Stays in Extension
 
