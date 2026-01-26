@@ -230,3 +230,21 @@ export function sendPinTab(): void {
     });
 }
 
+/**
+ * Request prompt files for context menu
+ */
+export function requestPromptFiles(): void {
+    postMessage({
+        type: 'requestPromptFiles'
+    });
+}
+
+/**
+ * Request skills for context menu
+ */
+export function requestSkills(): void {
+    postMessage({
+        type: 'requestSkills'
+    });
+}
+

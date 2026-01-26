@@ -417,7 +417,11 @@ export function buildSkillSubmenuHTML(
         const itemClass = `${getClassName('context-menu-item', mergedConfig)} skill-item`;
         const dataName = `data-skill-name="${encodeURIComponent(skill.name)}"`;
         const dataPath = `data-skill-path="${encodeURIComponent(skill.absolutePath)}"`;
-        const title = `title="${skill.relativePath}"`;
+        // Use description for tooltip if available, otherwise use relative path
+        const tooltipText = skill.description 
+            ? `${skill.name}: ${skill.description}` 
+            : skill.relativePath;
+        const title = `title="${tooltipText.replace(/"/g, '&quot;')}"`;
         
         const icon = `<span class="menu-icon">🎯</span>`;
         const label = mergedConfig.richMenuItems

@@ -308,6 +308,10 @@ export interface DiffClarificationContext {
     instructionType: DiffAIInstructionType;
     /** Custom instruction text (only used when instructionType is 'custom') */
     customInstruction?: string;
+    /** Optional content from a prompt file to include */
+    promptFileContent?: string;
+    /** Optional name of the skill being used */
+    skillName?: string;
 }
 
 /**
@@ -323,6 +327,10 @@ export interface DiffAskAIContext {
     customInstruction?: string;
     /** Mode for AI command execution ('comment' or 'interactive') */
     mode: AICommandMode;
+    /** Optional path to prompt file to include as context */
+    promptFilePath?: string;
+    /** Optional skill name to use for this request */
+    skillName?: string;
 }
 
 /**
@@ -330,7 +338,7 @@ export interface DiffAskAIContext {
  */
 export interface DiffWebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'askAIInteractive' | 'saveContent' | 'contentModified' | 'pinTab';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'askAIInteractive' | 'saveContent' | 'contentModified' | 'pinTab' | 'requestPromptFiles' | 'requestSkills';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;

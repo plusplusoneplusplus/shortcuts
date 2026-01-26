@@ -1257,14 +1257,48 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         const workspaceRoot = getWorkspaceRoot();
         const skills = await getSkills(workspaceRoot || undefined);
 
+        // Map to include descriptions if available
+        const skillsWithDescriptions = await Promise.all(
+            skills.map(async (skill) => {
+                const description = await this.readSkillDescription(skill.absolutePath);
+                return {
+                    absolutePath: skill.absolutePath,
+                    relativePath: skill.relativePath,
+                    name: skill.name,
+                    description
+                };
+            })
+        );
+
         webviewPanel.webview.postMessage({
             type: 'skillsResponse',
-            skills: skills.map(s => ({
-                absolutePath: s.absolutePath,
-                relativePath: s.relativePath,
-                name: s.name
-            }))
+            skills: skillsWithDescriptions
         });
+    }
+
+    /**
+     * Read the description from a skill's SKILL.md YAML frontmatter
+     * @param skillPath - Absolute path to the skill directory
+     * @returns The description if found, or undefined
+     */
+    private async readSkillDescription(skillPath: string): Promise<string | undefined> {
+        const skillMdPath = path.join(skillPath, 'SKILL.md');
+        try {
+            const content = await fs.promises.readFile(skillMdPath, 'utf-8');
+            // Parse YAML frontmatter
+            const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+            if (frontmatterMatch) {
+                const frontmatter = frontmatterMatch[1];
+                // Simple extraction of description field
+                const descriptionMatch = frontmatter.match(/^description:\s*(.+)$/m);
+                if (descriptionMatch) {
+                    return descriptionMatch[1].trim();
+                }
+            }
+        } catch {
+            // Ignore errors
+        }
+        return undefined;
     }
 
     /**

@@ -9,6 +9,8 @@ import * as vscode from 'vscode';
 import { IAIProcessManager, getAICommandRegistry, getInteractiveSessionManager } from '../ai-service';
 import { getExtensionLogger, LogCategory } from '../shared';
 import { getPredefinedCommentRegistry } from '../shared/predefined-comment-registry';
+import { getPromptFiles } from '../shared/prompt-files-utils';
+import { getSkills } from '../shared/skill-files-utils';
 import { DiffCommentsManager } from './diff-comments-manager';
 import {
     createCommittedGitContext,
@@ -667,6 +669,14 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
                 }
                 break;
 
+            case 'requestPromptFiles':
+                await this.handleRequestPromptFiles(panel);
+                break;
+
+            case 'requestSkills':
+                await this.handleRequestSkills(panel);
+                break;
+
             case 'saveContent':
                 if (message.newContent !== undefined && isEditable) {
                     // Pin the preview panel when saving content - user is editing the file
@@ -755,6 +765,14 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         // Get workspace root from git context
         const workspaceRoot = gitContext.repositoryRoot;
 
+        // Read prompt file content if specified
+        let promptFileContent: string | undefined;
+        if (context.promptFilePath) {
+            promptFileContent = await this.readPromptFile(context.promptFilePath);
+        } else if (context.skillName) {
+            promptFileContent = await this.readSkillPrompt(context.skillName, workspaceRoot);
+        }
+
         // Build clarification context
         const clarificationContext: DiffClarificationContext = {
             selectedText: context.selectedText,
@@ -766,7 +784,9 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             filePath: filePath,
             surroundingContent: context.surroundingLines,
             instructionType: context.instructionType,
-            customInstruction: context.customInstruction
+            customInstruction: context.customInstruction,
+            promptFileContent,
+            skillName: context.skillName
         };
 
         const result = await handleDiffAIClarification(clarificationContext, workspaceRoot, this.aiProcessManager);
@@ -839,8 +859,24 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
     ): Promise<void> {
         const workspaceRoot = gitContext.repositoryRoot;
 
+        // Read prompt file or skill content if specified
+        let promptFileContent: string | undefined;
+        if (context.promptFilePath) {
+            promptFileContent = await this.readPromptFile(context.promptFilePath);
+        } else if (context.skillName) {
+            promptFileContent = await this.readSkillPrompt(context.skillName, workspaceRoot);
+        }
+
         // Build the prompt from the context
         const promptParts: string[] = [];
+        
+        // If there's a prompt file or skill, include its content at the top
+        if (promptFileContent) {
+            promptParts.push('--- Instructions from template ---');
+            promptParts.push(promptFileContent);
+            promptParts.push('');
+            promptParts.push('--- Diff context ---');
+        }
         
         // Add file and git context
         promptParts.push(`File: ${filePath}`);
@@ -859,7 +895,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         // Add the instruction based on command type
         if (context.customInstruction) {
             promptParts.push(`Instruction: ${context.customInstruction}`);
-        } else {
+        } else if (!promptFileContent) {
+            // Only add default instructions if no prompt file/skill is specified
             const instructionMap: Record<string, string> = {
                 'clarify': 'Please clarify and explain the selected code change.',
                 'go-deeper': 'Please provide a deep analysis of the selected code change, including implications, potential issues, and suggestions.',
@@ -899,6 +936,104 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         } else {
             vscode.window.showErrorMessage('Failed to start interactive AI session. Please check that the AI CLI tool is installed.');
         }
+    }
+
+    /**
+     * Handle request for prompt files
+     */
+    private async handleRequestPromptFiles(panel: vscode.WebviewPanel): Promise<void> {
+        const promptFiles = await getPromptFiles();
+        panel.webview.postMessage({
+            type: 'promptFilesResponse',
+            promptFiles
+        });
+    }
+
+    /**
+     * Handle request for skills
+     */
+    private async handleRequestSkills(panel: vscode.WebviewPanel): Promise<void> {
+        const skills = await getSkills();
+        // Map to include descriptions if available
+        const skillsWithDescriptions = await Promise.all(
+            skills.map(async (skill) => {
+                const description = await this.readSkillDescription(skill.absolutePath);
+                return {
+                    ...skill,
+                    description
+                };
+            })
+        );
+        panel.webview.postMessage({
+            type: 'skillsResponse',
+            skills: skillsWithDescriptions
+        });
+    }
+
+    /**
+     * Read the content of a prompt file
+     * @param promptFilePath - Absolute path to the prompt file
+     * @returns The content of the prompt file, or undefined if it couldn't be read
+     */
+    private async readPromptFile(promptFilePath: string): Promise<string | undefined> {
+        try {
+            const content = await fs.promises.readFile(promptFilePath, 'utf-8');
+            return content;
+        } catch (error) {
+            console.error(`Error reading prompt file: ${promptFilePath}`, error);
+            return undefined;
+        }
+    }
+
+    /**
+     * Read the prompt content from a skill
+     * @param skillName - Name of the skill
+     * @param workspaceRoot - The workspace root directory
+     * @returns The content of the skill's prompt.md, or undefined if not found
+     */
+    private async readSkillPrompt(skillName: string, workspaceRoot: string): Promise<string | undefined> {
+        // Look for prompt.md in the skill directory
+        const skillPromptPath = path.join(workspaceRoot, '.github', 'skills', skillName, 'prompt.md');
+        
+        try {
+            const content = await fs.promises.readFile(skillPromptPath, 'utf-8');
+            return content;
+        } catch {
+            // If prompt.md doesn't exist, try SKILL.md as fallback
+            const skillMdPath = path.join(workspaceRoot, '.github', 'skills', skillName, 'SKILL.md');
+            try {
+                const content = await fs.promises.readFile(skillMdPath, 'utf-8');
+                return content;
+            } catch {
+                console.error(`No prompt file found for skill: ${skillName}`);
+                return undefined;
+            }
+        }
+    }
+
+    /**
+     * Read the description from a skill's SKILL.md YAML frontmatter
+     * @param skillPath - Absolute path to the skill directory
+     * @returns The description if found, or undefined
+     */
+    private async readSkillDescription(skillPath: string): Promise<string | undefined> {
+        const skillMdPath = path.join(skillPath, 'SKILL.md');
+        try {
+            const content = await fs.promises.readFile(skillMdPath, 'utf-8');
+            // Parse YAML frontmatter
+            const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+            if (frontmatterMatch) {
+                const frontmatter = frontmatterMatch[1];
+                // Simple extraction of description field
+                const descriptionMatch = frontmatter.match(/^description:\s*(.+)$/m);
+                if (descriptionMatch) {
+                    return descriptionMatch[1].trim();
+                }
+            }
+        } catch {
+            // Ignore errors
+        }
+        return undefined;
     }
 
     /**

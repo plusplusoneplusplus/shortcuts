@@ -6,10 +6,10 @@
  * Uses shared context menu module for consistent context menu behavior.
  */
 
-import { AICommandMode, AskAIContext, DiffComment, DiffSide, SelectionState, SerializedAICommand, SerializedAIMenuConfig, SerializedPredefinedComment } from './types';
+import { AICommandMode, AskAIContext, DiffComment, DiffSide, PromptFileInfo, SelectionState, SerializedAICommand, SerializedAIMenuConfig, SerializedPredefinedComment, SkillInfo } from './types';
 import { endInteraction, getState, setCommentPanelOpen, setEditingCommentId, startInteraction } from './state';
 import { clearSelection, toDiffSelection } from './selection-handler';
-import { sendAddComment, sendAskAI, sendAskAIInteractive, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
+import { requestPromptFiles, requestSkills, sendAddComment, sendAskAI, sendAskAIInteractive, sendDeleteComment, sendEditComment, sendReopenComment, sendResolveComment } from './vscode-bridge';
 import {
     calculateBubbleDimensions,
     DEFAULT_RESIZE_CONSTRAINTS,
@@ -152,7 +152,11 @@ export function initPanelElements(): void {
                 }
             },
             onPredefinedComment: handlePredefinedComment,
-            onAskAI: handleAICommandClick
+            onAskAI: handleAICommandClick,
+            onPromptFileSelected: handlePromptFileSelected,
+            onSkillSelected: handleSkillSelected,
+            onRequestPromptFiles: handleRequestPromptFiles,
+            onRequestSkills: handleRequestSkills
         }
     );
     contextMenuManager.init();
@@ -166,11 +170,11 @@ export function initPanelElements(): void {
             cancelLabel: 'Cancel'
         },
         {
-            onSubmit: (instruction, commandId, mode) => {
+            onSubmit: (instruction, commandId, mode, promptFilePath, skillName) => {
                 // Restore the selection and send Ask AI request
                 if (savedSelectionForAskAI) {
                     currentPanelSelection = savedSelectionForAskAI;
-                    handleAskAI(commandId, instruction, mode);
+                    handleAskAI(commandId, instruction, mode, promptFilePath, skillName);
                     savedSelectionForAskAI = null;
                 }
             }
@@ -1002,7 +1006,7 @@ function setupPanelDrag(panel: HTMLElement): void {
  * @param customInstruction - Optional custom instruction text (for custom input commands)
  * @param mode - The AI command mode ('comment' or 'interactive')
  */
-function handleAskAI(commandId: string, customInstruction?: string, mode: AICommandMode = 'comment'): void {
+function handleAskAI(commandId: string, customInstruction?: string, mode: AICommandMode = 'comment', promptFilePath?: string, skillName?: string): void {
     if (!currentPanelSelection) {
         console.log('[Diff Webview] No selection for Ask AI');
         return;
@@ -1023,7 +1027,9 @@ function handleAskAI(commandId: string, customInstruction?: string, mode: AIComm
         surroundingLines,
         instructionType: commandId,
         customInstruction,
-        mode
+        mode,
+        promptFilePath,
+        skillName
     };
 
     // Send to extension based on mode
@@ -1061,6 +1067,76 @@ function extractSurroundingLines(side: DiffSide, startLine: number, endLine: num
 }
 
 // Custom instruction dialog is handled by the shared CustomInstructionDialog class
+
+/**
+ * Handle prompt file selection from context menu
+ * Opens the custom instruction dialog with the prompt file info
+ */
+function handlePromptFileSelected(promptFilePath: string): void {
+    if (!currentPanelSelection || !customInstructionDialogManager) {
+        return;
+    }
+    savedSelectionForAskAI = currentPanelSelection;
+    
+    // Extract just the filename for display
+    const fileName = promptFilePath.split('/').pop() || promptFilePath;
+    customInstructionDialogManager.updateTitle(`Using: ${fileName}`);
+    customInstructionDialogManager.setPromptFilePath(promptFilePath);
+    customInstructionDialogManager.setSkillName(undefined);
+    customInstructionDialogManager.show(currentPanelSelection.selectedText, 'custom', 'comment');
+}
+
+/**
+ * Handle skill selection from context menu
+ * Opens the custom instruction dialog with the skill info
+ */
+function handleSkillSelected(skillName: string, _skillPath: string): void {
+    if (!currentPanelSelection || !customInstructionDialogManager) {
+        return;
+    }
+    savedSelectionForAskAI = currentPanelSelection;
+    
+    customInstructionDialogManager.updateTitle(`Using Skill: ${skillName}`);
+    customInstructionDialogManager.setSkillName(skillName);
+    customInstructionDialogManager.setPromptFilePath(undefined);
+    customInstructionDialogManager.show(currentPanelSelection.selectedText, 'custom', 'comment');
+}
+
+/**
+ * Handle request for prompt files
+ * Sends message to extension to get available prompt files
+ */
+function handleRequestPromptFiles(): void {
+    requestPromptFiles();
+}
+
+/**
+ * Handle request for skills
+ * Sends message to extension to get available skills
+ */
+function handleRequestSkills(): void {
+    requestSkills();
+}
+
+/**
+ * Update prompt file submenu with available files
+ * Called when extension sends prompt files response
+ */
+export function updatePromptFileSubmenu(promptFiles: PromptFileInfo[]): void {
+    if (contextMenuManager) {
+        contextMenuManager.setPromptFiles(promptFiles);
+    }
+}
+
+/**
+ * Update skill submenu with available skills
+ * Called when extension sends skills response
+ */
+export function updateSkillSubmenu(skills: SkillInfo[]): void {
+    if (contextMenuManager) {
+        contextMenuManager.setSkills(skills);
+    }
+}
 
 /**
  * Update context menu visibility based on settings

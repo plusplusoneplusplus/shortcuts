@@ -195,6 +195,8 @@ export interface SkillInfo {
     relativePath: string;
     /** Skill name (directory name) */
     name: string;
+    /** Optional description from SKILL.md frontmatter */
+    description?: string;
 }
 
 /**

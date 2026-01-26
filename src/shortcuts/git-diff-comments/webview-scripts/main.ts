@@ -3,7 +3,7 @@
  */
 
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
-import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, rebuildPredefinedSubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings } from './panel-manager';
+import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, rebuildPredefinedSubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings, updatePromptFileSubmenu, updateSkillSubmenu } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
@@ -141,6 +141,18 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
         case 'scrollToComment':
             if (message.scrollToCommentId) {
                 scrollToComment(message.scrollToCommentId);
+            }
+            break;
+
+        case 'promptFilesResponse':
+            if (message.promptFiles) {
+                updatePromptFileSubmenu(message.promptFiles);
+            }
+            break;
+
+        case 'skillsResponse':
+            if (message.skills) {
+                updateSkillSubmenu(message.skills);
             }
             break;
     }

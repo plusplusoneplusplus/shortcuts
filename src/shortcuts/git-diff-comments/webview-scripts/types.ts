@@ -134,7 +134,7 @@ export interface InitialData {
  * Message from extension to webview
  */
 export interface ExtensionMessage {
-    type: 'update' | 'commentAdded' | 'commentUpdated' | 'commentDeleted' | 'scrollToComment';
+    type: 'update' | 'commentAdded' | 'commentUpdated' | 'commentDeleted' | 'scrollToComment' | 'promptFilesResponse' | 'skillsResponse';
     oldContent?: string;
     newContent?: string;
     comments?: DiffComment[];
@@ -145,6 +145,10 @@ export interface ExtensionMessage {
     scrollToCommentId?: string;
     /** Whether the new content is editable (uncommitted changes) */
     isEditable?: boolean;
+    /** Prompt files for context menu */
+    promptFiles?: PromptFileInfo[];
+    /** Skills for context menu */
+    skills?: SkillInfo[];
 }
 
 /**
@@ -168,6 +172,38 @@ export interface AskAIContext {
     customInstruction?: string;
     /** Mode for AI command execution ('comment' or 'interactive') */
     mode: AICommandMode;
+    /** Optional path to prompt file to include as context */
+    promptFilePath?: string;
+    /** Optional skill name to use for this request */
+    skillName?: string;
+}
+
+/**
+ * Prompt file info for context menu
+ */
+export interface PromptFileInfo {
+    /** Absolute path to the prompt file */
+    absolutePath: string;
+    /** Path relative to the workspace root */
+    relativePath: string;
+    /** File name (e.g., "my-prompt.prompt.md") */
+    name: string;
+    /** The source folder where the file was found */
+    sourceFolder: string;
+}
+
+/**
+ * Skill info for context menu
+ */
+export interface SkillInfo {
+    /** Absolute path to the skill directory */
+    absolutePath: string;
+    /** Path relative to the workspace root */
+    relativePath: string;
+    /** Skill name (directory name) */
+    name: string;
+    /** Optional description from SKILL.md frontmatter */
+    description?: string;
 }
 
 /**
@@ -175,7 +211,7 @@ export interface AskAIContext {
  */
 export interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
-          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'askAIInteractive' | 'saveContent' | 'contentModified' | 'pinTab';
+          'reopenComment' | 'ready' | 'requestState' | 'openFile' | 'copyPath' | 'askAI' | 'askAIInteractive' | 'saveContent' | 'contentModified' | 'pinTab' | 'requestPromptFiles' | 'requestSkills';
     commentId?: string;
     selection?: DiffSelection;
     selectedText?: string;

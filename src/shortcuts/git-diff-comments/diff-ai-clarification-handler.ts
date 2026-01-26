@@ -74,12 +74,23 @@ export function buildDiffClarificationPrompt(context: DiffClarificationContext):
     const command = registry.getCommand(context.instructionType);
     const isCustomInput = command?.isCustomInput && context.customInstruction;
 
-    // For custom instructions, format slightly differently
+    // Build base prompt
+    let prompt: string;
     if (isCustomInput) {
-        return `${promptPrefix}: "${selectedText}"${sideInfo} in the file ${context.filePath}`;
+        prompt = `${promptPrefix}: "${selectedText}"${sideInfo} in the file ${context.filePath}`;
+    } else {
+        prompt = `${promptPrefix} "${selectedText}"${sideInfo} in the file ${context.filePath}`;
     }
 
-    return `${promptPrefix} "${selectedText}"${sideInfo} in the file ${context.filePath}`;
+    // If prompt file content is provided, prepend it to the prompt
+    if (context.promptFileContent) {
+        const templateHeader = context.skillName 
+            ? `--- Instructions from skill: ${context.skillName} ---`
+            : '--- Instructions from prompt file ---';
+        prompt = `${templateHeader}\n${context.promptFileContent}\n\n--- Diff Context ---\n${prompt}`;
+    }
+
+    return prompt;
 }
 
 /**
