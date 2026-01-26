@@ -1088,8 +1088,12 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         const aiCommands = getAICommandRegistry().getSerializedCommands();
         const predefinedComments = getPredefinedCommentRegistry().getSerializedDiffComments();
 
-        for (const [filePath, panel] of this.activeWebviews) {
-            const comments = this.commentsManager.getCommentsForFile(filePath);
+        for (const [absoluteFilePath, panel] of this.activeWebviews) {
+            // Diff comments are keyed by repo-relative path; activeWebviews is keyed by absolute path.
+            const state = this.webviewStates.get(absoluteFilePath);
+            const commentKeyPath = state?.filePath ?? absoluteFilePath;
+
+            const comments = this.commentsManager.getCommentsForFile(commentKeyPath);
             const baseSettings = this.commentsManager.getSettings();
 
             // Extend settings with AI enabled flag, commands, and predefined comments
@@ -1103,7 +1107,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             const message: DiffExtensionMessage = {
                 type: 'update',
                 comments,
-                filePath,
+                filePath: commentKeyPath,
                 settings
             };
 

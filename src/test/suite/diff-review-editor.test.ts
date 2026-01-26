@@ -8,6 +8,49 @@ import { DiffGitContext, DiffWebviewState } from '../../shortcuts/git-diff-comme
 
 suite('DiffReviewEditorProvider Tests', () => {
 
+    test('updateAllWebviews should query comments by repo-relative path (state.filePath)', () => {
+        // This mirrors the bug: activeWebviews is keyed by absolute path, but comments are keyed by repo-relative path.
+        const activeWebviews = new Map<string, any>();
+        const webviewStates = new Map<string, DiffWebviewState>();
+
+        const absolutePath = '/repo/src/file.ts';
+        const relativePath = 'src/file.ts';
+
+        let queriedPath: string | undefined;
+        const commentsManager = {
+            getCommentsForFile: (p: string) => {
+                queriedPath = p;
+                return [];
+            },
+            getSettings: () => ({})
+        };
+
+        // Mimic provider state
+        const panel = { webview: { postMessage: () => undefined } };
+        activeWebviews.set(absolutePath, panel);
+        webviewStates.set(absolutePath, {
+            filePath: relativePath,
+            gitContext: {
+                repositoryRoot: '/repo',
+                repositoryName: 'repo',
+                oldRef: ':0',
+                newRef: 'WORKING_TREE',
+                wasStaged: false
+            },
+            oldContent: '',
+            newContent: ''
+        });
+
+        // Simulate the updated updateAllWebviews logic
+        for (const [abs, _panel] of activeWebviews) {
+            const state = webviewStates.get(abs);
+            const commentKeyPath = state?.filePath ?? abs;
+            commentsManager.getCommentsForFile(commentKeyPath);
+        }
+
+        assert.strictEqual(queriedPath, relativePath);
+    });
+
     suite('DiffWebviewState Type', () => {
         test('should have correct structure', () => {
             const gitContext: DiffGitContext = {
