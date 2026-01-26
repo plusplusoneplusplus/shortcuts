@@ -1,0 +1,36 @@
+{
+  "name": "@anthropic-ai/pipeline-core",
+  "version": "1.0.0",
+  "description": "AI pipeline execution engine with map-reduce framework",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./ai": "./dist/ai/index.js",
+    "./map-reduce": "./dist/map-reduce/index.js",
+    "./pipeline": "./dist/pipeline/index.js",
+    "./utils": "./dist/utils/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "^0.1.16",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0",
+    "@types/node": "^20.0.0",
+    "@types/js-yaml": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
