@@ -14,7 +14,7 @@
 
 import { ChildProcess } from 'child_process';
 import { AIProcess, GenericProcessMetadata, GenericGroupMetadata, IAIProcessManager } from '../ai-service';
-import type { RuleReviewResult, ReviewFinding as MRReviewFinding } from '../map-reduce';
+import type { RuleReviewResult, ReviewFinding as MRReviewFinding } from '@plusplusoneplusplus/pipeline-core';
 import { CodeReviewMetadata, DiffStats, ReviewFinding, ReviewSummary } from './types';
 
 /**
@@ -362,7 +362,7 @@ function transformStructuredResult(
 export function createCodeReviewProcessTracker(
     adapter: ICodeReviewProcessAdapter,
     metadata: CodeReviewMetadata
-): import('../map-reduce').ProcessTracker & { groupId?: string; updateGroupStructuredResult(result: string): void } {
+): import('@plusplusoneplusplus/pipeline-core').ProcessTracker & { groupId?: string; updateGroupStructuredResult(result: string): void } {
     let groupId: string | undefined;
 
     return {
@@ -414,7 +414,7 @@ export function createCodeReviewProcessTracker(
         completeGroup(
             gId: string,
             summary: string,
-            stats: import('../map-reduce').ExecutionStats
+            stats: import('@plusplusoneplusplus/pipeline-core').ExecutionStats
         ): void {
             adapter.completeGroup(
                 gId,

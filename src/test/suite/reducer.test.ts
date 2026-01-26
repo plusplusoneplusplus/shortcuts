@@ -20,7 +20,7 @@ import {
     CodeReviewOutput,
     AIInvoker,
     createExecutor
-} from '../../shortcuts/map-reduce';
+} from '@plusplusoneplusplus/pipeline-core';
 import { aggregateReviewResults } from '../../shortcuts/code-review/response-parser';
 import {
     CodeReviewMetadata,

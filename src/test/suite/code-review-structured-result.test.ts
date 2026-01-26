@@ -17,7 +17,7 @@ import {
     ProcessTracker,
     Rule,
     RuleReviewResult
-} from '../../shortcuts/map-reduce';
+} from '@plusplusoneplusplus/pipeline-core';
 import {
     CodeReviewMetadata,
     ReviewFinding,

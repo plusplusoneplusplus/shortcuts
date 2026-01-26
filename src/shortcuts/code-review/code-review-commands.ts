@@ -31,7 +31,7 @@ import {
     MapReduceResult,
     Rule,
     RuleReviewResult
-} from '../map-reduce';
+} from '@plusplusoneplusplus/pipeline-core';
 import { CodeReviewService } from './code-review-service';
 import { CodeReviewViewer } from './code-review-viewer';
 import { 
@@ -65,7 +65,7 @@ function codeRuleToRule(codeRule: CodeRule): Rule {
  * Adapter to convert map-reduce ReviewFinding to code-review ReviewFinding
  * The types are compatible but may need mapping for certain fields
  */
-function adaptFinding(mrFinding: import('../map-reduce').ReviewFinding): ReviewFinding {
+function adaptFinding(mrFinding: import('@plusplusoneplusplus/pipeline-core').ReviewFinding): ReviewFinding {
     return {
         id: mrFinding.id,
         severity: mrFinding.severity,
