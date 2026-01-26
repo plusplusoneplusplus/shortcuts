@@ -197,6 +197,13 @@ export function requestPromptFiles(): void {
 }
 
 /**
+ * Request to search all prompt files using Quick Pick
+ */
+export function requestPromptSearch(): void {
+    postMessage({ type: 'promptSearch' });
+}
+
+/**
  * Request to execute a work plan with a specific prompt file
  * @param promptFilePath - Absolute path to the selected prompt file
  */

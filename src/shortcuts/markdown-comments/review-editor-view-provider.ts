@@ -47,7 +47,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'executeWorkPlan';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'executeWorkPlan' | 'promptSearch';
     commentId?: string;
     content?: string;
     selection?: {
@@ -96,6 +96,12 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
     /** Storage key prefix for collapsed sections (per file) */
     private static readonly COLLAPSED_SECTIONS_KEY_PREFIX = 'mdReview.collapsedSections.';
+    
+    /** Storage key for recent prompts */
+    private static readonly RECENT_PROMPTS_KEY = 'workspaceShortcuts.recentPrompts';
+    
+    /** Maximum number of recent prompts to track */
+    private static readonly MAX_RECENT_PROMPTS = 5;
 
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -614,6 +620,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 await this.handleRequestPromptFiles(webviewPanel);
                 break;
 
+            case 'promptSearch':
+                await this.handlePromptSearch(document);
+                break;
+
             case 'executeWorkPlan':
                 if (message.promptFilePath) {
                     await this.handleExecuteWorkPlan(document.uri.fsPath, message.promptFilePath);
@@ -1130,10 +1140,17 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     /**
      * Handle request for prompt files from the webview.
      * Returns a list of available .prompt.md files from configured locations.
+     * Also includes recent prompts for quick access.
      */
     private async handleRequestPromptFiles(webviewPanel: vscode.WebviewPanel): Promise<void> {
         const workspaceRoot = getWorkspaceRoot();
         const promptFiles = await getPromptFiles(workspaceRoot || undefined);
+        const recentPrompts = await this.getRecentPrompts();
+
+        // Filter recent prompts to only include those still in promptFiles
+        const validRecent = recentPrompts.filter(r =>
+            promptFiles.some(f => f.absolutePath === r.absolutePath)
+        );
 
         webviewPanel.webview.postMessage({
             type: 'promptFilesResponse',
@@ -1142,8 +1159,89 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 relativePath: f.relativePath,
                 name: f.name,
                 sourceFolder: f.sourceFolder
-            }))
+            })),
+            recentPrompts: validRecent
         });
+    }
+
+    /**
+     * Handle prompt search request from webview.
+     * Opens Quick Pick for searching all prompt files.
+     */
+    private async handlePromptSearch(document: vscode.TextDocument): Promise<void> {
+        const workspaceRoot = getWorkspaceRoot();
+        const promptFiles = await getPromptFiles(workspaceRoot || undefined);
+
+        if (promptFiles.length === 0) {
+            vscode.window.showInformationMessage('No .prompt.md files found in configured locations.');
+            return;
+        }
+
+        const items = promptFiles.map(f => ({
+            label: `$(file) ${f.name}`,
+            description: f.relativePath,
+            detail: f.sourceFolder,
+            absolutePath: f.absolutePath
+        }));
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Search for a prompt file...',
+            matchOnDescription: true,
+            matchOnDetail: true
+        });
+
+        if (selected) {
+            await this.handleExecuteWorkPlan(document.uri.fsPath, selected.absolutePath);
+        }
+    }
+
+    /**
+     * Get recent prompts from workspace state
+     */
+    private async getRecentPrompts(): Promise<Array<{
+        absolutePath: string;
+        relativePath: string;
+        name: string;
+        lastUsed: number;
+    }>> {
+        return this.context.workspaceState.get<Array<{
+            absolutePath: string;
+            relativePath: string;
+            name: string;
+            lastUsed: number;
+        }>>(ReviewEditorViewProvider.RECENT_PROMPTS_KEY, []);
+    }
+
+    /**
+     * Track prompt usage in workspace state
+     */
+    private async trackPromptUsage(absolutePath: string): Promise<void> {
+        const workspaceRoot = getWorkspaceRoot();
+        const promptFiles = await getPromptFiles(workspaceRoot || undefined);
+        const promptFile = promptFiles.find(f => f.absolutePath === absolutePath);
+        
+        if (!promptFile) {
+            return;
+        }
+
+        const recent = await this.getRecentPrompts();
+        
+        // Remove if already exists
+        const filtered = recent.filter(r => r.absolutePath !== absolutePath);
+        
+        // Add to front
+        filtered.unshift({
+            absolutePath,
+            name: promptFile.name,
+            relativePath: promptFile.relativePath,
+            lastUsed: Date.now()
+        });
+        
+        // Keep only MAX_RECENT_PROMPTS
+        await this.context.workspaceState.update(
+            ReviewEditorViewProvider.RECENT_PROMPTS_KEY,
+            filtered.slice(0, ReviewEditorViewProvider.MAX_RECENT_PROMPTS)
+        );
     }
 
     /**
@@ -1157,6 +1255,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         planFilePath: string,
         promptFilePath: string
     ): Promise<void> {
+        // Track prompt usage for recent list
+        await this.trackPromptUsage(promptFilePath);
+
         const sessionManager = getInteractiveSessionManager();
 
         // Simple prompt: just reference both file paths

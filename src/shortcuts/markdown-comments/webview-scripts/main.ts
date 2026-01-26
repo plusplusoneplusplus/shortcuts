@@ -116,7 +116,7 @@ function handleMessage(message: ExtensionMessage): void {
 
         case 'promptFilesResponse':
             // Update the Execute Work Plan submenu with available prompt files
-            updateExecuteWorkPlanSubmenu(message.promptFiles || []);
+            updateExecuteWorkPlanSubmenu(message.promptFiles || [], message.recentPrompts);
             break;
     }
 }

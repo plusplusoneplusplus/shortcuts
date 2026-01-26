@@ -163,7 +163,8 @@ export type WebviewMessage =
     | { type: 'askAIInteractive'; context: AskAIContext }
     | { type: 'collapsedSectionsChanged'; collapsedSections: string[] }
     | { type: 'requestPromptFiles' }
-    | { type: 'executeWorkPlan'; promptFilePath: string };
+    | { type: 'executeWorkPlan'; promptFilePath: string }
+    | { type: 'promptSearch' };
 
 /**
  * Prompt file info for Execute Work Plan feature
@@ -177,6 +178,20 @@ export interface PromptFileInfo {
     name: string;
     /** The folder this file was found in (from settings) */
     sourceFolder: string;
+}
+
+/**
+ * Recent prompt info for quick access
+ */
+export interface RecentPrompt {
+    /** Absolute path to the prompt file */
+    absolutePath: string;
+    /** Path relative to the workspace root */
+    relativePath: string;
+    /** File name without .prompt.md extension */
+    name: string;
+    /** Timestamp when last used */
+    lastUsed: number;
 }
 
 /**
@@ -198,7 +213,7 @@ export type ExtensionMessage =
     }
     | { type: 'imageResolved'; imgId: string; uri?: string; alt?: string; error?: string }
     | { type: 'scrollToComment'; commentId: string }
-    | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[] };
+    | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[] };
 
 /**
  * Parsed code block structure

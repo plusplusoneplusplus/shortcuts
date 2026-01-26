@@ -20,8 +20,8 @@ import {
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
-import { AICommandMode, PromptFileInfo } from './types';
-import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestPromptFiles, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, updateContent } from './vscode-bridge';
+import { AICommandMode, PromptFileInfo, RecentPrompt } from './types';
+import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestPromptFiles, requestPromptSearch, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -118,10 +118,37 @@ export function rebuildAISubmenu(): void {
 }
 
 /**
+ * Format a timestamp as relative time (e.g., "2 hours ago", "yesterday")
+ */
+function formatRelativeTime(timestamp: number): string {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (seconds < 60) {
+        return 'just now';
+    } else if (minutes < 60) {
+        return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+    } else if (hours < 24) {
+        return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    } else if (days === 1) {
+        return 'yesterday';
+    } else if (days < 7) {
+        return `${days} days ago`;
+    } else {
+        return new Date(timestamp).toLocaleDateString();
+    }
+}
+
+/**
  * Update the Execute Work Plan submenu with available prompt files
  * @param promptFiles - Array of prompt file info from the extension
+ * @param recentPrompts - Optional array of recent prompts for quick access
  */
-export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[]): void {
+export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[], recentPrompts?: RecentPrompt[]): void {
     const submenu = document.getElementById('executeWorkPlanSubmenu');
     if (!submenu) return;
 
@@ -147,6 +174,68 @@ export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[]): voi
         `;
         submenu.appendChild(helpItem);
         return;
+    }
+
+    // Add recent section if we have recent prompts
+    if (recentPrompts && recentPrompts.length > 0) {
+        // Filter recent prompts to only include those still in promptFiles
+        const validRecent = recentPrompts.filter(r =>
+            promptFiles.some(p => p.absolutePath === r.absolutePath)
+        ).slice(0, 3);
+
+        if (validRecent.length > 0) {
+            const header = document.createElement('div');
+            header.className = 'ai-action-menu-header';
+            header.textContent = '⭐ Recent';
+            submenu.appendChild(header);
+
+            for (const recent of validRecent) {
+                const item = document.createElement('div');
+                item.className = 'ai-action-menu-item';
+                item.dataset.promptPath = recent.absolutePath;
+                item.innerHTML = `
+                    <span class="ai-action-icon">📝</span>
+                    <span class="ai-action-label">${escapeHtml(recent.name)}</span>
+                `;
+                item.title = `${recent.relativePath} (${formatRelativeTime(recent.lastUsed)})`;
+
+                // Add click handler
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    hideAIActionMenu();
+                    requestExecuteWorkPlan(recent.absolutePath);
+                });
+
+                submenu.appendChild(item);
+            }
+
+            // Add divider
+            const divider = document.createElement('div');
+            divider.className = 'ai-action-menu-divider';
+            submenu.appendChild(divider);
+        }
+    }
+
+    // Add search option
+    const searchItem = document.createElement('div');
+    searchItem.className = 'ai-action-menu-item';
+    searchItem.innerHTML = `
+        <span class="ai-action-icon">🔍</span>
+        <span class="ai-action-label">Search All Prompts...</span>
+    `;
+    searchItem.title = 'Open Quick Pick to search prompts';
+    searchItem.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideAIActionMenu();
+        requestPromptSearch();
+    });
+    submenu.appendChild(searchItem);
+
+    // Add divider before all prompts
+    if (promptFiles.length > 0) {
+        const divider = document.createElement('div');
+        divider.className = 'ai-action-menu-divider';
+        submenu.appendChild(divider);
     }
 
     // Group prompt files by source folder
