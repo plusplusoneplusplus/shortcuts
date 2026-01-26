@@ -11,7 +11,11 @@ export class TaskGroupItem extends vscode.TreeItem {
 
     constructor(groupType: 'active' | 'archived', taskCount: number) {
         const label = groupType === 'active' ? 'Active Tasks' : 'Archived Tasks';
-        super(label, vscode.TreeItemCollapsibleState.Expanded);
+        // Active tasks expanded by default, archived tasks collapsed by default
+        const collapsibleState = groupType === 'active' 
+            ? vscode.TreeItemCollapsibleState.Expanded 
+            : vscode.TreeItemCollapsibleState.Collapsed;
+        super(label, collapsibleState);
 
         this.groupType = groupType;
         this.taskCount = taskCount;

@@ -725,6 +725,8 @@ suite('Tasks Viewer Tests', () => {
             assert.strictEqual(groupItem.taskCount, 3);
             assert.strictEqual(groupItem.description, '3');
             assert.strictEqual(groupItem.contextValue, 'taskGroup_archived');
+            // Archived tasks should be collapsed by default
+            assert.strictEqual(groupItem.collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
         });
 
         test('should handle zero count', () => {
