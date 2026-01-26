@@ -18,7 +18,7 @@ import { DebugPanelTreeDataProvider, testCopilotSDK } from './shortcuts/debug-pa
 import { DiscoveryEngine, registerDiscoveryCommands } from './shortcuts/discovery';
 import { ShortcutsDragDropController } from './shortcuts/drag-drop-controller';
 import { FileSystemWatcherManager } from './shortcuts/file-system-watcher-manager';
-import { GIT_SHOW_SCHEME, GitChangeItem, GitCommitFile, GitCommitFileItem, GitCommitItem, GitDragDropController, GitLogService, GitShowTextDocumentProvider, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
+import { GIT_SHOW_SCHEME, GitChangeItem, GitCommitFile, GitCommitFileItem, GitCommitItem, GitDragDropController, GitLogService, GitRangeFileItem, GitShowTextDocumentProvider, GitTreeDataProvider, LookedUpCommitItem } from './shortcuts/git';
 import {
     DiffCommentFileItem,
     DiffCommentItem,
@@ -554,6 +554,7 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitPullCommand: vscode.Disposable | undefined;
         let gitPullRebaseCommand: vscode.Disposable | undefined;
         let gitFetchCommand: vscode.Disposable | undefined;
+        let gitOpenCurrentFileCommand: vscode.Disposable | undefined;
 
         // Create Git drag and drop controller for Copilot Chat integration
         const gitDragDropController = new GitDragDropController();
@@ -1693,6 +1694,65 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
             );
 
+            // Register open current file command (opens the file in the editor, not the diff)
+            gitOpenCurrentFileCommand = vscode.commands.registerCommand(
+                'gitView.openCurrentFile',
+                async (item: GitChangeItem | GitCommitFileItem | GitRangeFileItem) => {
+                    let filePath: string | undefined;
+                    let repoRoot: string | undefined;
+
+                    // Handle different item types
+                    if (item instanceof GitChangeItem) {
+                        // GitChangeItem - pending changes (staged/unstaged/untracked)
+                        filePath = item.change.path;
+                        repoRoot = item.change.repositoryRoot;
+                    } else if (item instanceof GitCommitFileItem) {
+                        // GitCommitFileItem - file from a commit
+                        filePath = item.file.path;
+                        repoRoot = item.file.repositoryRoot;
+                    } else if (item instanceof GitRangeFileItem) {
+                        // GitRangeFileItem - file from a commit range
+                        filePath = item.file.path;
+                        repoRoot = item.file.repositoryRoot;
+                    } else if (item && typeof item === 'object') {
+                        // Handle generic object with change or file property
+                        const anyItem = item as any;
+                        if (anyItem.change) {
+                            filePath = anyItem.change.path;
+                            repoRoot = anyItem.change.repositoryRoot;
+                        } else if (anyItem.file) {
+                            filePath = anyItem.file.path;
+                            repoRoot = anyItem.file.repositoryRoot;
+                        } else if (anyItem.commitFile) {
+                            filePath = anyItem.commitFile.path;
+                            repoRoot = anyItem.commitFile.repositoryRoot;
+                        }
+                    }
+
+                    if (!filePath) {
+                        vscode.window.showWarningMessage('Unable to determine file path.');
+                        return;
+                    }
+
+                    // Construct the full path
+                    const fullPath = path.isAbsolute(filePath)
+                        ? filePath
+                        : path.join(repoRoot || '', filePath);
+
+                    // Check if the file exists
+                    try {
+                        const uri = vscode.Uri.file(fullPath);
+                        const stat = await vscode.workspace.fs.stat(uri);
+                        
+                        // File exists, open it
+                        await vscode.commands.executeCommand('vscode.open', uri);
+                    } catch (error) {
+                        // File doesn't exist (might be deleted in this commit/change)
+                        vscode.window.showWarningMessage(`File does not exist: ${path.basename(filePath)}`);
+                    }
+                }
+            );
+
             console.log('Git view initialized successfully');
         } else {
             console.log('Git extension not available, Git view disabled');
@@ -2555,6 +2615,7 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitRefreshCommitRangeCommand) disposables.push(gitRefreshCommitRangeCommand);
         if (gitCopyRangeRefCommand) disposables.push(gitCopyRangeRefCommand);
         if (gitCopyRangeSummaryCommand) disposables.push(gitCopyRangeSummaryCommand);
+        if (gitOpenCurrentFileCommand) disposables.push(gitOpenCurrentFileCommand);
 
         // Add Debug Panel disposables
         disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand, runCustomCommand, readSettingCommand, testCopilotSDKCommand);
