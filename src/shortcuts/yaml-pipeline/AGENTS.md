@@ -3,7 +3,7 @@
 This module provides a YAML-based configuration layer on top of the map-reduce framework. It enables easy configuration of AI MapReduce workflows via YAML files.
 
 **Package Structure (2026-01):**
-- `@anthropic-ai/pipeline-core` - Core pipeline engine (executor, CSV reader, template engine, filters, resolvers)
+- `pipeline-core` - Core pipeline engine (executor, CSV reader, template engine, filters, resolvers)
 - `src/shortcuts/yaml-pipeline/` - VS Code UI layer (PipelineManager, tree provider, result viewer)
 
 The core execution functionality has been extracted to `packages/pipeline-core/src/pipeline/` for use in CLI tools and other Node.js environments.

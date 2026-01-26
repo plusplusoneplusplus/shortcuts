@@ -14,10 +14,9 @@
  */
 
 import { copyToClipboard, invokeCopilotCLI } from './copilot-cli-invoker';
-import { getCopilotSDKService } from './copilot-sdk-service';
+import { getCopilotSDKService, AIInvocationResult } from '@anthropic-ai/pipeline-core';
 import { getAIBackendSetting } from './ai-config-helpers';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
-import { AIInvocationResult } from './types';
 
 /**
  * Options for creating an AI invoker

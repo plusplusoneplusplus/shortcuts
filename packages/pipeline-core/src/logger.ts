@@ -5,7 +5,7 @@
  * by different environments (VS Code, CLI, tests, etc.).
  * 
  * Usage:
- *   import { getLogger, setLogger, consoleLogger } from '@anthropic-ai/pipeline-core';
+ *   import { getLogger, setLogger, consoleLogger } from 'pipeline-core';
  *   
  *   // Use default console logger
  *   const logger = getLogger();
@@ -92,7 +92,7 @@ let globalLogger: Logger = consoleLogger;
  * 
  * @example
  * // In VS Code extension
- * import { setLogger } from '@anthropic-ai/pipeline-core';
+ * import { setLogger } from 'pipeline-core';
  * import { getExtensionLogger } from './shared/extension-logger';
  * 
  * setLogger({

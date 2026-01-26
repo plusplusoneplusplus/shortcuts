@@ -7,10 +7,17 @@
 
 import { exec, execSync } from 'child_process';
 import * as vscode from 'vscode';
-import { IAIProcessManager } from './types';
+import { IAIProcessManager, AIToolType } from './types';
 import { getExtensionLogger } from './ai-service-logger';
-import { AIInvocationResult, AIModel, AIToolType, DEFAULT_PROMPTS, VALID_MODELS } from './types';
-import { COPILOT_BASE_FLAGS, escapeShellArg, buildCliCommand } from './cli-utils';
+import {
+    AIInvocationResult,
+    AIModel,
+    DEFAULT_PROMPTS,
+    VALID_MODELS,
+    COPILOT_BASE_FLAGS,
+    escapeShellArg,
+    buildCliCommand
+} from '@anthropic-ai/pipeline-core';
 
 // Re-export shared utilities for backward compatibility
 export { COPILOT_BASE_FLAGS, escapeShellArg, buildCliCommand };

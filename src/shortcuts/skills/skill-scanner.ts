@@ -186,7 +186,7 @@ async function scanGitHubWithHttp(
         
         let response: any[];
         try {
-            const parsed = await httpGetJson(apiUrl);
+            const parsed = await httpGetJson<any>(apiUrl);
             
             // If it's a single file (SKILL.md at root), the response is an object, not array
             if (!Array.isArray(parsed)) {
@@ -210,7 +210,7 @@ async function scanGitHubWithHttp(
             // Try checking if the path itself is a skill directory
             const skillFileUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${repoPath}/${SKILL_FILE}?ref=${github.branch}`;
             try {
-                const parsed = await httpGetJson(skillFileUrl);
+                const parsed = await httpGetJson<any>(skillFileUrl);
                 if (parsed.name === SKILL_FILE) {
                     const skillName = path.basename(repoPath) || github.repo;
                     const description = await getGitHubSkillDescriptionWithHttp(github, repoPath);
@@ -244,7 +244,7 @@ async function scanGitHubWithHttp(
             const skillFileUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch}`;
             
             try {
-                const parsed = await httpGetJson(skillFileUrl);
+                const parsed = await httpGetJson<any>(skillFileUrl);
                 if (parsed.name === SKILL_FILE) {
                     const description = await getGitHubSkillDescriptionWithHttp(github, skillPath);
                     skills.push({
@@ -305,7 +305,7 @@ async function getGitHubSkillDescriptionWithHttp(
 ): Promise<string | undefined> {
     try {
         const apiUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${skillPath}/${SKILL_FILE}?ref=${github.branch}`;
-        const parsed = await httpGetJson(apiUrl);
+        const parsed = await httpGetJson<any>(apiUrl);
         
         if (parsed.content) {
             // Content is base64 encoded

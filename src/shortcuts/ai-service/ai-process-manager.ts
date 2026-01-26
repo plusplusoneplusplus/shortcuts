@@ -13,7 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
-import { getCopilotSDKService } from './copilot-sdk-service';
+import { getCopilotSDKService } from '@anthropic-ai/pipeline-core';
 import {
     AIProcess,
     AIProcessStatus,

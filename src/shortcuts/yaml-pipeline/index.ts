@@ -5,25 +5,111 @@
  * Provides easy configuration for AI MapReduce workflows via YAML files.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
+ *
+ * NOTE: Core pipeline functionality is now provided by the pipeline-core package.
+ * This module re-exports from pipeline-core and adds VS Code-specific UI components.
  */
 
-// Configuration types (YAML schema)
-export type {
+// ============================================================================
+// Re-export from pipeline-core package (core pipeline functionality)
+// ============================================================================
+export {
+    // Configuration types (YAML schema)
     PipelineConfig,
     InputConfig,
     MapConfig,
     ReduceConfig,
+    FilterConfig,
+    CSVSource,
     CSVParseOptions,
     CSVParseResult,
     PipelineParameter,
-    CSVSource,
-    GenerateInputConfig
-} from './types';
+    GenerateInputConfig,
+    FilterOperator,
+    FilterRule,
+    RuleFilterConfig,
+    AIFilterConfig,
+    FilterStats,
+    FilterResult,
+    isCSVSource,
+    isGenerateConfig,
+    // Executor
+    executePipeline,
+    executePipelineWithItems,
+    parsePipelineYAML,
+    parsePipelineYAMLSync,
+    PipelineExecutionError,
+    DEFAULT_PARALLEL_LIMIT,
+    ExecutePipelineOptions,
+    PipelineExecutionResult,
+    // CSV Reader
+    parseCSVContent,
+    readCSVFile,
+    readCSVFileSync,
+    resolveCSVPath,
+    validateCSVHeaders,
+    getCSVPreview,
+    CSVParseError,
+    DEFAULT_CSV_OPTIONS,
+    // Template Engine
+    substituteTemplate,
+    validateItemForTemplate,
+    buildFullPrompt,
+    buildPromptFromTemplate,
+    escapeTemplateValue,
+    previewTemplate,
+    TemplateError,
+    SubstituteTemplateOptions,
+    // Filter Executor
+    executeFilter,
+    executeRuleFilter,
+    executeAIFilter,
+    executeHybridFilter,
+    FilterExecuteOptions,
+    FilterProgress,
+    // Prompt Resolver
+    resolvePromptFile,
+    resolvePromptFileSync,
+    resolvePromptFileWithDetails,
+    resolvePromptPath,
+    getSearchPaths,
+    extractPromptContent,
+    promptFileExists,
+    validatePromptFile,
+    PromptResolverError,
+    PromptResolutionResult,
+    // Skill Resolver
+    resolveSkill,
+    resolveSkillSync,
+    resolveSkillWithDetails,
+    resolveSkillWithDetailsSync,
+    getSkillsDirectory,
+    getSkillDirectory,
+    getSkillPromptPath,
+    skillExists,
+    listSkills,
+    validateSkill,
+    SkillResolverError,
+    DEFAULT_SKILLS_DIRECTORY,
+    SKILL_PROMPT_FILENAME,
+    SKILL_METADATA_FILENAME,
+    SkillResolutionResult,
+    SkillMetadata,
+    // Input Generator
+    generateInputItems,
+    buildGeneratePrompt,
+    parseGenerateResponse,
+    toGeneratedItems,
+    getSelectedItems,
+    createEmptyItem,
+    validateGenerateConfig,
+    InputGenerationError,
+    GenerateInputResult,
+    GeneratedItem,
+    GenerateState
+} from '@anthropic-ai/pipeline-core';
 
-// Type guards
-export { isCSVSource, isGenerateConfig } from './types';
-
-// Re-export execution types from map-reduce (canonical source)
+// Re-export execution types from pipeline-core (canonical source)
 export type {
     AIInvoker,
     AIInvokerOptions,
@@ -40,104 +126,13 @@ export type {
     PromptMapSummary,
     PromptMapJobOptions,
     OutputFormat
-} from './types';
+} from '@anthropic-ai/pipeline-core';
 
-// CSV Reader utilities
-export {
-    parseCSVContent,
-    readCSVFile,
-    readCSVFileSync,
-    resolveCSVPath,
-    validateCSVHeaders,
-    getCSVPreview,
-    CSVParseError,
-    DEFAULT_CSV_OPTIONS
-} from './csv-reader';
+// Re-export extractVariables and parseAIResponse/extractJSON from pipeline-core
+export { extractVariables, parseAIResponse, extractJSON } from '@anthropic-ai/pipeline-core';
 
-// Template Engine utilities
-export {
-    substituteTemplate,
-    extractVariables,
-    validateItemForTemplate,
-    buildFullPrompt,
-    buildPromptFromTemplate,
-    parseAIResponse,
-    extractJSON,
-    escapeTemplateValue,
-    previewTemplate,
-    TemplateError
-} from './template';
-export type { SubstituteTemplateOptions } from './template';
-
-// Prompt Resolver utilities
-export {
-    resolvePromptFile,
-    resolvePromptFileSync,
-    resolvePromptFileWithDetails,
-    resolvePromptPath,
-    getSearchPaths,
-    extractPromptContent,
-    promptFileExists,
-    validatePromptFile,
-    PromptResolverError
-} from './prompt-resolver';
-export type { PromptResolutionResult } from './prompt-resolver';
-
-// Skill Resolver utilities
-export {
-    resolveSkill,
-    resolveSkillSync,
-    resolveSkillWithDetails,
-    resolveSkillWithDetailsSync,
-    skillExists,
-    listSkills,
-    validateSkill,
-    getSkillsDirectory,
-    getSkillDirectory,
-    getSkillPromptPath,
-    SkillResolverError,
-    DEFAULT_SKILLS_DIRECTORY,
-    SKILL_PROMPT_FILENAME,
-    SKILL_METADATA_FILENAME
-} from './skill-resolver';
-export type { SkillResolutionResult, SkillMetadata } from './skill-resolver';
-
-// Input Generator (AI-powered input generation)
-export {
-    buildGeneratePrompt,
-    parseGenerateResponse,
-    generateInputItems,
-    toGeneratedItems,
-    getSelectedItems,
-    createEmptyItem,
-    validateGenerateConfig,
-    InputGenerationError
-} from './input-generator';
-export type {
-    GenerateInputResult,
-    GeneratedItem,
-    GenerateState
-} from './input-generator';
-
-// Executor (main API)
-export {
-    executePipeline,
-    executePipelineWithItems,
-    parsePipelineYAML,
-    parsePipelineYAMLSync,
-    PipelineExecutionError,
-    DEFAULT_PARALLEL_LIMIT
-} from './executor';
-export type {
-    ExecutePipelineOptions,
-    PipelineExecutionResult
-} from './executor';
-
-// Re-export job creation from map-reduce for advanced usage
-export {
-    createPromptMapJob,
-    createPromptMapInput
-} from '../map-reduce/jobs/prompt-map-job';
+// Re-export job creation from pipeline-core for advanced usage
+export { createPromptMapJob, createPromptMapInput } from '@anthropic-ai/pipeline-core';
 
 // UI Components for Pipelines Viewer
 export {

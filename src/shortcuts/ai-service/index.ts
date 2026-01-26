@@ -4,17 +4,65 @@
  * Standalone, reusable service for invoking AI tools (Copilot CLI, etc.)
  * This module provides generic AI invocation capabilities that can be used
  * by any feature in the extension.
+ *
+ * Core AI functionality (CopilotSDKService, SessionPool, CLI utilities) is now
+ * provided by the pipeline-core package. This module re-exports those types
+ * and adds VS Code-specific functionality.
  */
 
-// Export types
+// ============================================================================
+// Re-export from pipeline-core package (core AI functionality)
+// ============================================================================
 export {
+    // AI Types
     AIInvocationResult,
+    AIBackendType,
     AIModel,
+    VALID_MODELS,
+    DEFAULT_PROMPTS,
+    InteractiveToolType,
+    // Session Pool
+    SessionPool,
+    IPoolableSession,
+    SessionFactory,
+    SessionPoolOptions,
+    SessionPoolStats,
+    // CLI Utilities
+    PROMPT_LENGTH_THRESHOLD,
+    PROBLEMATIC_CHARS_PATTERN,
+    COPILOT_BASE_FLAGS,
+    escapeShellArg,
+    shouldUseFileDelivery,
+    writePromptToTempFile,
+    buildCliCommand,
+    BuildCliCommandResult,
+    BuildCliCommandOptions,
+    // Copilot SDK Service
+    CopilotSDKService,
+    getCopilotSDKService,
+    resetCopilotSDKService,
+    MCPServerConfig,
+    MCPControlOptions,
+    SendMessageOptions,
+    SDKInvocationResult,
+    SDKAvailabilityResult,
+    PermissionRequest,
+    PermissionRequestResult,
+    PermissionHandler,
+    SessionPoolConfig,
+    DEFAULT_SESSION_POOL_CONFIG,
+    approveAllPermissions,
+    denyAllPermissions
+} from '@anthropic-ai/pipeline-core';
+
+// ============================================================================
+// VS Code-specific types (not in pipeline-core)
+// ============================================================================
+export {
     AIProcess,
     AIProcessStatus,
     AIProcessType,
     AIToolType,
-    AIBackendType,
     // Generic metadata types (preferred for new features)
     GenericProcessMetadata,
     GenericGroupMetadata,
@@ -29,18 +77,27 @@ export {
     // Legacy types (kept for backward compatibility)
     CodeReviewGroupMetadata,
     CodeReviewProcessMetadata,
-    DEFAULT_PROMPTS, deserializeProcess, DiscoveryProcessMetadata,
+    deserializeProcess,
+    DiscoveryProcessMetadata,
     ProcessEvent,
     ProcessEventType,
-    SerializedAIProcess, serializeProcess, VALID_MODELS
+    SerializedAIProcess,
+    serializeProcess,
+    // Interactive session types
+    ExternalTerminalLaunchOptions,
+    ExternalTerminalLaunchResult,
+    InteractiveSession,
+    InteractiveSessionEvent,
+    InteractiveSessionEventType,
+    InteractiveSessionStatus,
+    TerminalType
 } from './types';
 
-// Export CLI invoker functions
+// Export CLI invoker functions (VS Code-specific, uses vscode.workspace.getConfiguration)
 export {
     checkProgramExists,
     clearProgramExistsCache,
     copyToClipboard,
-    escapeShellArg,
     getAIModelSetting,
     getAIToolSetting,
     getPromptTemplate,
@@ -74,43 +131,21 @@ export {
     AICommand,
     AICommandMode,
     AICommandsConfig,
-    DEFAULT_AI_COMMANDS, serializeCommand,
-    serializeCommands, SerializedAICommand,
+    DEFAULT_AI_COMMANDS,
+    serializeCommand,
+    serializeCommands,
+    SerializedAICommand,
     SerializedAIMenuConfig
 } from './ai-command-types';
 
 export { AICommandRegistry, getAICommandRegistry } from './ai-command-registry';
 
-// Export prompt builder
+// Export prompt builder (VS Code-specific, uses context from editor)
 export { buildPrompt, getAvailableVariables, PromptContext, usesTemplateVariables } from './prompt-builder';
 
 // Export AI Service logger (backward compatibility - use shared/extension-logger for new code)
 export { AILogLevel, AIServiceLogger, getAIServiceLogger, LogLevel, ExtensionLogger, getExtensionLogger, LogCategory } from './ai-service-logger';
 export type { AILogEntry } from './ai-service-logger';
-
-// Export interactive session types
-export {
-    ExternalTerminalLaunchOptions,
-    ExternalTerminalLaunchResult,
-    InteractiveSession,
-    InteractiveSessionEvent,
-    InteractiveSessionEventType,
-    InteractiveSessionStatus,
-    InteractiveToolType,
-    TerminalType
-} from './types';
-
-// Export CLI utilities
-export {
-    buildCliCommand,
-    COPILOT_BASE_FLAGS,
-    PROMPT_LENGTH_THRESHOLD,
-    PROBLEMATIC_CHARS_PATTERN,
-    shouldUseFileDelivery,
-    writePromptToTempFile,
-    BuildCliCommandResult,
-    BuildCliCommandOptions
-} from './cli-utils';
 
 // Export external terminal launcher
 export {
@@ -144,40 +179,12 @@ export {
     WindowFocusService
 } from './window-focus-service';
 
-// Export Copilot SDK service
-export {
-    CopilotSDKService,
-    getCopilotSDKService,
-    resetCopilotSDKService,
-    SendMessageOptions,
-    SDKInvocationResult,
-    SDKAvailabilityResult,
-    // Session pool configuration (for VS Code-free usage)
-    SessionPoolConfig,
-    DEFAULT_SESSION_POOL_CONFIG,
-    // Permission handling types and helpers
-    PermissionRequest,
-    PermissionRequestResult,
-    PermissionHandler,
-    approveAllPermissions,
-    denyAllPermissions
-} from './copilot-sdk-service';
-
 // Export AI config helpers (VS Code-specific)
 export {
     getAIBackendSetting,
     getSDKMaxSessionsSetting,
     getSDKSessionTimeoutSetting
 } from './ai-config-helpers';
-
-// Export session pool for advanced use cases
-export {
-    SessionPool,
-    SessionPoolOptions,
-    SessionPoolStats,
-    IPoolableSession,
-    SessionFactory
-} from './session-pool';
 
 // Export AI invoker factory for unified SDK/CLI fallback handling
 export {

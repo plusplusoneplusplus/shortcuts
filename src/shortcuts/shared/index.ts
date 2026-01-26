@@ -7,13 +7,71 @@
  * 
  * Extracting common code here reduces duplication and ensures
  * consistent behavior across features.
+ *
+ * NOTE: Core utilities (file I/O, glob, exec, HTTP, text matching, AI response parsing)
+ * are now provided by the pipeline-core package. This module re-exports those
+ * and adds VS Code-specific utilities.
  */
+
+// ============================================================================
+// Re-export from pipeline-core package (core utilities)
+// ============================================================================
+export {
+    // File utilities
+    FileOperationResult,
+    ReadFileOptions,
+    WriteFileOptions,
+    YAMLOptions,
+    safeExists,
+    safeIsDirectory,
+    safeIsFile,
+    safeReadFile,
+    safeWriteFile,
+    ensureDirectoryExists,
+    safeReadDir,
+    safeStats,
+    readYAML,
+    writeYAML,
+    safeCopyFile,
+    safeRename,
+    safeRemove,
+    getFileErrorMessage,
+    // Glob utilities
+    glob,
+    getFilesWithExtension,
+    // Exec utilities
+    execAsync,
+    // HTTP utilities
+    HttpResponse,
+    httpGet,
+    httpDownload,
+    httpGetJson,
+    // Text matching utilities
+    AnchorMatchConfig,
+    DEFAULT_ANCHOR_MATCH_CONFIG,
+    BaseMatchAnchor,
+    hashText,
+    levenshteinDistance,
+    calculateSimilarity,
+    normalizeText,
+    splitIntoLines,
+    getCharOffset,
+    offsetToLineColumn,
+    findAllOccurrences,
+    scoreMatch,
+    findFuzzyMatch,
+    extractContext,
+    // AI response parser
+    extractJSON,
+    parseAIResponse
+} from '@anthropic-ai/pipeline-core';
+
+// ============================================================================
+// VS Code-specific utilities (not in pipeline-core)
+// ============================================================================
 
 // HTML line splitting utilities
 export * from './highlighted-html-lines';
-
-// Text matching utilities for anchor systems
-export * from './text-matching';
 
 // Base tree provider for comments
 export { CommentsTreeProviderBase } from './comments-tree-provider-base';
@@ -33,9 +91,6 @@ export type { BaseClarificationContext, BaseClarificationResult } from './ai-cla
 export { DEFAULT_BASE_PROMPT_OPTIONS, PromptGeneratorBase } from './prompt-generator-base';
 export type { BasePromptGenerationOptions } from './prompt-generator-base';
 
-// Glob utilities for file pattern matching
-export { getFilesWithExtension, glob } from './glob-utils';
-
 // Prompt files utilities (for VS Code Copilot .prompt.md files)
 export {
     getPromptFileLocations,
@@ -45,7 +100,7 @@ export {
 } from './prompt-files-utils';
 export type { PromptFile } from './prompt-files-utils';
 
-// Extension-wide logging framework
+// Extension-wide logging framework (VS Code-specific, uses OutputChannel)
 export {
     AILogLevel, // Backward compatibility alias
     AIServiceLogger, // Backward compatibility alias
@@ -57,7 +112,7 @@ export {
 } from './extension-logger';
 export type { LogEntry, LoggerConfig } from './extension-logger';
 
-// Workspace utilities for path resolution
+// Workspace utilities for path resolution (VS Code-specific)
 export {
     getFirstWorkspaceFolder,
     getWorkspaceRoot,
@@ -66,31 +121,7 @@ export {
     hasWorkspace
 } from './workspace-utils';
 
-// File I/O utilities with consistent error handling
-export {
-    ensureDirectoryExists,
-    getFileErrorMessage,
-    readYAML,
-    safeCopyFile,
-    safeExists,
-    safeIsDirectory,
-    safeIsFile,
-    safeReadDir,
-    safeReadFile,
-    safeRemove,
-    safeRename,
-    safeStats,
-    safeWriteFile,
-    writeYAML
-} from './file-utils';
-export type {
-    FileOperationResult,
-    ReadFileOptions,
-    WriteFileOptions,
-    YAMLOptions
-} from './file-utils';
-
-// Read-only document provider with content strategies
+// Read-only document provider with content strategies (VS Code-specific)
 export {
     ContentStrategy,
     createSchemeUri,
@@ -106,13 +137,6 @@ export {
     registerSchemes,
     SchemeConfig
 } from './readonly-document-provider';
-
-// Shell command execution utilities
-export { execAsync } from './exec-utils';
-
-// Cross-platform HTTP utilities (uses native Node.js, no external dependencies)
-export { httpDownload, httpGet, httpGetJson } from './http-utils';
-export type { HttpResponse } from './http-utils';
 
 // Note: Webview utilities are exported separately via './webview'
 // to avoid bundling issues with webview-specific code in the extension bundle

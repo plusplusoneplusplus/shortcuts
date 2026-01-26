@@ -6,10 +6,16 @@
  * with consistent UI/process tracking.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
+ *
+ * NOTE: All map-reduce functionality is now provided by the pipeline-core package.
+ * This module re-exports everything from pipeline-core for backward compatibility.
  */
 
-// Core types
-export type {
+// ============================================================================
+// Re-export everything from pipeline-core's map-reduce module
+// ============================================================================
+export {
+    // Core types
     WorkItem,
     MapContext,
     MapResult,
@@ -32,18 +38,17 @@ export type {
     AIInvokerOptions,
     AIInvokerResult,
     ProcessTracker,
-    ExecutorOptions
-} from './types';
-export { DEFAULT_MAP_REDUCE_OPTIONS } from './types';
-
-// Executor
-export { MapReduceExecutor, createExecutor } from './executor';
-
-// Concurrency limiter
-export { ConcurrencyLimiter, CancellationError, DEFAULT_MAX_CONCURRENCY } from './concurrency-limiter';
-
-// Prompt template
-export {
+    ExecutorOptions,
+    SessionMetadata,
+    DEFAULT_MAP_REDUCE_OPTIONS,
+    // Executor
+    MapReduceExecutor,
+    createExecutor,
+    // Concurrency limiter
+    ConcurrencyLimiter,
+    CancellationError,
+    DEFAULT_MAX_CONCURRENCY,
+    // Prompt template
     renderTemplate,
     createTemplate,
     extractVariables,
@@ -52,31 +57,22 @@ export {
     TemplateHelpers,
     ResponseParsers,
     MissingVariableError,
-    TemplateRenderError
-} from './prompt-template';
-
-// Reducers
-export {
-    // Base reducers
+    TemplateRenderError,
+    // Reducers
     BaseReducer,
     IdentityReducer,
     FlattenReducer,
     AggregatingReducer,
-    // Deterministic reducer
     DeterministicReducer,
     createDeterministicReducer,
     StringDeduplicationReducer,
     NumericAggregationReducer,
-    // AI reducer
     AIReducer,
     createAIReducer,
     createTextSynthesisReducer,
-    // Hybrid reducer
     HybridReducer,
     createHybridReducer,
-    createSimpleHybridReducer
-} from './reducers';
-export type {
+    createSimpleHybridReducer,
     Deduplicatable,
     DeterministicReducerOptions,
     DeterministicReduceOutput,
@@ -84,32 +80,24 @@ export type {
     TextSynthesisOutput,
     TextSynthesisOptions,
     HybridReducerOptions,
-    SimplePolishedOutput
-} from './reducers';
-
-// Splitters
-export {
-    // File splitter
+    SimplePolishedOutput,
+    // Splitters
     FileSplitter,
     createFileSplitter,
     createExtensionFilteredSplitter,
     BatchedFileSplitter,
     createBatchedFileSplitter,
-    // Chunk splitter
     ChunkSplitter,
     createChunkSplitter,
     createLineChunkSplitter,
     createParagraphChunkSplitter,
-    // Rule splitter
     RuleSplitter,
     createRuleSplitter,
     createAlphabeticRuleSplitter,
     createPriorityRuleSplitter,
     createPatternFilteredRuleSplitter,
     BatchedRuleSplitter,
-    createBatchedRuleSplitter
-} from './splitters';
-export type {
+    createBatchedRuleSplitter,
     FileItem,
     FileInput,
     FileWorkItemData,
@@ -122,20 +110,15 @@ export type {
     RuleInput,
     RuleWorkItemData,
     RuleSplitterOptions,
-    BatchedRuleWorkItemData
-} from './splitters';
-
-// Jobs
-export {
+    BatchedRuleWorkItemData,
+    // Jobs
     createCodeReviewJob,
     createTemplateJob,
     createSimpleTemplateJob,
     createJsonTemplateJob,
     createListProcessingJob,
     createPromptMapJob,
-    createPromptMapInput
-} from './jobs';
-export type {
+    createPromptMapInput,
     ReviewSeverity,
     ReviewFinding,
     RuleReviewResult,
@@ -155,11 +138,8 @@ export type {
     PromptMapOutput,
     PromptMapSummary,
     PromptMapJobOptions,
-    OutputFormat
-} from './jobs';
-
-// Temp file utilities
-export {
+    OutputFormat,
+    // Temp file utilities
     writeTempFile,
     readTempFile,
     cleanupTempFile,
@@ -167,6 +147,6 @@ export {
     ensureTempDir,
     generateTempFileName,
     isTempFilePath,
-    getTempDirPath
-} from './temp-file-utils';
-export type { TempFileResult } from './temp-file-utils';
+    getTempDirPath,
+    TempFileResult
+} from '@anthropic-ai/pipeline-core';

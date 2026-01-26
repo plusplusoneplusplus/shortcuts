@@ -7,7 +7,7 @@ NEVER create document file unless user's explicit ask.
 
 **Pipeline Core Package Extraction** - The pipeline execution engine has been extracted into a standalone Node.js package:
 
-- **New Package:** `@anthropic-ai/pipeline-core` in `packages/pipeline-core/`
+- **New Package:** `pipeline-core` in `packages/pipeline-core/`
 - **Pure Node.js:** No VS Code dependencies, can be used in CLI tools and other environments
 - **Modules Extracted:**
   - `logger` - Pluggable logging abstraction
@@ -98,7 +98,7 @@ Test files are in `src/test/suite/` and include:
 - `AIProcessManager` - Manages running AI clarification requests with persistence
 - `AIProcessTreeDataProvider` - Shows running/completed AI processes
 - `CopilotCLIInvoker` - Invokes GitHub Copilot CLI or copies to clipboard
-- Core AI functionality (CopilotSDKService, session pool, CLI utilities) now in `@anthropic-ai/pipeline-core` package
+- Core AI functionality (CopilotSDKService, session pool, CLI utilities) now in `pipeline-core` package
 - Working directory defaults to `{workspaceFolder}/src` if the src directory exists, otherwise falls back to workspace root
 - AI processes are persisted using VSCode's Memento API (workspaceState) and restored on extension restart, keeping history isolated per workspace
 - Supports viewing full process details, removing individual processes, and clearing all history
@@ -175,7 +175,7 @@ const result = await service.sendMessage({
 **YAML Pipeline (`src/shortcuts/yaml-pipeline/`)**
 - `PipelineManager` - Manages pipeline packages (discovery, CRUD, validation)
 - `PipelinesTreeDataProvider` - Tree view for pipeline packages and resources
-- Core pipeline execution logic now in `@anthropic-ai/pipeline-core` package
+- Core pipeline execution logic now in `pipeline-core` package
 - Pipelines are organized as **packages**: directories containing `pipeline.yaml`
 - CSV paths are resolved relative to the pipeline package directory
 

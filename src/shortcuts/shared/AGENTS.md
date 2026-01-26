@@ -2,7 +2,7 @@
 
 This module contains shared utilities used by multiple features across the extension. It reduces code duplication and ensures consistent behavior.
 
-**Note (2026-01):** Some utilities have been moved to `@anthropic-ai/pipeline-core` package:
+**Note (2026-01):** Some utilities have been moved to `pipeline-core` package:
 - File utilities (file-utils, glob-utils, exec-utils) → `packages/pipeline-core/src/utils/`
 - HTTP utilities → `packages/pipeline-core/src/utils/http-utils.ts`
 - AI response parser → `packages/pipeline-core/src/utils/ai-response-parser.ts`

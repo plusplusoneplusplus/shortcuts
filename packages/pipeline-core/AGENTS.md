@@ -1,6 +1,6 @@
 # Pipeline Core Package - Developer Reference
 
-This is a pure Node.js package (`@anthropic-ai/pipeline-core`) that provides the AI pipeline execution engine. It has no VS Code dependencies and can be used in CLI tools, tests, and other Node.js environments.
+This is a pure Node.js package (`pipeline-core`) that provides the AI pipeline execution engine. It has no VS Code dependencies and can be used in CLI tools, tests, and other Node.js environments.
 
 ## Package Structure
 
@@ -61,7 +61,7 @@ packages/pipeline-core/
 Pluggable logger abstraction that allows different environments to provide their own logging implementation.
 
 ```typescript
-import { setLogger, getLogger, consoleLogger, nullLogger, LogCategory } from '@anthropic-ai/pipeline-core';
+import { setLogger, getLogger, consoleLogger, nullLogger, LogCategory } from 'pipeline-core';
 
 // Use default console logger
 const logger = getLogger();
@@ -90,7 +90,7 @@ import {
     approveAllPermissions,
     escapeShellArg,
     buildCliCommand 
-} from '@anthropic-ai/pipeline-core';
+} from 'pipeline-core';
 
 // Get singleton service
 const service = getCopilotSDKService();
@@ -127,7 +127,7 @@ import {
     createFileSplitter,
     createDeterministicReducer,
     createCodeReviewJob
-} from '@anthropic-ai/pipeline-core';
+} from 'pipeline-core';
 
 // Create executor
 const executor = createExecutor({
@@ -150,7 +150,7 @@ import {
     parsePipelineYAML,
     readCSVFile,
     substituteTemplate
-} from '@anthropic-ai/pipeline-core';
+} from 'pipeline-core';
 
 // Parse pipeline config
 const config = await parsePipelineYAML(yamlContent);
@@ -175,7 +175,7 @@ import {
     httpGet,
     calculateSimilarity,
     extractJSON
-} from '@anthropic-ai/pipeline-core';
+} from 'pipeline-core';
 
 // Safe file operations
 const content = await safeReadFile('/path/to/file.txt');
@@ -229,7 +229,7 @@ import {
     executePipeline,
     CopilotSDKService,
     setLogger 
-} from '@anthropic-ai/pipeline-core';
+} from 'pipeline-core';
 
 // Set up VS Code logger
 setLogger({

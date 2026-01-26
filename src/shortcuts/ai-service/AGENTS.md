@@ -3,14 +3,14 @@
 This module provides a generic, domain-agnostic service for tracking AI processes. It is designed to be used by any feature that needs to invoke AI tools and track their execution.
 
 **Major Updates (2026-01):**
-- **Pipeline Core Extraction:** Core AI functionality (CopilotSDKService, session pool, CLI utilities) moved to `@anthropic-ai/pipeline-core` package
+- **Pipeline Core Extraction:** Core AI functionality (CopilotSDKService, session pool, CLI utilities) moved to `pipeline-core` package
 - Added GitHub Copilot SDK support as primary AI backend
 - Created unified AI invoker factory with automatic SDK/CLI fallback
 - Session pool for parallel workloads (code review, pipelines)
 - Eliminated ~450 lines of duplicated backend selection code
 
 **Package Structure:**
-- `@anthropic-ai/pipeline-core` - Pure Node.js core (CopilotSDKService, SessionPool, CLI utils)
+- `pipeline-core` - Pure Node.js core (CopilotSDKService, SessionPool, CLI utils)
 - `src/shortcuts/ai-service/` - VS Code integration layer (AIProcessManager, tree provider, commands)
 
 ## Architecture Overview

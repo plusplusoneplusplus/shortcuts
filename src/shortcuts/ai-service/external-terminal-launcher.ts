@@ -15,10 +15,9 @@ import * as path from 'path';
 import {
     ExternalTerminalLaunchOptions,
     ExternalTerminalLaunchResult,
-    InteractiveToolType,
     TerminalType
 } from './types';
-import { buildCliCommand } from './cli-utils';
+import { buildCliCommand, InteractiveToolType } from '@anthropic-ai/pipeline-core';
 
 /**
  * Terminal configuration for each platform

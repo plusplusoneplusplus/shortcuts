@@ -1,5 +1,5 @@
 /**
- * @anthropic-ai/pipeline-core
+ * pipeline-core
  *
  * AI pipeline execution engine with map-reduce framework.
  * A pure Node.js package for building and executing AI-powered data processing pipelines.
@@ -12,7 +12,7 @@
  *
  * @example
  * ```typescript
- * import { executePipeline, setLogger, consoleLogger } from '@anthropic-ai/pipeline-core';
+ * import { executePipeline, setLogger, consoleLogger } from 'pipeline-core';
  *
  * // Configure logging
  * setLogger(consoleLogger);

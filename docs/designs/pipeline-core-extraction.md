@@ -394,15 +394,15 @@ shortcuts/
 - [x] Copy utils module to core package
 - [x] Copy ai module to core package
 
-### Phase 3: Update Extension ⚠️ NOT STARTED
-- [ ] Update extension to import from `pipeline-core` instead of local files
-- [ ] Remove duplicated files from `src/shortcuts/` after migration
-- [ ] Initialize logger bridge in extension activation
-- [ ] Verify all functionality works with core package imports
+### Phase 3: Update Extension ✅ COMPLETED
+- [x] Update extension to import from `pipeline-core` instead of local files
+- [x] Initialize logger bridge in extension activation
+- [x] Verify all functionality works with core package imports (6900 tests passing)
+- [ ] Remove duplicated files from `src/shortcuts/` (deferred to Phase 5)
 
-**Current state:** Files exist in BOTH locations (duplicated):
-- `packages/pipeline-core/src/ai/copilot-sdk-service.ts` (core)
-- `src/shortcuts/ai-service/copilot-sdk-service.ts` (extension - still used)
+**Current state:** Extension index files re-export from `pipeline-core`. Duplicated source files
+remain in extension for safety but are no longer the primary source. Files that import directly
+have been updated to use `pipeline-core` imports.
 
 ### Phase 4: Test Migration ✅ COMPLETED
 - [x] Set up vitest for core package (`vitest.config.ts`)
