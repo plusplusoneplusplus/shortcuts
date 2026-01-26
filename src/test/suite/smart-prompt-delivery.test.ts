@@ -14,7 +14,7 @@ import {
     buildCliCommand,
     PROMPT_LENGTH_THRESHOLD,
     PROBLEMATIC_CHARS_PATTERN
-} from '../../shortcuts/ai-service/cli-utils';
+} from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // shouldUseFileDelivery Tests

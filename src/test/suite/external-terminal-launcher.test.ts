@@ -8,7 +8,7 @@
 import * as assert from 'assert';
 import { ChildProcess } from 'child_process';
 import { ExternalTerminalLauncher } from '../../shortcuts/ai-service/external-terminal-launcher';
-import { buildCliCommand, escapeShellArg } from '../../shortcuts/ai-service/cli-utils';
+import { buildCliCommand, escapeShellArg } from '@plusplusoneplusplus/pipeline-core';
 import { TerminalType, ExternalTerminalLaunchOptions } from '../../shortcuts/ai-service/types';
 
 // ============================================================================

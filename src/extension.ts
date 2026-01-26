@@ -109,7 +109,7 @@ export async function activate(context: vscode.ExtensionContext) {
         extensionLogger.info(LogCategory.EXTENSION, 'Shortcuts extension activating', { workspaceRoot });
 
         // Initialize pipeline-core logger bridge to route logs to VS Code output channel
-        const { setLogger } = await import('@anthropic-ai/pipeline-core');
+        const { setLogger } = await import('@plusplusoneplusplus/pipeline-core');
         setLogger({
             debug: (cat, msg) => extensionLogger.debug(cat as LogCategory, msg),
             info: (cat, msg) => extensionLogger.info(cat as LogCategory, msg),

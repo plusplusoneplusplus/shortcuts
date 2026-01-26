@@ -14,7 +14,7 @@
  */
 
 import { copyToClipboard, invokeCopilotCLI } from './copilot-cli-invoker';
-import { getCopilotSDKService, AIInvocationResult } from '@anthropic-ai/pipeline-core';
+import { getCopilotSDKService, AIInvocationResult } from '@plusplusoneplusplus/pipeline-core';
 import { getAIBackendSetting } from './ai-config-helpers';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
 

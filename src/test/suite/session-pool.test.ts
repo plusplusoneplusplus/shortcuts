@@ -19,7 +19,7 @@ import {
     SessionPoolStats,
     IPoolableSession,
     SessionFactory
-} from '../../shortcuts/ai-service/session-pool';
+} from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Mock Types and Utilities

@@ -1,5 +1,5 @@
 /**
- * Generic AI Service Types
+ * Generic AI Service Types (VS Code-specific)
  * 
  * Types and interfaces for the AI service module.
  * These are generic types used across different AI tool integrations.
@@ -7,7 +7,27 @@
  * IMPORTANT: This module should remain domain-agnostic. Feature-specific
  * metadata types (like code review) should be defined in their own modules
  * and use the generic metadata extensibility system here.
+ * 
+ * Core AI types (AIBackendType, AIModel, AIInvocationResult, etc.) are 
+ * re-exported from @plusplusoneplusplus/pipeline-core to avoid duplication.
  */
+
+// Import and re-export core AI types from pipeline-core
+import type {
+    AIBackendType,
+    AIModel,
+    AIInvocationResult,
+    InteractiveToolType
+} from '@plusplusoneplusplus/pipeline-core';
+
+export {
+    AIBackendType,
+    AIModel,
+    VALID_MODELS,
+    AIInvocationResult,
+    DEFAULT_PROMPTS,
+    InteractiveToolType
+} from '@plusplusoneplusplus/pipeline-core';
 
 /**
  * Result of checking if a process is running
@@ -20,47 +40,14 @@ export interface ProcessCheckResult {
 }
 
 /**
- * Supported AI tools for invocation
+ * Supported AI tools for invocation (VS Code-specific)
  */
 export type AIToolType = 'copilot-cli' | 'clipboard';
-
-/**
- * Supported AI backends for invocation.
- * - 'copilot-sdk': Use the @github/copilot-sdk for structured JSON-RPC communication
- * - 'copilot-cli': Use the copilot CLI via child process (legacy)
- * - 'clipboard': Copy prompt to clipboard for manual use
- */
-export type AIBackendType = 'copilot-sdk' | 'copilot-cli' | 'clipboard';
-
-/**
- * Valid AI model options for Copilot CLI
- */
-export const VALID_MODELS = [
-    'claude-sonnet-4.5',
-    'claude-haiku-4.5',
-    'claude-opus-4.5',
-    'gpt-5.1-codex-max',
-    'gemini-3-pro-preview'
-] as const;
-
-export type AIModel = typeof VALID_MODELS[number];
 
 /**
  * Status of an AI process
  */
 export type AIProcessStatus = 'running' | 'completed' | 'failed' | 'cancelled';
-
-/**
- * Result of an AI invocation
- */
-export interface AIInvocationResult {
-    /** Whether the invocation was successful */
-    success: boolean;
-    /** The response text from the AI (if successful) */
-    response?: string;
-    /** Error message (if failed) */
-    error?: string;
-}
 
 /**
  * Type of AI process - extensible via string union
@@ -385,34 +372,6 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
 }
 
 /**
- * Default prompt templates for different instruction types
- */
-export const DEFAULT_PROMPTS = {
-    clarify: `Please clarify the following snippet with more depth.
-
-- Explain what it does in plain language.
-- Walk through the key steps, including control flow and data flow.
-- State any assumptions you are making from limited context.
-- Call out ambiguities and ask up to 3 targeted questions.
-- Suggest 2 to 3 concrete next checks, such as what to inspect or test next.
-
-Snippet`,
-    goDeeper: `Please provide an in-depth explanation and analysis of the following snippet.
-
-Go beyond a summary and explore the surrounding implications.
-
-- Intent and responsibilities in the broader system.
-- Step-by-step control flow and data flow.
-- Edge cases and failure modes, including correctness, security, and performance.
-- Likely dependencies and impacts, and what else to inspect.
-- Concrete improvements or refactors with tradeoffs.
-- How to validate, including focused tests, repro steps, or logs.
-
-Snippet`,
-    customDefault: 'Please explain the following snippet'
-} as const;
-
-/**
  * Event types for process changes
  */
 export type ProcessEventType = 'process-added' | 'process-updated' | 'process-removed' | 'processes-cleared';
@@ -428,11 +387,6 @@ export interface ProcessEvent {
 // ============================================================================
 // Interactive Session Types
 // ============================================================================
-
-/**
- * Supported CLI tools for interactive sessions
- */
-export type InteractiveToolType = 'copilot' | 'claude';
 
 /**
  * Status of an interactive session

@@ -53,7 +53,7 @@ export {
     DEFAULT_SESSION_POOL_CONFIG,
     approveAllPermissions,
     denyAllPermissions
-} from '@anthropic-ai/pipeline-core';
+} from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // VS Code-specific types (not in pipeline-core)

@@ -15,7 +15,7 @@
 
 import * as vscode from 'vscode';
 import { ChildProcess } from 'child_process';
-import { getCopilotSDKService } from '../ai-service/copilot-sdk-service';
+import { getCopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
 import { invokeAIWithFallback } from '../ai-service/ai-invoker-factory';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 import {

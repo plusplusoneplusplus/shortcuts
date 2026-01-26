@@ -20,7 +20,7 @@ import {
     SDKAvailabilityResult,
     SDKInvocationResult,
     SendMessageOptions
-} from '../../shortcuts/ai-service/copilot-sdk-service';
+} from '@plusplusoneplusplus/pipeline-core';
 import {
     getAIBackendSetting,
     getSDKMaxSessionsSetting,

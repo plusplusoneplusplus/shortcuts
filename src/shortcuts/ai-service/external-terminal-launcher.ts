@@ -17,7 +17,7 @@ import {
     ExternalTerminalLaunchResult,
     TerminalType
 } from './types';
-import { buildCliCommand, InteractiveToolType } from '@anthropic-ai/pipeline-core';
+import { buildCliCommand, InteractiveToolType } from '@plusplusoneplusplus/pipeline-core';
 
 /**
  * Terminal configuration for each platform

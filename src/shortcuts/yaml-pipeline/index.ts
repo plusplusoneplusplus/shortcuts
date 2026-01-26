@@ -107,7 +107,7 @@ export {
     GenerateInputResult,
     GeneratedItem,
     GenerateState
-} from '@anthropic-ai/pipeline-core';
+} from '@plusplusoneplusplus/pipeline-core';
 
 // Re-export execution types from pipeline-core (canonical source)
 export type {
@@ -129,16 +129,16 @@ export type {
     PromptMapSummary,
     PromptMapJobOptions,
     OutputFormat
-} from '@anthropic-ai/pipeline-core';
+} from '@plusplusoneplusplus/pipeline-core';
 
 // Re-export ConcurrencyLimiter from pipeline-core
-export { ConcurrencyLimiter } from '@anthropic-ai/pipeline-core';
+export { ConcurrencyLimiter } from '@plusplusoneplusplus/pipeline-core';
 
 // Re-export extractVariables and parseAIResponse/extractJSON from pipeline-core
-export { extractVariables, parseAIResponse, extractJSON } from '@anthropic-ai/pipeline-core';
+export { extractVariables, parseAIResponse, extractJSON } from '@plusplusoneplusplus/pipeline-core';
 
 // Re-export job creation from pipeline-core for advanced usage
-export { createPromptMapJob, createPromptMapInput } from '@anthropic-ai/pipeline-core';
+export { createPromptMapJob, createPromptMapInput } from '@plusplusoneplusplus/pipeline-core';
 
 // UI Components for Pipelines Viewer
 export {

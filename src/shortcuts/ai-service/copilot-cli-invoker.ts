@@ -17,7 +17,7 @@ import {
     COPILOT_BASE_FLAGS,
     escapeShellArg,
     buildCliCommand
-} from '@anthropic-ai/pipeline-core';
+} from '@plusplusoneplusplus/pipeline-core';
 
 // Re-export shared utilities for backward compatibility
 export { COPILOT_BASE_FLAGS, escapeShellArg, buildCliCommand };

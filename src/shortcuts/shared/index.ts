@@ -64,7 +64,7 @@ export {
     // AI response parser
     extractJSON,
     parseAIResponse
-} from '@anthropic-ai/pipeline-core';
+} from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // VS Code-specific utilities (not in pipeline-core)

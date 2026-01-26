@@ -1,5 +1,5 @@
 {
-  "name": "@anthropic-ai/pipeline-core",
+  "name": "@plusplusoneplusplus/pipeline-core",
   "version": "1.0.0",
   "description": "AI pipeline execution engine with map-reduce framework",
   "main": "dist/index.js",

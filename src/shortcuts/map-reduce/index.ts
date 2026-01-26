@@ -149,4 +149,4 @@ export {
     isTempFilePath,
     getTempDirPath,
     TempFileResult
-} from '@anthropic-ai/pipeline-core';
+} from '@plusplusoneplusplus/pipeline-core';

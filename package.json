@@ -2693,7 +2693,7 @@
     "webpack-cli": "^5.0.0"
   },
   "dependencies": {
-    "@anthropic-ai/pipeline-core": "file:packages/pipeline-core",
+    "@plusplusoneplusplus/pipeline-core": "file:packages/pipeline-core",
     "@github/copilot-sdk": "^0.1.16",
     "diff": "^5.2.0",
     "js-yaml": "^4.1.0"

@@ -20,7 +20,7 @@ import {
     offsetToLineColumn,
     scoreMatch,
     splitIntoLines
-} from '@anthropic-ai/pipeline-core';
+} from '@plusplusoneplusplus/pipeline-core';
 
 // Re-export commonly used functions
 export {
