@@ -4,16 +4,23 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 
 ## Recent Refactoring (2026-01)
 
+**Pipeline Core Package Extraction** - Extracted pipeline execution engine into standalone package:
+- New package: `@anthropic-ai/pipeline-core` in `packages/pipeline-core/`
+- Pure Node.js (no VS Code dependencies), usable in CLI tools
+- Modules: logger, utils, ai (SDK service, session pool), map-reduce, pipeline
+- Monorepo with npm workspaces
+- Extension imports core functionality from the package
+
 **Tree Data Provider Base Classes** - Eliminated code duplication across tree data providers:
 - Created 5 new shared modules: `base-tree-data-provider`, `filterable-tree-data-provider`, `tree-filter-utils`, `tree-icon-utils`, `tree-error-handler`
 - Migrated 4 providers to extend base classes: GlobalNotesTreeDataProvider, TasksTreeDataProvider, PipelinesTreeDataProvider, LogicalTreeDataProvider
-- Result: Eliminated ~210 lines of duplication, all 5690 tests passing, 100% backward compatible
+- Result: Eliminated ~210 lines of duplication, all 6900 tests passing, 100% backward compatible
 
 ## Module Overview
 
 | Module | Description |
 |--------|-------------|
-| **ai-service** | Generic AI process tracking and Copilot CLI invocation |
+| **ai-service** | Generic AI process tracking, VS Code integration (core in `@anthropic-ai/pipeline-core`) |
 | **code-review** | Review Git diffs against custom coding rules |
 | **debug-panel** | Debug tree view for development/testing |
 | **discovery** | AI-powered feature discovery and file organization |
@@ -21,16 +28,28 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 | **git-diff-comments** | Inline commenting on Git diffs |
 | **global-notes** | Quick-access notes available across workspaces |
 | **lm-tools** | Language model tools for Copilot Chat integration |
-| **map-reduce** | Parallel AI processing framework |
+| **map-reduce** | VS Code integration layer (core in `@anthropic-ai/pipeline-core`) |
 | **markdown-comments** | Inline commenting on markdown files |
 | **shared** | Shared utilities (logging, text matching, **tree provider base classes**) |
 | **sync** | Cloud synchronization via VSCode Settings Sync |
 | **tasks-viewer** | Markdown task list management |
-| **yaml-pipeline** | YAML configuration layer for map-reduce |
+| **yaml-pipeline** | VS Code UI layer (core in `@anthropic-ai/pipeline-core`) |
 
 ## Module Dependencies
 
 ```
+┌─────────────────────────────────────────────────────────────────┐
+│              @anthropic-ai/pipeline-core (npm package)          │
+│  (logger, utils, ai/copilot-sdk, map-reduce core, pipeline)     │
+└─────────────────────────────────────────────────────────────────┘
+        ▲           ▲           ▲           ▲           ▲
+        │           │           │           │           │
+┌───────┴───┐ ┌─────┴─────┐ ┌───┴───────┐ ┌─┴───────────┴───┐
+│ai-service │ │map-reduce │ │yaml-      │ │  code-review    │
+│(VS Code)  │ │(VS Code)  │ │pipeline   │ │                 │
+└───────────┘ └───────────┘ │(VS Code)  │ └─────────────────┘
+                            └───────────┘
+
 ┌─────────────────────────────────────────────────────────────────┐
 │                         shared                                  │
 │  (logging, text-matching, **tree base classes**, webview utils) │
@@ -42,48 +61,35 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 ┌───────┴───┐ │ ┌─────────┴─┐ ┌─┴─────┴───┐ ┌─────┴─────┴───┐
 │ai-service │ │ │  git      │ │ markdown- │ │ git-diff-     │
 │           │ │ │           │ │ comments  │ │ comments      │
-└─────┬─────┘ │ └─────┬─────┘ └───────────┘ └───────────────┘
-      │       │       │
-      ▼       │       ▼
-┌─────────────┴───────────────┐
-│        map-reduce           │
-│  (executor, splitters,      │
-│   reducers, templates)      │
-└─────────────┬───────────────┘
+└───────────┘ │ └───────────┘ └───────────┘ └───────────────┘
               │
-      ┌───────┴───────┐
-      ▼               ▼
-┌───────────┐   ┌─────────────┐
-│code-review│   │yaml-pipeline│
-└───────────┘   └─────────────┘
+┌───────────┐ │ ┌───────────┐   ┌───────────┐
+│ discovery │─┘ │  lm-tools │   │   sync    │
+└───────────┘   └─────┬─────┘   └───────────┘
+                      │
+                      ▼
+              ┌───────────────┐
+              │markdown-      │
+              │comments       │
+              └───────────────┘
 
 ┌───────────┐   ┌───────────┐   ┌───────────┐
-│ discovery │──▶│ai-service │   │  lm-tools │
-└───────────┘   └───────────┘   └─────┬─────┘
-                                      │
-                      ┌───────────────┴───────────────┐
-                      ▼                               ▼
-              ┌───────────────┐               ┌───────────────┐
-              │markdown-      │               │git-diff-      │
-              │comments       │               │comments       │
-              └───────────────┘               └───────────────┘
-
-┌───────────┐   ┌───────────┐   ┌───────────┐   ┌───────────┐
-│global-note│   │tasks-viewe│   │debug-panel│   │   sync    │
-│(standalone)   │(standalone)   │(standalone)   │(standalone)
-└───────────┘   └───────────┘   └───────────┘   └───────────┘
+│global-note│   │tasks-viewe│   │debug-panel│
+│(standalone)   │(standalone)   │(standalone)
+└───────────┘   └───────────┘   └───────────┘
 ```
 
 ## Dependency Summary
 
 ### Core Infrastructure
+- **@anthropic-ai/pipeline-core** → Pure Node.js package with AI/pipeline execution engine
 - **shared** → Used by almost all modules for logging, utilities, base classes
 
 ### AI Processing Stack
-- **ai-service** → Base AI tracking, used by discovery, code-review
-- **map-reduce** → Uses ai-service for process tracking
-- **yaml-pipeline** → Configuration layer on top of map-reduce
-- **code-review** → Uses map-reduce for parallel rule checking
+- **ai-service** → VS Code integration layer, uses pipeline-core for SDK/CLI
+- **map-reduce** → VS Code integration layer, uses pipeline-core for execution
+- **yaml-pipeline** → VS Code UI layer, uses pipeline-core for execution
+- **code-review** → Uses pipeline-core map-reduce for parallel rule checking
 
 ### Commenting Features
 - **markdown-comments** → Uses shared for anchoring and prompts

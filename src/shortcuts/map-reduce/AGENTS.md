@@ -2,6 +2,12 @@
 
 This module provides a reusable framework for AI map-reduce workflows. It enables parallel AI processing with configurable splitters, mappers, reducers, and prompt templates.
 
+**Package Structure (2026-01):**
+- `@anthropic-ai/pipeline-core` - Core map-reduce engine (executor, splitters, reducers, jobs, temp file utils)
+- `src/shortcuts/map-reduce/` - VS Code integration layer (re-exports from core package)
+
+The core functionality has been extracted to `packages/pipeline-core/src/map-reduce/` for use in CLI tools and other Node.js environments.
+
 ## Architecture Overview
 
 ```
@@ -485,7 +491,10 @@ interface ProcessTracker {
 
 ## See Also
 
+- `packages/pipeline-core/src/map-reduce/` - Core map-reduce engine (pure Node.js)
+- `packages/pipeline-core/test/map-reduce/` - Core tests (Vitest)
 - `src/shortcuts/ai-service/AGENTS.md` - AI process tracking integration
 - `src/shortcuts/code-review/AGENTS.md` - Code review using map-reduce
 - `src/shortcuts/yaml-pipeline/AGENTS.md` - YAML configuration layer
 - `docs/designs/map-reduce-framework.md` - Design documentation
+- `docs/designs/pipeline-core-extraction.md` - Package extraction design

@@ -2,6 +2,14 @@
 
 This module contains shared utilities used by multiple features across the extension. It reduces code duplication and ensures consistent behavior.
 
+**Note (2026-01):** Some utilities have been moved to `@anthropic-ai/pipeline-core` package:
+- File utilities (file-utils, glob-utils, exec-utils) → `packages/pipeline-core/src/utils/`
+- HTTP utilities → `packages/pipeline-core/src/utils/http-utils.ts`
+- AI response parser → `packages/pipeline-core/src/utils/ai-response-parser.ts`
+- Text matching → `packages/pipeline-core/src/utils/text-matching.ts`
+
+The VS Code extension imports these from the core package. This module retains VS Code-specific utilities (tree providers, webview, logging with OutputChannel).
+
 ## Architecture Overview
 
 ```
@@ -682,6 +690,8 @@ shared/
 
 ## See Also
 
+- `packages/pipeline-core/src/utils/` - Core utilities (pure Node.js)
+- `packages/pipeline-core/src/logger.ts` - Pluggable logger abstraction
 - `src/shortcuts/markdown-comments/AGENTS.md` - Uses shared anchor/prompt utilities
 - `src/shortcuts/git-diff-comments/AGENTS.md` - Uses shared anchor/prompt utilities
 - `src/shortcuts/ai-service/AGENTS.md` - Uses shared logging utilities

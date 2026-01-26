@@ -5,6 +5,20 @@ NEVER create document file unless user's explicit ask.
 
 ## Recent Refactoring (2026-01)
 
+**Pipeline Core Package Extraction** - The pipeline execution engine has been extracted into a standalone Node.js package:
+
+- **New Package:** `@anthropic-ai/pipeline-core` in `packages/pipeline-core/`
+- **Pure Node.js:** No VS Code dependencies, can be used in CLI tools and other environments
+- **Modules Extracted:**
+  - `logger` - Pluggable logging abstraction
+  - `utils` - File I/O, HTTP, text matching, AI response parsing
+  - `ai` - Copilot SDK service, session pool, CLI utilities
+  - `map-reduce` - Parallel AI processing framework (executor, splitters, reducers, jobs)
+  - `pipeline` - YAML pipeline execution (executor, CSV reader, template engine, filters)
+
+- **Monorepo Structure:** npm workspaces with `packages/pipeline-core` and root extension
+- **Testing:** Vitest for pipeline-core, Mocha for extension (6900+ tests passing)
+
 **Tree Data Provider Base Classes** - A refactoring was completed to eliminate code duplication across tree data providers:
 
 - **Created 5 new shared modules:**
@@ -20,7 +34,7 @@ NEVER create document file unless user's explicit ask.
   - `PipelinesTreeDataProvider` → extends `FilterableTreeDataProvider`
   - `LogicalTreeDataProvider` → extends `FilterableTreeDataProvider`
 
-- **Result:** Eliminated ~210 lines of duplication, all 5690 tests passing, 100% backward compatible
+- **Result:** Eliminated ~210 lines of duplication, all 6900 tests passing, 100% backward compatible
 
 When creating new tree data providers, prefer extending these base classes over implementing from scratch.
 
@@ -84,7 +98,7 @@ Test files are in `src/test/suite/` and include:
 - `AIProcessManager` - Manages running AI clarification requests with persistence
 - `AIProcessTreeDataProvider` - Shows running/completed AI processes
 - `CopilotCLIInvoker` - Invokes GitHub Copilot CLI or copies to clipboard
-- `CopilotSDKService` - Wrapper around @github/copilot-sdk for structured AI interactions
+- Core AI functionality (CopilotSDKService, session pool, CLI utilities) now in `@anthropic-ai/pipeline-core` package
 - Working directory defaults to `{workspaceFolder}/src` if the src directory exists, otherwise falls back to workspace root
 - AI processes are persisted using VSCode's Memento API (workspaceState) and restored on extension restart, keeping history isolated per workspace
 - Supports viewing full process details, removing individual processes, and clearing all history
@@ -161,7 +175,7 @@ const result = await service.sendMessage({
 **YAML Pipeline (`src/shortcuts/yaml-pipeline/`)**
 - `PipelineManager` - Manages pipeline packages (discovery, CRUD, validation)
 - `PipelinesTreeDataProvider` - Tree view for pipeline packages and resources
-- `executePipeline` - Executes pipeline from YAML configuration
+- Core pipeline execution logic now in `@anthropic-ai/pipeline-core` package
 - Pipelines are organized as **packages**: directories containing `pipeline.yaml`
 - CSV paths are resolved relative to the pipeline package directory
 
@@ -624,7 +638,9 @@ interface ShortcutsConfig {
 - Uses webpack for bundling with TypeScript compilation
 - VSCode API minimum version: 1.74.0
 - Format on save and import organization enabled
-- Test files use Mocha framework
+- **Monorepo structure** with npm workspaces:
+  - `packages/pipeline-core` - Pure Node.js package (Vitest tests)
+  - Root extension - VS Code extension (Mocha tests)
 - Extension activates on view container or command usage
 - Supports both workspace and global configuration modes
 - Theme-aware icons via `ThemeManager`
@@ -632,15 +648,20 @@ interface ShortcutsConfig {
 
 ## Testing
 
-Tests are located in `src/test/suite/` and cover:
+**Extension Tests** (Mocha) - Located in `src/test/suite/`:
 - Comment functionality (markdown and git diff)
 - Command functionality
 - Tree data provider behavior
 - Configuration management (including migration)
 - Theming system
 - Extension activation
+- Run with `npm test` which handles compilation and setup automatically
 
-Run tests with `npm test` which handles compilation and setup automatically.
+**Pipeline Core Tests** (Vitest) - Located in `packages/pipeline-core/test/`:
+- Concurrency limiter tests
+- Temp file utilities tests
+- CSV reader tests
+- Run with `npm run test:run` in `packages/pipeline-core/` directory
 
 ## Configuration Migration System
 
