@@ -44,6 +44,9 @@ export class CustomInstructionDialog {
     private pendingCommandMode: AICommandMode = 'comment';
     private selectedText: string = '';
     private isInitialized: boolean = false;
+    private pendingPromptFilePath: string | undefined = undefined;
+    private pendingSkillName: string | undefined = undefined;
+    private titleElement: HTMLElement | null = null;
 
     constructor(
         config: CustomInstructionDialogConfig = DEFAULT_DIALOG_CONFIG,
@@ -81,6 +84,7 @@ export class CustomInstructionDialog {
             document.getElementById('custom-instruction-cancel');
         this.submitButton = document.getElementById('customInstructionSubmitBtn') ||
             document.getElementById('custom-instruction-submit');
+        this.titleElement = this.dialog?.querySelector('.custom-instruction-title') || null;
     }
 
     /**
@@ -125,6 +129,15 @@ export class CustomInstructionDialog {
         this.selectedText = selectedText;
         this.pendingCommandId = commandId;
         this.pendingCommandMode = mode;
+        
+        // Reset prompt file and skill state (these may be set later via setPromptFilePath/setSkillName)
+        this.pendingPromptFilePath = undefined;
+        this.pendingSkillName = undefined;
+
+        // Reset title to default
+        if (this.titleElement) {
+            this.titleElement.textContent = this.config.title || '🤖 Custom AI Instruction';
+        }
 
         // Create and show overlay
         this.createOverlay();
@@ -182,9 +195,13 @@ export class CustomInstructionDialog {
             return;
         }
 
-        // Hide dialog and call callback
+        // Capture prompt file and skill info before hiding (which may reset them)
+        const promptFilePath = this.pendingPromptFilePath;
+        const skillName = this.pendingSkillName;
+
+        // Hide dialog and call callback with all context
         this.hide();
-        this.callbacks.onSubmit(instruction, this.pendingCommandId, this.pendingCommandMode);
+        this.callbacks.onSubmit(instruction, this.pendingCommandId, this.pendingCommandMode, promptFilePath, skillName);
     }
 
     /**
@@ -228,5 +245,42 @@ export class CustomInstructionDialog {
      */
     getPendingCommandMode(): AICommandMode {
         return this.pendingCommandMode;
+    }
+
+    /**
+     * Update the dialog title
+     */
+    updateTitle(title: string): void {
+        if (this.titleElement) {
+            this.titleElement.textContent = title;
+        }
+    }
+
+    /**
+     * Set the prompt file path for this request
+     */
+    setPromptFilePath(path: string | undefined): void {
+        this.pendingPromptFilePath = path;
+    }
+
+    /**
+     * Get the pending prompt file path
+     */
+    getPromptFilePath(): string | undefined {
+        return this.pendingPromptFilePath;
+    }
+
+    /**
+     * Set the skill name for this request
+     */
+    setSkillName(skillName: string | undefined): void {
+        this.pendingSkillName = skillName;
+    }
+
+    /**
+     * Get the pending skill name
+     */
+    getSkillName(): string | undefined {
+        return this.pendingSkillName;
     }
 }

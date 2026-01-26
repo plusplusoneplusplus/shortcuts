@@ -6,7 +6,7 @@
  * with the VS Code extension.
  */
 
-import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu, updateExecuteWorkPlanSubmenu } from './dom-handlers';
+import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu, updateExecuteWorkPlanSubmenu, updatePromptFileSubmenu, updateSkillSubmenu } from './dom-handlers';
 import { updateResolvedImage } from './image-handlers';
 import { initPanelManager, scrollToComment } from './panel-manager';
 import { render } from './render';
@@ -117,6 +117,13 @@ function handleMessage(message: ExtensionMessage): void {
         case 'promptFilesResponse':
             // Update the Execute Work Plan submenu with available prompt files
             updateExecuteWorkPlanSubmenu(message.promptFiles || [], message.recentPrompts);
+            // Also update the context menu prompt files submenu
+            updatePromptFileSubmenu(message.promptFiles || []);
+            break;
+
+        case 'skillsResponse':
+            // Update the context menu skills submenu
+            updateSkillSubmenu(message.skills || []);
             break;
     }
 }

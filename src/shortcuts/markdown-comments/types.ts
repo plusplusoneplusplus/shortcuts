@@ -280,6 +280,10 @@ export interface ClarificationContext {
     instructionType: AIInstructionType;
     /** Custom instruction text (only used when instructionType is 'custom') */
     customInstruction?: string;
+    /** Optional content from a prompt file to include */
+    promptFileContent?: string;
+    /** Optional name of the skill being used */
+    skillName?: string;
 }
 
 /**

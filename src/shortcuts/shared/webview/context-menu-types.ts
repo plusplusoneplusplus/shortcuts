@@ -125,6 +125,14 @@ export interface ContextMenuCallbacks {
     onPredefinedComment?: (text: string) => void;
     /** Called when an AI command is selected */
     onAskAI?: (commandId: string, isCustomInput: boolean, mode: AICommandMode) => void;
+    /** Called when a prompt file is selected for custom AI instruction */
+    onPromptFileSelected?: (promptFilePath: string) => void;
+    /** Called when a skill is selected for AI instruction */
+    onSkillSelected?: (skillName: string, skillPath: string) => void;
+    /** Called when prompt files submenu needs to load */
+    onRequestPromptFiles?: () => void;
+    /** Called when skills submenu needs to load */
+    onRequestSkills?: () => void;
     /** Called when the menu is hidden */
     onHide?: () => void;
 }
@@ -148,7 +156,7 @@ export interface CustomInstructionDialogConfig {
  */
 export interface CustomInstructionDialogCallbacks {
     /** Called when the dialog is submitted */
-    onSubmit: (instruction: string, commandId: string, mode: AICommandMode) => void;
+    onSubmit: (instruction: string, commandId: string, mode: AICommandMode, promptFilePath?: string, skillName?: string) => void;
     /** Called when the dialog is cancelled */
     onCancel?: () => void;
 }
@@ -189,3 +197,29 @@ export const DEFAULT_PREDEFINED_COMMENTS: SerializedPredefinedComment[] = [
     { id: 'fixme', label: 'FIXME', text: 'FIXME: ', order: 2 },
     { id: 'question', label: 'Question', text: 'Question: ', order: 3 }
 ];
+
+/**
+ * Prompt file info for context menu
+ */
+export interface PromptFileInfo {
+    /** Absolute path to the prompt file */
+    absolutePath: string;
+    /** Path relative to the workspace root */
+    relativePath: string;
+    /** File name without .prompt.md extension */
+    name: string;
+    /** The folder this file was found in (from settings) */
+    sourceFolder: string;
+}
+
+/**
+ * Skill info for context menu
+ */
+export interface SkillInfo {
+    /** Absolute path to the skill directory */
+    absolutePath: string;
+    /** Path relative to the workspace root */
+    relativePath: string;
+    /** Skill name (directory name) */
+    name: string;
+}

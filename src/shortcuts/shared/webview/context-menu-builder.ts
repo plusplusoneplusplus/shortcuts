@@ -11,9 +11,11 @@ import {
     ContextMenuItem,
     DEFAULT_AI_COMMANDS,
     DEFAULT_PREDEFINED_COMMENTS,
+    PromptFileInfo,
     SerializedAICommand,
     SerializedAIMenuConfig,
-    SerializedPredefinedComment
+    SerializedPredefinedComment,
+    SkillInfo
 } from './context-menu-types';
 
 /**
@@ -352,6 +354,78 @@ export function buildPreviewTooltipHTML(config: ContextMenuConfig = DEFAULT_CONF
         <div class="preview-header">Preview</div>
         <div class="preview-content"></div>
     </div>`;
+}
+
+/**
+ * Build prompt file submenu HTML
+ * @param promptFiles - The prompt files to display
+ * @param config - Context menu configuration
+ * @returns HTML string for prompt file submenu items
+ */
+export function buildPromptFileSubmenuHTML(
+    promptFiles: PromptFileInfo[],
+    config: ContextMenuConfig = DEFAULT_CONFIG
+): string {
+    const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+
+    if (!promptFiles || promptFiles.length === 0) {
+        return `<div class="${getClassName('context-menu-item', mergedConfig)} context-menu-empty" disabled>
+            <span class="menu-icon">📝</span>No prompt files found
+        </div>
+        <div class="${getClassName('context-menu-item', mergedConfig)} context-menu-hint" disabled>
+            <span class="menu-icon">💡</span>Add .prompt.md files to chat.promptFilesLocations
+        </div>`;
+    }
+
+    return promptFiles.map(file => {
+        const itemClass = `${getClassName('context-menu-item', mergedConfig)} prompt-file-item`;
+        const dataPath = `data-path="${encodeURIComponent(file.absolutePath)}"`;
+        const title = `title="${file.relativePath}"`;
+        
+        const icon = `<span class="menu-icon">📄</span>`;
+        const label = mergedConfig.richMenuItems
+            ? `<span class="${getClassName('context-menu-label', mergedConfig)}">${file.name}</span>`
+            : file.name;
+        const source = `<span class="menu-hint">${file.sourceFolder}</span>`;
+
+        return `<div class="${itemClass}" ${dataPath} ${title}>${icon}${label}${source}</div>`;
+    }).join('');
+}
+
+/**
+ * Build skill submenu HTML
+ * @param skills - The skills to display
+ * @param config - Context menu configuration
+ * @returns HTML string for skill submenu items
+ */
+export function buildSkillSubmenuHTML(
+    skills: SkillInfo[],
+    config: ContextMenuConfig = DEFAULT_CONFIG
+): string {
+    const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+
+    if (!skills || skills.length === 0) {
+        return `<div class="${getClassName('context-menu-item', mergedConfig)} context-menu-empty" disabled>
+            <span class="menu-icon">🎯</span>No skills found
+        </div>
+        <div class="${getClassName('context-menu-item', mergedConfig)} context-menu-hint" disabled>
+            <span class="menu-icon">💡</span>Add skills to .github/skills/
+        </div>`;
+    }
+
+    return skills.map(skill => {
+        const itemClass = `${getClassName('context-menu-item', mergedConfig)} skill-item`;
+        const dataName = `data-skill-name="${encodeURIComponent(skill.name)}"`;
+        const dataPath = `data-skill-path="${encodeURIComponent(skill.absolutePath)}"`;
+        const title = `title="${skill.relativePath}"`;
+        
+        const icon = `<span class="menu-icon">🎯</span>`;
+        const label = mergedConfig.richMenuItems
+            ? `<span class="${getClassName('context-menu-label', mergedConfig)}">${skill.name}</span>`
+            : skill.name;
+
+        return `<div class="${itemClass}" ${dataName} ${dataPath} ${title}>${icon}${label}</div>`;
+    }).join('');
 }
 
 /**

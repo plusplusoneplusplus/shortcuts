@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import { IAIProcessManager, getAICommandRegistry, getInteractiveSessionManager } from '../ai-service';
 import { getPredefinedCommentRegistry } from '../shared/predefined-comment-registry';
 import { getPromptFiles } from '../shared/prompt-files-utils';
+import { getSkills } from '../shared/skill-files-utils';
 import { getWorkspaceRoot, getWorkspaceRootUri } from '../shared/workspace-utils';
 import { handleAIClarification } from './ai-clarification-handler';
 import { CodeBlockTheme } from './code-block-themes';
@@ -42,12 +43,16 @@ interface AskAIContext {
     customInstruction?: string;
     /** Mode for AI command execution ('comment' or 'interactive') */
     mode: AICommandMode;
+    /** Optional path to prompt file to include as context */
+    promptFilePath?: string;
+    /** Optional skill name to use for this request */
+    skillName?: string;
 }
 
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'executeWorkPlan' | 'promptSearch';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'promptSearch';
     commentId?: string;
     content?: string;
     selection?: {
@@ -620,6 +625,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 await this.handleRequestPromptFiles(webviewPanel);
                 break;
 
+            case 'requestSkills':
+                await this.handleRequestSkills(webviewPanel);
+                break;
+
             case 'promptSearch':
                 await this.handlePromptSearch(document);
                 break;
@@ -638,6 +647,17 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     private async handleAskAI(context: AskAIContext, filePath: string): Promise<void> {
         const workspaceRoot = getWorkspaceRoot() || '';
 
+        // Read prompt file content if specified
+        let promptFileContent: string | undefined;
+        if (context.promptFilePath) {
+            promptFileContent = await this.readPromptFile(context.promptFilePath);
+        }
+        
+        // Read skill prompt content if specified
+        if (context.skillName && !promptFileContent) {
+            promptFileContent = await this.readSkillPrompt(context.skillName);
+        }
+
         // Convert webview context to ClarificationContext
         const clarificationContext: ClarificationContext = {
             selectedText: context.selectedText,
@@ -650,7 +670,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             nearestHeading: context.nearestHeading,
             headings: context.allHeadings,
             instructionType: context.instructionType,
-            customInstruction: context.customInstruction
+            customInstruction: context.customInstruction,
+            promptFileContent,
+            skillName: context.skillName
         };
 
         // Delegate to the AI clarification handler
@@ -703,8 +725,24 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     private async handleAskAIInteractive(context: AskAIContext, filePath: string): Promise<void> {
         const workspaceRoot = getWorkspaceRoot() || '';
 
+        // Read prompt file or skill content if specified
+        let promptFileContent: string | undefined;
+        if (context.promptFilePath) {
+            promptFileContent = await this.readPromptFile(context.promptFilePath);
+        } else if (context.skillName) {
+            promptFileContent = await this.readSkillPrompt(context.skillName);
+        }
+
         // Build the prompt from the context
         const promptParts: string[] = [];
+        
+        // If there's a prompt file or skill, include its content at the top
+        if (promptFileContent) {
+            promptParts.push('--- Instructions from template ---');
+            promptParts.push(promptFileContent);
+            promptParts.push('');
+            promptParts.push('--- Document context ---');
+        }
         
         // Add file context
         promptParts.push(`File: ${filePath}`);
@@ -724,7 +762,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         // Add the instruction based on command type
         if (context.customInstruction) {
             promptParts.push(`Instruction: ${context.customInstruction}`);
-        } else {
+        } else if (!promptFileContent) {
+            // Only add default instructions if no prompt file/skill is specified
             const instructionMap: Record<string, string> = {
                 'clarify': 'Please clarify and explain the selected text.',
                 'go-deeper': 'Please provide a deep analysis of the selected text, including implications, edge cases, and related concepts.',
@@ -773,6 +812,52 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             return (stat.type & vscode.FileType.Directory) !== 0;
         } catch {
             return false;
+        }
+    }
+
+    /**
+     * Read the content of a prompt file
+     * @param promptFilePath - Absolute path to the prompt file
+     * @returns The content of the prompt file, or undefined if it couldn't be read
+     */
+    private async readPromptFile(promptFilePath: string): Promise<string | undefined> {
+        try {
+            const content = await fs.promises.readFile(promptFilePath, 'utf-8');
+            return content;
+        } catch (error) {
+            console.error(`Error reading prompt file: ${promptFilePath}`, error);
+            return undefined;
+        }
+    }
+
+    /**
+     * Read the prompt content from a skill
+     * Looks for prompt.md in the skill directory
+     * @param skillName - Name of the skill
+     * @returns The content of the skill's prompt.md, or undefined if not found
+     */
+    private async readSkillPrompt(skillName: string): Promise<string | undefined> {
+        const workspaceRoot = getWorkspaceRoot();
+        if (!workspaceRoot) {
+            return undefined;
+        }
+
+        // Look for prompt.md in the skill directory
+        const skillPromptPath = path.join(workspaceRoot, '.github', 'skills', skillName, 'prompt.md');
+        
+        try {
+            const content = await fs.promises.readFile(skillPromptPath, 'utf-8');
+            return content;
+        } catch {
+            // If prompt.md doesn't exist, try SKILL.md as fallback
+            const skillMdPath = path.join(workspaceRoot, '.github', 'skills', skillName, 'SKILL.md');
+            try {
+                const content = await fs.promises.readFile(skillMdPath, 'utf-8');
+                return content;
+            } catch {
+                console.error(`No prompt file found for skill: ${skillName}`);
+                return undefined;
+            }
         }
     }
 
@@ -1161,6 +1246,24 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 sourceFolder: f.sourceFolder
             })),
             recentPrompts: validRecent
+        });
+    }
+
+    /**
+     * Handle request for skills from the webview.
+     * Returns a list of available skills from .github/skills/.
+     */
+    private async handleRequestSkills(webviewPanel: vscode.WebviewPanel): Promise<void> {
+        const workspaceRoot = getWorkspaceRoot();
+        const skills = await getSkills(workspaceRoot || undefined);
+
+        webviewPanel.webview.postMessage({
+            type: 'skillsResponse',
+            skills: skills.map(s => ({
+                absolutePath: s.absolutePath,
+                relativePath: s.relativePath,
+                name: s.name
+            }))
         });
     }
 

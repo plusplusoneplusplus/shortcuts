@@ -71,12 +71,22 @@ export function buildClarificationPrompt(context: ClarificationContext): string 
         headings: context.headings
     };
 
-    // Use the new prompt builder with the command registry
-    return buildPrompt(
+    // Build the base prompt using the command registry
+    let prompt = buildPrompt(
         context.instructionType,
         promptContext,
         context.customInstruction
     );
+
+    // If prompt file content is provided, prepend it to the prompt
+    if (context.promptFileContent) {
+        const templateHeader = context.skillName 
+            ? `--- Instructions from skill: ${context.skillName} ---`
+            : '--- Instructions from prompt file ---';
+        prompt = `${templateHeader}\n${context.promptFileContent}\n\n--- Document Context ---\n${prompt}`;
+    }
+
+    return prompt;
 }
 
 /**

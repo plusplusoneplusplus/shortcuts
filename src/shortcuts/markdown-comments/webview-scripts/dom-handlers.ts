@@ -20,8 +20,8 @@ import {
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
-import { AICommandMode, PromptFileInfo, RecentPrompt } from './types';
-import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestPromptFiles, requestPromptSearch, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, updateContent } from './vscode-bridge';
+import { AICommandMode, PromptFileInfo, RecentPrompt, SkillInfo } from './types';
+import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestPromptFiles, requestPromptSearch, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, requestSkills, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -69,6 +69,10 @@ export function initDomHandlers(): void {
             onAddComment: handleAddCommentFromContextMenu,
             onPredefinedComment: handlePredefinedCommentFromContextMenu,
             onAskAI: handleAICommandClick,
+            onPromptFileSelected: handlePromptFileSelected,
+            onSkillSelected: handleSkillSelected,
+            onRequestPromptFiles: handleRequestPromptFilesForContextMenu,
+            onRequestSkills: handleRequestSkillsForContextMenu,
             onHide: () => {
                 // Clear saved selection when menu is hidden
             }
@@ -85,8 +89,8 @@ export function initDomHandlers(): void {
             cancelLabel: 'Cancel'
         },
         {
-            onSubmit: (instruction, commandId, mode) => {
-                handleAskAIFromContextMenu(commandId, instruction, mode);
+            onSubmit: (instruction, commandId, mode, promptFilePath, skillName) => {
+                handleAskAIFromContextMenu(commandId, instruction, mode, promptFilePath, skillName);
             }
         }
     );
@@ -329,6 +333,72 @@ function handleAICommandClick(commandId: string, isCustomInput: boolean, mode: A
         }
     } else {
         handleAskAIFromContextMenu(commandId, undefined, mode);
+    }
+}
+
+/**
+ * Handle prompt file selection from context menu
+ * Opens custom instruction dialog with the prompt file as context
+ */
+function handlePromptFileSelected(promptFilePath: string): void {
+    const saved = state.savedSelectionForContextMenu;
+    if (saved && saved.selectedText && customInstructionDialog) {
+        // Get the file name from the path for display
+        const fileName = promptFilePath.split(/[/\\]/).pop() || 'prompt file';
+        // Update dialog title to show the prompt file
+        customInstructionDialog.updateTitle(`🤖 Custom Instruction with ${fileName}`);
+        customInstructionDialog.show(saved.selectedText, 'custom', 'comment');
+        // Store the prompt file path in the dialog's data for use on submit
+        customInstructionDialog.setPromptFilePath(promptFilePath);
+    }
+}
+
+/**
+ * Handle skill selection from context menu
+ * Opens custom instruction dialog with the skill as context
+ */
+function handleSkillSelected(skillName: string, _skillPath: string): void {
+    const saved = state.savedSelectionForContextMenu;
+    if (saved && saved.selectedText && customInstructionDialog) {
+        // Update dialog title to show the skill
+        customInstructionDialog.updateTitle(`🤖 Custom Instruction with Skill: ${skillName}`);
+        customInstructionDialog.show(saved.selectedText, 'custom', 'comment');
+        // Store the skill name in the dialog's data for use on submit
+        customInstructionDialog.setSkillName(skillName);
+    }
+}
+
+/**
+ * Handle request for prompt files (for context menu submenu)
+ */
+function handleRequestPromptFilesForContextMenu(): void {
+    requestPromptFiles();
+}
+
+/**
+ * Handle request for skills (for context menu submenu)
+ */
+function handleRequestSkillsForContextMenu(): void {
+    requestSkills();
+}
+
+/**
+ * Update the prompt file submenu with available files
+ * Called when the extension sends back the list of prompt files
+ */
+export function updatePromptFileSubmenu(promptFiles: PromptFileInfo[]): void {
+    if (contextMenuManager) {
+        contextMenuManager.setPromptFiles(promptFiles);
+    }
+}
+
+/**
+ * Update the skills submenu with available skills
+ * Called when the extension sends back the list of skills
+ */
+export function updateSkillSubmenu(skills: SkillInfo[]): void {
+    if (contextMenuManager) {
+        contextMenuManager.setSkills(skills);
     }
 }
 
@@ -845,11 +915,15 @@ function handlePredefinedCommentFromContextMenu(predefinedText: string): void {
  * @param commandId - The command ID from the AI command registry
  * @param customInstruction - Optional custom instruction text (for custom input commands)
  * @param mode - The AI command mode ('comment' or 'interactive')
+ * @param promptFilePath - Optional path to prompt file to include as context
+ * @param skillName - Optional skill name to use for this request
  */
 function handleAskAIFromContextMenu(
     commandId: string,
     customInstruction?: string,
-    mode: AICommandMode = 'comment'
+    mode: AICommandMode = 'comment',
+    promptFilePath?: string,
+    skillName?: string
 ): void {
     const saved = state.savedSelectionForContextMenu;
     if (!saved || !saved.selectedText) {
@@ -860,12 +934,14 @@ function handleAskAIFromContextMenu(
     // Extract document context for the AI
     const baseContext = extractDocumentContext(saved.startLine, saved.endLine, saved.selectedText);
 
-    // Add command ID (as instructionType for backward compatibility), mode, and optional custom instruction
+    // Add command ID (as instructionType for backward compatibility), mode, and optional fields
     const context = {
         ...baseContext,
         instructionType: commandId,
         customInstruction,
-        mode
+        mode,
+        promptFilePath,
+        skillName
     };
 
     // Send to extension based on mode

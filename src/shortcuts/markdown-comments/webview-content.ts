@@ -274,6 +274,27 @@ export function getWebviewContent(
                 <!-- Dynamically populated from settings -->
             </div>
         </div>
+        <div class="context-menu-separator" id="promptFileSeparator"></div>
+        <div class="context-menu-item context-menu-parent" id="contextMenuCustomWithPromptFile">
+            <span class="context-menu-icon">📄</span>
+            <span class="context-menu-label">Custom with Prompt File</span>
+            <span class="context-menu-arrow">▶</span>
+            <div class="context-submenu" id="promptFileSubmenu">
+                <div class="context-menu-item context-menu-loading" id="promptFileLoading">
+                    <span class="menu-icon">⏳</span>Loading...
+                </div>
+            </div>
+        </div>
+        <div class="context-menu-item context-menu-parent" id="contextMenuUseSkill">
+            <span class="context-menu-icon">🎯</span>
+            <span class="context-menu-label">Use Skill</span>
+            <span class="context-menu-arrow">▶</span>
+            <div class="context-submenu" id="skillSubmenu">
+                <div class="context-menu-item context-menu-loading" id="skillLoading">
+                    <span class="menu-icon">⏳</span>Loading...
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Hover preview tooltip for predefined comments -->

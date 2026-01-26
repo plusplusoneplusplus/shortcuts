@@ -10,13 +10,17 @@ import {
     ContextMenuCallbacks,
     ContextMenuConfig,
     ContextMenuSelection,
+    PromptFileInfo,
     SerializedAICommand,
     SerializedAIMenuConfig,
-    SerializedPredefinedComment
+    SerializedPredefinedComment,
+    SkillInfo
 } from './context-menu-types';
 import {
     buildAISubmenuHTML,
     buildPredefinedSubmenuHTML,
+    buildPromptFileSubmenuHTML,
+    buildSkillSubmenuHTML,
     getAIMenuConfig,
     getPredefinedComments
 } from './context-menu-builder';
@@ -57,6 +61,14 @@ export class ContextMenuManager {
     private askAISeparator: HTMLElement | null = null;
     private predefinedPreview: HTMLElement | null = null;
     private previewContent: HTMLElement | null = null;
+    // Prompt file and skill submenus
+    private contextMenuCustomWithPromptFile: HTMLElement | null = null;
+    private promptFileSubmenu: HTMLElement | null = null;
+    private promptFileSeparator: HTMLElement | null = null;
+    private contextMenuUseSkill: HTMLElement | null = null;
+    private skillSubmenu: HTMLElement | null = null;
+    private promptFilesLoaded: boolean = false;
+    private skillsLoaded: boolean = false;
 
     // State
     private currentSelection: ContextMenuSelection | null = null;
@@ -122,6 +134,20 @@ export class ContextMenuManager {
         this.askAISeparator = document.getElementById('askAISeparator') ||
             document.getElementById('ask-ai-separator');
 
+        // Prompt file submenu
+        this.contextMenuCustomWithPromptFile = document.getElementById('contextMenuCustomWithPromptFile') ||
+            document.getElementById('context-menu-custom-with-prompt-file');
+        this.promptFileSubmenu = document.getElementById('promptFileSubmenu') ||
+            document.getElementById('prompt-file-submenu');
+        this.promptFileSeparator = document.getElementById('promptFileSeparator') ||
+            document.getElementById('prompt-file-separator');
+
+        // Skill submenu
+        this.contextMenuUseSkill = document.getElementById('contextMenuUseSkill') ||
+            document.getElementById('context-menu-use-skill');
+        this.skillSubmenu = document.getElementById('skillSubmenu') ||
+            document.getElementById('skill-submenu');
+
         // Preview tooltip (if enabled)
         if (this.config.enablePreviewTooltips) {
             this.predefinedPreview = document.getElementById('predefinedPreview');
@@ -177,6 +203,22 @@ export class ContextMenuManager {
         // Ask AI Interactive parent - position submenu on hover
         this.contextMenuAskAIInteractive?.addEventListener('mouseenter', () => {
             this.positionSubmenu(this.askAIInteractiveSubmenu, this.contextMenuAskAIInteractive);
+        });
+
+        // Custom with Prompt File parent - position submenu and request files on hover
+        this.contextMenuCustomWithPromptFile?.addEventListener('mouseenter', () => {
+            this.positionSubmenu(this.promptFileSubmenu, this.contextMenuCustomWithPromptFile);
+            if (!this.promptFilesLoaded) {
+                this.callbacks.onRequestPromptFiles?.();
+            }
+        });
+
+        // Use Skill parent - position submenu and request skills on hover
+        this.contextMenuUseSkill?.addEventListener('mouseenter', () => {
+            this.positionSubmenu(this.skillSubmenu, this.contextMenuUseSkill);
+            if (!this.skillsLoaded) {
+                this.callbacks.onRequestSkills?.();
+            }
         });
 
         // Setup preview tooltip event listeners
@@ -312,10 +354,19 @@ export class ContextMenuManager {
             this.setItemVisible(this.contextMenuAskAIComment, true);
             this.setItemVisible(this.contextMenuAskAIInteractive, true);
             this.setItemVisible(this.askAISeparator, true);
+            // Prompt file and skill items
+            this.setItemDisabled(this.contextMenuCustomWithPromptFile, !hasSelection);
+            this.setItemDisabled(this.contextMenuUseSkill, !hasSelection);
+            this.setItemVisible(this.contextMenuCustomWithPromptFile, true);
+            this.setItemVisible(this.contextMenuUseSkill, true);
+            this.setItemVisible(this.promptFileSeparator, true);
         } else {
             this.setItemVisible(this.contextMenuAskAIComment, false);
             this.setItemVisible(this.contextMenuAskAIInteractive, false);
             this.setItemVisible(this.askAISeparator, false);
+            this.setItemVisible(this.contextMenuCustomWithPromptFile, false);
+            this.setItemVisible(this.contextMenuUseSkill, false);
+            this.setItemVisible(this.promptFileSeparator, false);
         }
     }
 
@@ -374,6 +425,60 @@ export class ContextMenuManager {
             this.askAIInteractiveSubmenu.innerHTML = buildAISubmenuHTML(config.interactiveCommands, 'interactive', this.config);
             this.attachAISubmenuHandlers(this.askAIInteractiveSubmenu);
         }
+    }
+
+    /**
+     * Set the prompt files for the "Custom with Prompt File" submenu
+     * @param promptFiles - Array of prompt files to display
+     */
+    setPromptFiles(promptFiles: PromptFileInfo[]): void {
+        if (!this.promptFileSubmenu) return;
+
+        this.promptFilesLoaded = true;
+        this.promptFileSubmenu.innerHTML = buildPromptFileSubmenuHTML(promptFiles, this.config);
+
+        // Attach click handlers to prompt file items
+        this.promptFileSubmenu.querySelectorAll('.prompt-file-item').forEach(item => {
+            const el = item as HTMLElement;
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const path = decodeURIComponent(el.dataset.path || '');
+                this.hide();
+                this.callbacks.onPromptFileSelected?.(path);
+            });
+        });
+    }
+
+    /**
+     * Set the skills for the "Use Skill" submenu
+     * @param skills - Array of skills to display
+     */
+    setSkills(skills: SkillInfo[]): void {
+        if (!this.skillSubmenu) return;
+
+        this.skillsLoaded = true;
+        this.skillSubmenu.innerHTML = buildSkillSubmenuHTML(skills, this.config);
+
+        // Attach click handlers to skill items
+        this.skillSubmenu.querySelectorAll('.skill-item').forEach(item => {
+            const el = item as HTMLElement;
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const skillName = decodeURIComponent(el.dataset.skillName || '');
+                const skillPath = decodeURIComponent(el.dataset.skillPath || '');
+                this.hide();
+                this.callbacks.onSkillSelected?.(skillName, skillPath);
+            });
+        });
+    }
+
+    /**
+     * Reset the prompt files and skills loaded state
+     * Call this when the menu is hidden to refresh on next show
+     */
+    resetPromptFilesAndSkillsState(): void {
+        this.promptFilesLoaded = false;
+        this.skillsLoaded = false;
     }
 
     /**
@@ -458,7 +563,13 @@ export class ContextMenuManager {
      * Reset submenu positioning
      */
     private resetSubmenuPositioning(): void {
-        const submenus = [this.askAICommentSubmenu, this.askAIInteractiveSubmenu, this.predefinedSubmenu];
+        const submenus = [
+            this.askAICommentSubmenu, 
+            this.askAIInteractiveSubmenu, 
+            this.predefinedSubmenu,
+            this.promptFileSubmenu,
+            this.skillSubmenu
+        ];
         submenus.forEach(submenu => {
             if (submenu) {
                 submenu.style.left = '';

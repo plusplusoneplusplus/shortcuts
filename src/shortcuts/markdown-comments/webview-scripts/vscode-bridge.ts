@@ -167,6 +167,10 @@ export function requestAskAI(context: {
     instructionType: string;
     customInstruction?: string;
     mode: AICommandMode;
+    /** Optional path to prompt file to include as context */
+    promptFilePath?: string;
+    /** Optional skill name to use for this request */
+    skillName?: string;
 }): void {
     postMessage({ type: 'askAI', context: context as AskAIContext });
 }
@@ -185,6 +189,10 @@ export function requestAskAIInteractive(context: {
     instructionType: string;
     customInstruction?: string;
     mode: AICommandMode;
+    /** Optional path to prompt file to include as context */
+    promptFilePath?: string;
+    /** Optional skill name to use for this request */
+    skillName?: string;
 }): void {
     postMessage({ type: 'askAIInteractive', context: context as AskAIContext });
 }
@@ -194,6 +202,13 @@ export function requestAskAIInteractive(context: {
  */
 export function requestPromptFiles(): void {
     postMessage({ type: 'requestPromptFiles' });
+}
+
+/**
+ * Request the list of available skills from the extension
+ */
+export function requestSkills(): void {
+    postMessage({ type: 'requestSkills' });
 }
 
 /**

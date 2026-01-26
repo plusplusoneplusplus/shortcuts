@@ -129,6 +129,10 @@ export interface AskAIContext {
     customInstruction?: string;
     /** Mode for AI command execution ('comment' or 'interactive') */
     mode: AICommandMode;
+    /** Optional path to prompt file to include as context */
+    promptFilePath?: string;
+    /** Optional skill name to use for this request */
+    skillName?: string;
 }
 
 /**
@@ -163,6 +167,7 @@ export type WebviewMessage =
     | { type: 'askAIInteractive'; context: AskAIContext }
     | { type: 'collapsedSectionsChanged'; collapsedSections: string[] }
     | { type: 'requestPromptFiles' }
+    | { type: 'requestSkills' }
     | { type: 'executeWorkPlan'; promptFilePath: string }
     | { type: 'promptSearch' };
 
@@ -178,6 +183,18 @@ export interface PromptFileInfo {
     name: string;
     /** The folder this file was found in (from settings) */
     sourceFolder: string;
+}
+
+/**
+ * Skill info for skills submenu
+ */
+export interface SkillInfo {
+    /** Absolute path to the skill directory */
+    absolutePath: string;
+    /** Path relative to the workspace root */
+    relativePath: string;
+    /** Skill name (directory name) */
+    name: string;
 }
 
 /**
@@ -213,7 +230,8 @@ export type ExtensionMessage =
     }
     | { type: 'imageResolved'; imgId: string; uri?: string; alt?: string; error?: string }
     | { type: 'scrollToComment'; commentId: string }
-    | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[] };
+    | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[] }
+    | { type: 'skillsResponse'; skills: SkillInfo[] };
 
 /**
  * Parsed code block structure
