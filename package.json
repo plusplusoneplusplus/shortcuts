@@ -1404,6 +1404,18 @@
         "icon": "$(go-to-file)"
       },
       {
+        "command": "gitView.copyRelativePath",
+        "title": "Copy Relative Path",
+        "category": "Git",
+        "icon": "$(file-symlink-file)"
+      },
+      {
+        "command": "gitView.copyAbsolutePath",
+        "title": "Copy Path",
+        "category": "Git",
+        "icon": "$(copy)"
+      },
+      {
         "command": "shortcuts.reviewRangeAgainstRules",
         "title": "Review Range Against Rules",
         "category": "Code Review",
@@ -2274,6 +2286,16 @@
           "group": "navigation@11"
         },
         {
+          "command": "gitView.copyRelativePath",
+          "when": "view == gitView && viewItem =~ /^gitRangeFile/",
+          "group": "copyPath@1"
+        },
+        {
+          "command": "gitView.copyAbsolutePath",
+          "when": "view == gitView && viewItem =~ /^gitRangeFile/",
+          "group": "copyPath@2"
+        },
+        {
           "command": "gitView.stageFile",
           "when": "view == gitView && viewItem =~ /^gitChange_(unstaged|untracked)/",
           "group": "inline@1"
@@ -2309,6 +2331,16 @@
           "group": "navigation@12"
         },
         {
+          "command": "gitView.copyRelativePath",
+          "when": "view == gitView && viewItem =~ /^gitChange_/",
+          "group": "copyPath@1"
+        },
+        {
+          "command": "gitView.copyAbsolutePath",
+          "when": "view == gitView && viewItem =~ /^gitChange_/",
+          "group": "copyPath@2"
+        },
+        {
           "command": "gitView.openCommitFileWithMarkdownPreview",
           "when": "view == gitView && viewItem == gitCommitFile_md",
           "group": "navigation@1"
@@ -2317,6 +2349,16 @@
           "command": "gitView.openCurrentFile",
           "when": "view == gitView && viewItem =~ /^gitCommitFile/",
           "group": "navigation@2"
+        },
+        {
+          "command": "gitView.copyRelativePath",
+          "when": "view == gitView && viewItem =~ /^gitCommitFile/",
+          "group": "copyPath@1"
+        },
+        {
+          "command": "gitView.copyAbsolutePath",
+          "when": "view == gitView && viewItem =~ /^gitCommitFile/",
+          "group": "copyPath@2"
         },
         {
           "command": "gitDiffComments.openFileWithReview",

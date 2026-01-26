@@ -91,6 +91,85 @@ function toGitUri(filePath: string, ref: string, repoRoot: string): vscode.Uri {
 }
 
 /**
+ * Copy a file path from a Git tree item to the clipboard
+ * @param item The Git tree item (GitChangeItem, GitCommitFileItem, or GitRangeFileItem)
+ * @param absolute Whether to copy absolute path (true) or relative path (false)
+ */
+async function copyGitFilePath(
+    item: GitChangeItem | GitCommitFileItem | GitRangeFileItem,
+    absolute: boolean
+): Promise<void> {
+    let filePath: string | undefined;
+    let repoRoot: string | undefined;
+
+    // Handle different item types
+    if (item instanceof GitChangeItem) {
+        // GitChangeItem - pending changes (staged/unstaged/untracked)
+        filePath = item.change.path;
+        repoRoot = item.change.repositoryRoot;
+    } else if (item instanceof GitCommitFileItem) {
+        // GitCommitFileItem - file from a commit
+        filePath = item.file.path;
+        repoRoot = item.file.repositoryRoot;
+    } else if (item instanceof GitRangeFileItem) {
+        // GitRangeFileItem - file from a commit range
+        filePath = item.file.path;
+        repoRoot = item.file.repositoryRoot;
+    } else if (item && typeof item === 'object') {
+        // Handle generic object with change or file property
+        const anyItem = item as any;
+        if (anyItem.change) {
+            filePath = anyItem.change.path;
+            repoRoot = anyItem.change.repositoryRoot;
+        } else if (anyItem.file) {
+            filePath = anyItem.file.path;
+            repoRoot = anyItem.file.repositoryRoot;
+        } else if (anyItem.commitFile) {
+            filePath = anyItem.commitFile.path;
+            repoRoot = anyItem.commitFile.repositoryRoot;
+        }
+    }
+
+    if (!filePath) {
+        vscode.window.showWarningMessage('Unable to determine file path.');
+        return;
+    }
+
+    let pathToCopy: string;
+
+    if (absolute) {
+        // Construct the full absolute path
+        pathToCopy = path.isAbsolute(filePath)
+            ? filePath
+            : path.join(repoRoot || '', filePath);
+    } else {
+        // For relative path, use workspace-relative if possible
+        const fullPath = path.isAbsolute(filePath)
+            ? filePath
+            : path.join(repoRoot || '', filePath);
+        
+        const uri = vscode.Uri.file(fullPath);
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+        
+        if (workspaceFolder) {
+            pathToCopy = vscode.workspace.asRelativePath(uri, false);
+        } else {
+            // Fallback: use the file path relative to repo root
+            pathToCopy = path.isAbsolute(filePath) 
+                ? path.relative(repoRoot || '', filePath)
+                : filePath;
+        }
+    }
+
+    // Copy to clipboard
+    await vscode.env.clipboard.writeText(pathToCopy);
+
+    // Show confirmation
+    const pathType = absolute ? 'Absolute' : 'Relative';
+    vscode.window.showInformationMessage(`${pathType} path copied: ${pathToCopy}`);
+}
+
+/**
  * This method is called when your extension is activated
  * Your extension is activated the very first time the command is executed
  */
@@ -564,6 +643,8 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitPullRebaseCommand: vscode.Disposable | undefined;
         let gitFetchCommand: vscode.Disposable | undefined;
         let gitOpenCurrentFileCommand: vscode.Disposable | undefined;
+        let gitCopyRelativePathCommand: vscode.Disposable | undefined;
+        let gitCopyAbsolutePathCommand: vscode.Disposable | undefined;
 
         // Create Git drag and drop controller for Copilot Chat integration
         const gitDragDropController = new GitDragDropController();
@@ -1762,6 +1843,22 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
             );
 
+            // Register copy relative path command
+            gitCopyRelativePathCommand = vscode.commands.registerCommand(
+                'gitView.copyRelativePath',
+                async (item: GitChangeItem | GitCommitFileItem | GitRangeFileItem) => {
+                    await copyGitFilePath(item, false);
+                }
+            );
+
+            // Register copy absolute path command
+            gitCopyAbsolutePathCommand = vscode.commands.registerCommand(
+                'gitView.copyAbsolutePath',
+                async (item: GitChangeItem | GitCommitFileItem | GitRangeFileItem) => {
+                    await copyGitFilePath(item, true);
+                }
+            );
+
             console.log('Git view initialized successfully');
         } else {
             console.log('Git extension not available, Git view disabled');
@@ -2625,6 +2722,8 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitCopyRangeRefCommand) disposables.push(gitCopyRangeRefCommand);
         if (gitCopyRangeSummaryCommand) disposables.push(gitCopyRangeSummaryCommand);
         if (gitOpenCurrentFileCommand) disposables.push(gitOpenCurrentFileCommand);
+        if (gitCopyRelativePathCommand) disposables.push(gitCopyRelativePathCommand);
+        if (gitCopyAbsolutePathCommand) disposables.push(gitCopyAbsolutePathCommand);
 
         // Add Debug Panel disposables
         disposables.push(debugPanelView, debugPanelProvider, executeDebugCommand, newChatWithPromptCommand, newChatConversationCommand, newBackgroundAgentCommand, runCustomCommand, readSettingCommand, testCopilotSDKCommand);
