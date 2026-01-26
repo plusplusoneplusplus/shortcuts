@@ -1258,10 +1258,25 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         // Track prompt usage for recent list
         await this.trackPromptUsage(promptFilePath);
 
+        // Prompt user for additional context/instructions
+        const additionalMessage = await vscode.window.showInputBox({
+            prompt: 'Additional context or instructions (optional)',
+            placeHolder: 'e.g., "Focus on error handling" or "Use TypeScript strict mode"',
+            ignoreFocusOut: true
+        });
+
+        // User cancelled
+        if (additionalMessage === undefined) {
+            return;
+        }
+
         const sessionManager = getInteractiveSessionManager();
 
-        // Simple prompt: just reference both file paths
-        const fullPrompt = `Follow ${promptFilePath} for ${planFilePath}`;
+        // Build prompt with optional additional message
+        let fullPrompt = `Follow ${promptFilePath} for ${planFilePath}`;
+        if (additionalMessage && additionalMessage.trim()) {
+            fullPrompt += `\n\nAdditional context: ${additionalMessage.trim()}`;
+        }
 
         // Get settings
         const config = vscode.workspace.getConfiguration('workspaceShortcuts.workPlan');
