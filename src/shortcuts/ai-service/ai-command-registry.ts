@@ -6,8 +6,14 @@
  */
 
 import * as vscode from 'vscode';
-import { AICommand, AICommandMode, DEFAULT_AI_COMMANDS, serializeCommands, SerializedAICommand, SerializedAIMenuConfig } from './ai-command-types';
-import { DEFAULT_PROMPTS } from './types';
+import {
+    AICommand,
+    DEFAULT_AI_COMMANDS,
+    serializeCommands,
+    SerializedAICommand,
+    SerializedAIMenuConfig,
+    DEFAULT_PROMPTS
+} from '@plusplusoneplusplus/pipeline-core';
 
 /**
  * Singleton registry for AI commands

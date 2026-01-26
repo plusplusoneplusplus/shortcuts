@@ -14,6 +14,57 @@ export {
     InteractiveToolType
 } from './types';
 
+// AI Command Types
+export {
+    AICommand,
+    AICommandMode,
+    AICommandsConfig,
+    DEFAULT_AI_COMMANDS,
+    SerializedAICommand,
+    SerializedAIMenuConfig,
+    serializeCommand,
+    serializeCommands
+} from './command-types';
+
+// Prompt Builder (Pure)
+export {
+    PromptContext,
+    substitutePromptVariables,
+    buildPromptFromContext,
+    usesTemplateVariables,
+    getAvailableVariables
+} from './prompt-builder';
+
+// Program Utilities
+export {
+    checkProgramExists,
+    clearProgramExistsCache,
+    parseCopilotOutput
+} from './program-utils';
+
+// Process Types
+export {
+    AIToolType,
+    AIProcessStatus,
+    AIProcessType,
+    GenericProcessMetadata,
+    GenericGroupMetadata,
+    TypedProcessOptions,
+    ProcessGroupOptions,
+    CompleteGroupOptions,
+    CodeReviewProcessMetadata,
+    DiscoveryProcessMetadata,
+    CodeReviewGroupMetadata,
+    AIProcess,
+    SerializedAIProcess,
+    TrackedProcessFields,
+    serializeProcess,
+    deserializeProcess,
+    ProcessEventType,
+    ProcessEvent,
+    ProcessCounts
+} from './process-types';
+
 // Session Pool
 export {
     SessionPool,

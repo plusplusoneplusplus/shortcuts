@@ -1,26 +1,23 @@
 /**
- * Prompt Builder
+ * Prompt Builder (VS Code Integration)
  *
  * Builds AI prompts using command templates and context variables.
+ * Uses the VS Code-specific AICommandRegistry for command lookup.
+ * 
+ * Pure template substitution functions are provided by pipeline-core.
  */
 
 import { getAICommandRegistry } from './ai-command-registry';
+import {
+    PromptContext,
+    substitutePromptVariables,
+    usesTemplateVariables as pureUsesTemplateVariables,
+    getAvailableVariables as pureGetAvailableVariables
+} from '@plusplusoneplusplus/pipeline-core';
 
-/**
- * Context for building prompts
- */
-export interface PromptContext {
-    /** The selected text to process */
-    selectedText: string;
-    /** File path being reviewed */
-    filePath: string;
-    /** Surrounding content for context */
-    surroundingContent?: string;
-    /** Nearest heading above selection */
-    nearestHeading?: string | null;
-    /** All document headings */
-    headings?: string[];
-}
+// Re-export pure functions and types from pipeline-core
+export { PromptContext } from '@plusplusoneplusplus/pipeline-core';
+export { usesTemplateVariables, getAvailableVariables } from '@plusplusoneplusplus/pipeline-core';
 
 /**
  * Build a prompt from a command and context
@@ -45,8 +42,8 @@ export function buildPrompt(
     const registry = getAICommandRegistry();
     let prompt = registry.getPromptForCommand(commandId, customInstruction);
 
-    // Apply template variable substitutions
-    prompt = substituteVariables(prompt, context);
+    // Apply template variable substitutions using pipeline-core function
+    prompt = substitutePromptVariables(prompt, context);
 
     // Append the selected text and file path if not using template variables
     // This maintains backward compatibility with simple prompts
@@ -59,48 +56,4 @@ export function buildPrompt(
     }
 
     return prompt;
-}
-
-/**
- * Substitute template variables in a prompt
- */
-function substituteVariables(template: string, context: PromptContext): string {
-    let result = template;
-
-    // {{selection}} - The selected text
-    result = result.replace(/\{\{selection\}\}/g, context.selectedText);
-
-    // {{file}} - The file path
-    result = result.replace(/\{\{file\}\}/g, context.filePath);
-
-    // {{heading}} - The nearest heading above selection
-    result = result.replace(/\{\{heading\}\}/g, context.nearestHeading ?? '');
-
-    // {{context}} - Surrounding content
-    result = result.replace(/\{\{context\}\}/g, context.surroundingContent ?? '');
-
-    // {{headings}} - All document headings (comma-separated)
-    result = result.replace(/\{\{headings\}\}/g, context.headings?.join(', ') ?? '');
-
-    return result;
-}
-
-/**
- * Check if a prompt template uses template variables
- */
-export function usesTemplateVariables(template: string): boolean {
-    return /\{\{(selection|file|heading|context|headings)\}\}/.test(template);
-}
-
-/**
- * Get available template variables
- */
-export function getAvailableVariables(): { name: string; description: string }[] {
-    return [
-        { name: '{{selection}}', description: 'The selected text' },
-        { name: '{{file}}', description: 'The file path being reviewed' },
-        { name: '{{heading}}', description: 'The nearest heading above the selection' },
-        { name: '{{context}}', description: 'Surrounding content for context' },
-        { name: '{{headings}}', description: 'All document headings (comma-separated)' }
-    ];
 }

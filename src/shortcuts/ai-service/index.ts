@@ -88,7 +88,7 @@ export { InteractiveSessionItem, InteractiveSessionSectionItem } from './interac
 // Export document provider for read-only process viewing
 export { AI_PROCESS_SCHEME, AIProcessDocumentProvider } from './ai-process-document-provider';
 
-// Export AI command types and registry
+// Export AI command types (from pipeline-core via re-export wrapper)
 export {
     AICommand,
     AICommandMode,
@@ -98,7 +98,7 @@ export {
     serializeCommands,
     SerializedAICommand,
     SerializedAIMenuConfig
-} from './ai-command-types';
+} from '@plusplusoneplusplus/pipeline-core';
 
 export { AICommandRegistry, getAICommandRegistry } from './ai-command-registry';
 
@@ -109,12 +109,12 @@ export { buildPrompt, getAvailableVariables, PromptContext, usesTemplateVariable
 export { AILogLevel, AIServiceLogger, getAIServiceLogger, LogLevel, ExtensionLogger, getExtensionLogger, LogCategory } from './ai-service-logger';
 export type { AILogEntry } from './ai-service-logger';
 
-// Export external terminal launcher
+// Export external terminal launcher (from pipeline-core)
 export {
     ExternalTerminalLauncher,
     getExternalTerminalLauncher,
     resetExternalTerminalLauncher
-} from './external-terminal-launcher';
+} from '@plusplusoneplusplus/pipeline-core';
 
 // Export interactive session manager
 export {
@@ -133,13 +133,13 @@ export {
     resetProcessMonitor
 } from './process-monitor';
 
-// Export window focus service (Windows-only functionality)
+// Export window focus service (Windows-only functionality, from pipeline-core)
 export {
     getWindowFocusService,
     resetWindowFocusService,
     WindowFocusResult,
     WindowFocusService
-} from './window-focus-service';
+} from '@plusplusoneplusplus/pipeline-core';
 
 // Export AI config helpers (VS Code-specific)
 export {

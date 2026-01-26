@@ -93,7 +93,30 @@ export {
     extractContext,
     // AI response parser
     extractJSON,
-    parseAIResponse
+    parseAIResponse,
+    // Terminal types
+    TerminalType,
+    InteractiveSessionStatus,
+    InteractiveSession,
+    ExternalTerminalLaunchOptions,
+    ExternalTerminalLaunchResult,
+    WindowFocusResult,
+    // Window focus service
+    WindowFocusService,
+    getWindowFocusService,
+    resetWindowFocusService,
+    // External terminal launcher
+    ExternalTerminalLauncher,
+    getExternalTerminalLauncher,
+    resetExternalTerminalLauncher,
+    // Process monitor
+    Disposable,
+    ProcessCheckResult,
+    ProcessMonitorOptions,
+    ProcessMonitor,
+    getProcessMonitor,
+    resetProcessMonitor,
+    DEFAULT_POLL_INTERVAL_MS
 } from './utils';
 
 // ============================================================================
@@ -108,6 +131,45 @@ export {
     AIInvocationResult,
     DEFAULT_PROMPTS,
     InteractiveToolType,
+    // AI Command Types
+    AICommand,
+    AICommandMode,
+    AICommandsConfig,
+    DEFAULT_AI_COMMANDS,
+    SerializedAICommand,
+    SerializedAIMenuConfig,
+    serializeCommand,
+    serializeCommands,
+    // Prompt Builder (Pure)
+    PromptContext,
+    substitutePromptVariables,
+    buildPromptFromContext,
+    usesTemplateVariables,
+    getAvailableVariables,
+    // Program Utilities
+    checkProgramExists,
+    clearProgramExistsCache,
+    parseCopilotOutput,
+    // Process Types
+    AIToolType,
+    AIProcessStatus,
+    AIProcessType,
+    GenericProcessMetadata,
+    GenericGroupMetadata,
+    TypedProcessOptions,
+    ProcessGroupOptions,
+    CompleteGroupOptions,
+    CodeReviewProcessMetadata,
+    DiscoveryProcessMetadata,
+    CodeReviewGroupMetadata,
+    AIProcess,
+    SerializedAIProcess,
+    TrackedProcessFields,
+    serializeProcess,
+    deserializeProcess,
+    ProcessEventType,
+    ProcessEvent,
+    ProcessCounts,
     // Session Pool
     SessionPool,
     IPoolableSession,

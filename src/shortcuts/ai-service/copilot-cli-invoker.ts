@@ -1,11 +1,13 @@
 /**
  * Copilot CLI Invoker
  *
- * Core CLI invocation logic for the AI service.
- * Handles command building, output parsing, and CLI execution.
+ * VS Code-specific CLI invocation logic for the AI service.
+ * Handles VS Code configuration, terminal creation, and progress UI.
+ * 
+ * Pure helpers (checkProgramExists, parseCopilotOutput) are provided by pipeline-core.
  */
 
-import { exec, execSync } from 'child_process';
+import { exec } from 'child_process';
 import * as vscode from 'vscode';
 import { IAIProcessManager, AIToolType } from './types';
 import { getExtensionLogger } from './ai-service-logger';
@@ -16,25 +18,24 @@ import {
     VALID_MODELS,
     COPILOT_BASE_FLAGS,
     escapeShellArg,
-    buildCliCommand
+    buildCliCommand,
+    checkProgramExists as coreCheckProgramExists,
+    clearProgramExistsCache as coreClearProgramExistsCache,
+    parseCopilotOutput
 } from '@plusplusoneplusplus/pipeline-core';
 
 // Re-export shared utilities for backward compatibility
-export { COPILOT_BASE_FLAGS, escapeShellArg, buildCliCommand };
+export { COPILOT_BASE_FLAGS, escapeShellArg, buildCliCommand, parseCopilotOutput };
 
 /** Timeout for copilot CLI execution in milliseconds */
 const COPILOT_TIMEOUT_MS = 300000; // 5 minutes
-
-/** Cache for program existence checks to avoid repeated lookups */
-const programExistsCache = new Map<string, { exists: boolean; path?: string; error?: string }>();
 
 /**
  * Check if a program/command exists in the system PATH.
  * Results are cached to avoid repeated lookups.
  * 
- * Platform-specific implementation:
- * - Windows: Uses `where` command
- * - Unix/macOS: Uses `which` command
+ * This is a VS Code-aware wrapper around the pipeline-core function
+ * that adds logging to the extension logger.
  * 
  * @param programName - The name of the program to check (e.g., 'copilot', 'git')
  * @param platform - Optional platform override for testing (defaults to process.platform)
@@ -44,51 +45,16 @@ export function checkProgramExists(
     programName: string,
     platform?: NodeJS.Platform
 ): { exists: boolean; path?: string; error?: string } {
-    // Create cache key that includes platform to handle cross-platform testing
-    const cacheKey = `${programName}:${platform ?? process.platform}`;
-
-    // Return cached result if available
-    const cached = programExistsCache.get(cacheKey);
-    if (cached !== undefined) {
-        return cached;
-    }
-
-    const isWindows = (platform ?? process.platform) === 'win32';
-    const checkCommand = isWindows ? `where ${programName}` : `which ${programName}`;
-
-    let result: { exists: boolean; path?: string; error?: string };
-
-    const logger = getExtensionLogger();
+    const result = coreCheckProgramExists(programName, platform);
     
-    try {
-        const output = execSync(checkCommand, {
-            encoding: 'utf-8',
-            stdio: ['pipe', 'pipe', 'pipe'],
-            timeout: 5000 // 5 second timeout for the check
-        });
-
-        // Parse the result - get the first line (path to the program)
-        const programPath = output.trim().split('\n')[0].trim();
-
-        result = {
-            exists: true,
-            path: programPath
-        };
-        
-        logger.logProgramCheck(programName, true, programPath);
-    } catch (error) {
-        // Command failed - program not found
-        const errorMsg = `'${programName}' is not installed or not found in PATH. Please install it first.`;
-        result = {
-            exists: false,
-            error: errorMsg
-        };
-        
-        logger.logProgramCheck(programName, false, undefined, errorMsg);
+    // Log the result using VS Code extension logger
+    const logger = getExtensionLogger();
+    if (result.exists) {
+        logger.logProgramCheck(programName, true, result.path);
+    } else {
+        logger.logProgramCheck(programName, false, undefined, result.error);
     }
-
-    // Cache the result
-    programExistsCache.set(cacheKey, result);
+    
     return result;
 }
 
@@ -99,16 +65,7 @@ export function checkProgramExists(
  * @param programName - Optional program name to clear. If not provided, clears entire cache.
  */
 export function clearProgramExistsCache(programName?: string): void {
-    if (programName) {
-        // Clear all entries for this program (all platforms)
-        for (const key of programExistsCache.keys()) {
-            if (key.startsWith(`${programName}:`)) {
-                programExistsCache.delete(key);
-            }
-        }
-    } else {
-        programExistsCache.clear();
-    }
+    coreClearProgramExistsCache(programName);
 }
 
 
@@ -199,70 +156,6 @@ export function getPromptTemplate(promptType: 'clarify' | 'goDeeper' | 'customDe
     }
 
     return DEFAULT_PROMPTS[promptType];
-}
-
-/**
- * Parse the copilot CLI output to extract the response text.
- * Removes the status lines, tool operations, and usage statistics.
- * 
- * @param output - Raw output from copilot CLI
- * @returns The extracted response text
- */
-export function parseCopilotOutput(output: string): string {
-    const lines = output.split('\n');
-    const resultLines: string[] = [];
-    let inContent = false;
-
-    for (const line of lines) {
-        // Skip ANSI escape codes and clean the line
-        const cleanLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
-
-        // Skip empty lines at the start
-        if (!inContent && cleanLine === '') {
-            continue;
-        }
-
-        // Skip copilot status/operation lines
-        // ✓ = success, ✗ = failure, └ = tree branch (sub-info)
-        if (cleanLine.startsWith('✓') ||
-            cleanLine.startsWith('✗') ||
-            cleanLine.startsWith('└') ||
-            cleanLine.startsWith('├')) {
-            continue;
-        }
-
-        // Skip error/info messages from copilot tools
-        if (cleanLine.startsWith('Invalid session') ||
-            cleanLine.includes('session ID') ||
-            cleanLine.startsWith('Error:') ||
-            cleanLine.startsWith('Warning:')) {
-            continue;
-        }
-
-        // Skip lines that look like tool invocations or file operations
-        if (cleanLine.match(/^(Read|Glob|Search|List|Edit|Write|Delete|Run)\s/i)) {
-            continue;
-        }
-
-        // Stop at usage statistics
-        if (cleanLine.startsWith('Total usage') ||
-            cleanLine.startsWith('Total duration') ||
-            cleanLine.startsWith('Total code changes') ||
-            cleanLine.startsWith('Usage by model')) {
-            break;
-        }
-
-        // Start capturing content
-        inContent = true;
-        resultLines.push(cleanLine);
-    }
-
-    // Trim trailing empty lines
-    while (resultLines.length > 0 && resultLines[resultLines.length - 1] === '') {
-        resultLines.pop();
-    }
-
-    return resultLines.join('\n').trim();
 }
 
 /**
