@@ -13,13 +13,13 @@ import {
     AIModel,
     IAIProcessManager,
     DEFAULT_PROMPTS,
-    escapeShellArg,
     getAICommandRegistry,
     getAIModelSetting,
     getPromptTemplate,
     parseCopilotOutput,
     VALID_MODELS
 } from '../ai-service';
+import { escapeShellArg } from '@plusplusoneplusplus/pipeline-core';
 import {
     getCommentType as baseGetCommentType,
     getResponseLabel as baseGetResponseLabel,

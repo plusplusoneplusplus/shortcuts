@@ -18,10 +18,12 @@ import {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
-    getAIBackendSetting,
     SendMessageOptions,
     SDKInvocationResult,
     AIBackendType
+} from '@plusplusoneplusplus/pipeline-core';
+import {
+    getAIBackendSetting
 } from '../../shortcuts/ai-service';
 
 // ============================================================================

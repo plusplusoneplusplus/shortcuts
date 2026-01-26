@@ -20,10 +20,12 @@ import {
 } from '../../shortcuts/shared/ai-clarification-handler-base';
 import {
     AIInvocationResult,
-    getAIBackendSetting,
-    getAIToolSetting,
     getCopilotSDKService,
     resetCopilotSDKService
+} from '@plusplusoneplusplus/pipeline-core';
+import {
+    getAIBackendSetting,
+    getAIToolSetting
 } from '../../shortcuts/ai-service';
 
 // ============================================================================

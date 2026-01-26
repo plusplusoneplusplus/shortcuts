@@ -12,9 +12,9 @@ import {
     SerializedAIProcess,
     serializeProcess,
     deserializeProcess,
-    buildCliCommand,
     AIProcessItem
 } from '../../shortcuts/ai-service';
+import { buildCliCommand } from '@plusplusoneplusplus/pipeline-core';
 
 suite('AI Session Resume', () => {
     suite('SerializedAIProcess Session Fields', () => {

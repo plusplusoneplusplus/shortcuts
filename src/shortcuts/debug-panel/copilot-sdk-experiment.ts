@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { getCopilotSDKService, IAIProcessManager } from '../ai-service';
+import { getCopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+import { IAIProcessManager } from '../ai-service';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 
 /**

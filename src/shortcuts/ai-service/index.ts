@@ -5,55 +5,10 @@
  * This module provides generic AI invocation capabilities that can be used
  * by any feature in the extension.
  *
- * Core AI functionality (CopilotSDKService, SessionPool, CLI utilities) is now
- * provided by the pipeline-core package. This module re-exports those types
- * and adds VS Code-specific functionality.
+ * Core AI functionality (CopilotSDKService, SessionPool, CLI utilities) is
+ * provided by the @plusplusoneplusplus/pipeline-core package.
+ * Import those directly from pipeline-core.
  */
-
-// ============================================================================
-// Re-export from pipeline-core package (core AI functionality)
-// ============================================================================
-export {
-    // AI Types
-    AIInvocationResult,
-    AIBackendType,
-    AIModel,
-    VALID_MODELS,
-    DEFAULT_PROMPTS,
-    InteractiveToolType,
-    // Session Pool
-    SessionPool,
-    IPoolableSession,
-    SessionFactory,
-    SessionPoolOptions,
-    SessionPoolStats,
-    // CLI Utilities
-    PROMPT_LENGTH_THRESHOLD,
-    PROBLEMATIC_CHARS_PATTERN,
-    COPILOT_BASE_FLAGS,
-    escapeShellArg,
-    shouldUseFileDelivery,
-    writePromptToTempFile,
-    buildCliCommand,
-    BuildCliCommandResult,
-    BuildCliCommandOptions,
-    // Copilot SDK Service
-    CopilotSDKService,
-    getCopilotSDKService,
-    resetCopilotSDKService,
-    MCPServerConfig,
-    MCPControlOptions,
-    SendMessageOptions,
-    SDKInvocationResult,
-    SDKAvailabilityResult,
-    PermissionRequest,
-    PermissionRequestResult,
-    PermissionHandler,
-    SessionPoolConfig,
-    DEFAULT_SESSION_POOL_CONFIG,
-    approveAllPermissions,
-    denyAllPermissions
-} from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // VS Code-specific types (not in pipeline-core)
@@ -63,6 +18,13 @@ export {
     AIProcessStatus,
     AIProcessType,
     AIToolType,
+    // Core types re-exported from pipeline-core for convenience
+    AIBackendType,
+    AIModel,
+    VALID_MODELS,
+    AIInvocationResult,
+    DEFAULT_PROMPTS,
+    InteractiveToolType,
     // Generic metadata types (preferred for new features)
     GenericProcessMetadata,
     GenericGroupMetadata,

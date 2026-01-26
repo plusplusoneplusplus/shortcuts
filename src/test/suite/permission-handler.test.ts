@@ -8,7 +8,7 @@ import {
     denyAllPermissions,
     PermissionRequest,
     PermissionHandler
-} from '../../shortcuts/ai-service';
+} from '@plusplusoneplusplus/pipeline-core';
 
 suite('Permission Handler Tests', () => {
     test('approveAllPermissions should approve all request types', async () => {
