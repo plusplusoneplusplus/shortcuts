@@ -6,7 +6,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { IAIProcessManager, getAICommandRegistry, getInteractiveSessionManager } from '../ai-service';
+import { getCopilotSDKService, approveAllPermissions } from '@plusplusoneplusplus/pipeline-core';
+import { 
+    getAICommandRegistry, 
+    getAvailableModels, 
+    getFollowPromptDefaultMode, 
+    getFollowPromptDefaultModel, 
+    getFollowPromptRememberSelection, 
+    getInteractiveSessionManager,
+    IAIProcessManager,
+    FollowPromptExecutionOptions,
+    FollowPromptProcessMetadata
+} from '../ai-service';
 import { getPredefinedCommentRegistry } from '../shared/predefined-comment-registry';
 import { getPromptFiles } from '../shared/prompt-files-utils';
 import { getSkills } from '../shared/skill-files-utils';
@@ -26,7 +37,7 @@ import { getWebviewContent, WebviewContentOptions } from './webview-content';
 /**
  * Mode for AI command execution
  */
-type AICommandMode = 'comment' | 'interactive';
+type AICommandMode = 'comment' | 'interactive' | 'background';
 
 /**
  * Context data for AI clarification requests from the webview
@@ -52,7 +63,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult';
     commentId?: string;
     content?: string;
     selection?: {
@@ -82,6 +93,8 @@ interface WebviewMessage {
     promptFilePath?: string;
     // Execute Work Plan with Skill fields
     skillName?: string;
+    // Follow Prompt dialog result
+    options?: FollowPromptExecutionOptions;
 }
 
 /**
@@ -637,13 +650,40 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
             case 'executeWorkPlan':
                 if (message.promptFilePath) {
-                    await this.handleExecuteWorkPlan(document.uri.fsPath, message.promptFilePath);
+                    // Show the Follow Prompt dialog for mode and model selection
+                    await this.showFollowPromptDialog(
+                        webviewPanel,
+                        message.promptFilePath,
+                        path.basename(message.promptFilePath, '.prompt.md'),
+                        undefined // not a skill
+                    );
                 }
                 break;
 
             case 'executeWorkPlanWithSkill':
                 if (message.skillName) {
-                    await this.handleExecuteWorkPlanWithSkill(document.uri.fsPath, message.skillName);
+                    // Get the skill prompt file path
+                    const skillPromptPath = await this.getSkillPromptPath(message.skillName);
+                    if (skillPromptPath) {
+                        // Show the Follow Prompt dialog for mode and model selection
+                        await this.showFollowPromptDialog(
+                            webviewPanel,
+                            skillPromptPath,
+                            message.skillName,
+                            message.skillName
+                        );
+                    }
+                }
+                break;
+
+            case 'followPromptDialogResult':
+                if (message.promptFilePath && message.options) {
+                    await this.executeFollowPrompt(
+                        document.uri.fsPath,
+                        message.promptFilePath,
+                        message.options,
+                        message.skillName
+                    );
                 }
                 break;
         }
@@ -1405,11 +1445,282 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     }
 
     /**
-     * Handle work plan execution request from webview.
-     * Launches an interactive AI session with a simple prompt referencing both files.
+     * Show the Follow Prompt dialog in the webview.
+     * Sends dialog data including available models and default settings.
      * 
-     * @param planFilePath - Absolute path to the plan file (the current document)
-     * @param promptFilePath - Absolute path to the selected prompt file
+     * @param webviewPanel - The webview panel to send the message to
+     * @param promptFilePath - Absolute path to the prompt file
+     * @param promptName - Display name for the prompt
+     * @param skillName - Optional skill name if this is a skill-based execution
+     */
+    private async showFollowPromptDialog(
+        webviewPanel: vscode.WebviewPanel,
+        promptFilePath: string,
+        promptName: string,
+        skillName?: string
+    ): Promise<void> {
+        // Track prompt usage for recent list
+        await this.trackPromptUsage(promptFilePath);
+
+        // Get available models and defaults
+        const availableModels = getAvailableModels();
+        const rememberSelection = getFollowPromptRememberSelection();
+        
+        // Get defaults - either from last selection or settings
+        let defaultMode = getFollowPromptDefaultMode();
+        let defaultModel = getFollowPromptDefaultModel();
+        
+        if (rememberSelection) {
+            const lastSelection = this.getLastFollowPromptSelection();
+            if (lastSelection) {
+                defaultMode = lastSelection.mode;
+                defaultModel = lastSelection.model;
+            }
+        }
+
+        // Send dialog data to webview
+        webviewPanel.webview.postMessage({
+            type: 'showFollowPromptDialog',
+            promptName,
+            promptFilePath,
+            skillName,
+            availableModels: availableModels.map(m => ({
+                id: m.id,
+                label: m.label,
+                description: m.description,
+                isDefault: m.isDefault
+            })),
+            defaults: {
+                mode: defaultMode,
+                model: defaultModel
+            }
+        });
+    }
+
+    /**
+     * Get the prompt file path for a skill.
+     * 
+     * @param skillName - Name of the skill
+     * @returns Absolute path to the skill's prompt file, or undefined if not found
+     */
+    private async getSkillPromptPath(skillName: string): Promise<string | undefined> {
+        const workspaceRoot = getWorkspaceRoot();
+        if (!workspaceRoot) {
+            vscode.window.showErrorMessage('No workspace root found');
+            return undefined;
+        }
+
+        const skillPath = path.join(workspaceRoot, '.github', 'skills', skillName);
+        
+        if (!fs.existsSync(skillPath)) {
+            vscode.window.showErrorMessage(`Skill not found: ${skillName}`);
+            return undefined;
+        }
+
+        // Find the prompt file (prompt.md or SKILL.md)
+        let promptFilePath = path.join(skillPath, 'prompt.md');
+        if (!fs.existsSync(promptFilePath)) {
+            promptFilePath = path.join(skillPath, 'SKILL.md');
+            if (!fs.existsSync(promptFilePath)) {
+                vscode.window.showErrorMessage(`No prompt file found for skill: ${skillName}`);
+                return undefined;
+            }
+        }
+
+        return promptFilePath;
+    }
+
+    /**
+     * Execute the Follow Prompt command with the selected options.
+     * Routes to either interactive or background execution based on mode.
+     * 
+     * @param planFilePath - Absolute path to the plan file (current document)
+     * @param promptFilePath - Absolute path to the prompt file
+     * @param options - Execution options from the dialog
+     * @param skillName - Optional skill name for display purposes
+     */
+    private async executeFollowPrompt(
+        planFilePath: string,
+        promptFilePath: string,
+        options: FollowPromptExecutionOptions,
+        skillName?: string
+    ): Promise<void> {
+        // Remember selection if setting is enabled
+        if (getFollowPromptRememberSelection()) {
+            this.saveLastFollowPromptSelection(options.mode, options.model);
+        }
+
+        if (options.mode === 'background') {
+            await this.executeFollowPromptInBackground(planFilePath, promptFilePath, options, skillName);
+        } else {
+            await this.executeFollowPromptInteractive(planFilePath, promptFilePath, options, skillName);
+        }
+    }
+
+    /**
+     * Execute Follow Prompt in interactive mode (external terminal).
+     * 
+     * @param planFilePath - Absolute path to the plan file
+     * @param promptFilePath - Absolute path to the prompt file
+     * @param options - Execution options
+     * @param skillName - Optional skill name for display
+     */
+    private async executeFollowPromptInteractive(
+        planFilePath: string,
+        promptFilePath: string,
+        options: FollowPromptExecutionOptions,
+        skillName?: string
+    ): Promise<void> {
+        const sessionManager = getInteractiveSessionManager();
+
+        // Build prompt with optional additional message
+        let fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
+        if (options.additionalContext && options.additionalContext.trim()) {
+            fullPrompt += `\n\nAdditional context: ${options.additionalContext.trim()}`;
+        }
+
+        // Get settings
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts.workPlan');
+        const tool = config.get<'copilot' | 'claude'>('defaultTool', 'copilot');
+        const workingDirectory = this.resolveWorkPlanWorkingDirectory(planFilePath);
+
+        // Launch interactive session
+        const sessionId = await sessionManager.startSession({
+            workingDirectory,
+            tool,
+            initialPrompt: fullPrompt
+        });
+
+        if (sessionId) {
+            const displayName = skillName ? `Skill: ${skillName}` : path.basename(promptFilePath);
+            vscode.window.showInformationMessage(
+                `Interactive session started: ${displayName} → ${path.basename(planFilePath)}`
+            );
+        } else {
+            vscode.window.showErrorMessage(
+                'Failed to start interactive session. Please check that the AI CLI tool is installed.'
+            );
+        }
+    }
+
+    /**
+     * Execute Follow Prompt in background mode (SDK).
+     * Tracks progress in the AI Processes panel.
+     * 
+     * @param planFilePath - Absolute path to the plan file
+     * @param promptFilePath - Absolute path to the prompt file
+     * @param options - Execution options
+     * @param skillName - Optional skill name for display
+     */
+    private async executeFollowPromptInBackground(
+        planFilePath: string,
+        promptFilePath: string,
+        options: FollowPromptExecutionOptions,
+        skillName?: string
+    ): Promise<void> {
+        const sdkService = getCopilotSDKService();
+        
+        // Check if SDK is available
+        if (!sdkService.isAvailable()) {
+            vscode.window.showErrorMessage(
+                'Copilot SDK is not available. Please ensure you are signed in to GitHub Copilot.'
+            );
+            return;
+        }
+
+        // Get the process manager to track progress
+        const processManager = this.aiProcessManager;
+        if (!processManager) {
+            vscode.window.showErrorMessage('AI Process Manager not available');
+            return;
+        }
+
+        // Build full prompt
+        let fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
+        if (options.additionalContext && options.additionalContext.trim()) {
+            fullPrompt += `\n\nAdditional context: ${options.additionalContext.trim()}`;
+        }
+
+        const displayName = skillName ? `Skill: ${skillName}` : path.basename(promptFilePath, '.prompt.md');
+        
+        // Register the process
+        const metadata: FollowPromptProcessMetadata = {
+            promptFile: promptFilePath,
+            planFile: planFilePath,
+            model: options.model,
+            additionalContext: options.additionalContext,
+            skillName
+        };
+
+        const processId = processManager.registerTypedProcess(fullPrompt, {
+            type: 'follow-prompt',
+            idPrefix: 'follow-prompt',
+            metadata: {
+                type: 'follow-prompt',
+                ...metadata
+            }
+        });
+
+        vscode.window.showInformationMessage(
+            `Started background execution: ${displayName} → ${path.basename(planFilePath)}`
+        );
+
+        try {
+            const workingDirectory = this.resolveWorkPlanWorkingDirectory(planFilePath);
+            
+            // Execute via SDK
+            const result = await sdkService.sendMessage({
+                prompt: fullPrompt,
+                model: options.model,
+                workingDirectory,
+                timeoutMs: options.timeoutMs ?? 600000, // 10 minutes default
+                usePool: false, // Use direct session for long-running tasks
+                onPermissionRequest: approveAllPermissions
+            });
+
+            if (result.success && result.response) {
+                processManager.completeProcess(processId, result.response);
+                
+                const action = await vscode.window.showInformationMessage(
+                    `✅ Follow Prompt completed: ${displayName}`,
+                    'View Result'
+                );
+                
+                if (action === 'View Result') {
+                    await vscode.commands.executeCommand('shortcuts.aiProcesses.showResult', processId);
+                }
+            } else {
+                const errorMsg = result.error || 'Unknown error';
+                processManager.failProcess(processId, errorMsg);
+                vscode.window.showErrorMessage(`Follow Prompt failed: ${errorMsg}`);
+            }
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            processManager.failProcess(processId, errorMsg);
+            vscode.window.showErrorMessage(`Follow Prompt failed: ${errorMsg}`);
+        }
+    }
+
+    /**
+     * Get the last Follow Prompt selection from workspace state.
+     */
+    private getLastFollowPromptSelection(): { mode: 'interactive' | 'background'; model: string } | undefined {
+        return this.context.workspaceState.get<{ mode: 'interactive' | 'background'; model: string }>(
+            'followPrompt.lastSelection'
+        );
+    }
+
+    /**
+     * Save the last Follow Prompt selection to workspace state.
+     */
+    private saveLastFollowPromptSelection(mode: 'interactive' | 'background', model: string): void {
+        this.context.workspaceState.update('followPrompt.lastSelection', { mode, model });
+    }
+
+    /**
+     * Handle work plan execution request from webview.
+     * @deprecated Use showFollowPromptDialog and executeFollowPrompt instead.
+     * This method is kept for backward compatibility during transition.
      */
     private async handleExecuteWorkPlan(
         planFilePath: string,
@@ -1463,10 +1774,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
     /**
      * Handle work plan execution request with a skill from webview.
-     * Launches an interactive AI session using the skill's prompt.
-     * 
-     * @param planFilePath - Absolute path to the plan file (the current document)
-     * @param skillName - Name of the skill to use
+     * @deprecated Use showFollowPromptDialog and executeFollowPrompt instead.
+     * This method is kept for backward compatibility during transition.
      */
     private async handleExecuteWorkPlanWithSkill(
         planFilePath: string,

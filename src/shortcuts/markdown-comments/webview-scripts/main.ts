@@ -7,6 +7,7 @@
  */
 
 import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu, updateExecuteWorkPlanSubmenu, updatePromptFileSubmenu, updateSkillSubmenu } from './dom-handlers';
+import { initFollowPromptDialog, showFollowPromptDialog } from './follow-prompt-dialog';
 import { updateResolvedImage } from './image-handlers';
 import { initPanelManager, scrollToComment } from './panel-manager';
 import { render } from './render';
@@ -35,6 +36,10 @@ function init(): void {
     // Initialize panel manager
     initPanelManager();
     console.log('[Webview] Panel manager initialized');
+
+    // Initialize Follow Prompt dialog
+    initFollowPromptDialog();
+    console.log('[Webview] Follow Prompt dialog initialized');
 
     // Setup message listener from extension
     setupMessageListener(handleMessage);
@@ -124,6 +129,17 @@ function handleMessage(message: ExtensionMessage): void {
         case 'skillsResponse':
             // Update the context menu skills submenu
             updateSkillSubmenu(message.skills || []);
+            break;
+
+        case 'showFollowPromptDialog':
+            // Show the Follow Prompt dialog with mode and model selection
+            showFollowPromptDialog(
+                message.promptName,
+                message.promptFilePath,
+                message.skillName,
+                message.availableModels,
+                message.defaults
+            );
             break;
     }
 }

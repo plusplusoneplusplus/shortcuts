@@ -52,7 +52,11 @@ export {
     InteractiveSessionEvent,
     InteractiveSessionEventType,
     InteractiveSessionStatus,
-    TerminalType
+    TerminalType,
+    // Follow Prompt types
+    FollowPromptExecutionOptions,
+    FollowPromptProcessMetadata,
+    AIModelConfig
 } from './types';
 
 // Export CLI invoker functions (VS Code-specific, uses vscode.workspace.getConfiguration)
@@ -145,7 +149,11 @@ export {
 export {
     getAIBackendSetting,
     getSDKMaxSessionsSetting,
-    getSDKSessionTimeoutSetting
+    getSDKSessionTimeoutSetting,
+    getAvailableModels,
+    getFollowPromptDefaultMode,
+    getFollowPromptDefaultModel,
+    getFollowPromptRememberSelection
 } from './ai-config-helpers';
 
 // Export AI invoker factory for unified SDK/CLI fallback handling

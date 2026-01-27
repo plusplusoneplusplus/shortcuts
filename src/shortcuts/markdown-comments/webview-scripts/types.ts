@@ -30,8 +30,9 @@ export interface WebviewState {
  * Mode for AI command execution
  * - 'comment': AI response is added as a comment in the document (default)
  * - 'interactive': Opens an interactive AI session in external terminal
+ * - 'background': Runs in background via SDK, tracks progress in AI Processes panel
  */
-export type AICommandMode = 'comment' | 'interactive';
+export type AICommandMode = 'comment' | 'interactive' | 'background';
 
 /**
  * Serialized AI command for webview
@@ -170,7 +171,21 @@ export type WebviewMessage =
     | { type: 'requestSkills' }
     | { type: 'executeWorkPlan'; promptFilePath: string }
     | { type: 'executeWorkPlanWithSkill'; skillName: string }
-    | { type: 'promptSearch' };
+    | { type: 'promptSearch' }
+    | { type: 'showFollowPromptDialog'; promptFilePath: string; promptName: string; skillName?: string }
+    | { type: 'followPromptDialogResult'; promptFilePath: string; skillName?: string; options: FollowPromptDialogOptions };
+
+/**
+ * Options selected in the Follow Prompt dialog
+ */
+export interface FollowPromptDialogOptions {
+    /** Execution mode */
+    mode: 'interactive' | 'background';
+    /** AI model to use */
+    model: string;
+    /** Additional context/instructions */
+    additionalContext?: string;
+}
 
 /**
  * Prompt file info for Execute Work Plan feature
@@ -234,7 +249,22 @@ export type ExtensionMessage =
     | { type: 'imageResolved'; imgId: string; uri?: string; alt?: string; error?: string }
     | { type: 'scrollToComment'; commentId: string }
     | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[]; skills?: SkillInfo[] }
-    | { type: 'skillsResponse'; skills: SkillInfo[] };
+    | { type: 'skillsResponse'; skills: SkillInfo[] }
+    | { type: 'showFollowPromptDialog'; promptName: string; promptFilePath: string; skillName?: string; availableModels: AIModelOption[]; defaults: { mode: 'interactive' | 'background'; model: string } };
+
+/**
+ * AI model option for dialog dropdown
+ */
+export interface AIModelOption {
+    /** Model identifier */
+    id: string;
+    /** Display label */
+    label: string;
+    /** Optional description */
+    description?: string;
+    /** Whether this is the default/recommended model */
+    isDefault?: boolean;
+}
 
 /**
  * Parsed code block structure

@@ -495,6 +495,43 @@
           "default": "{workspaceFolder}/src",
           "markdownDescription": "Working directory for work plan execution. Supports `{workspaceFolder}` variable. If the specified directory doesn't exist, falls back to workspace root."
         },
+        "workspaceShortcuts.followPrompt.defaultMode": {
+          "type": "string",
+          "enum": [
+            "interactive",
+            "background"
+          ],
+          "enumDescriptions": [
+            "Interactive Session - Launch in external terminal for real-time interaction",
+            "Background - Run via SDK, track progress in AI Processes panel"
+          ],
+          "default": "interactive",
+          "markdownDescription": "Default execution mode for Follow Prompt. **Interactive** launches an external terminal session. **Background** runs asynchronously via SDK with progress tracking."
+        },
+        "workspaceShortcuts.followPrompt.defaultModel": {
+          "type": "string",
+          "enum": [
+            "claude-sonnet-4.5",
+            "claude-haiku-4.5",
+            "claude-opus-4.5",
+            "gpt-5.1-codex-max",
+            "gemini-3-pro-preview"
+          ],
+          "enumDescriptions": [
+            "Claude Sonnet 4.5 (Recommended)",
+            "Claude Haiku 4.5 (Fast)",
+            "Claude Opus 4.5 (Premium)",
+            "GPT-5.1 Codex Max",
+            "Gemini 3 Pro (Preview)"
+          ],
+          "default": "claude-sonnet-4.5",
+          "markdownDescription": "Default AI model for Follow Prompt execution."
+        },
+        "workspaceShortcuts.followPrompt.rememberLastSelection": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Remember the last used execution mode and model selection. When enabled, the dialog will default to your previous choices."
+        },
         "workspaceShortcuts.codeReview.rulesFolder": {
           "type": "string",
           "default": ".github/cr-rules",

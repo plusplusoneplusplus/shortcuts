@@ -332,6 +332,68 @@ export function getWebviewContent(
         </div>
     </div>
 
+    <!-- Follow Prompt Dialog (Mode & Model Selection) -->
+    <div class="modal-overlay" id="followPromptDialog" style="display: none;">
+        <div class="modal-dialog follow-prompt-dialog">
+            <div class="modal-header">
+                <h3>📝 Follow Prompt: <span id="fpPromptName"></span></h3>
+                <button id="fpCloseBtn" class="modal-close-btn">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Additional Context -->
+                <div class="form-group">
+                    <label for="fpAdditionalContext">Additional Context (optional)</label>
+                    <textarea id="fpAdditionalContext" 
+                              placeholder="e.g., Focus on error handling and edge cases..."
+                              rows="3"></textarea>
+                </div>
+                
+                <hr class="modal-divider" />
+                
+                <!-- Execution Mode -->
+                <div class="form-group">
+                    <label>Execution Mode</label>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="fpMode" value="interactive" checked />
+                            <span class="radio-label">
+                                <span class="radio-icon">🖥️</span>
+                                <span class="radio-content">
+                                    <span class="radio-title">Interactive Session</span>
+                                    <span class="radio-desc">Launch in external terminal</span>
+                                </span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="fpMode" value="background" />
+                            <span class="radio-label">
+                                <span class="radio-icon">⏳</span>
+                                <span class="radio-content">
+                                    <span class="radio-title">Background</span>
+                                    <span class="radio-desc">Track progress in AI Processes panel</span>
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- AI Model -->
+                <div class="form-group">
+                    <label for="fpModelSelect">AI Model</label>
+                    <select id="fpModelSelect" class="model-select">
+                        <!-- Dynamically populated -->
+                    </select>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button id="fpCancelBtn" class="btn btn-secondary">Cancel</button>
+                <button id="fpExecuteBtn" class="btn btn-primary">Execute</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Load highlight.js from CDN for code syntax highlighting -->
     <script nonce="${nonce}" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     

@@ -396,3 +396,51 @@ export interface IAIProcessManager {
      */
     dispose(): void;
 }
+
+// ============================================================================
+// Follow Prompt Types (VS Code-specific)
+// ============================================================================
+
+/**
+ * Options for executing a Follow Prompt command
+ */
+export interface FollowPromptExecutionOptions {
+    /** Execution mode */
+    mode: 'interactive' | 'background';
+    /** AI model to use */
+    model: string;
+    /** Additional context/instructions */
+    additionalContext?: string;
+    /** Timeout in ms (for background mode) */
+    timeoutMs?: number;
+}
+
+/**
+ * Metadata for follow-prompt process tracking
+ */
+export interface FollowPromptProcessMetadata {
+    /** Path to the prompt file used */
+    promptFile: string;
+    /** Path to the plan file being processed */
+    planFile: string;
+    /** AI model used for execution */
+    model: string;
+    /** Additional context provided by user */
+    additionalContext?: string;
+    /** Whether this was a skill-based execution */
+    skillName?: string;
+}
+
+/**
+ * Configuration for available AI models with display labels
+ */
+export interface AIModelConfig {
+    /** Model identifier (e.g., "claude-sonnet-4.5") */
+    id: string;
+    /** Display label for UI (e.g., "Claude Sonnet 4.5") */
+    label: string;
+    /** Optional description (e.g., "(Recommended for coding)") */
+    description?: string;
+    /** Whether this is the default/recommended model */
+    isDefault?: boolean;
+}

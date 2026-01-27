@@ -11,8 +11,9 @@ import { DEFAULT_PROMPTS } from './types';
  * Mode for AI command execution
  * - 'comment': AI response is added as a comment in the document (default)
  * - 'interactive': Opens an interactive AI session in external terminal
+ * - 'background': Runs in background via SDK, tracks progress in AI Processes panel
  */
-export type AICommandMode = 'comment' | 'interactive';
+export type AICommandMode = 'comment' | 'interactive' | 'background';
 
 /**
  * An AI command that can be invoked from the review editor
