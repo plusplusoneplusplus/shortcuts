@@ -21,7 +21,7 @@ import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
 import { AICommandMode, PromptFileInfo, RecentPrompt, SkillInfo } from './types';
-import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestPromptFiles, requestPromptSearch, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, requestSkills, updateContent } from './vscode-bridge';
+import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, requestSkills, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -148,18 +148,22 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 /**
- * Update the Execute Work Plan submenu with available prompt files
+ * Update the Execute Work Plan submenu with available prompt files and skills
  * @param promptFiles - Array of prompt file info from the extension
  * @param recentPrompts - Optional array of recent prompts for quick access
+ * @param skills - Optional array of skills from .github/skills/
  */
-export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[], recentPrompts?: RecentPrompt[]): void {
+export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[], recentPrompts?: RecentPrompt[], skills?: SkillInfo[]): void {
     const submenu = document.getElementById('executeWorkPlanSubmenu');
     if (!submenu) return;
 
     // Clear existing content
     submenu.innerHTML = '';
 
-    if (promptFiles.length === 0) {
+    const hasPrompts = promptFiles.length > 0;
+    const hasSkills = skills && skills.length > 0;
+
+    if (!hasPrompts && !hasSkills) {
         // Show "No prompts found" message
         const noPromptsItem = document.createElement('div');
         noPromptsItem.className = 'ai-action-menu-item ai-action-disabled';
@@ -236,7 +240,7 @@ export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[], rece
     submenu.appendChild(searchItem);
 
     // Add divider before all prompts
-    if (promptFiles.length > 0) {
+    if (hasPrompts) {
         const divider = document.createElement('div');
         divider.className = 'ai-action-menu-divider';
         submenu.appendChild(divider);
@@ -285,6 +289,41 @@ export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[], rece
                 e.stopPropagation();
                 hideAIActionMenu();
                 requestExecuteWorkPlan(file.absolutePath);
+            });
+
+            submenu.appendChild(item);
+        }
+    }
+
+    // Add skills section if available
+    if (hasSkills) {
+        // Add divider before skills
+        const divider = document.createElement('div');
+        divider.className = 'ai-action-menu-divider';
+        submenu.appendChild(divider);
+
+        // Add skills header
+        const header = document.createElement('div');
+        header.className = 'ai-action-menu-header';
+        header.textContent = '🎯 Skills';
+        submenu.appendChild(header);
+
+        // Add each skill as a menu item
+        for (const skill of skills!) {
+            const item = document.createElement('div');
+            item.className = 'ai-action-menu-item';
+            item.dataset.skillName = skill.name;
+            item.innerHTML = `
+                <span class="ai-action-icon">🧠</span>
+                <span class="ai-action-label">${escapeHtml(skill.name)}</span>
+            `;
+            item.title = skill.description || skill.relativePath;
+
+            // Add click handler
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                hideAIActionMenu();
+                requestExecuteWorkPlanWithSkill(skill.name);
             });
 
             submenu.appendChild(item);

@@ -227,6 +227,14 @@ export function requestExecuteWorkPlan(promptFilePath: string): void {
 }
 
 /**
+ * Request to execute a work plan with a specific skill
+ * @param skillName - Name of the skill to use
+ */
+export function requestExecuteWorkPlanWithSkill(skillName: string): void {
+    postMessage({ type: 'executeWorkPlanWithSkill', skillName });
+}
+
+/**
  * Message handler type
  * Re-exported from shared module for backward compatibility
  */

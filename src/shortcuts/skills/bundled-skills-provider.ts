@@ -23,7 +23,7 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
  * Get the path to the bundled skills directory in the extension
  */
 export function getBundledSkillsPath(context: vscode.ExtensionContext): string {
-    return path.join(context.extensionPath, 'resources', 'bundled-skills');
+    return path.join(context.extensionPath, 'dist', 'resources', 'bundled-skills');
 }
 
 /**

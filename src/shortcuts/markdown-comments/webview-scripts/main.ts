@@ -115,8 +115,8 @@ function handleMessage(message: ExtensionMessage): void {
             break;
 
         case 'promptFilesResponse':
-            // Update the Execute Work Plan submenu with available prompt files
-            updateExecuteWorkPlanSubmenu(message.promptFiles || [], message.recentPrompts);
+            // Update the Execute Work Plan submenu with available prompt files and skills
+            updateExecuteWorkPlanSubmenu(message.promptFiles || [], message.recentPrompts, message.skills);
             // Also update the context menu prompt files submenu
             updatePromptFileSubmenu(message.promptFiles || []);
             break;

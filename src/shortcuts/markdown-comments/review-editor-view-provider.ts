@@ -52,7 +52,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'promptSearch';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch';
     commentId?: string;
     content?: string;
     selection?: {
@@ -80,6 +80,8 @@ interface WebviewMessage {
     collapsedSections?: string[];
     // Execute Work Plan fields
     promptFilePath?: string;
+    // Execute Work Plan with Skill fields
+    skillName?: string;
 }
 
 /**
@@ -636,6 +638,12 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             case 'executeWorkPlan':
                 if (message.promptFilePath) {
                     await this.handleExecuteWorkPlan(document.uri.fsPath, message.promptFilePath);
+                }
+                break;
+
+            case 'executeWorkPlanWithSkill':
+                if (message.skillName) {
+                    await this.handleExecuteWorkPlanWithSkill(document.uri.fsPath, message.skillName);
                 }
                 break;
         }
@@ -1225,7 +1233,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     /**
      * Handle request for prompt files from the webview.
      * Returns a list of available .prompt.md files from configured locations.
-     * Also includes recent prompts for quick access.
+     * Also includes recent prompts for quick access and skills from .github/skills/.
      */
     private async handleRequestPromptFiles(webviewPanel: vscode.WebviewPanel): Promise<void> {
         const workspaceRoot = getWorkspaceRoot();
@@ -1237,6 +1245,20 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             promptFiles.some(f => f.absolutePath === r.absolutePath)
         );
 
+        // Also fetch skills for the Follow Prompt menu
+        const skills = await getSkills(workspaceRoot || undefined);
+        const skillsWithDescriptions = await Promise.all(
+            skills.map(async (skill) => {
+                const description = await this.readSkillDescription(skill.absolutePath);
+                return {
+                    absolutePath: skill.absolutePath,
+                    relativePath: skill.relativePath,
+                    name: skill.name,
+                    description
+                };
+            })
+        );
+
         webviewPanel.webview.postMessage({
             type: 'promptFilesResponse',
             promptFiles: promptFiles.map(f => ({
@@ -1245,7 +1267,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 name: f.name,
                 sourceFolder: f.sourceFolder
             })),
-            recentPrompts: validRecent
+            recentPrompts: validRecent,
+            skills: skillsWithDescriptions
         });
     }
 
@@ -1430,6 +1453,85 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         if (sessionId) {
             vscode.window.showInformationMessage(
                 `Interactive session started: ${path.basename(promptFilePath)} → ${path.basename(planFilePath)}`
+            );
+        } else {
+            vscode.window.showErrorMessage(
+                'Failed to start interactive session. Please check that the AI CLI tool is installed.'
+            );
+        }
+    }
+
+    /**
+     * Handle work plan execution request with a skill from webview.
+     * Launches an interactive AI session using the skill's prompt.
+     * 
+     * @param planFilePath - Absolute path to the plan file (the current document)
+     * @param skillName - Name of the skill to use
+     */
+    private async handleExecuteWorkPlanWithSkill(
+        planFilePath: string,
+        skillName: string
+    ): Promise<void> {
+        const workspaceRoot = getWorkspaceRoot();
+        if (!workspaceRoot) {
+            vscode.window.showErrorMessage('No workspace root found');
+            return;
+        }
+
+        // Get the skill path
+        const skillPath = path.join(workspaceRoot, '.github', 'skills', skillName);
+
+        // Check if skill directory exists
+        if (!fs.existsSync(skillPath)) {
+            vscode.window.showErrorMessage(`Skill not found: ${skillName}`);
+            return;
+        }
+
+        // Find the prompt file (prompt.md or SKILL.md)
+        let promptFilePath = path.join(skillPath, 'prompt.md');
+        if (!fs.existsSync(promptFilePath)) {
+            promptFilePath = path.join(skillPath, 'SKILL.md');
+            if (!fs.existsSync(promptFilePath)) {
+                vscode.window.showErrorMessage(`No prompt file found for skill: ${skillName}`);
+                return;
+            }
+        }
+
+        // Prompt user for additional context/instructions
+        const additionalMessage = await vscode.window.showInputBox({
+            prompt: 'Additional context or instructions (optional)',
+            placeHolder: 'e.g., "Focus on error handling" or "Use TypeScript strict mode"',
+            ignoreFocusOut: true
+        });
+
+        // User cancelled
+        if (additionalMessage === undefined) {
+            return;
+        }
+
+        const sessionManager = getInteractiveSessionManager();
+
+        // Build prompt with optional additional message
+        let fullPrompt = `Follow ${promptFilePath} for ${planFilePath}`;
+        if (additionalMessage && additionalMessage.trim()) {
+            fullPrompt += `\n\nAdditional context: ${additionalMessage.trim()}`;
+        }
+
+        // Get settings
+        const config = vscode.workspace.getConfiguration('workspaceShortcuts.workPlan');
+        const tool = config.get<'copilot' | 'claude'>('defaultTool', 'copilot');
+        const workingDirectory = this.resolveWorkPlanWorkingDirectory(planFilePath);
+
+        // Launch interactive session
+        const sessionId = await sessionManager.startSession({
+            workingDirectory,
+            tool,
+            initialPrompt: fullPrompt
+        });
+
+        if (sessionId) {
+            vscode.window.showInformationMessage(
+                `Interactive session started with skill: ${skillName} → ${path.basename(planFilePath)}`
             );
         } else {
             vscode.window.showErrorMessage(

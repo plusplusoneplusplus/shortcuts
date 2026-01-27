@@ -169,6 +169,7 @@ export type WebviewMessage =
     | { type: 'requestPromptFiles' }
     | { type: 'requestSkills' }
     | { type: 'executeWorkPlan'; promptFilePath: string }
+    | { type: 'executeWorkPlanWithSkill'; skillName: string }
     | { type: 'promptSearch' };
 
 /**
@@ -232,7 +233,7 @@ export type ExtensionMessage =
     }
     | { type: 'imageResolved'; imgId: string; uri?: string; alt?: string; error?: string }
     | { type: 'scrollToComment'; commentId: string }
-    | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[] }
+    | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[]; skills?: SkillInfo[] }
     | { type: 'skillsResponse'; skills: SkillInfo[] };
 
 /**
