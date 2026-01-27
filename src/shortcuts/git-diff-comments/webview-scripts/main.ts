@@ -532,7 +532,11 @@ function setupClickOutsideToDismiss(): void {
             if (!commentPanel.contains(target)) {
                 // Don't dismiss if clicking on a comment indicator (which opens the panel)
                 // Also don't dismiss if clicking on the context menu (which might be opening the panel)
-                if (!target.classList.contains('comment-indicator') && !target.closest('#custom-context-menu')) {
+                // Diff review editor uses `#contextMenu` while older markup used `#custom-context-menu`.
+                const isInContextMenu = Boolean(
+                    target.closest('#contextMenu') || target.closest('#custom-context-menu')
+                );
+                if (!target.classList.contains('comment-indicator') && !isInContextMenu) {
                     hideCommentPanel();
                 }
             }

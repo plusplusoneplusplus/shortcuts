@@ -118,6 +118,7 @@ suite('Diff Webview Panel Behavior Tests', () => {
             panelVisible: boolean,
             clickedInsidePanel: boolean,
             clickedOnIndicator: boolean,
+            clickedInContextMenu: boolean,
             isInteracting: boolean = false
         ): boolean {
             // Don't dismiss if user is currently interacting (resize/drag)
@@ -138,34 +139,41 @@ suite('Diff Webview Panel Behavior Tests', () => {
             if (clickedOnIndicator) {
                 return false;
             }
+
+            // Don't dismiss if clicking on the custom context menu. This prevents the
+            // "open then immediately close" bug where the same click that triggers
+            // "Add Comment" also counts as a click outside the panel.
+            if (clickedInContextMenu) {
+                return false;
+            }
             
             return true;
         }
 
         test('should not dismiss when panel is hidden', () => {
             assert.strictEqual(
-                shouldDismissPanel(false, false, false),
+                shouldDismissPanel(false, false, false, false),
                 false
             );
         });
 
         test('should not dismiss when clicking inside panel', () => {
             assert.strictEqual(
-                shouldDismissPanel(true, true, false),
+                shouldDismissPanel(true, true, false, false),
                 false
             );
         });
 
         test('should not dismiss when clicking on comment indicator', () => {
             assert.strictEqual(
-                shouldDismissPanel(true, false, true),
+                shouldDismissPanel(true, false, true, false),
                 false
             );
         });
 
         test('should dismiss when clicking outside panel and not on indicator', () => {
             assert.strictEqual(
-                shouldDismissPanel(true, false, false),
+                shouldDismissPanel(true, false, false, false),
                 true
             );
         });
@@ -173,7 +181,7 @@ suite('Diff Webview Panel Behavior Tests', () => {
         test('should not dismiss when clicking inside panel even if on indicator', () => {
             // Edge case: clicking on indicator that's inside the panel
             assert.strictEqual(
-                shouldDismissPanel(true, true, true),
+                shouldDismissPanel(true, true, true, false),
                 false
             );
         });
@@ -181,7 +189,7 @@ suite('Diff Webview Panel Behavior Tests', () => {
         test('should not dismiss when user is interacting (resizing)', () => {
             // When user is resizing the panel, clicks should not dismiss it
             assert.strictEqual(
-                shouldDismissPanel(true, false, false, true),
+                shouldDismissPanel(true, false, false, false, true),
                 false
             );
         });
@@ -189,7 +197,7 @@ suite('Diff Webview Panel Behavior Tests', () => {
         test('should not dismiss when user is interacting even if clicking outside', () => {
             // Interaction flag should take precedence over click location
             assert.strictEqual(
-                shouldDismissPanel(true, false, false, true),
+                shouldDismissPanel(true, false, false, false, true),
                 false
             );
         });
@@ -197,8 +205,24 @@ suite('Diff Webview Panel Behavior Tests', () => {
         test('should dismiss after interaction ends', () => {
             // After interaction ends (isInteracting = false), normal dismiss logic applies
             assert.strictEqual(
-                shouldDismissPanel(true, false, false, false),
+                shouldDismissPanel(true, false, false, false, false),
                 true
+            );
+        });
+
+        test('should not dismiss when clicking inside diff context menu (#contextMenu)', () => {
+            assert.strictEqual(
+                shouldDismissPanel(true, false, false, true),
+                false
+            );
+        });
+
+        test('should not dismiss when clicking inside legacy context menu (#custom-context-menu)', () => {
+            // Legacy markup is still supported in shared menu manager; this ensures the
+            // dismissal behavior stays compatible too.
+            assert.strictEqual(
+                shouldDismissPanel(true, false, false, true),
+                false
             );
         });
     });
