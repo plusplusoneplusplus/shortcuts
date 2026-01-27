@@ -31,10 +31,11 @@ suite('Prompt Files Utils Tests', () => {
     });
 
     suite('getPromptFileLocations', () => {
-        test('should return empty array when setting is not configured', async () => {
+        test('should return default .github/prompts when setting is not configured', async () => {
             const locations = getPromptFileLocations({});
             assert.ok(Array.isArray(locations));
-            assert.strictEqual(locations.length, 0);
+            assert.strictEqual(locations.length, 1);
+            assert.strictEqual(locations[0], '.github/prompts');
         });
 
         test('should return only enabled folders (value is true)', async () => {
@@ -49,19 +50,21 @@ suite('Prompt Files Utils Tests', () => {
             assert.ok(!locations.includes('.vscode/prompts'));
         });
 
-        test('should return empty array when all folders are disabled', async () => {
+        test('should return default when all folders are disabled', async () => {
             const locations = getPromptFileLocations({
                 '.github/prompts': false,
                 '.vscode/prompts': false
             });
-            assert.strictEqual(locations.length, 0);
+            assert.strictEqual(locations.length, 1);
+            assert.strictEqual(locations[0], '.github/prompts');
         });
 
-        test('should handle undefined setting gracefully', async () => {
-            // When no override provided and setting is undefined, should return empty array
+        test('should return default when setting is undefined', async () => {
+            // When no override provided and setting is undefined, should return default
             const locations = getPromptFileLocations({});
             assert.ok(Array.isArray(locations));
-            assert.strictEqual(locations.length, 0);
+            assert.strictEqual(locations.length, 1);
+            assert.strictEqual(locations[0], '.github/prompts');
         });
     });
 

@@ -18,8 +18,14 @@ export interface PromptFile {
 }
 
 /**
+ * Default prompt file location when no settings are configured
+ */
+const DEFAULT_PROMPT_LOCATION = '.github/prompts';
+
+/**
  * Gets the configured prompt file locations from VS Code settings.
  * These are the folders where VS Code Copilot looks for .prompt.md files.
+ * If no locations are configured, defaults to .github/prompts in the workspace.
  *
  * @param configOverride Optional configuration override for testing
  * @returns Array of folder paths that are enabled (value is true)
@@ -30,9 +36,16 @@ export function getPromptFileLocations(configOverride?: Record<string, boolean>)
         : (vscode.workspace.getConfiguration('chat').get<Record<string, boolean>>('promptFilesLocations') || {});
 
     // Return only folders where the value is true (enabled)
-    return Object.entries(locations)
+    const enabledLocations = Object.entries(locations)
         .filter(([_, enabled]) => enabled)
         .map(([folder]) => folder);
+
+    // If no locations are configured, use default
+    if (enabledLocations.length === 0) {
+        return [DEFAULT_PROMPT_LOCATION];
+    }
+
+    return enabledLocations;
 }
 
 /**
