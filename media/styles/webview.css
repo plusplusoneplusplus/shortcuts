@@ -311,6 +311,189 @@ body.source-mode .toolbar-review-only {
     border-radius: 5px;
 }
 
+/* ==============================
+ * Comments Dropdown
+ * ============================== */
+.comments-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.comments-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.comments-btn .dropdown-arrow {
+    font-size: 8px;
+    margin-left: 2px;
+    transition: transform 0.2s ease;
+}
+
+.comments-btn.active .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+.comments-badge {
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+.comments-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 240px;
+    max-width: 320px;
+    margin-top: 4px;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.comments-menu.show {
+    display: block;
+}
+
+.comments-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    gap: 8px;
+}
+
+.comments-menu-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.comments-menu-item-danger:hover {
+    background: rgba(244, 67, 54, 0.15);
+}
+
+.comments-menu-icon {
+    font-size: 14px;
+    width: 20px;
+    text-align: center;
+}
+
+.comments-menu-label {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.comments-menu-divider {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--comment-border);
+}
+
+.comments-menu-header {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 8px 12px 4px;
+    color: var(--vscode-descriptionForeground);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.comments-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.comments-list-empty {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+.comments-list-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    gap: 8px;
+    position: relative;
+}
+
+.comments-list-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.comments-list-item-icon {
+    font-size: 12px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.comments-list-item-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.comments-list-item-text {
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.comments-list-item-line {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Hover preview tooltip for comments */
+.comments-preview-tooltip {
+    position: fixed;
+    max-width: 300px;
+    padding: 10px 12px;
+    background: var(--vscode-editorHoverWidget-background, var(--comment-bg));
+    border: 1px solid var(--vscode-editorHoverWidget-border, var(--comment-border));
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    z-index: 1100;
+    pointer-events: none;
+    font-size: 12px;
+}
+
+.comments-preview-tooltip-text {
+    margin-bottom: 8px;
+    line-height: 1.4;
+    word-wrap: break-word;
+}
+
+.comments-preview-tooltip-selection {
+    padding: 6px 8px;
+    background: var(--md-code-bg);
+    border-radius: 4px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    max-height: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.comments-preview-tooltip-line {
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+}
+
 .toolbar-checkbox {
     display: flex;
     align-items: center;

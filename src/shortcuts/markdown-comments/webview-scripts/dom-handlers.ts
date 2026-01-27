@@ -445,13 +445,8 @@ export function updateSkillSubmenu(skills: SkillInfo[]): void {
  * Setup toolbar event listeners
  */
 function setupToolbarEventListeners(): void {
-    document.getElementById('resolveAllBtn')?.addEventListener('click', () => {
-        requestResolveAll();
-    });
-
-    document.getElementById('deleteAllBtn')?.addEventListener('click', () => {
-        requestDeleteAll();
-    });
+    // Comments dropdown (contains Resolve All and Sign Off)
+    setupCommentsDropdown();
 
     // AI Action dropdown
     setupAIActionDropdown();
@@ -463,6 +458,249 @@ function setupToolbarEventListeners(): void {
 
     // Mode toggle buttons
     setupModeToggle();
+}
+
+/**
+ * Setup Comments dropdown menu handlers
+ */
+function setupCommentsDropdown(): void {
+    const commentsDropdown = document.getElementById('commentsDropdown');
+    const commentsBtn = document.getElementById('commentsBtn');
+    const commentsMenu = document.getElementById('commentsMenu');
+    const resolveAllBtn = document.getElementById('resolveAllBtn');
+    const deleteAllBtn = document.getElementById('deleteAllBtn');
+
+    if (!commentsDropdown || !commentsBtn || !commentsMenu) return;
+
+    // Toggle dropdown on button click
+    commentsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = commentsMenu.classList.contains('show');
+        if (isOpen) {
+            hideCommentsMenu();
+        } else {
+            showCommentsMenu();
+            updateCommentsDropdownList();
+        }
+    });
+
+    // Resolve All action
+    resolveAllBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideCommentsMenu();
+        requestResolveAll();
+    });
+
+    // Sign Off action
+    deleteAllBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideCommentsMenu();
+        requestDeleteAll();
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!commentsDropdown.contains(e.target as Node)) {
+            hideCommentsMenu();
+        }
+    });
+
+    // Close dropdown on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            hideCommentsMenu();
+        }
+    });
+
+    // Initial badge update
+    updateCommentsBadge();
+}
+
+/**
+ * Show the Comments dropdown menu
+ */
+function showCommentsMenu(): void {
+    const commentsMenu = document.getElementById('commentsMenu');
+    const commentsBtn = document.getElementById('commentsBtn');
+    if (commentsMenu && commentsBtn) {
+        commentsMenu.classList.add('show');
+        commentsBtn.classList.add('active');
+    }
+}
+
+/**
+ * Hide the Comments dropdown menu
+ */
+function hideCommentsMenu(): void {
+    const commentsMenu = document.getElementById('commentsMenu');
+    const commentsBtn = document.getElementById('commentsBtn');
+    if (commentsMenu && commentsBtn) {
+        commentsMenu.classList.remove('show');
+        commentsBtn.classList.remove('active');
+    }
+    // Hide any open preview tooltips
+    hideCommentPreviewTooltip();
+}
+
+/**
+ * Update the comments dropdown list with active (open) comments
+ */
+function updateCommentsDropdownList(): void {
+    const commentsList = document.getElementById('commentsList');
+    const commentsListEmpty = document.getElementById('commentsListEmpty');
+    if (!commentsList) return;
+
+    // Get open comments
+    const openComments = state.comments.filter(c => c.status === 'open');
+
+    // Clear existing list items (but keep the empty message)
+    const existingItems = commentsList.querySelectorAll('.comments-list-item');
+    existingItems.forEach(item => item.remove());
+
+    if (openComments.length === 0) {
+        if (commentsListEmpty) {
+            commentsListEmpty.style.display = 'block';
+        }
+        return;
+    }
+
+    // Hide empty message
+    if (commentsListEmpty) {
+        commentsListEmpty.style.display = 'none';
+    }
+
+    // Add comment items
+    openComments.forEach(comment => {
+        const item = document.createElement('div');
+        item.className = 'comments-list-item';
+        item.dataset.commentId = comment.id;
+
+        // Truncate comment text for display
+        const displayText = comment.comment.length > 40 
+            ? comment.comment.substring(0, 40) + '...' 
+            : comment.comment;
+
+        item.innerHTML = `
+            <span class="comments-list-item-icon">💬</span>
+            <div class="comments-list-item-content">
+                <span class="comments-list-item-text">${escapeHtml(displayText)}</span>
+                <span class="comments-list-item-line">Line ${comment.selection.startLine}</span>
+            </div>
+        `;
+
+        // Click to navigate to comment
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideCommentsMenu();
+            navigateToComment(comment.id);
+        });
+
+        // Hover preview
+        item.addEventListener('mouseenter', (e) => {
+            showCommentPreviewTooltip(comment, e.currentTarget as HTMLElement);
+        });
+
+        item.addEventListener('mouseleave', () => {
+            hideCommentPreviewTooltip();
+        });
+
+        commentsList.appendChild(item);
+    });
+}
+
+/**
+ * Update the comments badge count
+ */
+export function updateCommentsBadge(): void {
+    const badge = document.getElementById('commentsBadge');
+    if (badge) {
+        const openCount = state.comments.filter(c => c.status === 'open').length;
+        badge.textContent = `(${openCount})`;
+    }
+}
+
+/**
+ * Show a preview tooltip for a comment
+ */
+function showCommentPreviewTooltip(comment: import('../types').MarkdownComment, anchorEl: HTMLElement): void {
+    // Remove any existing tooltip
+    hideCommentPreviewTooltip();
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'comments-preview-tooltip';
+    tooltip.id = 'commentsPreviewTooltip';
+
+    // Truncate texts for display
+    const commentText = comment.comment.length > 200 
+        ? comment.comment.substring(0, 200) + '...' 
+        : comment.comment;
+    const selectionText = comment.selectedText.length > 60 
+        ? comment.selectedText.substring(0, 60) + '...' 
+        : comment.selectedText;
+
+    tooltip.innerHTML = `
+        <div class="comments-preview-tooltip-text">${escapeHtml(commentText)}</div>
+        <div class="comments-preview-tooltip-selection">"${escapeHtml(selectionText)}"</div>
+        <div class="comments-preview-tooltip-line">Line ${comment.selection.startLine}</div>
+    `;
+
+    document.body.appendChild(tooltip);
+
+    // Position the tooltip
+    const rect = anchorEl.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    
+    // Position to the right of the menu item by default
+    let left = rect.right + 8;
+    let top = rect.top;
+
+    // If it would overflow the right edge, position to the left
+    if (left + tooltipRect.width > window.innerWidth - 10) {
+        left = rect.left - tooltipRect.width - 8;
+    }
+
+    // If it would overflow the bottom edge, adjust upward
+    if (top + tooltipRect.height > window.innerHeight - 10) {
+        top = window.innerHeight - tooltipRect.height - 10;
+    }
+
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+}
+
+/**
+ * Hide the comment preview tooltip
+ */
+function hideCommentPreviewTooltip(): void {
+    const tooltip = document.getElementById('commentsPreviewTooltip');
+    if (tooltip) {
+        tooltip.remove();
+    }
+}
+
+/**
+ * Navigate to a comment by ID
+ */
+function navigateToComment(commentId: string): void {
+    const comment = state.findCommentById(commentId);
+    if (!comment) return;
+
+    // Find the commented text element
+    const commentedTextEl = document.querySelector(`.commented-text[data-comment-id="${commentId}"]`) as HTMLElement;
+    
+    if (commentedTextEl) {
+        // Scroll to the element
+        commentedTextEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Show the comment bubble
+        showCommentBubble(comment, commentedTextEl);
+    } else {
+        // If the element is not rendered (e.g., in source mode), scroll to the line
+        const lineEl = document.querySelector(`.line-content[data-line="${comment.selection.startLine}"]`) as HTMLElement;
+        if (lineEl) {
+            lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
 }
 
 /**
@@ -1884,7 +2122,10 @@ function getPlainTextContent(): string {
  * Setup toolbar event listeners (called after render to re-attach)
  */
 export function setupToolbarInteractions(): void {
-    // Use optional chaining to safely add listeners even if elements don't exist
+    // Update comments badge (called after render when comments change)
+    updateCommentsBadge();
+    
+    // Re-attach click listeners for comments dropdown items
     const resolveAllBtn = document.getElementById('resolveAllBtn');
     const deleteAllBtn = document.getElementById('deleteAllBtn');
     
@@ -1892,7 +2133,9 @@ export function setupToolbarInteractions(): void {
         // Remove old listener by cloning the node (this removes all event listeners)
         const newResolveAllBtn = resolveAllBtn.cloneNode(true);
         resolveAllBtn.parentNode?.replaceChild(newResolveAllBtn, resolveAllBtn);
-        newResolveAllBtn.addEventListener('click', () => {
+        newResolveAllBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideCommentsMenu();
             requestResolveAll();
         });
     }
@@ -1900,7 +2143,9 @@ export function setupToolbarInteractions(): void {
     if (deleteAllBtn) {
         const newDeleteAllBtn = deleteAllBtn.cloneNode(true);
         deleteAllBtn.parentNode?.replaceChild(newDeleteAllBtn, deleteAllBtn);
-        newDeleteAllBtn.addEventListener('click', () => {
+        newDeleteAllBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideCommentsMenu();
             requestDeleteAll();
         });
     }

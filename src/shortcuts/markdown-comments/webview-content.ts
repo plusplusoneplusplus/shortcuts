@@ -128,12 +128,27 @@ export function getWebviewContent(
             </div>
         </div>
         <div class="toolbar-group toolbar-review-only">
-            <button id="resolveAllBtn" class="toolbar-btn" title="Resolve All Comments">
-                <span class="icon">✅</span> Resolve All
-            </button>
-            <button id="deleteAllBtn" class="toolbar-btn toolbar-btn-danger" title="Sign Off - Delete All Comments">
-                <span class="icon">🗑️</span> Sign Off
-            </button>
+            <div class="comments-dropdown" id="commentsDropdown">
+                <button id="commentsBtn" class="toolbar-btn comments-btn" title="Comments Actions">
+                    <span class="icon">💬</span> Comments <span class="comments-badge" id="commentsBadge">(0)</span>
+                    <span class="dropdown-arrow">▼</span>
+                </button>
+                <div class="comments-menu" id="commentsMenu">
+                    <div class="comments-menu-item" id="resolveAllBtn">
+                        <span class="comments-menu-icon">✅</span>
+                        <span class="comments-menu-label">Resolve All</span>
+                    </div>
+                    <div class="comments-menu-item comments-menu-item-danger" id="deleteAllBtn">
+                        <span class="comments-menu-icon">🗑️</span>
+                        <span class="comments-menu-label">Sign Off</span>
+                    </div>
+                    <div class="comments-menu-divider"></div>
+                    <div class="comments-menu-header">Active Comments</div>
+                    <div class="comments-list" id="commentsList">
+                        <div class="comments-list-empty" id="commentsListEmpty">No open comments</div>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="toolbar-group toolbar-review-only">
             <div class="ai-action-dropdown" id="aiActionDropdown">
