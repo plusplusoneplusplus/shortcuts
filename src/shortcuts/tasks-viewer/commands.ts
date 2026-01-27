@@ -41,6 +41,10 @@ export class TasksCommands {
             vscode.commands.registerCommand('tasksViewer.delete', (item: TaskItem) => this.deleteTask(item)),
             vscode.commands.registerCommand('tasksViewer.archive', (item: TaskItem) => this.archiveTask(item)),
             vscode.commands.registerCommand('tasksViewer.unarchive', (item: TaskItem) => this.unarchiveTask(item)),
+            vscode.commands.registerCommand('tasksViewer.archiveDocument', (item: TaskDocumentItem) => this.archiveDocument(item)),
+            vscode.commands.registerCommand('tasksViewer.unarchiveDocument', (item: TaskDocumentItem) => this.unarchiveDocument(item)),
+            vscode.commands.registerCommand('tasksViewer.archiveDocumentGroup', (item: TaskDocumentGroupItem) => this.archiveDocumentGroup(item)),
+            vscode.commands.registerCommand('tasksViewer.unarchiveDocumentGroup', (item: TaskDocumentGroupItem) => this.unarchiveDocumentGroup(item)),
             vscode.commands.registerCommand('tasksViewer.refresh', () => this.refreshTasks()),
             vscode.commands.registerCommand('tasksViewer.openFolder', () => this.openTasksFolder()),
             vscode.commands.registerCommand('tasksViewer.copyRelativePath', (item: TaskItem) => this.copyPath(item, false)),
@@ -359,6 +363,80 @@ export class TasksCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to unarchive task: ${err.message}`);
+        }
+    }
+
+    /**
+     * Archive a document
+     */
+    private async archiveDocument(item: TaskDocumentItem): Promise<void> {
+        if (!item) {
+            return;
+        }
+
+        try {
+            await this.taskManager.archiveDocument(item.filePath);
+            this.treeDataProvider.refresh();
+            vscode.window.showInformationMessage(`Document "${item.baseName}" archived`);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to archive document: ${err.message}`);
+        }
+    }
+
+    /**
+     * Unarchive a document
+     */
+    private async unarchiveDocument(item: TaskDocumentItem): Promise<void> {
+        if (!item) {
+            return;
+        }
+
+        try {
+            await this.taskManager.unarchiveDocument(item.filePath);
+            this.treeDataProvider.refresh();
+            vscode.window.showInformationMessage(`Document "${item.baseName}" unarchived`);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to unarchive document: ${err.message}`);
+        }
+    }
+
+    /**
+     * Archive a document group
+     */
+    private async archiveDocumentGroup(item: TaskDocumentGroupItem): Promise<void> {
+        if (!item) {
+            return;
+        }
+
+        try {
+            const filePaths = item.documents.map(d => d.filePath);
+            await this.taskManager.archiveDocumentGroup(filePaths);
+            this.treeDataProvider.refresh();
+            vscode.window.showInformationMessage(`Document group "${item.baseName}" archived (${filePaths.length} docs)`);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to archive document group: ${err.message}`);
+        }
+    }
+
+    /**
+     * Unarchive a document group
+     */
+    private async unarchiveDocumentGroup(item: TaskDocumentGroupItem): Promise<void> {
+        if (!item) {
+            return;
+        }
+
+        try {
+            const filePaths = item.documents.map(d => d.filePath);
+            await this.taskManager.unarchiveDocumentGroup(filePaths);
+            this.treeDataProvider.refresh();
+            vscode.window.showInformationMessage(`Document group "${item.baseName}" unarchived (${filePaths.length} docs)`);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to unarchive document group: ${err.message}`);
         }
     }
 

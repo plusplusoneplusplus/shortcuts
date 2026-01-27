@@ -1650,6 +1650,30 @@
         "icon": "$(history)"
       },
       {
+        "command": "tasksViewer.archiveDocument",
+        "title": "Archive Document",
+        "category": "Tasks",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "tasksViewer.unarchiveDocument",
+        "title": "Unarchive Document",
+        "category": "Tasks",
+        "icon": "$(history)"
+      },
+      {
+        "command": "tasksViewer.archiveDocumentGroup",
+        "title": "Archive Document Group",
+        "category": "Tasks",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "tasksViewer.unarchiveDocumentGroup",
+        "title": "Unarchive Document Group",
+        "category": "Tasks",
+        "icon": "$(history)"
+      },
+      {
         "command": "tasksViewer.refresh",
         "title": "Refresh Tasks",
         "category": "Tasks",
@@ -2165,9 +2189,29 @@
           "group": "documentGroup@1"
         },
         {
+          "command": "tasksViewer.archiveDocumentGroup",
+          "when": "view == tasksView && viewItem == taskDocumentGroup",
+          "group": "documentGroup@2"
+        },
+        {
+          "command": "tasksViewer.unarchiveDocumentGroup",
+          "when": "view == tasksView && viewItem == archivedTaskDocumentGroup",
+          "group": "documentGroup@2"
+        },
+        {
           "command": "tasksViewer.renameDocument",
           "when": "view == tasksView && viewItem =~ /^(archived)?taskDocument$/",
           "group": "document@1"
+        },
+        {
+          "command": "tasksViewer.archiveDocument",
+          "when": "view == tasksView && viewItem == taskDocument",
+          "group": "document@2"
+        },
+        {
+          "command": "tasksViewer.unarchiveDocument",
+          "when": "view == tasksView && viewItem == archivedTaskDocument",
+          "group": "document@2"
         },
         {
           "command": "tasksViewer.copyRelativePath",

@@ -664,6 +664,124 @@ suite('Tasks Viewer Tests', () => {
                 assert.ok(tasks.some(t => t.isArchived), 'Should have archived task');
                 assert.ok(tasks.some(t => !t.isArchived), 'Should have active task');
             });
+
+            test('should archive a document', async () => {
+                const tasksFolder = taskManager.getTasksFolder();
+                taskManager.ensureFoldersExist();
+                
+                // Create a document file
+                const docPath = path.join(tasksFolder, 'test-doc.plan.md');
+                fs.writeFileSync(docPath, '# Test Document');
+                
+                const archivedPath = await taskManager.archiveDocument(docPath);
+                
+                assert.ok(!fs.existsSync(docPath), 'Original document should not exist');
+                assert.ok(fs.existsSync(archivedPath), 'Archived document should exist');
+                assert.ok(archivedPath.includes('archive'), 'Path should contain archive');
+            });
+
+            test('should unarchive a document', async () => {
+                const tasksFolder = taskManager.getTasksFolder();
+                const archiveFolder = taskManager.getArchiveFolder();
+                taskManager.ensureFoldersExist();
+                
+                // Create document directly in archive
+                const docPath = path.join(archiveFolder, 'archived-doc.spec.md');
+                fs.writeFileSync(docPath, '# Archived Document');
+                
+                const unarchivedPath = await taskManager.unarchiveDocument(docPath);
+                
+                assert.ok(!fs.existsSync(docPath), 'Archived document should not exist');
+                assert.ok(fs.existsSync(unarchivedPath), 'Unarchived document should exist');
+                assert.ok(!unarchivedPath.includes(path.sep + 'archive' + path.sep), 'Path should not be in archive folder');
+            });
+
+            test('should archive a document group', async () => {
+                const tasksFolder = taskManager.getTasksFolder();
+                taskManager.ensureFoldersExist();
+                
+                // Create multiple documents in a group
+                const doc1 = path.join(tasksFolder, 'feature1.plan.md');
+                const doc2 = path.join(tasksFolder, 'feature1.spec.md');
+                const doc3 = path.join(tasksFolder, 'feature1.test.md');
+                fs.writeFileSync(doc1, '# Plan');
+                fs.writeFileSync(doc2, '# Spec');
+                fs.writeFileSync(doc3, '# Test');
+                
+                const archivedPaths = await taskManager.archiveDocumentGroup([doc1, doc2, doc3]);
+                
+                assert.strictEqual(archivedPaths.length, 3, 'Should return 3 archived paths');
+                assert.ok(!fs.existsSync(doc1), 'Doc1 should not exist');
+                assert.ok(!fs.existsSync(doc2), 'Doc2 should not exist');
+                assert.ok(!fs.existsSync(doc3), 'Doc3 should not exist');
+                for (const archivedPath of archivedPaths) {
+                    assert.ok(fs.existsSync(archivedPath), 'Archived file should exist');
+                    assert.ok(archivedPath.includes('archive'), 'Path should contain archive');
+                }
+            });
+
+            test('should unarchive a document group', async () => {
+                const archiveFolder = taskManager.getArchiveFolder();
+                taskManager.ensureFoldersExist();
+                
+                // Create documents directly in archive
+                const doc1 = path.join(archiveFolder, 'feature2.plan.md');
+                const doc2 = path.join(archiveFolder, 'feature2.spec.md');
+                fs.writeFileSync(doc1, '# Plan');
+                fs.writeFileSync(doc2, '# Spec');
+                
+                const unarchivedPaths = await taskManager.unarchiveDocumentGroup([doc1, doc2]);
+                
+                assert.strictEqual(unarchivedPaths.length, 2, 'Should return 2 unarchived paths');
+                assert.ok(!fs.existsSync(doc1), 'Archived doc1 should not exist');
+                assert.ok(!fs.existsSync(doc2), 'Archived doc2 should not exist');
+                for (const unarchivedPath of unarchivedPaths) {
+                    assert.ok(fs.existsSync(unarchivedPath), 'Unarchived file should exist');
+                    assert.ok(!unarchivedPath.includes(path.sep + 'archive' + path.sep), 'Path should not be in archive folder');
+                }
+            });
+
+            test('should handle name collision when archiving document', async () => {
+                const tasksFolder = taskManager.getTasksFolder();
+                const archiveFolder = taskManager.getArchiveFolder();
+                taskManager.ensureFoldersExist();
+                
+                // Create first document and archive it
+                const docPath1 = path.join(tasksFolder, 'collision-doc.md');
+                fs.writeFileSync(docPath1, '# Document 1');
+                await taskManager.archiveDocument(docPath1);
+                
+                // Create another document with same name and archive it
+                const docPath2 = path.join(tasksFolder, 'collision-doc.md');
+                fs.writeFileSync(docPath2, '# Document 2');
+                const archivedPath2 = await taskManager.archiveDocument(docPath2);
+                
+                // Should have timestamp suffix to avoid collision
+                assert.ok(fs.existsSync(archivedPath2), 'Second archived file should exist');
+                const archivedFiles = fs.readdirSync(archiveFolder).filter(f => f.startsWith('collision-doc'));
+                assert.strictEqual(archivedFiles.length, 2, 'Should have 2 archived files');
+            });
+
+            test('should handle name collision when unarchiving document', async () => {
+                const tasksFolder = taskManager.getTasksFolder();
+                const archiveFolder = taskManager.getArchiveFolder();
+                taskManager.ensureFoldersExist();
+                
+                // Create a document in tasks folder
+                const existingDoc = path.join(tasksFolder, 'existing-doc.md');
+                fs.writeFileSync(existingDoc, '# Existing');
+                
+                // Create an archived document with same name
+                const archivedDoc = path.join(archiveFolder, 'existing-doc.md');
+                fs.writeFileSync(archivedDoc, '# Archived');
+                
+                // Unarchive should handle collision
+                const unarchivedPath = await taskManager.unarchiveDocument(archivedDoc);
+                
+                assert.ok(fs.existsSync(existingDoc), 'Existing document should still exist');
+                assert.ok(fs.existsSync(unarchivedPath), 'Unarchived document should exist');
+                assert.notStrictEqual(unarchivedPath, existingDoc, 'Unarchived path should be different');
+            });
         });
 
         suite('Task Moving', () => {

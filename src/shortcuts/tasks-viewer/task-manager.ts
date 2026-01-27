@@ -401,6 +401,50 @@ export class TaskManager implements vscode.Disposable {
     }
 
     /**
+     * Archive a document (move to archive folder)
+     * @returns The new file path
+     */
+    async archiveDocument(filePath: string): Promise<string> {
+        return this.archiveTask(filePath);
+    }
+
+    /**
+     * Unarchive a document (move back to main folder)
+     * @returns The new file path
+     */
+    async unarchiveDocument(filePath: string): Promise<string> {
+        return this.unarchiveTask(filePath);
+    }
+
+    /**
+     * Archive a document group (move all documents to archive folder)
+     * @param filePaths - Array of file paths in the group
+     * @returns Array of new file paths
+     */
+    async archiveDocumentGroup(filePaths: string[]): Promise<string[]> {
+        const newPaths: string[] = [];
+        for (const filePath of filePaths) {
+            const newPath = await this.archiveTask(filePath);
+            newPaths.push(newPath);
+        }
+        return newPaths;
+    }
+
+    /**
+     * Unarchive a document group (move all documents back to main folder)
+     * @param filePaths - Array of file paths in the group
+     * @returns Array of new file paths
+     */
+    async unarchiveDocumentGroup(filePaths: string[]): Promise<string[]> {
+        const newPaths: string[] = [];
+        for (const filePath of filePaths) {
+            const newPath = await this.unarchiveTask(filePath);
+            newPaths.push(newPath);
+        }
+        return newPaths;
+    }
+
+    /**
      * Move a task file to a different folder (feature folder or root)
      * @param sourcePath - Absolute path to the source file
      * @param targetFolder - Absolute path to the target folder
