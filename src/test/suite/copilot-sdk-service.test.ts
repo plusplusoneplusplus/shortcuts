@@ -394,11 +394,11 @@ suite('CopilotSDKService - Configuration Helpers', () => {
         assert.strictEqual(maxSessions, 5, 'Default max sessions should be 5');
     });
 
-    test('default session timeout should be 300000ms (5 minutes)', () => {
+    test('default session timeout should be 600000ms (10 minutes)', () => {
         const timeout = getSDKSessionTimeoutSetting();
 
-        // Default is 300000 according to package.json
-        assert.strictEqual(timeout, 300000, 'Default session timeout should be 300000ms');
+        // Default is 600000 according to package.json
+        assert.strictEqual(timeout, 600000, 'Default session timeout should be 600000ms');
     });
 });
 

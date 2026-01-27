@@ -349,10 +349,10 @@
         },
         "workspaceShortcuts.aiService.sdk.sessionTimeout": {
           "type": "number",
-          "default": 300000,
+          "default": 600000,
           "minimum": 30000,
-          "maximum": 600000,
-          "markdownDescription": "Session timeout in milliseconds. Sessions idle longer than this will be cleaned up. Default: 300000 (5 minutes)."
+          "maximum": 1800000,
+          "markdownDescription": "Session timeout in milliseconds. Sessions idle longer than this will be cleaned up. Default: 600000 (10 minutes)."
         },
         "workspaceShortcuts.aiService.model": {
           "type": "string",

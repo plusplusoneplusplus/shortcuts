@@ -47,5 +47,5 @@ export function getSDKMaxSessionsSetting(): number {
  */
 export function getSDKSessionTimeoutSetting(): number {
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
-    return config.get<number>('sessionTimeout', 300000);
+    return config.get<number>('sessionTimeout', 600000);
 }
