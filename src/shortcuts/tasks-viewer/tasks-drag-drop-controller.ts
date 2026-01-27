@@ -3,25 +3,43 @@ import { TaskItem } from './task-item';
 import { TaskDocumentItem } from './task-document-item';
 import { TaskDocumentGroupItem } from './task-document-group-item';
 import { TaskGroupItem } from './task-group-item';
+import { TaskFolderItem } from './task-folder-item';
 import { TaskManager } from './task-manager';
 
 /**
+ * Custom MIME type for internal drag operations within the tasks tree
+ */
+const INTERNAL_DRAG_MIME_TYPE = 'application/vnd.code.tree.tasksView';
+
+/**
+ * Internal drag data structure
+ */
+interface InternalDragData {
+    type: 'task' | 'document' | 'documentGroup';
+    filePaths: string[];
+    sourceFolderPath: string;
+}
+
+/**
  * Drag and drop controller for the Tasks tree view
- * Enables dragging task files to external targets like Copilot Chat
- * and dropping external .md files onto the Active Tasks group
+ * Enables dragging task files to external targets like Copilot Chat,
+ * dropping external .md files onto the Active Tasks group,
+ * and moving tasks between folders within the tree
  */
 export class TasksDragDropController implements vscode.TreeDragAndDropController<vscode.TreeItem> {
     /**
      * MIME types that can be dragged from this tree
      * text/uri-list is required for Copilot Chat integration
+     * Custom MIME type for internal drag operations
      */
-    readonly dragMimeTypes = ['text/uri-list'];
+    readonly dragMimeTypes = ['text/uri-list', INTERNAL_DRAG_MIME_TYPE];
 
     /**
      * MIME types that can be dropped onto this tree
      * text/uri-list enables dropping external files
+     * Custom MIME type for internal drag operations
      */
-    readonly dropMimeTypes = ['text/uri-list'];
+    readonly dropMimeTypes = ['text/uri-list', INTERNAL_DRAG_MIME_TYPE];
 
     constructor(private taskManager: TaskManager, private refreshCallback: () => void) {}
 
@@ -38,21 +56,38 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
     ): Promise<void> {
         // Collect URIs from draggable items
         const uris: vscode.Uri[] = [];
+        const internalDragData: InternalDragData[] = [];
 
         for (const item of source) {
             // Handle TaskItem (task files)
             if (item instanceof TaskItem) {
                 uris.push(vscode.Uri.file(item.filePath));
+                internalDragData.push({
+                    type: 'task',
+                    filePaths: [item.filePath],
+                    sourceFolderPath: this.getParentFolder(item.filePath)
+                });
             }
             // Handle TaskDocumentItem (document within a group)
             else if (item instanceof TaskDocumentItem) {
                 uris.push(vscode.Uri.file(item.filePath));
+                internalDragData.push({
+                    type: 'document',
+                    filePaths: [item.filePath],
+                    sourceFolderPath: this.getParentFolder(item.filePath)
+                });
             }
             // Handle TaskDocumentGroupItem (all documents in the group)
             else if (item instanceof TaskDocumentGroupItem) {
+                const filePaths = item.documents.map(doc => doc.filePath);
                 for (const doc of item.documents) {
                     uris.push(vscode.Uri.file(doc.filePath));
                 }
+                internalDragData.push({
+                    type: 'documentGroup',
+                    filePaths,
+                    sourceFolderPath: item.folderPath
+                });
             }
             // Handle any item with resourceUri (fallback)
             else if (item.resourceUri) {
@@ -65,18 +100,42 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
             // The uri-list format is one URI per line
             const uriListString = uris.map(uri => uri.toString()).join('\r\n');
             dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uriListString));
+
+            // Set internal drag data for tree rearrangement
+            if (internalDragData.length > 0) {
+                dataTransfer.set(INTERNAL_DRAG_MIME_TYPE, new vscode.DataTransferItem(JSON.stringify(internalDragData)));
+            }
         }
     }
 
     /**
-     * Handle drop operation - import external .md files into Active Tasks
-     * Only accepts drops onto the Active Tasks group
+     * Get the parent folder path from a file path
+     */
+    private getParentFolder(filePath: string): string {
+        const parts = filePath.split(/[/\\]/);
+        parts.pop(); // Remove filename
+        return parts.join('/');
+    }
+
+    /**
+     * Handle drop operation - import external .md files or move internal tasks
+     * Accepts drops onto:
+     * - Active Tasks group: import external files or move internal tasks to root
+     * - TaskFolderItem (non-archived): move internal tasks into feature folder
      */
     public async handleDrop(
         target: vscode.TreeItem | undefined,
         dataTransfer: vscode.DataTransfer,
         token: vscode.CancellationToken
     ): Promise<void> {
+        // Check for internal drag first
+        const internalData = dataTransfer.get(INTERNAL_DRAG_MIME_TYPE);
+        if (internalData) {
+            await this.handleInternalDrop(target, internalData, token);
+            return;
+        }
+
+        // Handle external drop (existing behavior)
         // Only allow drops on Active Tasks group
         if (!(target instanceof TaskGroupItem) || target.groupType !== 'active') {
             return;
@@ -143,6 +202,91 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
         } else if (skippedCount > 0 && successCount === 0) {
             vscode.window.showInformationMessage('All files were skipped.');
         }
+    }
+
+    /**
+     * Handle internal drop - move tasks between folders
+     */
+    private async handleInternalDrop(
+        target: vscode.TreeItem | undefined,
+        internalDataItem: vscode.DataTransferItem,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        // Determine target folder
+        let targetFolder: string;
+        
+        if (target instanceof TaskFolderItem) {
+            // Reject drops on archived folders
+            if (target.folder.isArchived) {
+                vscode.window.showWarningMessage('Cannot move tasks to archived folders. Use the archive command instead.');
+                return;
+            }
+            targetFolder = target.folder.folderPath;
+        } else if (target instanceof TaskGroupItem && target.groupType === 'active') {
+            // Move to tasks root
+            targetFolder = this.taskManager.getTasksFolder();
+        } else {
+            // Invalid drop target
+            return;
+        }
+
+        // Parse internal drag data
+        const dataString = await internalDataItem.asString();
+        if (!dataString) {
+            return;
+        }
+
+        let dragDataArray: InternalDragData[];
+        try {
+            dragDataArray = JSON.parse(dataString);
+        } catch {
+            return;
+        }
+
+        // Collect all file paths to move
+        const filesToMove: string[] = [];
+        for (const dragData of dragDataArray) {
+            // Skip if source and target are the same
+            if (this.normalizePath(dragData.sourceFolderPath) === this.normalizePath(targetFolder)) {
+                continue;
+            }
+            filesToMove.push(...dragData.filePaths);
+        }
+
+        if (filesToMove.length === 0) {
+            return;
+        }
+
+        // Move files
+        let successCount = 0;
+        for (const filePath of filesToMove) {
+            if (token.isCancellationRequested) {
+                break;
+            }
+
+            try {
+                await this.taskManager.moveTask(filePath, targetFolder);
+                successCount++;
+            } catch (error) {
+                // Log error but continue with other files
+                console.error(`Failed to move ${filePath}:`, error);
+            }
+        }
+
+        if (successCount > 0) {
+            this.refreshCallback();
+            const message = successCount === 1
+                ? '1 task moved successfully.'
+                : `${successCount} tasks moved successfully.`;
+            vscode.window.showInformationMessage(message);
+        }
+    }
+
+    /**
+     * Normalize a path for comparison
+     */
+    private normalizePath(filePath: string): string {
+        return filePath.replace(/\\/g, '/').toLowerCase();
     }
 
     /**

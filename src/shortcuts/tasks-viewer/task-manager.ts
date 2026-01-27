@@ -248,6 +248,57 @@ export class TaskManager implements vscode.Disposable {
     }
 
     /**
+     * Move a task file to a different folder (feature folder or root)
+     * @param sourcePath - Absolute path to the source file
+     * @param targetFolder - Absolute path to the target folder
+     * @returns The new file path
+     */
+    async moveTask(sourcePath: string, targetFolder: string): Promise<string> {
+        if (!safeExists(sourcePath)) {
+            throw new Error(`Task file not found: ${sourcePath}`);
+        }
+
+        // Ensure target folder exists
+        ensureDirectoryExists(targetFolder);
+
+        const fileName = path.basename(sourcePath);
+        let newPath = path.join(targetFolder, fileName);
+
+        // Handle name collision with suffix
+        if (sourcePath !== newPath && safeExists(newPath)) {
+            const baseName = path.basename(fileName, '.md');
+            let counter = 1;
+            while (safeExists(newPath)) {
+                newPath = path.join(targetFolder, `${baseName}-${counter}.md`);
+                counter++;
+            }
+        }
+
+        // Don't move if already in target location
+        if (sourcePath === newPath) {
+            return sourcePath;
+        }
+
+        safeRename(sourcePath, newPath);
+        return newPath;
+    }
+
+    /**
+     * Move multiple task files to a different folder (for document groups)
+     * @param sourcePaths - Array of absolute paths to source files
+     * @param targetFolder - Absolute path to the target folder
+     * @returns Array of new file paths
+     */
+    async moveTaskGroup(sourcePaths: string[], targetFolder: string): Promise<string[]> {
+        const newPaths: string[] = [];
+        for (const sourcePath of sourcePaths) {
+            const newPath = await this.moveTask(sourcePath, targetFolder);
+            newPaths.push(newPath);
+        }
+        return newPaths;
+    }
+
+    /**
      * Set up file watching for the tasks folder (recursive)
      */
     watchTasksFolder(callback: () => void): void {

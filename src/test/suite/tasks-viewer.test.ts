@@ -350,6 +350,118 @@ suite('Tasks Viewer Tests', () => {
             });
         });
 
+        suite('Task Moving', () => {
+            test('should move a task file to a feature folder', async () => {
+                // Create task in root
+                const taskPath = await taskManager.createTask('Task To Move');
+                assert.ok(fs.existsSync(taskPath));
+
+                // Create feature folder
+                const featurePath = await taskManager.createFeature('Target Feature');
+                assert.ok(fs.existsSync(featurePath));
+
+                // Move task into feature
+                const newPath = await taskManager.moveTask(taskPath, featurePath);
+
+                assert.ok(!fs.existsSync(taskPath), 'Original file should not exist');
+                assert.ok(fs.existsSync(newPath), 'Moved file should exist');
+                assert.ok(newPath.includes('Target-Feature'), 'Path should include feature folder');
+            });
+
+            test('should move a task file out of feature folder to root', async () => {
+                // Create feature folder and task inside it
+                const featurePath = await taskManager.createFeature('Source Feature');
+                const taskInFeature = path.join(featurePath, 'task-in-feature.md');
+                fs.writeFileSync(taskInFeature, '# Task In Feature');
+
+                // Move task to root
+                const rootFolder = taskManager.getTasksFolder();
+                const newPath = await taskManager.moveTask(taskInFeature, rootFolder);
+
+                assert.ok(!fs.existsSync(taskInFeature), 'Original file should not exist');
+                assert.ok(fs.existsSync(newPath), 'Moved file should exist');
+                assert.ok(!newPath.includes('Source-Feature'), 'Path should not include feature folder');
+            });
+
+            test('should handle collision when moving task', async () => {
+                // Create task in root
+                const taskPath = await taskManager.createTask('Collision Task');
+
+                // Create feature folder with a task of the same name
+                const featurePath = await taskManager.createFeature('Collision Feature');
+                const existingTask = path.join(featurePath, 'Collision-Task.md');
+                fs.writeFileSync(existingTask, '# Existing Task');
+
+                // Move task into feature - should get renamed
+                const newPath = await taskManager.moveTask(taskPath, featurePath);
+
+                assert.ok(!fs.existsSync(taskPath), 'Original file should not exist');
+                assert.ok(fs.existsSync(newPath), 'Moved file should exist');
+                assert.ok(fs.existsSync(existingTask), 'Existing file should still exist');
+                assert.notStrictEqual(newPath, existingTask, 'New path should be different from existing');
+            });
+
+            test('should not move if source and target are the same folder', async () => {
+                // Create task in root
+                const taskPath = await taskManager.createTask('Same Folder Task');
+                const rootFolder = taskManager.getTasksFolder();
+
+                // Try to move to the same folder
+                const newPath = await taskManager.moveTask(taskPath, rootFolder);
+
+                assert.strictEqual(newPath, taskPath, 'Path should remain unchanged');
+                assert.ok(fs.existsSync(taskPath), 'File should still exist at original location');
+            });
+
+            test('should move task between different feature folders', async () => {
+                // Create two feature folders
+                const feature1Path = await taskManager.createFeature('Feature One');
+                const feature2Path = await taskManager.createFeature('Feature Two');
+
+                // Create task in feature 1
+                const taskInFeature1 = path.join(feature1Path, 'cross-feature-task.md');
+                fs.writeFileSync(taskInFeature1, '# Cross Feature Task');
+
+                // Move to feature 2
+                const newPath = await taskManager.moveTask(taskInFeature1, feature2Path);
+
+                assert.ok(!fs.existsSync(taskInFeature1), 'Original file should not exist');
+                assert.ok(fs.existsSync(newPath), 'Moved file should exist');
+                assert.ok(newPath.includes('Feature-Two'), 'Path should include target feature');
+            });
+
+            test('should throw error when source file not found', async () => {
+                const featurePath = await taskManager.createFeature('Target');
+                
+                await assert.rejects(
+                    async () => await taskManager.moveTask('/non/existent/path.md', featurePath),
+                    /not found/i
+                );
+            });
+
+            test('should move multiple files via moveTaskGroup', async () => {
+                // Create document group files in root
+                taskManager.ensureFoldersExist();
+                const rootFolder = taskManager.getTasksFolder();
+                const planFile = path.join(rootFolder, 'grouped-task.plan.md');
+                const specFile = path.join(rootFolder, 'grouped-task.spec.md');
+                fs.writeFileSync(planFile, '# Plan');
+                fs.writeFileSync(specFile, '# Spec');
+
+                // Create feature folder
+                const featurePath = await taskManager.createFeature('Group Target');
+
+                // Move all group files
+                const newPaths = await taskManager.moveTaskGroup([planFile, specFile], featurePath);
+
+                assert.strictEqual(newPaths.length, 2, 'Should return two paths');
+                assert.ok(!fs.existsSync(planFile), 'Original plan file should not exist');
+                assert.ok(!fs.existsSync(specFile), 'Original spec file should not exist');
+                assert.ok(newPaths.every(p => fs.existsSync(p)), 'All moved files should exist');
+                assert.ok(newPaths.every(p => p.includes('Group-Target')), 'All paths should include feature folder');
+            });
+        });
+
         suite('File Watching', () => {
             test('should call refresh callback on file changes', async function () {
                 // File watching tests are unreliable in test environments due to VSCode's
@@ -860,11 +972,11 @@ suite('Tasks Viewer Tests', () => {
         });
 
         test('should have correct drag MIME types', () => {
-            assert.deepStrictEqual(dragDropController.dragMimeTypes, ['text/uri-list']);
+            assert.deepStrictEqual(dragDropController.dragMimeTypes, ['text/uri-list', 'application/vnd.code.tree.tasksView']);
         });
 
         test('should have correct drop MIME types', () => {
-            assert.deepStrictEqual(dragDropController.dropMimeTypes, ['text/uri-list']);
+            assert.deepStrictEqual(dragDropController.dropMimeTypes, ['text/uri-list', 'application/vnd.code.tree.tasksView']);
         });
 
         test('should handle drag with TaskItem', async () => {
