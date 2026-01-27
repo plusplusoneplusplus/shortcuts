@@ -509,15 +509,19 @@ async function extractFeatureDescription(folderPath: string, folderName: string)
 
 /**
  * Convert discovery results to related items format
+ * 
+ * Note: Unlike the Shortcut Groups flow which shows a preview panel for user selection,
+ * the Tasks Viewer flow saves all discovered results directly. The results are already
+ * filtered by relevance score in the AI discovery engine, so we don't filter by
+ * 'selected' status here.
  */
 function convertDiscoveryResultsToRelatedItems(
     results: DiscoveryResult[],
     workspaceRoot: string
 ): RelatedItem[] {
-    // Filter to only selected items
-    const selectedResults = results.filter(r => r.selected);
-
-    return selectedResults.map(result => {
+    // Convert all results (not just selected) since Tasks Viewer doesn't show a preview panel
+    // Results are already filtered by minRelevance in the AI discovery engine
+    return results.map(result => {
         const item: RelatedItem = {
             name: result.name,
             type: result.type === 'commit' ? 'commit' : 'file',
