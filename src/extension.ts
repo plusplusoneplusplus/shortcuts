@@ -268,7 +268,10 @@ export async function activate(context: vscode.ExtensionContext) {
                 tasksTreeDataProvider?.refresh();
             });
 
-            const tasksDragDropController = new TasksDragDropController();
+            const tasksDragDropController = new TasksDragDropController(
+                taskManager,
+                () => tasksTreeDataProvider?.refresh()
+            );
             tasksTreeView = vscode.window.createTreeView('tasksView', {
                 treeDataProvider: tasksTreeDataProvider,
                 showCollapseAll: true,

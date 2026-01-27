@@ -2,10 +2,13 @@ import * as vscode from 'vscode';
 import { TaskItem } from './task-item';
 import { TaskDocumentItem } from './task-document-item';
 import { TaskDocumentGroupItem } from './task-document-group-item';
+import { TaskGroupItem } from './task-group-item';
+import { TaskManager } from './task-manager';
 
 /**
  * Drag and drop controller for the Tasks tree view
  * Enables dragging task files to external targets like Copilot Chat
+ * and dropping external .md files onto the Active Tasks group
  */
 export class TasksDragDropController implements vscode.TreeDragAndDropController<vscode.TreeItem> {
     /**
@@ -16,9 +19,11 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
 
     /**
      * MIME types that can be dropped onto this tree
-     * Currently we don't support dropping onto the tasks tree
+     * text/uri-list enables dropping external files
      */
-    readonly dropMimeTypes: string[] = [];
+    readonly dropMimeTypes = ['text/uri-list'];
+
+    constructor(private taskManager: TaskManager, private refreshCallback: () => void) {}
 
     /**
      * Handle drag operation - populate data transfer with file URIs
@@ -64,15 +69,124 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
     }
 
     /**
-     * Handle drop operation - not implemented for tasks tree
-     * The tasks tree is read-only and doesn't accept drops
+     * Handle drop operation - import external .md files into Active Tasks
+     * Only accepts drops onto the Active Tasks group
      */
     public async handleDrop(
-        _target: vscode.TreeItem | undefined,
-        _dataTransfer: vscode.DataTransfer,
-        _token: vscode.CancellationToken
+        target: vscode.TreeItem | undefined,
+        dataTransfer: vscode.DataTransfer,
+        token: vscode.CancellationToken
     ): Promise<void> {
-        // Tasks tree is read-only, no drop handling needed
+        // Only allow drops on Active Tasks group
+        if (!(target instanceof TaskGroupItem) || target.groupType !== 'active') {
+            return;
+        }
+
+        // Get dropped URIs
+        const uriListItem = dataTransfer.get('text/uri-list');
+        if (!uriListItem) {
+            return;
+        }
+
+        const uriListString = await uriListItem.asString();
+        if (!uriListString) {
+            return;
+        }
+
+        // Parse URIs from text/uri-list format (one URI per line)
+        const uris = uriListString
+            .split(/\r?\n/)
+            .filter(line => line.trim().length > 0)
+            .map(line => {
+                try {
+                    return vscode.Uri.parse(line.trim());
+                } catch {
+                    return null;
+                }
+            })
+            .filter((uri): uri is vscode.Uri => uri !== null);
+
+        // Filter to only .md files with file scheme
+        const mdFiles = uris.filter(uri => 
+            uri.scheme === 'file' && uri.fsPath.toLowerCase().endsWith('.md')
+        );
+
+        if (mdFiles.length === 0) {
+            vscode.window.showInformationMessage('No markdown files found in the dropped items.');
+            return;
+        }
+
+        // Import each file
+        let successCount = 0;
+        let skippedCount = 0;
+
+        for (const uri of mdFiles) {
+            if (token.isCancellationRequested) {
+                break;
+            }
+
+            const result = await this.importFileWithCollisionHandling(uri.fsPath);
+            if (result === 'success') {
+                successCount++;
+            } else if (result === 'skipped') {
+                skippedCount++;
+            }
+        }
+
+        // Show result notification
+        if (successCount > 0) {
+            this.refreshCallback();
+            const message = successCount === 1
+                ? '1 task imported successfully.'
+                : `${successCount} tasks imported successfully.`;
+            vscode.window.showInformationMessage(message);
+        } else if (skippedCount > 0 && successCount === 0) {
+            vscode.window.showInformationMessage('All files were skipped.');
+        }
+    }
+
+    /**
+     * Import a file with collision handling
+     * @returns 'success', 'skipped', or 'error'
+     */
+    private async importFileWithCollisionHandling(sourcePath: string): Promise<'success' | 'skipped' | 'error'> {
+        try {
+            // Try to import with original name
+            await this.taskManager.importTask(sourcePath);
+            return 'success';
+        } catch (error) {
+            // Check if it's a name collision error
+            if (error instanceof Error && error.message.includes('already exists')) {
+                // Prompt user for new name
+                const newName = await vscode.window.showInputBox({
+                    prompt: `A task with this name already exists. Enter a new name:`,
+                    placeHolder: 'New task name',
+                    validateInput: async (value) => {
+                        if (!value || value.trim().length === 0) {
+                            return 'Name cannot be empty';
+                        }
+                        // Check if the new name also conflicts
+                        if (this.taskManager.taskExists(value.trim())) {
+                            return `Task "${value.trim()}" already exists`;
+                        }
+                        return null;
+                    }
+                });
+
+                if (!newName) {
+                    // User cancelled
+                    return 'skipped';
+                }
+
+                try {
+                    await this.taskManager.importTask(sourcePath, newName.trim());
+                    return 'success';
+                } catch {
+                    return 'error';
+                }
+            }
+            return 'error';
+        }
     }
 }
 

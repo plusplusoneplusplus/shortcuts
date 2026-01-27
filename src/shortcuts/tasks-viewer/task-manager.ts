@@ -531,9 +531,46 @@ export class TaskManager implements vscode.Disposable {
     }
 
     /**
+     * Import an external markdown file into the tasks folder
+     * @param sourcePath - Path to the source file
+     * @param newName - Optional new name for the task (without .md extension)
+     * @returns The path to the imported file
+     */
+    async importTask(sourcePath: string, newName?: string): Promise<string> {
+        this.ensureFoldersExist();
+
+        const sourceFileName = path.basename(sourcePath);
+        const targetName = newName 
+            ? this.sanitizeFileName(newName) 
+            : path.basename(sourceFileName, '.md');
+
+        const targetPath = path.join(this.getTasksFolder(), `${targetName}.md`);
+
+        if (safeExists(targetPath)) {
+            throw new Error(`Task "${targetName}" already exists`);
+        }
+
+        // Copy file content (not move, to preserve original)
+        const content = fs.readFileSync(sourcePath, 'utf-8');
+        safeWriteFile(targetPath, content);
+
+        return targetPath;
+    }
+
+    /**
+     * Check if a task with the given name exists
+     * @param name - Task name (without .md extension)
+     */
+    taskExists(name: string): boolean {
+        const sanitizedName = this.sanitizeFileName(name);
+        const filePath = path.join(this.getTasksFolder(), `${sanitizedName}.md`);
+        return safeExists(filePath);
+    }
+
+    /**
      * Sanitize a file name to remove invalid characters
      */
-    private sanitizeFileName(name: string): string {
+    sanitizeFileName(name: string): string {
         // Remove/replace characters that are invalid in file names
         return name
             .replace(/[<>:"/\\|?*]/g, '-')

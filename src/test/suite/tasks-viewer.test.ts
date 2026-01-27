@@ -852,17 +852,19 @@ suite('Tasks Viewer Tests', () => {
 
     suite('TasksDragDropController', () => {
         let dragDropController: TasksDragDropController;
+        let refreshCalled: boolean;
 
         setup(() => {
-            dragDropController = new TasksDragDropController();
+            refreshCalled = false;
+            dragDropController = new TasksDragDropController(taskManager, () => { refreshCalled = true; });
         });
 
         test('should have correct drag MIME types', () => {
             assert.deepStrictEqual(dragDropController.dragMimeTypes, ['text/uri-list']);
         });
 
-        test('should have empty drop MIME types', () => {
-            assert.deepStrictEqual(dragDropController.dropMimeTypes, []);
+        test('should have correct drop MIME types', () => {
+            assert.deepStrictEqual(dragDropController.dropMimeTypes, ['text/uri-list']);
         });
 
         test('should handle drag with TaskItem', async () => {
@@ -913,6 +915,287 @@ suite('Tasks Viewer Tests', () => {
 
             const uriList = dataTransfer.get('text/uri-list');
             assert.ok(!uriList, 'Should not have uri-list for group items');
+        });
+
+        test('should reject drop when target is not TaskGroupItem', async () => {
+            const task: Task = {
+                name: 'Test Task',
+                filePath: '/path/to/task.md',
+                modifiedTime: new Date(),
+                isArchived: false
+            };
+            const taskItem = new TaskItem(task);
+
+            const dataTransfer = new vscode.DataTransfer();
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem('file:///path/to/source.md'));
+            const token = new vscode.CancellationTokenSource().token;
+
+            // Should silently reject
+            await dragDropController.handleDrop(taskItem, dataTransfer, token);
+            assert.ok(!refreshCalled, 'Should not refresh when drop is rejected');
+        });
+
+        test('should reject drop on archived group', async () => {
+            const archivedGroup = new TaskGroupItem('archived', 5);
+
+            const dataTransfer = new vscode.DataTransfer();
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem('file:///path/to/source.md'));
+            const token = new vscode.CancellationTokenSource().token;
+
+            await dragDropController.handleDrop(archivedGroup, dataTransfer, token);
+            assert.ok(!refreshCalled, 'Should not refresh when drop is rejected on archived group');
+        });
+
+        test('should reject drop when no text/uri-list in dataTransfer', async () => {
+            const activeGroup = new TaskGroupItem('active', 5);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const token = new vscode.CancellationTokenSource().token;
+
+            await dragDropController.handleDrop(activeGroup, dataTransfer, token);
+            assert.ok(!refreshCalled, 'Should not refresh when no URIs in data transfer');
+        });
+
+        test('should reject drop when no .md files in URIs', async () => {
+            const activeGroup = new TaskGroupItem('active', 5);
+
+            const dataTransfer = new vscode.DataTransfer();
+            // Non-md files
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem('file:///path/to/source.txt\r\nfile:///path/to/other.js'));
+            const token = new vscode.CancellationTokenSource().token;
+
+            // Mock showInformationMessage to capture the message
+            const originalShowInfo = vscode.window.showInformationMessage;
+            let infoMessage = '';
+            (vscode.window as any).showInformationMessage = (message: string) => {
+                infoMessage = message;
+                return Promise.resolve(undefined);
+            };
+
+            await dragDropController.handleDrop(activeGroup, dataTransfer, token);
+            
+            (vscode.window as any).showInformationMessage = originalShowInfo;
+            assert.ok(infoMessage.includes('No markdown files'), 'Should show info about no markdown files');
+            assert.ok(!refreshCalled, 'Should not refresh when no md files');
+        });
+    });
+
+    suite('TasksDragDropController - File Import', () => {
+        let dragDropController: TasksDragDropController;
+        let refreshCalled: boolean;
+        let sourceFile: string;
+
+        setup(() => {
+            refreshCalled = false;
+            dragDropController = new TasksDragDropController(taskManager, () => { refreshCalled = true; });
+            
+            // Ensure tasks folder exists
+            taskManager.ensureFoldersExist();
+            
+            // Create a source file to import
+            sourceFile = path.join(tempDir, 'source-task.md');
+            fs.writeFileSync(sourceFile, '# Source Task\n\nContent here');
+        });
+
+        test('should import single .md file on drop to active group', async () => {
+            const activeGroup = new TaskGroupItem('active', 0);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const uri = vscode.Uri.file(sourceFile);
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uri.toString()));
+            const token = new vscode.CancellationTokenSource().token;
+
+            // Mock showInformationMessage
+            const originalShowInfo = vscode.window.showInformationMessage;
+            let infoMessage = '';
+            (vscode.window as any).showInformationMessage = (message: string) => {
+                infoMessage = message;
+                return Promise.resolve(undefined);
+            };
+
+            await dragDropController.handleDrop(activeGroup, dataTransfer, token);
+
+            (vscode.window as any).showInformationMessage = originalShowInfo;
+
+            // Check file was imported
+            const importedPath = path.join(taskManager.getTasksFolder(), 'source-task.md');
+            assert.ok(fs.existsSync(importedPath), 'File should be imported');
+            
+            // Check content was copied
+            const content = fs.readFileSync(importedPath, 'utf-8');
+            assert.ok(content.includes('Source Task'), 'Content should be preserved');
+            
+            // Check refresh was called
+            assert.ok(refreshCalled, 'Should call refresh after import');
+            
+            // Check success message
+            assert.ok(infoMessage.includes('imported'), 'Should show success message');
+        });
+
+        test('should import multiple .md files', async () => {
+            // Create a second source file
+            const sourceFile2 = path.join(tempDir, 'source-task2.md');
+            fs.writeFileSync(sourceFile2, '# Source Task 2');
+
+            const activeGroup = new TaskGroupItem('active', 0);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const uri1 = vscode.Uri.file(sourceFile);
+            const uri2 = vscode.Uri.file(sourceFile2);
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem(`${uri1.toString()}\r\n${uri2.toString()}`));
+            const token = new vscode.CancellationTokenSource().token;
+
+            // Mock showInformationMessage
+            const originalShowInfo = vscode.window.showInformationMessage;
+            let infoMessage = '';
+            (vscode.window as any).showInformationMessage = (message: string) => {
+                infoMessage = message;
+                return Promise.resolve(undefined);
+            };
+
+            await dragDropController.handleDrop(activeGroup, dataTransfer, token);
+
+            (vscode.window as any).showInformationMessage = originalShowInfo;
+
+            // Check both files were imported
+            const importedPath1 = path.join(taskManager.getTasksFolder(), 'source-task.md');
+            const importedPath2 = path.join(taskManager.getTasksFolder(), 'source-task2.md');
+            assert.ok(fs.existsSync(importedPath1), 'First file should be imported');
+            assert.ok(fs.existsSync(importedPath2), 'Second file should be imported');
+            
+            // Check message mentions count
+            assert.ok(infoMessage.includes('2'), 'Should mention 2 tasks');
+        });
+
+        test('should preserve original file after import (copy not move)', async () => {
+            const activeGroup = new TaskGroupItem('active', 0);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const uri = vscode.Uri.file(sourceFile);
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uri.toString()));
+            const token = new vscode.CancellationTokenSource().token;
+
+            // Mock showInformationMessage
+            const originalShowInfo = vscode.window.showInformationMessage;
+            (vscode.window as any).showInformationMessage = () => Promise.resolve(undefined);
+
+            await dragDropController.handleDrop(activeGroup, dataTransfer, token);
+
+            (vscode.window as any).showInformationMessage = originalShowInfo;
+
+            // Check original file still exists
+            assert.ok(fs.existsSync(sourceFile), 'Original file should still exist');
+        });
+
+        test('should filter out non-.md files from mixed drop', async () => {
+            const txtFile = path.join(tempDir, 'not-a-task.txt');
+            fs.writeFileSync(txtFile, 'Text content');
+
+            const activeGroup = new TaskGroupItem('active', 0);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const mdUri = vscode.Uri.file(sourceFile);
+            const txtUri = vscode.Uri.file(txtFile);
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem(`${mdUri.toString()}\r\n${txtUri.toString()}`));
+            const token = new vscode.CancellationTokenSource().token;
+
+            // Mock showInformationMessage
+            const originalShowInfo = vscode.window.showInformationMessage;
+            (vscode.window as any).showInformationMessage = () => Promise.resolve(undefined);
+
+            await dragDropController.handleDrop(activeGroup, dataTransfer, token);
+
+            (vscode.window as any).showInformationMessage = originalShowInfo;
+
+            // Check only md file was imported
+            const importedMd = path.join(taskManager.getTasksFolder(), 'source-task.md');
+            const importedTxt = path.join(taskManager.getTasksFolder(), 'not-a-task.txt');
+            assert.ok(fs.existsSync(importedMd), 'MD file should be imported');
+            assert.ok(!fs.existsSync(importedTxt), 'TXT file should not be imported');
+        });
+    });
+
+    suite('TaskManager importTask', () => {
+        test('should import task with original name', async () => {
+            taskManager.ensureFoldersExist();
+            const sourceFile = path.join(tempDir, 'external-task.md');
+            fs.writeFileSync(sourceFile, '# External Task Content');
+
+            const importedPath = await taskManager.importTask(sourceFile);
+
+            const expectedPath = path.join(taskManager.getTasksFolder(), 'external-task.md');
+            assert.strictEqual(importedPath, expectedPath, 'Should return correct path');
+            assert.ok(fs.existsSync(importedPath), 'File should exist');
+            
+            const content = fs.readFileSync(importedPath, 'utf-8');
+            assert.strictEqual(content, '# External Task Content', 'Content should match');
+        });
+
+        test('should import task with new name', async () => {
+            taskManager.ensureFoldersExist();
+            const sourceFile = path.join(tempDir, 'external-task.md');
+            fs.writeFileSync(sourceFile, '# External Task Content');
+
+            const importedPath = await taskManager.importTask(sourceFile, 'renamed-task');
+
+            const expectedPath = path.join(taskManager.getTasksFolder(), 'renamed-task.md');
+            assert.strictEqual(importedPath, expectedPath, 'Should use new name');
+            assert.ok(fs.existsSync(importedPath), 'File should exist');
+        });
+
+        test('should throw error on name collision', async () => {
+            taskManager.ensureFoldersExist();
+            
+            // Create existing task
+            await taskManager.createTask('existing-task');
+
+            // Try to import with same name
+            const sourceFile = path.join(tempDir, 'existing-task.md');
+            fs.writeFileSync(sourceFile, '# New content');
+
+            await assert.rejects(
+                () => taskManager.importTask(sourceFile),
+                /already exists/,
+                'Should throw on collision'
+            );
+        });
+
+        test('should sanitize file name', async () => {
+            taskManager.ensureFoldersExist();
+            const sourceFile = path.join(tempDir, 'source.md');
+            fs.writeFileSync(sourceFile, '# Content');
+
+            const importedPath = await taskManager.importTask(sourceFile, 'task with spaces/invalid:chars');
+
+            // Should sanitize the name - check filename only (not full path which contains path separators)
+            const fileName = path.basename(importedPath);
+            assert.ok(!fileName.includes(' '), 'Filename should not have spaces');
+            assert.ok(!fileName.includes('/'), 'Filename should not have slashes');
+            assert.ok(!fileName.includes(':'), 'Filename should not have colons');
+            assert.ok(fs.existsSync(importedPath), 'File should exist');
+        });
+    });
+
+    suite('TaskManager taskExists', () => {
+        test('should return true for existing task', async () => {
+            taskManager.ensureFoldersExist();
+            await taskManager.createTask('my-task');
+
+            assert.ok(taskManager.taskExists('my-task'), 'Should find existing task');
+        });
+
+        test('should return false for non-existing task', () => {
+            taskManager.ensureFoldersExist();
+
+            assert.ok(!taskManager.taskExists('non-existent'), 'Should not find non-existing task');
+        });
+
+        test('should handle names that need sanitization', async () => {
+            taskManager.ensureFoldersExist();
+            await taskManager.createTask('my task');
+
+            // The name gets sanitized to 'my-task'
+            assert.ok(taskManager.taskExists('my task'), 'Should handle sanitization');
         });
     });
 
@@ -1323,9 +1606,11 @@ suite('Tasks Viewer Tests', () => {
 
     suite('Drag and Drop with Document Groups', () => {
         let dragDropController: TasksDragDropController;
+        let refreshCalled: boolean;
 
         setup(() => {
-            dragDropController = new TasksDragDropController();
+            refreshCalled = false;
+            dragDropController = new TasksDragDropController(taskManager, () => { refreshCalled = true; });
         });
 
         test('should handle drag with TaskDocumentItem', async () => {
