@@ -166,12 +166,17 @@ async function createTaskWithAI(
                 
                 progress.report({ message: 'Creating task file...' });
 
+                // Safely get folder path - only access folder if folderItem is a TaskFolderItem
+                const targetFolderPath = folderItem instanceof TaskFolderItem 
+                    ? folderItem.folder.folderPath 
+                    : undefined;
+
                 const filePath = await createTaskFile(
                     taskManager,
                     taskTitle,
                     taskContent,
                     'feature',
-                    folderItem?.folder.folderPath
+                    targetFolderPath
                 );
 
                 treeDataProvider.refresh();
@@ -218,7 +223,8 @@ async function createTaskFromFeature(
     let folderPath: string;
     let folderName: string;
 
-    if (folderItem) {
+    // Check if folderItem is a valid TaskFolderItem with folder property
+    if (folderItem instanceof TaskFolderItem && folderItem.folder) {
         folderPath = folderItem.folder.folderPath;
         folderName = folderItem.folder.name;
     } else {
@@ -732,7 +738,10 @@ async function createEmptyTask(
 
     try {
         const content = DEFAULT_TASK_CONTENT.replace('{{TITLE}}', name.trim());
-        const folderPath = folderItem?.folder.folderPath;
+        // Safely get folder path - only access folder if folderItem is a TaskFolderItem
+        const folderPath = folderItem instanceof TaskFolderItem 
+            ? folderItem.folder.folderPath 
+            : undefined;
         const filePath = await createTaskFile(taskManager, name.trim(), content, 'feature', folderPath);
         
         treeDataProvider.refresh();
