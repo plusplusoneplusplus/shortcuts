@@ -12,7 +12,17 @@ export class TaskFolderItem extends vscode.TreeItem {
         super(folder.name, vscode.TreeItemCollapsibleState.Collapsed);
 
         this.folder = folder;
-        this.contextValue = folder.isArchived ? 'taskFolder_archived' : 'taskFolder';
+        
+        // Build contextValue to enable appropriate commands
+        // Format: taskFolder[_archived][_hasRelated]
+        let contextValue = 'taskFolder';
+        if (folder.isArchived) {
+            contextValue += '_archived';
+        }
+        if (folder.relatedItems && folder.relatedItems.items.length > 0) {
+            contextValue += '_hasRelated';
+        }
+        this.contextValue = contextValue;
         
         // Set description to show relative path if not root
         if (folder.relativePath) {

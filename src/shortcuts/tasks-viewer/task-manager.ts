@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ensureDirectoryExists, safeExists, safeReadDir, safeRename, safeStats, safeWriteFile } from '../shared';
-import { Task, TasksViewerSettings, TaskSortBy, TaskDocument, TaskDocumentGroup, TaskFolder } from './types';
+import { Task, TasksViewerSettings, TaskSortBy, TaskDocument, TaskDocumentGroup, TaskFolder, DiscoverySettings, DiscoveryDefaultScope } from './types';
+import { loadRelatedItems, RELATED_ITEMS_FILENAME } from './related-items-loader';
 
 /**
  * Manages task files stored in the tasks folder
@@ -12,6 +13,7 @@ export class TaskManager implements vscode.Disposable {
     private readonly workspaceRoot: string;
     private fileWatcher?: vscode.FileSystemWatcher;
     private archiveWatcher?: vscode.FileSystemWatcher;
+    private relatedItemsWatcher?: vscode.FileSystemWatcher;
     private debounceTimer?: NodeJS.Timeout;
     private refreshCallback?: () => void;
 
@@ -261,6 +263,14 @@ export class TaskManager implements vscode.Disposable {
             this.fileWatcher.onDidChange(() => this.debounceRefresh());
             this.fileWatcher.onDidCreate(() => this.debounceRefresh());
             this.fileWatcher.onDidDelete(() => this.debounceRefresh());
+
+            // Watch for related.yaml files
+            const relatedPattern = new vscode.RelativePattern(tasksFolder, `**/${RELATED_ITEMS_FILENAME}`);
+            this.relatedItemsWatcher = vscode.workspace.createFileSystemWatcher(relatedPattern);
+
+            this.relatedItemsWatcher.onDidChange(() => this.debounceRefresh());
+            this.relatedItemsWatcher.onDidCreate(() => this.debounceRefresh());
+            this.relatedItemsWatcher.onDidDelete(() => this.debounceRefresh());
         }
 
         // Create watcher for archive folder
@@ -280,12 +290,30 @@ export class TaskManager implements vscode.Disposable {
      */
     getSettings(): TasksViewerSettings {
         const config = vscode.workspace.getConfiguration('workspaceShortcuts.tasksViewer');
+        const discoveryConfig = vscode.workspace.getConfiguration('workspaceShortcuts.tasksViewer.discovery');
+        
+        const defaultScope: DiscoveryDefaultScope = discoveryConfig.get<DiscoveryDefaultScope>('defaultScope', {
+            includeSourceFiles: true,
+            includeDocs: true,
+            includeConfigFiles: true,
+            includeGitHistory: true,
+            maxCommits: 50
+        });
+
+        const discovery: DiscoverySettings = {
+            enabled: discoveryConfig.get<boolean>('enabled', true),
+            defaultScope,
+            showRelatedInTree: discoveryConfig.get<boolean>('showRelatedInTree', true),
+            groupByCategory: discoveryConfig.get<boolean>('groupByCategory', true)
+        };
+
         return {
             enabled: config.get<boolean>('enabled', true),
             folderPath: config.get<string>('folderPath', '.vscode/tasks'),
             showArchived: config.get<boolean>('showArchived', false),
             sortBy: config.get<TaskSortBy>('sortBy', 'modifiedDate'),
-            groupRelatedDocuments: config.get<boolean>('groupRelatedDocuments', true)
+            groupRelatedDocuments: config.get<boolean>('groupRelatedDocuments', true),
+            discovery
         };
     }
 
@@ -527,7 +555,36 @@ export class TaskManager implements vscode.Disposable {
             }
         }
 
+        // Load related items for all folders if discovery is enabled
+        if (settings.discovery.enabled && settings.discovery.showRelatedInTree) {
+            await this.loadRelatedItemsForFolders(folderMap);
+        }
+
         return rootFolder;
+    }
+
+    /**
+     * Load related items for all folders in the hierarchy
+     */
+    private async loadRelatedItemsForFolders(folderMap: Map<string, TaskFolder>): Promise<void> {
+        for (const [, folder] of folderMap) {
+            // Skip root folder
+            if (!folder.relativePath) {
+                continue;
+            }
+            
+            const relatedItems = await loadRelatedItems(folder.folderPath);
+            if (relatedItems) {
+                folder.relatedItems = relatedItems;
+            }
+        }
+    }
+
+    /**
+     * Get workspace root path
+     */
+    getWorkspaceRoot(): string {
+        return this.workspaceRoot;
     }
 
     /**
@@ -601,6 +658,8 @@ export class TaskManager implements vscode.Disposable {
         this.fileWatcher = undefined;
         this.archiveWatcher?.dispose();
         this.archiveWatcher = undefined;
+        this.relatedItemsWatcher?.dispose();
+        this.relatedItemsWatcher = undefined;
 
         if (this.debounceTimer) {
             clearTimeout(this.debounceTimer);

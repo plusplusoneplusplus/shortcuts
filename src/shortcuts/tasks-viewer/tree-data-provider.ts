@@ -7,7 +7,8 @@ import { TaskGroupItem } from './task-group-item';
 import { TaskDocumentGroupItem } from './task-document-group-item';
 import { TaskDocumentItem } from './task-document-item';
 import { TaskFolderItem } from './task-folder-item';
-import { Task, TaskDocument, TaskDocumentGroup, TaskFolder } from './types';
+import { RelatedItemsSectionItem, RelatedCategoryItem, RelatedFileItem, RelatedCommitItem } from './related-items-tree-items';
+import { Task, TaskDocument, TaskDocumentGroup, TaskFolder, RelatedItem } from './types';
 
 /**
  * Tree data provider for the Tasks Viewer
@@ -49,8 +50,14 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
         } else if (element instanceof TaskFolderItem) {
             // Return children of this folder (subfolders and tasks)
             return this.getFolderChildren(element.folder);
+        } else if (element instanceof RelatedItemsSectionItem) {
+            // Return related items (either grouped by category or flat)
+            return this.getRelatedItemsChildren(element);
+        } else if (element instanceof RelatedCategoryItem) {
+            // Return items within a category
+            return this.getRelatedCategoryChildren(element);
         } else {
-            // Tasks and documents have no children
+            // Tasks, documents, and individual related items have no children
             return [];
         }
     }
@@ -334,7 +341,72 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
             }));
         }
 
+        // Add Related Items section if present
+        if (folder.relatedItems && folder.relatedItems.items.length > 0 && settings.discovery.showRelatedInTree) {
+            items.push(new RelatedItemsSectionItem(folder.folderPath, folder.relatedItems));
+        }
+
         return items;
+    }
+
+    /**
+     * Get children for the Related Items section
+     */
+    private getRelatedItemsChildren(sectionItem: RelatedItemsSectionItem): vscode.TreeItem[] {
+        const settings = this.taskManager.getSettings();
+        const items = sectionItem.config.items;
+        const workspaceRoot = this.taskManager.getWorkspaceRoot();
+
+        if (settings.discovery.groupByCategory) {
+            // Group by category
+            const categoryMap = new Map<string, RelatedItem[]>();
+            
+            for (const item of items) {
+                const category = item.category;
+                if (!categoryMap.has(category)) {
+                    categoryMap.set(category, []);
+                }
+                categoryMap.get(category)!.push(item);
+            }
+
+            // Sort categories in a specific order
+            const categoryOrder = ['source', 'test', 'doc', 'config', 'commit'];
+            const sortedCategories = [...categoryMap.keys()].sort((a, b) => {
+                const aIndex = categoryOrder.indexOf(a);
+                const bIndex = categoryOrder.indexOf(b);
+                return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+            });
+
+            return sortedCategories.map(category => 
+                new RelatedCategoryItem(category, categoryMap.get(category)!, sectionItem.folderPath)
+            );
+        } else {
+            // Flat list sorted by relevance
+            const sortedItems = [...items].sort((a, b) => b.relevance - a.relevance);
+            return sortedItems.map(item => this.createRelatedItemTreeItem(item, sectionItem.folderPath, workspaceRoot));
+        }
+    }
+
+    /**
+     * Get children for a Related Category
+     */
+    private getRelatedCategoryChildren(categoryItem: RelatedCategoryItem): vscode.TreeItem[] {
+        const workspaceRoot = this.taskManager.getWorkspaceRoot();
+        
+        // Sort items by relevance
+        const sortedItems = [...categoryItem.items].sort((a, b) => b.relevance - a.relevance);
+        return sortedItems.map(item => this.createRelatedItemTreeItem(item, categoryItem.folderPath, workspaceRoot));
+    }
+
+    /**
+     * Create a tree item for a related item
+     */
+    private createRelatedItemTreeItem(item: RelatedItem, folderPath: string, workspaceRoot: string): vscode.TreeItem {
+        if (item.type === 'commit') {
+            return new RelatedCommitItem(item, folderPath, workspaceRoot);
+        } else {
+            return new RelatedFileItem(item, folderPath, workspaceRoot);
+        }
     }
 
     /**

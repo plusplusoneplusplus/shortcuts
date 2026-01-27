@@ -12,3 +12,6 @@ export * from './task-folder-item';
 export * from './tree-data-provider';
 export * from './commands';
 export * from './tasks-drag-drop-controller';
+export * from './related-items-loader';
+export * from './related-items-tree-items';
+export * from './discovery-commands';

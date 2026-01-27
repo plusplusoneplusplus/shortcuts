@@ -658,6 +658,59 @@
           "default": true,
           "markdownDescription": "Group related task documents under a single parent node. For example, `task1.md`, `task1.plan.md`, and `task1.test.md` would be grouped under `task1`."
         },
+        "workspaceShortcuts.tasksViewer.discovery.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AI Discovery for feature folders in Tasks Viewer"
+        },
+        "workspaceShortcuts.tasksViewer.discovery.showRelatedInTree": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show 'Related Items' section in the tree view for features with related.yaml"
+        },
+        "workspaceShortcuts.tasksViewer.discovery.groupByCategory": {
+          "type": "boolean",
+          "default": true,
+          "description": "Group related items by category (source, test, commit) in tree view"
+        },
+        "workspaceShortcuts.tasksViewer.discovery.defaultScope": {
+          "type": "object",
+          "default": {
+            "includeSourceFiles": true,
+            "includeDocs": true,
+            "includeConfigFiles": true,
+            "includeGitHistory": true,
+            "maxCommits": 50
+          },
+          "properties": {
+            "includeSourceFiles": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include source code files in discovery"
+            },
+            "includeDocs": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include documentation files in discovery"
+            },
+            "includeConfigFiles": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include configuration files in discovery"
+            },
+            "includeGitHistory": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include git commit history in discovery"
+            },
+            "maxCommits": {
+              "type": "number",
+              "default": 50,
+              "description": "Maximum number of commits to search"
+            }
+          },
+          "description": "Default search scope for feature discovery"
+        },
         "workspaceShortcuts.markdownComments.codeBlockTheme": {
           "type": "string",
           "enum": [
@@ -1553,6 +1606,42 @@
         "icon": "$(file-symlink-file)"
       },
       {
+        "command": "tasksViewer.discoverRelated",
+        "title": "Discover Related Items",
+        "category": "Tasks",
+        "icon": "$(search)"
+      },
+      {
+        "command": "tasksViewer.rediscoverRelated",
+        "title": "Re-discover Related Items",
+        "category": "Tasks",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "tasksViewer.clearRelated",
+        "title": "Clear Related Items",
+        "category": "Tasks",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "tasksViewer.editRelated",
+        "title": "Edit Related Items",
+        "category": "Tasks",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "tasksViewer.removeRelatedItem",
+        "title": "Remove from Related",
+        "category": "Tasks",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "tasksViewer.viewRelatedCommit",
+        "title": "View Commit",
+        "category": "Tasks",
+        "icon": "$(git-commit)"
+      },
+      {
         "command": "debugPanel.executeCommand",
         "title": "Execute Debug Command",
         "category": "Debug Panel"
@@ -1999,6 +2088,31 @@
           "command": "tasksViewer.copyFullPath",
           "when": "view == tasksView && viewItem == archivedTask",
           "group": "copy@2"
+        },
+        {
+          "command": "tasksViewer.discoverRelated",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "group": "discovery@1"
+        },
+        {
+          "command": "tasksViewer.rediscoverRelated",
+          "when": "view == tasksView && viewItem == relatedItemsSection",
+          "group": "related@1"
+        },
+        {
+          "command": "tasksViewer.editRelated",
+          "when": "view == tasksView && viewItem == relatedItemsSection",
+          "group": "related@2"
+        },
+        {
+          "command": "tasksViewer.clearRelated",
+          "when": "view == tasksView && viewItem == relatedItemsSection",
+          "group": "related@3"
+        },
+        {
+          "command": "tasksViewer.removeRelatedItem",
+          "when": "view == tasksView && (viewItem == relatedFile || viewItem == relatedCommit)",
+          "group": "relatedItem@1"
         },
         {
           "command": "markdownComments.resolveComment",
