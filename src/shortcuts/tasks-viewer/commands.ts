@@ -35,6 +35,9 @@ export class TasksCommands {
             vscode.commands.registerCommand('tasksViewer.createFeature', () => this.createFeature()),
             vscode.commands.registerCommand('tasksViewer.createSubfolder', (item: TaskFolderItem) => this.createSubfolder(item)),
             vscode.commands.registerCommand('tasksViewer.rename', (item: TaskItem) => this.renameTask(item)),
+            vscode.commands.registerCommand('tasksViewer.renameFolder', (item: TaskFolderItem) => this.renameFolder(item)),
+            vscode.commands.registerCommand('tasksViewer.renameDocumentGroup', (item: TaskDocumentGroupItem) => this.renameDocumentGroup(item)),
+            vscode.commands.registerCommand('tasksViewer.renameDocument', (item: TaskDocumentItem) => this.renameDocument(item)),
             vscode.commands.registerCommand('tasksViewer.delete', (item: TaskItem) => this.deleteTask(item)),
             vscode.commands.registerCommand('tasksViewer.archive', (item: TaskItem) => this.archiveTask(item)),
             vscode.commands.registerCommand('tasksViewer.unarchive', (item: TaskItem) => this.unarchiveTask(item)),
@@ -184,6 +187,114 @@ export class TasksCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to rename task: ${err.message}`);
+        }
+    }
+
+    /**
+     * Rename a folder
+     */
+    private async renameFolder(item: TaskFolderItem): Promise<void> {
+        if (!item || !item.folder) {
+            return;
+        }
+
+        const currentName = item.folder.name;
+        const newName = await vscode.window.showInputBox({
+            prompt: 'Enter new folder name',
+            value: currentName,
+            validateInput: (value) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Folder name cannot be empty';
+                }
+                if (value.includes('/') || value.includes('\\')) {
+                    return 'Folder name cannot contain path separators';
+                }
+                return null;
+            }
+        });
+
+        if (!newName || newName === currentName) {
+            return;
+        }
+
+        try {
+            await this.taskManager.renameFolder(item.folder.folderPath, newName.trim());
+            this.treeDataProvider.refresh();
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to rename folder: ${err.message}`);
+        }
+    }
+
+    /**
+     * Rename a document group
+     */
+    private async renameDocumentGroup(item: TaskDocumentGroupItem): Promise<void> {
+        if (!item) {
+            return;
+        }
+
+        const currentName = item.baseName;
+        const newName = await vscode.window.showInputBox({
+            prompt: 'Enter new name for document group',
+            value: currentName,
+            validateInput: (value) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Name cannot be empty';
+                }
+                if (value.includes('/') || value.includes('\\')) {
+                    return 'Name cannot contain path separators';
+                }
+                return null;
+            }
+        });
+
+        if (!newName || newName === currentName) {
+            return;
+        }
+
+        try {
+            await this.taskManager.renameDocumentGroup(item.folderPath, currentName, newName.trim());
+            this.treeDataProvider.refresh();
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to rename document group: ${err.message}`);
+        }
+    }
+
+    /**
+     * Rename a single document
+     */
+    private async renameDocument(item: TaskDocumentItem): Promise<void> {
+        if (!item) {
+            return;
+        }
+
+        const currentName = item.baseName;
+        const newName = await vscode.window.showInputBox({
+            prompt: 'Enter new name for document',
+            value: currentName,
+            validateInput: (value) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Name cannot be empty';
+                }
+                if (value.includes('/') || value.includes('\\')) {
+                    return 'Name cannot contain path separators';
+                }
+                return null;
+            }
+        });
+
+        if (!newName || newName === currentName) {
+            return;
+        }
+
+        try {
+            await this.taskManager.renameDocument(item.filePath, newName.trim());
+            this.treeDataProvider.refresh();
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to rename document: ${err.message}`);
         }
     }
 

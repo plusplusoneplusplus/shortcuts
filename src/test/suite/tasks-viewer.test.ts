@@ -386,6 +386,204 @@ suite('Tasks Viewer Tests', () => {
             });
         });
 
+        suite('Folder Renaming', () => {
+            test('should rename a folder', async () => {
+                const originalPath = await taskManager.createFeature('Original Folder');
+                const newPath = await taskManager.renameFolder(originalPath, 'New Folder');
+
+                assert.ok(!fs.existsSync(originalPath), 'Original folder should not exist');
+                assert.ok(fs.existsSync(newPath), 'New folder should exist');
+                assert.ok(fs.statSync(newPath).isDirectory(), 'New path should be a directory');
+            });
+
+            test('should throw error when renaming to existing name', async () => {
+                const path1 = await taskManager.createFeature('Folder One');
+                const path2 = await taskManager.createFeature('Folder Two');
+
+                await assert.rejects(
+                    async () => await taskManager.renameFolder(path1, 'Folder-Two'),
+                    /already exists/i
+                );
+            });
+
+            test('should throw error when folder not found', async () => {
+                await assert.rejects(
+                    async () => await taskManager.renameFolder('/non/existent/folder', 'New Name'),
+                    /not found/i
+                );
+            });
+
+            test('should throw error when path is not a directory', async () => {
+                const filePath = await taskManager.createTask('Test Task');
+
+                await assert.rejects(
+                    async () => await taskManager.renameFolder(filePath, 'New Name'),
+                    /not a directory/i
+                );
+            });
+
+            test('should preserve folder contents after rename', async () => {
+                const originalPath = await taskManager.createFeature('Feature With Content');
+                const taskFile = path.join(originalPath, 'task.md');
+                fs.writeFileSync(taskFile, '# Task Content');
+                
+                const newPath = await taskManager.renameFolder(originalPath, 'Renamed Feature');
+                
+                const newTaskFile = path.join(newPath, 'task.md');
+                assert.ok(fs.existsSync(newTaskFile), 'Task file should exist in renamed folder');
+                const content = fs.readFileSync(newTaskFile, 'utf8');
+                assert.ok(content.includes('# Task Content'), 'Content should be preserved');
+            });
+
+            test('should allow renaming nested subfolder', async () => {
+                const featurePath = await taskManager.createFeature('Parent');
+                const subfolderPath = await taskManager.createSubfolder(featurePath, 'Child');
+                
+                const newPath = await taskManager.renameFolder(subfolderPath, 'Renamed Child');
+                
+                assert.ok(!fs.existsSync(subfolderPath), 'Original subfolder should not exist');
+                assert.ok(fs.existsSync(newPath), 'Renamed subfolder should exist');
+                assert.ok(newPath.includes('Parent'), 'Should still be inside parent folder');
+            });
+        });
+
+        suite('Document Group Renaming', () => {
+            test('should rename all documents in a group', async () => {
+                const featurePath = await taskManager.createFeature('Feature');
+                
+                // Create document group: task1.plan.md, task1.spec.md, task1.test.md
+                fs.writeFileSync(path.join(featurePath, 'task1.plan.md'), '# Plan');
+                fs.writeFileSync(path.join(featurePath, 'task1.spec.md'), '# Spec');
+                fs.writeFileSync(path.join(featurePath, 'task1.test.md'), '# Test');
+                
+                const newPaths = await taskManager.renameDocumentGroup(featurePath, 'task1', 'renamed-task');
+                
+                assert.strictEqual(newPaths.length, 3, 'Should have renamed 3 documents');
+                
+                // Verify old files don't exist
+                assert.ok(!fs.existsSync(path.join(featurePath, 'task1.plan.md')));
+                assert.ok(!fs.existsSync(path.join(featurePath, 'task1.spec.md')));
+                assert.ok(!fs.existsSync(path.join(featurePath, 'task1.test.md')));
+                
+                // Verify new files exist
+                assert.ok(fs.existsSync(path.join(featurePath, 'renamed-task.plan.md')));
+                assert.ok(fs.existsSync(path.join(featurePath, 'renamed-task.spec.md')));
+                assert.ok(fs.existsSync(path.join(featurePath, 'renamed-task.test.md')));
+            });
+
+            test('should throw error if folder not found', async () => {
+                await assert.rejects(
+                    async () => await taskManager.renameDocumentGroup('/non/existent/folder', 'old', 'new'),
+                    /not found/i
+                );
+            });
+
+            test('should throw error if no documents with base name exist', async () => {
+                const featurePath = await taskManager.createFeature('Empty Feature');
+                
+                await assert.rejects(
+                    async () => await taskManager.renameDocumentGroup(featurePath, 'nonexistent', 'new'),
+                    /No documents found/i
+                );
+            });
+
+            test('should throw error if new name would cause collision', async () => {
+                const featurePath = await taskManager.createFeature('Feature');
+                
+                // Create two groups
+                fs.writeFileSync(path.join(featurePath, 'task1.plan.md'), '# Task 1');
+                fs.writeFileSync(path.join(featurePath, 'task2.plan.md'), '# Task 2');
+                
+                await assert.rejects(
+                    async () => await taskManager.renameDocumentGroup(featurePath, 'task1', 'task2'),
+                    /already exists/i
+                );
+            });
+
+            test('should rename single document without doc type suffix', async () => {
+                const featurePath = await taskManager.createFeature('Feature');
+                
+                // Create single document without doc type suffix
+                fs.writeFileSync(path.join(featurePath, 'simple-task.md'), '# Simple');
+                
+                const newPaths = await taskManager.renameDocumentGroup(featurePath, 'simple-task', 'renamed-simple');
+                
+                assert.strictEqual(newPaths.length, 1);
+                assert.ok(!fs.existsSync(path.join(featurePath, 'simple-task.md')));
+                assert.ok(fs.existsSync(path.join(featurePath, 'renamed-simple.md')));
+            });
+
+            test('should preserve file contents after rename', async () => {
+                const featurePath = await taskManager.createFeature('Feature');
+                
+                fs.writeFileSync(path.join(featurePath, 'task1.plan.md'), '# Original Plan Content');
+                
+                await taskManager.renameDocumentGroup(featurePath, 'task1', 'renamed');
+                
+                const content = fs.readFileSync(path.join(featurePath, 'renamed.plan.md'), 'utf8');
+                assert.ok(content.includes('# Original Plan Content'), 'Content should be preserved');
+            });
+        });
+
+        suite('Single Document Renaming', () => {
+            test('should rename a single document preserving doc type', async () => {
+                const featurePath = await taskManager.createFeature('Feature');
+                const oldPath = path.join(featurePath, 'task1.plan.md');
+                fs.writeFileSync(oldPath, '# Plan');
+                
+                const newPath = await taskManager.renameDocument(oldPath, 'renamed-task');
+                
+                assert.ok(!fs.existsSync(oldPath), 'Original file should not exist');
+                assert.ok(fs.existsSync(newPath), 'Renamed file should exist');
+                assert.ok(newPath.endsWith('renamed-task.plan.md'), 'Should preserve doc type suffix');
+            });
+
+            test('should rename document without doc type suffix', async () => {
+                const featurePath = await taskManager.createFeature('Feature');
+                const oldPath = path.join(featurePath, 'simple.md');
+                fs.writeFileSync(oldPath, '# Simple');
+                
+                const newPath = await taskManager.renameDocument(oldPath, 'renamed');
+                
+                assert.ok(!fs.existsSync(oldPath));
+                assert.ok(fs.existsSync(newPath));
+                assert.ok(newPath.endsWith('renamed.md'));
+            });
+
+            test('should throw error when document not found', async () => {
+                await assert.rejects(
+                    async () => await taskManager.renameDocument('/non/existent/doc.md', 'new'),
+                    /not found/i
+                );
+            });
+
+            test('should throw error if new name would cause collision', async () => {
+                const featurePath = await taskManager.createFeature('Feature');
+                
+                fs.writeFileSync(path.join(featurePath, 'doc1.plan.md'), '# Doc 1');
+                fs.writeFileSync(path.join(featurePath, 'doc2.plan.md'), '# Doc 2');
+                
+                await assert.rejects(
+                    async () => await taskManager.renameDocument(
+                        path.join(featurePath, 'doc1.plan.md'),
+                        'doc2'
+                    ),
+                    /already exists/i
+                );
+            });
+
+            test('should preserve file contents after rename', async () => {
+                const featurePath = await taskManager.createFeature('Feature');
+                const oldPath = path.join(featurePath, 'original.spec.md');
+                fs.writeFileSync(oldPath, '# Original Spec Content');
+                
+                const newPath = await taskManager.renameDocument(oldPath, 'renamed');
+                
+                const content = fs.readFileSync(newPath, 'utf8');
+                assert.ok(content.includes('# Original Spec Content'), 'Content should be preserved');
+            });
+        });
+
         suite('Task Deletion', () => {
             test('should delete a task file', async () => {
                 const filePath = await taskManager.createTask('To Delete');

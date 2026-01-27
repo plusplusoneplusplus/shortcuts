@@ -1577,6 +1577,24 @@
         "icon": "$(edit)"
       },
       {
+        "command": "tasksViewer.renameFolder",
+        "title": "Rename Folder",
+        "category": "Tasks",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "tasksViewer.renameDocumentGroup",
+        "title": "Rename Document Group",
+        "category": "Tasks",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "tasksViewer.renameDocument",
+        "title": "Rename Document",
+        "category": "Tasks",
+        "icon": "$(edit)"
+      },
+      {
         "command": "tasksViewer.delete",
         "title": "Delete Task",
         "category": "Tasks",
@@ -2098,6 +2116,21 @@
           "command": "tasksViewer.delete",
           "when": "view == tasksView && viewItem == archivedTask",
           "group": "task@2"
+        },
+        {
+          "command": "tasksViewer.renameFolder",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "group": "folder@1"
+        },
+        {
+          "command": "tasksViewer.renameDocumentGroup",
+          "when": "view == tasksView && viewItem =~ /^(archived)?taskDocumentGroup$/",
+          "group": "documentGroup@1"
+        },
+        {
+          "command": "tasksViewer.renameDocument",
+          "when": "view == tasksView && viewItem =~ /^(archived)?taskDocument$/",
+          "group": "document@1"
         },
         {
           "command": "tasksViewer.copyRelativePath",

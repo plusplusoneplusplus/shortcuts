@@ -214,6 +214,132 @@ export class TaskManager implements vscode.Disposable {
     }
 
     /**
+     * Rename a folder
+     * @param folderPath - Absolute path to the folder
+     * @param newName - New folder name
+     * @returns The new folder path
+     */
+    async renameFolder(folderPath: string, newName: string): Promise<string> {
+        if (!safeExists(folderPath)) {
+            throw new Error(`Folder not found: ${folderPath}`);
+        }
+
+        const statsResult = safeStats(folderPath);
+        if (!statsResult.success || !statsResult.data?.isDirectory()) {
+            throw new Error(`Path is not a directory: ${folderPath}`);
+        }
+
+        const sanitizedName = this.sanitizeFileName(newName);
+        const parentDir = path.dirname(folderPath);
+        const newPath = path.join(parentDir, sanitizedName);
+
+        if (folderPath !== newPath && safeExists(newPath)) {
+            throw new Error(`Folder "${newName}" already exists`);
+        }
+
+        safeRename(folderPath, newPath);
+        return newPath;
+    }
+
+    /**
+     * Rename a document group (all documents sharing the same base name)
+     * @param folderPath - Absolute path to the folder containing the documents
+     * @param oldBaseName - Current base name of the document group
+     * @param newBaseName - New base name for the documents
+     * @returns Array of new file paths
+     */
+    async renameDocumentGroup(folderPath: string, oldBaseName: string, newBaseName: string): Promise<string[]> {
+        if (!safeExists(folderPath)) {
+            throw new Error(`Folder not found: ${folderPath}`);
+        }
+
+        const sanitizedNewBaseName = this.sanitizeFileName(newBaseName);
+        const renamedPaths: string[] = [];
+        const failedRenames: string[] = [];
+
+        // Find all files with the old base name
+        const readResult = safeReadDir(folderPath);
+        if (!readResult.success || !readResult.data) {
+            throw new Error(`Failed to read folder: ${folderPath}`);
+        }
+
+        const filesToRename: Array<{ oldPath: string; newPath: string }> = [];
+
+        for (const fileName of readResult.data) {
+            if (!fileName.endsWith('.md')) {
+                continue;
+            }
+
+            const { baseName, docType } = this.parseFileName(fileName);
+            if (baseName !== oldBaseName) {
+                continue;
+            }
+
+            const oldFilePath = path.join(folderPath, fileName);
+            const newFileName = docType
+                ? `${sanitizedNewBaseName}.${docType}.md`
+                : `${sanitizedNewBaseName}.md`;
+            const newFilePath = path.join(folderPath, newFileName);
+
+            // Check for collision before adding to rename list
+            if (oldFilePath !== newFilePath && safeExists(newFilePath)) {
+                throw new Error(`File "${newFileName}" already exists`);
+            }
+
+            filesToRename.push({ oldPath: oldFilePath, newPath: newFilePath });
+        }
+
+        if (filesToRename.length === 0) {
+            throw new Error(`No documents found with base name "${oldBaseName}"`);
+        }
+
+        // Perform the renames
+        for (const { oldPath, newPath } of filesToRename) {
+            try {
+                safeRename(oldPath, newPath);
+                renamedPaths.push(newPath);
+            } catch (error) {
+                failedRenames.push(path.basename(oldPath));
+            }
+        }
+
+        if (failedRenames.length > 0) {
+            throw new Error(`Failed to rename: ${failedRenames.join(', ')}`);
+        }
+
+        return renamedPaths;
+    }
+
+    /**
+     * Rename a single document (preserving doc type suffix)
+     * @param oldPath - Absolute path to the document
+     * @param newBaseName - New base name for the document
+     * @returns The new file path
+     */
+    async renameDocument(oldPath: string, newBaseName: string): Promise<string> {
+        if (!safeExists(oldPath)) {
+            throw new Error(`Document not found: ${oldPath}`);
+        }
+
+        const fileName = path.basename(oldPath);
+        const { docType } = this.parseFileName(fileName);
+        const sanitizedNewBaseName = this.sanitizeFileName(newBaseName);
+        
+        const directory = path.dirname(oldPath);
+        const newFileName = docType
+            ? `${sanitizedNewBaseName}.${docType}.md`
+            : `${sanitizedNewBaseName}.md`;
+        const newPath = path.join(directory, newFileName);
+
+        if (oldPath !== newPath && safeExists(newPath)) {
+            throw new Error(`Document "${newFileName}" already exists`);
+        }
+
+        safeRename(oldPath, newPath);
+        return newPath;
+    }
+
+    /**
      * Delete a task file
      */
     async deleteTask(filePath: string): Promise<void> {
