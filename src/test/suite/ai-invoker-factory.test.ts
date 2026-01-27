@@ -509,4 +509,200 @@ suite('AI Invoker Factory Tests', () => {
             assert.ok(invoker, 'Should create invoker with long timeout');
         });
     });
+
+    suite('Session Resume Metadata Integration', () => {
+        test('attachSdkSessionId should store session ID for resume', () => {
+            const processId = mockProcessManager.registerTypedProcess('test prompt', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Test' }
+            });
+
+            mockProcessManager.attachSdkSessionId(processId, 'session-123');
+
+            const sessionId = mockProcessManager.getSdkSessionId(processId);
+            assert.strictEqual(sessionId, 'session-123', 'Should store and retrieve session ID');
+        });
+
+        test('attachSessionMetadata should store backend and working directory', () => {
+            const processId = mockProcessManager.registerTypedProcess('test prompt', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Test' }
+            });
+
+            mockProcessManager.attachSessionMetadata(processId, 'copilot-sdk', '/workspace');
+
+            const metadata = mockProcessManager.getSessionMetadata(processId);
+            assert.strictEqual(metadata?.backend, 'copilot-sdk', 'Should store backend');
+            assert.strictEqual(metadata?.workingDirectory, '/workspace', 'Should store working directory');
+        });
+
+        test('isProcessResumable should return true for SDK process with session ID', () => {
+            const processId = mockProcessManager.registerTypedProcess('test prompt', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Test' }
+            });
+
+            // Attach session metadata
+            mockProcessManager.attachSdkSessionId(processId, 'session-abc');
+            mockProcessManager.attachSessionMetadata(processId, 'copilot-sdk', '/workspace');
+            
+            // Complete the process
+            mockProcessManager.completeProcess(processId, 'Response');
+
+            // Check resumability
+            const isResumable = mockProcessManager.isProcessResumable(processId);
+            assert.strictEqual(isResumable, true, 'Should be resumable with SDK backend and session ID');
+        });
+
+        test('isProcessResumable should return false for CLI process', () => {
+            const processId = mockProcessManager.registerTypedProcess('test prompt', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Test' }
+            });
+
+            // Attach session metadata with CLI backend
+            mockProcessManager.attachSdkSessionId(processId, 'session-def');
+            mockProcessManager.attachSessionMetadata(processId, 'copilot-cli', '/workspace');
+            
+            // Complete the process
+            mockProcessManager.completeProcess(processId, 'Response');
+
+            // Check resumability
+            const isResumable = mockProcessManager.isProcessResumable(processId);
+            assert.strictEqual(isResumable, false, 'Should not be resumable with CLI backend');
+        });
+
+        test('isProcessResumable should return false for running process', () => {
+            const processId = mockProcessManager.registerTypedProcess('test prompt', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Test' }
+            });
+
+            // Attach session metadata but don't complete
+            mockProcessManager.attachSdkSessionId(processId, 'session-ghi');
+            mockProcessManager.attachSessionMetadata(processId, 'copilot-sdk', '/workspace');
+            // Note: process is still running
+
+            // Check resumability
+            const isResumable = mockProcessManager.isProcessResumable(processId);
+            assert.strictEqual(isResumable, false, 'Should not be resumable while running');
+        });
+
+        test('isProcessResumable should return false without session ID', () => {
+            const processId = mockProcessManager.registerTypedProcess('test prompt', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Test' }
+            });
+
+            // Attach only backend metadata, not session ID
+            mockProcessManager.attachSessionMetadata(processId, 'copilot-sdk', '/workspace');
+            
+            // Complete the process
+            mockProcessManager.completeProcess(processId, 'Response');
+
+            // Check resumability
+            const isResumable = mockProcessManager.isProcessResumable(processId);
+            assert.strictEqual(isResumable, false, 'Should not be resumable without session ID');
+        });
+
+        test('getSessionMetadata should include sdkSessionId when attached', () => {
+            const processId = mockProcessManager.registerTypedProcess('test prompt', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Test' }
+            });
+
+            mockProcessManager.attachSdkSessionId(processId, 'session-jkl');
+            mockProcessManager.attachSessionMetadata(processId, 'copilot-sdk', '/test/workspace');
+
+            const metadata = mockProcessManager.getSessionMetadata(processId);
+            assert.strictEqual(metadata?.sdkSessionId, 'session-jkl', 'Should include sdkSessionId');
+            assert.strictEqual(metadata?.backend, 'copilot-sdk', 'Should include backend');
+            assert.strictEqual(metadata?.workingDirectory, '/test/workspace', 'Should include workingDirectory');
+        });
+
+        test('completed generic process should be resumable when session metadata is attached', () => {
+            // This test verifies the fix: generic processes should be resumable
+            // when they have SDK session ID, backend=copilot-sdk, and status=completed
+            const processId = mockProcessManager.registerTypedProcess('test prompt for resume', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Task Creation' }
+            });
+
+            // Simulate what ai-invoker-factory.ts should do after successful SDK completion
+            mockProcessManager.attachSdkSessionId(processId, 'session-mno');
+            mockProcessManager.attachSessionMetadata(processId, 'copilot-sdk', '/project/workspace');
+            mockProcessManager.completeProcess(processId, 'AI response here');
+
+            // Verify the process is resumable
+            const isResumable = mockProcessManager.isProcessResumable(processId);
+            assert.strictEqual(isResumable, true, 'Generic process should be resumable after SDK completion');
+
+            // Verify all metadata is accessible
+            const metadata = mockProcessManager.getSessionMetadata(processId);
+            assert.strictEqual(metadata?.sdkSessionId, 'session-mno');
+            assert.strictEqual(metadata?.backend, 'copilot-sdk');
+            assert.strictEqual(metadata?.workingDirectory, '/project/workspace');
+
+            // Verify process status
+            const process = mockProcessManager.getProcess(processId);
+            assert.strictEqual(process?.status, 'completed');
+            assert.strictEqual(process?.type, 'generic');
+        });
+
+        test('session metadata should be preserved through process completion', () => {
+            const processId = mockProcessManager.registerTypedProcess('prompt', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Pipeline' }
+            });
+
+            // Attach session metadata before completion
+            mockProcessManager.attachSdkSessionId(processId, 'session-pqr');
+            mockProcessManager.attachSessionMetadata(processId, 'copilot-sdk', '/workspace');
+
+            // Complete the process
+            mockProcessManager.completeProcess(processId, 'Done');
+
+            // Verify metadata is still accessible after completion
+            const metadata = mockProcessManager.getSessionMetadata(processId);
+            assert.ok(metadata, 'Metadata should be accessible after completion');
+            assert.strictEqual(metadata?.sdkSessionId, 'session-pqr');
+            assert.strictEqual(metadata?.backend, 'copilot-sdk');
+        });
+
+        test('multiple processes should have independent session metadata', () => {
+            const processId1 = mockProcessManager.registerTypedProcess('prompt 1', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Feature A' }
+            });
+            const processId2 = mockProcessManager.registerTypedProcess('prompt 2', {
+                type: 'generic',
+                metadata: { type: 'generic', feature: 'Feature B' }
+            });
+
+            // Attach different session metadata to each
+            mockProcessManager.attachSdkSessionId(processId1, 'session-111');
+            mockProcessManager.attachSessionMetadata(processId1, 'copilot-sdk', '/workspace/a');
+            mockProcessManager.completeProcess(processId1, 'Result A');
+
+            mockProcessManager.attachSdkSessionId(processId2, 'session-222');
+            mockProcessManager.attachSessionMetadata(processId2, 'copilot-cli', '/workspace/b');
+            mockProcessManager.completeProcess(processId2, 'Result B');
+
+            // Verify each has its own metadata
+            const metadata1 = mockProcessManager.getSessionMetadata(processId1);
+            const metadata2 = mockProcessManager.getSessionMetadata(processId2);
+
+            assert.strictEqual(metadata1?.sdkSessionId, 'session-111');
+            assert.strictEqual(metadata1?.backend, 'copilot-sdk');
+            assert.strictEqual(metadata1?.workingDirectory, '/workspace/a');
+
+            assert.strictEqual(metadata2?.sdkSessionId, 'session-222');
+            assert.strictEqual(metadata2?.backend, 'copilot-cli');
+            assert.strictEqual(metadata2?.workingDirectory, '/workspace/b');
+
+            // Only the first should be resumable (SDK backend)
+            assert.strictEqual(mockProcessManager.isProcessResumable(processId1), true);
+            assert.strictEqual(mockProcessManager.isProcessResumable(processId2), false);
+        });
+    });
 });

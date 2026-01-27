@@ -236,8 +236,15 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
                     }
 
                     if (result.success) {
-                        // Complete process on success
+                        // Complete process on success and attach session metadata for resume
                         if (processId && processManager) {
+                            // Attach SDK session ID for potential resume
+                            if (result.sessionId) {
+                                processManager.attachSdkSessionId(processId, result.sessionId);
+                            }
+                            // Attach session metadata (backend, working directory) for resume functionality
+                            processManager.attachSessionMetadata(processId, 'copilot-sdk', workingDirectory);
+                            // Complete the process
                             processManager.completeProcess(processId, result.response || '');
                         }
                         return {
