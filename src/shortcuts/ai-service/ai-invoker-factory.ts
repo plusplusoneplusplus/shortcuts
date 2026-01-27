@@ -13,6 +13,7 @@
  * 4. Optionally fall back to clipboard on complete failure
  */
 
+import * as vscode from 'vscode';
 import { copyToClipboard, invokeCopilotCLI } from './copilot-cli-invoker';
 import { getCopilotSDKService, AIInvocationResult, approveAllPermissions } from '@plusplusoneplusplus/pipeline-core';
 import { getAIBackendSetting, getSDKLoadMcpConfigSetting } from './ai-config-helpers';
@@ -77,6 +78,13 @@ export interface AIInvokerFactoryOptions {
      * If provided, the invocation will be tracked and visible in the panel.
      */
     processManager?: IAIProcessManager;
+
+    /**
+     * Optional cancellation token for aborting the AI request.
+     * When token is cancelled, the SDK session will be aborted.
+     * Only effective when using SDK backend.
+     */
+    cancellationToken?: vscode.CancellationToken;
 }
 
 /**
@@ -135,7 +143,8 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
         featureName = 'AI',
         clipboardFallback = false,
         approvePermissions = false,
-        processManager
+        processManager,
+        cancellationToken
     } = options;
 
     const backend = getAIBackendSetting();
@@ -170,33 +179,80 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
                     `${featureName}: Using SDK ${usePool ? 'session pool' : 'direct mode'}`
                 );
 
-                const result = await sdkService.sendMessage({
-                    prompt,
-                    model,
-                    workingDirectory,
-                    timeoutMs,
-                    usePool,
-                    loadDefaultMcpConfig: loadMcpConfig,
-                    onPermissionRequest: approvePermissions ? approveAllPermissions : undefined
-                });
-
-                if (result.success) {
-                    // Complete process on success
-                    if (processId && processManager) {
-                        processManager.completeProcess(processId, result.response || '');
-                    }
-                    return {
-                        success: true,
-                        response: result.response,
-                        sessionId: result.sessionId
-                    };
+                // Register cancellation listener if token provided
+                let cancellationDisposable: vscode.Disposable | undefined;
+                let sessionId: string | undefined;
+                let isCancelled = false;
+                
+                if (cancellationToken) {
+                    cancellationDisposable = cancellationToken.onCancellationRequested(async () => {
+                        isCancelled = true;
+                        if (sessionId) {
+                            logger.debug(LogCategory.AI, `${featureName}: Cancellation requested, aborting session ${sessionId}`);
+                            await sdkService.abortSession(sessionId);
+                        }
+                        // Update process status to cancelled
+                        if (processId && processManager) {
+                            processManager.cancelProcess(processId);
+                        }
+                    });
                 }
 
-                // SDK failed, fall back to CLI
-                logger.debug(
-                    LogCategory.AI,
-                    `${featureName}: SDK failed, falling back to CLI: ${result.error}`
-                );
+                try {
+                    // Check if already cancelled before making request
+                    if (cancellationToken?.isCancellationRequested) {
+                        if (processId && processManager) {
+                            processManager.cancelProcess(processId);
+                        }
+                        return {
+                            success: false,
+                            error: 'Cancelled'
+                        };
+                    }
+
+                    const result = await sdkService.sendMessage({
+                        prompt,
+                        model,
+                        workingDirectory,
+                        timeoutMs,
+                        usePool,
+                        loadDefaultMcpConfig: loadMcpConfig,
+                        onPermissionRequest: approvePermissions ? approveAllPermissions : undefined
+                    });
+
+                    // Store session ID for potential cancellation
+                    sessionId = result.sessionId;
+
+                    // Check if cancelled during execution
+                    if (isCancelled || cancellationToken?.isCancellationRequested) {
+                        // Process status already updated by cancellation listener
+                        return {
+                            success: false,
+                            error: 'Cancelled',
+                            sessionId
+                        };
+                    }
+
+                    if (result.success) {
+                        // Complete process on success
+                        if (processId && processManager) {
+                            processManager.completeProcess(processId, result.response || '');
+                        }
+                        return {
+                            success: true,
+                            response: result.response,
+                            sessionId: result.sessionId
+                        };
+                    }
+
+                    // SDK failed, fall back to CLI
+                    logger.debug(
+                        LogCategory.AI,
+                        `${featureName}: SDK failed, falling back to CLI: ${result.error}`
+                    );
+                } finally {
+                    cancellationDisposable?.dispose();
+                }
             } else {
                 logger.debug(
                     LogCategory.AI,

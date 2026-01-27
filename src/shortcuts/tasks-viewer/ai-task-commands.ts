@@ -159,12 +159,14 @@ async function createTaskWithAI(
                     featureName: 'Task Creation',
                     clipboardFallback: false,
                     approvePermissions: true,
-                    processManager
+                    processManager,
+                    cancellationToken: token
                 });
 
                 const result = await aiInvoker(prompt);
 
-                if (token.isCancellationRequested) {
+                if (token.isCancellationRequested || result.error === 'Cancelled') {
+                    vscode.window.showInformationMessage('Task creation cancelled');
                     return;
                 }
 
@@ -338,12 +340,14 @@ async function createTaskFromFeature(
                     featureName: 'Task from Feature',
                     clipboardFallback: false,
                     approvePermissions: true,
-                    processManager
+                    processManager,
+                    cancellationToken: token
                 });
 
                 const result = await aiInvoker(prompt);
 
-                if (token.isCancellationRequested) {
+                if (token.isCancellationRequested || result.error === 'Cancelled') {
+                    vscode.window.showInformationMessage('Task creation cancelled');
                     return;
                 }
 
