@@ -13,7 +13,7 @@ import { TaskManager } from './task-manager';
 import { TasksTreeDataProvider } from './tree-data-provider';
 import { TaskFolderItem } from './task-folder-item';
 import { loadRelatedItems } from './related-items-loader';
-import { createAIInvoker } from '../ai-service';
+import { createAIInvoker, IAIProcessManager } from '../ai-service';
 import { getAIBackendSetting } from '../ai-service/ai-config-helpers';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 
@@ -53,7 +53,8 @@ const DEFAULT_TASK_CONTENT = `# {{TITLE}}
 export function registerTasksAICommands(
     context: vscode.ExtensionContext,
     taskManager: TaskManager,
-    treeDataProvider: TasksTreeDataProvider
+    treeDataProvider: TasksTreeDataProvider,
+    aiProcessManager?: IAIProcessManager
 ): vscode.Disposable[] {
     const disposables: vscode.Disposable[] = [];
 
@@ -62,7 +63,7 @@ export function registerTasksAICommands(
         vscode.commands.registerCommand(
             'tasksViewer.createWithAI',
             async (item?: TaskFolderItem) => {
-                await createTaskWithAI(taskManager, treeDataProvider, item);
+                await createTaskWithAI(taskManager, treeDataProvider, item, aiProcessManager);
             }
         )
     );
@@ -72,7 +73,7 @@ export function registerTasksAICommands(
         vscode.commands.registerCommand(
             'tasksViewer.createFromFeature',
             async (item?: TaskFolderItem) => {
-                await createTaskFromFeature(taskManager, treeDataProvider, item);
+                await createTaskFromFeature(taskManager, treeDataProvider, item, aiProcessManager);
             }
         )
     );
@@ -86,7 +87,8 @@ export function registerTasksAICommands(
 async function createTaskWithAI(
     taskManager: TaskManager,
     treeDataProvider: TasksTreeDataProvider,
-    folderItem?: TaskFolderItem
+    folderItem?: TaskFolderItem,
+    processManager?: IAIProcessManager
 ): Promise<void> {
     // Check if AI service is available
     const backend = getAIBackendSetting();
@@ -138,16 +140,25 @@ async function createTaskWithAI(
         },
         async (progress, token) => {
             try {
-                progress.report({ message: 'Generating task content...' });
+                progress.report({ message: 'Creating task with AI...' });
 
-                const prompt = buildCreateTaskPrompt(description);
+                // Compute target folder path
+                const targetFolderPath = folderItem instanceof TaskFolderItem 
+                    ? folderItem.folder.folderPath 
+                    : taskManager.getTasksFolder();
+                
+                taskManager.ensureFoldersExist();
+                
+                const prompt = buildCreateTaskPrompt(description, targetFolderPath);
                 const workingDirectory = taskManager.getWorkspaceRoot();
                 
                 const aiInvoker = createAIInvoker({
                     usePool: false,
                     workingDirectory,
                     featureName: 'Task Creation',
-                    clipboardFallback: false
+                    clipboardFallback: false,
+                    approvePermissions: true,
+                    processManager
                 });
 
                 const result = await aiInvoker(prompt);
@@ -156,39 +167,23 @@ async function createTaskWithAI(
                     return;
                 }
 
-                if (!result.success || !result.response) {
-                    throw new Error(result.error || 'Failed to generate task content');
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to create task');
                 }
 
-                // Parse and create the task file
-                const taskContent = cleanAIResponse(result.response);
-                const taskTitle = extractTitleFromContent(taskContent) || sanitizeTitle(description);
-                
-                progress.report({ message: 'Creating task file...' });
-
-                // Safely get folder path - only access folder if folderItem is a TaskFolderItem
-                const targetFolderPath = folderItem instanceof TaskFolderItem 
-                    ? folderItem.folder.folderPath 
-                    : undefined;
-
-                const filePath = await createTaskFile(
-                    taskManager,
-                    taskTitle,
-                    taskContent,
-                    'feature',
-                    targetFolderPath
-                );
-
                 treeDataProvider.refresh();
-
-                // Open the new task
-                await vscode.commands.executeCommand(
-                    'vscode.openWith',
-                    vscode.Uri.file(filePath),
-                    'reviewEditorView'
-                );
-
-                vscode.window.showInformationMessage(`Task "${taskTitle}" created`);
+                
+                // Parse file path from AI response and open it
+                const createdFile = parseCreatedFilePath(result.response, targetFolderPath);
+                if (createdFile && fs.existsSync(createdFile)) {
+                    await vscode.commands.executeCommand(
+                        'vscode.openWith',
+                        vscode.Uri.file(createdFile),
+                        'reviewEditorView'
+                    );
+                }
+                
+                vscode.window.showInformationMessage('Task created');
 
             } catch (error) {
                 const err = error instanceof Error ? error : new Error(String(error));
@@ -217,7 +212,8 @@ async function createTaskWithAI(
 async function createTaskFromFeature(
     taskManager: TaskManager,
     treeDataProvider: TasksTreeDataProvider,
-    folderItem?: TaskFolderItem
+    folderItem?: TaskFolderItem,
+    processManager?: IAIProcessManager
 ): Promise<void> {
     // Determine the feature folder
     let folderPath: string;
@@ -321,16 +317,18 @@ async function createTaskFromFeature(
         },
         async (progress, token) => {
             try {
-                progress.report({ message: 'Analyzing context...' });
+                progress.report({ message: 'Creating task with AI...' });
 
-                const prompt = buildCreateFromFeaturePrompt(selectedContext, focus);
+                const prompt = buildCreateFromFeaturePrompt(selectedContext, focus, folderPath);
                 const workingDirectory = taskManager.getWorkspaceRoot();
 
                 const aiInvoker = createAIInvoker({
                     usePool: false,
                     workingDirectory,
                     featureName: 'Task from Feature',
-                    clipboardFallback: false
+                    clipboardFallback: false,
+                    approvePermissions: true,
+                    processManager
                 });
 
                 const result = await aiInvoker(prompt);
@@ -339,34 +337,23 @@ async function createTaskFromFeature(
                     return;
                 }
 
-                if (!result.success || !result.response) {
-                    throw new Error(result.error || 'Failed to generate task content');
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to create task');
                 }
 
-                const taskContent = cleanAIResponse(result.response);
-                const taskTitle = extractTitleFromContent(taskContent) || `${folderName}-plan`;
-
-                progress.report({ message: 'Creating task file...' });
-
-                // Create as .plan.md in the feature folder
-                const fileName = `${taskManager.sanitizeFileName(taskTitle)}.plan.md`;
-                const filePath = path.join(folderPath, fileName);
-
-                // Check for duplicates
-                if (fs.existsSync(filePath)) {
-                    const timestamp = Date.now();
-                    const altFileName = `${taskManager.sanitizeFileName(taskTitle)}-${timestamp}.plan.md`;
-                    const altFilePath = path.join(folderPath, altFileName);
-                    await writeTaskFile(altFilePath, taskContent, 'feature');
-                    treeDataProvider.refresh();
-                    await openTaskFile(altFilePath);
-                    vscode.window.showInformationMessage(`Task "${taskTitle}" created`);
-                } else {
-                    await writeTaskFile(filePath, taskContent, 'feature');
-                    treeDataProvider.refresh();
-                    await openTaskFile(filePath);
-                    vscode.window.showInformationMessage(`Task "${taskTitle}" created`);
+                treeDataProvider.refresh();
+                
+                // Parse file path from AI response and open it
+                const createdFile = parseCreatedFilePath(result.response, folderPath);
+                if (createdFile && fs.existsSync(createdFile)) {
+                    await vscode.commands.executeCommand(
+                        'vscode.openWith',
+                        vscode.Uri.file(createdFile),
+                        'reviewEditorView'
+                    );
                 }
+                
+                vscode.window.showInformationMessage('Task created');
 
             } catch (error) {
                 const err = error instanceof Error ? error : new Error(String(error));
@@ -539,29 +526,51 @@ async function selectFeatureContext(context: FeatureContext): Promise<SelectedCo
 }
 
 /**
+ * Parse created file path from AI response
+ * Looks for markdown file paths in the response text
+ */
+function parseCreatedFilePath(response: string | undefined, targetFolder: string): string | undefined {
+    if (!response) {
+        return undefined;
+    }
+    
+    // Look for file paths ending in .md
+    // Common patterns: "Created file: /path/to/file.md", "I've created /path/file.md", etc.
+    const patterns = [
+        // Absolute paths
+        /(?:created|wrote|saved|generated)[^`\n]*?([\/\\][^\s`"']+\.md)/gi,
+        // Paths in backticks
+        /`([^`]+\.md)`/g,
+        // Any .md path that includes the target folder
+        new RegExp(`(${targetFolder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\s\`"']+\\.md)`, 'gi')
+    ];
+    
+    for (const pattern of patterns) {
+        const matches = response.matchAll(pattern);
+        for (const match of matches) {
+            const filePath = match[1];
+            if (filePath && fs.existsSync(filePath)) {
+                return filePath;
+            }
+        }
+    }
+    
+    return undefined;
+}
+
+/**
  * Build prompt for creating a task from scratch
  */
-function buildCreateTaskPrompt(description: string): string {
-    return `You are a technical project manager. Create a task document based on this description:
+function buildCreateTaskPrompt(description: string, targetPath: string): string {
+    return `Can you draft a plan given User's ask: ${description}
 
-${description}
-
-Generate a markdown task document with the following structure:
-1. Title (H1 heading) - concise, action-oriented
-2. Description section (H2) - explain what needs to be done
-3. Acceptance Criteria section (H2) - checkbox list of measurable criteria
-4. Subtasks section (H2) - checkbox list of implementation steps (if applicable)
-5. Notes section (H2) - any additional context or considerations
-
-Keep the content focused and actionable. Use clear, technical language.
-
-Return ONLY the markdown content. Do not wrap in code fences.`;
+Create a single markdown file under ${targetPath}`;
 }
 
 /**
  * Build prompt for creating a task from feature context
  */
-function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string): string {
+function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string, targetPath: string): string {
     let contextText = '';
 
     if (context.description) {
@@ -587,23 +596,12 @@ function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string): 
         contextText += `Related Source Files:\n${context.relatedFiles.slice(0, 20).join('\n')}\n\n`;
     }
 
-    return `You are a technical project manager. Create a task document for implementing a feature.
+    return `Can you draft a plan given User's ask: ${focus || 'Create an implementation task'}
 
-Feature Context:
+Context:
 ${contextText}
 
-${focus ? `Focus: ${focus}` : 'Create a general implementation task.'}
-
-Generate a markdown task document with the following structure:
-1. Title (H1 heading) - concise, action-oriented
-2. Description section (H2) - explain what needs to be done, referencing the context
-3. Acceptance Criteria section (H2) - checkbox list of measurable criteria
-4. Subtasks section (H2) - checkbox list of implementation steps
-5. Notes section (H2) - any additional context or considerations
-
-Keep the content focused and actionable. Use clear, technical language.
-
-Return ONLY the markdown content. Do not wrap in code fences.`;
+Put it under ${targetPath}`;
 }
 
 /**

@@ -14,9 +14,10 @@
  */
 
 import { copyToClipboard, invokeCopilotCLI } from './copilot-cli-invoker';
-import { getCopilotSDKService, AIInvocationResult } from '@plusplusoneplusplus/pipeline-core';
+import { getCopilotSDKService, AIInvocationResult, approveAllPermissions } from '@plusplusoneplusplus/pipeline-core';
 import { getAIBackendSetting, getSDKLoadMcpConfigSetting } from './ai-config-helpers';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
+import { IAIProcessManager } from './types';
 
 /**
  * Options for creating an AI invoker
@@ -63,6 +64,19 @@ export interface AIInvokerFactoryOptions {
      * @default false
      */
     clipboardFallback?: boolean;
+
+    /**
+     * Whether to approve all permission requests (file writes, shell commands, etc.).
+     * Use with caution - this allows the AI to modify files and execute commands.
+     * @default false
+     */
+    approvePermissions?: boolean;
+
+    /**
+     * Process manager for tracking AI processes in the AI Processes panel.
+     * If provided, the invocation will be tracked and visible in the panel.
+     */
+    processManager?: IAIProcessManager;
 }
 
 /**
@@ -119,7 +133,9 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
         model: defaultModel,
         timeoutMs,
         featureName = 'AI',
-        clipboardFallback = false
+        clipboardFallback = false,
+        approvePermissions = false,
+        processManager
     } = options;
 
     const backend = getAIBackendSetting();
@@ -128,6 +144,20 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
 
     return async (prompt: string, invokeOptions?: { model?: string }): Promise<AIInvokerResult> => {
         const model = invokeOptions?.model || defaultModel;
+        
+        // Register process if manager provided
+        let processId: string | undefined;
+        if (processManager) {
+            processId = processManager.registerTypedProcess(prompt, {
+                type: 'generic',
+                metadata: {
+                    type: 'generic',
+                    feature: featureName,
+                    backend,
+                    model
+                }
+            });
+        }
 
         // Try SDK if configured
         if (backend === 'copilot-sdk') {
@@ -146,10 +176,15 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
                     workingDirectory,
                     timeoutMs,
                     usePool,
-                    loadDefaultMcpConfig: loadMcpConfig
+                    loadDefaultMcpConfig: loadMcpConfig,
+                    onPermissionRequest: approvePermissions ? approveAllPermissions : undefined
                 });
 
                 if (result.success) {
+                    // Complete process on success
+                    if (processId && processManager) {
+                        processManager.completeProcess(processId, result.response || '');
+                    }
                     return {
                         success: true,
                         response: result.response,
@@ -172,6 +207,9 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
 
         // Handle clipboard-only backend
         if (backend === 'clipboard') {
+            if (processId && processManager) {
+                processManager.failProcess(processId, 'Using clipboard mode');
+            }
             await copyToClipboard(prompt);
             return {
                 success: false,
@@ -185,17 +223,23 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
         const result = await invokeCopilotCLI(
             prompt,
             workingDirectory,
-            undefined, // No process manager - handled by caller if needed
+            undefined, // Process tracking handled here, not in CLI
             undefined,
             model
         );
 
         if (result.success) {
+            if (processId && processManager) {
+                processManager.completeProcess(processId, result.response || '');
+            }
             return result;
         }
 
         // CLI failed - optionally fall back to clipboard
         if (clipboardFallback) {
+            if (processId && processManager) {
+                processManager.failProcess(processId, result.error || 'CLI request failed');
+            }
             await copyToClipboard(prompt);
             return {
                 success: false,
@@ -203,6 +247,10 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
             };
         }
 
+        // Final failure
+        if (processId && processManager) {
+            processManager.failProcess(processId, result.error || 'Request failed');
+        }
         return result;
     };
 }

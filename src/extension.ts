@@ -2768,7 +2768,8 @@ export async function activate(context: vscode.ExtensionContext) {
             const tasksAIDisposables = registerTasksAICommands(
                 context,
                 taskManager,
-                tasksTreeDataProvider
+                tasksTreeDataProvider,
+                aiProcessManager
             );
             disposables.push(...tasksAIDisposables);
         }
