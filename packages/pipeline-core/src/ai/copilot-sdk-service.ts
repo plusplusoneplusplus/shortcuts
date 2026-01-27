@@ -20,21 +20,78 @@ import { AIInvocationResult } from './types';
 import { getLogger, LogCategory } from '../logger';
 // Note: SessionPool is kept for backward compatibility but not used for clarification requests
 import { SessionPool, IPoolableSession, SessionPoolStats } from './session-pool';
+import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
 
 /**
- * MCP (Model Context Protocol) server configuration.
- * Allows configuring custom MCP servers for a session.
+ * Base configuration for MCP (Model Context Protocol) servers.
+ * Contains common fields shared by all server types.
  */
-export interface MCPServerConfig {
+export interface MCPServerConfigBase {
+    /** List of tools to enable from this server. Use ["*"] for all tools. */
+    tools?: string[];
+    /** Server type: "local" | "stdio" | "http" | "sse" */
+    type?: 'local' | 'stdio' | 'http' | 'sse';
+    /** Optional timeout in milliseconds */
+    timeout?: number;
+    /** Whether the server is enabled */
+    enabled?: boolean;
+}
+
+/**
+ * Configuration for local/stdio MCP servers.
+ * These servers are spawned as child processes.
+ */
+export interface MCPLocalServerConfig extends MCPServerConfigBase {
+    /** Server type: "local" or "stdio" (default if not specified) */
+    type?: 'local' | 'stdio';
     /** Server command or executable path */
-    command?: string;
+    command: string;
     /** Arguments to pass to the server */
     args?: string[];
     /** Environment variables for the server */
     env?: Record<string, string>;
-    /** Whether the server is enabled */
-    enabled?: boolean;
+    /** Working directory for the server process */
+    cwd?: string;
 }
+
+/**
+ * Configuration for remote MCP servers (HTTP or SSE).
+ * These servers are accessed over the network.
+ */
+export interface MCPRemoteServerConfig extends MCPServerConfigBase {
+    /** Server type: "http" or "sse" */
+    type: 'http' | 'sse';
+    /** URL of the remote server */
+    url: string;
+    /** Optional HTTP headers for authentication or other purposes */
+    headers?: Record<string, string>;
+}
+
+/**
+ * MCP (Model Context Protocol) server configuration.
+ * Supports both local (command-based) and remote (HTTP/SSE) servers.
+ * 
+ * @example Local server
+ * ```typescript
+ * const localServer: MCPServerConfig = {
+ *     type: 'local',
+ *     command: 'my-mcp-server',
+ *     args: ['--port', '8080'],
+ *     tools: ['*']
+ * };
+ * ```
+ * 
+ * @example Remote SSE server
+ * ```typescript
+ * const remoteServer: MCPServerConfig = {
+ *     type: 'sse',
+ *     url: 'http://localhost:8000/sse',
+ *     headers: { 'Authorization': 'Bearer token' },
+ *     tools: ['*']
+ * };
+ * ```
+ */
+export type MCPServerConfig = MCPLocalServerConfig | MCPRemoteServerConfig;
 
 /**
  * Options for controlling MCP tools at the session level.
@@ -131,6 +188,18 @@ export interface SendMessageOptions {
      * @example { 'my-server': { command: 'my-mcp-server', args: ['--port', '8080'] } }
      */
     mcpServers?: Record<string, MCPServerConfig>;
+
+    /**
+     * Whether to automatically load MCP server configuration from ~/.copilot/mcp-config.json.
+     * When enabled, the default config is loaded and merged with any explicit mcpServers option.
+     * Explicit mcpServers take precedence over the default config.
+     * 
+     * Note: Only applies to direct sessions (usePool: false).
+     * Session pool sessions do not load default MCP config.
+     * 
+     * @default true
+     */
+    loadDefaultMcpConfig?: boolean;
 
     /**
      * Handler for permission requests from the Copilot CLI.
@@ -625,8 +694,39 @@ export class CopilotSDKService {
             if (options.excludedTools) {
                 sessionOptions.excludedTools = options.excludedTools;
             }
-            if (options.mcpServers !== undefined) {
-                sessionOptions.mcpServers = options.mcpServers;
+
+            // Load and merge MCP server configurations
+            // Default is to load from ~/.copilot/mcp-config.json unless explicitly disabled
+            const shouldLoadDefaultMcp = options.loadDefaultMcpConfig !== false;
+            if (shouldLoadDefaultMcp || options.mcpServers !== undefined) {
+                let finalMcpServers: Record<string, MCPServerConfig> | undefined;
+
+                if (shouldLoadDefaultMcp) {
+                    // Load default config from ~/.copilot/mcp-config.json
+                    const defaultConfig = loadDefaultMcpConfig();
+                    logger.debug(LogCategory.AI, `CopilotSDKService: Default MCP config load result: success=${defaultConfig.success}, fileExists=${defaultConfig.fileExists}, serverCount=${Object.keys(defaultConfig.mcpServers).length}`);
+                    if (defaultConfig.error) {
+                        logger.debug(LogCategory.AI, `CopilotSDKService: Default MCP config error: ${defaultConfig.error}`);
+                    }
+                    if (defaultConfig.success && Object.keys(defaultConfig.mcpServers).length > 0) {
+                        logger.debug(LogCategory.AI, `CopilotSDKService: Loaded ${Object.keys(defaultConfig.mcpServers).length} default MCP server(s): ${JSON.stringify(defaultConfig.mcpServers)}`);
+                    }
+                    // Merge with explicit config (explicit takes precedence)
+                    finalMcpServers = mergeMcpConfigs(defaultConfig.mcpServers, options.mcpServers);
+                } else if (options.mcpServers !== undefined) {
+                    // Only use explicit config
+                    finalMcpServers = options.mcpServers;
+                }
+
+                if (finalMcpServers && Object.keys(finalMcpServers).length > 0) {
+                    sessionOptions.mcpServers = finalMcpServers;
+                    logger.debug(LogCategory.AI, `CopilotSDKService: Using ${Object.keys(finalMcpServers).length} MCP server(s): ${Object.keys(finalMcpServers).join(', ')}`);
+                    logger.debug(LogCategory.AI, `CopilotSDKService: MCP servers config: ${JSON.stringify(finalMcpServers)}`);
+                } else if (options.mcpServers !== undefined && Object.keys(options.mcpServers).length === 0) {
+                    // Explicit empty object means disable all MCP servers
+                    sessionOptions.mcpServers = {};
+                    logger.debug(LogCategory.AI, 'CopilotSDKService: MCP servers explicitly disabled');
+                }
             }
 
             // Permission handler

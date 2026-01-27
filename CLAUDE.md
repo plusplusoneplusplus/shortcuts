@@ -167,6 +167,67 @@ const result = await service.sendMessage({
 });
 ```
 
+**Default MCP Config Loading**
+
+The SDK service automatically loads MCP server configuration from `~/.copilot/mcp-config.json` when creating direct sessions. This provides a convenient way to configure MCP servers once and have them available across all workspaces.
+
+**Config File Format:**
+```json
+{
+    "mcpServers": {
+        "mcp-server": {
+            "type": "sse",
+            "url": "http://0.0.0.0:8000/sse",
+            "headers": {},
+            "tools": ["*"]
+        },
+        "local-server": {
+            "type": "local",
+            "command": "my-mcp-server",
+            "args": ["--port", "8080"],
+            "tools": ["*"]
+        }
+    }
+}
+```
+
+**MCP Server Types:**
+- **Local/Stdio servers**: Spawned as child processes with `command`, `args`, `env`, and `cwd` options
+- **Remote servers (HTTP/SSE)**: Accessed over the network with `url` and optional `headers`
+
+**Behavior:**
+- Default config is loaded automatically unless `loadDefaultMcpConfig: false` is passed
+- Explicit `mcpServers` option takes precedence over default config (merged)
+- Pass `mcpServers: {}` to explicitly disable all MCP servers
+- Only applies to direct sessions (`usePool: false`), not session pool
+
+**Example:**
+```typescript
+// Use default MCP config from ~/.copilot/mcp-config.json
+const result = await service.sendMessage({
+    prompt: 'Use MCP tools',
+    // loadDefaultMcpConfig defaults to true
+});
+
+// Disable default MCP config loading
+const result = await service.sendMessage({
+    prompt: 'No MCP servers',
+    loadDefaultMcpConfig: false
+});
+
+// Override specific servers (merged with defaults)
+const result = await service.sendMessage({
+    prompt: 'Custom server',
+    mcpServers: {
+        'custom-server': {
+            type: 'http',
+            url: 'http://localhost:9000',
+            tools: ['*']
+        }
+    }
+});
+```
+
 **Code Review (`src/shortcuts/code-review/`)**
 - `CodeReviewService` - Orchestrates code review against custom rules
 - `RulesLoader` - Loads markdown rule files from `.github/cr-rules/`

@@ -190,6 +190,9 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
+    MCPServerConfigBase,
+    MCPLocalServerConfig,
+    MCPRemoteServerConfig,
     MCPServerConfig,
     MCPControlOptions,
     SendMessageOptions,
@@ -201,7 +204,19 @@ export {
     SessionPoolConfig,
     DEFAULT_SESSION_POOL_CONFIG,
     approveAllPermissions,
-    denyAllPermissions
+    denyAllPermissions,
+    // MCP Config Loader
+    MCPConfigFile,
+    MCPConfigLoadResult,
+    getHomeDirectory,
+    getMcpConfigPath,
+    loadDefaultMcpConfig,
+    loadDefaultMcpConfigAsync,
+    mergeMcpConfigs,
+    clearMcpConfigCache,
+    mcpConfigExists,
+    getCachedMcpConfig,
+    setHomeDirectoryOverride
 } from './ai';
 
 // ============================================================================

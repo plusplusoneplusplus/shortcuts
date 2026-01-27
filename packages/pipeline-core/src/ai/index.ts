@@ -92,6 +92,9 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
+    MCPServerConfigBase,
+    MCPLocalServerConfig,
+    MCPRemoteServerConfig,
     MCPServerConfig,
     MCPControlOptions,
     SendMessageOptions,
@@ -105,3 +108,18 @@ export {
     approveAllPermissions,
     denyAllPermissions
 } from './copilot-sdk-service';
+
+// MCP Config Loader
+export {
+    MCPConfigFile,
+    MCPConfigLoadResult,
+    getHomeDirectory,
+    getMcpConfigPath,
+    loadDefaultMcpConfig,
+    loadDefaultMcpConfigAsync,
+    mergeMcpConfigs,
+    clearMcpConfigCache,
+    mcpConfigExists,
+    getCachedMcpConfig,
+    setHomeDirectoryOverride
+} from './mcp-config-loader';
