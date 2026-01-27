@@ -16,6 +16,7 @@ import { loadRelatedItems } from './related-items-loader';
 import { createAIInvoker, IAIProcessManager } from '../ai-service';
 import { getAIBackendSetting } from '../ai-service/ai-config-helpers';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
+import { skillExists } from '@plusplusoneplusplus/pipeline-core';
 
 const logger = getExtensionLogger();
 
@@ -308,19 +309,28 @@ async function createTaskFromFeature(
         return; // User cancelled
     }
 
-    // Step 3: Generate task with AI
+    // Step 3: Select creation mode (Simple vs Deep)
+    const workspaceRoot = taskManager.getWorkspaceRoot();
+    const mode = await selectCreationMode(workspaceRoot);
+    if (!mode) {
+        return; // User cancelled
+    }
+
+    // Step 4: Generate task with AI
     await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
-            title: `Creating task for "${folderName}"...`,
+            title: `Creating task for "${folderName}" (${mode.label})...`,
             cancellable: true
         },
         async (progress, token) => {
             try {
-                progress.report({ message: 'Creating task with AI...' });
+                progress.report({ message: `Creating task with AI (${mode.label} mode)...` });
 
-                const prompt = buildCreateFromFeaturePrompt(selectedContext, focus, folderPath);
-                const workingDirectory = taskManager.getWorkspaceRoot();
+                const prompt = mode.id === 'deep'
+                    ? await buildDeepModePrompt(selectedContext, focus, folderPath, workspaceRoot)
+                    : buildCreateFromFeaturePrompt(selectedContext, focus, folderPath);
+                const workingDirectory = workspaceRoot;
 
                 const aiInvoker = createAIInvoker({
                     usePool: false,
@@ -394,6 +404,79 @@ interface SelectedContext {
     planContent?: string;
     specContent?: string;
     relatedFiles?: string[];
+}
+
+/** Creation mode for task generation */
+type CreationMode = 'simple' | 'deep';
+
+/** Mode selection result */
+interface ModeSelection {
+    id: CreationMode;
+    label: string;
+}
+
+/**
+ * Show mode selection QuickPick for task creation
+ * Always shows both options, but indicates if Deep mode is unavailable
+ */
+async function selectCreationMode(workspaceRoot: string): Promise<ModeSelection | undefined> {
+    const hasDeepSkill = skillExists('go-deep', workspaceRoot);
+    
+    const items: vscode.QuickPickItem[] = [
+        {
+            label: '$(zap) Simple',
+            description: 'Quick, single-pass AI analysis',
+            detail: 'Fast task creation with basic AI analysis'
+        },
+        {
+            label: '$(telescope) Deep',
+            description: hasDeepSkill 
+                ? 'Multi-phase research using go-deep skill'
+                : '(go-deep skill not found)',
+            detail: hasDeepSkill
+                ? 'Comprehensive analysis with exploration, deep-dive, and synthesis phases'
+                : 'Add .github/skills/go-deep/prompt.md to enable'
+        }
+    ];
+    
+    const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select task creation mode',
+        title: 'Task Creation Mode'
+    });
+    
+    if (!selected) {
+        return undefined;
+    }
+    
+    const isDeep = selected.label.includes('Deep');
+    
+    // If Deep selected but skill not available, warn and fall back to Simple
+    if (isDeep && !hasDeepSkill) {
+        vscode.window.showWarningMessage('go-deep skill not found. Using Simple mode.');
+        return { id: 'simple', label: 'Simple' };
+    }
+    
+    return {
+        id: isDeep ? 'deep' : 'simple',
+        label: isDeep ? 'Deep' : 'Simple'
+    };
+}
+
+/**
+ * Build prompt for deep mode task creation
+ * Simply adds instruction to use go-deep skill
+ */
+async function buildDeepModePrompt(
+    context: SelectedContext,
+    focus: string,
+    targetPath: string,
+    _workspaceRoot: string
+): Promise<string> {
+    // Build the base prompt (same as simple mode)
+    const basePrompt = buildCreateFromFeaturePrompt(context, focus, targetPath);
+    
+    // Prepend instruction to use go-deep skill
+    return `Use go-deep skill when available.\n\n${basePrompt}`;
 }
 
 /**
@@ -789,3 +872,22 @@ async function createEmptyTaskInFolder(
         vscode.window.showErrorMessage(`Failed to create task: ${err.message}`);
     }
 }
+
+// ============================================================================
+// Exports for Testing
+// ============================================================================
+
+export { CreationMode, ModeSelection, SelectedContext };
+
+/**
+ * Check if deep mode is available (go-deep skill exists)
+ * Exported for testing
+ */
+export function isDeepModeAvailable(workspaceRoot: string): boolean {
+    return skillExists('go-deep', workspaceRoot);
+}
+
+/**
+ * Build deep mode prompt - exported for testing
+ */
+export { buildDeepModePrompt };
