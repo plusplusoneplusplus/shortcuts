@@ -198,6 +198,124 @@ suite('Tasks Viewer Tests', () => {
             });
         });
 
+        suite('Subfolder Creation', () => {
+            test('should create a new subfolder inside feature folder', async () => {
+                const featurePath = await taskManager.createFeature('Parent Feature');
+                const subfolderPath = await taskManager.createSubfolder(featurePath, 'Child Folder');
+
+                assert.ok(fs.existsSync(subfolderPath), 'Subfolder should exist');
+                assert.ok(fs.statSync(subfolderPath).isDirectory(), 'Subfolder should be a directory');
+            });
+
+            test('should sanitize subfolder name', async () => {
+                const featurePath = await taskManager.createFeature('Parent Feature');
+                const subfolderPath = await taskManager.createSubfolder(featurePath, 'Sub: With <Special> Chars!');
+                const folderName = path.basename(subfolderPath);
+
+                assert.ok(fs.existsSync(subfolderPath));
+                assert.ok(!folderName.includes(':'), 'Folder name should not contain colon');
+                assert.ok(!folderName.includes('<'), 'Folder name should not contain <');
+                assert.ok(!folderName.includes('>'), 'Folder name should not contain >');
+            });
+
+            test('should throw error if subfolder already exists', async () => {
+                const featurePath = await taskManager.createFeature('Parent Feature');
+                await taskManager.createSubfolder(featurePath, 'Duplicate Sub');
+
+                await assert.rejects(
+                    async () => await taskManager.createSubfolder(featurePath, 'Duplicate Sub'),
+                    /already exists/i
+                );
+            });
+
+            test('should throw error if parent folder does not exist', async () => {
+                const nonExistentPath = path.join(tempDir, 'non-existent-folder');
+
+                await assert.rejects(
+                    async () => await taskManager.createSubfolder(nonExistentPath, 'Child'),
+                    /Parent folder not found/i
+                );
+            });
+
+            test('should create subfolder with spaces in name', async () => {
+                const featurePath = await taskManager.createFeature('Parent Feature');
+                const subfolderPath = await taskManager.createSubfolder(featurePath, 'Subfolder With Spaces');
+
+                assert.ok(fs.existsSync(subfolderPath));
+                assert.ok(fs.statSync(subfolderPath).isDirectory());
+            });
+
+            test('should create subfolder inside parent feature folder', async () => {
+                const featurePath = await taskManager.createFeature('Parent Feature');
+                const subfolderPath = await taskManager.createSubfolder(featurePath, 'My Sub');
+
+                assert.ok(subfolderPath.startsWith(featurePath), 'Subfolder should be inside parent folder');
+            });
+
+            test('should create meta.md file in subfolder', async () => {
+                const featurePath = await taskManager.createFeature('Parent Feature');
+                const subfolderPath = await taskManager.createSubfolder(featurePath, 'My Sub');
+                const metaFilePath = path.join(subfolderPath, 'meta.md');
+
+                assert.ok(fs.existsSync(metaFilePath), 'meta.md should exist in subfolder');
+
+                const content = fs.readFileSync(metaFilePath, 'utf8');
+                assert.strictEqual(content, '', 'meta.md should be empty initially');
+            });
+
+            test('should make subfolder visible in task tree after creation', async () => {
+                const featurePath = await taskManager.createFeature('Parent Feature');
+                await taskManager.createSubfolder(featurePath, 'Test Sub');
+
+                // The meta.md file should make the subfolder visible
+                const tasks = await taskManager.getTasks();
+                // Subfolder path should be Parent-Feature/Test-Sub
+                const subfolderTask = tasks.find(t => t.relativePath === path.join('Parent-Feature', 'Test-Sub'));
+                assert.ok(subfolderTask, 'Subfolder should be visible with meta.md file');
+                assert.strictEqual(subfolderTask.name, 'meta', 'meta.md should be found');
+            });
+
+            test('should support arbitrary nesting depth', async () => {
+                const featurePath = await taskManager.createFeature('Level1');
+                const level2Path = await taskManager.createSubfolder(featurePath, 'Level2');
+                const level3Path = await taskManager.createSubfolder(level2Path, 'Level3');
+                const level4Path = await taskManager.createSubfolder(level3Path, 'Level4');
+
+                assert.ok(fs.existsSync(level4Path), 'Deeply nested folder should exist');
+
+                // Verify all meta.md files exist
+                assert.ok(fs.existsSync(path.join(featurePath, 'meta.md')));
+                assert.ok(fs.existsSync(path.join(level2Path, 'meta.md')));
+                assert.ok(fs.existsSync(path.join(level3Path, 'meta.md')));
+                assert.ok(fs.existsSync(path.join(level4Path, 'meta.md')));
+
+                // Verify deeply nested folder is visible in task tree
+                const tasks = await taskManager.getTasks();
+                const deepTask = tasks.find(t => 
+                    t.relativePath === path.join('Level1', 'Level2', 'Level3', 'Level4')
+                );
+                assert.ok(deepTask, 'Deeply nested subfolder should be visible');
+            });
+
+            test('should allow creating tasks inside subfolder', async () => {
+                const featurePath = await taskManager.createFeature('Parent Feature');
+                const subfolderPath = await taskManager.createSubfolder(featurePath, 'Test Sub');
+
+                // Create a task file inside the subfolder
+                const taskFile = path.join(subfolderPath, 'task-in-sub.md');
+                fs.writeFileSync(taskFile, '# Task in Subfolder');
+
+                assert.ok(fs.existsSync(taskFile));
+
+                // The task should be visible in getTasks (with relativePath)
+                const tasks = await taskManager.getTasks();
+                const subTask = tasks.find(t => 
+                    t.relativePath === path.join('Parent-Feature', 'Test-Sub') && t.name === 'task-in-sub'
+                );
+                assert.ok(subTask, 'Task in subfolder should be found');
+            });
+        });
+
         suite('Task Reading', () => {
             test('should return empty array when no tasks exist', async () => {
                 taskManager.ensureFoldersExist();

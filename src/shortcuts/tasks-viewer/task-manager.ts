@@ -166,6 +166,33 @@ export class TaskManager implements vscode.Disposable {
     }
 
     /**
+     * Create a new subfolder inside an existing folder
+     * @param parentFolderPath - Absolute path to the parent folder
+     * @param name - Name of the subfolder to create
+     * @returns The path to the created subfolder
+     */
+    async createSubfolder(parentFolderPath: string, name: string): Promise<string> {
+        if (!safeExists(parentFolderPath)) {
+            throw new Error(`Parent folder not found: ${parentFolderPath}`);
+        }
+
+        const sanitizedName = this.sanitizeFileName(name);
+        const subfolderPath = path.join(parentFolderPath, sanitizedName);
+
+        if (safeExists(subfolderPath)) {
+            throw new Error(`Subfolder "${name}" already exists`);
+        }
+
+        ensureDirectoryExists(subfolderPath);
+
+        // Create meta.md file so the subfolder appears in the tree view
+        const metaFilePath = path.join(subfolderPath, 'meta.md');
+        safeWriteFile(metaFilePath, '');
+
+        return subfolderPath;
+    }
+
+    /**
      * Rename a task file
      * @returns The new file path
      */

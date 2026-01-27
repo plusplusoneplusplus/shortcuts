@@ -4,6 +4,7 @@ import { TasksTreeDataProvider } from './tree-data-provider';
 import { TaskItem } from './task-item';
 import { TaskDocumentItem } from './task-document-item';
 import { TaskDocumentGroupItem } from './task-document-group-item';
+import { TaskFolderItem } from './task-folder-item';
 
 /**
  * Command handlers for the Tasks Viewer
@@ -32,6 +33,7 @@ export class TasksCommands {
         disposables.push(
             vscode.commands.registerCommand('tasksViewer.create', () => this.createTask()),
             vscode.commands.registerCommand('tasksViewer.createFeature', () => this.createFeature()),
+            vscode.commands.registerCommand('tasksViewer.createSubfolder', (item: TaskFolderItem) => this.createSubfolder(item)),
             vscode.commands.registerCommand('tasksViewer.rename', (item: TaskItem) => this.renameTask(item)),
             vscode.commands.registerCommand('tasksViewer.delete', (item: TaskItem) => this.deleteTask(item)),
             vscode.commands.registerCommand('tasksViewer.archive', (item: TaskItem) => this.archiveTask(item)),
@@ -111,6 +113,41 @@ export class TasksCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to create feature: ${err.message}`);
+        }
+    }
+
+    /**
+     * Create a new subfolder inside an existing folder
+     */
+    private async createSubfolder(item: TaskFolderItem): Promise<void> {
+        if (!item || !item.folder) {
+            return;
+        }
+
+        const name = await vscode.window.showInputBox({
+            prompt: 'Enter subfolder name',
+            placeHolder: 'my-subfolder',
+            validateInput: (value) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Subfolder name cannot be empty';
+                }
+                if (value.includes('/') || value.includes('\\')) {
+                    return 'Subfolder name cannot contain path separators';
+                }
+                return null;
+            }
+        });
+
+        if (!name) {
+            return;
+        }
+
+        try {
+            await this.taskManager.createSubfolder(item.folder.folderPath, name.trim());
+            this.treeDataProvider.refresh();
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to create subfolder: ${err.message}`);
         }
     }
 

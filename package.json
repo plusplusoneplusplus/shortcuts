@@ -1565,6 +1565,12 @@
         "icon": "$(new-folder)"
       },
       {
+        "command": "tasksViewer.createSubfolder",
+        "title": "Create Subfolder",
+        "category": "Tasks",
+        "icon": "$(new-folder)"
+      },
+      {
         "command": "tasksViewer.rename",
         "title": "Rename Task",
         "category": "Tasks",
@@ -2114,14 +2120,19 @@
           "group": "copy@2"
         },
         {
-          "command": "tasksViewer.createWithAI",
+          "command": "tasksViewer.createSubfolder",
           "when": "view == tasksView && viewItem =~ /^taskFolder/",
           "group": "create@1"
         },
         {
-          "command": "tasksViewer.createFromFeature",
+          "command": "tasksViewer.createWithAI",
           "when": "view == tasksView && viewItem =~ /^taskFolder/",
           "group": "create@2"
+        },
+        {
+          "command": "tasksViewer.createFromFeature",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "group": "create@3"
         },
         {
           "command": "tasksViewer.discoverRelated",
