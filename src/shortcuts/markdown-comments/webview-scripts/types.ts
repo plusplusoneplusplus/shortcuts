@@ -173,7 +173,8 @@ export type WebviewMessage =
     | { type: 'executeWorkPlanWithSkill'; skillName: string }
     | { type: 'promptSearch' }
     | { type: 'showFollowPromptDialog'; promptFilePath: string; promptName: string; skillName?: string }
-    | { type: 'followPromptDialogResult'; promptFilePath: string; skillName?: string; options: FollowPromptDialogOptions };
+    | { type: 'followPromptDialogResult'; promptFilePath: string; skillName?: string; options: FollowPromptDialogOptions }
+    | { type: 'copyFollowPrompt'; promptFilePath: string; skillName?: string; additionalContext?: string };
 
 /**
  * Options selected in the Follow Prompt dialog

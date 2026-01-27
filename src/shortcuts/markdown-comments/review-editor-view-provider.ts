@@ -63,7 +63,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt';
     commentId?: string;
     content?: string;
     selection?: {
@@ -95,6 +95,8 @@ interface WebviewMessage {
     skillName?: string;
     // Follow Prompt dialog result
     options?: FollowPromptExecutionOptions;
+    // Copy Follow Prompt additional context
+    additionalContext?: string;
 }
 
 /**
@@ -683,6 +685,16 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                         message.promptFilePath,
                         message.options,
                         message.skillName
+                    );
+                }
+                break;
+
+            case 'copyFollowPrompt':
+                if (message.promptFilePath) {
+                    await this.copyFollowPromptToClipboard(
+                        document.uri.fsPath,
+                        message.promptFilePath,
+                        message.additionalContext
                     );
                 }
                 break;
@@ -1601,6 +1613,30 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 'Failed to start interactive session. Please check that the AI CLI tool is installed.'
             );
         }
+    }
+
+    /**
+     * Copy the Follow Prompt command to clipboard.
+     * 
+     * @param planFilePath - Absolute path to the plan file (current document)
+     * @param promptFilePath - Absolute path to the prompt file
+     * @param additionalContext - Optional additional context from the dialog
+     */
+    private async copyFollowPromptToClipboard(
+        planFilePath: string,
+        promptFilePath: string,
+        additionalContext?: string
+    ): Promise<void> {
+        // Build the same prompt that would be used for execution
+        let fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
+        if (additionalContext && additionalContext.trim()) {
+            fullPrompt += `\n\nAdditional context: ${additionalContext.trim()}`;
+        }
+
+        // Copy to clipboard
+        await vscode.env.clipboard.writeText(fullPrompt);
+        
+        vscode.window.showInformationMessage('Prompt copied to clipboard');
     }
 
     /**

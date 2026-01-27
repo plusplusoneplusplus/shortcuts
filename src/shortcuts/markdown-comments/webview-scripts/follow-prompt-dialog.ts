@@ -23,6 +23,9 @@ let dialogState: DialogState = {
     promptName: ''
 };
 
+/** Track if copy button is showing feedback */
+let copyFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
+
 /**
  * Initialize the Follow Prompt dialog handlers
  */
@@ -31,6 +34,7 @@ export function initFollowPromptDialog(): void {
     const closeBtn = document.getElementById('fpCloseBtn');
     const cancelBtn = document.getElementById('fpCancelBtn');
     const executeBtn = document.getElementById('fpExecuteBtn');
+    const copyBtn = document.getElementById('fpCopyPromptBtn');
 
     if (!dialog || !closeBtn || !cancelBtn || !executeBtn) {
         console.warn('[FollowPromptDialog] Dialog elements not found');
@@ -47,6 +51,11 @@ export function initFollowPromptDialog(): void {
     executeBtn.addEventListener('click', () => {
         const options = getDialogOptions();
         closeDialog(options);
+    });
+    
+    // Copy Prompt button handler
+    copyBtn?.addEventListener('click', () => {
+        copyPromptToClipboard();
     });
     
     // Close on overlay click (outside dialog)
@@ -190,6 +199,45 @@ function getDialogOptions(): FollowPromptDialogOptions {
         model: modelSelect?.value || 'claude-sonnet-4.5',
         additionalContext: contextInput?.value?.trim() || undefined
     };
+}
+
+/**
+ * Copy the prompt to clipboard via extension
+ */
+function copyPromptToClipboard(): void {
+    const contextInput = document.getElementById('fpAdditionalContext') as HTMLTextAreaElement;
+    const copyBtn = document.getElementById('fpCopyPromptBtn');
+    
+    // Send message to extension to copy prompt
+    try {
+        state.vscode.postMessage({
+            type: 'copyFollowPrompt',
+            promptFilePath: dialogState.promptFilePath,
+            skillName: dialogState.skillName,
+            additionalContext: contextInput?.value?.trim() || undefined
+        });
+        
+        // Show visual feedback on the button
+        if (copyBtn) {
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = 'Copied!';
+            copyBtn.classList.add('btn-success');
+            
+            // Clear any existing timeout
+            if (copyFeedbackTimeout) {
+                clearTimeout(copyFeedbackTimeout);
+            }
+            
+            // Reset button after 2 seconds
+            copyFeedbackTimeout = setTimeout(() => {
+                copyBtn.textContent = originalText;
+                copyBtn.classList.remove('btn-success');
+                copyFeedbackTimeout = null;
+            }, 2000);
+        }
+    } catch (e) {
+        console.error('[FollowPromptDialog] Failed to copy prompt:', e);
+    }
 }
 
 /**

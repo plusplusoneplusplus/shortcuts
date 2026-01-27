@@ -389,6 +389,7 @@ export function getWebviewContent(
             
             <div class="modal-footer">
                 <button id="fpCancelBtn" class="btn btn-secondary">Cancel</button>
+                <button id="fpCopyPromptBtn" class="btn btn-secondary">Copy Prompt</button>
                 <button id="fpExecuteBtn" class="btn btn-primary">Execute</button>
             </div>
         </div>

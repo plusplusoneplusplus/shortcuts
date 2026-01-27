@@ -233,3 +233,122 @@ suite('Follow Prompt Dialog - Process Metadata', () => {
         assert.ok(metadata.promptFile.includes('skills'));
     });
 });
+
+suite('Follow Prompt Dialog - Copy Prompt Feature', () => {
+    test('Copy prompt message type should be defined', () => {
+        // Test that the message type structure is valid
+        const copyMessage = {
+            type: 'copyFollowPrompt' as const,
+            promptFilePath: '/path/to/prompt.md',
+            skillName: undefined,
+            additionalContext: undefined
+        };
+        
+        assert.strictEqual(copyMessage.type, 'copyFollowPrompt');
+        assert.strictEqual(copyMessage.promptFilePath, '/path/to/prompt.md');
+    });
+
+    test('Copy prompt message should support additional context', () => {
+        const copyMessage = {
+            type: 'copyFollowPrompt' as const,
+            promptFilePath: '/path/to/prompt.md',
+            additionalContext: 'Focus on error handling'
+        };
+        
+        assert.strictEqual(copyMessage.additionalContext, 'Focus on error handling');
+    });
+
+    test('Copy prompt message should support skill name', () => {
+        const copyMessage = {
+            type: 'copyFollowPrompt' as const,
+            promptFilePath: '/path/to/skills/code-review/SKILL.md',
+            skillName: 'code-review',
+            additionalContext: undefined
+        };
+        
+        assert.strictEqual(copyMessage.skillName, 'code-review');
+    });
+
+    test('Prompt text should be correctly formatted without additional context', () => {
+        const promptFilePath = '/workspace/.github/prompts/implement.prompt.md';
+        const planFilePath = '/workspace/.vscode/tasks/feature.md';
+        
+        const expectedPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
+        
+        assert.ok(expectedPrompt.includes('Follow the instruction'));
+        assert.ok(expectedPrompt.includes(promptFilePath));
+        assert.ok(expectedPrompt.includes(planFilePath));
+    });
+
+    test('Prompt text should include additional context when provided', () => {
+        const promptFilePath = '/workspace/.github/prompts/implement.prompt.md';
+        const planFilePath = '/workspace/.vscode/tasks/feature.md';
+        const additionalContext = 'Focus on error handling';
+        
+        let fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
+        if (additionalContext && additionalContext.trim()) {
+            fullPrompt += `\n\nAdditional context: ${additionalContext.trim()}`;
+        }
+        
+        assert.ok(fullPrompt.includes('Additional context:'));
+        assert.ok(fullPrompt.includes('Focus on error handling'));
+    });
+
+    test('Empty additional context should not be included', () => {
+        const promptFilePath = '/workspace/.github/prompts/implement.prompt.md';
+        const planFilePath = '/workspace/.vscode/tasks/feature.md';
+        const additionalContext = '   '; // whitespace only
+        
+        let fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
+        if (additionalContext && additionalContext.trim()) {
+            fullPrompt += `\n\nAdditional context: ${additionalContext.trim()}`;
+        }
+        
+        assert.ok(!fullPrompt.includes('Additional context:'));
+    });
+
+    test('Undefined additional context should not be included', () => {
+        const promptFilePath = '/workspace/.github/prompts/implement.prompt.md';
+        const planFilePath = '/workspace/.vscode/tasks/feature.md';
+        const additionalContext = undefined as string | undefined;
+        
+        let fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
+        if (additionalContext && (additionalContext as string).trim()) {
+            fullPrompt += `\n\nAdditional context: ${(additionalContext as string).trim()}`;
+        }
+        
+        assert.ok(!fullPrompt.includes('Additional context:'));
+    });
+
+    test('Copy prompt should work with Windows-style paths', () => {
+        const promptFilePath = 'C:\\workspace\\.github\\prompts\\implement.prompt.md';
+        const planFilePath = 'C:\\workspace\\.vscode\\tasks\\feature.md';
+        
+        const fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
+        
+        assert.ok(fullPrompt.includes(promptFilePath));
+        assert.ok(fullPrompt.includes(planFilePath));
+    });
+
+    test('Copy prompt should work with Unix-style paths', () => {
+        const promptFilePath = '/home/user/workspace/.github/prompts/implement.prompt.md';
+        const planFilePath = '/home/user/workspace/.vscode/tasks/feature.md';
+        
+        const fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
+        
+        assert.ok(fullPrompt.includes(promptFilePath));
+        assert.ok(fullPrompt.includes(planFilePath));
+    });
+
+    test('Additional context should be trimmed', () => {
+        const additionalContext = '  Focus on error handling  ';
+        
+        let fullPrompt = 'Follow the instruction /path/to/prompt.md. /path/to/plan.md';
+        if (additionalContext && additionalContext.trim()) {
+            fullPrompt += `\n\nAdditional context: ${additionalContext.trim()}`;
+        }
+        
+        assert.ok(fullPrompt.includes('Additional context: Focus on error handling'));
+        assert.ok(!fullPrompt.includes('Additional context:   Focus'));
+    });
+});

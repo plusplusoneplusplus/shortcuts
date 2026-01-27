@@ -964,6 +964,11 @@ body.vscode-light .hljs-type {
     background: var(--vscode-button-secondaryHoverBackground, #45494e);
 }
 
+.btn-success {
+    background: var(--vscode-testing-iconPassed, #73c991);
+    color: var(--vscode-button-foreground, #ffffff);
+}
+
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
