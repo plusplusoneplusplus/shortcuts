@@ -164,14 +164,16 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
             tasks: folder.tasks.filter(t => t.isArchived)
         };
 
-        // Recursively split child folders
+        // Recursively split child folders - include all non-archived folders (including empty ones)
         for (const child of folder.children) {
             const { activeFolder: activeChild, archivedFolder: archivedChild } = this.splitFolderByArchiveStatus(child);
             
-            if (this.countFolderItems(activeChild) > 0) {
+            // Always include non-archived folders to show empty folders
+            if (!child.isArchived) {
                 activeFolder.children.push(activeChild);
             }
-            if (this.countFolderItems(archivedChild) > 0) {
+            // Only include archived folders if they have content
+            if (child.isArchived && (this.countFolderItems(archivedChild) > 0 || archivedChild.children.length > 0)) {
                 archivedFolder.children.push(archivedChild);
             }
         }

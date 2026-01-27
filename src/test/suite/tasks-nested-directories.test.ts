@@ -401,6 +401,54 @@ suite('Tasks Viewer - Nested Directories Tests', () => {
 
             newTaskManager.dispose();
         });
+
+        test('should display empty folders when showArchived is enabled', async () => {
+            createDir('.vscode/tasks/empty-feature');
+            createTaskFile('.vscode/tasks/feature-with-task/task.md');
+
+            // Enable showArchived
+            (vscode.workspace as any).getConfiguration = (section?: string) => {
+                if (section === 'workspaceShortcuts.tasksViewer') {
+                    return {
+                        get: <T>(key: string, defaultValue?: T): T => {
+                            const defaults: Record<string, any> = {
+                                enabled: true,
+                                folderPath: '.vscode/tasks',
+                                showArchived: true,
+                                sortBy: 'name',
+                                groupRelatedDocuments: true
+                            };
+                            return (defaults[key] !== undefined ? defaults[key] : defaultValue) as T;
+                        }
+                    };
+                }
+                if (section === 'workspaceShortcuts.tasksViewer.discovery') {
+                    return {
+                        get: <T>(key: string, defaultValue?: T): T => defaultValue as T
+                    };
+                }
+                return originalGetConfiguration(section);
+            };
+
+            // Create new tree data provider with updated settings
+            const newTaskManager = new TaskManager(tempDir);
+            const newTreeDataProvider = new TasksTreeDataProvider(newTaskManager);
+
+            // Get root items (should be Active/Archived groups)
+            const rootItems = await newTreeDataProvider.getChildren();
+            assert.strictEqual(rootItems.length, 2, 'Should have Active and Archived groups');
+
+            // Expand Active group
+            const activeGroup = rootItems[0];
+            const activeChildren = await newTreeDataProvider.getChildren(activeGroup);
+
+            // Should show both folders (including empty one)
+            assert.strictEqual(activeChildren.length, 2, 'Active group should have 2 folders');
+            const folderNames = (activeChildren as TaskFolderItem[]).map(f => f.folder.name).sort();
+            assert.deepStrictEqual(folderNames, ['empty-feature', 'feature-with-task']);
+
+            newTaskManager.dispose();
+        });
     });
 
     suite('File Watching with Nested Directories', () => {
