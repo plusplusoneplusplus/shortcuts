@@ -354,6 +354,13 @@
           "maximum": 1800000,
           "markdownDescription": "Session timeout in milliseconds. Sessions idle longer than this will be cleaned up. Default: 600000 (10 minutes)."
         },
+        "workspaceShortcuts.aiService.sdk.requestTimeout": {
+          "type": "number",
+          "default": 600000,
+          "minimum": 60000,
+          "maximum": 3600000,
+          "markdownDescription": "Request timeout in milliseconds. Maximum time to wait for an AI response. Default: 600000 (10 minutes). Increase for complex tasks that require longer processing."
+        },
         "workspaceShortcuts.aiService.sdk.loadMcpConfig": {
           "type": "boolean",
           "default": true,

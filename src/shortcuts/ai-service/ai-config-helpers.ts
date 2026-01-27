@@ -59,3 +59,13 @@ export function getSDKLoadMcpConfigSetting(): boolean {
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
     return config.get<boolean>('loadMcpConfig', true);
 }
+
+/**
+ * Get the SDK request timeout setting.
+ *
+ * @returns Request timeout in milliseconds (default: 600000 = 10 minutes)
+ */
+export function getSDKRequestTimeoutSetting(): number {
+    const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
+    return config.get<number>('requestTimeout', 600000);
+}

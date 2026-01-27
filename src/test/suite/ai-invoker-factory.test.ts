@@ -1,14 +1,21 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { 
-    createAIInvoker, 
+import {
+    createAIInvoker,
     AIInvokerFactoryOptions,
     AIInvokerResult
 } from '../../shortcuts/ai-service/ai-invoker-factory';
-import { 
-    MockAIProcessManager, 
-    createMockAIProcessManager 
+import {
+    MockAIProcessManager,
+    createMockAIProcessManager
 } from '../../shortcuts/ai-service/mock-ai-process-manager';
+import {
+    getSDKRequestTimeoutSetting,
+    getSDKSessionTimeoutSetting,
+    getSDKMaxSessionsSetting,
+    getSDKLoadMcpConfigSetting,
+    getAIBackendSetting
+} from '../../shortcuts/ai-service/ai-config-helpers';
 
 /**
  * Tests for AI Invoker Factory
@@ -406,20 +413,100 @@ suite('AI Invoker Factory Tests', () => {
         test('cancellation listener disposal should prevent callback', (done) => {
             const tokenSource = new vscode.CancellationTokenSource();
             let callbackInvoked = false;
-            
+
             const disposable = tokenSource.token.onCancellationRequested(() => {
                 callbackInvoked = true;
             });
-            
+
             // Dispose before cancelling
             disposable.dispose();
             tokenSource.cancel();
-            
+
             setTimeout(() => {
                 assert.strictEqual(callbackInvoked, false, 'Disposed callback should not be invoked');
                 tokenSource.dispose();
                 done();
             }, 10);
+        });
+    });
+
+    suite('AI Config Helpers', () => {
+        test('getSDKRequestTimeoutSetting should return default value', () => {
+            const timeout = getSDKRequestTimeoutSetting();
+            // Default is 600000 (10 minutes)
+            assert.strictEqual(timeout, 600000, 'Default request timeout should be 600000ms (10 minutes)');
+        });
+
+        test('getSDKSessionTimeoutSetting should return default value', () => {
+            const timeout = getSDKSessionTimeoutSetting();
+            // Default is 600000 (10 minutes)
+            assert.strictEqual(timeout, 600000, 'Default session timeout should be 600000ms (10 minutes)');
+        });
+
+        test('getSDKMaxSessionsSetting should return default value', () => {
+            const maxSessions = getSDKMaxSessionsSetting();
+            // Default is 5
+            assert.strictEqual(maxSessions, 5, 'Default max sessions should be 5');
+        });
+
+        test('getSDKLoadMcpConfigSetting should return default value', () => {
+            const loadMcpConfig = getSDKLoadMcpConfigSetting();
+            // Default is true
+            assert.strictEqual(loadMcpConfig, true, 'Default loadMcpConfig should be true');
+        });
+
+        test('getAIBackendSetting should return valid backend type', () => {
+            const backend = getAIBackendSetting();
+            // Should be one of the valid types
+            assert.ok(
+                backend === 'copilot-sdk' || backend === 'copilot-cli' || backend === 'clipboard',
+                `Backend should be one of the valid types, got: ${backend}`
+            );
+        });
+
+        test('request timeout should be at least 60 seconds', () => {
+            const timeout = getSDKRequestTimeoutSetting();
+            assert.ok(timeout >= 60000, 'Request timeout should be at least 60 seconds');
+        });
+
+        test('request timeout should be at most 1 hour', () => {
+            const timeout = getSDKRequestTimeoutSetting();
+            assert.ok(timeout <= 3600000, 'Request timeout should be at most 1 hour');
+        });
+    });
+
+    suite('Request Timeout Integration', () => {
+        test('should use default timeout when not specified', () => {
+            const options: AIInvokerFactoryOptions = {
+                workingDirectory: '/tmp',
+                featureName: 'Test Feature'
+                // timeoutMs not specified - should use setting default
+            };
+
+            const invoker = createAIInvoker(options);
+            assert.ok(invoker, 'Should create invoker with default timeout');
+        });
+
+        test('should accept explicit timeoutMs', () => {
+            const options: AIInvokerFactoryOptions = {
+                workingDirectory: '/tmp',
+                featureName: 'Test Feature',
+                timeoutMs: 300000 // 5 minutes
+            };
+
+            const invoker = createAIInvoker(options);
+            assert.ok(invoker, 'Should create invoker with explicit timeout');
+        });
+
+        test('should accept long timeoutMs for complex tasks', () => {
+            const options: AIInvokerFactoryOptions = {
+                workingDirectory: '/tmp',
+                featureName: 'Complex Task',
+                timeoutMs: 1800000 // 30 minutes
+            };
+
+            const invoker = createAIInvoker(options);
+            assert.ok(invoker, 'Should create invoker with long timeout');
         });
     });
 });

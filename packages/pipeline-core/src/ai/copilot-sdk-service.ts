@@ -142,7 +142,7 @@ export interface SendMessageOptions {
     model?: string;
     /** Optional working directory for context (set at client level) */
     workingDirectory?: string;
-    /** Optional timeout in milliseconds (default: 300000 = 5 minutes) */
+    /** Optional timeout in milliseconds (default: 600000 = 10 minutes) */
     timeoutMs?: number;
     /** Use session pool for efficient parallel requests (default: false) */
     usePool?: boolean;
@@ -392,8 +392,8 @@ export class CopilotSDKService {
     /** Map of active sessions for cancellation support */
     private activeSessions: Map<string, ICopilotSession> = new Map();
 
-    /** Default timeout for SDK requests (5 minutes) */
-    private static readonly DEFAULT_TIMEOUT_MS = 300000;
+    /** Default timeout for SDK requests (10 minutes) */
+    private static readonly DEFAULT_TIMEOUT_MS = 600000;
 
     private constructor() {
         // Private constructor for singleton pattern
