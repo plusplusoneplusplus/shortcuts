@@ -320,7 +320,12 @@ interface ICopilotClient {
  */
 interface ICopilotSession {
     sessionId: string;
-    sendAndWait(options: { prompt: string }): Promise<{ data?: { content?: string } }>;
+    /**
+     * Send a message and wait for the session to become idle.
+     * @param options - Message options including prompt
+     * @param timeout - Timeout in milliseconds (SDK default: 60000)
+     */
+    sendAndWait(options: { prompt: string }, timeout?: number): Promise<{ data?: { content?: string } }>;
     destroy(): Promise<void>;
     /** Event handler for streaming responses */
     on?(handler: (event: ISessionEvent) => void): void;
@@ -1068,27 +1073,16 @@ export class CopilotSDKService {
 
     /**
      * Send a message with timeout support (non-streaming).
+     * Passes the timeout directly to the SDK's sendAndWait method.
      */
     private async sendWithTimeout(
         session: ICopilotSession,
         prompt: string,
         timeoutMs: number
     ): Promise<{ data?: { content?: string } }> {
-        return new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error(`Request timed out after ${timeoutMs}ms`));
-            }, timeoutMs);
-
-            session.sendAndWait({ prompt })
-                .then(result => {
-                    clearTimeout(timeoutId);
-                    resolve(result);
-                })
-                .catch(error => {
-                    clearTimeout(timeoutId);
-                    reject(error);
-                });
-        });
+        // Pass timeout directly to SDK's sendAndWait method
+        // The SDK uses 60000ms (60s) as default, we override with our configured timeout
+        return session.sendAndWait({ prompt }, timeoutMs);
     }
 
     /**

@@ -20,8 +20,12 @@ import { getLogger, LogCategory } from '../logger';
 export interface IPoolableSession {
     /** Unique session identifier */
     sessionId: string;
-    /** Send a message and wait for response */
-    sendAndWait(options: { prompt: string }): Promise<{ data?: { content?: string } }>;
+    /**
+     * Send a message and wait for the session to become idle.
+     * @param options - Message options including prompt
+     * @param timeout - Timeout in milliseconds (SDK default: 60000)
+     */
+    sendAndWait(options: { prompt: string }, timeout?: number): Promise<{ data?: { content?: string } }>;
     /** Destroy the session and release resources */
     destroy(): Promise<void>;
 }
