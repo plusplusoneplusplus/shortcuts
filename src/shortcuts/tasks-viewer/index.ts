@@ -15,3 +15,4 @@ export * from './tasks-drag-drop-controller';
 export * from './related-items-loader';
 export * from './related-items-tree-items';
 export * from './discovery-commands';
+export * from './ai-task-commands';

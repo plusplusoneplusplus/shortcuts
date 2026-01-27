@@ -1642,6 +1642,18 @@
         "icon": "$(git-commit)"
       },
       {
+        "command": "tasksViewer.createWithAI",
+        "title": "Create Task with AI...",
+        "category": "Tasks",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "tasksViewer.createFromFeature",
+        "title": "Create Task from Feature...",
+        "category": "Tasks",
+        "icon": "$(sparkle)"
+      },
+      {
         "command": "debugPanel.executeCommand",
         "title": "Execute Debug Command",
         "category": "Debug Panel"
@@ -1734,6 +1746,11 @@
         },
         {
           "command": "tasksViewer.create",
+          "when": "view == tasksView",
+          "group": "navigation"
+        },
+        {
+          "command": "tasksViewer.createWithAI",
           "when": "view == tasksView",
           "group": "navigation"
         },
@@ -2088,6 +2105,16 @@
           "command": "tasksViewer.copyFullPath",
           "when": "view == tasksView && viewItem == archivedTask",
           "group": "copy@2"
+        },
+        {
+          "command": "tasksViewer.createWithAI",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "group": "create@1"
+        },
+        {
+          "command": "tasksViewer.createFromFeature",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "group": "create@2"
         },
         {
           "command": "tasksViewer.discoverRelated",

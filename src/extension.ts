@@ -39,7 +39,7 @@ import {
 } from './shortcuts/markdown-comments';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { getExtensionLogger, getFirstWorkspaceFolder, LogCategory } from './shortcuts/shared';
-import { TaskManager, TasksCommands, TasksDragDropController, TasksTreeDataProvider, registerTasksDiscoveryCommands } from './shortcuts/tasks-viewer';
+import { TaskManager, TasksCommands, TasksDragDropController, TasksTreeDataProvider, registerTasksDiscoveryCommands, registerTasksAICommands } from './shortcuts/tasks-viewer';
 import { ThemeManager } from './shortcuts/theme-manager';
 import {
     PipelineManager,
@@ -2763,6 +2763,14 @@ export async function activate(context: vscode.ExtensionContext) {
                 configurationManager
             );
             disposables.push(...tasksDiscoveryDisposables);
+
+            // Register tasks AI commands (create with AI, create from feature)
+            const tasksAIDisposables = registerTasksAICommands(
+                context,
+                taskManager,
+                tasksTreeDataProvider
+            );
+            disposables.push(...tasksAIDisposables);
         }
 
         // Connect AI process manager to pipelines for execution tracking
