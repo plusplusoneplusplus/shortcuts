@@ -39,6 +39,7 @@ export class TasksCommands {
             vscode.commands.registerCommand('tasksViewer.renameDocumentGroup', (item: TaskDocumentGroupItem) => this.renameDocumentGroup(item)),
             vscode.commands.registerCommand('tasksViewer.renameDocument', (item: TaskDocumentItem) => this.renameDocument(item)),
             vscode.commands.registerCommand('tasksViewer.delete', (item: TaskItem) => this.deleteTask(item)),
+            vscode.commands.registerCommand('tasksViewer.deleteFolder', (item: TaskFolderItem) => this.deleteFolder(item)),
             vscode.commands.registerCommand('tasksViewer.archive', (item: TaskItem) => this.archiveTask(item)),
             vscode.commands.registerCommand('tasksViewer.unarchive', (item: TaskItem) => this.unarchiveTask(item)),
             vscode.commands.registerCommand('tasksViewer.archiveDocument', (item: TaskDocumentItem) => this.archiveDocument(item)),
@@ -327,6 +328,34 @@ export class TasksCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to delete task: ${err.message}`);
+        }
+    }
+
+    /**
+     * Delete a folder and all its contents
+     */
+    private async deleteFolder(item: TaskFolderItem): Promise<void> {
+        if (!item || !item.folder) {
+            return;
+        }
+
+        const folderName = item.folder.name;
+        const confirm = await vscode.window.showWarningMessage(
+            `Are you sure you want to delete folder "${folderName}" and all its contents? This action cannot be undone.`,
+            { modal: true },
+            'Delete'
+        );
+
+        if (confirm !== 'Delete') {
+            return;
+        }
+
+        try {
+            await this.taskManager.deleteFolder(item.folder.folderPath);
+            this.treeDataProvider.refresh();
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to delete folder: ${err.message}`);
         }
     }
 

@@ -351,6 +351,23 @@ export class TaskManager implements vscode.Disposable {
     }
 
     /**
+     * Delete a folder and all its contents recursively
+     * @param folderPath - Absolute path to the folder to delete
+     */
+    async deleteFolder(folderPath: string): Promise<void> {
+        if (!safeExists(folderPath)) {
+            throw new Error(`Folder not found: ${folderPath}`);
+        }
+
+        const statsResult = safeStats(folderPath);
+        if (!statsResult.success || !statsResult.data?.isDirectory()) {
+            throw new Error(`Path is not a directory: ${folderPath}`);
+        }
+
+        fs.rmSync(folderPath, { recursive: true, force: true });
+    }
+
+    /**
      * Archive a task (move to archive folder)
      * @returns The new file path
      */

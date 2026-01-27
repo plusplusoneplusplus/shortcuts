@@ -1638,6 +1638,12 @@
         "icon": "$(trash)"
       },
       {
+        "command": "tasksViewer.deleteFolder",
+        "title": "Delete Folder",
+        "category": "Tasks",
+        "icon": "$(trash)"
+      },
+      {
         "command": "tasksViewer.archive",
         "title": "Archive Task",
         "category": "Tasks",
@@ -2182,6 +2188,11 @@
           "command": "tasksViewer.renameFolder",
           "when": "view == tasksView && viewItem =~ /^taskFolder/",
           "group": "folder@1"
+        },
+        {
+          "command": "tasksViewer.deleteFolder",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "group": "folder@2"
         },
         {
           "command": "tasksViewer.renameDocumentGroup",

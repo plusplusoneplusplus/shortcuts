@@ -601,6 +601,95 @@ suite('Tasks Viewer Tests', () => {
             });
         });
 
+        suite('Folder Deletion', () => {
+            test('should delete an empty folder', async () => {
+                const folderPath = await taskManager.createFeature('Empty Feature');
+                assert.ok(fs.existsSync(folderPath));
+
+                await taskManager.deleteFolder(folderPath);
+                assert.ok(!fs.existsSync(folderPath), 'Folder should be deleted');
+            });
+
+            test('should delete a folder with tasks inside', async () => {
+                const folderPath = await taskManager.createFeature('Feature With Tasks');
+                
+                // Create some task files inside
+                const taskFile1 = path.join(folderPath, 'task1.md');
+                const taskFile2 = path.join(folderPath, 'task2.md');
+                fs.writeFileSync(taskFile1, '# Task 1');
+                fs.writeFileSync(taskFile2, '# Task 2');
+
+                assert.ok(fs.existsSync(taskFile1));
+                assert.ok(fs.existsSync(taskFile2));
+
+                await taskManager.deleteFolder(folderPath);
+                
+                assert.ok(!fs.existsSync(folderPath), 'Folder should be deleted');
+                assert.ok(!fs.existsSync(taskFile1), 'Task 1 should be deleted');
+                assert.ok(!fs.existsSync(taskFile2), 'Task 2 should be deleted');
+            });
+
+            test('should delete a folder with nested subfolders', async () => {
+                const folderPath = await taskManager.createFeature('Parent Feature');
+                const subfolderPath = await taskManager.createSubfolder(folderPath, 'Child');
+                const deepSubfolderPath = await taskManager.createSubfolder(subfolderPath, 'Grandchild');
+
+                // Create tasks at each level
+                const parentTask = path.join(folderPath, 'parent-task.md');
+                const childTask = path.join(subfolderPath, 'child-task.md');
+                const grandchildTask = path.join(deepSubfolderPath, 'grandchild-task.md');
+
+                fs.writeFileSync(parentTask, '# Parent Task');
+                fs.writeFileSync(childTask, '# Child Task');
+                fs.writeFileSync(grandchildTask, '# Grandchild Task');
+
+                assert.ok(fs.existsSync(parentTask));
+                assert.ok(fs.existsSync(childTask));
+                assert.ok(fs.existsSync(grandchildTask));
+
+                await taskManager.deleteFolder(folderPath);
+
+                assert.ok(!fs.existsSync(folderPath), 'Parent folder should be deleted');
+                assert.ok(!fs.existsSync(subfolderPath), 'Child folder should be deleted');
+                assert.ok(!fs.existsSync(deepSubfolderPath), 'Grandchild folder should be deleted');
+                assert.ok(!fs.existsSync(parentTask), 'Parent task should be deleted');
+                assert.ok(!fs.existsSync(childTask), 'Child task should be deleted');
+                assert.ok(!fs.existsSync(grandchildTask), 'Grandchild task should be deleted');
+            });
+
+            test('should throw error when folder not found', async () => {
+                await assert.rejects(
+                    async () => await taskManager.deleteFolder('/non/existent/folder'),
+                    /not found/i
+                );
+            });
+
+            test('should throw error when path is not a directory', async () => {
+                const filePath = await taskManager.createTask('Not A Folder');
+                
+                await assert.rejects(
+                    async () => await taskManager.deleteFolder(filePath),
+                    /not a directory/i
+                );
+            });
+
+            test('should only delete specified folder, not siblings', async () => {
+                const folder1Path = await taskManager.createFeature('Feature1');
+                const folder2Path = await taskManager.createFeature('Feature2');
+
+                const task1 = path.join(folder1Path, 'task1.md');
+                const task2 = path.join(folder2Path, 'task2.md');
+                fs.writeFileSync(task1, '# Task 1');
+                fs.writeFileSync(task2, '# Task 2');
+
+                await taskManager.deleteFolder(folder1Path);
+
+                assert.ok(!fs.existsSync(folder1Path), 'Feature1 should be deleted');
+                assert.ok(fs.existsSync(folder2Path), 'Feature2 should still exist');
+                assert.ok(fs.existsSync(task2), 'Task 2 in Feature2 should still exist');
+            });
+        });
+
         suite('Task Archiving', () => {
             test('should archive a task', async () => {
                 const originalPath = await taskManager.createTask('To Archive');
