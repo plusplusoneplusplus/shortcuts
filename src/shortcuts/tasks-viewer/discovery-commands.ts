@@ -37,7 +37,8 @@ export function registerTasksDiscoveryCommands(
     taskManager: TaskManager,
     treeDataProvider: TasksTreeDataProvider,
     discoveryEngine: DiscoveryEngine,
-    aiProcessManager: AIProcessManager
+    aiProcessManager: AIProcessManager,
+    configManager: import('../configuration-manager').ConfigurationManager
 ): vscode.Disposable[] {
     const disposables: vscode.Disposable[] = [];
 
@@ -52,6 +53,7 @@ export function registerTasksDiscoveryCommands(
                     treeDataProvider,
                     discoveryEngine,
                     aiProcessManager,
+                    configManager,
                     item
                 );
             }
@@ -90,6 +92,7 @@ export function registerTasksDiscoveryCommands(
                     treeDataProvider,
                     discoveryEngine,
                     aiProcessManager,
+                    configManager,
                     folderItem,
                     folderPath,
                     merge
@@ -194,6 +197,8 @@ export function registerTasksDiscoveryCommands(
 
 /**
  * Start discovery for a feature folder
+ * 
+ * Shows the Discovery Preview Panel for manual selection of items to add.
  */
 async function discoverRelatedItems(
     context: vscode.ExtensionContext,
@@ -201,9 +206,10 @@ async function discoverRelatedItems(
     treeDataProvider: TasksTreeDataProvider,
     discoveryEngine: DiscoveryEngine,
     aiProcessManager: AIProcessManager,
+    configManager: import('../configuration-manager').ConfigurationManager,
     folderItem?: TaskFolderItem,
     overrideFolderPath?: string,
-    mergeWithExisting: boolean = false
+    _mergeWithExisting: boolean = false // Currently unused - panel handles merge/replace
 ): Promise<void> {
     const folderPath = overrideFolderPath || folderItem?.folder.folderPath;
     if (!folderPath) {
@@ -227,29 +233,6 @@ async function discoverRelatedItems(
                 .update('enabled', true, vscode.ConfigurationTarget.Global);
         } else {
             return;
-        }
-    }
-
-    // Check for existing related.yaml if not merging
-    if (!mergeWithExisting) {
-        const existing = await loadRelatedItems(folderPath);
-        if (existing && existing.items.length > 0) {
-            const action = await vscode.window.showQuickPick(
-                [
-                    { label: 'Merge', description: 'Add new items, keep existing (deduplicate)' },
-                    { label: 'Replace', description: 'Overwrite with new results' },
-                    { label: 'Cancel', description: 'Keep existing file' }
-                ],
-                { 
-                    placeHolder: 'Existing related items found. What would you like to do?',
-                    title: 'Discover Related Items'
-                }
-            );
-
-            if (!action || action.label === 'Cancel') {
-                return;
-            }
-            mergeWithExisting = action.label === 'Merge';
         }
     }
 
@@ -338,7 +321,7 @@ async function discoverRelatedItems(
                 }
             });
 
-            const completionListener = discoveryEngine.onDidChangeProcess(async event => {
+            const completionListener = discoveryEngine.onDidChangeProcess(event => {
                 if (discoveryProcessId &&
                     event.process.id === discoveryProcessId &&
                     event.process.status !== 'running') {
@@ -346,26 +329,9 @@ async function discoverRelatedItems(
                     completionListener.dispose();
                     progressListener.dispose();
 
-                    if (event.process.status === 'completed' && event.process.results) {
-                        // Convert discovery results to related items
-                        const relatedItems = convertDiscoveryResultsToRelatedItems(
-                            event.process.results,
-                            workspaceRoot
-                        );
-
-                        // Save to related.yaml
-                        if (mergeWithExisting) {
-                            await mergeRelatedItems(folderPath, relatedItems, featureDescription);
-                        } else {
-                            const config: RelatedItemsConfig = {
-                                description: featureDescription,
-                                items: relatedItems
-                            };
-                            await saveRelatedItems(folderPath, config);
-                        }
-
-                        // Update AI Process Manager
-                        const resultCount = relatedItems.length;
+                    // Update AI Process Manager based on discovery result
+                    if (event.process.status === 'completed') {
+                        const resultCount = event.process.results?.length || 0;
                         const serializedResults = JSON.stringify(serializeDiscoveryProcess(event.process));
                         aiProcessManager.completeDiscoveryProcess(
                             aiProcessId,
@@ -373,19 +339,28 @@ async function discoverRelatedItems(
                             `Found ${resultCount} related items for "${folderName}"`,
                             serializedResults
                         );
-
-                        // Refresh tree view
-                        treeDataProvider.refresh();
-
-                        vscode.window.showInformationMessage(
-                            `Found ${resultCount} related items for "${folderName}"`
-                        );
                     } else if (event.process.status === 'failed') {
                         aiProcessManager.failProcess(aiProcessId, event.process.error || 'Discovery failed');
-                        vscode.window.showErrorMessage(
-                            `Discovery failed: ${event.process.error || 'Unknown error'}`
-                        );
                     }
+
+                    // Show results panel with Feature Folders as default destination
+                    const panel = DiscoveryPreviewPanel.createOrShow(
+                        context.extensionUri,
+                        discoveryEngine,
+                        configManager,
+                        event.process,
+                        taskManager,
+                        {
+                            defaultDestinationType: 'featureFolders',
+                            defaultFeatureFolder: folderPath
+                        }
+                    );
+
+                    // Listen for when items are added to feature folder to refresh tree
+                    const addListener = panel.onDidAddToFeatureFolder(() => {
+                        treeDataProvider.refresh();
+                    });
+                    context.subscriptions.push(addListener);
 
                     resolveCompletion();
                 }
@@ -411,23 +386,8 @@ async function discoverRelatedItems(
                 completionListener.dispose();
                 progressListener.dispose();
 
-                if (discoveryProcess.status === 'completed' && discoveryProcess.results) {
-                    const relatedItems = convertDiscoveryResultsToRelatedItems(
-                        discoveryProcess.results,
-                        workspaceRoot
-                    );
-
-                    if (mergeWithExisting) {
-                        await mergeRelatedItems(folderPath, relatedItems, featureDescription);
-                    } else {
-                        const config: RelatedItemsConfig = {
-                            description: featureDescription,
-                            items: relatedItems
-                        };
-                        await saveRelatedItems(folderPath, config);
-                    }
-
-                    const resultCount = relatedItems.length;
+                if (discoveryProcess.status === 'completed') {
+                    const resultCount = discoveryProcess.results?.length || 0;
                     const serializedResults = JSON.stringify(serializeDiscoveryProcess(discoveryProcess));
                     aiProcessManager.completeDiscoveryProcess(
                         aiProcessId,
@@ -435,14 +395,28 @@ async function discoverRelatedItems(
                         `Found ${resultCount} related items for "${folderName}"`,
                         serializedResults
                     );
-
-                    treeDataProvider.refresh();
-                    vscode.window.showInformationMessage(
-                        `Found ${resultCount} related items for "${folderName}"`
-                    );
                 } else if (discoveryProcess.status === 'failed') {
                     aiProcessManager.failProcess(aiProcessId, discoveryProcess.error || 'Discovery failed');
                 }
+
+                // Show results panel with Feature Folders as default destination
+                const panel = DiscoveryPreviewPanel.createOrShow(
+                    context.extensionUri,
+                    discoveryEngine,
+                    configManager,
+                    discoveryProcess,
+                    taskManager,
+                    {
+                        defaultDestinationType: 'featureFolders',
+                        defaultFeatureFolder: folderPath
+                    }
+                );
+
+                // Listen for when items are added to feature folder to refresh tree
+                const addListener = panel.onDidAddToFeatureFolder(() => {
+                    treeDataProvider.refresh();
+                });
+                context.subscriptions.push(addListener);
 
                 return;
             }

@@ -21,6 +21,16 @@ import { RelatedItem } from '../../tasks-viewer/types';
 import { categorizeItem } from '../../tasks-viewer/related-items-loader';
 
 /**
+ * Options for creating or showing the discovery preview panel
+ */
+export interface DiscoveryPreviewPanelOptions {
+    /** Default destination type (shortcutGroups or featureFolders) */
+    defaultDestinationType?: DestinationType;
+    /** Default feature folder path (when destinationType is featureFolders) */
+    defaultFeatureFolder?: string;
+}
+
+/**
  * Discovery Preview Panel
  * Manages the webview panel for discovery results
  * 
@@ -61,7 +71,8 @@ export class DiscoveryPreviewPanel {
         discoveryEngine: DiscoveryEngine,
         configManager: ConfigurationManager,
         process?: DiscoveryProcess,
-        taskManager?: TaskManager
+        taskManager?: TaskManager,
+        options?: DiscoveryPreviewPanelOptions
     ): DiscoveryPreviewPanel {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
@@ -71,7 +82,7 @@ export class DiscoveryPreviewPanel {
         if (DiscoveryPreviewPanel.currentPanel) {
             DiscoveryPreviewPanel.currentPanel._panel.reveal(column);
             if (process) {
-                DiscoveryPreviewPanel.currentPanel.setProcess(process);
+                DiscoveryPreviewPanel.currentPanel.setProcess(process, options);
             }
             return DiscoveryPreviewPanel.currentPanel;
         }
@@ -93,7 +104,8 @@ export class DiscoveryPreviewPanel {
             discoveryEngine,
             configManager,
             process,
-            taskManager
+            taskManager,
+            options
         );
         
         return DiscoveryPreviewPanel.currentPanel;
@@ -105,7 +117,8 @@ export class DiscoveryPreviewPanel {
         discoveryEngine: DiscoveryEngine,
         configManager: ConfigurationManager,
         process?: DiscoveryProcess,
-        taskManager?: TaskManager
+        taskManager?: TaskManager,
+        options?: DiscoveryPreviewPanelOptions
     ) {
         this._panel = panel;
         this._extensionUri = extensionUri;
@@ -121,6 +134,14 @@ export class DiscoveryPreviewPanel {
         // Set the default target group from the process if available
         if (process?.targetGroupPath) {
             this._selectedTargetGroup = process.targetGroupPath;
+        }
+        
+        // Apply options for default destination type and feature folder
+        if (options?.defaultDestinationType) {
+            this._destinationType = options.defaultDestinationType;
+        }
+        if (options?.defaultFeatureFolder) {
+            this._selectedFeatureFolder = options.defaultFeatureFolder;
         }
         
         // Setup type-safe message routing
@@ -210,13 +231,20 @@ export class DiscoveryPreviewPanel {
     /**
      * Set the current discovery process
      */
-    public setProcess(process: DiscoveryProcess): void {
+    public setProcess(process: DiscoveryProcess, options?: DiscoveryPreviewPanelOptions): void {
         this._currentProcess = process;
         // Reset extension filters when a new process is set
         this._extensionFilters = {};
         // Set the default target group from the process if available
         if (process.targetGroupPath && !this._selectedTargetGroup) {
             this._selectedTargetGroup = process.targetGroupPath;
+        }
+        // Apply options for default destination type and feature folder
+        if (options?.defaultDestinationType) {
+            this._destinationType = options.defaultDestinationType;
+        }
+        if (options?.defaultFeatureFolder) {
+            this._selectedFeatureFolder = options.defaultFeatureFolder;
         }
         this._update();
     }

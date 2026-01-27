@@ -2759,7 +2759,8 @@ export async function activate(context: vscode.ExtensionContext) {
                 taskManager,
                 tasksTreeDataProvider,
                 discoveryEngine,
-                aiProcessManager
+                aiProcessManager,
+                configurationManager
             );
             disposables.push(...tasksDiscoveryDisposables);
         }
