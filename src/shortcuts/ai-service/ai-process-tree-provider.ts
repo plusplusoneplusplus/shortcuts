@@ -34,17 +34,34 @@ export class AIProcessItem extends vscode.TreeItem {
         this.process = process;
 
         // Different context value for different process types
+        // All process types get _resumable suffix if they meet resumability criteria
         if (process.type === 'code-review-group') {
-            this.contextValue = `codeReviewGroupProcess_${process.status}`;
+            const isResumable = this.isProcessResumable(process);
+            this.contextValue = isResumable
+                ? `codeReviewGroupProcess_${process.status}_resumable`
+                : `codeReviewGroupProcess_${process.status}`;
         } else if (process.type === 'code-review') {
             // Add _child suffix for child processes
-            this.contextValue = isChild 
-                ? `codeReviewProcess_${process.status}_child`
-                : `codeReviewProcess_${process.status}`;
+            const isResumable = this.isProcessResumable(process);
+            if (isChild) {
+                this.contextValue = isResumable
+                    ? `codeReviewProcess_${process.status}_child_resumable`
+                    : `codeReviewProcess_${process.status}_child`;
+            } else {
+                this.contextValue = isResumable
+                    ? `codeReviewProcess_${process.status}_resumable`
+                    : `codeReviewProcess_${process.status}`;
+            }
         } else if (process.type === 'discovery') {
-            this.contextValue = `discoveryProcess_${process.status}`;
+            const isResumable = this.isProcessResumable(process);
+            this.contextValue = isResumable
+                ? `discoveryProcess_${process.status}_resumable`
+                : `discoveryProcess_${process.status}`;
         } else if (process.type === 'pipeline-execution') {
-            this.contextValue = `pipelineExecutionProcess_${process.status}`;
+            const isResumable = this.isProcessResumable(process);
+            this.contextValue = isResumable
+                ? `pipelineExecutionProcess_${process.status}_resumable`
+                : `pipelineExecutionProcess_${process.status}`;
         } else if (process.type === 'pipeline-item') {
             // For pipeline items, check if resumable (has session ID, completed, SDK backend)
             const isResumable = this.isProcessResumable(process);
@@ -436,8 +453,8 @@ export class AIProcessItem extends vscode.TreeItem {
             }
         }
 
-        // Session resume info (for clarification and pipeline item processes)
-        if ((process.type === 'clarification' || process.type === 'pipeline-item') && this.isProcessResumable(process)) {
+        // Session resume info (for all resumable processes)
+        if (this.isProcessResumable(process)) {
             lines.push('');
             lines.push('---');
             lines.push('💡 *This session can be resumed*');

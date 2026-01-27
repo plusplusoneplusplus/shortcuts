@@ -2289,12 +2289,7 @@
         },
         {
           "command": "clarificationProcesses.resumeSession",
-          "when": "view == clarificationProcessesView && viewItem =~ /^clarificationProcess_completed_resumable$/",
-          "group": "process@2"
-        },
-        {
-          "command": "clarificationProcesses.resumeSession",
-          "when": "view == clarificationProcessesView && viewItem =~ /^pipelineItemProcess_completed(_child)?_resumable$/",
+          "when": "view == clarificationProcessesView && viewItem =~ /_completed(_child)?_resumable$/",
           "group": "process@2"
         },
         {
