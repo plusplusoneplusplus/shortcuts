@@ -1433,7 +1433,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         const sessionManager = getInteractiveSessionManager();
 
         // Build prompt with optional additional message
-        let fullPrompt = `Follow ${promptFilePath} for ${planFilePath}`;
+        let fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
         if (additionalMessage && additionalMessage.trim()) {
             fullPrompt += `\n\nAdditional context: ${additionalMessage.trim()}`;
         }
@@ -1512,7 +1512,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         const sessionManager = getInteractiveSessionManager();
 
         // Build prompt with optional additional message
-        let fullPrompt = `Follow ${promptFilePath} for ${planFilePath}`;
+        let fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
         if (additionalMessage && additionalMessage.trim()) {
             fullPrompt += `\n\nAdditional context: ${additionalMessage.trim()}`;
         }
