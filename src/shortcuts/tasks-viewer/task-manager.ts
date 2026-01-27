@@ -506,6 +506,71 @@ export class TaskManager implements vscode.Disposable {
     }
 
     /**
+     * Recursively scan directories to build folder structure (including empty folders)
+     * @param dirPath - Absolute path to directory to scan
+     * @param relativePath - Relative path from tasks root
+     * @param isArchived - Whether folders are in archive
+     * @param folderMap - Map to store all folders
+     * @param parentFolder - Parent folder to add children to
+     */
+    private scanFoldersRecursively(
+        dirPath: string,
+        relativePath: string,
+        isArchived: boolean,
+        folderMap: Map<string, TaskFolder>,
+        parentFolder: TaskFolder
+    ): void {
+        const archiveFolderName = 'archive';
+
+        const readResult = safeReadDir(dirPath);
+        if (!readResult.success || !readResult.data) {
+            return;
+        }
+
+        for (const item of readResult.data) {
+            const itemPath = path.join(dirPath, item);
+            const statsResult = safeStats(itemPath);
+            
+            if (!statsResult.success || !statsResult.data) {
+                continue;
+            }
+
+            if (statsResult.data.isDirectory()) {
+                // Skip archive folder when scanning active folders
+                if (!isArchived && item === archiveFolderName) {
+                    continue;
+                }
+
+                const folderRelativePath = relativePath ? path.join(relativePath, item) : item;
+
+                // Check if folder already exists in map
+                if (!folderMap.has(folderRelativePath)) {
+                    const newFolder: TaskFolder = {
+                        name: item,
+                        folderPath: itemPath,
+                        relativePath: folderRelativePath,
+                        isArchived,
+                        children: [],
+                        tasks: [],
+                        documentGroups: [],
+                        singleDocuments: []
+                    };
+
+                    folderMap.set(folderRelativePath, newFolder);
+                    parentFolder.children.push(newFolder);
+
+                    // Recursively scan subdirectory
+                    this.scanFoldersRecursively(itemPath, folderRelativePath, isArchived, folderMap, newFolder);
+                } else {
+                    // Folder already exists, just recurse into it
+                    const existingFolder = folderMap.get(folderRelativePath)!;
+                    this.scanFoldersRecursively(itemPath, folderRelativePath, isArchived, folderMap, existingFolder);
+                }
+            }
+        }
+    }
+
+    /**
      * Group task documents by base name and relative path
      * Returns groups only for base names that have multiple documents
      * Single documents are returned as-is (not grouped)
@@ -574,7 +639,18 @@ export class TaskManager implements vscode.Disposable {
         const folderMap = new Map<string, TaskFolder>();
         folderMap.set('', rootFolder);
 
-        // Process all documents to create folder structure
+        // First, scan all directories (including empty ones) to build complete folder structure
+        this.scanFoldersRecursively(this.getTasksFolder(), '', false, folderMap, rootFolder);
+
+        // Also scan archive folder if showArchived is enabled
+        if (settings.showArchived) {
+            const archiveFolder = this.getArchiveFolder();
+            if (safeExists(archiveFolder)) {
+                this.scanFoldersRecursively(archiveFolder, '', true, folderMap, rootFolder);
+            }
+        }
+
+        // Process all documents to ensure their folder paths exist (for documents in scanned folders)
         const allDocuments = [
             ...groups.flatMap(g => g.documents),
             ...singles
@@ -589,7 +665,7 @@ export class TaskManager implements vscode.Disposable {
             const pathParts = doc.relativePath.split(path.sep);
             let currentPath = '';
 
-            // Create folder hierarchy
+            // Create folder hierarchy (should already exist from directory scan, but ensure it)
             for (const part of pathParts) {
                 const parentPath = currentPath;
                 currentPath = currentPath ? path.join(currentPath, part) : part;

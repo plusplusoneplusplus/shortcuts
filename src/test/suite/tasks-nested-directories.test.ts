@@ -438,15 +438,68 @@ suite('Tasks Viewer - Nested Directories Tests', () => {
     });
 
     suite('Edge Cases', () => {
-        test('should handle empty directories', async () => {
+        test('should display empty directories', async () => {
             createDir('.vscode/tasks/empty-feature');
             createTaskFile('.vscode/tasks/feature-with-task/task.md');
 
             const hierarchy = await taskManager.getTaskFolderHierarchy();
 
-            // Empty directories should not appear in hierarchy
+            // Empty directories should appear in hierarchy
+            assert.strictEqual(hierarchy.children.length, 2, 'Should have 2 folders (including empty)');
+            const folderNames = hierarchy.children.map(f => f.name).sort();
+            assert.deepStrictEqual(folderNames, ['empty-feature', 'feature-with-task']);
+            
+            // Verify empty folder has no documents
+            const emptyFolder = hierarchy.children.find(f => f.name === 'empty-feature');
+            assert.ok(emptyFolder, 'Should find empty-feature folder');
+            assert.strictEqual(emptyFolder?.singleDocuments.length, 0, 'Empty folder should have no documents');
+            assert.strictEqual(emptyFolder?.documentGroups.length, 0, 'Empty folder should have no document groups');
+        });
+
+        test('should display nested empty directories', async () => {
+            createDir('.vscode/tasks/parent/empty-child');
+            createTaskFile('.vscode/tasks/parent/sibling/task.md');
+
+            const hierarchy = await taskManager.getTaskFolderHierarchy();
+
+            // Should have parent folder
             assert.strictEqual(hierarchy.children.length, 1);
-            assert.strictEqual(hierarchy.children[0].name, 'feature-with-task');
+            const parent = hierarchy.children[0];
+            assert.strictEqual(parent.name, 'parent');
+            
+            // Parent should have 2 children (empty-child and sibling)
+            assert.strictEqual(parent.children.length, 2, 'Parent should have 2 child folders');
+            const childNames = parent.children.map(f => f.name).sort();
+            assert.deepStrictEqual(childNames, ['empty-child', 'sibling']);
+            
+            // Verify empty child has no documents
+            const emptyChild = parent.children.find(f => f.name === 'empty-child');
+            assert.ok(emptyChild, 'Should find empty-child folder');
+            assert.strictEqual(emptyChild?.singleDocuments.length, 0);
+        });
+
+        test('should display deeply nested empty directories', async () => {
+            createDir('.vscode/tasks/l1/l2/l3/empty');
+            
+            const hierarchy = await taskManager.getTaskFolderHierarchy();
+
+            // Navigate to the deepest empty folder
+            assert.strictEqual(hierarchy.children.length, 1);
+            const l1 = hierarchy.children[0];
+            assert.strictEqual(l1.name, 'l1');
+            assert.strictEqual(l1.children.length, 1);
+            
+            const l2 = l1.children[0];
+            assert.strictEqual(l2.name, 'l2');
+            assert.strictEqual(l2.children.length, 1);
+            
+            const l3 = l2.children[0];
+            assert.strictEqual(l3.name, 'l3');
+            assert.strictEqual(l3.children.length, 1);
+            
+            const empty = l3.children[0];
+            assert.strictEqual(empty.name, 'empty');
+            assert.strictEqual(empty.singleDocuments.length, 0);
         });
 
         test('should handle directories with only subdirectories', async () => {
