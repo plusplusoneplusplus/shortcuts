@@ -21,7 +21,7 @@ import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
 import { AICommandMode, PromptFileInfo, RecentPrompt, SkillInfo } from './types';
-import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, requestSkills, updateContent } from './vscode-bridge';
+import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -712,6 +712,7 @@ function setupAIActionDropdown(): void {
     const aiActionMenu = document.getElementById('aiActionMenu');
     const resolveCommentsItem = document.getElementById('resolveCommentsItem');
     const executeWorkPlanItem = document.getElementById('executeWorkPlanItem');
+    const updateDocumentItem = document.getElementById('updateDocumentItem');
     const sendToNewChatBtn = document.getElementById('sendToNewChatBtn');
     const sendToExistingChatBtn = document.getElementById('sendToExistingChatBtn');
     const sendToCLIInteractiveBtn = document.getElementById('sendToCLIInteractiveBtn');
@@ -742,6 +743,16 @@ function setupAIActionDropdown(): void {
             e.stopPropagation();
             executeWorkPlanItem.classList.toggle('submenu-open');
             requestPromptFiles();
+        });
+    }
+
+    // Handle Update Document menu item click
+    if (updateDocumentItem) {
+        updateDocumentItem.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideAIActionMenu();
+            // Request the extension to show the update document dialog
+            requestUpdateDocument();
         });
     }
 

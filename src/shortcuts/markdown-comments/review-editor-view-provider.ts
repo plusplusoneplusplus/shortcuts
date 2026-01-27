@@ -63,7 +63,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument';
     commentId?: string;
     content?: string;
     selection?: {
@@ -97,6 +97,8 @@ interface WebviewMessage {
     options?: FollowPromptExecutionOptions;
     // Copy Follow Prompt additional context
     additionalContext?: string;
+    // Update Document instruction
+    instruction?: string;
 }
 
 /**
@@ -695,6 +697,22 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                         document.uri.fsPath,
                         message.promptFilePath,
                         message.additionalContext
+                    );
+                }
+                break;
+
+            case 'requestUpdateDocumentDialog':
+                // Send message to webview to show the update document dialog
+                webviewPanel.webview.postMessage({
+                    type: 'showUpdateDocumentDialog'
+                });
+                break;
+
+            case 'updateDocument':
+                if (message.instruction) {
+                    await this.handleUpdateDocument(
+                        message.instruction,
+                        document.uri.fsPath
                     );
                 }
                 break;
@@ -1892,6 +1910,60 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
      * @param planFilePath - Path to the plan file (used as fallback)
      * @returns Resolved working directory path
      */
+    /**
+     * Handle the Update Document action from the webview.
+     * Starts an interactive AI session with the document content and user instruction.
+     * 
+     * @param instruction - User's instruction for what changes to make
+     * @param filePath - Absolute path to the document being edited
+     */
+    private async handleUpdateDocument(instruction: string, filePath: string): Promise<void> {
+        try {
+            // Read current document content
+            const documentContent = await fs.promises.readFile(filePath, 'utf-8');
+
+            // Build the prompt
+            const prompt = `The user wants to update this markdown document with the following instruction:
+
+${instruction}
+
+Current document content:
+---
+${documentContent}
+---
+
+Please make the requested changes to the document.`;
+
+            // Get the interactive session manager
+            const sessionManager = getInteractiveSessionManager();
+
+            // Get settings for the tool
+            const config = vscode.workspace.getConfiguration('workspaceShortcuts.workPlan');
+            const tool = config.get<'copilot' | 'claude'>('defaultTool', 'copilot');
+            const workingDirectory = this.resolveWorkPlanWorkingDirectory(filePath);
+
+            // Launch interactive session
+            const sessionId = await sessionManager.startSession({
+                workingDirectory,
+                tool,
+                initialPrompt: prompt
+            });
+
+            if (sessionId) {
+                vscode.window.showInformationMessage(
+                    `Interactive session started for: ${path.basename(filePath)}`
+                );
+            } else {
+                vscode.window.showErrorMessage(
+                    'Failed to start interactive session. Please check that the AI CLI tool is installed.'
+                );
+            }
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to start Update Document session: ${errorMessage}`);
+        }
+    }
+
     private resolveWorkPlanWorkingDirectory(planFilePath: string): string {
         const config = vscode.workspace.getConfiguration('workspaceShortcuts.workPlan');
         const configPath = config.get<string>('workingDirectory', '{workspaceFolder}/src');

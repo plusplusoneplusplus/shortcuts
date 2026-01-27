@@ -235,6 +235,16 @@ export function requestExecuteWorkPlanWithSkill(skillName: string): void {
 }
 
 /**
+ * Request to show the Update Document dialog
+ * The dialog allows users to enter document-level instructions for AI
+ */
+export function requestUpdateDocument(): void {
+    // We'll send a message to show the dialog first
+    // The extension will respond with showUpdateDocumentDialog
+    postMessage({ type: 'requestUpdateDocumentDialog' } as any);
+}
+
+/**
  * Message handler type
  * Re-exported from shared module for backward compatibility
  */

@@ -169,6 +169,10 @@ export function getWebviewContent(
                             </div>
                         </div>
                     </div>
+                    <div class="ai-action-menu-item" id="updateDocumentItem">
+                        <span class="ai-action-icon">📝</span>
+                        <span class="ai-action-label">Update Document</span>
+                    </div>
                     <div class="ai-action-menu-divider"></div>
                     <div class="ai-action-menu-item ai-action-menu-parent" id="resolveCommentsItem">
                         <span class="ai-action-icon">✨</span>
@@ -391,6 +395,30 @@ export function getWebviewContent(
                 <button id="fpCancelBtn" class="btn btn-secondary">Cancel</button>
                 <button id="fpCopyPromptBtn" class="btn btn-secondary">Copy Prompt</button>
                 <button id="fpExecuteBtn" class="btn btn-primary">Execute</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Update Document Dialog -->
+    <div class="modal-overlay" id="updateDocumentDialog" style="display: none;">
+        <div class="modal-dialog update-document-dialog">
+            <div class="modal-header">
+                <h3>📝 Update Document</h3>
+                <button id="udCloseBtn" class="modal-close-btn">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="udInstruction">What changes do you want to make?</label>
+                    <textarea id="udInstruction" 
+                              placeholder="e.g., Add a section about error handling, fix the formatting of code blocks, add more details to the introduction..."
+                              rows="5"></textarea>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button id="udCancelBtn" class="btn btn-secondary">Cancel</button>
+                <button id="udSubmitBtn" class="btn btn-primary">Update</button>
             </div>
         </div>
     </div>

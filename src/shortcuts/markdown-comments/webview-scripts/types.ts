@@ -174,7 +174,8 @@ export type WebviewMessage =
     | { type: 'promptSearch' }
     | { type: 'showFollowPromptDialog'; promptFilePath: string; promptName: string; skillName?: string }
     | { type: 'followPromptDialogResult'; promptFilePath: string; skillName?: string; options: FollowPromptDialogOptions }
-    | { type: 'copyFollowPrompt'; promptFilePath: string; skillName?: string; additionalContext?: string };
+    | { type: 'copyFollowPrompt'; promptFilePath: string; skillName?: string; additionalContext?: string }
+    | { type: 'updateDocument'; instruction: string };
 
 /**
  * Options selected in the Follow Prompt dialog
@@ -251,7 +252,8 @@ export type ExtensionMessage =
     | { type: 'scrollToComment'; commentId: string }
     | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[]; skills?: SkillInfo[] }
     | { type: 'skillsResponse'; skills: SkillInfo[] }
-    | { type: 'showFollowPromptDialog'; promptName: string; promptFilePath: string; skillName?: string; availableModels: AIModelOption[]; defaults: { mode: 'interactive' | 'background'; model: string } };
+    | { type: 'showFollowPromptDialog'; promptName: string; promptFilePath: string; skillName?: string; availableModels: AIModelOption[]; defaults: { mode: 'interactive' | 'background'; model: string } }
+    | { type: 'showUpdateDocumentDialog' };
 
 /**
  * AI model option for dialog dropdown

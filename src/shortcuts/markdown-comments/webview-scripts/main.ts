@@ -8,6 +8,7 @@
 
 import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu, updateExecuteWorkPlanSubmenu, updatePromptFileSubmenu, updateSkillSubmenu } from './dom-handlers';
 import { initFollowPromptDialog, showFollowPromptDialog } from './follow-prompt-dialog';
+import { initUpdateDocumentDialog, showUpdateDocumentDialog } from './update-document-dialog';
 import { updateResolvedImage } from './image-handlers';
 import { initPanelManager, scrollToComment } from './panel-manager';
 import { render } from './render';
@@ -40,6 +41,10 @@ function init(): void {
     // Initialize Follow Prompt dialog
     initFollowPromptDialog();
     console.log('[Webview] Follow Prompt dialog initialized');
+
+    // Initialize Update Document dialog
+    initUpdateDocumentDialog();
+    console.log('[Webview] Update Document dialog initialized');
 
     // Setup message listener from extension
     setupMessageListener(handleMessage);
@@ -140,6 +145,11 @@ function handleMessage(message: ExtensionMessage): void {
                 message.availableModels,
                 message.defaults
             );
+            break;
+
+        case 'showUpdateDocumentDialog':
+            // Show the Update Document dialog
+            showUpdateDocumentDialog();
             break;
     }
 }
