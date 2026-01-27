@@ -334,3 +334,156 @@ suite('Tasks Discovery - TaskFolder with relatedItems', () => {
         assert.strictEqual(folder.relatedItems, undefined);
     });
 });
+
+suite('Tasks Discovery - TaskManager.getFeatureFolders', () => {
+    let tempDir: string;
+    let TaskManager: typeof import('../../shortcuts/tasks-viewer/task-manager').TaskManager;
+
+    setup(async () => {
+        // Create a unique temp directory for each test
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-feature-folders-test-'));
+        
+        // Dynamically import TaskManager
+        const module = await import('../../shortcuts/tasks-viewer/task-manager');
+        TaskManager = module.TaskManager;
+    });
+
+    teardown(() => {
+        // Clean up temp directory
+        if (fs.existsSync(tempDir)) {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    test('getFeatureFolders returns empty array when no folders exist', async () => {
+        const tasksDir = path.join(tempDir, '.vscode', 'tasks');
+        fs.mkdirSync(tasksDir, { recursive: true });
+
+        const manager = new TaskManager(tempDir);
+        const folders = await manager.getFeatureFolders();
+
+        assert.deepStrictEqual(folders, []);
+    });
+
+    test('getFeatureFolders returns feature folders', async () => {
+        const tasksDir = path.join(tempDir, '.vscode', 'tasks');
+        fs.mkdirSync(path.join(tasksDir, 'feature1'), { recursive: true });
+        fs.mkdirSync(path.join(tasksDir, 'feature2'), { recursive: true });
+
+        const manager = new TaskManager(tempDir);
+        const folders = await manager.getFeatureFolders();
+
+        assert.strictEqual(folders.length, 2);
+        assert.ok(folders.some(f => f.displayName === 'feature1'));
+        assert.ok(folders.some(f => f.displayName === 'feature2'));
+    });
+
+    test('getFeatureFolders excludes archive folder', async () => {
+        const tasksDir = path.join(tempDir, '.vscode', 'tasks');
+        fs.mkdirSync(path.join(tasksDir, 'feature1'), { recursive: true });
+        fs.mkdirSync(path.join(tasksDir, 'archive'), { recursive: true });
+
+        const manager = new TaskManager(tempDir);
+        const folders = await manager.getFeatureFolders();
+
+        assert.strictEqual(folders.length, 1);
+        assert.strictEqual(folders[0].displayName, 'feature1');
+    });
+
+    test('getFeatureFolders returns nested folders with proper display names', async () => {
+        const tasksDir = path.join(tempDir, '.vscode', 'tasks');
+        fs.mkdirSync(path.join(tasksDir, 'feature1', 'subfolder'), { recursive: true });
+
+        const manager = new TaskManager(tempDir);
+        const folders = await manager.getFeatureFolders();
+
+        assert.strictEqual(folders.length, 2);
+        assert.ok(folders.some(f => f.displayName === 'feature1'));
+        // Path.join uses OS separator, but display name uses forward slash
+        assert.ok(folders.some(f => f.relativePath === path.join('feature1', 'subfolder')));
+    });
+});
+
+suite('Tasks Discovery - TaskManager.addRelatedItems', () => {
+    let tempDir: string;
+    let TaskManager: typeof import('../../shortcuts/tasks-viewer/task-manager').TaskManager;
+
+    setup(async () => {
+        // Create a unique temp directory for each test
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-add-related-test-'));
+        
+        // Dynamically import TaskManager
+        const module = await import('../../shortcuts/tasks-viewer/task-manager');
+        TaskManager = module.TaskManager;
+    });
+
+    teardown(() => {
+        // Clean up temp directory
+        if (fs.existsSync(tempDir)) {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    test('addRelatedItems creates new related.yaml when none exists', async () => {
+        const folderPath = path.join(tempDir, 'feature1');
+        fs.mkdirSync(folderPath, { recursive: true });
+
+        const manager = new TaskManager(tempDir);
+        const items: RelatedItem[] = [
+            { name: 'file1.ts', path: 'src/file1.ts', type: 'file', category: 'source', relevance: 90, reason: 'R1' }
+        ];
+
+        await manager.addRelatedItems(folderPath, items, 'Test feature');
+
+        const loaded = await loadRelatedItems(folderPath);
+        assert.strictEqual(loaded?.items.length, 1);
+        assert.strictEqual(loaded?.description, 'Test feature');
+    });
+
+    test('addRelatedItems merges with existing items', async () => {
+        const folderPath = path.join(tempDir, 'feature1');
+        fs.mkdirSync(folderPath, { recursive: true });
+
+        // Create existing related items
+        const existingConfig: RelatedItemsConfig = {
+            description: 'Existing',
+            items: [
+                { name: 'file1.ts', path: 'src/file1.ts', type: 'file', category: 'source', relevance: 90, reason: 'R1' }
+            ]
+        };
+        await saveRelatedItems(folderPath, existingConfig);
+
+        const manager = new TaskManager(tempDir);
+        const newItems: RelatedItem[] = [
+            { name: 'file2.ts', path: 'src/file2.ts', type: 'file', category: 'source', relevance: 85, reason: 'R2' }
+        ];
+
+        await manager.addRelatedItems(folderPath, newItems);
+
+        const loaded = await loadRelatedItems(folderPath);
+        assert.strictEqual(loaded?.items.length, 2);
+    });
+
+    test('addRelatedItems deduplicates by path', async () => {
+        const folderPath = path.join(tempDir, 'feature1');
+        fs.mkdirSync(folderPath, { recursive: true });
+
+        const existingConfig: RelatedItemsConfig = {
+            description: 'Existing',
+            items: [
+                { name: 'file1.ts', path: 'src/file1.ts', type: 'file', category: 'source', relevance: 90, reason: 'R1' }
+            ]
+        };
+        await saveRelatedItems(folderPath, existingConfig);
+
+        const manager = new TaskManager(tempDir);
+        const newItems: RelatedItem[] = [
+            { name: 'file1.ts', path: 'src/file1.ts', type: 'file', category: 'source', relevance: 95, reason: 'R2' }
+        ];
+
+        await manager.addRelatedItems(folderPath, newItems);
+
+        const loaded = await loadRelatedItems(folderPath);
+        assert.strictEqual(loaded?.items.length, 1);
+    });
+});

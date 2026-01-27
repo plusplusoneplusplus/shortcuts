@@ -3,7 +3,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ensureDirectoryExists, safeExists, safeReadDir, safeRename, safeStats, safeWriteFile } from '../shared';
 import { Task, TasksViewerSettings, TaskSortBy, TaskDocument, TaskDocumentGroup, TaskFolder, DiscoverySettings, DiscoveryDefaultScope } from './types';
-import { loadRelatedItems, RELATED_ITEMS_FILENAME } from './related-items-loader';
+import { loadRelatedItems, mergeRelatedItems, RELATED_ITEMS_FILENAME } from './related-items-loader';
+import { RelatedItem } from './types';
 
 /**
  * Manages task files stored in the tasks folder
@@ -664,6 +665,77 @@ export class TaskManager implements vscode.Disposable {
         if (this.debounceTimer) {
             clearTimeout(this.debounceTimer);
             this.debounceTimer = undefined;
+        }
+    }
+
+    /**
+     * Add related items to a feature folder
+     * Merges with existing items, deduplicating by path/hash
+     * @param folderPath Absolute path to the feature folder
+     * @param items Items to add
+     * @param description Optional description to update
+     * @returns The updated config
+     */
+    async addRelatedItems(
+        folderPath: string,
+        items: RelatedItem[],
+        description?: string
+    ): Promise<void> {
+        await mergeRelatedItems(folderPath, items, description);
+    }
+
+    /**
+     * Get all non-archived feature folders (directories in tasks folder)
+     * Returns a flat list of folder paths with their display names
+     */
+    async getFeatureFolders(): Promise<Array<{ path: string; displayName: string; relativePath: string }>> {
+        const folders: Array<{ path: string; displayName: string; relativePath: string }> = [];
+        const tasksFolder = this.getTasksFolder();
+        
+        await this.collectFeatureFoldersRecursively(tasksFolder, '', folders);
+        
+        return folders;
+    }
+
+    /**
+     * Recursively collect feature folders
+     */
+    private async collectFeatureFoldersRecursively(
+        dirPath: string,
+        relativePath: string,
+        folders: Array<{ path: string; displayName: string; relativePath: string }>
+    ): Promise<void> {
+        const archiveFolderName = 'archive';
+        const readResult = safeReadDir(dirPath);
+        
+        if (!readResult.success || !readResult.data) {
+            return;
+        }
+
+        for (const item of readResult.data) {
+            // Skip archive folder
+            if (item === archiveFolderName) {
+                continue;
+            }
+
+            const itemPath = path.join(dirPath, item);
+            const statsResult = safeStats(itemPath);
+            
+            if (!statsResult.success || !statsResult.data || !statsResult.data.isDirectory()) {
+                continue;
+            }
+
+            const itemRelativePath = relativePath ? path.join(relativePath, item) : item;
+            const displayName = relativePath ? `${relativePath}/${item}` : item;
+            
+            folders.push({
+                path: itemPath,
+                displayName,
+                relativePath: itemRelativePath
+            });
+
+            // Recursively scan subdirectories
+            await this.collectFeatureFoldersRecursively(itemPath, itemRelativePath, folders);
         }
     }
 

@@ -84,14 +84,15 @@ export function registerDiscoveryCommands(
     discoveryEngine: DiscoveryEngine,
     configManager: ConfigurationManager,
     workspaceRoot: string,
-    aiProcessManager: AIProcessManager
+    aiProcessManager: AIProcessManager,
+    taskManager?: import('../tasks-viewer/task-manager').TaskManager
 ): vscode.Disposable[] {
     const disposables: vscode.Disposable[] = [];
 
     // Start discovery (global)
     disposables.push(
         vscode.commands.registerCommand('shortcuts.discovery.start', async () => {
-            await startDiscovery(context, discoveryEngine, configManager, workspaceRoot, aiProcessManager);
+            await startDiscovery(context, discoveryEngine, configManager, workspaceRoot, aiProcessManager, undefined, undefined, taskManager);
         })
     );
 
@@ -114,7 +115,8 @@ export function registerDiscoveryCommands(
                     workspaceRoot,
                     aiProcessManager,
                     groupPath,
-                    existingGroupSnapshot
+                    existingGroupSnapshot,
+                    taskManager
                 );
             }
         )
@@ -153,7 +155,8 @@ async function startDiscovery(
     workspaceRoot: string,
     aiProcessManager: AIProcessManager,
     targetGroupPath?: string,
-    existingGroupSnapshot?: ExistingGroupSnapshot
+    existingGroupSnapshot?: ExistingGroupSnapshot,
+    taskManager?: import('../tasks-viewer/task-manager').TaskManager
 ): Promise<void> {
     // Check if discovery is enabled
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.discovery');
@@ -318,7 +321,8 @@ async function startDiscovery(
                         context.extensionUri,
                         discoveryEngine,
                         configManager,
-                        event.process
+                        event.process,
+                        taskManager
                     );
 
                     resolveCompletion();
@@ -363,7 +367,8 @@ async function startDiscovery(
                     context.extensionUri,
                     discoveryEngine,
                     configManager,
-                    discoveryProcess
+                    discoveryProcess,
+                    taskManager
                 );
 
                 return;

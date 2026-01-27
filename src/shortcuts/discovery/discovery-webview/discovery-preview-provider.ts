@@ -12,10 +12,13 @@ import * as vscode from 'vscode';
 import { DiscoveryProcess, DiscoveryResult } from '../types';
 import { LogicalGroupItem, LogicalGroup, ShortcutsConfig } from '../../types';
 import { DiscoveryEngine } from '../discovery-engine';
-import { getWebviewContent, WebviewMessage, ExtensionFilters } from './webview-content';
+import { getWebviewContent, WebviewMessage, ExtensionFilters, FeatureFolderInfo, DestinationType } from './webview-content';
 import { ConfigurationManager } from '../../configuration-manager';
 import { getExtensionLogger, LogCategory } from '../../shared/extension-logger';
 import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
+import { TaskManager } from '../../tasks-viewer/task-manager';
+import { RelatedItem } from '../../tasks-viewer/types';
+import { categorizeItem } from '../../tasks-viewer/related-items-loader';
 
 /**
  * Discovery Preview Panel
@@ -31,14 +34,24 @@ export class DiscoveryPreviewPanel {
     private readonly _extensionUri: vscode.Uri;
     private readonly _discoveryEngine: DiscoveryEngine;
     private readonly _configManager: ConfigurationManager;
+    private readonly _taskManager: TaskManager | undefined;
     private readonly _setupHelper: WebviewSetupHelper;
     private readonly _messageRouter: WebviewMessageRouter<WebviewMessage>;
     
     private _currentProcess: DiscoveryProcess | undefined;
     private _minScore: number = 30;
     private _selectedTargetGroup: string = '';
+    private _selectedFeatureFolder: string = '';
+    private _destinationType: DestinationType = 'shortcutGroups';
     private _extensionFilters: ExtensionFilters = {};
+    private _featureFolders: FeatureFolderInfo[] = [];
     private _disposables: vscode.Disposable[] = [];
+    private _onDidAddToFeatureFolder: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
+    
+    /**
+     * Event fired when items are added to a feature folder (for refreshing Tasks tree)
+     */
+    public readonly onDidAddToFeatureFolder: vscode.Event<void> = this._onDidAddToFeatureFolder.event;
     
     /**
      * Create or show the discovery preview panel
@@ -47,7 +60,8 @@ export class DiscoveryPreviewPanel {
         extensionUri: vscode.Uri,
         discoveryEngine: DiscoveryEngine,
         configManager: ConfigurationManager,
-        process?: DiscoveryProcess
+        process?: DiscoveryProcess,
+        taskManager?: TaskManager
     ): DiscoveryPreviewPanel {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
@@ -78,7 +92,8 @@ export class DiscoveryPreviewPanel {
             extensionUri,
             discoveryEngine,
             configManager,
-            process
+            process,
+            taskManager
         );
         
         return DiscoveryPreviewPanel.currentPanel;
@@ -89,12 +104,14 @@ export class DiscoveryPreviewPanel {
         extensionUri: vscode.Uri,
         discoveryEngine: DiscoveryEngine,
         configManager: ConfigurationManager,
-        process?: DiscoveryProcess
+        process?: DiscoveryProcess,
+        taskManager?: TaskManager
     ) {
         this._panel = panel;
         this._extensionUri = extensionUri;
         this._discoveryEngine = discoveryEngine;
         this._configManager = configManager;
+        this._taskManager = taskManager;
         this._currentProcess = process;
         this._setupHelper = new WebviewSetupHelper(extensionUri);
         this._messageRouter = new WebviewMessageRouter<WebviewMessage>({
@@ -162,6 +179,13 @@ export class DiscoveryPreviewPanel {
             })
             .on('addToGroup', async (message: WebviewMessage) => {
                 await this._addToGroup(message.payload.targetGroup);
+            })
+            .on('addToFeatureFolder', async (message: WebviewMessage) => {
+                await this._addToFeatureFolder(message.payload.folderPath);
+            })
+            .on('switchDestinationType', (message: WebviewMessage) => {
+                this._destinationType = message.payload.destinationType as DestinationType;
+                this._update();
             })
             .on('filterByScore', (message: WebviewMessage) => {
                 this._minScore = message.payload.minScore;
@@ -364,6 +388,108 @@ export class DiscoveryPreviewPanel {
     }
     
     /**
+     * Add selected results to a feature folder's related.yaml
+     */
+    private async _addToFeatureFolder(folderPath: string): Promise<void> {
+        if (!this._currentProcess?.results || !folderPath) {
+            vscode.window.showWarningMessage('Please select a target folder');
+            return;
+        }
+        
+        if (!this._taskManager) {
+            vscode.window.showErrorMessage('Tasks viewer not available');
+            return;
+        }
+        
+        // Store the selected folder so it persists after update
+        this._selectedFeatureFolder = folderPath;
+        
+        const selectedResults = this._currentProcess.results.filter(r => r.selected);
+        if (selectedResults.length === 0) {
+            vscode.window.showWarningMessage('No items selected');
+            return;
+        }
+        
+        try {
+            // Convert discovery results to related items
+            const workspaceRoot = this._taskManager.getWorkspaceRoot();
+            const relatedItems = this._convertToRelatedItems(selectedResults, workspaceRoot);
+            
+            // Add to the feature folder
+            await this._taskManager.addRelatedItems(folderPath, relatedItems);
+            
+            // Get folder display name for the notification
+            const folderName = this._featureFolders.find(f => f.path === folderPath)?.displayName 
+                || folderPath.split('/').pop() 
+                || folderPath;
+            
+            vscode.window.showInformationMessage(
+                `Added ${relatedItems.length} item(s) to "${folderName}"`
+            );
+            
+            // Deselect added items
+            for (const result of selectedResults) {
+                result.selected = false;
+            }
+            
+            // Fire event to refresh Tasks tree
+            this._onDidAddToFeatureFolder.fire();
+            
+            this._update();
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            const logger = getExtensionLogger();
+            logger.error(LogCategory.DISCOVERY, 'Failed to add items to feature folder', err, { folderPath });
+            vscode.window.showErrorMessage(`Failed to add items: ${err.message}`);
+        }
+    }
+    
+    /**
+     * Convert discovery results to related items format
+     */
+    private _convertToRelatedItems(results: DiscoveryResult[], workspaceRoot: string): RelatedItem[] {
+        return results.map(result => {
+            const item: RelatedItem = {
+                name: result.name,
+                type: result.type === 'commit' ? 'commit' : 'file',
+                category: this._getCategory(result),
+                relevance: result.relevanceScore,
+                reason: result.relevanceReason
+            };
+
+            if (result.type === 'commit' && result.commit) {
+                item.hash = result.commit.hash;
+            } else if (result.path) {
+                // Make path relative to workspace
+                item.path = result.path.startsWith(workspaceRoot)
+                    ? result.path.substring(workspaceRoot.length + 1)
+                    : result.path;
+            }
+
+            return item;
+        });
+    }
+    
+    /**
+     * Get category for a discovery result
+     */
+    private _getCategory(result: DiscoveryResult): 'source' | 'test' | 'doc' | 'config' | 'commit' {
+        if (result.type === 'commit') {
+            return 'commit';
+        }
+        
+        if (result.type === 'doc') {
+            return 'doc';
+        }
+
+        if (result.path) {
+            return categorizeItem(result.path);
+        }
+
+        return 'source';
+    }
+    
+    /**
      * Ensure a subgroup exists within the target group, create if needed
      */
     private async _ensureSubgroup(parentGroupPath: string, subgroupName: string, description: string): Promise<string> {
@@ -480,6 +606,11 @@ export class DiscoveryPreviewPanel {
             };
         }
         
+        // Load feature folders if TaskManager is available
+        if (this._taskManager) {
+            this._featureFolders = await this._taskManager.getFeatureFolders();
+        }
+        
         this._panel.webview.html = getWebviewContent(
             webview,
             this._extensionUri,
@@ -487,7 +618,10 @@ export class DiscoveryPreviewPanel {
             groups,
             this._minScore,
             this._selectedTargetGroup,
-            this._extensionFilters
+            this._extensionFilters,
+            this._featureFolders,
+            this._destinationType,
+            this._selectedFeatureFolder
         );
     }
     
@@ -573,6 +707,7 @@ export class DiscoveryPreviewPanel {
     public dispose(): void {
         DiscoveryPreviewPanel.currentPanel = undefined;
         
+        this._onDidAddToFeatureFolder.dispose();
         this._messageRouter.dispose();
         this._panel.dispose();
         

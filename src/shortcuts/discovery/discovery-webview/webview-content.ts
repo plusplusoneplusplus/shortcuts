@@ -20,11 +20,22 @@ export type WebviewMessageType =
     | 'selectAll'
     | 'deselectAll'
     | 'addToGroup'
+    | 'addToFeatureFolder'
     | 'filterByScore'
     | 'filterByExtension'
     | 'refresh'
     | 'cancel'
-    | 'showWarning';
+    | 'showWarning'
+    | 'switchDestinationType';
+
+/**
+ * Feature folder info for webview
+ */
+export interface FeatureFolderInfo {
+    path: string;
+    displayName: string;
+    relativePath: string;
+}
 
 /**
  * Extension filter state per result type
@@ -41,6 +52,11 @@ export interface WebviewMessage {
 }
 
 /**
+ * Destination type for adding results
+ */
+export type DestinationType = 'shortcutGroups' | 'featureFolders';
+
+/**
  * Generate the webview HTML content
  */
 export function getWebviewContent(
@@ -50,7 +66,10 @@ export function getWebviewContent(
     groups: string[],
     minScore: number,
     selectedTargetGroup: string = '',
-    extensionFilters: ExtensionFilters = {}
+    extensionFilters: ExtensionFilters = {},
+    featureFolders: FeatureFolderInfo[] = [],
+    destinationType: DestinationType = 'shortcutGroups',
+    selectedFeatureFolder: string = ''
 ): string {
     // Use shared helper for nonce generation
     const nonce = WebviewSetupHelper.generateNonce();
@@ -74,9 +93,9 @@ export function getWebviewContent(
 <body>
     <div class="container">
         ${getHeaderContent(process)}
-        ${getFilterContent(minScore, groups, selectedTargetGroup)}
+        ${getFilterContent(minScore, groups, selectedTargetGroup, featureFolders, destinationType, selectedFeatureFolder)}
         ${getResultsContent(process, minScore, extensionFilters)}
-        ${getActionsContent(process, groups)}
+        ${getActionsContent(process, groups, featureFolders, destinationType)}
     </div>
     <script nonce="${nonce}">
         ${getScript()}
@@ -208,6 +227,50 @@ function getStyles(): string {
         
         .filter-input:focus {
             outline: 1px solid var(--vscode-focusBorder);
+        }
+        
+        /* Destination toggle */
+        .destination-selector {
+            flex-basis: 100%;
+        }
+        
+        .destination-toggle {
+            display: flex;
+            gap: 0;
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .toggle-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            background-color: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .toggle-btn:hover {
+            background-color: var(--vscode-list-hoverBackground);
+        }
+        
+        .toggle-btn.active {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+        }
+        
+        .toggle-btn:first-child {
+            border-right: 1px solid var(--vscode-input-border);
+        }
+        
+        .target-selector {
+            min-width: 200px;
+        }
+        
+        .target-selector.hidden {
+            display: none;
         }
         
         /* Results */
@@ -478,11 +541,27 @@ function getHeaderContent(process: DiscoveryProcess | undefined): string {
 /**
  * Get filter content
  */
-function getFilterContent(minScore: number, groups: string[], selectedTargetGroup: string = ''): string {
+function getFilterContent(
+    minScore: number, 
+    groups: string[], 
+    selectedTargetGroup: string = '',
+    featureFolders: FeatureFolderInfo[] = [],
+    destinationType: DestinationType = 'shortcutGroups',
+    selectedFeatureFolder: string = ''
+): string {
     const groupOptions = groups.map(g => {
         const isSelected = g === selectedTargetGroup ? ' selected' : '';
         return `<option value="${escapeHtml(g)}"${isSelected}>${escapeHtml(g)}</option>`;
     }).join('');
+
+    const folderOptions = featureFolders.map(f => {
+        const isSelected = f.path === selectedFeatureFolder ? ' selected' : '';
+        return `<option value="${escapeHtml(f.path)}"${isSelected}>${escapeHtml(f.displayName)}</option>`;
+    }).join('');
+
+    const hasFeatureFolders = featureFolders.length > 0;
+    const isShortcutGroups = destinationType === 'shortcutGroups';
+    const isFeatureFolders = destinationType === 'featureFolders';
     
     // Note: Using event listener in script instead of inline oninput
     return `
@@ -493,11 +572,31 @@ function getFilterContent(minScore: number, groups: string[], selectedTargetGrou
                     min="0" max="100" value="${minScore}">
                 <span id="minScoreValue">${minScore}</span>
             </div>
-            <div class="filter-group">
+            <div class="filter-group destination-selector">
+                <label class="filter-label">Add to</label>
+                <div class="destination-toggle">
+                    <button class="toggle-btn ${isShortcutGroups ? 'active' : ''}" data-destination="shortcutGroups">
+                        📁 Shortcut Groups
+                    </button>
+                    ${hasFeatureFolders ? `
+                        <button class="toggle-btn ${isFeatureFolders ? 'active' : ''}" data-destination="featureFolders">
+                            📋 Feature Folders
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+            <div class="filter-group target-selector ${isShortcutGroups ? '' : 'hidden'}" id="groupSelector">
                 <label class="filter-label">Target Group</label>
                 <select class="filter-input" id="targetGroup">
                     <option value="">Select a group...</option>
                     ${groupOptions}
+                </select>
+            </div>
+            <div class="filter-group target-selector ${isFeatureFolders ? '' : 'hidden'}" id="folderSelector">
+                <label class="filter-label">Target Folder</label>
+                <select class="filter-input" id="targetFeatureFolder">
+                    <option value="">Select a folder...</option>
+                    ${folderOptions}
                 </select>
             </div>
         </div>
@@ -663,18 +762,28 @@ function renderResultItem(result: DiscoveryResult): string {
 /**
  * Get actions content
  */
-function getActionsContent(process: DiscoveryProcess | undefined, groups: string[]): string {
+function getActionsContent(
+    process: DiscoveryProcess | undefined, 
+    groups: string[],
+    featureFolders: FeatureFolderInfo[] = [],
+    destinationType: DestinationType = 'shortcutGroups'
+): string {
     if (!process || process.status !== 'completed' || !process.results?.length) {
         return '';
     }
     
     const selectedCount = process.results.filter(r => r.selected).length;
+    const isFeatureFolders = destinationType === 'featureFolders';
+    const buttonText = isFeatureFolders
+        ? `Add ${selectedCount} Selected to Folder`
+        : `Add ${selectedCount} Selected to Group`;
+    const buttonClass = isFeatureFolders ? 'add-to-folder-btn' : 'add-to-group-btn';
     
     // Note: Using CSS classes for event delegation instead of inline onclick
     return `
         <div class="actions">
-            <button class="action-btn primary add-to-group-btn" ${selectedCount === 0 ? 'disabled' : ''}>
-                Add ${selectedCount} Selected to Group
+            <button class="action-btn primary ${buttonClass}" ${selectedCount === 0 ? 'disabled' : ''}>
+                ${buttonText}
             </button>
             <button class="action-btn secondary refresh-btn">
                 Refresh
@@ -708,6 +817,16 @@ function getScript(): string {
                     return;
                 }
                 
+                // Handle destination toggle buttons
+                const toggleBtn = target.closest('.toggle-btn');
+                if (toggleBtn) {
+                    const destination = toggleBtn.getAttribute('data-destination');
+                    if (destination) {
+                        vscode.postMessage({ type: 'switchDestinationType', payload: { destinationType: destination } });
+                    }
+                    return;
+                }
+                
                 // Handle select all button
                 if (target.closest('.select-all-btn')) {
                     vscode.postMessage({ type: 'selectAll' });
@@ -729,6 +848,17 @@ function getScript(): string {
                         return;
                     }
                     vscode.postMessage({ type: 'addToGroup', payload: { targetGroup: targetGroup } });
+                    return;
+                }
+                
+                // Handle add to feature folder button
+                if (target.closest('.add-to-folder-btn')) {
+                    const targetFolder = document.getElementById('targetFeatureFolder').value;
+                    if (!targetFolder) {
+                        vscode.postMessage({ type: 'showWarning', payload: { message: 'Please select a target folder' } });
+                        return;
+                    }
+                    vscode.postMessage({ type: 'addToFeatureFolder', payload: { folderPath: targetFolder } });
                     return;
                 }
                 
