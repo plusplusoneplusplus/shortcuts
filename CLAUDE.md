@@ -171,6 +171,13 @@ const result = await service.sendMessage({
 
 The SDK service automatically loads MCP server configuration from `~/.copilot/mcp-config.json` when creating direct sessions. This provides a convenient way to configure MCP servers once and have them available across all workspaces.
 
+**VS Code Setting:**
+```json
+"workspaceShortcuts.aiService.sdk.loadMcpConfig": true  // Default: true
+```
+
+This setting controls whether MCP config is auto-loaded. When enabled (default), the config file is read automatically. Users can disable this via VS Code settings UI or by setting it to `false`.
+
 **Config File Format:**
 ```json
 {
@@ -196,10 +203,16 @@ The SDK service automatically loads MCP server configuration from `~/.copilot/mc
 - **Remote servers (HTTP/SSE)**: Accessed over the network with `url` and optional `headers`
 
 **Behavior:**
-- Default config is loaded automatically unless `loadDefaultMcpConfig: false` is passed
+- Default config is loaded automatically based on VS Code setting `workspaceShortcuts.aiService.sdk.loadMcpConfig` (default: `true`)
+- Per-request `loadDefaultMcpConfig: false` can override the VS Code setting
 - Explicit `mcpServers` option takes precedence over default config (merged)
 - Pass `mcpServers: {}` to explicitly disable all MCP servers
 - Only applies to direct sessions (`usePool: false`), not session pool
+
+**Configuration Hierarchy (Precedence):**
+1. **Explicit `mcpServers` in SendMessageOptions** - Highest priority
+2. **Explicit `loadDefaultMcpConfig` in SendMessageOptions** - Per-request override
+3. **VS Code setting `workspaceShortcuts.aiService.sdk.loadMcpConfig`** - User preference (default: true)
 
 **Example:**
 ```typescript

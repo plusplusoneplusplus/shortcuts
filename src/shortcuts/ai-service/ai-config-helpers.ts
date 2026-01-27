@@ -49,3 +49,13 @@ export function getSDKSessionTimeoutSetting(): number {
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
     return config.get<number>('sessionTimeout', 600000);
 }
+
+/**
+ * Get the SDK load MCP config setting.
+ *
+ * @returns Whether to automatically load MCP config from ~/.copilot/mcp-config.json
+ */
+export function getSDKLoadMcpConfigSetting(): boolean {
+    const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
+    return config.get<boolean>('loadMcpConfig', true);
+}

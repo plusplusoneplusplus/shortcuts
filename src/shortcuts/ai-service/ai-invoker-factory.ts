@@ -15,7 +15,7 @@
 
 import { copyToClipboard, invokeCopilotCLI } from './copilot-cli-invoker';
 import { getCopilotSDKService, AIInvocationResult } from '@plusplusoneplusplus/pipeline-core';
-import { getAIBackendSetting } from './ai-config-helpers';
+import { getAIBackendSetting, getSDKLoadMcpConfigSetting } from './ai-config-helpers';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
 
 /**
@@ -124,6 +124,7 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
 
     const backend = getAIBackendSetting();
     const logger = getExtensionLogger();
+    const loadMcpConfig = getSDKLoadMcpConfigSetting();
 
     return async (prompt: string, invokeOptions?: { model?: string }): Promise<AIInvokerResult> => {
         const model = invokeOptions?.model || defaultModel;
@@ -144,7 +145,8 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
                     model,
                     workingDirectory,
                     timeoutMs,
-                    usePool
+                    usePool,
+                    loadDefaultMcpConfig: loadMcpConfig
                 });
 
                 if (result.success) {
