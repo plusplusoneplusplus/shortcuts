@@ -419,7 +419,10 @@ export function getRangeDiffContent(
         // Get the merge base first
         let mergeBase: string;
         try {
-            mergeBase = execGit(['merge-base', baseRef, headRef], repositoryRoot);
+            // NOTE: Must trim the output as git commands return newlines at the end.
+            // Without trimming, the newline causes `git show <hash>\n:path` to be interpreted
+            // as showing the commit (not the file), leaking commit info into file content.
+            mergeBase = execGit(['merge-base', baseRef, headRef], repositoryRoot).trim();
         } catch {
             // If merge-base fails, use baseRef directly
             mergeBase = baseRef;
