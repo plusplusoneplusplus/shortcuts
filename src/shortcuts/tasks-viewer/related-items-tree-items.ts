@@ -96,7 +96,15 @@ export class RelatedFileItem extends vscode.TreeItem {
             const filePath = vscode.Uri.file(
                 item.path.startsWith('/') ? item.path : `${workspaceRoot}/${item.path}`
             );
-            this.command = {
+            
+            // Check if it's a markdown file - open with Review Editor
+            const isMarkdown = item.path.toLowerCase().endsWith('.md');
+            
+            this.command = isMarkdown ? {
+                command: 'vscode.openWith',
+                title: 'Open Document',
+                arguments: [filePath, 'reviewEditorView']
+            } : {
                 command: 'vscode.open',
                 title: 'Open File',
                 arguments: [filePath]

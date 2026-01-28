@@ -276,6 +276,55 @@ suite('Tasks Discovery - Tree Items', () => {
         assert.strictEqual(item.description, 'src/auth/auth-service.ts');
     });
 
+    test('RelatedFileItem uses vscode.open for non-markdown files', () => {
+        const relatedItem: RelatedItem = {
+            name: 'auth-service.ts',
+            path: 'src/auth/auth-service.ts',
+            type: 'file',
+            category: 'source',
+            relevance: 95,
+            reason: 'Core auth implementation'
+        };
+
+        const item = new RelatedFileItem(relatedItem, '/path/to/folder', '/workspace');
+
+        assert.strictEqual(item.command?.command, 'vscode.open');
+        assert.strictEqual(item.command?.title, 'Open File');
+    });
+
+    test('RelatedFileItem uses vscode.openWith for markdown files', () => {
+        const relatedItem: RelatedItem = {
+            name: 'README.md',
+            path: 'docs/README.md',
+            type: 'file',
+            category: 'doc',
+            relevance: 80,
+            reason: 'Documentation'
+        };
+
+        const item = new RelatedFileItem(relatedItem, '/path/to/folder', '/workspace');
+
+        assert.strictEqual(item.command?.command, 'vscode.openWith');
+        assert.strictEqual(item.command?.title, 'Open Document');
+        assert.strictEqual(item.command?.arguments?.[1], 'reviewEditorView');
+    });
+
+    test('RelatedFileItem handles uppercase .MD extension', () => {
+        const relatedItem: RelatedItem = {
+            name: 'DESIGN.MD',
+            path: 'docs/DESIGN.MD',
+            type: 'file',
+            category: 'doc',
+            relevance: 75,
+            reason: 'Design document'
+        };
+
+        const item = new RelatedFileItem(relatedItem, '/path/to/folder', '/workspace');
+
+        assert.strictEqual(item.command?.command, 'vscode.openWith');
+        assert.strictEqual(item.command?.arguments?.[1], 'reviewEditorView');
+    });
+
     test('RelatedCommitItem has correct properties', () => {
         const relatedItem: RelatedItem = {
             name: 'feat: add JWT refresh tokens',
