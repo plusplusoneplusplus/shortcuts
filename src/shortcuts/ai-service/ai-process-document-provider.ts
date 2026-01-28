@@ -147,6 +147,13 @@ export class AIProcessDocumentProvider
         lines.push(`${statusEmoji} **${process.status.charAt(0).toUpperCase() + process.status.slice(1)}**`);
         lines.push('');
 
+        // Backend section
+        if (process.backend) {
+            lines.push(`${h} Backend`);
+            lines.push(`**${this.formatBackendLabel(process.backend)}**`);
+            lines.push('');
+        }
+
         // Timing section
         lines.push(`${h} Timing`);
         lines.push(`- **Started:** ${process.startTime.toLocaleString()}`);
@@ -285,6 +292,18 @@ export class AIProcessDocumentProvider
             case 'failed': return '❌';
             case 'cancelled': return '🚫';
             default: return '○';
+        }
+    }
+
+    /**
+     * Format backend type to user-friendly label
+     */
+    private formatBackendLabel(backend: string): string {
+        switch (backend) {
+            case 'copilot-sdk': return 'Copilot SDK';
+            case 'copilot-cli': return 'Copilot CLI';
+            case 'clipboard': return 'Clipboard';
+            default: return backend;
         }
     }
 
