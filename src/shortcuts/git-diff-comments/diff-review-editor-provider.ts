@@ -940,12 +940,15 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
     /**
      * Handle request for prompt files
+     * Also returns skills for the combined action items submenu
      */
     private async handleRequestPromptFiles(panel: vscode.WebviewPanel): Promise<void> {
         const promptFiles = await getPromptFiles();
+        const skills = await getSkills();
         panel.webview.postMessage({
             type: 'promptFilesResponse',
-            promptFiles
+            promptFiles,
+            skills
         });
     }
 
@@ -1314,6 +1317,17 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             <span class="context-menu-arrow">▶</span>
             <div class="context-submenu" id="askAIInteractiveSubmenu">
                 <!-- Dynamically populated from settings -->
+            </div>
+        </div>
+        <div class="context-menu-separator" id="actionItemsSeparator"></div>
+        <div class="context-menu-item context-menu-parent" id="contextMenuActionItems">
+            <span class="context-menu-icon">🚀</span>
+            <span class="context-menu-label">Follow Prompt</span>
+            <span class="context-menu-arrow">▶</span>
+            <div class="context-submenu" id="actionItemsSubmenu">
+                <div class="context-menu-item context-menu-loading" id="actionItemsLoading">
+                    <span class="menu-icon">⏳</span>Loading...
+                </div>
             </div>
         </div>
     </div>

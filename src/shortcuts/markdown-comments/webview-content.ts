@@ -293,23 +293,13 @@ export function getWebviewContent(
                 <!-- Dynamically populated from settings -->
             </div>
         </div>
-        <div class="context-menu-separator" id="promptFileSeparator"></div>
-        <div class="context-menu-item context-menu-parent" id="contextMenuCustomWithPromptFile">
-            <span class="context-menu-icon">📄</span>
-            <span class="context-menu-label">Custom with Prompt File</span>
+        <div class="context-menu-separator" id="actionItemsSeparator"></div>
+        <div class="context-menu-item context-menu-parent" id="contextMenuActionItems">
+            <span class="context-menu-icon">🚀</span>
+            <span class="context-menu-label">Follow Prompt</span>
             <span class="context-menu-arrow">▶</span>
-            <div class="context-submenu" id="promptFileSubmenu">
-                <div class="context-menu-item context-menu-loading" id="promptFileLoading">
-                    <span class="menu-icon">⏳</span>Loading...
-                </div>
-            </div>
-        </div>
-        <div class="context-menu-item context-menu-parent" id="contextMenuUseSkill">
-            <span class="context-menu-icon">🎯</span>
-            <span class="context-menu-label">Use Skill</span>
-            <span class="context-menu-arrow">▶</span>
-            <div class="context-submenu" id="skillSubmenu">
-                <div class="context-menu-item context-menu-loading" id="skillLoading">
+            <div class="context-submenu" id="actionItemsSubmenu">
+                <div class="context-menu-item context-menu-loading" id="actionItemsLoading">
                     <span class="menu-icon">⏳</span>Loading...
                 </div>
             </div>

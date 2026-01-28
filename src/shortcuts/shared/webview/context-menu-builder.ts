@@ -433,6 +433,115 @@ export function buildSkillSubmenuHTML(
 }
 
 /**
+ * Build action items (prompts + skills combined) submenu HTML
+ * @param promptFiles - The prompt files to display
+ * @param skills - The skills to display
+ * @param config - Context menu configuration
+ * @returns HTML string for combined action items submenu
+ */
+export function buildActionItemsSubmenuHTML(
+    promptFiles: PromptFileInfo[],
+    skills: SkillInfo[],
+    config: ContextMenuConfig = DEFAULT_CONFIG
+): string {
+    const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+    const hasPrompts = promptFiles && promptFiles.length > 0;
+    const hasSkills = skills && skills.length > 0;
+
+    if (!hasPrompts && !hasSkills) {
+        return `<div class="${getClassName('context-menu-item', mergedConfig)} context-menu-empty" disabled>
+            <span class="menu-icon">📭</span>No prompt files or skills found
+        </div>
+        <div class="${getClassName('context-menu-item', mergedConfig)} context-menu-hint" disabled>
+            <span class="menu-icon">💡</span>Add .prompt.md files or skills
+        </div>`;
+    }
+
+    const parts: string[] = [];
+
+    // Group prompt files by source folder
+    if (hasPrompts) {
+        const groupedFiles = new Map<string, PromptFileInfo[]>();
+        for (const file of promptFiles) {
+            const group = groupedFiles.get(file.sourceFolder) || [];
+            group.push(file);
+            groupedFiles.set(file.sourceFolder, group);
+        }
+
+        const hasMultipleGroups = groupedFiles.size > 1;
+
+        let isFirstGroup = true;
+        for (const [sourceFolder, files] of groupedFiles) {
+            // Add separator between groups (except for the first group)
+            if (!isFirstGroup) {
+                parts.push(`<div class="${getClassName('context-menu-separator', mergedConfig)}"></div>`);
+            }
+            isFirstGroup = false;
+
+            // Add group header if there are multiple groups
+            if (hasMultipleGroups) {
+                parts.push(`<div class="${getClassName('context-menu-item', mergedConfig)} context-menu-header" disabled>
+                    <span class="menu-icon">📁</span>${sourceFolder}
+                </div>`);
+            }
+
+            // Add each prompt file as a menu item
+            for (const file of files) {
+                const itemClass = `${getClassName('context-menu-item', mergedConfig)} action-item prompt-action-item`;
+                const dataPath = `data-path="${encodeURIComponent(file.absolutePath)}"`;
+                const dataType = `data-type="prompt"`;
+                const dataName = `data-name="${encodeURIComponent(file.name)}"`;
+                const title = `title="${file.relativePath}"`;
+                
+                const icon = `<span class="menu-icon">📄</span>`;
+                const label = mergedConfig.richMenuItems
+                    ? `<span class="${getClassName('context-menu-label', mergedConfig)}">${file.name}</span>`
+                    : file.name;
+
+                parts.push(`<div class="${itemClass}" ${dataPath} ${dataType} ${dataName} ${title}>${icon}${label}</div>`);
+            }
+        }
+    }
+
+    // Add skills section
+    if (hasSkills) {
+        // Add separator before skills if we have prompts
+        if (hasPrompts) {
+            parts.push(`<div class="${getClassName('context-menu-separator', mergedConfig)}"></div>`);
+        }
+
+        // Add skills header if we have both prompts and skills
+        if (hasPrompts) {
+            parts.push(`<div class="${getClassName('context-menu-item', mergedConfig)} context-menu-header" disabled>
+                <span class="menu-icon">🎯</span>Skills
+            </div>`);
+        }
+
+        // Add each skill as a menu item
+        for (const skill of skills) {
+            const itemClass = `${getClassName('context-menu-item', mergedConfig)} action-item skill-action-item`;
+            const dataPath = `data-path="${encodeURIComponent(skill.absolutePath)}"`;
+            const dataType = `data-type="skill"`;
+            const dataName = `data-name="${encodeURIComponent(skill.name)}"`;
+            // Use description for tooltip if available, otherwise use relative path
+            const tooltipText = skill.description 
+                ? `${skill.name}: ${skill.description}` 
+                : skill.relativePath;
+            const title = `title="${tooltipText.replace(/"/g, '&quot;')}"`;
+            
+            const icon = `<span class="menu-icon">🎯</span>`;
+            const label = mergedConfig.richMenuItems
+                ? `<span class="${getClassName('context-menu-label', mergedConfig)}">${skill.name}</span>`
+                : skill.name;
+
+            parts.push(`<div class="${itemClass}" ${dataPath} ${dataType} ${dataName} ${title}>${icon}${label}</div>`);
+        }
+    }
+
+    return parts.join('');
+}
+
+/**
  * Build custom instruction dialog HTML
  * @param config - Context menu configuration
  * @returns Custom instruction dialog HTML

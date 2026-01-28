@@ -156,7 +156,9 @@ export function initPanelElements(): void {
             onPromptFileSelected: handlePromptFileSelected,
             onSkillSelected: handleSkillSelected,
             onRequestPromptFiles: handleRequestPromptFiles,
-            onRequestSkills: handleRequestSkills
+            onRequestSkills: handleRequestSkills,
+            onActionItemSelected: handleActionItemSelected,
+            onRequestActionItems: () => requestPromptFiles()  // returns both prompts and skills
         }
     );
     contextMenuManager.init();
@@ -1119,6 +1121,20 @@ function handleRequestSkills(): void {
 }
 
 /**
+ * Handle action item selection from combined submenu (prompts + skills)
+ * @param type - 'prompt' or 'skill'
+ * @param path - The absolute path to the prompt file or skill
+ * @param name - The name of the prompt or skill
+ */
+function handleActionItemSelected(type: 'prompt' | 'skill', path: string, name: string): void {
+    if (type === 'prompt') {
+        handlePromptFileSelected(path);
+    } else {
+        handleSkillSelected(name, path);
+    }
+}
+
+/**
  * Update prompt file submenu with available files
  * Called when extension sends prompt files response
  */
@@ -1135,6 +1151,16 @@ export function updatePromptFileSubmenu(promptFiles: PromptFileInfo[]): void {
 export function updateSkillSubmenu(skills: SkillInfo[]): void {
     if (contextMenuManager) {
         contextMenuManager.setSkills(skills);
+    }
+}
+
+/**
+ * Update combined action items submenu (prompts + skills)
+ * Called when extension sends promptFilesResponse with both prompts and skills
+ */
+export function updateActionItemsSubmenu(promptFiles: PromptFileInfo[], skills: SkillInfo[]): void {
+    if (contextMenuManager) {
+        contextMenuManager.setActionItems(promptFiles, skills);
     }
 }
 

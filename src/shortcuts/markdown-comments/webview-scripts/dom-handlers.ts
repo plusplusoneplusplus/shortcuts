@@ -73,6 +73,8 @@ export function initDomHandlers(): void {
             onSkillSelected: handleSkillSelected,
             onRequestPromptFiles: handleRequestPromptFilesForContextMenu,
             onRequestSkills: handleRequestSkillsForContextMenu,
+            onActionItemSelected: handleActionItemSelected,
+            onRequestActionItems: () => requestPromptFiles(),  // returns both prompts and skills
             onHide: () => {
                 // Clear saved selection when menu is hidden
             }
@@ -295,26 +297,34 @@ export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[], rece
         }
     }
 
-    // Add skills section if available
+    // Add skills inline after prompts (with 🎯 icon to distinguish)
     if (hasSkills) {
-        // Add divider before skills
-        const divider = document.createElement('div');
-        divider.className = 'ai-action-menu-divider';
-        submenu.appendChild(divider);
+        // Add divider before skills only if we have both prompts and multiple source folders
+        // otherwise skills just appear after prompts with no extra header (they're visually distinct via icon)
+        if (hasPrompts && groupedFiles.size > 1) {
+            const divider = document.createElement('div');
+            divider.className = 'ai-action-menu-divider';
+            submenu.appendChild(divider);
 
-        // Add skills header
-        const header = document.createElement('div');
-        header.className = 'ai-action-menu-header';
-        header.textContent = '🎯 Skills';
-        submenu.appendChild(header);
+            // Add skills header for clarity when there are multiple prompt groups
+            const header = document.createElement('div');
+            header.className = 'ai-action-menu-header';
+            header.textContent = '🎯 Skills';
+            submenu.appendChild(header);
+        } else if (hasPrompts) {
+            // Just add a simple divider when there's only one prompt group
+            const divider = document.createElement('div');
+            divider.className = 'ai-action-menu-divider';
+            submenu.appendChild(divider);
+        }
 
-        // Add each skill as a menu item
+        // Add each skill as a menu item (interleaved with prompts at same level)
         for (const skill of skills!) {
             const item = document.createElement('div');
             item.className = 'ai-action-menu-item';
             item.dataset.skillName = skill.name;
             item.innerHTML = `
-                <span class="ai-action-icon">🧠</span>
+                <span class="ai-action-icon">🎯</span>
                 <span class="ai-action-label">${escapeHtml(skill.name)}</span>
             `;
             item.title = skill.description || skill.relativePath;
@@ -422,6 +432,20 @@ function handleRequestSkillsForContextMenu(): void {
 }
 
 /**
+ * Handle action item selection from combined submenu (prompts + skills)
+ * @param type - 'prompt' or 'skill'
+ * @param path - The absolute path to the prompt file or skill
+ * @param name - The name of the prompt or skill
+ */
+function handleActionItemSelected(type: 'prompt' | 'skill', path: string, name: string): void {
+    if (type === 'prompt') {
+        handlePromptFileSelected(path);
+    } else {
+        handleSkillSelected(name, path);
+    }
+}
+
+/**
  * Update the prompt file submenu with available files
  * Called when the extension sends back the list of prompt files
  */
@@ -438,6 +462,16 @@ export function updatePromptFileSubmenu(promptFiles: PromptFileInfo[]): void {
 export function updateSkillSubmenu(skills: SkillInfo[]): void {
     if (contextMenuManager) {
         contextMenuManager.setSkills(skills);
+    }
+}
+
+/**
+ * Update the combined action items submenu (prompts + skills)
+ * Called when the extension sends back both prompts and skills
+ */
+export function updateActionItemsSubmenu(promptFiles: PromptFileInfo[], skills: SkillInfo[]): void {
+    if (contextMenuManager) {
+        contextMenuManager.setActionItems(promptFiles, skills);
     }
 }
 

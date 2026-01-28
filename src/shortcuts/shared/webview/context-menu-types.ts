@@ -134,6 +134,10 @@ export interface ContextMenuCallbacks {
     onRequestPromptFiles?: () => void;
     /** Called when skills submenu needs to load */
     onRequestSkills?: () => void;
+    /** Called when an action item (prompt or skill) is selected from combined submenu */
+    onActionItemSelected?: (type: 'prompt' | 'skill', path: string, name: string) => void;
+    /** Called when action items submenu needs to load (combined prompts + skills) */
+    onRequestActionItems?: () => void;
     /** Called when the menu is hidden */
     onHide?: () => void;
 }

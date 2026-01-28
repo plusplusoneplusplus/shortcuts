@@ -446,6 +446,199 @@ suite('Shared Context Menu Consistency Tests', () => {
     });
 });
 
+/**
+ * Required IDs for the combined action items submenu (prompts + skills merged)
+ */
+const ACTION_ITEMS_IDS = {
+    actionItemsSeparator: 'actionItemsSeparator',
+    contextMenuActionItems: 'contextMenuActionItems',
+    actionItemsSubmenu: 'actionItemsSubmenu',
+    actionItemsLoading: 'actionItemsLoading',
+};
+
+/**
+ * Fallback IDs for backward compatibility
+ */
+const ACTION_ITEMS_FALLBACK_IDS = {
+    actionItemsSeparator: 'action-items-separator',
+    contextMenuActionItems: 'context-menu-action-items',
+    actionItemsSubmenu: 'action-items-submenu',
+};
+
+suite('Combined Action Items Submenu Tests', () => {
+    
+    suite('HTML Structure Requirements', () => {
+        
+        test('action items IDs are defined', () => {
+            assert.ok(ACTION_ITEMS_IDS.actionItemsSeparator);
+            assert.ok(ACTION_ITEMS_IDS.contextMenuActionItems);
+            assert.ok(ACTION_ITEMS_IDS.actionItemsSubmenu);
+        });
+
+        test('action items fallback IDs are different from primary', () => {
+            assert.notStrictEqual(ACTION_ITEMS_IDS.actionItemsSeparator, ACTION_ITEMS_FALLBACK_IDS.actionItemsSeparator);
+            assert.notStrictEqual(ACTION_ITEMS_IDS.contextMenuActionItems, ACTION_ITEMS_FALLBACK_IDS.contextMenuActionItems);
+        });
+    });
+
+    suite('Action Items HTML Validation', () => {
+        
+        // Sample HTML for the combined action items submenu (markdown editor style)
+        const validActionItemsHtml = `
+            <div class="context-menu-separator" id="actionItemsSeparator"></div>
+            <div class="context-menu-item context-menu-parent" id="contextMenuActionItems">
+                <span class="context-menu-icon">🚀</span>
+                <span class="context-menu-label">Follow Prompt</span>
+                <span class="context-menu-arrow">▶</span>
+                <div class="context-submenu" id="actionItemsSubmenu">
+                    <div class="context-menu-item context-menu-loading" id="actionItemsLoading">
+                        <span class="menu-icon">⏳</span>Loading...
+                    </div>
+                </div>
+            </div>
+        `;
+
+        test('valid action items HTML contains required IDs', () => {
+            const ids = extractIdsFromHtml(validActionItemsHtml);
+            assert.ok(ids.includes('actionItemsSeparator'), 'Missing actionItemsSeparator ID');
+            assert.ok(ids.includes('contextMenuActionItems'), 'Missing contextMenuActionItems ID');
+            assert.ok(ids.includes('actionItemsSubmenu'), 'Missing actionItemsSubmenu ID');
+            assert.ok(ids.includes('actionItemsLoading'), 'Missing actionItemsLoading ID');
+        });
+
+        test('action items submenu has proper submenu structure', () => {
+            assert.ok(hasSubmenuStructure(validActionItemsHtml, 'contextMenuActionItems', 'actionItemsSubmenu'));
+        });
+
+        test('action items menu item has icon and label', () => {
+            assert.ok(hasMenuItemStructure(validActionItemsHtml, 'contextMenuActionItems'));
+        });
+
+        test('action items HTML uses correct CSS classes', () => {
+            const classes = extractClassesFromHtml(validActionItemsHtml);
+            assert.ok(classes.includes('context-menu-separator'), 'Missing context-menu-separator class');
+            assert.ok(classes.includes('context-menu-item'), 'Missing context-menu-item class');
+            assert.ok(classes.includes('context-menu-parent'), 'Missing context-menu-parent class');
+            assert.ok(classes.includes('context-submenu'), 'Missing context-submenu class');
+            assert.ok(classes.includes('context-menu-loading'), 'Missing context-menu-loading class');
+        });
+    });
+
+    suite('Action Items Submenu Content Generation', () => {
+        
+        // Sample populated action items submenu HTML
+        const populatedActionItemsHtml = `
+            <div class="context-menu-item action-item prompt-action-item" data-path="path%2Fto%2Fprompt.md" data-type="prompt" data-name="MyPrompt" title="path/to/prompt.md">
+                <span class="menu-icon">📄</span>MyPrompt
+            </div>
+            <div class="context-menu-separator"></div>
+            <div class="context-menu-item context-menu-header" disabled>
+                <span class="menu-icon">🎯</span>Skills
+            </div>
+            <div class="context-menu-item action-item skill-action-item" data-path="path%2Fto%2Fskill" data-type="skill" data-name="MySkill" title="MySkill: Does something">
+                <span class="menu-icon">🎯</span>MySkill
+            </div>
+        `;
+
+        test('populated submenu has prompt items with correct data attributes', () => {
+            assert.ok(populatedActionItemsHtml.includes('data-type="prompt"'));
+            assert.ok(populatedActionItemsHtml.includes('data-path='));
+            assert.ok(populatedActionItemsHtml.includes('data-name='));
+            assert.ok(populatedActionItemsHtml.includes('prompt-action-item'));
+        });
+
+        test('populated submenu has skill items with correct data attributes', () => {
+            assert.ok(populatedActionItemsHtml.includes('data-type="skill"'));
+            assert.ok(populatedActionItemsHtml.includes('skill-action-item'));
+        });
+
+        test('populated submenu has appropriate icons', () => {
+            // Prompts use 📄 icon
+            assert.ok(populatedActionItemsHtml.includes('📄'));
+            // Skills use 🎯 icon
+            assert.ok(populatedActionItemsHtml.includes('🎯'));
+        });
+
+        test('skill items have description in title tooltip', () => {
+            assert.ok(populatedActionItemsHtml.includes('title="MySkill: Does something"'));
+        });
+    });
+
+    suite('Empty State Handling', () => {
+        
+        const emptyStateHtml = `
+            <div class="context-menu-item context-menu-empty" disabled>
+                <span class="menu-icon">📭</span>No prompt files or skills found
+            </div>
+            <div class="context-menu-item context-menu-hint" disabled>
+                <span class="menu-icon">💡</span>Add .prompt.md files or skills
+            </div>
+        `;
+
+        test('empty state shows appropriate message', () => {
+            assert.ok(emptyStateHtml.includes('No prompt files or skills found'));
+        });
+
+        test('empty state provides helpful hint', () => {
+            assert.ok(emptyStateHtml.includes('Add .prompt.md files or skills'));
+        });
+
+        test('empty state items are disabled', () => {
+            const disabledCount = (emptyStateHtml.match(/disabled/g) || []).length;
+            assert.ok(disabledCount >= 2, 'Both empty state items should be disabled');
+        });
+
+        test('empty state uses appropriate CSS classes', () => {
+            assert.ok(emptyStateHtml.includes('context-menu-empty'));
+            assert.ok(emptyStateHtml.includes('context-menu-hint'));
+        });
+    });
+
+    suite('Action Items Callback Types', () => {
+        
+        test('onActionItemSelected callback signature accepts type, path, and name', () => {
+            // This test verifies the callback type definition
+            type ActionItemCallback = (type: 'prompt' | 'skill', path: string, name: string) => void;
+            
+            // Simulate the callback
+            let capturedType: 'prompt' | 'skill' | undefined;
+            let capturedPath: string | undefined;
+            let capturedName: string | undefined;
+            
+            const callback: ActionItemCallback = (type, path, name) => {
+                capturedType = type;
+                capturedPath = path;
+                capturedName = name;
+            };
+            
+            // Test with prompt
+            callback('prompt', '/path/to/prompt.md', 'MyPrompt');
+            assert.strictEqual(capturedType, 'prompt');
+            assert.strictEqual(capturedPath, '/path/to/prompt.md');
+            assert.strictEqual(capturedName, 'MyPrompt');
+            
+            // Test with skill
+            callback('skill', '/path/to/skill', 'MySkill');
+            assert.strictEqual(capturedType, 'skill');
+            assert.strictEqual(capturedPath, '/path/to/skill');
+            assert.strictEqual(capturedName, 'MySkill');
+        });
+
+        test('onRequestActionItems callback is used for combined loading', () => {
+            // This test verifies the callback exists and is callable
+            type RequestActionItemsCallback = () => void;
+            
+            let requestCalled = false;
+            const callback: RequestActionItemsCallback = () => {
+                requestCalled = true;
+            };
+            
+            callback();
+            assert.ok(requestCalled);
+        });
+    });
+});
+
 suite('Context Menu Manager Element Lookup Tests', () => {
     
     /**

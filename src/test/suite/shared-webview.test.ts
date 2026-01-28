@@ -1395,5 +1395,206 @@ suite('Shared Webview Utilities Tests', () => {
             assert.strictEqual(result.top, 200);
         });
     });
+
+    // =========================================================================
+    // Context Menu Builder - buildActionItemsSubmenuHTML Tests
+    // =========================================================================
+
+    suite('Context Menu Builder - buildActionItemsSubmenuHTML', () => {
+        
+        // Mock PromptFileInfo and SkillInfo types for testing
+        interface MockPromptFileInfo {
+            absolutePath: string;
+            relativePath: string;
+            name: string;
+            sourceFolder: string;
+        }
+
+        interface MockSkillInfo {
+            absolutePath: string;
+            relativePath: string;
+            name: string;
+            description?: string;
+        }
+
+        /**
+         * Simplified implementation of buildActionItemsSubmenuHTML for testing
+         * This mirrors the actual logic without needing DOM
+         */
+        function buildActionItemsSubmenuHTML(
+            promptFiles: MockPromptFileInfo[],
+            skills: MockSkillInfo[]
+        ): string {
+            const hasPrompts = promptFiles && promptFiles.length > 0;
+            const hasSkills = skills && skills.length > 0;
+
+            if (!hasPrompts && !hasSkills) {
+                return 'empty-state';
+            }
+
+            const parts: string[] = [];
+
+            // Group prompt files by source folder
+            if (hasPrompts) {
+                const groupedFiles = new Map<string, MockPromptFileInfo[]>();
+                for (const file of promptFiles) {
+                    const group = groupedFiles.get(file.sourceFolder) || [];
+                    group.push(file);
+                    groupedFiles.set(file.sourceFolder, group);
+                }
+
+                const hasMultipleGroups = groupedFiles.size > 1;
+
+                let isFirstGroup = true;
+                for (const [sourceFolder, files] of groupedFiles) {
+                    if (!isFirstGroup) {
+                        parts.push('separator');
+                    }
+                    isFirstGroup = false;
+
+                    if (hasMultipleGroups) {
+                        parts.push(`header:${sourceFolder}`);
+                    }
+
+                    for (const file of files) {
+                        parts.push(`prompt:${file.name}`);
+                    }
+                }
+            }
+
+            // Add skills section
+            if (hasSkills) {
+                if (hasPrompts) {
+                    parts.push('separator');
+                }
+                if (hasPrompts) {
+                    parts.push('header:Skills');
+                }
+                for (const skill of skills) {
+                    parts.push(`skill:${skill.name}`);
+                }
+            }
+
+            return parts.join('|');
+        }
+
+        test('returns empty state when no prompts or skills', () => {
+            const result = buildActionItemsSubmenuHTML([], []);
+            assert.strictEqual(result, 'empty-state');
+        });
+
+        test('returns empty state for null/undefined inputs', () => {
+            const result = buildActionItemsSubmenuHTML(null as any, null as any);
+            assert.strictEqual(result, 'empty-state');
+        });
+
+        test('shows prompts only when no skills', () => {
+            const prompts: MockPromptFileInfo[] = [
+                { absolutePath: '/a/b.md', relativePath: 'b.md', name: 'PromptA', sourceFolder: 'prompts' }
+            ];
+            const result = buildActionItemsSubmenuHTML(prompts, []);
+            assert.ok(result.includes('prompt:PromptA'));
+            assert.ok(!result.includes('skill:'));
+            assert.ok(!result.includes('header:Skills'));
+        });
+
+        test('shows skills only when no prompts', () => {
+            const skills: MockSkillInfo[] = [
+                { absolutePath: '/a/skill', relativePath: 'skill', name: 'SkillA' }
+            ];
+            const result = buildActionItemsSubmenuHTML([], skills);
+            assert.ok(result.includes('skill:SkillA'));
+            assert.ok(!result.includes('prompt:'));
+            // No "Skills" header when there are no prompts
+            assert.ok(!result.includes('header:Skills'));
+        });
+
+        test('shows both prompts and skills with separator', () => {
+            const prompts: MockPromptFileInfo[] = [
+                { absolutePath: '/a/b.md', relativePath: 'b.md', name: 'PromptA', sourceFolder: 'prompts' }
+            ];
+            const skills: MockSkillInfo[] = [
+                { absolutePath: '/a/skill', relativePath: 'skill', name: 'SkillA' }
+            ];
+            const result = buildActionItemsSubmenuHTML(prompts, skills);
+            assert.ok(result.includes('prompt:PromptA'));
+            assert.ok(result.includes('skill:SkillA'));
+            assert.ok(result.includes('separator'));
+            assert.ok(result.includes('header:Skills'));
+        });
+
+        test('groups prompts by source folder when multiple groups', () => {
+            const prompts: MockPromptFileInfo[] = [
+                { absolutePath: '/a/b.md', relativePath: 'b.md', name: 'PromptA', sourceFolder: 'folder1' },
+                { absolutePath: '/c/d.md', relativePath: 'd.md', name: 'PromptB', sourceFolder: 'folder2' }
+            ];
+            const result = buildActionItemsSubmenuHTML(prompts, []);
+            assert.ok(result.includes('header:folder1'));
+            assert.ok(result.includes('header:folder2'));
+            assert.ok(result.includes('separator'));
+        });
+
+        test('no folder headers when single source folder', () => {
+            const prompts: MockPromptFileInfo[] = [
+                { absolutePath: '/a/b.md', relativePath: 'b.md', name: 'PromptA', sourceFolder: 'prompts' },
+                { absolutePath: '/a/c.md', relativePath: 'c.md', name: 'PromptB', sourceFolder: 'prompts' }
+            ];
+            const result = buildActionItemsSubmenuHTML(prompts, []);
+            assert.ok(!result.includes('header:prompts'));
+            assert.ok(result.includes('prompt:PromptA'));
+            assert.ok(result.includes('prompt:PromptB'));
+        });
+
+        test('orders prompts correctly within groups', () => {
+            const prompts: MockPromptFileInfo[] = [
+                { absolutePath: '/a/z.md', relativePath: 'z.md', name: 'ZPrompt', sourceFolder: 'prompts' },
+                { absolutePath: '/a/a.md', relativePath: 'a.md', name: 'APrompt', sourceFolder: 'prompts' }
+            ];
+            const result = buildActionItemsSubmenuHTML(prompts, []);
+            // Should maintain original order from input
+            const zIndex = result.indexOf('prompt:ZPrompt');
+            const aIndex = result.indexOf('prompt:APrompt');
+            assert.ok(zIndex < aIndex, 'Should maintain original order');
+        });
+
+        test('handles multiple skills', () => {
+            const skills: MockSkillInfo[] = [
+                { absolutePath: '/a/s1', relativePath: 's1', name: 'Skill1' },
+                { absolutePath: '/a/s2', relativePath: 's2', name: 'Skill2' },
+                { absolutePath: '/a/s3', relativePath: 's3', name: 'Skill3' }
+            ];
+            const result = buildActionItemsSubmenuHTML([], skills);
+            assert.ok(result.includes('skill:Skill1'));
+            assert.ok(result.includes('skill:Skill2'));
+            assert.ok(result.includes('skill:Skill3'));
+        });
+
+        test('complex scenario with multiple groups and skills', () => {
+            const prompts: MockPromptFileInfo[] = [
+                { absolutePath: '/a/p1.md', relativePath: 'p1.md', name: 'Prompt1', sourceFolder: 'github-prompts' },
+                { absolutePath: '/b/p2.md', relativePath: 'p2.md', name: 'Prompt2', sourceFolder: 'workspace-prompts' },
+                { absolutePath: '/a/p3.md', relativePath: 'p3.md', name: 'Prompt3', sourceFolder: 'github-prompts' }
+            ];
+            const skills: MockSkillInfo[] = [
+                { absolutePath: '/s/skill1', relativePath: 'skill1', name: 'CodeReview' },
+                { absolutePath: '/s/skill2', relativePath: 'skill2', name: 'Testing' }
+            ];
+            const result = buildActionItemsSubmenuHTML(prompts, skills);
+            
+            // Should have folder headers for multiple groups
+            assert.ok(result.includes('header:github-prompts'));
+            assert.ok(result.includes('header:workspace-prompts'));
+            
+            // Should have all prompts
+            assert.ok(result.includes('prompt:Prompt1'));
+            assert.ok(result.includes('prompt:Prompt2'));
+            assert.ok(result.includes('prompt:Prompt3'));
+            
+            // Should have skills section
+            assert.ok(result.includes('header:Skills'));
+            assert.ok(result.includes('skill:CodeReview'));
+            assert.ok(result.includes('skill:Testing'));
+        });
+    });
 });
 

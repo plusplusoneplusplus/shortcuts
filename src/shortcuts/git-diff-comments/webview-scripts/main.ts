@@ -3,7 +3,7 @@
  */
 
 import { initializeScrollSync, invalidateHighlightCache, renderDiff, updateCommentIndicators } from './diff-renderer';
-import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, rebuildPredefinedSubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateContextMenuForSettings, updatePromptFileSubmenu, updateSkillSubmenu } from './panel-manager';
+import { closeActiveCommentBubble, hideCommentPanel, hideCommentsList, initPanelElements, rebuildAISubmenu, rebuildPredefinedSubmenu, showCommentPanel, showCommentsForLine, showContextMenu, updateActionItemsSubmenu, updateContextMenuForSettings, updatePromptFileSubmenu, updateSkillSubmenu } from './panel-manager';
 import { getCurrentSelection, hasValidSelection, setupSelectionListener } from './selection-handler';
 import { createInitialState, getCommentsForLine, getIgnoreWhitespace, getIsEditable, getIsInteracting, getState, getViewMode, setComments, setIsEditable, setSettings, setViewMode, toggleIgnoreWhitespace, toggleViewMode, updateState, ViewMode } from './state';
 import { ExtensionMessage } from './types';
@@ -146,12 +146,16 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
 
         case 'promptFilesResponse':
             if (message.promptFiles) {
+                // Update legacy prompt files submenu
                 updatePromptFileSubmenu(message.promptFiles);
+                // Update combined action items submenu (prompts + skills)
+                updateActionItemsSubmenu(message.promptFiles, message.skills || []);
             }
             break;
 
         case 'skillsResponse':
             if (message.skills) {
+                // Update legacy skills submenu (kept for backward compat)
                 updateSkillSubmenu(message.skills);
             }
             break;
