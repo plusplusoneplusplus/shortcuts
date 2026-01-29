@@ -67,7 +67,7 @@ export interface ExecutePipelineOptions {
     pipelineDirectory: string;
     /**
      * Workspace root directory for resolving skills.
-     * Skills are located at {workspaceRoot}/.github/skills/{name}/prompt.md.
+     * Skills are located at {workspaceRoot}/.github/skills/{name}/SKILL.md.
      * If not provided, defaults to pipelineDirectory's grandparent (assuming standard .vscode/pipelines/ structure).
      */
     workspaceRoot?: string;

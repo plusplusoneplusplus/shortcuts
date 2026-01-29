@@ -77,7 +77,7 @@ map:
   promptFile: string            # Path to .md file (relative/absolute/bare name)
   
   # Optional fields:
-  skill?: string                # Prepend skill from .github/skills/{skill}/prompt.md
+  skill?: string                # Prepend skill from .github/skills/{skill}/SKILL.md
   
   output?: string[]             # Field names for JSON parsing (omit for text mode)
   

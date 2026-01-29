@@ -443,7 +443,6 @@ export {
     SkillResolverError,
     DEFAULT_SKILLS_DIRECTORY,
     SKILL_PROMPT_FILENAME,
-    SKILL_METADATA_FILENAME,
     SkillResolutionResult,
     SkillMetadata,
     // Input Generator

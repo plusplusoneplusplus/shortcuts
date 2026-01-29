@@ -94,7 +94,7 @@ suite('Skill Files Utils Tests', () => {
         fs.mkdirSync(skillDir, { recursive: true });
         
         // Create various files in the skill directory
-        fs.writeFileSync(path.join(skillDir, 'prompt.md'), '# Skill Prompt');
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Skill Prompt');
         fs.writeFileSync(path.join(skillDir, 'readme.md'), '# README');
         fs.writeFileSync(path.join(skillDir, 'config.yaml'), 'key: value');
 

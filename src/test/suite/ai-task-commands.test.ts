@@ -39,17 +39,17 @@ suite('AI Task Commands Tests', () => {
             // Create the go-deep skill structure
             const skillDir = path.join(tempDir, '.github', 'skills', 'go-deep');
             fs.mkdirSync(skillDir, { recursive: true });
-            fs.writeFileSync(path.join(skillDir, 'prompt.md'), '# Go Deep Skill\n\nResearch methodology...');
+            fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Go Deep Skill\n\nResearch methodology...');
 
             const result = isDeepModeAvailable(tempDir);
             assert.strictEqual(result, true);
         });
 
-        test('should return false when skill directory exists but prompt.md is missing', () => {
-            // Create directory without prompt.md
+        test('should return false when skill directory exists but SKILL.md is missing', () => {
+            // Create directory without SKILL.md
             const skillDir = path.join(tempDir, '.github', 'skills', 'go-deep');
             fs.mkdirSync(skillDir, { recursive: true });
-            fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Metadata only');
+            fs.writeFileSync(path.join(skillDir, 'README.md'), '# Readme only');
 
             const result = isDeepModeAvailable(tempDir);
             assert.strictEqual(result, false);

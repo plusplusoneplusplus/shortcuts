@@ -669,7 +669,7 @@ async function selectCreationMode(workspaceRoot: string): Promise<ModeSelection 
                 : '(go-deep skill not found)',
             detail: hasDeepSkill
                 ? 'Comprehensive analysis with exploration, deep-dive, and synthesis phases'
-                : 'Add .github/skills/go-deep/prompt.md to enable'
+                : 'Add .github/skills/go-deep/SKILL.md to enable'
         }
     ];
     

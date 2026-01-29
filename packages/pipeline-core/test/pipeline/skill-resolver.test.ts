@@ -22,8 +22,7 @@ import {
     getSkillPromptPath,
     SkillResolverError,
     DEFAULT_SKILLS_DIRECTORY,
-    SKILL_PROMPT_FILENAME,
-    SKILL_METADATA_FILENAME
+    SKILL_PROMPT_FILENAME
 } from '../../src/pipeline';
 
 describe('Skill Resolver', () => {
@@ -42,10 +41,10 @@ describe('Skill Resolver', () => {
     });
 
     // Helper to create a skill
+    // promptContent: The content of SKILL.md (can include frontmatter for metadata)
     async function createSkill(
         name: string,
-        promptContent: string,
-        metadataContent?: string
+        promptContent: string
     ): Promise<string> {
         const skillDir = path.join(skillsDir, name);
         await fs.promises.mkdir(skillDir, { recursive: true });
@@ -54,13 +53,6 @@ describe('Skill Resolver', () => {
             path.join(skillDir, SKILL_PROMPT_FILENAME),
             promptContent
         );
-        
-        if (metadataContent) {
-            await fs.promises.writeFile(
-                path.join(skillDir, SKILL_METADATA_FILENAME),
-                metadataContent
-            );
-        }
         
         return skillDir;
     }
@@ -71,11 +63,7 @@ describe('Skill Resolver', () => {
         });
 
         it('SKILL_PROMPT_FILENAME is correct', () => {
-            expect(SKILL_PROMPT_FILENAME).toBe('prompt.md');
-        });
-
-        it('SKILL_METADATA_FILENAME is correct', () => {
-            expect(SKILL_METADATA_FILENAME).toBe('SKILL.md');
+            expect(SKILL_PROMPT_FILENAME).toBe('SKILL.md');
         });
     });
 
@@ -103,7 +91,7 @@ describe('Skill Resolver', () => {
 
         it('getSkillPromptPath returns correct path', () => {
             const result = getSkillPromptPath('go-deep', tempDir);
-            expect(result).toBe(path.join(tempDir, '.github', 'skills', 'go-deep', 'prompt.md'));
+            expect(result).toBe(path.join(tempDir, '.github', 'skills', 'go-deep', 'SKILL.md'));
         });
     });
 
@@ -117,13 +105,13 @@ describe('Skill Resolver', () => {
             expect(skillExists('non-existent', tempDir)).toBe(false);
         });
 
-        it('returns false for skill without prompt.md', async () => {
-            // Create skill directory without prompt.md
+        it('returns false for skill without SKILL.md', async () => {
+            // Create skill directory without SKILL.md
             const skillDir = path.join(skillsDir, 'empty-skill');
             await fs.promises.mkdir(skillDir, { recursive: true });
             await fs.promises.writeFile(
-                path.join(skillDir, 'SKILL.md'),
-                'Just metadata'
+                path.join(skillDir, 'README.md'),
+                'Just readme'
             );
             
             expect(skillExists('empty-skill', tempDir)).toBe(false);
@@ -151,10 +139,10 @@ describe('Skill Resolver', () => {
             expect(result).toEqual(['alpha', 'beta', 'gamma']);
         });
 
-        it('excludes directories without prompt.md', async () => {
+        it('excludes directories without SKILL.md', async () => {
             await createSkill('valid-skill', 'Valid prompt');
             
-            // Create invalid skill (no prompt.md)
+            // Create invalid skill (no SKILL.md)
             const invalidDir = path.join(skillsDir, 'invalid-skill');
             await fs.promises.mkdir(invalidDir, { recursive: true });
             await fs.promises.writeFile(
@@ -288,7 +276,7 @@ version: 1.0
             
             expect(result.content).toBe('Detailed prompt');
             expect(result.resolvedPath).toBe(
-                path.join(skillsDir, 'detailed-skill', 'prompt.md')
+                path.join(skillsDir, 'detailed-skill', 'SKILL.md')
             );
             expect(result.skillDirectory).toBe(
                 path.join(skillsDir, 'detailed-skill')
@@ -310,8 +298,9 @@ Content here`;
             expect(result.content).toBe('Content here');
         });
 
-        it('includes metadata when SKILL.md exists', async () => {
-            const metadata = `---
+        it('includes metadata from SKILL.md frontmatter', async () => {
+            // SKILL.md contains both the prompt content and metadata in frontmatter
+            const skillContent = `---
 name: Test Skill
 description: A test skill for testing
 version: 1.0.0
@@ -323,7 +312,7 @@ output: [findings, sources]
 
 This is a test skill.`;
             
-            await createSkill('metadata-skill', 'Prompt content', metadata);
+            await createSkill('metadata-skill', skillContent);
             
             const result = await resolveSkillWithDetails('metadata-skill', tempDir);
             
@@ -333,13 +322,18 @@ This is a test skill.`;
             expect(result.metadata!.version).toBe('1.0.0');
             expect(result.metadata!.variables).toEqual(['topic', 'depth']);
             expect(result.metadata!.output).toEqual(['findings', 'sources']);
+            // Content should be the body after frontmatter is stripped
+            expect(result.content).toBe('# Test Skill\n\nThis is a test skill.');
         });
 
-        it('metadata is undefined when SKILL.md does not exist', async () => {
-            await createSkill('no-metadata', 'Just a prompt');
+        it('metadata is undefined when SKILL.md has no frontmatter', async () => {
+            await createSkill('no-metadata', 'Just a prompt without frontmatter');
             
             const result = await resolveSkillWithDetails('no-metadata', tempDir);
-            expect(result.metadata).toBeUndefined();
+            // When there's no frontmatter, metadata will have raw content but no parsed fields
+            expect(result.metadata).toBeDefined();
+            expect(result.metadata!.name).toBeUndefined();
+            expect(result.metadata!.description).toBeUndefined();
         });
     });
 
@@ -350,7 +344,7 @@ This is a test skill.`;
             const result = resolveSkillWithDetailsSync('sync-detailed', tempDir);
             
             expect(result.content).toBe('Sync detailed prompt');
-            expect(result.resolvedPath).toMatch(/prompt\.md$/);
+            expect(result.resolvedPath).toMatch(/SKILL\.md$/);
         });
     });
 
@@ -425,7 +419,7 @@ This is a test skill.`;
             const skillDir = path.join(customSkillsDir, 'custom-skill');
             await fs.promises.mkdir(skillDir, { recursive: true });
             await fs.promises.writeFile(
-                path.join(skillDir, 'prompt.md'),
+                path.join(skillDir, 'SKILL.md'),
                 'Custom skill prompt'
             );
             
@@ -442,7 +436,7 @@ This is a test skill.`;
                 const skillDir = path.join(customSkillsDir, name);
                 await fs.promises.mkdir(skillDir, { recursive: true });
                 await fs.promises.writeFile(
-                    path.join(skillDir, 'prompt.md'),
+                    path.join(skillDir, 'SKILL.md'),
                     `Prompt for ${name}`
                 );
             }

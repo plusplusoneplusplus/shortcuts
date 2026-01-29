@@ -471,19 +471,17 @@ Skills provide reusable guidance/context that can be attached to pipeline prompt
 ```
 .github/skills/
 ├── go-deep/
-│   ├── SKILL.md              # Metadata + documentation (optional)
-│   └── prompt.md             # The skill guidance content (required)
+│   └── SKILL.md              # The skill guidance content (required)
 ├── summarizer/
-│   ├── SKILL.md
-│   └── prompt.md
+│   └── SKILL.md
 └── code-reviewer/
-    └── prompt.md
+    └── SKILL.md
 ```
 
 #### How Skills Work
 
 When you specify `skill: "go-deep"`, the system:
-1. Loads the skill content from `.github/skills/go-deep/prompt.md`
+1. Loads the skill content from `.github/skills/go-deep/SKILL.md`
 2. Prepends it to your main prompt as guidance:
 
 ```
@@ -599,8 +597,8 @@ const promptSync = resolveSkillSync('go-deep', workspaceRoot);
 // Get full details including metadata
 const details = await resolveSkillWithDetails('go-deep', workspaceRoot);
 console.log(details.content);        // The prompt content
-console.log(details.resolvedPath);   // Path to prompt.md
-console.log(details.metadata);       // Parsed SKILL.md metadata
+console.log(details.resolvedPath);   // Path to SKILL.md
+console.log(details.metadata);       // Parsed SKILL.md frontmatter metadata
 
 // Check if skill exists
 if (skillExists('go-deep', workspaceRoot)) {

@@ -117,8 +117,7 @@ export {
     validateSkill,
     SkillResolverError,
     DEFAULT_SKILLS_DIRECTORY,
-    SKILL_PROMPT_FILENAME,
-    SKILL_METADATA_FILENAME
+    SKILL_PROMPT_FILENAME
 } from './skill-resolver';
 export type { SkillResolutionResult, SkillMetadata } from './skill-resolver';
 

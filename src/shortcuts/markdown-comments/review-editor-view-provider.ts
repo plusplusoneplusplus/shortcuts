@@ -912,7 +912,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
      * Read the prompt content from a skill
      * Looks for prompt.md in the skill directory
      * @param skillName - Name of the skill
-     * @returns The content of the skill's prompt.md, or undefined if not found
+     * @returns The content of the skill's SKILL.md, or undefined if not found
      */
     private async readSkillPrompt(skillName: string): Promise<string | undefined> {
         const workspaceRoot = getWorkspaceRoot();
@@ -920,22 +920,15 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             return undefined;
         }
 
-        // Look for prompt.md in the skill directory
-        const skillPromptPath = path.join(workspaceRoot, '.github', 'skills', skillName, 'prompt.md');
+        // Look for SKILL.md in the skill directory
+        const skillPromptPath = path.join(workspaceRoot, '.github', 'skills', skillName, 'SKILL.md');
         
         try {
             const content = await fs.promises.readFile(skillPromptPath, 'utf-8');
             return content;
         } catch {
-            // If prompt.md doesn't exist, try SKILL.md as fallback
-            const skillMdPath = path.join(workspaceRoot, '.github', 'skills', skillName, 'SKILL.md');
-            try {
-                const content = await fs.promises.readFile(skillMdPath, 'utf-8');
-                return content;
-            } catch {
-                console.error(`No prompt file found for skill: ${skillName}`);
-                return undefined;
-            }
+            console.error(`No SKILL.md found for skill: ${skillName}`);
+            return undefined;
         }
     }
 

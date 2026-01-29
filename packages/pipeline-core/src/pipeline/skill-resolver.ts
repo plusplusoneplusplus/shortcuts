@@ -2,18 +2,16 @@
  * Skill Resolver
  *
  * Resolves and loads skill prompts from the .github/skills/ directory.
- * Skills are organized as directories containing a prompt.md file.
+ * Skills are organized as directories containing a SKILL.md file.
  *
  * Skill Structure:
  * .github/skills/
  * ├── go-deep/
- * │   ├── SKILL.md              # Metadata + documentation (optional)
- * │   └── prompt.md             # THE prompt for this skill (required)
+ * │   └── SKILL.md              # THE prompt/skill definition (required)
  * ├── summarizer/
- * │   ├── SKILL.md
- * │   └── prompt.md
+ * │   └── SKILL.md
  *
- * Resolution: skill: "go-deep" → .github/skills/go-deep/prompt.md
+ * Resolution: skill: "go-deep" → .github/skills/go-deep/SKILL.md
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -28,14 +26,9 @@ import { extractPromptContent } from './prompt-resolver';
 export const DEFAULT_SKILLS_DIRECTORY = '.github/skills';
 
 /**
- * Standard prompt filename within a skill directory
+ * Standard skill filename within a skill directory (required)
  */
-export const SKILL_PROMPT_FILENAME = 'prompt.md';
-
-/**
- * Standard metadata filename within a skill directory (optional)
- */
-export const SKILL_METADATA_FILENAME = 'SKILL.md';
+export const SKILL_PROMPT_FILENAME = 'SKILL.md';
 
 /**
  * Error thrown for skill resolution issues
@@ -57,13 +50,13 @@ export class SkillResolverError extends Error {
 export interface SkillResolutionResult {
     /** The resolved prompt content (frontmatter stripped) */
     content: string;
-    /** The absolute path to the skill's prompt.md */
+    /** The absolute path to the skill's SKILL.md */
     resolvedPath: string;
     /** The skill directory path */
     skillDirectory: string;
     /** Whether frontmatter was stripped from the prompt */
     hadFrontmatter: boolean;
-    /** Skill metadata if SKILL.md exists */
+    /** Skill metadata from SKILL.md frontmatter */
     metadata?: SkillMetadata;
 }
 
@@ -120,12 +113,12 @@ export function getSkillDirectory(
 }
 
 /**
- * Get the path to a skill's prompt file
+ * Get the path to a skill's SKILL.md file
  * 
  * @param skillName Name of the skill
  * @param workspaceRoot The workspace root directory
  * @param customSkillsPath Optional custom skills directory path
- * @returns Absolute path to the skill's prompt.md file
+ * @returns Absolute path to the skill's SKILL.md file
  */
 export function getSkillPromptPath(
     skillName: string,
@@ -142,7 +135,7 @@ export function getSkillPromptPath(
  * @param skillName Name of the skill
  * @param workspaceRoot The workspace root directory
  * @param customSkillsPath Optional custom skills directory path
- * @returns True if the skill's prompt.md exists
+ * @returns True if the skill's SKILL.md exists
  */
 export function skillExists(
     skillName: string,
@@ -177,7 +170,7 @@ export function listSkills(
                 if (!entry.isDirectory()) {
                     return false;
                 }
-                // Check if the directory contains a prompt.md file
+                // Check if the directory contains a SKILL.md file
                 const promptPath = path.join(skillsDir, entry.name, SKILL_PROMPT_FILENAME);
                 return fs.existsSync(promptPath);
             })
@@ -235,39 +228,18 @@ function parseSkillMetadata(content: string): SkillMetadata {
 }
 
 /**
- * Load skill metadata from SKILL.md if it exists
+ * Load skill metadata from SKILL.md file content
  * 
- * @param skillDirectory Path to the skill directory
- * @returns Skill metadata or undefined if SKILL.md doesn't exist
+ * @param fileContent The content of the SKILL.md file
+ * @returns Skill metadata parsed from frontmatter
  */
-async function loadSkillMetadata(skillDirectory: string): Promise<SkillMetadata | undefined> {
-    const metadataPath = path.join(skillDirectory, SKILL_METADATA_FILENAME);
-    
-    if (!fs.existsSync(metadataPath)) {
+function loadSkillMetadataFromContent(fileContent: string): SkillMetadata | undefined {
+    if (!fileContent) {
         return undefined;
     }
     
     try {
-        const content = await fs.promises.readFile(metadataPath, 'utf-8');
-        return parseSkillMetadata(content);
-    } catch {
-        return undefined;
-    }
-}
-
-/**
- * Load skill metadata synchronously
- */
-function loadSkillMetadataSync(skillDirectory: string): SkillMetadata | undefined {
-    const metadataPath = path.join(skillDirectory, SKILL_METADATA_FILENAME);
-    
-    if (!fs.existsSync(metadataPath)) {
-        return undefined;
-    }
-    
-    try {
-        const content = fs.readFileSync(metadataPath, 'utf-8');
-        return parseSkillMetadata(content);
+        return parseSkillMetadata(fileContent);
     } catch {
         return undefined;
     }
@@ -356,10 +328,10 @@ export async function resolveSkillWithDetails(
         );
     }
     
-    // Check if prompt.md exists
+    // Check if SKILL.md exists
     if (!fs.existsSync(promptPath)) {
         throw new SkillResolverError(
-            `Skill "${skillName}" is missing prompt.md. Expected: ${promptPath}`,
+            `Skill "${skillName}" is missing SKILL.md. Expected: ${promptPath}`,
             skillName,
             promptPath
         );
@@ -371,14 +343,14 @@ export async function resolveSkillWithDetails(
         
         if (!content) {
             throw new SkillResolverError(
-                `Skill "${skillName}" has empty prompt.md after stripping frontmatter`,
+                `Skill "${skillName}" has empty SKILL.md after stripping frontmatter`,
                 skillName,
                 promptPath
             );
         }
         
-        // Load metadata if available
-        const metadata = await loadSkillMetadata(skillDirectory);
+        // Extract metadata from the same SKILL.md file content
+        const metadata = loadSkillMetadataFromContent(fileContent);
         
         return {
             content,
@@ -434,10 +406,10 @@ export function resolveSkillWithDetailsSync(
         );
     }
     
-    // Check if prompt.md exists
+    // Check if SKILL.md exists
     if (!fs.existsSync(promptPath)) {
         throw new SkillResolverError(
-            `Skill "${skillName}" is missing prompt.md. Expected: ${promptPath}`,
+            `Skill "${skillName}" is missing SKILL.md. Expected: ${promptPath}`,
             skillName,
             promptPath
         );
@@ -449,14 +421,14 @@ export function resolveSkillWithDetailsSync(
         
         if (!content) {
             throw new SkillResolverError(
-                `Skill "${skillName}" has empty prompt.md after stripping frontmatter`,
+                `Skill "${skillName}" has empty SKILL.md after stripping frontmatter`,
                 skillName,
                 promptPath
             );
         }
         
-        // Load metadata if available
-        const metadata = loadSkillMetadataSync(skillDirectory);
+        // Extract metadata from the same SKILL.md file content
+        const metadata = loadSkillMetadataFromContent(fileContent);
         
         return {
             content,

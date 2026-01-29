@@ -668,7 +668,7 @@ export class AITaskDialogService {
                                 <div class="depth-title">🔬 Deep</div>
                                 <div class="depth-desc">${hasDeepSkill 
                                     ? 'Multi-phase research using go-deep skill - comprehensive analysis'
-                                    : 'Add .github/skills/go-deep/prompt.md to enable'}</div>
+                                    : 'Add .github/skills/go-deep/SKILL.md to enable'}</div>
                             </div>
                         </label>
                     </div>

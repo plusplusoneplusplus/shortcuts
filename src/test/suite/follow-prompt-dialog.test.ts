@@ -223,7 +223,7 @@ suite('Follow Prompt Dialog - Process Metadata', () => {
 
     test('Skill-based execution should include skill name', () => {
         const metadata: FollowPromptProcessMetadata = {
-            promptFile: '/workspace/.github/skills/code-review/prompt.md',
+            promptFile: '/workspace/.github/skills/code-review/SKILL.md',
             planFile: '/workspace/.vscode/tasks/task.md',
             model: 'claude-opus-4.5',
             skillName: 'code-review'

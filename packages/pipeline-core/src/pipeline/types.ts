@@ -204,12 +204,12 @@ export interface MapConfig {
     promptFile?: string;
     /**
      * Optional skill to attach as additional context/guidance.
-     * Skills are located at `.github/skills/{name}/prompt.md`.
+     * Skills are located at `.github/skills/{name}/SKILL.md`.
      * 
      * When specified, the skill's prompt content is prepended to the main prompt
      * as recommended guidance for the AI to follow.
      * 
-     * Example: `skill: "go-deep"` → loads `.github/skills/go-deep/prompt.md`
+     * Example: `skill: "go-deep"` → loads `.github/skills/go-deep/SKILL.md`
      * 
      * Can be combined with either `prompt` or `promptFile`.
      */
@@ -271,12 +271,12 @@ export interface ReduceConfig {
     promptFile?: string;
     /**
      * Optional skill to attach as additional context/guidance for AI reduce.
-     * Skills are located at `.github/skills/{name}/prompt.md`.
+     * Skills are located at `.github/skills/{name}/SKILL.md`.
      * 
      * When specified, the skill's prompt content is prepended to the reduce prompt
      * as recommended guidance for the AI to follow.
      * 
-     * Example: `skill: "summarizer"` → loads `.github/skills/summarizer/prompt.md`
+     * Example: `skill: "summarizer"` → loads `.github/skills/summarizer/SKILL.md`
      * 
      * Can be combined with either `prompt` or `promptFile`.
      */
