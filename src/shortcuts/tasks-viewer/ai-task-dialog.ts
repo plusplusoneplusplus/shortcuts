@@ -198,10 +198,13 @@ export class AITaskDialogService {
 
     /**
      * Validate task name
+     * @param value - The task name to validate
+     * @param allowEmpty - If true, empty names are allowed (AI will generate the name)
      */
-    validateTaskName(value: string): string | null {
+    validateTaskName(value: string, allowEmpty: boolean = false): string | null {
+        // Allow empty if the caller permits it (AI will generate a name)
         if (!value || value.trim().length === 0) {
-            return 'Task name cannot be empty';
+            return allowEmpty ? null : 'Task name cannot be empty';
         }
 
         if (value.includes('/') || value.includes('\\')) {
@@ -391,6 +394,12 @@ export class AITaskDialogService {
             font-weight: 500;
             color: var(--vscode-foreground, #cccccc);
             margin-bottom: 8px;
+        }
+        
+        .form-group > label .optional {
+            font-weight: 400;
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground, #a0a0a0);
         }
         
         .form-group input[type="text"],
@@ -599,9 +608,9 @@ export class AITaskDialogService {
             <!-- Create Mode Content -->
             <div class="mode-content active" id="createContent">
                 <div class="form-group" id="nameGroup">
-                    <label for="taskName">Task Name</label>
+                    <label for="taskName">Task Name <span class="optional">(Optional)</span></label>
                     <input type="text" id="taskName" placeholder="implement-user-authentication" autocomplete="off" />
-                    <div class="hint">Used as the filename (without .md extension)</div>
+                    <div class="hint">Leave empty to let AI generate a name from the description</div>
                     <div class="error" id="nameError"></div>
                 </div>
                 
@@ -823,10 +832,11 @@ export class AITaskDialogService {
                 });
             }
             
-            // Validation
+            // Validation - name is now optional (AI can generate it)
             function validateName(value) {
+                // Empty is allowed - AI will generate a name
                 if (!value || value.trim().length === 0) {
-                    return 'Task name cannot be empty';
+                    return null;
                 }
                 if (value.includes('/') || value.includes('\\\\')) {
                     return 'Task name cannot contain path separators';

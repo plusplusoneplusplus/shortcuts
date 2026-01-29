@@ -164,8 +164,8 @@ export type TaskGenerationDepth = 'simple' | 'deep';
  * Options for creating an AI-generated task via the dialog (create mode)
  */
 export interface AITaskCreateOptions {
-    /** Task name (used as filename) */
-    name: string;
+    /** Task name (used as filename) - optional, AI will generate if empty */
+    name?: string;
     /** Target folder path relative to tasks root (empty string = root) */
     location: string;
     /** Brief description for AI to expand */

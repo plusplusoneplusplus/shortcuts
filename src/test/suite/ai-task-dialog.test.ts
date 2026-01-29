@@ -106,14 +106,29 @@ suite('AI Task Dialog Service Tests', () => {
     });
 
     suite('validateTaskName', () => {
-        test('should reject empty name', () => {
-            const result = dialogService.validateTaskName('');
+        test('should reject empty name when allowEmpty is false', () => {
+            const result = dialogService.validateTaskName('', false);
             assert.ok(result !== null, 'Should return error for empty name');
             assert.ok(result!.includes('empty'), 'Error should mention empty');
         });
 
-        test('should reject whitespace-only name', () => {
-            const result = dialogService.validateTaskName('   ');
+        test('should reject empty name by default', () => {
+            const result = dialogService.validateTaskName('');
+            assert.ok(result !== null, 'Should return error for empty name by default');
+        });
+
+        test('should allow empty name when allowEmpty is true', () => {
+            const result = dialogService.validateTaskName('', true);
+            assert.strictEqual(result, null, 'Should accept empty name when allowEmpty is true');
+        });
+
+        test('should allow whitespace-only name when allowEmpty is true', () => {
+            const result = dialogService.validateTaskName('   ', true);
+            assert.strictEqual(result, null, 'Should accept whitespace when allowEmpty is true');
+        });
+
+        test('should reject whitespace-only name when allowEmpty is false', () => {
+            const result = dialogService.validateTaskName('   ', false);
             assert.ok(result !== null, 'Should return error for whitespace-only name');
         });
 
@@ -155,6 +170,16 @@ suite('AI Task Dialog Service Tests', () => {
             const result = dialogService.validateTaskName('task-name_v1');
             assert.strictEqual(result, null, 'Should accept name with dashes and underscores');
         });
+
+        test('should still validate path separators when allowEmpty is true', () => {
+            const result = dialogService.validateTaskName('task/name', true);
+            assert.ok(result !== null, 'Should reject path separators even when allowEmpty is true');
+        });
+
+        test('should still validate invalid chars when allowEmpty is true', () => {
+            const result = dialogService.validateTaskName('task<name>', true);
+            assert.ok(result !== null, 'Should reject invalid chars even when allowEmpty is true');
+        });
     });
 
     suite('getAbsoluteFolderPath', () => {
@@ -178,7 +203,7 @@ suite('AI Task Dialog Service Tests', () => {
     });
 
     suite('AITaskCreateOptions type (create mode)', () => {
-        test('should have correct structure', () => {
+        test('should have correct structure with name', () => {
             const options: AITaskCreateOptions = {
                 name: 'test-task',
                 location: 'feature1',
@@ -201,6 +226,28 @@ suite('AI Task Dialog Service Tests', () => {
             };
             
             assert.strictEqual(options.location, '');
+        });
+
+        test('should allow undefined name (AI will generate)', () => {
+            const options: AITaskCreateOptions = {
+                location: 'feature1',
+                description: 'Task without explicit name',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.name, undefined);
+            assert.strictEqual(options.description, 'Task without explicit name');
+        });
+
+        test('should allow empty string name (AI will generate)', () => {
+            const options: AITaskCreateOptions = {
+                name: '',
+                location: '',
+                description: 'Task with empty name',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.name, '');
         });
 
         test('should allow empty description', () => {

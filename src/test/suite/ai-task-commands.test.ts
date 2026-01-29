@@ -12,7 +12,9 @@ import {
     buildDeepModePrompt,
     CreationMode,
     ModeSelection,
-    SelectedContext
+    SelectedContext,
+    sanitizeGeneratedFileName,
+    generateFallbackTaskName
 } from '../../shortcuts/tasks-viewer/ai-task-commands';
 
 suite('AI Task Commands Tests', () => {
@@ -180,6 +182,120 @@ suite('AI Task Commands Tests', () => {
             
             assert.strictEqual(selection.id, 'deep');
             assert.strictEqual(selection.label, 'Deep');
+        });
+    });
+
+    suite('sanitizeGeneratedFileName', () => {
+        test('should return null for empty input', () => {
+            assert.strictEqual(sanitizeGeneratedFileName(''), null);
+            assert.strictEqual(sanitizeGeneratedFileName(null as any), null);
+            assert.strictEqual(sanitizeGeneratedFileName(undefined as any), null);
+        });
+
+        test('should remove surrounding quotes', () => {
+            assert.strictEqual(sanitizeGeneratedFileName('"oauth2-auth"'), 'oauth2-auth');
+            assert.strictEqual(sanitizeGeneratedFileName("'oauth2-auth'"), 'oauth2-auth');
+            assert.strictEqual(sanitizeGeneratedFileName('`oauth2-auth`'), 'oauth2-auth');
+        });
+
+        test('should remove .md extension', () => {
+            assert.strictEqual(sanitizeGeneratedFileName('oauth2-auth.md'), 'oauth2-auth');
+            assert.strictEqual(sanitizeGeneratedFileName('oauth2-auth.MD'), 'oauth2-auth');
+        });
+
+        test('should remove .plan suffix', () => {
+            assert.strictEqual(sanitizeGeneratedFileName('oauth2-auth.plan'), 'oauth2-auth');
+            assert.strictEqual(sanitizeGeneratedFileName('oauth2-auth.plan.md'), 'oauth2-auth');
+        });
+
+        test('should replace invalid characters with hyphens', () => {
+            assert.strictEqual(sanitizeGeneratedFileName('task<name>'), 'task-name');
+            assert.strictEqual(sanitizeGeneratedFileName('task:name'), 'task-name');
+            assert.strictEqual(sanitizeGeneratedFileName('task"name'), 'task-name');
+            assert.strictEqual(sanitizeGeneratedFileName('task/name'), 'task-name');
+            assert.strictEqual(sanitizeGeneratedFileName('task\\name'), 'task-name');
+        });
+
+        test('should replace spaces with hyphens', () => {
+            assert.strictEqual(sanitizeGeneratedFileName('my task name'), 'my-task-name');
+            assert.strictEqual(sanitizeGeneratedFileName('my  task   name'), 'my-task-name');
+        });
+
+        test('should collapse multiple hyphens', () => {
+            assert.strictEqual(sanitizeGeneratedFileName('task--name'), 'task-name');
+            assert.strictEqual(sanitizeGeneratedFileName('task---name---test'), 'task-name-test');
+        });
+
+        test('should remove leading and trailing hyphens', () => {
+            assert.strictEqual(sanitizeGeneratedFileName('-task-name-'), 'task-name');
+            assert.strictEqual(sanitizeGeneratedFileName('---task---'), 'task');
+        });
+
+        test('should convert to lowercase', () => {
+            assert.strictEqual(sanitizeGeneratedFileName('OAuth2-Authentication'), 'oauth2-authentication');
+            assert.strictEqual(sanitizeGeneratedFileName('MY_TASK'), 'my_task');
+        });
+
+        test('should truncate to 50 characters', () => {
+            const longName = 'this-is-a-very-long-task-name-that-exceeds-fifty-characters-limit';
+            const result = sanitizeGeneratedFileName(longName);
+            assert.ok(result!.length <= 50, 'Should be at most 50 characters');
+            assert.ok(!result!.endsWith('-'), 'Should not end with hyphen after truncation');
+        });
+
+        test('should handle complex AI responses', () => {
+            assert.strictEqual(sanitizeGeneratedFileName('  oauth2-authentication  '), 'oauth2-authentication');
+            assert.strictEqual(sanitizeGeneratedFileName('`oauth2-authentication.plan.md`'), 'oauth2-authentication');
+            assert.strictEqual(sanitizeGeneratedFileName('"My Task Name.md"'), 'my-task-name');
+        });
+
+        test('should return null for whitespace-only input', () => {
+            assert.strictEqual(sanitizeGeneratedFileName('   '), null);
+            assert.strictEqual(sanitizeGeneratedFileName('\n\t'), null);
+        });
+    });
+
+    suite('generateFallbackTaskName', () => {
+        test('should generate timestamp-based name without description', () => {
+            const result = generateFallbackTaskName();
+            assert.ok(result.startsWith('task-'), 'Should start with "task-"');
+            assert.ok(/task-\d+/.test(result), 'Should include timestamp');
+        });
+
+        test('should generate name with description prefix', () => {
+            const result = generateFallbackTaskName('Implement authentication');
+            assert.ok(result.includes('implement'), 'Should include sanitized description');
+            assert.ok(/\d+$/.test(result), 'Should end with timestamp');
+        });
+
+        test('should handle short descriptions', () => {
+            const result = generateFallbackTaskName('ab');
+            // Should fall back to generic since prefix is too short
+            assert.ok(result.startsWith('task-'), 'Should use generic prefix for short description');
+        });
+
+        test('should sanitize description', () => {
+            const result = generateFallbackTaskName('Add OAuth2 Auth!');
+            assert.ok(!result.includes('!'), 'Should not include special characters');
+            assert.ok(result.toLowerCase() === result, 'Should be lowercase');
+        });
+
+        test('should truncate long descriptions', () => {
+            const longDesc = 'This is a very long description that should be truncated';
+            const result = generateFallbackTaskName(longDesc);
+            // The prefix should be from the first 20 chars of description
+            assert.ok(result.length < 60, 'Should have reasonable length');
+        });
+
+        test('should handle empty string description', () => {
+            const result = generateFallbackTaskName('');
+            assert.ok(result.startsWith('task-'), 'Should use generic prefix for empty description');
+        });
+
+        test('should handle special characters only description', () => {
+            const result = generateFallbackTaskName('!!!@@@###');
+            // After sanitization, this becomes empty, so should fall back
+            assert.ok(result.startsWith('task-'), 'Should use generic prefix when sanitization yields empty result');
         });
     });
 });

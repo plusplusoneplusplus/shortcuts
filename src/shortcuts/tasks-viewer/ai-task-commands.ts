@@ -886,13 +886,16 @@ Create a single markdown file under ${targetPath}`;
 
 /**
  * Build prompt for creating a task with a specific name
+ * If name is empty, prompt AI to also generate a filename
  */
-function buildCreateTaskPromptWithName(name: string, description: string, targetPath: string): string {
+function buildCreateTaskPromptWithName(name: string | undefined, description: string, targetPath: string): string {
     const descriptionPart = description
         ? `\n\nDescription: ${description}`
         : '';
     
-    return `Create a task document for: ${name}${descriptionPart}
+    if (name && name.trim()) {
+        // Name provided by user
+        return `Create a task document for: ${name}${descriptionPart}
 
 Generate a comprehensive markdown task document with:
 - Clear title and description
@@ -900,7 +903,22 @@ Generate a comprehensive markdown task document with:
 - Subtasks (if applicable)
 - Notes section
 
-Save the file as "${name}.md" under ${targetPath}`;
+Save the file as "${name}.plan.md" under ${targetPath}`;
+    } else {
+        // No name provided - AI will generate based on description
+        return `Create a task document based on this description:${descriptionPart || '\n\n(General task)'}
+
+Generate a comprehensive markdown task document with:
+- Clear title and description
+- Acceptance criteria
+- Subtasks (if applicable)
+- Notes section
+
+Choose an appropriate filename based on the task content.
+The filename should be in kebab-case, descriptive, and end with .plan.md (e.g., "oauth2-authentication.plan.md").
+
+Save the file under ${targetPath}`;
+    }
 }
 
 /**
@@ -987,6 +1005,127 @@ function sanitizeTitle(description: string): string {
         .trim()
         .replace(/\s+/g, '-')
         .toLowerCase();
+}
+
+/**
+ * Generate a task name from description using AI
+ * @param description - The task description
+ * @param model - The AI model to use
+ * @param workspaceRoot - The workspace root path
+ * @returns Generated task name in kebab-case (without .plan.md suffix)
+ */
+async function generateTaskNameFromDescription(
+    description: string,
+    model: string | undefined,
+    workspaceRoot: string,
+    cancellationToken?: vscode.CancellationToken
+): Promise<string | null> {
+    if (!description || description.trim().length === 0) {
+        return null;
+    }
+
+    const prompt = `Generate a concise filename for a task document based on this description:
+
+"${description}"
+
+Requirements:
+- Return ONLY the filename (no path, no extension)
+- Use kebab-case (lowercase with hyphens)
+- Maximum 50 characters
+- Be descriptive but concise (2-4 words)
+- Extract key concepts from the description
+
+Examples:
+- "Implement user authentication with OAuth2" → "oauth2-authentication"
+- "Add error handling for API endpoints" → "api-error-handling"
+- "Create unit tests for payment service" → "payment-service-tests"
+
+Response format: Just the filename, nothing else.`;
+
+    try {
+        const aiInvoker = createAIInvoker({
+            usePool: true, // Use pool for quick name generation
+            workingDirectory: workspaceRoot,
+            model,
+            featureName: 'Task Name Generation',
+            clipboardFallback: false,
+            approvePermissions: false, // Read-only operation
+            cancellationToken
+        });
+
+        const result = await aiInvoker(prompt);
+
+        if (!result.success || !result.response) {
+            logger.warn(LogCategory.TASKS, 'AI name generation failed', { error: result.error });
+            return null;
+        }
+
+        // Clean and validate the response
+        const generatedName = sanitizeGeneratedFileName(result.response);
+        
+        if (!generatedName) {
+            logger.warn(LogCategory.TASKS, 'AI returned invalid filename', { response: result.response });
+            return null;
+        }
+
+        return generatedName;
+    } catch (error) {
+        logger.error(LogCategory.TASKS, 'Error generating task name with AI', error instanceof Error ? error : new Error(String(error)));
+        return null;
+    }
+}
+
+/**
+ * Sanitize an AI-generated filename to ensure it's valid
+ * @param input - The raw AI response
+ * @returns Sanitized filename or null if invalid
+ */
+function sanitizeGeneratedFileName(input: string): string | null {
+    if (!input) {
+        return null;
+    }
+
+    // Clean up the response - remove quotes, whitespace, markdown formatting
+    let name = input
+        .trim()
+        .replace(/^["'`]+|["'`]+$/g, '') // Remove surrounding quotes
+        .replace(/\.md$/i, '') // Remove .md extension if present
+        .replace(/\.plan$/i, '') // Remove .plan suffix if present
+        .replace(/[<>:"/\\|?*]/g, '-') // Replace invalid chars
+        .replace(/\s+/g, '-') // Replace spaces with hyphens
+        .replace(/-+/g, '-') // Collapse multiple hyphens
+        .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
+        .toLowerCase()
+        .trim();
+
+    // Validate result
+    if (!name || name.length === 0) {
+        return null;
+    }
+
+    // Limit length (50 chars max)
+    if (name.length > 50) {
+        name = name.substring(0, 50).replace(/-+$/, '');
+    }
+
+    return name;
+}
+
+/**
+ * Generate a fallback task name using timestamp
+ * @param description - Optional description for hint
+ * @returns A timestamp-based task name
+ */
+function generateFallbackTaskName(description?: string): string {
+    const timestamp = Date.now();
+    const prefix = description ? sanitizeTitle(description.substring(0, 20)) : 'task';
+    
+    // If prefix is empty or too short, use generic
+    if (!prefix || prefix.length < 3) {
+        return `task-${timestamp}`;
+    }
+    
+    return `${prefix}-${timestamp}`;
 }
 
 /**
@@ -1128,6 +1267,7 @@ async function createEmptyTaskInFolder(
 
 /**
  * Create an empty task with pre-filled options from the dialog
+ * Uses timestamp-based fallback name if no name provided
  */
 async function createEmptyTaskWithOptions(
     taskManager: TaskManager,
@@ -1150,10 +1290,16 @@ async function createEmptyTaskWithOptions(
         const { ensureDirectoryExists } = await import('../shared');
         ensureDirectoryExists(targetFolder);
 
-        // Get task name - for 'from-feature' mode, generate from folder name
-        const title = options.mode === 'from-feature'
-            ? `task-${path.basename(targetFolder)}-${Date.now()}`
-            : options.createOptions?.name || 'new-task';
+        // Get task name - use fallback generator if empty
+        let title: string;
+        if (options.mode === 'from-feature') {
+            title = `task-${path.basename(targetFolder)}-${Date.now()}`;
+        } else if (options.createOptions?.name) {
+            title = options.createOptions.name;
+        } else {
+            // Use fallback name generator
+            title = generateFallbackTaskName(options.createOptions?.description);
+        }
             
         const content = DEFAULT_TASK_CONTENT.replace('{{TITLE}}', title);
         const filePath = await createTaskFile(taskManager, title, content, 'feature', targetFolder);
@@ -1194,3 +1340,12 @@ export { AITaskDialogService } from './ai-task-dialog';
  * Export the execute function for testing
  */
 export { executeAITaskCreation };
+
+/**
+ * Export name generation utilities for testing
+ */
+export { 
+    generateTaskNameFromDescription,
+    sanitizeGeneratedFileName,
+    generateFallbackTaskName
+};
