@@ -14,7 +14,10 @@ import {
     ModeSelection,
     SelectedContext,
     sanitizeGeneratedFileName,
-    generateFallbackTaskName
+    generateFallbackTaskName,
+    buildCreateTaskPromptWithNameForTesting,
+    buildCreateFromFeaturePromptForTesting,
+    buildCreateTaskPromptForTesting
 } from '../../shortcuts/tasks-viewer/ai-task-commands';
 
 suite('AI Task Commands Tests', () => {
@@ -296,6 +299,130 @@ suite('AI Task Commands Tests', () => {
             const result = generateFallbackTaskName('!!!@@@###');
             // After sanitization, this becomes empty, so should fall back
             assert.ok(result.startsWith('task-'), 'Should use generic prefix when sanitization yields empty result');
+        });
+    });
+
+    suite('buildCreateTaskPromptWithNameForTesting - Output Directory Enforcement', () => {
+        test('should include explicit directory requirement when name is provided', () => {
+            const targetPath = '/Users/test/.vscode/tasks/TaskPanel';
+            const name = 'my-task';
+            const description = 'Test description';
+            
+            const prompt = buildCreateTaskPromptWithNameForTesting(name, description, targetPath);
+            
+            // Verify output directory enforcement
+            assert.ok(prompt.includes('**IMPORTANT: Output Location Requirement**'), 'Should have prominent location requirement header');
+            assert.ok(prompt.includes('MUST save the file to this EXACT directory'), 'Should emphasize EXACT directory');
+            assert.ok(prompt.includes(targetPath), 'Should include the target path');
+            assert.ok(prompt.includes(`${targetPath}/${name}.plan.md`), 'Should include full file path');
+            assert.ok(prompt.includes('Do NOT save to any other location'), 'Should explicitly forbid other locations');
+            assert.ok(prompt.includes('Do NOT use your session state'), 'Should explicitly forbid session state directory');
+        });
+
+        test('should include explicit directory requirement when name is empty', () => {
+            const targetPath = '/Users/test/.vscode/tasks/FeatureX';
+            const description = 'Test description';
+            
+            const prompt = buildCreateTaskPromptWithNameForTesting(undefined, description, targetPath);
+            
+            // Verify output directory enforcement
+            assert.ok(prompt.includes('**IMPORTANT: Output Location Requirement**'), 'Should have prominent location requirement header');
+            assert.ok(prompt.includes('MUST save the file to this EXACT directory'), 'Should emphasize EXACT directory');
+            assert.ok(prompt.includes(targetPath), 'Should include the target path');
+            assert.ok(prompt.includes(`${targetPath}/your-generated-name.plan.md`), 'Should include example path');
+            assert.ok(prompt.includes('Do NOT save to any other location'), 'Should explicitly forbid other locations');
+            assert.ok(prompt.includes('Do NOT use your session state'), 'Should explicitly forbid session state directory');
+        });
+
+        test('should include target path multiple times for emphasis', () => {
+            const targetPath = '/path/to/tasks/MyFeature';
+            const prompt = buildCreateTaskPromptWithNameForTesting('task-name', 'Description', targetPath);
+            
+            // Count occurrences of target path
+            const occurrences = (prompt.match(new RegExp(targetPath.replace(/\//g, '\\/'), 'g')) || []).length;
+            assert.ok(occurrences >= 2, `Should include target path multiple times for emphasis (found ${occurrences})`);
+        });
+    });
+
+    suite('buildCreateFromFeaturePromptForTesting - Output Directory Enforcement', () => {
+        test('should include explicit directory requirement', () => {
+            const targetPath = '/Users/test/.vscode/tasks/AuthFeature';
+            const context: SelectedContext = {
+                description: 'Authentication feature'
+            };
+            
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Implement OAuth2', targetPath);
+            
+            // Verify output directory enforcement
+            assert.ok(prompt.includes('**IMPORTANT: Output Location Requirement**'), 'Should have prominent location requirement header');
+            assert.ok(prompt.includes('MUST save the file to this EXACT directory'), 'Should emphasize EXACT directory');
+            assert.ok(prompt.includes(targetPath), 'Should include the target path');
+            assert.ok(prompt.includes('Do NOT save to any other location'), 'Should explicitly forbid other locations');
+            assert.ok(prompt.includes('Do NOT use your session state'), 'Should explicitly forbid session state directory');
+        });
+
+        test('should include example filename format', () => {
+            const targetPath = '/path/to/tasks';
+            const context: SelectedContext = {};
+            
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Test', targetPath);
+            
+            assert.ok(prompt.includes('.plan.md'), 'Should mention .plan.md file format');
+            assert.ok(prompt.includes('feature-plan.plan.md'), 'Should include example filename');
+        });
+
+        test('should include context and still enforce directory', () => {
+            const targetPath = '/target/path';
+            const context: SelectedContext = {
+                description: 'Test description',
+                planContent: 'Plan content here',
+                specContent: 'Spec content here',
+                relatedFiles: ['file1.ts', 'file2.ts']
+            };
+            
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Focus', targetPath);
+            
+            // Should include context
+            assert.ok(prompt.includes('Test description'), 'Should include description');
+            assert.ok(prompt.includes('Plan content here'), 'Should include plan content');
+            assert.ok(prompt.includes('Spec content here'), 'Should include spec content');
+            assert.ok(prompt.includes('file1.ts'), 'Should include related files');
+            
+            // Should still enforce directory
+            assert.ok(prompt.includes('**IMPORTANT: Output Location Requirement**'), 'Should have location requirement even with context');
+            assert.ok(prompt.includes(targetPath), 'Should include target path');
+        });
+    });
+
+    suite('buildCreateTaskPromptForTesting - Output Directory Enforcement', () => {
+        test('should include explicit directory requirement', () => {
+            const targetPath = '/Users/test/.vscode/tasks';
+            const description = 'Build a new feature';
+            
+            const prompt = buildCreateTaskPromptForTesting(description, targetPath);
+            
+            // Verify output directory enforcement
+            assert.ok(prompt.includes('**IMPORTANT: Output Location Requirement**'), 'Should have prominent location requirement header');
+            assert.ok(prompt.includes('MUST save the file to this EXACT directory'), 'Should emphasize EXACT directory');
+            assert.ok(prompt.includes(targetPath), 'Should include the target path');
+            assert.ok(prompt.includes('Do NOT save to any other location'), 'Should explicitly forbid other locations');
+            assert.ok(prompt.includes('Do NOT use your session state'), 'Should explicitly forbid session state directory');
+        });
+
+        test('should include description in prompt', () => {
+            const targetPath = '/path/to/tasks';
+            const description = 'Implement user authentication';
+            
+            const prompt = buildCreateTaskPromptForTesting(description, targetPath);
+            
+            assert.ok(prompt.includes(description), 'Should include the description');
+        });
+
+        test('should require .plan.md file format', () => {
+            const targetPath = '/path/to/tasks';
+            const prompt = buildCreateTaskPromptForTesting('Test', targetPath);
+            
+            assert.ok(prompt.includes('.plan.md'), 'Should specify .plan.md file format');
         });
     });
 });

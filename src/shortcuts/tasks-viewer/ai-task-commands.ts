@@ -881,7 +881,12 @@ function parseCreatedFilePath(response: string | undefined, targetFolder: string
 function buildCreateTaskPrompt(description: string, targetPath: string): string {
     return `Can you draft a plan given User's ask: ${description}
 
-Create a single markdown file under ${targetPath}`;
+**IMPORTANT: Output Location Requirement**
+You MUST save the file to this EXACT directory: ${targetPath}
+- Create a single .plan.md file
+- Do NOT save to any other location
+- Do NOT use your session state or any other directory
+- The file MUST be created directly under: ${targetPath}/`;
 }
 
 /**
@@ -903,7 +908,12 @@ Generate a comprehensive markdown task document with:
 - Subtasks (if applicable)
 - Notes section
 
-Save the file as "${name}.plan.md" under ${targetPath}`;
+**IMPORTANT: Output Location Requirement**
+You MUST save the file to this EXACT directory: ${targetPath}
+- Full file path: ${targetPath}/${name}.plan.md
+- Do NOT save to any other location
+- Do NOT use your session state or any other directory
+- The file MUST be created at: ${targetPath}/${name}.plan.md`;
     } else {
         // No name provided - AI will generate based on description
         return `Create a task document based on this description:${descriptionPart || '\n\n(General task)'}
@@ -917,7 +927,12 @@ Generate a comprehensive markdown task document with:
 Choose an appropriate filename based on the task content.
 The filename should be in kebab-case, descriptive, and end with .plan.md (e.g., "oauth2-authentication.plan.md").
 
-Save the file under ${targetPath}`;
+**IMPORTANT: Output Location Requirement**
+You MUST save the file to this EXACT directory: ${targetPath}
+- Example: ${targetPath}/your-generated-name.plan.md
+- Do NOT save to any other location
+- Do NOT use your session state or any other directory
+- The file MUST be created directly under: ${targetPath}/`;
     }
 }
 
@@ -955,7 +970,12 @@ function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string, t
 Context:
 ${contextText}
 
-Put it under ${targetPath}`;
+**IMPORTANT: Output Location Requirement**
+You MUST save the file to this EXACT directory: ${targetPath}
+- The file should be a .plan.md file (e.g., "${targetPath}/feature-plan.plan.md")
+- Do NOT save to any other location
+- Do NOT use your session state or any other directory
+- The file MUST be created directly under: ${targetPath}/`;
 }
 
 /**
@@ -1349,3 +1369,10 @@ export {
     sanitizeGeneratedFileName,
     generateFallbackTaskName
 };
+
+/**
+ * Export prompt building functions for testing (with different names to avoid collision)
+ */
+export const buildCreateTaskPromptWithNameForTesting = buildCreateTaskPromptWithName;
+export const buildCreateFromFeaturePromptForTesting = buildCreateFromFeaturePrompt;
+export const buildCreateTaskPromptForTesting = buildCreateTaskPrompt;
