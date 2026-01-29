@@ -2,7 +2,7 @@
  * AI Task Commands
  * 
  * Provides AI-powered task creation commands for the Tasks Viewer.
- * - Create Task with AI: Generate task content from a description
+ * - Create Task with AI: Generate task content from a description via dialog
  * - Create Task from Feature: Bootstrap task from feature folder context
  */
 
@@ -13,6 +13,8 @@ import { TaskManager } from './task-manager';
 import { TasksTreeDataProvider } from './tree-data-provider';
 import { TaskFolderItem } from './task-folder-item';
 import { loadRelatedItems } from './related-items-loader';
+import { AITaskCreationOptions } from './types';
+import { AITaskDialogService } from './ai-task-dialog';
 import { createAIInvoker, IAIProcessManager } from '../ai-service';
 import { getAIBackendSetting } from '../ai-service/ai-config-helpers';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
@@ -58,23 +60,37 @@ export function registerTasksAICommands(
     aiProcessManager?: IAIProcessManager
 ): vscode.Disposable[] {
     const disposables: vscode.Disposable[] = [];
+    const dialogService = new AITaskDialogService(taskManager, context.extensionUri);
 
-    // Create Task with AI
+    // Create Task with AI (via dialog)
     disposables.push(
         vscode.commands.registerCommand(
             'tasksViewer.createWithAI',
             async (item?: TaskFolderItem) => {
-                await createTaskWithAI(taskManager, treeDataProvider, item, aiProcessManager);
+                await createTaskWithAIDialog(
+                    taskManager,
+                    treeDataProvider,
+                    dialogService,
+                    item,
+                    aiProcessManager
+                );
             }
         )
     );
 
-    // Create Task from Feature
+    // Create Task from Feature (uses unified dialog with 'from-feature' mode)
     disposables.push(
         vscode.commands.registerCommand(
             'tasksViewer.createFromFeature',
             async (item?: TaskFolderItem) => {
-                await createTaskFromFeature(taskManager, treeDataProvider, item, aiProcessManager);
+                await createTaskWithAIDialog(
+                    taskManager,
+                    treeDataProvider,
+                    dialogService,
+                    item,
+                    aiProcessManager,
+                    'from-feature'
+                );
             }
         )
     );
@@ -83,7 +99,221 @@ export function registerTasksAICommands(
 }
 
 /**
- * Create a new task with AI-generated content
+ * Create a new task with AI via the unified dialog
+ * This is the main entry point for both "Create AI Task" and "Create from Feature" commands
+ */
+async function createTaskWithAIDialog(
+    taskManager: TaskManager,
+    treeDataProvider: TasksTreeDataProvider,
+    dialogService: AITaskDialogService,
+    folderItem?: TaskFolderItem,
+    processManager?: IAIProcessManager,
+    initialMode: 'create' | 'from-feature' = 'create'
+): Promise<void> {
+    // Check if AI service is available
+    const backend = getAIBackendSetting();
+    if (backend === 'clipboard') {
+        const action = await vscode.window.showWarningMessage(
+            'AI Service is in clipboard mode. Create task without AI content?',
+            'Create Empty Task',
+            'Open Settings',
+            'Cancel'
+        );
+        
+        if (action === 'Open Settings') {
+            await vscode.commands.executeCommand(
+                'workbench.action.openSettings',
+                'workspaceShortcuts.aiService.backend'
+            );
+            return;
+        }
+        if (action !== 'Create Empty Task') {
+            return;
+        }
+        // Fall through to create empty task
+        await createEmptyTask(taskManager, treeDataProvider, folderItem);
+        return;
+    }
+
+    // Get preselected folder from context menu item
+    const preselectedFolder = folderItem instanceof TaskFolderItem
+        ? folderItem.folder.relativePath
+        : undefined;
+
+    // Show the unified dialog with the appropriate initial mode
+    const dialogResult = await dialogService.showDialog({
+        preselectedFolder,
+        initialMode
+    });
+    
+    if (dialogResult.cancelled || !dialogResult.options) {
+        return;
+    }
+
+    // Execute task creation based on the mode
+    await executeAITaskCreation(
+        taskManager,
+        treeDataProvider,
+        dialogService,
+        dialogResult.options,
+        processManager
+    );
+}
+
+/**
+ * Execute AI task creation with the provided options (handles both modes)
+ */
+async function executeAITaskCreation(
+    taskManager: TaskManager,
+    treeDataProvider: TasksTreeDataProvider,
+    dialogService: AITaskDialogService,
+    options: AITaskCreationOptions,
+    processManager?: IAIProcessManager
+): Promise<void> {
+    const isFromFeature = options.mode === 'from-feature';
+    const location = isFromFeature 
+        ? options.fromFeatureOptions?.location || ''
+        : options.createOptions?.location || '';
+    const model = isFromFeature
+        ? options.fromFeatureOptions?.model
+        : options.createOptions?.model;
+    const taskName = options.createOptions?.name || '';
+    const modeLabel = isFromFeature
+        ? (options.fromFeatureOptions?.depth === 'deep' ? 'Deep' : 'Simple')
+        : 'Create';
+
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: `Creating AI Task (${modeLabel})...`,
+            cancellable: true
+        },
+        async (progress, token) => {
+            try {
+                progress.report({ message: 'Generating task content...' });
+
+                // Compute target folder path
+                const targetFolderPath = dialogService.getAbsoluteFolderPath(location);
+                
+                taskManager.ensureFoldersExist();
+                
+                // Ensure the target folder exists if not root
+                if (location) {
+                    const { ensureDirectoryExists } = await import('../shared');
+                    ensureDirectoryExists(targetFolderPath);
+                }
+                
+                const workspaceRoot = taskManager.getWorkspaceRoot();
+                let prompt: string;
+                let featureName: string;
+
+                if (isFromFeature && options.fromFeatureOptions) {
+                    const opts = options.fromFeatureOptions;
+                    const folderName = path.basename(targetFolderPath);
+                    
+                    // Gather feature context
+                    const context = await gatherFeatureContext(targetFolderPath, workspaceRoot);
+                    
+                    // Build prompt based on depth
+                    if (opts.depth === 'deep') {
+                        prompt = await buildDeepModePrompt(context, opts.focus, targetFolderPath, workspaceRoot);
+                        progress.report({ message: `Creating task with AI (Deep mode)...` });
+                    } else {
+                        prompt = buildCreateFromFeaturePrompt(context, opts.focus, targetFolderPath);
+                    }
+                    featureName = `Task from Feature: ${folderName}`;
+                } else if (options.createOptions) {
+                    const opts = options.createOptions;
+                    prompt = buildCreateTaskPromptWithName(
+                        opts.name,
+                        opts.description,
+                        targetFolderPath
+                    );
+                    featureName = 'AI Task Creation';
+                } else {
+                    throw new Error('Invalid options: missing createOptions or fromFeatureOptions');
+                }
+                
+                const aiInvoker = createAIInvoker({
+                    usePool: false,
+                    workingDirectory: workspaceRoot,
+                    model,
+                    featureName,
+                    clipboardFallback: false,
+                    approvePermissions: true,
+                    processManager,
+                    cancellationToken: token
+                });
+
+                const result = await aiInvoker(prompt);
+
+                if (token.isCancellationRequested || result.error === 'Cancelled') {
+                    vscode.window.showInformationMessage('Task creation cancelled');
+                    return;
+                }
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to create task');
+                }
+
+                treeDataProvider.refresh();
+                
+                // Parse file path from AI response and open it
+                const createdFile = parseCreatedFilePath(result.response, targetFolderPath);
+                if (createdFile && fs.existsSync(createdFile)) {
+                    await vscode.commands.executeCommand(
+                        'vscode.openWith',
+                        vscode.Uri.file(createdFile),
+                        'reviewEditorView'
+                    );
+                    
+                    const displayName = taskName || path.basename(createdFile, '.md');
+                    vscode.window.showInformationMessage(
+                        `Task created: ${displayName}`,
+                        'Open Task'
+                    ).then(action => {
+                        if (action === 'Open Task') {
+                            vscode.commands.executeCommand(
+                                'vscode.openWith',
+                                vscode.Uri.file(createdFile),
+                                'reviewEditorView'
+                            );
+                        }
+                    });
+                } else {
+                    vscode.window.showInformationMessage('Task created');
+                }
+
+            } catch (error) {
+                const err = error instanceof Error ? error : new Error(String(error));
+                logger.error(LogCategory.TASKS, 'Error creating task with AI', err);
+
+                const action = await vscode.window.showErrorMessage(
+                    `Failed to generate task content: ${err.message}`,
+                    'Create Empty Task',
+                    'Retry',
+                    'Cancel'
+                );
+
+                if (action === 'Create Empty Task') {
+                    await createEmptyTaskWithOptions(taskManager, treeDataProvider, options);
+                } else if (action === 'Retry') {
+                    await executeAITaskCreation(
+                        taskManager,
+                        treeDataProvider,
+                        dialogService,
+                        options,
+                        processManager
+                    );
+                }
+            }
+        }
+    );
+}
+
+/**
+ * Create a new task with AI-generated content (legacy function for internal use)
+ * @deprecated Use createTaskWithAIDialog instead
  */
 async function createTaskWithAI(
     taskManager: TaskManager,
@@ -655,6 +885,25 @@ Create a single markdown file under ${targetPath}`;
 }
 
 /**
+ * Build prompt for creating a task with a specific name
+ */
+function buildCreateTaskPromptWithName(name: string, description: string, targetPath: string): string {
+    const descriptionPart = description
+        ? `\n\nDescription: ${description}`
+        : '';
+    
+    return `Create a task document for: ${name}${descriptionPart}
+
+Generate a comprehensive markdown task document with:
+- Clear title and description
+- Acceptance criteria
+- Subtasks (if applicable)
+- Notes section
+
+Save the file as "${name}.md" under ${targetPath}`;
+}
+
+/**
  * Build prompt for creating a task from feature context
  */
 function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string, targetPath: string): string {
@@ -877,6 +1126,46 @@ async function createEmptyTaskInFolder(
     }
 }
 
+/**
+ * Create an empty task with pre-filled options from the dialog
+ */
+async function createEmptyTaskWithOptions(
+    taskManager: TaskManager,
+    treeDataProvider: TasksTreeDataProvider,
+    options: AITaskCreationOptions
+): Promise<void> {
+    try {
+        const tasksFolder = taskManager.getTasksFolder();
+        
+        // Get location from either mode
+        const location = options.mode === 'from-feature'
+            ? options.fromFeatureOptions?.location || ''
+            : options.createOptions?.location || '';
+            
+        const targetFolder = location
+            ? path.join(tasksFolder, location)
+            : tasksFolder;
+
+        // Ensure target folder exists
+        const { ensureDirectoryExists } = await import('../shared');
+        ensureDirectoryExists(targetFolder);
+
+        // Get task name - for 'from-feature' mode, generate from folder name
+        const title = options.mode === 'from-feature'
+            ? `task-${path.basename(targetFolder)}-${Date.now()}`
+            : options.createOptions?.name || 'new-task';
+            
+        const content = DEFAULT_TASK_CONTENT.replace('{{TITLE}}', title);
+        const filePath = await createTaskFile(taskManager, title, content, 'feature', targetFolder);
+        
+        treeDataProvider.refresh();
+        await openTaskFile(filePath);
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        vscode.window.showErrorMessage(`Failed to create task: ${err.message}`);
+    }
+}
+
 // ============================================================================
 // Exports for Testing
 // ============================================================================
@@ -895,3 +1184,13 @@ export function isDeepModeAvailable(workspaceRoot: string): boolean {
  * Build deep mode prompt - exported for testing
  */
 export { buildDeepModePrompt };
+
+/**
+ * Re-export AITaskDialogService for external use
+ */
+export { AITaskDialogService } from './ai-task-dialog';
+
+/**
+ * Export the execute function for testing
+ */
+export { executeAITaskCreation };

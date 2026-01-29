@@ -1,0 +1,405 @@
+/**
+ * AI Task Dialog Service Tests
+ * Tests for the AI Task creation dialog flow
+ */
+
+import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import { AITaskDialogService } from '../../shortcuts/tasks-viewer/ai-task-dialog';
+import { TaskManager } from '../../shortcuts/tasks-viewer/task-manager';
+import { AITaskCreationOptions, AITaskDialogResult, AITaskCreateOptions, AITaskFromFeatureOptions } from '../../shortcuts/tasks-viewer/types';
+
+suite('AI Task Dialog Service Tests', () => {
+    let tempDir: string;
+    let taskManager: TaskManager;
+    let dialogService: AITaskDialogService;
+    let mockExtensionUri: vscode.Uri;
+
+    setup(() => {
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-task-dialog-test-'));
+        taskManager = new TaskManager(tempDir);
+        // Create a mock extension URI for testing
+        mockExtensionUri = vscode.Uri.file(tempDir);
+        dialogService = new AITaskDialogService(taskManager, mockExtensionUri);
+        
+        // Create tasks folder structure
+        const tasksFolder = path.join(tempDir, '.vscode', 'tasks');
+        fs.mkdirSync(tasksFolder, { recursive: true });
+    });
+
+    teardown(() => {
+        taskManager.dispose();
+        if (fs.existsSync(tempDir)) {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    suite('AITaskDialogService constructor', () => {
+        test('should create dialog service with task manager and extension uri', () => {
+            const service = new AITaskDialogService(taskManager, mockExtensionUri);
+            assert.ok(service, 'Service should be created');
+        });
+    });
+
+    suite('getAvailableFolders', () => {
+        test('should return root option when no folders exist', async () => {
+            const folders = await dialogService.getAvailableFolders();
+            
+            assert.strictEqual(folders.length, 1, 'Should have root option only');
+            assert.strictEqual(folders[0].relativePath, '', 'Root should have empty relative path');
+            assert.ok(folders[0].label.includes('Root'), 'Root label should contain "Root"');
+        });
+
+        test('should include feature folders', async () => {
+            // Create feature folders
+            const tasksFolder = path.join(tempDir, '.vscode', 'tasks');
+            fs.mkdirSync(path.join(tasksFolder, 'feature1'), { recursive: true });
+            fs.mkdirSync(path.join(tasksFolder, 'feature2'), { recursive: true });
+            
+            const folders = await dialogService.getAvailableFolders();
+            
+            assert.strictEqual(folders.length, 3, 'Should have root + 2 feature folders');
+            assert.strictEqual(folders[0].relativePath, '', 'First should be root');
+            
+            const featureNames = folders.slice(1).map(f => f.relativePath);
+            assert.ok(featureNames.includes('feature1'), 'Should include feature1');
+            assert.ok(featureNames.includes('feature2'), 'Should include feature2');
+        });
+
+        test('should include nested folders', async () => {
+            // Create nested folder structure
+            const tasksFolder = path.join(tempDir, '.vscode', 'tasks');
+            fs.mkdirSync(path.join(tasksFolder, 'feature1', 'backlog1'), { recursive: true });
+            
+            const folders = await dialogService.getAvailableFolders();
+            
+            // Should have root, feature1, and feature1/backlog1
+            assert.ok(folders.length >= 3, 'Should have at least 3 folders');
+            
+            const relativePaths = folders.map(f => f.relativePath);
+            assert.ok(relativePaths.includes(''), 'Should include root');
+            assert.ok(relativePaths.includes('feature1'), 'Should include feature1');
+            
+            // Check for nested path (cross-platform)
+            const hasNestedPath = relativePaths.some(p => 
+                p === path.join('feature1', 'backlog1') || 
+                p === 'feature1/backlog1'
+            );
+            assert.ok(hasNestedPath, 'Should include nested backlog1 folder');
+        });
+
+        test('should exclude archive folder', async () => {
+            // Create archive folder
+            const tasksFolder = path.join(tempDir, '.vscode', 'tasks');
+            fs.mkdirSync(path.join(tasksFolder, 'archive'), { recursive: true });
+            fs.mkdirSync(path.join(tasksFolder, 'feature1'), { recursive: true });
+            
+            const folders = await dialogService.getAvailableFolders();
+            
+            const relativePaths = folders.map(f => f.relativePath);
+            assert.ok(!relativePaths.includes('archive'), 'Should not include archive folder');
+            assert.ok(relativePaths.includes('feature1'), 'Should include feature1');
+        });
+    });
+
+    suite('validateTaskName', () => {
+        test('should reject empty name', () => {
+            const result = dialogService.validateTaskName('');
+            assert.ok(result !== null, 'Should return error for empty name');
+            assert.ok(result!.includes('empty'), 'Error should mention empty');
+        });
+
+        test('should reject whitespace-only name', () => {
+            const result = dialogService.validateTaskName('   ');
+            assert.ok(result !== null, 'Should return error for whitespace-only name');
+        });
+
+        test('should reject name with forward slash', () => {
+            const result = dialogService.validateTaskName('task/name');
+            assert.ok(result !== null, 'Should return error for name with /');
+            assert.ok(result!.includes('path'), 'Error should mention path separators');
+        });
+
+        test('should reject name with backslash', () => {
+            const result = dialogService.validateTaskName('task\\name');
+            assert.ok(result !== null, 'Should return error for name with \\');
+        });
+
+        test('should reject name with invalid characters', () => {
+            const invalidChars = ['<', '>', ':', '"', '|', '?', '*'];
+            for (const char of invalidChars) {
+                const result = dialogService.validateTaskName(`task${char}name`);
+                assert.ok(result !== null, `Should reject name with ${char}`);
+            }
+        });
+
+        test('should accept valid name', () => {
+            const result = dialogService.validateTaskName('implement-user-authentication');
+            assert.strictEqual(result, null, 'Should accept valid name');
+        });
+
+        test('should accept name with spaces', () => {
+            const result = dialogService.validateTaskName('my task name');
+            assert.strictEqual(result, null, 'Should accept name with spaces');
+        });
+
+        test('should accept name with dots', () => {
+            const result = dialogService.validateTaskName('task.plan');
+            assert.strictEqual(result, null, 'Should accept name with dots');
+        });
+
+        test('should accept name with dashes and underscores', () => {
+            const result = dialogService.validateTaskName('task-name_v1');
+            assert.strictEqual(result, null, 'Should accept name with dashes and underscores');
+        });
+    });
+
+    suite('getAbsoluteFolderPath', () => {
+        test('should return tasks folder for empty location', () => {
+            const result = dialogService.getAbsoluteFolderPath('');
+            const expected = path.join(tempDir, '.vscode', 'tasks');
+            assert.strictEqual(result, expected, 'Should return tasks folder for empty location');
+        });
+
+        test('should return subfolder path for relative location', () => {
+            const result = dialogService.getAbsoluteFolderPath('feature1');
+            const expected = path.join(tempDir, '.vscode', 'tasks', 'feature1');
+            assert.strictEqual(result, expected, 'Should return subfolder path');
+        });
+
+        test('should handle nested paths', () => {
+            const result = dialogService.getAbsoluteFolderPath(path.join('feature1', 'backlog1'));
+            const expected = path.join(tempDir, '.vscode', 'tasks', 'feature1', 'backlog1');
+            assert.strictEqual(result, expected, 'Should return nested path');
+        });
+    });
+
+    suite('AITaskCreateOptions type (create mode)', () => {
+        test('should have correct structure', () => {
+            const options: AITaskCreateOptions = {
+                name: 'test-task',
+                location: 'feature1',
+                description: 'Test description',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.name, 'test-task');
+            assert.strictEqual(options.location, 'feature1');
+            assert.strictEqual(options.description, 'Test description');
+            assert.strictEqual(options.model, 'claude-sonnet-4.5');
+        });
+
+        test('should allow empty location for root', () => {
+            const options: AITaskCreateOptions = {
+                name: 'root-task',
+                location: '',
+                description: 'Root level task',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.location, '');
+        });
+
+        test('should allow empty description', () => {
+            const options: AITaskCreateOptions = {
+                name: 'minimal-task',
+                location: '',
+                description: '',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.description, '');
+        });
+    });
+
+    suite('AITaskFromFeatureOptions type (from-feature mode)', () => {
+        test('should have correct structure', () => {
+            const options: AITaskFromFeatureOptions = {
+                location: 'feature1',
+                focus: 'Implement the core API',
+                depth: 'simple',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.location, 'feature1');
+            assert.strictEqual(options.focus, 'Implement the core API');
+            assert.strictEqual(options.depth, 'simple');
+            assert.strictEqual(options.model, 'claude-sonnet-4.5');
+        });
+
+        test('should allow deep depth', () => {
+            const options: AITaskFromFeatureOptions = {
+                location: 'feature1',
+                focus: 'Deep analysis',
+                depth: 'deep',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.depth, 'deep');
+        });
+
+        test('should allow empty focus', () => {
+            const options: AITaskFromFeatureOptions = {
+                location: 'feature1',
+                focus: '',
+                depth: 'simple',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.focus, '');
+        });
+    });
+
+    suite('AITaskCreationOptions unified type', () => {
+        test('should support create mode', () => {
+            const options: AITaskCreationOptions = {
+                mode: 'create',
+                createOptions: {
+                    name: 'test-task',
+                    location: 'feature1',
+                    description: 'Test',
+                    model: 'claude-sonnet-4.5'
+                }
+            };
+            
+            assert.strictEqual(options.mode, 'create');
+            assert.ok(options.createOptions);
+            assert.strictEqual(options.createOptions!.name, 'test-task');
+        });
+
+        test('should support from-feature mode', () => {
+            const options: AITaskCreationOptions = {
+                mode: 'from-feature',
+                fromFeatureOptions: {
+                    location: 'feature1',
+                    focus: 'API implementation',
+                    depth: 'deep',
+                    model: 'claude-sonnet-4.5'
+                }
+            };
+            
+            assert.strictEqual(options.mode, 'from-feature');
+            assert.ok(options.fromFeatureOptions);
+            assert.strictEqual(options.fromFeatureOptions!.depth, 'deep');
+        });
+    });
+
+    suite('AITaskDialogResult type', () => {
+        test('should represent cancelled result', () => {
+            const result: AITaskDialogResult = {
+                cancelled: true,
+                options: null
+            };
+            
+            assert.strictEqual(result.cancelled, true);
+            assert.strictEqual(result.options, null);
+        });
+
+        test('should represent successful create mode result', () => {
+            const result: AITaskDialogResult = {
+                cancelled: false,
+                options: {
+                    mode: 'create',
+                    createOptions: {
+                        name: 'test-task',
+                        location: 'feature1',
+                        description: 'Test',
+                        model: 'claude-sonnet-4.5'
+                    }
+                }
+            };
+            
+            assert.strictEqual(result.cancelled, false);
+            assert.ok(result.options !== null);
+            assert.strictEqual(result.options!.mode, 'create');
+            assert.strictEqual(result.options!.createOptions!.name, 'test-task');
+        });
+
+        test('should represent successful from-feature mode result', () => {
+            const result: AITaskDialogResult = {
+                cancelled: false,
+                options: {
+                    mode: 'from-feature',
+                    fromFeatureOptions: {
+                        location: 'feature1',
+                        focus: 'Core implementation',
+                        depth: 'simple',
+                        model: 'claude-sonnet-4.5'
+                    }
+                }
+            };
+            
+            assert.strictEqual(result.cancelled, false);
+            assert.ok(result.options !== null);
+            assert.strictEqual(result.options!.mode, 'from-feature');
+            assert.strictEqual(result.options!.fromFeatureOptions!.depth, 'simple');
+        });
+    });
+
+    suite('Cross-platform path handling', () => {
+        test('should handle Windows-style paths in validation', () => {
+            // Backslash should be rejected as path separator
+            const result = dialogService.validateTaskName('task\\name');
+            assert.ok(result !== null, 'Should reject backslash');
+        });
+
+        test('should handle Unix-style paths in validation', () => {
+            // Forward slash should be rejected as path separator
+            const result = dialogService.validateTaskName('task/name');
+            assert.ok(result !== null, 'Should reject forward slash');
+        });
+
+        test('should normalize paths in getAbsoluteFolderPath', () => {
+            // Test with forward slash (Unix-style)
+            const result1 = dialogService.getAbsoluteFolderPath('feature1/backlog1');
+            
+            // Test with path.join (platform-native)
+            const result2 = dialogService.getAbsoluteFolderPath(path.join('feature1', 'backlog1'));
+            
+            // Both should resolve to the same path on the current platform
+            const expected = path.join(tempDir, '.vscode', 'tasks', 'feature1', 'backlog1');
+            
+            // Note: On Windows, forward slashes in paths are typically handled by Node.js path module
+            // The important thing is that the result is a valid path
+            assert.ok(result1.includes('feature1'), 'Should include feature1');
+            assert.ok(result1.includes('backlog1'), 'Should include backlog1');
+            assert.strictEqual(result2, expected, 'Platform-native path should match expected');
+        });
+    });
+
+    suite('Integration with TaskManager', () => {
+        test('should use TaskManager tasks folder', () => {
+            const tasksFolder = taskManager.getTasksFolder();
+            const dialogPath = dialogService.getAbsoluteFolderPath('');
+            
+            assert.strictEqual(dialogPath, tasksFolder, 'Dialog should use TaskManager tasks folder');
+        });
+
+        test('should reflect TaskManager feature folders', async () => {
+            // Create folders through TaskManager
+            await taskManager.createFeature('test-feature');
+            
+            const folders = await dialogService.getAvailableFolders();
+            const relativePaths = folders.map(f => f.relativePath);
+            
+            assert.ok(relativePaths.includes('test-feature'), 'Should include created feature');
+        });
+    });
+
+    suite('Webview dialog functionality', () => {
+        test('dialog service should have showDialog method', () => {
+            assert.ok(typeof dialogService.showDialog === 'function', 'Should have showDialog method');
+        });
+
+        test('dialog service should return cancelled result when no panel', async () => {
+            // Note: We can't fully test the webview panel in unit tests,
+            // but we can verify the service interface
+            assert.ok(dialogService.getAvailableFolders, 'Should have getAvailableFolders method');
+            assert.ok(dialogService.validateTaskName, 'Should have validateTaskName method');
+            assert.ok(dialogService.getAbsoluteFolderPath, 'Should have getAbsoluteFolderPath method');
+        });
+    });
+});

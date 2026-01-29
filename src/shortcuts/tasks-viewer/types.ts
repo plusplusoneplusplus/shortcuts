@@ -153,3 +153,77 @@ export interface RelatedItemsConfig {
     /** Timestamp of last update (ISO string) */
     lastUpdated?: string;
 }
+
+/** Task creation mode */
+export type TaskCreationMode = 'create' | 'from-feature';
+
+/** AI generation depth for 'from-feature' mode */
+export type TaskGenerationDepth = 'simple' | 'deep';
+
+/**
+ * Options for creating an AI-generated task via the dialog (create mode)
+ */
+export interface AITaskCreateOptions {
+    /** Task name (used as filename) */
+    name: string;
+    /** Target folder path relative to tasks root (empty string = root) */
+    location: string;
+    /** Brief description for AI to expand */
+    description: string;
+    /** AI model to use (follows AI Action prompt pattern) */
+    model: string;
+}
+
+/**
+ * Options for creating a task from feature context (from-feature mode)
+ */
+export interface AITaskFromFeatureOptions {
+    /** Target folder path relative to tasks root (must be a feature folder) */
+    location: string;
+    /** Task focus/description (what specific aspect to focus on) */
+    focus: string;
+    /** Generation depth: simple (single-pass) or deep (multi-phase) */
+    depth: TaskGenerationDepth;
+    /** AI model to use */
+    model: string;
+}
+
+/**
+ * Unified options for AI task creation dialog
+ */
+export interface AITaskCreationOptions {
+    /** Creation mode */
+    mode: TaskCreationMode;
+    /** Options for 'create' mode */
+    createOptions?: AITaskCreateOptions;
+    /** Options for 'from-feature' mode */
+    fromFeatureOptions?: AITaskFromFeatureOptions;
+}
+
+/**
+ * Result from the AI Task creation dialog
+ */
+export interface AITaskDialogResult {
+    /** The creation options if not cancelled */
+    options: AITaskCreationOptions | null;
+    /** Whether the dialog was cancelled */
+    cancelled: boolean;
+}
+
+/**
+ * Feature context gathered from a folder for 'from-feature' mode
+ */
+export interface FeatureContext {
+    /** Whether any content was found */
+    hasContent: boolean;
+    /** Description from related.yaml or folder name */
+    description: string;
+    /** List of existing task documents in the folder */
+    existingTasks: string[];
+    /** List of relevant source files */
+    sourceFiles: string[];
+    /** List of relevant config files */
+    configFiles: string[];
+    /** Related commits (if available) */
+    commits: string[];
+}
