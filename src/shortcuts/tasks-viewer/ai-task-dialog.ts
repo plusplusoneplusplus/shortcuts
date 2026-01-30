@@ -143,6 +143,7 @@ export class AITaskDialogService {
                         };
                     } else {
                         result.fromFeatureOptions = {
+                            name: message.name,
                             location: message.location,
                             focus: message.focus,
                             depth: message.depth,
@@ -652,6 +653,13 @@ export class AITaskDialogService {
                     No feature folders found. Create a feature folder first to use this mode.
                 </div>
                 ` : `
+                <div class="form-group" id="featureNameGroup">
+                    <label for="featureTaskName">Task Name <span class="optional">(Optional)</span></label>
+                    <input type="text" id="featureTaskName" placeholder="implement-user-authentication" autocomplete="off" />
+                    <div class="hint">Leave empty to let AI generate a name based on the feature</div>
+                    <div class="error" id="featureNameError"></div>
+                </div>
+                
                 <div class="form-group">
                     <label for="featureLocation">Feature Folder</label>
                     <select id="featureLocation">
@@ -740,6 +748,9 @@ export class AITaskDialogService {
             const nameError = document.getElementById('nameError');
             
             // DOM elements - From Feature mode
+            const featureTaskNameInput = document.getElementById('featureTaskName');
+            const featureNameGroup = document.getElementById('featureNameGroup');
+            const featureNameError = document.getElementById('featureNameError');
             const featureLocationSelect = document.getElementById('featureLocation');
             const taskFocusInput = document.getElementById('taskFocus');
             const aiModelFeatureSelect = document.getElementById('aiModelFeature');
@@ -867,13 +878,29 @@ export class AITaskDialogService {
                         createBtn.disabled = false;
                     }
                 } else {
-                    // From feature mode - always valid (focus is optional)
-                    createBtn.disabled = !hasFeatureFolders;
+                    // From feature mode - validate task name if provided
+                    if (featureTaskNameInput && featureNameGroup && featureNameError) {
+                        const error = validateName(featureTaskNameInput.value);
+                        if (error) {
+                            featureNameGroup.classList.add('has-error');
+                            featureNameError.textContent = error;
+                            createBtn.disabled = true;
+                        } else {
+                            featureNameGroup.classList.remove('has-error');
+                            featureNameError.textContent = '';
+                            createBtn.disabled = !hasFeatureFolders;
+                        }
+                    } else {
+                        createBtn.disabled = !hasFeatureFolders;
+                    }
                 }
             }
             
             // Event listeners
             taskNameInput.addEventListener('input', updateValidation);
+            if (featureTaskNameInput) {
+                featureTaskNameInput.addEventListener('input', updateValidation);
+            }
             
             createBtn.addEventListener('click', () => {
                 if (currentMode === 'create') {
@@ -893,11 +920,22 @@ export class AITaskDialogService {
                         model: aiModelCreateSelect.value
                     });
                 } else {
+                    // Validate feature task name
+                    if (featureTaskNameInput) {
+                        const error = validateName(featureTaskNameInput.value);
+                        if (error) {
+                            updateValidation();
+                            featureTaskNameInput.focus();
+                            return;
+                        }
+                    }
+                    
                     const depthValue = document.querySelector('input[name="depth"]:checked')?.value || 'simple';
                     
                     vscode.postMessage({
                         type: 'submit',
                         mode: 'from-feature',
+                        name: featureTaskNameInput ? featureTaskNameInput.value.trim() : '',
                         location: featureLocationSelect ? featureLocationSelect.value : '',
                         focus: taskFocusInput ? taskFocusInput.value.trim() : '',
                         depth: depthValue,

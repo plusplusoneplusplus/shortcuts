@@ -339,6 +339,41 @@ suite('AI Task Dialog Service Tests', () => {
             
             assert.strictEqual(options.focus, '');
         });
+
+        test('should allow optional task name', () => {
+            const options: AITaskFromFeatureOptions = {
+                name: 'my-custom-task',
+                location: 'feature1',
+                focus: 'Implement API',
+                depth: 'simple',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.name, 'my-custom-task');
+        });
+
+        test('should allow undefined task name (AI will generate)', () => {
+            const options: AITaskFromFeatureOptions = {
+                location: 'feature1',
+                focus: 'Implement API',
+                depth: 'simple',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.name, undefined);
+        });
+
+        test('should allow empty string task name (AI will generate)', () => {
+            const options: AITaskFromFeatureOptions = {
+                name: '',
+                location: 'feature1',
+                focus: 'Implement API',
+                depth: 'simple',
+                model: 'claude-sonnet-4.5'
+            };
+            
+            assert.strictEqual(options.name, '');
+        });
     });
 
     suite('AITaskCreationOptions unified type', () => {
@@ -424,6 +459,28 @@ suite('AI Task Dialog Service Tests', () => {
             assert.ok(result.options !== null);
             assert.strictEqual(result.options!.mode, 'from-feature');
             assert.strictEqual(result.options!.fromFeatureOptions!.depth, 'simple');
+        });
+
+        test('should represent from-feature mode result with task name', () => {
+            const result: AITaskDialogResult = {
+                cancelled: false,
+                options: {
+                    mode: 'from-feature',
+                    fromFeatureOptions: {
+                        name: 'custom-feature-task',
+                        location: 'feature1',
+                        focus: 'Core implementation',
+                        depth: 'simple',
+                        model: 'claude-sonnet-4.5'
+                    }
+                }
+            };
+            
+            assert.strictEqual(result.cancelled, false);
+            assert.ok(result.options !== null);
+            assert.strictEqual(result.options!.mode, 'from-feature');
+            assert.strictEqual(result.options!.fromFeatureOptions!.name, 'custom-feature-task');
+            assert.strictEqual(result.options!.fromFeatureOptions!.focus, 'Core implementation');
         });
     });
 

@@ -70,6 +70,7 @@ suite('AI Task Commands Tests', () => {
             const prompt = await buildDeepModePrompt(
                 context,
                 'Implement feature',
+                undefined,
                 '/path/to/target',
                 tempDir
             );
@@ -86,6 +87,7 @@ suite('AI Task Commands Tests', () => {
             const prompt = await buildDeepModePrompt(
                 context,
                 'Implement authentication',
+                undefined,
                 '/path/to/target',
                 tempDir
             );
@@ -106,6 +108,7 @@ suite('AI Task Commands Tests', () => {
             const prompt = await buildDeepModePrompt(
                 context,
                 'Add authentication',
+                undefined,
                 '/target/path',
                 tempDir
             );
@@ -125,6 +128,7 @@ suite('AI Task Commands Tests', () => {
             const prompt = await buildDeepModePrompt(
                 context,
                 'Test',
+                undefined,
                 '/path',
                 tempDir
             );
@@ -139,6 +143,7 @@ suite('AI Task Commands Tests', () => {
             const prompt = await buildDeepModePrompt(
                 context,
                 '',
+                undefined,
                 '/path',
                 tempDir
             );
@@ -156,6 +161,7 @@ suite('AI Task Commands Tests', () => {
             const prompt = await buildDeepModePrompt(
                 context,
                 'Test',
+                undefined,
                 '/path',
                 tempDir
             );
@@ -163,6 +169,24 @@ suite('AI Task Commands Tests', () => {
             assert.ok(prompt.includes('src/file0.ts'), 'Should include first file');
             assert.ok(prompt.includes('src/file19.ts'), 'Should include 20th file');
             assert.ok(!prompt.includes('src/file20.ts'), 'Should not include 21st file');
+        });
+
+        test('should include exact filename when name is provided', async () => {
+            const context: SelectedContext = {
+                description: 'Test feature'
+            };
+            const name = 'my-deep-task';
+            const targetPath = '/target/path';
+            
+            const prompt = await buildDeepModePrompt(
+                context,
+                'Implement feature',
+                name,
+                targetPath,
+                tempDir
+            );
+
+            assert.ok(prompt.includes(`${targetPath}/${name}.plan.md`), 'Should include exact file path with provided name');
         });
     });
 
@@ -351,7 +375,7 @@ suite('AI Task Commands Tests', () => {
                 description: 'Authentication feature'
             };
             
-            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Implement OAuth2', targetPath);
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Implement OAuth2', undefined, targetPath);
             
             // Verify output directory enforcement
             assert.ok(prompt.includes('**IMPORTANT: Output Location Requirement**'), 'Should have prominent location requirement header');
@@ -361,14 +385,27 @@ suite('AI Task Commands Tests', () => {
             assert.ok(prompt.includes('Do NOT use your session state'), 'Should explicitly forbid session state directory');
         });
 
-        test('should include example filename format', () => {
+        test('should include example filename format when name not provided', () => {
             const targetPath = '/path/to/tasks';
             const context: SelectedContext = {};
             
-            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Test', targetPath);
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Test', undefined, targetPath);
             
             assert.ok(prompt.includes('.plan.md'), 'Should mention .plan.md file format');
-            assert.ok(prompt.includes('feature-plan.plan.md'), 'Should include example filename');
+            assert.ok(prompt.includes('kebab-case'), 'Should mention kebab-case format');
+            assert.ok(prompt.includes('Choose an appropriate filename'), 'Should instruct AI to choose filename');
+        });
+
+        test('should include exact filename when name is provided', () => {
+            const targetPath = '/path/to/tasks';
+            const context: SelectedContext = {};
+            const name = 'my-custom-task';
+            
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Test', name, targetPath);
+            
+            assert.ok(prompt.includes(`${targetPath}/${name}.plan.md`), 'Should include exact file path with provided name');
+            assert.ok(prompt.includes('Full file path'), 'Should specify full file path');
+            assert.ok(!prompt.includes('Choose an appropriate filename'), 'Should NOT instruct AI to choose filename when name is provided');
         });
 
         test('should include context and still enforce directory', () => {
@@ -380,7 +417,7 @@ suite('AI Task Commands Tests', () => {
                 relatedFiles: ['file1.ts', 'file2.ts']
             };
             
-            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Focus', targetPath);
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Focus', undefined, targetPath);
             
             // Should include context
             assert.ok(prompt.includes('Test description'), 'Should include description');
@@ -391,6 +428,26 @@ suite('AI Task Commands Tests', () => {
             // Should still enforce directory
             assert.ok(prompt.includes('**IMPORTANT: Output Location Requirement**'), 'Should have location requirement even with context');
             assert.ok(prompt.includes(targetPath), 'Should include target path');
+        });
+
+        test('should handle empty name as undefined (AI will generate)', () => {
+            const targetPath = '/path/to/tasks';
+            const context: SelectedContext = {};
+            
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Test', '', targetPath);
+            
+            // Empty string should be treated as "no name provided"
+            assert.ok(prompt.includes('Choose an appropriate filename'), 'Should instruct AI to choose filename for empty name');
+        });
+
+        test('should handle whitespace-only name as undefined (AI will generate)', () => {
+            const targetPath = '/path/to/tasks';
+            const context: SelectedContext = {};
+            
+            const prompt = buildCreateFromFeaturePromptForTesting(context, 'Test', '   ', targetPath);
+            
+            // Whitespace-only name should be treated as "no name provided"
+            assert.ok(prompt.includes('Choose an appropriate filename'), 'Should instruct AI to choose filename for whitespace-only name');
         });
     });
 

@@ -216,10 +216,10 @@ async function executeAITaskCreation(
                     
                     // Build prompt based on depth
                     if (opts.depth === 'deep') {
-                        prompt = await buildDeepModePrompt(context, opts.focus, targetFolderPath, workspaceRoot);
+                        prompt = await buildDeepModePrompt(context, opts.focus, opts.name, targetFolderPath, workspaceRoot);
                         progress.report({ message: `Creating task with AI (Deep mode)...` });
                     } else {
-                        prompt = buildCreateFromFeaturePrompt(context, opts.focus, targetFolderPath);
+                        prompt = buildCreateFromFeaturePrompt(context, opts.focus, opts.name, targetFolderPath);
                     }
                     featureName = `Task from Feature: ${folderName}`;
                 } else if (options.createOptions) {
@@ -560,8 +560,8 @@ async function createTaskFromFeature(
                 progress.report({ message: `Creating task with AI (${mode.label} mode)...` });
 
                 const prompt = mode.id === 'deep'
-                    ? await buildDeepModePrompt(selectedContext, focus, folderPath, workspaceRoot)
-                    : buildCreateFromFeaturePrompt(selectedContext, focus, folderPath);
+                    ? await buildDeepModePrompt(selectedContext, focus, undefined, folderPath, workspaceRoot)
+                    : buildCreateFromFeaturePrompt(selectedContext, focus, undefined, folderPath);
                 const workingDirectory = workspaceRoot;
 
                 const aiInvoker = createAIInvoker({
@@ -699,15 +699,21 @@ async function selectCreationMode(workspaceRoot: string): Promise<ModeSelection 
 /**
  * Build prompt for deep mode task creation
  * Simply adds instruction to use go-deep skill
+ * @param context - The selected feature context
+ * @param focus - Task focus/description
+ * @param name - Optional task name for the filename
+ * @param targetPath - Target directory path
+ * @param _workspaceRoot - Workspace root (unused but kept for API consistency)
  */
 async function buildDeepModePrompt(
     context: SelectedContext,
     focus: string,
+    name: string | undefined,
     targetPath: string,
     _workspaceRoot: string
 ): Promise<string> {
     // Build the base prompt (same as simple mode)
-    const basePrompt = buildCreateFromFeaturePrompt(context, focus, targetPath);
+    const basePrompt = buildCreateFromFeaturePrompt(context, focus, name, targetPath);
     
     // Prepend instruction to use go-deep skill
     return `Use go-deep skill when available.\n\n${basePrompt}`;
@@ -938,8 +944,12 @@ You MUST save the file to this EXACT directory: ${targetPath}
 
 /**
  * Build prompt for creating a task from feature context
+ * @param context - The selected feature context
+ * @param focus - Task focus/description
+ * @param name - Optional task name for the filename
+ * @param targetPath - Target directory path
  */
-function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string, targetPath: string): string {
+function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string, name: string | undefined, targetPath: string): string {
     let contextText = '';
 
     if (context.description) {
@@ -965,6 +975,15 @@ function buildCreateFromFeaturePrompt(context: SelectedContext, focus: string, t
         contextText += `Related Source Files:\n${context.relatedFiles.slice(0, 20).join('\n')}\n\n`;
     }
 
+    // Build filename instruction based on whether name is provided
+    const filenameInstruction = name && name.trim()
+        ? `- Full file path: ${targetPath}/${name}.plan.md
+- The file MUST be created at: ${targetPath}/${name}.plan.md`
+        : `- The file should be a .plan.md file (e.g., "${targetPath}/feature-plan.plan.md")
+- Choose an appropriate filename based on the task content
+- The filename should be in kebab-case, descriptive, and end with .plan.md
+- The file MUST be created directly under: ${targetPath}/`;
+
     return `Can you draft a plan given User's ask: ${focus || 'Create an implementation task'}
 
 Context:
@@ -972,10 +991,9 @@ ${contextText}
 
 **IMPORTANT: Output Location Requirement**
 You MUST save the file to this EXACT directory: ${targetPath}
-- The file should be a .plan.md file (e.g., "${targetPath}/feature-plan.plan.md")
+${filenameInstruction}
 - Do NOT save to any other location
-- Do NOT use your session state or any other directory
-- The file MUST be created directly under: ${targetPath}/`;
+- Do NOT use your session state or any other directory`;
 }
 
 /**

@@ -178,6 +178,8 @@ export interface AITaskCreateOptions {
  * Options for creating a task from feature context (from-feature mode)
  */
 export interface AITaskFromFeatureOptions {
+    /** Task name (used as filename) - optional, AI will generate if empty */
+    name?: string;
     /** Target folder path relative to tasks root (must be a feature folder) */
     location: string;
     /** Task focus/description (what specific aspect to focus on) */
