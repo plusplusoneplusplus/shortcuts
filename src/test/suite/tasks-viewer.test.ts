@@ -162,24 +162,24 @@ suite('Tasks Viewer Tests', () => {
                 assert.ok(folderPath.startsWith(tasksFolder), 'Feature should be inside tasks folder');
             });
 
-            test('should create meta.md file in feature folder', async () => {
+            test('should create placeholder.md file in feature folder', async () => {
                 const folderPath = await taskManager.createFeature('My Feature');
-                const metaFilePath = path.join(folderPath, 'meta.md');
+                const placeholderFilePath = path.join(folderPath, 'placeholder.md');
                 
-                assert.ok(fs.existsSync(metaFilePath), 'meta.md should exist in feature folder');
+                assert.ok(fs.existsSync(placeholderFilePath), 'placeholder.md should exist in feature folder');
                 
-                const content = fs.readFileSync(metaFilePath, 'utf8');
-                assert.strictEqual(content, '', 'meta.md should be empty initially');
+                const content = fs.readFileSync(placeholderFilePath, 'utf8');
+                assert.strictEqual(content, '', 'placeholder.md should be empty initially');
             });
 
             test('should make feature visible in task tree after creation', async () => {
                 await taskManager.createFeature('Test Feature');
 
-                // The meta.md file should make the feature visible
+                // The placeholder.md file should make the feature visible
                 const tasks = await taskManager.getTasks();
                 const featureTask = tasks.find(t => t.relativePath === 'Test-Feature');
-                assert.ok(featureTask, 'Feature should be visible with meta.md file');
-                assert.strictEqual(featureTask.name, 'meta', 'meta.md should be found');
+                assert.ok(featureTask, 'Feature should be visible with placeholder.md file');
+                assert.strictEqual(featureTask.name, 'placeholder', 'placeholder.md should be found');
             });
 
             test('should allow creating tasks inside feature folder', async () => {
@@ -252,27 +252,27 @@ suite('Tasks Viewer Tests', () => {
                 assert.ok(subfolderPath.startsWith(featurePath), 'Subfolder should be inside parent folder');
             });
 
-            test('should create meta.md file in subfolder', async () => {
+            test('should create placeholder.md file in subfolder', async () => {
                 const featurePath = await taskManager.createFeature('Parent Feature');
                 const subfolderPath = await taskManager.createSubfolder(featurePath, 'My Sub');
-                const metaFilePath = path.join(subfolderPath, 'meta.md');
+                const placeholderFilePath = path.join(subfolderPath, 'placeholder.md');
 
-                assert.ok(fs.existsSync(metaFilePath), 'meta.md should exist in subfolder');
+                assert.ok(fs.existsSync(placeholderFilePath), 'placeholder.md should exist in subfolder');
 
-                const content = fs.readFileSync(metaFilePath, 'utf8');
-                assert.strictEqual(content, '', 'meta.md should be empty initially');
+                const content = fs.readFileSync(placeholderFilePath, 'utf8');
+                assert.strictEqual(content, '', 'placeholder.md should be empty initially');
             });
 
             test('should make subfolder visible in task tree after creation', async () => {
                 const featurePath = await taskManager.createFeature('Parent Feature');
                 await taskManager.createSubfolder(featurePath, 'Test Sub');
 
-                // The meta.md file should make the subfolder visible
+                // The placeholder.md file should make the subfolder visible
                 const tasks = await taskManager.getTasks();
                 // Subfolder path should be Parent-Feature/Test-Sub
                 const subfolderTask = tasks.find(t => t.relativePath === path.join('Parent-Feature', 'Test-Sub'));
-                assert.ok(subfolderTask, 'Subfolder should be visible with meta.md file');
-                assert.strictEqual(subfolderTask.name, 'meta', 'meta.md should be found');
+                assert.ok(subfolderTask, 'Subfolder should be visible with placeholder.md file');
+                assert.strictEqual(subfolderTask.name, 'placeholder', 'placeholder.md should be found');
             });
 
             test('should support arbitrary nesting depth', async () => {
@@ -283,11 +283,11 @@ suite('Tasks Viewer Tests', () => {
 
                 assert.ok(fs.existsSync(level4Path), 'Deeply nested folder should exist');
 
-                // Verify all meta.md files exist
-                assert.ok(fs.existsSync(path.join(featurePath, 'meta.md')));
-                assert.ok(fs.existsSync(path.join(level2Path, 'meta.md')));
-                assert.ok(fs.existsSync(path.join(level3Path, 'meta.md')));
-                assert.ok(fs.existsSync(path.join(level4Path, 'meta.md')));
+                // Verify all placeholder.md files exist
+                assert.ok(fs.existsSync(path.join(featurePath, 'placeholder.md')));
+                assert.ok(fs.existsSync(path.join(level2Path, 'placeholder.md')));
+                assert.ok(fs.existsSync(path.join(level3Path, 'placeholder.md')));
+                assert.ok(fs.existsSync(path.join(level4Path, 'placeholder.md')));
 
                 // Verify deeply nested folder is visible in task tree
                 const tasks = await taskManager.getTasks();

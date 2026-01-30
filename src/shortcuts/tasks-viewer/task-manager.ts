@@ -158,9 +158,9 @@ export class TaskManager implements vscode.Disposable {
 
         ensureDirectoryExists(folderPath);
 
-        // Create meta.md file so the feature appears in the tree view
-        const metaFilePath = path.join(folderPath, 'meta.md');
-        safeWriteFile(metaFilePath, '');
+        // Create placeholder.md file so the feature appears in the tree view
+        const placeholderFilePath = path.join(folderPath, 'placeholder.md');
+        safeWriteFile(placeholderFilePath, '');
 
         return folderPath;
     }
@@ -185,9 +185,9 @@ export class TaskManager implements vscode.Disposable {
 
         ensureDirectoryExists(subfolderPath);
 
-        // Create meta.md file so the subfolder appears in the tree view
-        const metaFilePath = path.join(subfolderPath, 'meta.md');
-        safeWriteFile(metaFilePath, '');
+        // Create placeholder.md file so the subfolder appears in the tree view
+        const placeholderFilePath = path.join(subfolderPath, 'placeholder.md');
+        safeWriteFile(placeholderFilePath, '');
 
         return subfolderPath;
     }

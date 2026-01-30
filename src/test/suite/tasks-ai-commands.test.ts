@@ -152,8 +152,8 @@ suite('Tasks Viewer - AI Task Commands Tests', () => {
             createDir('.vscode/tasks/feature-one');
             createDir('.vscode/tasks/feature-two');
             createDir('.vscode/tasks/feature-two/subfolder');
-            createTaskFile('.vscode/tasks/feature-one/meta.md');
-            createTaskFile('.vscode/tasks/feature-two/meta.md');
+            createTaskFile('.vscode/tasks/feature-one/placeholder.md');
+            createTaskFile('.vscode/tasks/feature-two/placeholder.md');
 
             const folders = await taskManager.getFeatureFolders();
 
@@ -168,7 +168,7 @@ suite('Tasks Viewer - AI Task Commands Tests', () => {
             createDir('.vscode/tasks/feature-one');
             createDir('.vscode/tasks/archive');
             createDir('.vscode/tasks/archive/archived-feature');
-            createTaskFile('.vscode/tasks/feature-one/meta.md');
+            createTaskFile('.vscode/tasks/feature-one/placeholder.md');
             createTaskFile('.vscode/tasks/archive/archived.md');
 
             const folders = await taskManager.getFeatureFolders();
@@ -248,11 +248,11 @@ suite('Tasks Viewer - AI Task Commands Tests', () => {
             }
         });
 
-        test('createFeature should create folder with meta.md', async () => {
+        test('createFeature should create folder with placeholder.md', async () => {
             const folderPath = await taskManager.createFeature('New Feature');
             
             assert.ok(fs.existsSync(folderPath), 'Feature folder should be created');
-            assert.ok(fs.existsSync(path.join(folderPath, 'meta.md')), 'meta.md should be created');
+            assert.ok(fs.existsSync(path.join(folderPath, 'placeholder.md')), 'placeholder.md should be created');
         });
     });
 

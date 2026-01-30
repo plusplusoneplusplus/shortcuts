@@ -432,7 +432,7 @@ async function discoverRelatedItems(
 async function extractFeatureDescription(folderPath: string, folderName: string): Promise<string> {
     try {
         // Look for common task files that might have description
-        const candidateFiles = ['plan.md', 'spec.md', 'readme.md', 'meta.md'];
+        const candidateFiles = ['plan.md', 'spec.md', 'readme.md', 'placeholder.md'];
         
         for (const fileName of candidateFiles) {
             const filePath = path.join(folderPath, fileName);
