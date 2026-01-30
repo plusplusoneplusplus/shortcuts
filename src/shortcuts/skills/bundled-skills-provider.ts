@@ -16,6 +16,11 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         name: 'pipeline-generator',
         description: 'Generate optimized YAML pipeline configurations from natural language requirements',
         relativePath: 'pipeline-generator'
+    },
+    {
+        name: 'skill-for-skills',
+        description: 'Create and update Agent Skills following the agentskills.io specification',
+        relativePath: 'skill-for-skills'
     }
 ];
 
