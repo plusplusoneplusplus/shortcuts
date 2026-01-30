@@ -129,3 +129,46 @@ export function getFollowPromptRememberSelection(): boolean {
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.followPrompt');
     return config.get<boolean>('rememberLastSelection', true);
 }
+
+// ============================================================================
+// Persistent Model Selection
+// ============================================================================
+
+/** Storage key for last-used AI model */
+const LAST_USED_MODEL_KEY = 'workspaceShortcuts.aiTask.lastUsedModel';
+
+/**
+ * Get the last-used AI model from workspace state, with fallback chain:
+ * 1. Workspace state (persisted selection)
+ * 2. Configuration setting (workspaceShortcuts.followPrompt.defaultModel)
+ * 3. Hardcoded default (claude-sonnet-4.5)
+ *
+ * @param context VS Code extension context for workspace state access
+ * @returns The model ID to use as default
+ */
+export function getLastUsedAIModel(context: vscode.ExtensionContext): string {
+    const savedModel = context.workspaceState.get<string>(LAST_USED_MODEL_KEY);
+    
+    if (savedModel) {
+        // Validate that the saved model is still available
+        const availableModels = getAvailableModels();
+        const isValid = availableModels.some(m => m.id === savedModel);
+        if (isValid) {
+            return savedModel;
+        }
+        // Model no longer available, fall through to defaults
+    }
+    
+    // Fall back to config setting or hardcoded default
+    return getFollowPromptDefaultModel();
+}
+
+/**
+ * Save the selected AI model to workspace state for persistence.
+ *
+ * @param context VS Code extension context for workspace state access
+ * @param model The model ID to save
+ */
+export function saveLastUsedAIModel(context: vscode.ExtensionContext, model: string): void {
+    context.workspaceState.update(LAST_USED_MODEL_KEY, model);
+}

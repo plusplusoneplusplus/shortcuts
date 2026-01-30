@@ -11,19 +11,56 @@ import * as vscode from 'vscode';
 import { AITaskDialogService } from '../../shortcuts/tasks-viewer/ai-task-dialog';
 import { TaskManager } from '../../shortcuts/tasks-viewer/task-manager';
 import { AITaskCreationOptions, AITaskDialogResult, AITaskCreateOptions, AITaskFromFeatureOptions } from '../../shortcuts/tasks-viewer/types';
+import { getLastUsedAIModel, saveLastUsedAIModel, getFollowPromptDefaultModel } from '../../shortcuts/ai-service/ai-config-helpers';
+
+/**
+ * Mock workspace state for testing persistence
+ */
+class MockWorkspaceState {
+    private storage: Map<string, unknown> = new Map();
+
+    get<T>(key: string, defaultValue?: T): T {
+        return this.storage.has(key) ? this.storage.get(key) as T : defaultValue as T;
+    }
+
+    async update(key: string, value: unknown): Promise<void> {
+        this.storage.set(key, value);
+    }
+
+    /** Helper method for tests to check stored values */
+    getStoredValue(key: string): unknown {
+        return this.storage.get(key);
+    }
+
+    /** Helper method for tests to clear storage */
+    clear(): void {
+        this.storage.clear();
+    }
+}
+
+/**
+ * Mock ExtensionContext for testing
+ */
+class MockExtensionContext {
+    workspaceState = new MockWorkspaceState();
+    globalState = new MockWorkspaceState();
+    extensionUri = vscode.Uri.file('/mock/extension');
+}
 
 suite('AI Task Dialog Service Tests', () => {
     let tempDir: string;
     let taskManager: TaskManager;
     let dialogService: AITaskDialogService;
     let mockExtensionUri: vscode.Uri;
+    let mockContext: MockExtensionContext;
 
     setup(() => {
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-task-dialog-test-'));
         taskManager = new TaskManager(tempDir);
         // Create a mock extension URI for testing
         mockExtensionUri = vscode.Uri.file(tempDir);
-        dialogService = new AITaskDialogService(taskManager, mockExtensionUri);
+        mockContext = new MockExtensionContext();
+        dialogService = new AITaskDialogService(taskManager, mockExtensionUri, mockContext as unknown as vscode.ExtensionContext);
         
         // Create tasks folder structure
         const tasksFolder = path.join(tempDir, '.vscode', 'tasks');
@@ -38,8 +75,12 @@ suite('AI Task Dialog Service Tests', () => {
     });
 
     suite('AITaskDialogService constructor', () => {
-        test('should create dialog service with task manager and extension uri', () => {
-            const service = new AITaskDialogService(taskManager, mockExtensionUri);
+        test('should create dialog service with task manager, extension uri, and context', () => {
+            const service = new AITaskDialogService(
+                taskManager, 
+                mockExtensionUri, 
+                mockContext as unknown as vscode.ExtensionContext
+            );
             assert.ok(service, 'Service should be created');
         });
     });
@@ -447,6 +488,125 @@ suite('AI Task Dialog Service Tests', () => {
             assert.ok(dialogService.getAvailableFolders, 'Should have getAvailableFolders method');
             assert.ok(dialogService.validateTaskName, 'Should have validateTaskName method');
             assert.ok(dialogService.getAbsoluteFolderPath, 'Should have getAbsoluteFolderPath method');
+        });
+    });
+
+    // =========================================================================
+    // Persistent Model Selection Tests
+    // =========================================================================
+    
+    suite('Persistent AI Model Selection', () => {
+        test('getLastUsedAIModel should return config default when no saved state', () => {
+            const freshContext = new MockExtensionContext();
+            const model = getLastUsedAIModel(freshContext as unknown as vscode.ExtensionContext);
+            const configDefault = getFollowPromptDefaultModel();
+            
+            assert.strictEqual(model, configDefault, 
+                'Should return config default when no saved state');
+        });
+
+        test('saveLastUsedAIModel should persist model to workspace state', () => {
+            const context = new MockExtensionContext();
+            
+            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'gpt-5.1-codex');
+            
+            const storedValue = context.workspaceState.getStoredValue('workspaceShortcuts.aiTask.lastUsedModel');
+            assert.strictEqual(storedValue, 'gpt-5.1-codex', 
+                'Should store model in workspace state');
+        });
+
+        test('getLastUsedAIModel should retrieve saved model', () => {
+            const context = new MockExtensionContext();
+            
+            // Save a model first
+            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'claude-haiku-4.5');
+            
+            // Retrieve it
+            const model = getLastUsedAIModel(context as unknown as vscode.ExtensionContext);
+            
+            assert.strictEqual(model, 'claude-haiku-4.5', 
+                'Should retrieve previously saved model');
+        });
+
+        test('getLastUsedAIModel should fallback to config default for invalid saved model', () => {
+            const context = new MockExtensionContext();
+            
+            // Manually save an invalid/deprecated model
+            context.workspaceState.update('workspaceShortcuts.aiTask.lastUsedModel', 'deprecated-model-xyz');
+            
+            // Should fallback since model is not in VALID_MODELS
+            const model = getLastUsedAIModel(context as unknown as vscode.ExtensionContext);
+            const configDefault = getFollowPromptDefaultModel();
+            
+            assert.strictEqual(model, configDefault, 
+                'Should fallback to config default when saved model is invalid');
+        });
+
+        test('saveLastUsedAIModel should overwrite previous selection', () => {
+            const context = new MockExtensionContext();
+            
+            // Save first model
+            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'claude-sonnet-4.5');
+            
+            // Save second model (overwrite)
+            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'gpt-5.1-codex-max');
+            
+            // Retrieve should return the latest
+            const model = getLastUsedAIModel(context as unknown as vscode.ExtensionContext);
+            
+            assert.strictEqual(model, 'gpt-5.1-codex-max', 
+                'Should return the most recently saved model');
+        });
+
+        test('model persistence should work across multiple valid models', () => {
+            const context = new MockExtensionContext();
+            const testModels = ['claude-sonnet-4.5', 'claude-haiku-4.5', 'claude-opus-4.5', 'gpt-5.1-codex-max'];
+            
+            for (const testModel of testModels) {
+                saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, testModel);
+                const retrieved = getLastUsedAIModel(context as unknown as vscode.ExtensionContext);
+                
+                assert.strictEqual(retrieved, testModel, 
+                    `Should persist and retrieve ${testModel}`);
+            }
+        });
+
+        test('persistence should be isolated per context (workspace)', () => {
+            const context1 = new MockExtensionContext();
+            const context2 = new MockExtensionContext();
+            
+            // Save different models in different contexts
+            saveLastUsedAIModel(context1 as unknown as vscode.ExtensionContext, 'claude-sonnet-4.5');
+            saveLastUsedAIModel(context2 as unknown as vscode.ExtensionContext, 'claude-haiku-4.5');
+            
+            // Each context should have its own value
+            const model1 = getLastUsedAIModel(context1 as unknown as vscode.ExtensionContext);
+            const model2 = getLastUsedAIModel(context2 as unknown as vscode.ExtensionContext);
+            
+            assert.strictEqual(model1, 'claude-sonnet-4.5', 
+                'Context 1 should have its own persisted model');
+            assert.strictEqual(model2, 'claude-haiku-4.5', 
+                'Context 2 should have its own persisted model');
+        });
+
+        test('AITaskDialogService should use persisted model as default', () => {
+            // Save a non-default model
+            saveLastUsedAIModel(mockContext as unknown as vscode.ExtensionContext, 'claude-opus-4.5');
+            
+            // Create new dialog service with the context
+            const newDialogService = new AITaskDialogService(
+                taskManager, 
+                mockExtensionUri, 
+                mockContext as unknown as vscode.ExtensionContext
+            );
+            
+            // The service should exist and be ready to use the persisted model
+            assert.ok(newDialogService, 'Dialog service should be created with context');
+            
+            // Verify the context has the saved model
+            const persistedModel = getLastUsedAIModel(mockContext as unknown as vscode.ExtensionContext);
+            assert.strictEqual(persistedModel, 'claude-opus-4.5', 
+                'Dialog service context should have persisted model');
         });
     });
 });

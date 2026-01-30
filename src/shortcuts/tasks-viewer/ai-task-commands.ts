@@ -60,7 +60,7 @@ export function registerTasksAICommands(
     aiProcessManager?: IAIProcessManager
 ): vscode.Disposable[] {
     const disposables: vscode.Disposable[] = [];
-    const dialogService = new AITaskDialogService(taskManager, context.extensionUri);
+    const dialogService = new AITaskDialogService(taskManager, context.extensionUri, context);
 
     // Create Task with AI (via dialog)
     disposables.push(

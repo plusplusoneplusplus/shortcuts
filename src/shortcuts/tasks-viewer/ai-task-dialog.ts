@@ -16,7 +16,7 @@ import {
     TaskCreationMode,
     FeatureContext
 } from './types';
-import { getAvailableModels, getFollowPromptDefaultModel } from '../ai-service/ai-config-helpers';
+import { getAvailableModels, getLastUsedAIModel, saveLastUsedAIModel } from '../ai-service/ai-config-helpers';
 import { skillExists } from '@plusplusoneplusplus/pipeline-core';
 
 /** Folder option for the dropdown */
@@ -33,12 +33,14 @@ interface FolderOption {
 export class AITaskDialogService {
     private readonly taskManager: TaskManager;
     private readonly extensionUri: vscode.Uri;
+    private readonly context: vscode.ExtensionContext;
     private currentPanel: vscode.WebviewPanel | undefined;
     private pendingResolve: ((result: AITaskDialogResult) => void) | undefined;
 
-    constructor(taskManager: TaskManager, extensionUri: vscode.Uri) {
+    constructor(taskManager: TaskManager, extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
         this.taskManager = taskManager;
         this.extensionUri = extensionUri;
+        this.context = context;
     }
 
     /**
@@ -89,7 +91,7 @@ export class AITaskDialogService {
         // Get available folders and models
         const folders = await this.getAvailableFolders();
         const models = getAvailableModels();
-        const defaultModel = getFollowPromptDefaultModel();
+        const defaultModel = getLastUsedAIModel(this.context);
         const workspaceRoot = this.taskManager.getWorkspaceRoot();
         const hasDeepSkill = skillExists('go-deep', workspaceRoot);
 
@@ -146,6 +148,11 @@ export class AITaskDialogService {
                             depth: message.depth,
                             model: message.model
                         };
+                    }
+
+                    // Save the selected model for future dialogs
+                    if (message.model) {
+                        saveLastUsedAIModel(this.context, message.model);
                     }
 
                     this.pendingResolve({
