@@ -21,6 +21,11 @@ const BUNDLED_SKILLS_REGISTRY: BundledSkill[] = [
         name: 'skill-for-skills',
         description: 'Create and update Agent Skills following the agentskills.io specification',
         relativePath: 'skill-for-skills'
+    },
+    {
+        name: 'go-deep',
+        description: 'Advanced research and verification methodologies using multi-phase approaches and parallel sub-agents',
+        relativePath: 'go-deep'
     }
 ];
 
