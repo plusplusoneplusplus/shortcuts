@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.15] - 2026-01-30
+
+### Added
+- Bundled skills: `go-deep` (deep research & verification), `skill-for-skills` (skill authoring), `pipeline-generator` (pipeline YAML scaffolding)
+- Task name field in AI feature creation dialog
+- Persistent AI model selection across task creation sessions
+
+### Changed
+- Bundled skills now use symlinks instead of file copies
+- Default task meta file renamed to `placeholder.md`
+
 ## [3.1.0] - 2026-01-19
 
 ### Added
