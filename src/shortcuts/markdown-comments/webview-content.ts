@@ -196,6 +196,10 @@ export function getWebviewContent(
                                 <span class="ai-action-icon">🖥️</span>
                                 <span class="ai-action-label">Send to CLI Interactive</span>
                             </div>
+                            <div class="ai-action-menu-item" id="sendToCLIBackgroundBtn">
+                                <span class="ai-action-icon">⏳</span>
+                                <span class="ai-action-label">Send to CLI Background</span>
+                            </div>
                             <div class="ai-action-menu-divider"></div>
                             <div class="ai-action-menu-item" id="copyPromptBtn">
                                 <span class="ai-action-icon">📋</span>

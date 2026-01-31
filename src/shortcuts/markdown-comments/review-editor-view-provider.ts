@@ -63,7 +63,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'sendToCLIBackground' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan';
     commentId?: string;
     content?: string;
     selection?: {
@@ -603,6 +603,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
             case 'sendToCLIInteractive':
                 await this.generateAndSendToCLIInteractive(relativePath, message.promptOptions);
+                break;
+
+            case 'sendToCLIBackground':
+                await this.generateAndSendToCLIBackground(relativePath, message.promptOptions);
                 break;
 
             case 'resolveImagePath':
@@ -1304,6 +1308,90 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             // Fallback: copy to clipboard
             await vscode.env.clipboard.writeText(prompt);
             vscode.window.showWarningMessage('Failed to start interactive AI session. Prompt copied to clipboard.');
+        }
+    }
+
+    /**
+     * Generate AI prompt and send to CLI background session.
+     * Uses the Copilot SDK to process in background, tracking progress in AI Processes panel.
+     * Only includes user comments, excluding AI-generated comments.
+     * @param filePath - The file path for the comments
+     * @param options - Options including format
+     */
+    private async generateAndSendToCLIBackground(
+        filePath: string,
+        options?: { format: 'markdown' | 'json' }
+    ): Promise<void> {
+        const comments = this.commentsManager.getCommentsForFile(filePath)
+            .filter(c => c.status === 'open')
+            .filter(c => isUserComment(c));
+
+        if (comments.length === 0) {
+            vscode.window.showInformationMessage('No open user comments to process.');
+            return;
+        }
+
+        // Use the unified PromptGenerator with comment IDs
+        const commentIds = comments.map(c => c.id);
+        const prompt = this.promptGenerator.generatePromptForComments(commentIds, {
+            outputFormat: options?.format || 'markdown',
+            includeFullFileContent: false,
+            groupByFile: true,
+            includeLineNumbers: true
+        });
+
+        // Get SDK service
+        const sdkService = getCopilotSDKService();
+        if (!sdkService.isAvailable()) {
+            vscode.window.showErrorMessage('Copilot SDK not available. Please ensure the SDK is configured.');
+            return;
+        }
+
+        // Register with AIProcessManager
+        const processId = this.aiProcessManager?.registerProcess(prompt);
+
+        vscode.window.showInformationMessage(
+            `Processing ${comments.length} comment(s) in background. Track progress in AI Processes panel.`
+        );
+
+        // Determine working directory (prefer src if it exists)
+        const workspaceRoot = getWorkspaceRoot() || '';
+        const srcPath = path.join(workspaceRoot, 'src');
+        const workingDirectory = await this.directoryExists(srcPath) ? srcPath : workspaceRoot;
+
+        try {
+            // Send to Copilot SDK
+            const result = await sdkService.sendMessage({
+                prompt,
+                workingDirectory,
+                usePool: true,
+                onPermissionRequest: approveAllPermissions
+            });
+
+            // Complete process and show notification
+            const responseText = result.response || '';
+            if (processId) {
+                this.aiProcessManager?.completeProcess(processId, responseText);
+            }
+
+            const action = await vscode.window.showInformationMessage(
+                'AI response ready!',
+                'Copy to Clipboard',
+                'View Output'
+            );
+
+            if (action === 'Copy to Clipboard') {
+                await vscode.env.clipboard.writeText(responseText);
+                vscode.window.showInformationMessage('Response copied to clipboard.');
+            } else if (action === 'View Output' && processId) {
+                vscode.commands.executeCommand('shortcuts.viewAIProcess', processId);
+            }
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            if (processId) {
+                this.aiProcessManager?.failProcess(processId, errorMsg);
+            }
+            vscode.window.showErrorMessage(`Background AI request failed: ${errorMsg}`);
         }
     }
 

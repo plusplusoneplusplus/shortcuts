@@ -156,6 +156,7 @@ export type WebviewMessage =
     | { type: 'sendToChat'; promptOptions: { format: string; newConversation?: boolean } }
     | { type: 'sendCommentToChat'; commentId: string; newConversation: boolean }
     | { type: 'sendToCLIInteractive'; promptOptions: { format: string } }
+    | { type: 'sendToCLIBackground'; promptOptions: { format: string } }
     | { type: 'addComment'; selection: PendingSelection; comment: string; mermaidContext?: MermaidContext }
     | { type: 'editComment'; commentId: string; comment: string }
     | { type: 'resolveComment'; commentId: string }

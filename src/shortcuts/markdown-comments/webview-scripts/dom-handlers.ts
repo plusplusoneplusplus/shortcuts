@@ -21,7 +21,7 @@ import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
 import { AICommandMode, PromptFileInfo, RecentPrompt, SkillInfo } from './types';
-import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, updateContent } from './vscode-bridge';
+import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendToChat, requestSendToCLIBackground, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -750,6 +750,7 @@ function setupAIActionDropdown(): void {
     const sendToNewChatBtn = document.getElementById('sendToNewChatBtn');
     const sendToExistingChatBtn = document.getElementById('sendToExistingChatBtn');
     const sendToCLIInteractiveBtn = document.getElementById('sendToCLIInteractiveBtn');
+    const sendToCLIBackgroundBtn = document.getElementById('sendToCLIBackgroundBtn');
     const copyPromptBtn = document.getElementById('copyPromptBtn');
 
     if (!aiActionDropdown || !aiActionBtn || !aiActionMenu) return;
@@ -829,6 +830,13 @@ function setupAIActionDropdown(): void {
         e.stopPropagation();
         hideAIActionMenu();
         requestSendToCLIInteractive('markdown');
+    });
+
+    // Send to CLI Background action (uses Copilot SDK in background)
+    sendToCLIBackgroundBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideAIActionMenu();
+        requestSendToCLIBackground('markdown');
     });
 
     // Copy as Prompt action

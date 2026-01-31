@@ -68,6 +68,15 @@ export function requestSendToCLIInteractive(format: string = 'markdown'): void {
 }
 
 /**
+ * Request the extension to send the AI prompt to CLI background session
+ * Uses the Copilot SDK to process in background, tracking progress in AI Processes panel
+ * @param format - The format of the prompt ('markdown' or 'json')
+ */
+export function requestSendToCLIBackground(format: string = 'markdown'): void {
+    postMessage({ type: 'sendToCLIBackground', promptOptions: { format } });
+}
+
+/**
  * Request the extension to send a single comment to chat
  * @param commentId - The ID of the comment to send
  * @param newConversation - If true, starts a new chat conversation; if false, uses existing chat
