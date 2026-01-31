@@ -2103,9 +2103,13 @@ Please take this additional context into account when refreshing the plan.`;
 
             prompt += `
 
-## Output
-Please update the plan file at: ${filePath}
-Preserve the file format (markdown) and any frontmatter if present.`;
+## Output Requirements
+
+**CRITICAL:** Edit the file in-place at: ${filePath}
+
+- Preserve markdown format and any frontmatter
+- Do NOT create new files or write to session state/temp directories
+- Do NOT output content to stdout`;
 
             // Get the interactive session manager
             const sessionManager = getInteractiveSessionManager();

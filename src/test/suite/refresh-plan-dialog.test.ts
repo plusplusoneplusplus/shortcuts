@@ -335,7 +335,7 @@ suite('Refresh Plan Dialog - Integration with Interactive Session', () => {
         assert.ok(prompt.includes('Current Plan'));
         assert.ok(prompt.includes('---'));  // Content delimiters
         assert.ok(prompt.includes(planContent));
-        assert.ok(prompt.includes('Output'));
+        assert.ok(prompt.includes('Output Requirements'));
         assert.ok(prompt.includes(filePath));
     });
 
@@ -349,6 +349,36 @@ suite('Refresh Plan Dialog - Integration with Interactive Session', () => {
         assert.ok(prompt.includes('Additional Context from User'));
         assert.ok(prompt.includes(additionalContext));
         assert.ok(prompt.includes('take this additional context into account'));
+    });
+});
+
+suite('Refresh Plan Dialog - In-Place Edit Directive', () => {
+    test('Prompt should include critical in-place edit requirement with file path', () => {
+        const planContent = '# Test Plan';
+        const filePath = '/workspace/project/plan.md';
+
+        const prompt = buildRefreshPlanPrompt(filePath, planContent);
+
+        assert.ok(prompt.includes('**CRITICAL:** Edit the file in-place at:'));
+        assert.ok(prompt.includes(filePath));
+    });
+
+    test('Prompt should prohibit creating new files and writing to session state', () => {
+        const planContent = '# Test Plan';
+        const filePath = '/workspace/project/plan.md';
+
+        const prompt = buildRefreshPlanPrompt(filePath, planContent);
+
+        assert.ok(prompt.includes('Do NOT create new files or write to session state'));
+    });
+
+    test('Prompt should require preserving markdown format and frontmatter', () => {
+        const planContent = '# Test Plan';
+        const filePath = '/workspace/project/plan.md';
+
+        const prompt = buildRefreshPlanPrompt(filePath, planContent);
+
+        assert.ok(prompt.includes('Preserve markdown format and any frontmatter'));
     });
 });
 
@@ -426,9 +456,13 @@ Please take this additional context into account when refreshing the plan.`;
 
     prompt += `
 
-## Output
-Please update the plan file at: ${filePath}
-Preserve the file format (markdown) and any frontmatter if present.`;
+## Output Requirements
+
+**CRITICAL:** Edit the file in-place at: ${filePath}
+
+- Preserve markdown format and any frontmatter
+- Do NOT create new files or write to session state/temp directories
+- Do NOT output content to stdout`;
 
     return prompt;
 }
