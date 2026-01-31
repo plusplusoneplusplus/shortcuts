@@ -192,7 +192,7 @@ export function buildPredefinedMenuItemHTML(
 /**
  * Build AI submenu HTML for a specific mode
  * @param commands - The AI commands to display
- * @param mode - The mode for this menu ('comment' or 'interactive')
+ * @param mode - The mode for this menu ('comment', 'interactive', or 'queued')
  * @param config - Context menu configuration
  * @returns HTML string for AI submenu
  */
@@ -206,7 +206,13 @@ export function buildAISubmenuHTML(
         ? [...commands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
         : DEFAULT_AI_COMMANDS;
 
-    const modeClass = mode === 'interactive' ? 'ask-ai-interactive-item' : 'ask-ai-item';
+    const modeClassMap: Record<AICommandMode, string> = {
+        'comment': 'ask-ai-item',
+        'interactive': 'ask-ai-interactive-item',
+        'background': 'ask-ai-background-item',
+        'queued': 'ask-ai-queued-item'
+    };
+    const modeClass = modeClassMap[mode] || 'ask-ai-item';
 
     return sortedCommands.map(cmd => {
         const icon = cmd.icon ? `<span class="menu-icon">${cmd.icon}</span>` : '';
@@ -229,7 +235,7 @@ export function buildAISubmenuHTML(
 /**
  * Build AI menu item with submenu HTML
  * @param menuConfig - The AI menu configuration
- * @param mode - The mode for this menu ('comment' or 'interactive')
+ * @param mode - The mode for this menu ('comment', 'interactive', or 'queued')
  * @param config - Context menu configuration
  * @returns HTML string for AI menu item with submenu
  */
@@ -240,16 +246,27 @@ export function buildAIMenuItemHTML(
 ): string {
     const mergedConfig = { ...DEFAULT_CONFIG, ...config };
 
-    const commands = mode === 'interactive'
-        ? menuConfig?.interactiveCommands
-        : menuConfig?.commentCommands;
+    // Get commands based on mode (queued falls back to commentCommands)
+    let commands: SerializedAICommand[] | undefined;
+    if (mode === 'interactive') {
+        commands = menuConfig?.interactiveCommands;
+    } else if (mode === 'queued') {
+        commands = menuConfig?.queuedCommands ?? menuConfig?.commentCommands;
+    } else {
+        commands = menuConfig?.commentCommands;
+    }
 
     const submenuContent = buildAISubmenuHTML(commands, mode, mergedConfig);
 
-    const itemId = mode === 'interactive' ? 'contextMenuAskAIInteractive' : 'contextMenuAskAIComment';
-    const submenuId = mode === 'interactive' ? 'askAIInteractiveSubmenu' : 'askAICommentSubmenu';
-    const label = mode === 'interactive' ? 'Ask AI Interactively' : 'Ask AI to Comment';
-    const icon = mode === 'interactive' ? '🤖' : '💬';
+    // Map mode to item ID, submenu ID, label, and icon
+    const modeConfigMap: Record<AICommandMode, { itemId: string; submenuId: string; label: string; icon: string }> = {
+        'comment': { itemId: 'contextMenuAskAIComment', submenuId: 'askAICommentSubmenu', label: 'Ask AI to Comment', icon: '💬' },
+        'interactive': { itemId: 'contextMenuAskAIInteractive', submenuId: 'askAIInteractiveSubmenu', label: 'Ask AI Interactively', icon: '🤖' },
+        'background': { itemId: 'contextMenuAskAIBackground', submenuId: 'askAIBackgroundSubmenu', label: 'Ask AI in Background', icon: '⚡' },
+        'queued': { itemId: 'contextMenuAskAIQueued', submenuId: 'askAIQueuedSubmenu', label: 'Add to Queue', icon: '📋' }
+    };
+
+    const { itemId, submenuId, label, icon } = modeConfigMap[mode] || modeConfigMap['comment'];
 
     const itemClass = `${getClassName('context-menu-item', mergedConfig)} ${getClassName('context-menu-parent', mergedConfig)}`;
     const iconSpan = mergedConfig.richMenuItems
@@ -275,13 +292,17 @@ export function getAIMenuConfig(configFromSettings?: SerializedAIMenuConfig): Se
     if (configFromSettings && configFromSettings.commentCommands && configFromSettings.commentCommands.length > 0) {
         return {
             commentCommands: [...configFromSettings.commentCommands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100)),
-            interactiveCommands: [...configFromSettings.interactiveCommands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
+            interactiveCommands: [...configFromSettings.interactiveCommands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100)),
+            queuedCommands: configFromSettings.queuedCommands
+                ? [...configFromSettings.queuedCommands].sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
+                : undefined // Falls back to commentCommands in buildAIMenuItemHTML
         };
     }
-    // Default: both menus use the same commands
+    // Default: all menus use the same commands (queued falls back to commentCommands)
     return {
         commentCommands: DEFAULT_AI_COMMANDS,
-        interactiveCommands: DEFAULT_AI_COMMANDS
+        interactiveCommands: DEFAULT_AI_COMMANDS,
+        queuedCommands: undefined // Falls back to commentCommands
     };
 }
 
@@ -328,6 +349,7 @@ export function buildContextMenuHTML(
     parts.push(`<div class="${getClassName('context-menu-separator', mergedConfig)}" id="askAISeparator"></div>`);
     parts.push(buildAIMenuItemHTML(aiMenuConfig, 'comment', mergedConfig));
     parts.push(buildAIMenuItemHTML(aiMenuConfig, 'interactive', mergedConfig));
+    parts.push(buildAIMenuItemHTML(aiMenuConfig, 'queued', mergedConfig));
 
     // Wrap in container
     const menuClass = getClassName('context-menu', mergedConfig);

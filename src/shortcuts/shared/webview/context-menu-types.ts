@@ -10,8 +10,9 @@
  * - 'comment': AI response is added as a comment in the document (default)
  * - 'interactive': Opens an interactive AI session in external terminal
  * - 'background': Runs in background via SDK, tracks progress in AI Processes panel
+ * - 'queued': Adds to queue for sequential execution
  */
-export type AICommandMode = 'comment' | 'interactive' | 'background';
+export type AICommandMode = 'comment' | 'interactive' | 'background' | 'queued';
 
 /**
  * Serialized AI command for webview
@@ -28,13 +29,15 @@ export interface SerializedAICommand {
 
 /**
  * Serialized AI menu configuration for webview
- * Contains both comment and interactive mode commands
+ * Contains comment, interactive, and queued mode commands
  */
 export interface SerializedAIMenuConfig {
     /** Commands for "Ask AI to Comment" menu */
     commentCommands: SerializedAICommand[];
     /** Commands for "Ask AI Interactively" menu */
     interactiveCommands: SerializedAICommand[];
+    /** Commands for "Add to Queue" menu (optional, defaults to commentCommands) */
+    queuedCommands?: SerializedAICommand[];
 }
 
 /**

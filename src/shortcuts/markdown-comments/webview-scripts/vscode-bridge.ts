@@ -207,6 +207,28 @@ export function requestAskAIInteractive(context: {
 }
 
 /**
+ * Request AI queued task for selected text (add to queue)
+ */
+export function requestAskAIQueued(context: {
+    selectedText: string;
+    startLine: number;
+    endLine: number;
+    surroundingLines: string;
+    nearestHeading: string | null;
+    allHeadings: string[];
+    /** Command ID from the AI command registry */
+    instructionType: string;
+    customInstruction?: string;
+    mode: AICommandMode;
+    /** Optional path to prompt file to include as context */
+    promptFilePath?: string;
+    /** Optional skill name to use for this request */
+    skillName?: string;
+}): void {
+    postMessage({ type: 'askAIQueued', context: context as AskAIContext });
+}
+
+/**
  * Request the list of available prompt files from the extension
  */
 export function requestPromptFiles(): void {

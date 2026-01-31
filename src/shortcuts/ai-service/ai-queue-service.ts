@@ -77,6 +77,20 @@ export interface QueueTaskResult {
     totalQueued: number;
 }
 
+/**
+ * Result of batch queueing multiple tasks
+ */
+export interface BatchQueueResult {
+    /** IDs of all queued tasks */
+    taskIds: string[];
+    /** Individual results for each task */
+    results: QueueTaskResult[];
+    /** Total number of queued tasks after batch */
+    totalQueued: number;
+    /** Number of tasks in this batch */
+    batchSize: number;
+}
+
 // ============================================================================
 // AI Task Executor
 // ============================================================================
@@ -220,9 +234,19 @@ class AITaskExecutor implements TaskExecutor {
             throw new Error(`Copilot SDK not available: ${availability.error}`);
         }
 
+        // Build prompt from context if not pre-built
+        let prompt = payload.prompt;
+        if (!prompt && payload.selectedText) {
+            prompt = this.buildClarificationPrompt(payload);
+        }
+
+        if (!prompt) {
+            throw new Error('No prompt or context provided for AI clarification');
+        }
+
         // Execute via SDK
         const result = await sdkService.sendMessage({
-            prompt: payload.prompt,
+            prompt,
             model: payload.model || task.config.model,
             workingDirectory: payload.workingDirectory,
             timeoutMs: task.config.timeoutMs,
@@ -238,6 +262,66 @@ class AITaskExecutor implements TaskExecutor {
             response: result.response,
             sessionId: result.sessionId,
         };
+    }
+
+    /**
+     * Build a clarification prompt from the payload context
+     */
+    private buildClarificationPrompt(payload: AIClarificationPayload): string {
+        const parts: string[] = [];
+
+        // Add prompt file content if available
+        if (payload.promptFileContent) {
+            const header = payload.skillName
+                ? `--- Instructions from skill: ${payload.skillName} ---`
+                : '--- Instructions from prompt file ---';
+            parts.push(header);
+            parts.push(payload.promptFileContent);
+            parts.push('');
+            parts.push('--- Document context ---');
+        }
+
+        // Add file context
+        if (payload.filePath) {
+            parts.push(`File: ${payload.filePath}`);
+        }
+        if (payload.nearestHeading) {
+            parts.push(`Section: ${payload.nearestHeading}`);
+        }
+        if (payload.startLine !== undefined && payload.endLine !== undefined) {
+            parts.push(`Lines: ${payload.startLine}-${payload.endLine}`);
+        }
+        parts.push('');
+
+        // Add selected text
+        parts.push('Selected text:');
+        parts.push('```');
+        parts.push(payload.selectedText || '');
+        parts.push('```');
+        parts.push('');
+
+        // Add instruction
+        if (payload.customInstruction) {
+            parts.push(`Instruction: ${payload.customInstruction}`);
+        } else if (!payload.promptFileContent) {
+            const instructionMap: Record<string, string> = {
+                'clarify': 'Please clarify and explain the selected text.',
+                'go-deeper': 'Please provide a deep analysis of the selected text, including implications, edge cases, and related concepts.',
+                'custom': 'Please help me understand the selected text.',
+            };
+            parts.push(instructionMap[payload.instructionType || 'clarify'] || instructionMap['clarify']);
+        }
+
+        // Add surrounding context
+        if (payload.surroundingLines) {
+            parts.push('');
+            parts.push('Surrounding context:');
+            parts.push('```');
+            parts.push(payload.surroundingLines);
+            parts.push('```');
+        }
+
+        return parts.join('\n');
     }
 }
 
@@ -352,6 +436,30 @@ export class AIQueueService implements vscode.Disposable {
             taskId,
             position,
             totalQueued: stats.queued,
+        };
+    }
+
+    /**
+     * Queue multiple tasks at once (batch queueing)
+     * Tasks are added in order and maintain their relative positions
+     */
+    queueBatch(tasks: QueueTaskOptions[]): BatchQueueResult {
+        const results: QueueTaskResult[] = [];
+        const taskIds: string[] = [];
+
+        for (const options of tasks) {
+            const result = this.queueTask(options);
+            results.push(result);
+            taskIds.push(result.taskId);
+        }
+
+        const stats = this.queueManager.getStats();
+
+        return {
+            taskIds,
+            results,
+            totalQueued: stats.queued,
+            batchSize: tasks.length,
         };
     }
 

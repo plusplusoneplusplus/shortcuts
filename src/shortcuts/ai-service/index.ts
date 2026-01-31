@@ -172,7 +172,8 @@ export {
     initializeAIQueueService,
     resetAIQueueService,
     QueueTaskOptions,
-    QueueTaskResult
+    QueueTaskResult,
+    BatchQueueResult
 } from './ai-queue-service';
 
 // Export AI Queue Commands

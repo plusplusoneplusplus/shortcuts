@@ -59,6 +59,8 @@ export class ContextMenuManager {
     private askAICommentSubmenu: HTMLElement | null = null;
     private contextMenuAskAIInteractive: HTMLElement | null = null;
     private askAIInteractiveSubmenu: HTMLElement | null = null;
+    private contextMenuAskAIQueued: HTMLElement | null = null;
+    private askAIQueuedSubmenu: HTMLElement | null = null;
     private askAISeparator: HTMLElement | null = null;
     private predefinedPreview: HTMLElement | null = null;
     private previewContent: HTMLElement | null = null;
@@ -136,6 +138,12 @@ export class ContextMenuManager {
             document.getElementById('context-menu-ask-ai-interactive');
         this.askAIInteractiveSubmenu = document.getElementById('askAIInteractiveSubmenu') ||
             document.getElementById('ask-ai-interactive-submenu');
+
+        // Ask AI Queued submenu (Add to Queue)
+        this.contextMenuAskAIQueued = document.getElementById('contextMenuAskAIQueued') ||
+            document.getElementById('context-menu-ask-ai-queued');
+        this.askAIQueuedSubmenu = document.getElementById('askAIQueuedSubmenu') ||
+            document.getElementById('ask-ai-queued-submenu');
 
         // Ask AI separator
         this.askAISeparator = document.getElementById('askAISeparator') ||
@@ -218,6 +226,11 @@ export class ContextMenuManager {
         // Ask AI Interactive parent - position submenu on hover
         this.contextMenuAskAIInteractive?.addEventListener('mouseenter', () => {
             this.positionSubmenu(this.askAIInteractiveSubmenu, this.contextMenuAskAIInteractive);
+        });
+
+        // Ask AI Queued parent - position submenu on hover
+        this.contextMenuAskAIQueued?.addEventListener('mouseenter', () => {
+            this.positionSubmenu(this.askAIQueuedSubmenu, this.contextMenuAskAIQueued);
         });
 
         // Custom with Prompt File parent - position submenu and request files on hover
@@ -455,6 +468,13 @@ export class ContextMenuManager {
             this.askAIInteractiveSubmenu.innerHTML = buildAISubmenuHTML(config.interactiveCommands, 'interactive', this.config);
             this.attachAISubmenuHandlers(this.askAIInteractiveSubmenu);
         }
+
+        // Build "Add to Queue" submenu
+        if (this.askAIQueuedSubmenu) {
+            const queuedCommands = config.queuedCommands ?? config.commentCommands;
+            this.askAIQueuedSubmenu.innerHTML = buildAISubmenuHTML(queuedCommands, 'queued', this.config);
+            this.attachAISubmenuHandlers(this.askAIQueuedSubmenu);
+        }
     }
 
     /**
@@ -621,7 +641,8 @@ export class ContextMenuManager {
     private resetSubmenuPositioning(): void {
         const submenus = [
             this.askAICommentSubmenu, 
-            this.askAIInteractiveSubmenu, 
+            this.askAIInteractiveSubmenu,
+            this.askAIQueuedSubmenu,
             this.predefinedSubmenu,
             this.promptFileSubmenu,
             this.skillSubmenu,

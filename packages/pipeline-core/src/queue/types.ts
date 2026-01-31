@@ -87,12 +87,32 @@ export interface CodeReviewPayload {
  * Payload for AI clarification tasks
  */
 export interface AIClarificationPayload {
-    /** The prompt to send to AI */
-    prompt: string;
+    /** The prompt to send to AI (if pre-built) */
+    prompt?: string;
     /** Working directory for execution */
     workingDirectory?: string;
     /** Optional model to use */
     model?: string;
+    /** Selected text for clarification */
+    selectedText?: string;
+    /** File path containing the selection */
+    filePath?: string;
+    /** Start line of selection */
+    startLine?: number;
+    /** End line of selection */
+    endLine?: number;
+    /** Surrounding lines for context */
+    surroundingLines?: string;
+    /** Nearest heading in the document */
+    nearestHeading?: string | null;
+    /** Instruction type (clarify, go-deeper, custom) */
+    instructionType?: string;
+    /** Custom instruction text */
+    customInstruction?: string;
+    /** Content from prompt file */
+    promptFileContent?: string;
+    /** Skill name if using a skill */
+    skillName?: string;
 }
 
 /**

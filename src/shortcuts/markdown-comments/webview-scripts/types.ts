@@ -31,8 +31,9 @@ export interface WebviewState {
  * - 'comment': AI response is added as a comment in the document (default)
  * - 'interactive': Opens an interactive AI session in external terminal
  * - 'background': Runs in background via SDK, tracks progress in AI Processes panel
+ * - 'queued': Adds to queue for sequential execution
  */
-export type AICommandMode = 'comment' | 'interactive' | 'background';
+export type AICommandMode = 'comment' | 'interactive' | 'background' | 'queued';
 
 /**
  * Serialized AI command for webview
@@ -167,6 +168,7 @@ export type WebviewMessage =
     | { type: 'openFile'; path: string }
     | { type: 'askAI'; context: AskAIContext }
     | { type: 'askAIInteractive'; context: AskAIContext }
+    | { type: 'askAIQueued'; context: AskAIContext }
     | { type: 'collapsedSectionsChanged'; collapsedSections: string[] }
     | { type: 'requestPromptFiles' }
     | { type: 'requestSkills' }

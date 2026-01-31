@@ -38,7 +38,7 @@ import { getWebviewContent, WebviewContentOptions } from './webview-content';
 /**
  * Mode for AI command execution
  */
-type AICommandMode = 'comment' | 'interactive' | 'background';
+type AICommandMode = 'comment' | 'interactive' | 'background' | 'queued';
 
 /**
  * Context data for AI clarification requests from the webview
@@ -64,7 +64,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'sendToCLIBackground' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'sendToCLIBackground' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'askAIQueued' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan';
     commentId?: string;
     content?: string;
     selection?: {
@@ -639,6 +639,12 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 }
                 break;
 
+            case 'askAIQueued':
+                if (message.context) {
+                    await this.handleAskAIQueued(message.context, relativePath);
+                }
+                break;
+
             case 'collapsedSectionsChanged':
                 if (message.collapsedSections) {
                     await this.setCollapsedSections(relativePath, message.collapsedSections);
@@ -898,6 +904,69 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         } else {
             vscode.window.showErrorMessage('Failed to start interactive AI session. Please check that the AI CLI tool is installed.');
         }
+    }
+
+    /**
+     * Handle AI queued request from the webview
+     * Adds the AI task to the queue for sequential execution
+     */
+    private async handleAskAIQueued(context: AskAIContext, filePath: string): Promise<void> {
+        const queueService = getAIQueueService();
+        
+        if (!queueService) {
+            vscode.window.showErrorMessage('Queue service not available');
+            return;
+        }
+
+        if (!queueService.isEnabled()) {
+            vscode.window.showWarningMessage(
+                'Queue feature is disabled. Enable it in settings: workspaceShortcuts.queue.enabled'
+            );
+            return;
+        }
+
+        const workspaceRoot = getWorkspaceRoot() || '';
+
+        // Read prompt file or skill content if specified
+        let promptFileContent: string | undefined;
+        if (context.promptFilePath) {
+            promptFileContent = await this.readPromptFile(context.promptFilePath);
+        } else if (context.skillName) {
+            promptFileContent = await this.readSkillPrompt(context.skillName);
+        }
+
+        // Build display name
+        const displayName = context.skillName
+            ? `AI: ${context.skillName}`
+            : `AI: ${context.instructionType}`;
+
+        // Determine working directory
+        const srcPath = path.join(workspaceRoot, 'src');
+        const workingDirectory = await this.directoryExists(srcPath) ? srcPath : workspaceRoot;
+
+        // Queue the task
+        const result = queueService.queueTask({
+            type: 'ai-clarification',
+            payload: {
+                selectedText: context.selectedText,
+                filePath,
+                startLine: context.startLine,
+                endLine: context.endLine,
+                surroundingLines: context.surroundingLines,
+                nearestHeading: context.nearestHeading,
+                instructionType: context.instructionType,
+                customInstruction: context.customInstruction,
+                promptFileContent,
+                skillName: context.skillName,
+                workingDirectory
+            },
+            priority: 'normal',
+            displayName: `${displayName} (${path.basename(filePath)}:${context.startLine})`
+        });
+
+        vscode.window.showInformationMessage(
+            `Added to queue (#${result.position}): ${displayName}`
+        );
     }
 
     /**
