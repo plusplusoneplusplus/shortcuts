@@ -120,12 +120,17 @@ export class AIProcessItem extends vscode.TreeItem {
     }
 
     /**
-     * Get status description (elapsed time for running, duration for completed)
+     * Get status description (elapsed time for running/queued, duration for completed)
      */
     private getStatusDescription(process: AIProcess): string {
         if (process.status === 'running') {
             const elapsed = this.formatDuration(Date.now() - process.startTime.getTime());
             return `running (${elapsed})`;
+        }
+
+        if (process.status === 'queued') {
+            const elapsed = this.formatDuration(Date.now() - process.startTime.getTime());
+            return `queued (${elapsed})`;
         }
 
         if (process.endTime) {
@@ -143,6 +148,8 @@ export class AIProcessItem extends vscode.TreeItem {
         // For code review groups (master process)
         if (process.type === 'code-review-group') {
             switch (process.status) {
+                case 'queued':
+                    return new vscode.ThemeIcon('watch', new vscode.ThemeColor('charts.yellow'));
                 case 'running':
                     return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.blue'));
                 case 'completed':
@@ -174,6 +181,8 @@ export class AIProcessItem extends vscode.TreeItem {
         // For individual code reviews
         if (process.type === 'code-review') {
             switch (process.status) {
+                case 'queued':
+                    return new vscode.ThemeIcon('watch', new vscode.ThemeColor('charts.yellow'));
                 case 'running':
                     return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.blue'));
                 case 'completed':
@@ -205,6 +214,8 @@ export class AIProcessItem extends vscode.TreeItem {
         // Icons for discovery processes
         if (process.type === 'discovery') {
             switch (process.status) {
+                case 'queued':
+                    return new vscode.ThemeIcon('watch', new vscode.ThemeColor('charts.yellow'));
                 case 'running':
                     return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.blue'));
                 case 'completed':
@@ -220,6 +231,8 @@ export class AIProcessItem extends vscode.TreeItem {
 
         // Default icons for clarification processes
         switch (process.status) {
+            case 'queued':
+                return new vscode.ThemeIcon('watch', new vscode.ThemeColor('charts.yellow'));
             case 'running':
                 return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.blue'));
             case 'completed':
@@ -481,6 +494,7 @@ export class AIProcessItem extends vscode.TreeItem {
      */
     private getStatusEmoji(status: string): string {
         switch (status) {
+            case 'queued': return '⏳';
             case 'running': return '🔄';
             case 'completed': return '✅';
             case 'failed': return '❌';
@@ -544,11 +558,12 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
             );
         }
 
-        // Refresh every second to update elapsed times for running processes and active sessions
+        // Refresh every second to update elapsed times for running/queued processes and active sessions
         this.refreshInterval = setInterval(() => {
             const hasRunningProcesses = this.processManager.hasRunningProcesses();
+            const hasQueuedProcesses = this.hasQueuedProcesses();
             const hasActiveSessions = this.sessionManager?.hasActiveSessions() ?? false;
-            if (hasRunningProcesses || hasActiveSessions) {
+            if (hasRunningProcesses || hasQueuedProcesses || hasActiveSessions) {
                 this._onDidChangeTreeData.fire();
             }
         }, 1000);
@@ -598,12 +613,20 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
             (element.process.type === 'code-review-group' || element.process.type === 'pipeline-execution')) {
             const childProcesses = this.processManager.getChildProcesses(element.process.id);
 
-            // Sort child processes: running first, then by start time
+            // Sort child processes: running first, queued second, then by start time
             childProcesses.sort((a, b) => {
+                // Running first
                 if (a.status === 'running' && b.status !== 'running') {
                     return -1;
                 }
                 if (a.status !== 'running' && b.status === 'running') {
+                    return 1;
+                }
+                // Queued second
+                if (a.status === 'queued' && b.status !== 'queued') {
+                    return -1;
+                }
+                if (a.status !== 'queued' && b.status === 'queued') {
                     return 1;
                 }
                 return a.startTime.getTime() - b.startTime.getTime();
@@ -632,12 +655,20 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
         // Get only top-level processes (those without parents)
         const processes = this.processManager.getTopLevelProcesses();
 
-        // Sort: running first, then by start time (newest first)
+        // Sort: running first, queued second, then by start time (newest first)
         processes.sort((a, b) => {
+            // Running first
             if (a.status === 'running' && b.status !== 'running') {
                 return -1;
             }
             if (a.status !== 'running' && b.status === 'running') {
+                return 1;
+            }
+            // Queued second
+            if (a.status === 'queued' && b.status !== 'queued') {
+                return -1;
+            }
+            if (a.status !== 'queued' && b.status === 'queued') {
                 return 1;
             }
             return b.startTime.getTime() - a.startTime.getTime();
@@ -698,6 +729,14 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
             }
         }
         return undefined;
+    }
+
+    /**
+     * Check if there are any queued processes
+     */
+    private hasQueuedProcesses(): boolean {
+        const processes = this.processManager.getProcesses();
+        return processes.some(p => p.status === 'queued');
     }
 
     /**

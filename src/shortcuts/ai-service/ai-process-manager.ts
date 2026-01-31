@@ -99,8 +99,8 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             // Convert serialized processes back to AIProcess objects
             for (const s of serialized) {
                 const process = deserializeProcess(s);
-                // Skip invalid processes (corrupted data) or running ones (stale)
-                if (!process.id || process.status === 'running') {
+                // Skip invalid processes (corrupted data) or ephemeral states (running/queued are stale)
+                if (!process.id || process.status === 'running' || process.status === 'queued') {
                     continue;
                 }
                 this.processes.set(process.id, process);
@@ -132,9 +132,9 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
         }
 
         try {
-            // Get all non-running processes (running processes shouldn't be persisted)
+            // Get all non-ephemeral processes (running/queued processes shouldn't be persisted)
             const toSave = Array.from(this.processes.values())
-                .filter(p => p.status !== 'running')
+                .filter(p => p.status !== 'running' && p.status !== 'queued')
                 .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
                 .slice(0, MAX_PERSISTED_PROCESSES)
                 .map(p => serializeProcess({
@@ -222,7 +222,7 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             type: options.type,
             promptPreview,
             fullPrompt: prompt,
-            status: 'running',
+            status: options.initialStatus ?? 'running',
             startTime: new Date(),
             childProcess,
             metadata: options.metadata,
@@ -834,13 +834,13 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
     }
 
     /**
-     * Cancel a running process
+     * Cancel a running or queued process
      * If the process is a group (has child processes), also cancels all children.
      * Supports both CLI child processes and SDK sessions.
      */
     cancelProcess(id: string): boolean {
         const process = this.processes.get(id);
-        if (!process || process.status !== 'running') {
+        if (!process || (process.status !== 'running' && process.status !== 'queued')) {
             return false;
         }
 
@@ -849,13 +849,13 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
         if (childIds.length > 0) {
             for (const childId of childIds) {
                 const child = this.processes.get(childId);
-                if (child && child.status === 'running') {
-                    // Kill CLI child process if available
-                    if (child.childProcess) {
+                if (child && (child.status === 'running' || child.status === 'queued')) {
+                    // Kill CLI child process if available (only for running processes)
+                    if (child.status === 'running' && child.childProcess) {
                         child.childProcess.kill();
                     }
-                    // Abort SDK session if available (fire and forget)
-                    if (child.sdkSessionId) {
+                    // Abort SDK session if available (fire and forget, only for running processes)
+                    if (child.status === 'running' && child.sdkSessionId) {
                         this.abortSdkSession(child.sdkSessionId);
                     }
                     this.updateProcess(childId, 'cancelled', undefined, 'Cancelled by user (parent cancelled)');
@@ -863,13 +863,13 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             }
         }
 
-        // Kill the parent's CLI child process if available
-        if (process.childProcess) {
+        // Kill the parent's CLI child process if available (only for running processes)
+        if (process.status === 'running' && process.childProcess) {
             process.childProcess.kill();
         }
 
-        // Abort SDK session if available (fire and forget)
-        if (process.sdkSessionId) {
+        // Abort SDK session if available (fire and forget, only for running processes)
+        if (process.status === 'running' && process.sdkSessionId) {
             this.abortSdkSession(process.sdkSessionId);
         }
 
@@ -908,13 +908,14 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
     }
 
     /**
-     * Clear all completed, failed, and cancelled processes
+     * Clear all completed, failed, and cancelled processes (keeps running and queued)
      */
     clearCompletedProcesses(): void {
         const toRemove: string[] = [];
 
         for (const [id, process] of this.processes) {
-            if (process.status !== 'running') {
+            // Keep running and queued processes (they're active)
+            if (process.status !== 'running' && process.status !== 'queued') {
                 toRemove.push(id);
             }
         }
@@ -1034,7 +1035,7 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
      * Get count of processes by status
      */
     getProcessCounts(): ProcessCounts {
-        const counts: ProcessCounts = { running: 0, completed: 0, failed: 0, cancelled: 0 };
+        const counts: ProcessCounts = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
         for (const process of this.processes.values()) {
             counts[process.status]++;
         }

@@ -246,6 +246,7 @@ suite('AI Process Document Provider Tests', () => {
         test('should format process status correctly', () => {
             // Test status emoji mapping
             const statuses: Record<AIProcessStatus, string> = {
+                'queued': '⏳',
                 'running': '🔄',
                 'completed': '✅',
                 'failed': '❌',

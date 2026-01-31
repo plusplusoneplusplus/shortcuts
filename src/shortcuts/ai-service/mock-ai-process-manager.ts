@@ -157,7 +157,7 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
             type: options.type,
             promptPreview: this.createPromptPreview(prompt),
             fullPrompt: prompt,
-            status: 'running',
+            status: options.initialStatus ?? 'running',
             startTime: new Date(),
             metadata: options.metadata,
             parentProcessId: options.parentProcessId
@@ -525,7 +525,7 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
 
     cancelProcess(id: string): boolean {
         const process = this.processes.get(id);
-        if (!process || process.status !== 'running') {
+        if (!process || (process.status !== 'running' && process.status !== 'queued')) {
             return false;
         }
 
@@ -534,7 +534,7 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
         if (childIds.length > 0) {
             for (const childId of childIds) {
                 const child = this.processes.get(childId);
-                if (child && child.status === 'running') {
+                if (child && (child.status === 'running' || child.status === 'queued')) {
                     this.updateProcess(childId, 'cancelled', undefined, 'Cancelled by user (parent cancelled)');
                 }
             }
@@ -558,7 +558,8 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
         const toRemove: string[] = [];
 
         for (const [id, process] of this.processes) {
-            if (process.status !== 'running') {
+            // Keep running and queued processes (they're active)
+            if (process.status !== 'running' && process.status !== 'queued') {
                 toRemove.push(id);
             }
         }
@@ -616,7 +617,7 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
     }
 
     getProcessCounts(): ProcessCounts {
-        const counts: ProcessCounts = { running: 0, completed: 0, failed: 0, cancelled: 0 };
+        const counts: ProcessCounts = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
         for (const process of this.processes.values()) {
             counts[process.status]++;
         }

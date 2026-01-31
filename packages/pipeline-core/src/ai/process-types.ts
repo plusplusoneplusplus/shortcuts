@@ -15,7 +15,7 @@ export type AIToolType = 'copilot-cli' | 'clipboard';
 /**
  * Status of an AI process
  */
-export type AIProcessStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+export type AIProcessStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 /**
  * Type of AI process - extensible via string union
@@ -56,6 +56,8 @@ export interface TypedProcessOptions {
     metadata?: GenericProcessMetadata;
     /** Parent process ID for grouped processes */
     parentProcessId?: string;
+    /** Initial status for the process (default: 'running'). Use 'queued' for queue systems. */
+    initialStatus?: 'queued' | 'running';
 }
 
 /**
@@ -356,6 +358,7 @@ export interface ProcessEvent {
  * Process count statistics
  */
 export interface ProcessCounts {
+    queued: number;
     running: number;
     completed: number;
     failed: number;
