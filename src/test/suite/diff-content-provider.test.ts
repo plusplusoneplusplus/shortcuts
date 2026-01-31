@@ -10,7 +10,11 @@ import * as os from 'os';
 
 // Import the functions we want to test
 // Note: getFileAtRef is exported, normalizeLineEndings is internal
-import { getFileAtRef } from '../../shortcuts/git-diff-comments/diff-content-provider';
+import { 
+    getFileAtRef, 
+    createUntrackedGitContext, 
+    getDiffContent 
+} from '../../shortcuts/git-diff-comments/diff-content-provider';
 
 suite('Diff Content Provider Tests', () => {
 
@@ -100,6 +104,28 @@ suite('Diff Content Provider Tests', () => {
 
             assert.strictEqual(result, '');
         });
+
+        test('should return empty string for EMPTY ref (untracked files)', () => {
+            // EMPTY ref is used for untracked files where the old content doesn't exist
+            // This simulates opening an untracked file in diff view
+            const anyPath = path.join(tempDir, 'any-file.txt');
+            
+            // Even if the file exists, EMPTY ref should return empty string
+            fs.writeFileSync(anyPath, 'some content\n', 'utf8');
+
+            const result = getFileAtRef(anyPath, 'EMPTY', tempDir);
+
+            assert.strictEqual(result, '', 'EMPTY ref should always return empty string');
+        });
+
+        test('should return empty string for EMPTY ref regardless of file existence', () => {
+            // Test with a non-existent file path
+            const nonExistentPath = path.join(tempDir, 'does-not-exist.txt');
+
+            const result = getFileAtRef(nonExistentPath, 'EMPTY', tempDir);
+
+            assert.strictEqual(result, '', 'EMPTY ref should return empty string for non-existent files');
+        });
     });
 
     suite('Diff Comparison with Normalized Line Endings', () => {
@@ -159,6 +185,79 @@ suite('Diff Content Provider Tests', () => {
             assert.notStrictEqual(oldResult, newResult);
             assert.ok(newResult.includes('modified line2'));
             assert.ok(newResult.includes('new line4'));
+        });
+    });
+
+    suite('Untracked File Diff Content', () => {
+        let tempDir: string;
+        let untrackedFilePath: string;
+
+        setup(() => {
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'diff-untracked-test-'));
+            untrackedFilePath = path.join(tempDir, 'untracked-file.txt');
+        });
+
+        teardown(() => {
+            try {
+                if (fs.existsSync(untrackedFilePath)) {
+                    fs.unlinkSync(untrackedFilePath);
+                }
+                if (fs.existsSync(tempDir)) {
+                    fs.rmdirSync(tempDir);
+                }
+            } catch {
+                // Ignore cleanup errors
+            }
+        });
+
+        test('createUntrackedGitContext should set oldRef to EMPTY', () => {
+            const context = createUntrackedGitContext('/repo/root', 'my-repo');
+
+            assert.strictEqual(context.oldRef, 'EMPTY', 'oldRef should be EMPTY for untracked files');
+            assert.strictEqual(context.newRef, 'WORKING_TREE', 'newRef should be WORKING_TREE');
+            assert.strictEqual(context.repositoryRoot, '/repo/root');
+            assert.strictEqual(context.repositoryName, 'my-repo');
+            assert.strictEqual(context.wasStaged, false);
+        });
+
+        test('getDiffContent with untracked context should have empty oldContent', () => {
+            // Create an untracked file with content
+            const fileContent = 'This is new content\nLine 2\nLine 3\n';
+            fs.writeFileSync(untrackedFilePath, fileContent, 'utf8');
+
+            // Create untracked git context
+            const gitContext = createUntrackedGitContext(tempDir, 'test-repo');
+
+            // Get diff content
+            const result = getDiffContent('untracked-file.txt', gitContext);
+
+            // oldContent should be empty (file doesn't exist in git)
+            assert.strictEqual(result.oldContent, '', 'oldContent should be empty for untracked files');
+            
+            // newContent should have the file content
+            assert.strictEqual(result.newContent, 'This is new content\nLine 2\nLine 3\n');
+            
+            // Should not be binary
+            assert.strictEqual(result.isBinary, false);
+            
+            // Should not have error
+            assert.strictEqual(result.error, undefined);
+        });
+
+        test('getDiffContent with untracked context should show all lines as additions', () => {
+            // Create an untracked file with multiple lines
+            const fileContent = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n';
+            fs.writeFileSync(untrackedFilePath, fileContent, 'utf8');
+
+            const gitContext = createUntrackedGitContext(tempDir, 'test-repo');
+            const result = getDiffContent('untracked-file.txt', gitContext);
+
+            // All lines should be in newContent, none in oldContent
+            const oldLines = result.oldContent.split('\n').filter(l => l.length > 0);
+            const newLines = result.newContent.split('\n').filter(l => l.length > 0);
+
+            assert.strictEqual(oldLines.length, 0, 'oldContent should have no lines');
+            assert.strictEqual(newLines.length, 5, 'newContent should have all 5 lines');
         });
     });
 

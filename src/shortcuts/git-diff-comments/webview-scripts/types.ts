@@ -140,6 +140,8 @@ export interface ExtensionMessage {
     newContent?: string;
     comments?: DiffComment[];
     filePath?: string;
+    /** Git context for the diff (needed when switching files in preview mode) */
+    gitContext?: DiffGitContext;
     settings?: DiffCommentsSettings;
     comment?: DiffComment;
     /** Comment ID to scroll to (for scrollToComment message) */

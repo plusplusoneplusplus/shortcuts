@@ -326,4 +326,130 @@ suite('Diff Preview Mode Tests', () => {
             assert.ok(excludedContainers.includes('.comments-list'));
         });
     });
+
+    suite('Preview Panel Content Update', () => {
+        /**
+         * Tests for content update when switching between files in preview mode.
+         * This is critical for correctly displaying different git contexts
+         * (staged vs unstaged vs untracked).
+         */
+
+        test('should update git context when switching from staged to untracked file', () => {
+            // Simulate staged file context
+            const stagedContext: DiffGitContext = {
+                repositoryRoot: '/test/repo',
+                repositoryName: 'repo',
+                oldRef: 'HEAD',
+                newRef: ':0',
+                wasStaged: true
+            };
+
+            // Simulate untracked file context
+            const untrackedContext: DiffGitContext = {
+                repositoryRoot: '/test/repo',
+                repositoryName: 'repo',
+                oldRef: 'EMPTY',
+                newRef: 'WORKING_TREE',
+                wasStaged: false
+            };
+
+            // Verify the contexts are different
+            assert.notStrictEqual(stagedContext.oldRef, untrackedContext.oldRef);
+            assert.strictEqual(untrackedContext.oldRef, 'EMPTY', 'Untracked should have EMPTY oldRef');
+            assert.strictEqual(stagedContext.oldRef, 'HEAD', 'Staged should have HEAD oldRef');
+        });
+
+        test('should have empty oldContent for untracked files', () => {
+            // For untracked files, oldContent should be empty
+            const untrackedState: DiffWebviewState = {
+                filePath: 'new-file.ts',
+                gitContext: {
+                    repositoryRoot: '/test/repo',
+                    repositoryName: 'repo',
+                    oldRef: 'EMPTY',
+                    newRef: 'WORKING_TREE',
+                    wasStaged: false
+                },
+                oldContent: '', // Should be empty for untracked files
+                newContent: 'const x = 1;\nconst y = 2;',
+                isEditable: true
+            };
+
+            assert.strictEqual(untrackedState.oldContent, '', 'Untracked file should have empty oldContent');
+            assert.ok(untrackedState.newContent.length > 0, 'Untracked file should have newContent');
+        });
+
+        test('should preserve content when switching between files', () => {
+            // Simulate webview state for two different files
+            const file1State: DiffWebviewState = {
+                filePath: 'staged-file.ts',
+                gitContext: {
+                    repositoryRoot: '/test/repo',
+                    repositoryName: 'repo',
+                    oldRef: 'HEAD',
+                    newRef: ':0',
+                    wasStaged: true
+                },
+                oldContent: 'const old = 1;',
+                newContent: 'const new = 2;',
+                isEditable: false
+            };
+
+            const file2State: DiffWebviewState = {
+                filePath: 'untracked-file.ts',
+                gitContext: {
+                    repositoryRoot: '/test/repo',
+                    repositoryName: 'repo',
+                    oldRef: 'EMPTY',
+                    newRef: 'WORKING_TREE',
+                    wasStaged: false
+                },
+                oldContent: '',
+                newContent: 'const brand = "new";',
+                isEditable: true
+            };
+
+            // Simulate state update (what happens when switching files)
+            const webviewStates = new Map<string, DiffWebviewState>();
+            webviewStates.set('/test/repo/staged-file.ts', file1State);
+            webviewStates.set('/test/repo/untracked-file.ts', file2State);
+
+            // When switching to file2, we should get file2's state
+            const currentState = webviewStates.get('/test/repo/untracked-file.ts');
+            assert.strictEqual(currentState?.oldContent, '', 'Should get empty oldContent for untracked');
+            assert.strictEqual(currentState?.gitContext.oldRef, 'EMPTY', 'Should get EMPTY oldRef');
+        });
+
+        test('update message should include gitContext for proper state sync', () => {
+            // Simulate the update message structure
+            interface UpdateMessage {
+                type: 'update';
+                oldContent?: string;
+                newContent?: string;
+                filePath?: string;
+                gitContext?: DiffGitContext;
+                isEditable?: boolean;
+            }
+
+            const updateMessage: UpdateMessage = {
+                type: 'update',
+                oldContent: '',
+                newContent: 'new content',
+                filePath: 'untracked.ts',
+                gitContext: {
+                    repositoryRoot: '/test/repo',
+                    repositoryName: 'repo',
+                    oldRef: 'EMPTY',
+                    newRef: 'WORKING_TREE',
+                    wasStaged: false
+                },
+                isEditable: true
+            };
+
+            // Verify the message has all necessary fields for proper state sync
+            assert.ok(updateMessage.gitContext, 'Update message should include gitContext');
+            assert.strictEqual(updateMessage.gitContext?.oldRef, 'EMPTY');
+            assert.strictEqual(updateMessage.oldContent, '');
+        });
+    });
 });

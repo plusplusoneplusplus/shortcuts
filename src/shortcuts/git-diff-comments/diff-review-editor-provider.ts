@@ -368,18 +368,16 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             };
             this.webviewStates.set(filePath, webviewState);
 
-            // Get shortened display refs
-            const displayRefs = await getDisplayRefs(gitContext);
-
-            // Update webview content
-            panel.webview.html = this.getWebviewContent(
-                panel.webview,
+            // Send message to update content instead of replacing HTML
+            // This is more reliable because it doesn't depend on the webview reloading
+            // and properly updates the webview state including filePath and gitContext
+            this.sendStateToWebview(
+                panel,
                 relativePath,
                 diffResult.oldContent,
                 diffResult.newContent,
-                gitContext,
                 isEditable,
-                displayRefs
+                gitContext
             );
 
             // Reveal the panel
@@ -547,7 +545,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         switch (message.type) {
             case 'ready':
             case 'requestState':
-                this.sendStateToWebview(panel, relativeFilePath, oldContent, newContent, isEditable);
+                this.sendStateToWebview(panel, relativeFilePath, oldContent, newContent, isEditable, gitContext);
                 // If we need to scroll to a specific comment, send the message after state is sent
                 if (scrollToCommentId) {
                     setTimeout(() => {
@@ -1040,7 +1038,8 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         filePath: string,
         oldContent: string,
         newContent: string,
-        isEditable?: boolean
+        isEditable?: boolean,
+        gitContext?: DiffGitContext
     ): void {
         const comments = this.commentsManager.getCommentsForFile(filePath);
         const baseSettings = this.commentsManager.getSettings();
@@ -1067,6 +1066,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
             newContent,
             comments,
             filePath,
+            gitContext,
             settings,
             isEditable
         };

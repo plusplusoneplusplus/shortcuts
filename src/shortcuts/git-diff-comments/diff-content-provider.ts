@@ -104,6 +104,11 @@ export function getFileAtRef(
 ): string {
     try {
         // Handle special refs
+        if (ref === 'EMPTY') {
+            // EMPTY ref represents a non-existent file (e.g., for untracked files)
+            return '';
+        }
+
         if (ref === 'WORKING_TREE') {
             const absolutePath = path.isAbsolute(filePath)
                 ? filePath

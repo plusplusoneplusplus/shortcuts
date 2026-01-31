@@ -99,12 +99,20 @@ function handleMessage(event: MessageEvent<ExtensionMessage>): void {
 
     switch (message.type) {
         case 'update':
+            // Update file path and git context first (needed for correct syntax highlighting and comment storage)
+            if (message.filePath !== undefined) {
+                updateState({ filePath: message.filePath });
+            }
+            if (message.gitContext !== undefined) {
+                updateState({ gitContext: message.gitContext });
+            }
             if (message.oldContent !== undefined && message.newContent !== undefined) {
                 updateState({
                     oldContent: message.oldContent,
                     newContent: message.newContent
                 });
                 // Invalidate highlight cache when content changes
+                // This is critical when switching between files in preview mode
                 invalidateHighlightCache();
                 renderDiff();
             }
