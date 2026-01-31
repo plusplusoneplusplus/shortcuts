@@ -351,8 +351,8 @@ html, body {
 
 /* Line gutter */
 .line-gutter {
-    min-width: 60px;
-    padding: 0 8px;
+    min-width: 50px;
+    padding: 0 4px;
     text-align: right;
     color: var(--vscode-editorLineNumber-foreground);
     background-color: var(--vscode-editorGutter-background);
@@ -362,7 +362,7 @@ html, body {
     display: flex;
     align-items: flex-start;
     justify-content: flex-end;
-    gap: 4px;
+    gap: 2px;
     padding-top: 0;
     line-height: var(--vscode-editor-line-height, 1.5);
     position: relative;
@@ -371,13 +371,13 @@ html, body {
 /* Line number span in gutter */
 .line-number {
     display: inline-block;
-    min-width: 30px;
+    min-width: 24px;
     text-align: right;
 }
 
 /* Line prefix in gutter (+ - or space) */
 .line-gutter .line-prefix {
-    width: 14px;
+    width: 12px;
     flex-shrink: 0;
     text-align: center;
     font-weight: 600;
@@ -404,7 +404,7 @@ html, body {
 /* Line content */
 .line-content {
     flex: 1;
-    padding: 0 8px;
+    padding: 0 6px;
     display: flex;
 }
 
@@ -555,8 +555,8 @@ html, body {
 
 /* Inline line gutter (shows both line numbers) */
 .inline-line-gutter {
-    min-width: 100px;
-    padding: 0 8px;
+    min-width: 70px;
+    padding: 0 4px;
     text-align: right;
     color: var(--vscode-editorLineNumber-foreground);
     background-color: var(--vscode-editorGutter-background);
@@ -566,7 +566,7 @@ html, body {
     display: flex;
     align-items: flex-start;
     justify-content: flex-end;
-    gap: 4px;
+    gap: 2px;
     padding-top: 0;
     line-height: var(--vscode-editor-line-height, 1.5);
     position: relative;
@@ -574,7 +574,7 @@ html, body {
 
 /* Line prefix in inline gutter */
 .inline-line-gutter .line-prefix {
-    width: 14px;
+    width: 12px;
     flex-shrink: 0;
     text-align: center;
     font-weight: 600;
@@ -595,7 +595,7 @@ html, body {
 
 .inline-line-gutter .old-line-num,
 .inline-line-gutter .new-line-num {
-    min-width: 35px;
+    min-width: 24px;
     text-align: right;
 }
 
@@ -618,7 +618,7 @@ html, body {
 /* Inline line content */
 .inline-line-content {
     flex: 1;
-    padding: 0 8px;
+    padding: 0 6px;
     display: flex;
 }
 
