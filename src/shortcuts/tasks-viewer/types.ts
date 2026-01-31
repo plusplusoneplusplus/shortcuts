@@ -229,3 +229,35 @@ export interface FeatureContext {
     /** Related commits (if available) */
     commits: string[];
 }
+
+// ============================================================================
+// Review Status Tracking Types
+// ============================================================================
+
+/**
+ * Review status states for task documents
+ */
+export type ReviewStatus = 'reviewed' | 'unreviewed' | 'needs-re-review';
+
+/**
+ * Record storing review status for a single file
+ */
+export interface ReviewStatusRecord {
+    /** Current review status */
+    status: 'reviewed' | 'unreviewed';
+    /** ISO timestamp when marked as reviewed */
+    reviewedAt: string;
+    /** MD5 hash of file content when reviewed (for change detection) */
+    fileHashAtReview: string;
+    /** Optional user identifier who performed the review */
+    reviewedBy?: string;
+}
+
+/**
+ * Storage structure for all review statuses
+ * Key: relative path from tasks root (e.g., "TaskPanel/review-status-tracking.plan.md")
+ * Value: ReviewStatusRecord
+ */
+export interface ReviewStatusStore {
+    [relativePath: string]: ReviewStatusRecord;
+}

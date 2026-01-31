@@ -5,17 +5,26 @@ import { TaskItem } from './task-item';
 import { TaskDocumentItem } from './task-document-item';
 import { TaskDocumentGroupItem } from './task-document-group-item';
 import { TaskFolderItem } from './task-folder-item';
+import { ReviewStatusManager } from './review-status-manager';
 
 /**
  * Command handlers for the Tasks Viewer
  */
 export class TasksCommands {
     private tasksTreeView?: vscode.TreeView<vscode.TreeItem>;
+    private reviewStatusManager?: ReviewStatusManager;
 
     constructor(
         private taskManager: TaskManager,
         private treeDataProvider: TasksTreeDataProvider
     ) {}
+
+    /**
+     * Set the review status manager for review tracking commands
+     */
+    setReviewStatusManager(manager: ReviewStatusManager): void {
+        this.reviewStatusManager = manager;
+    }
 
     /**
      * Set the tree view for multi-selection support
@@ -49,7 +58,13 @@ export class TasksCommands {
             vscode.commands.registerCommand('tasksViewer.refresh', () => this.refreshTasks()),
             vscode.commands.registerCommand('tasksViewer.openFolder', () => this.openTasksFolder()),
             vscode.commands.registerCommand('tasksViewer.copyRelativePath', (item: TaskItem) => this.copyPath(item, false)),
-            vscode.commands.registerCommand('tasksViewer.copyFullPath', (item: TaskItem) => this.copyPath(item, true))
+            vscode.commands.registerCommand('tasksViewer.copyFullPath', (item: TaskItem) => this.copyPath(item, true)),
+            // Review status commands
+            vscode.commands.registerCommand('tasksViewer.markAsReviewed', (item: TaskItem | TaskDocumentItem) => this.markAsReviewed(item)),
+            vscode.commands.registerCommand('tasksViewer.markAsUnreviewed', (item: TaskItem | TaskDocumentItem) => this.markAsUnreviewed(item)),
+            vscode.commands.registerCommand('tasksViewer.markGroupAsReviewed', (item: TaskDocumentGroupItem) => this.markGroupAsReviewed(item)),
+            vscode.commands.registerCommand('tasksViewer.markGroupAsUnreviewed', (item: TaskDocumentGroupItem) => this.markGroupAsUnreviewed(item)),
+            vscode.commands.registerCommand('tasksViewer.markFolderAsReviewed', (item: TaskFolderItem) => this.markFolderAsReviewed(item))
         );
 
         return disposables;
@@ -556,5 +571,98 @@ export class TasksCommands {
             }
         }
         return [pathToCopy];
+    }
+
+    // ========================================================================
+    // Review Status Commands
+    // ========================================================================
+
+    /**
+     * Mark a task or document as reviewed
+     */
+    private async markAsReviewed(item: TaskItem | TaskDocumentItem): Promise<void> {
+        if (!item || !this.reviewStatusManager) {
+            return;
+        }
+
+        try {
+            await this.reviewStatusManager.markAsReviewed(item.filePath);
+            // Tree will refresh automatically via onDidChangeStatus event
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to mark as reviewed: ${err.message}`);
+        }
+    }
+
+    /**
+     * Mark a task or document as unreviewed
+     */
+    private async markAsUnreviewed(item: TaskItem | TaskDocumentItem): Promise<void> {
+        if (!item || !this.reviewStatusManager) {
+            return;
+        }
+
+        try {
+            await this.reviewStatusManager.markAsUnreviewed(item.filePath);
+            // Tree will refresh automatically via onDidChangeStatus event
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to mark as unreviewed: ${err.message}`);
+        }
+    }
+
+    /**
+     * Mark all documents in a group as reviewed
+     */
+    private async markGroupAsReviewed(item: TaskDocumentGroupItem): Promise<void> {
+        if (!item || !this.reviewStatusManager) {
+            return;
+        }
+
+        try {
+            for (const doc of item.documents) {
+                await this.reviewStatusManager.markAsReviewed(doc.filePath);
+            }
+            vscode.window.showInformationMessage(`Marked ${item.documents.length} documents as reviewed`);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to mark group as reviewed: ${err.message}`);
+        }
+    }
+
+    /**
+     * Mark all documents in a group as unreviewed
+     */
+    private async markGroupAsUnreviewed(item: TaskDocumentGroupItem): Promise<void> {
+        if (!item || !this.reviewStatusManager) {
+            return;
+        }
+
+        try {
+            for (const doc of item.documents) {
+                await this.reviewStatusManager.markAsUnreviewed(doc.filePath);
+            }
+            vscode.window.showInformationMessage(`Marked ${item.documents.length} documents as unreviewed`);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to mark group as unreviewed: ${err.message}`);
+        }
+    }
+
+    /**
+     * Mark all files in a folder as reviewed
+     */
+    private async markFolderAsReviewed(item: TaskFolderItem): Promise<void> {
+        if (!item || !item.folder || !this.reviewStatusManager) {
+            return;
+        }
+
+        try {
+            const markedFiles = await this.reviewStatusManager.markFolderAsReviewed(item.folder.folderPath, true);
+            vscode.window.showInformationMessage(`Marked ${markedFiles.length} files as reviewed`);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to mark folder as reviewed: ${err.message}`);
+        }
     }
 }

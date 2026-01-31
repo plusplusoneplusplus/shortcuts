@@ -39,7 +39,7 @@ import {
 } from './shortcuts/markdown-comments';
 import { NotificationManager } from './shortcuts/notification-manager';
 import { getExtensionLogger, getFirstWorkspaceFolder, LogCategory } from './shortcuts/shared';
-import { TaskManager, TasksCommands, TasksDragDropController, TasksTreeDataProvider, registerTasksDiscoveryCommands, registerTasksAICommands } from './shortcuts/tasks-viewer';
+import { TaskManager, TasksCommands, TasksDragDropController, TasksTreeDataProvider, ReviewStatusManager, registerTasksDiscoveryCommands, registerTasksAICommands } from './shortcuts/tasks-viewer';
 import { ThemeManager } from './shortcuts/theme-manager';
 import {
     PipelineManager,
@@ -255,6 +255,7 @@ export async function activate(context: vscode.ExtensionContext) {
         let taskManager: TaskManager | undefined;
         let tasksTreeDataProvider: TasksTreeDataProvider | undefined;
         let tasksCommands: TasksCommands | undefined;
+        let reviewStatusManager: ReviewStatusManager | undefined;
         let tasksCommandDisposables: vscode.Disposable[] = [];
 
         if (tasksViewerEnabled && workspaceFolder) {
@@ -262,6 +263,11 @@ export async function activate(context: vscode.ExtensionContext) {
             taskManager.ensureFoldersExist();
 
             tasksTreeDataProvider = new TasksTreeDataProvider(taskManager);
+
+            // Initialize review status manager
+            reviewStatusManager = new ReviewStatusManager(taskManager.getTasksFolder());
+            await reviewStatusManager.initialize(context);
+            tasksTreeDataProvider.setReviewStatusManager(reviewStatusManager);
 
             // Set up file watching for auto-refresh
             taskManager.watchTasksFolder(() => {
@@ -292,6 +298,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
             tasksCommands = new TasksCommands(taskManager, tasksTreeDataProvider);
             tasksCommands.setTreeView(tasksTreeView);
+            tasksCommands.setReviewStatusManager(reviewStatusManager);
             tasksCommandDisposables = tasksCommands.registerCommands(context);
         }
 
@@ -2705,6 +2712,7 @@ export async function activate(context: vscode.ExtensionContext) {
             ...(tasksTreeView ? [tasksTreeView] : []),
             ...(taskManager ? [taskManager] : []),
             ...(tasksTreeDataProvider ? [tasksTreeDataProvider] : []),
+            ...(reviewStatusManager ? [reviewStatusManager] : []),
             ...tasksCommandDisposables,
             // Pipelines Viewer disposables
             ...(pipelinesTreeView ? [pipelinesTreeView] : []),

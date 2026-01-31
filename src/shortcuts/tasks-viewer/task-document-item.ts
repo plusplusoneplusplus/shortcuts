@@ -1,22 +1,25 @@
 import * as vscode from 'vscode';
-import { TaskDocument } from './types';
+import { TaskDocument, ReviewStatus } from './types';
 
 /**
  * Tree item representing a single task document within a document group
  * (e.g., "plan" representing task1.plan.md within the task1 group)
  */
 export class TaskDocumentItem extends vscode.TreeItem {
-    public readonly contextValue: string;
+    public contextValue: string;
     public readonly filePath: string;
     public readonly isArchived: boolean;
     public readonly docType?: string;
     public readonly baseName: string;
+    private _reviewStatus: ReviewStatus = 'unreviewed';
+    private document: TaskDocument;
 
     constructor(document: TaskDocument) {
         // Use docType as label if available, otherwise use baseName
         const displayLabel = document.docType || document.baseName;
         super(displayLabel, vscode.TreeItemCollapsibleState.None);
 
+        this.document = document;
         this.filePath = document.filePath;
         this.isArchived = document.isArchived;
         this.docType = document.docType;
@@ -24,7 +27,7 @@ export class TaskDocumentItem extends vscode.TreeItem {
         this.contextValue = document.isArchived ? 'archivedTaskDocument' : 'taskDocument';
         this.tooltip = document.filePath;
         this.description = this.formatModifiedTime(document.modifiedTime);
-        this.iconPath = this.getIconPath(document);
+        this.iconPath = this.getIconPath(document, 'unreviewed');
 
         // Set resourceUri for drag-and-drop support
         this.resourceUri = vscode.Uri.file(document.filePath);
@@ -38,14 +41,44 @@ export class TaskDocumentItem extends vscode.TreeItem {
     }
 
     /**
-     * Get the icon based on document type
+     * Get the current review status
      */
-    private getIconPath(document: TaskDocument): vscode.ThemeIcon {
+    get reviewStatus(): ReviewStatus {
+        return this._reviewStatus;
+    }
+
+    /**
+     * Set the review status and update the icon
+     */
+    setReviewStatus(status: ReviewStatus): void {
+        this._reviewStatus = status;
+        this.iconPath = this.getIconPath(this.document, status);
+        // Update context value to enable/disable menu items
+        if (this.isArchived) {
+            this.contextValue = 'archivedTaskDocument';
+        } else {
+            this.contextValue = status === 'reviewed' ? 'taskDocument_reviewed' : 
+                               status === 'needs-re-review' ? 'taskDocument_needsReReview' : 'taskDocument';
+        }
+    }
+
+    /**
+     * Get the icon based on document type and review status
+     */
+    private getIconPath(document: TaskDocument, reviewStatus: ReviewStatus): vscode.ThemeIcon {
         if (document.isArchived) {
             return new vscode.ThemeIcon('archive', new vscode.ThemeColor('disabledForeground'));
         }
 
-        // Map doc types to icons
+        // For reviewed/needs-re-review, show status icon instead of doc type icon
+        switch (reviewStatus) {
+            case 'reviewed':
+                return new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
+            case 'needs-re-review':
+                return new vscode.ThemeIcon('sync', new vscode.ThemeColor('editorWarning.foreground'));
+        }
+
+        // Map doc types to icons for unreviewed documents
         const iconMap: Record<string, string> = {
             'plan': 'checklist',
             'spec': 'file-code',

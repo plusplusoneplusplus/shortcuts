@@ -8,7 +8,8 @@ import { TaskDocumentGroupItem } from './task-document-group-item';
 import { TaskDocumentItem } from './task-document-item';
 import { TaskFolderItem } from './task-folder-item';
 import { RelatedItemsSectionItem, RelatedCategoryItem, RelatedFileItem, RelatedCommitItem } from './related-items-tree-items';
-import { Task, TaskDocument, TaskDocumentGroup, TaskFolder, RelatedItem } from './types';
+import { ReviewStatusManager } from './review-status-manager';
+import { Task, TaskDocument, TaskDocumentGroup, TaskFolder, RelatedItem, ReviewStatus } from './types';
 
 /**
  * Tree data provider for the Tasks Viewer
@@ -22,9 +23,33 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
     private cachedSingleDocuments: TaskDocument[] = [];
     private documentsByArchiveStatus: Map<'active' | 'archived', { groups: TaskDocumentGroup[]; singles: TaskDocument[] }> = new Map();
     private cachedFolderHierarchy?: TaskFolder;
+    private reviewStatusManager?: ReviewStatusManager;
+    private reviewStatusChangeDisposable?: vscode.Disposable;
 
     constructor(private taskManager: TaskManager) {
         super();
+    }
+
+    /**
+     * Set the review status manager for status tracking
+     */
+    setReviewStatusManager(manager: ReviewStatusManager): void {
+        // Dispose previous listener if any
+        this.reviewStatusChangeDisposable?.dispose();
+        
+        this.reviewStatusManager = manager;
+        
+        // Listen for status changes and refresh the tree
+        this.reviewStatusChangeDisposable = manager.onDidChangeStatus(() => {
+            this.refresh();
+        });
+    }
+
+    /**
+     * Get the review status manager
+     */
+    getReviewStatusManager(): ReviewStatusManager | undefined {
+        return this.reviewStatusManager;
     }
 
     /**
@@ -269,16 +294,20 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
         for (const s of sortable) {
             if (s.type === 'group') {
                 const group = s.item as TaskDocumentGroup;
-                items.push(new TaskDocumentGroupItem(group.baseName, group.documents, group.isArchived));
+                const groupItem = new TaskDocumentGroupItem(group.baseName, group.documents, group.isArchived);
+                this.applyGroupReviewStatus(groupItem);
+                items.push(groupItem);
             } else {
                 const doc = s.item as TaskDocument;
                 // For singles, use TaskItem to maintain backward compatibility
-                items.push(new TaskItem({
+                const taskItem = new TaskItem({
                     name: doc.fileName.replace(/\.md$/i, ''),
                     filePath: doc.filePath,
                     modifiedTime: doc.modifiedTime,
                     isArchived: doc.isArchived
-                }));
+                });
+                this.applyReviewStatus(taskItem);
+                items.push(taskItem);
             }
         }
 
@@ -289,7 +318,6 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
      * Get children for a document group (the individual documents)
      */
     private getDocumentGroupChildren(groupItem: TaskDocumentGroupItem): TaskDocumentItem[] {
-        const settings = this.taskManager.getSettings();
         let documents = [...groupItem.documents];
 
         // Sort documents
@@ -300,7 +328,38 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
             return aType.localeCompare(bType);
         });
 
-        return documents.map(doc => new TaskDocumentItem(doc));
+        return documents.map(doc => {
+            const item = new TaskDocumentItem(doc);
+            this.applyReviewStatus(item);
+            return item;
+        });
+    }
+
+    /**
+     * Apply review status to a TaskItem
+     */
+    private applyReviewStatus(item: TaskItem | TaskDocumentItem): void {
+        if (!this.reviewStatusManager || !this.reviewStatusManager.isInitialized()) {
+            return;
+        }
+        const status = this.reviewStatusManager.getStatus(item.filePath);
+        item.setReviewStatus(status);
+    }
+
+    /**
+     * Apply aggregate review status to a TaskDocumentGroupItem
+     */
+    private applyGroupReviewStatus(groupItem: TaskDocumentGroupItem): void {
+        if (!this.reviewStatusManager || !this.reviewStatusManager.isInitialized()) {
+            return;
+        }
+        
+        const statusMap = new Map<string, ReviewStatus>();
+        for (const doc of groupItem.documents) {
+            const status = this.reviewStatusManager.getStatus(doc.filePath);
+            statusMap.set(doc.filePath, status);
+        }
+        groupItem.setGroupReviewStatus(statusMap);
     }
 
     /**
@@ -328,19 +387,23 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
         // Add document groups
         const sortedGroups = this.sortDocumentGroups(folder.documentGroups);
         for (const group of sortedGroups) {
-            items.push(new TaskDocumentGroupItem(group.baseName, group.documents, group.isArchived));
+            const groupItem = new TaskDocumentGroupItem(group.baseName, group.documents, group.isArchived);
+            this.applyGroupReviewStatus(groupItem);
+            items.push(groupItem);
         }
 
         // Add single documents
         const sortedDocs = this.sortDocuments(folder.singleDocuments);
         for (const doc of sortedDocs) {
-            items.push(new TaskItem({
+            const taskItem = new TaskItem({
                 name: doc.fileName.replace(/\.md$/i, ''),
                 filePath: doc.filePath,
                 modifiedTime: doc.modifiedTime,
                 isArchived: doc.isArchived,
                 relativePath: doc.relativePath
-            }));
+            });
+            this.applyReviewStatus(taskItem);
+            items.push(taskItem);
         }
 
         // Add Related Items section if present
@@ -467,7 +530,11 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
     private getFlatTaskItems(tasks: Task[]): TaskItem[] {
         // Sort tasks
         tasks = this.sortTasks(tasks);
-        return tasks.map(task => new TaskItem(task));
+        return tasks.map(task => {
+            const item = new TaskItem(task);
+            this.applyReviewStatus(item);
+            return item;
+        });
     }
 
     /**
@@ -494,7 +561,11 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
 
         // Legacy behavior - flat task list
         const tasks = this.tasksByGroup.get(groupType) || [];
-        return tasks.map(task => new TaskItem(task));
+        return tasks.map(task => {
+            const item = new TaskItem(task);
+            this.applyReviewStatus(item);
+            return item;
+        });
     }
 
     /**

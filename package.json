@@ -1764,6 +1764,36 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "tasksViewer.markAsReviewed",
+        "title": "Mark as Reviewed",
+        "category": "Tasks",
+        "icon": "$(pass)"
+      },
+      {
+        "command": "tasksViewer.markAsUnreviewed",
+        "title": "Mark as Unreviewed",
+        "category": "Tasks",
+        "icon": "$(circle-large-outline)"
+      },
+      {
+        "command": "tasksViewer.markGroupAsReviewed",
+        "title": "Mark All as Reviewed",
+        "category": "Tasks",
+        "icon": "$(pass-filled)"
+      },
+      {
+        "command": "tasksViewer.markGroupAsUnreviewed",
+        "title": "Mark All as Unreviewed",
+        "category": "Tasks",
+        "icon": "$(circle-large-outline)"
+      },
+      {
+        "command": "tasksViewer.markFolderAsReviewed",
+        "title": "Mark All in Folder as Reviewed",
+        "category": "Tasks",
+        "icon": "$(pass-filled)"
+      },
+      {
         "command": "debugPanel.executeCommand",
         "title": "Execute Debug Command",
         "category": "Debug Panel"
@@ -2172,18 +2202,28 @@
           "group": "globalNote@3"
         },
         {
+          "command": "tasksViewer.markAsReviewed",
+          "when": "view == tasksView && viewItem =~ /^task(_needsReReview)?$/",
+          "group": "review@1"
+        },
+        {
+          "command": "tasksViewer.markAsUnreviewed",
+          "when": "view == tasksView && viewItem == task_reviewed",
+          "group": "review@1"
+        },
+        {
           "command": "tasksViewer.rename",
-          "when": "view == tasksView && viewItem == task",
+          "when": "view == tasksView && viewItem =~ /^task(_reviewed|_needsReReview)?$/",
           "group": "task@1"
         },
         {
           "command": "tasksViewer.archive",
-          "when": "view == tasksView && viewItem == task",
+          "when": "view == tasksView && viewItem =~ /^task(_reviewed|_needsReReview)?$/",
           "group": "task@2"
         },
         {
           "command": "tasksViewer.delete",
-          "when": "view == tasksView && viewItem == task",
+          "when": "view == tasksView && viewItem =~ /^task(_reviewed|_needsReReview)?$/",
           "group": "task@3"
         },
         {
@@ -2207,13 +2247,23 @@
           "group": "folder@2"
         },
         {
+          "command": "tasksViewer.markGroupAsReviewed",
+          "when": "view == tasksView && viewItem =~ /^taskDocumentGroup(_hasReReview)?$/",
+          "group": "review@1"
+        },
+        {
+          "command": "tasksViewer.markGroupAsUnreviewed",
+          "when": "view == tasksView && viewItem == taskDocumentGroup_allReviewed",
+          "group": "review@1"
+        },
+        {
           "command": "tasksViewer.renameDocumentGroup",
-          "when": "view == tasksView && viewItem =~ /^(archived)?taskDocumentGroup$/",
+          "when": "view == tasksView && viewItem =~ /^(archived)?taskDocumentGroup(_allReviewed|_hasReReview)?$/",
           "group": "documentGroup@1"
         },
         {
           "command": "tasksViewer.archiveDocumentGroup",
-          "when": "view == tasksView && viewItem == taskDocumentGroup",
+          "when": "view == tasksView && viewItem =~ /^taskDocumentGroup(_allReviewed|_hasReReview)?$/",
           "group": "documentGroup@2"
         },
         {
@@ -2222,13 +2272,23 @@
           "group": "documentGroup@2"
         },
         {
+          "command": "tasksViewer.markAsReviewed",
+          "when": "view == tasksView && viewItem =~ /^taskDocument(_needsReReview)?$/",
+          "group": "review@1"
+        },
+        {
+          "command": "tasksViewer.markAsUnreviewed",
+          "when": "view == tasksView && viewItem == taskDocument_reviewed",
+          "group": "review@1"
+        },
+        {
           "command": "tasksViewer.renameDocument",
-          "when": "view == tasksView && viewItem =~ /^(archived)?taskDocument$/",
+          "when": "view == tasksView && viewItem =~ /^(archived)?taskDocument(_reviewed|_needsReReview)?$/",
           "group": "document@1"
         },
         {
           "command": "tasksViewer.archiveDocument",
-          "when": "view == tasksView && viewItem == taskDocument",
+          "when": "view == tasksView && viewItem =~ /^taskDocument(_reviewed|_needsReReview)?$/",
           "group": "document@2"
         },
         {
@@ -2255,6 +2315,11 @@
           "command": "tasksViewer.copyFullPath",
           "when": "view == tasksView && viewItem == archivedTask",
           "group": "copy@2"
+        },
+        {
+          "command": "tasksViewer.markFolderAsReviewed",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "group": "review@1"
         },
         {
           "command": "tasksViewer.createSubfolder",

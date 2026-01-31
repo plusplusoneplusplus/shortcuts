@@ -17,3 +17,4 @@ export * from './related-items-tree-items';
 export * from './discovery-commands';
 export * from './ai-task-commands';
 export * from './ai-task-dialog';
+export * from './review-status-manager';
