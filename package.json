@@ -1416,6 +1416,18 @@
         "icon": "$(remove)"
       },
       {
+        "command": "gitView.discardChanges",
+        "title": "Discard Changes",
+        "category": "Git",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "gitView.deleteUntrackedFile",
+        "title": "Delete File",
+        "category": "Git",
+        "icon": "$(trash)"
+      },
+      {
         "command": "gitView.stageAll",
         "title": "Stage All Changes",
         "category": "Git",
@@ -2598,6 +2610,26 @@
           "command": "gitView.unstageFile",
           "when": "view == gitView && viewItem =~ /^gitChange_staged/",
           "group": "gitChange@1"
+        },
+        {
+          "command": "gitView.discardChanges",
+          "when": "view == gitView && viewItem =~ /^gitChange_unstaged/",
+          "group": "inline@2"
+        },
+        {
+          "command": "gitView.deleteUntrackedFile",
+          "when": "view == gitView && viewItem =~ /^gitChange_untracked/",
+          "group": "inline@2"
+        },
+        {
+          "command": "gitView.discardChanges",
+          "when": "view == gitView && viewItem =~ /^gitChange_unstaged/",
+          "group": "gitChange@2"
+        },
+        {
+          "command": "gitView.deleteUntrackedFile",
+          "when": "view == gitView && viewItem =~ /^gitChange_untracked/",
+          "group": "gitChange@2"
         },
         {
           "command": "gitDiffComments.openWithReview",

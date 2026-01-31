@@ -22,6 +22,7 @@ interface Repository {
     state: RepositoryState;
     add(paths: string[]): Promise<void>;
     revert(paths: string[]): Promise<void>;
+    clean(paths: string[]): Promise<void>;
 }
 
 interface RepositoryState {
@@ -292,6 +293,52 @@ export class GitService implements vscode.Disposable {
             return true;
         } catch (error) {
             getExtensionLogger().error(LogCategory.GIT, 'Failed to unstage file', error instanceof Error ? error : undefined, { filePath });
+            return false;
+        }
+    }
+
+    /**
+     * Discard unstaged changes to a file (restore to HEAD state)
+     * Uses git checkout -- <file> under the hood
+     * @param filePath Absolute path to the file to discard changes
+     * @returns true if successful
+     */
+    async discardChanges(filePath: string): Promise<boolean> {
+        try {
+            const repo = this.findRepositoryForFile(filePath);
+            if (!repo) {
+                console.log('No repository found for file:', filePath);
+                return false;
+            }
+
+            // VSCode Git API clean method restores file to HEAD state
+            // This calls git checkout -- <file>
+            await repo.clean([filePath]);
+            return true;
+        } catch (error) {
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to discard changes', error instanceof Error ? error : undefined, { filePath });
+            return false;
+        }
+    }
+
+    /**
+     * Delete an untracked file from the filesystem
+     * @param filePath Absolute path to the file to delete
+     * @returns true if successful
+     */
+    async deleteUntrackedFile(filePath: string): Promise<boolean> {
+        try {
+            const repo = this.findRepositoryForFile(filePath);
+            if (!repo) {
+                console.log('No repository found for file:', filePath);
+                return false;
+            }
+
+            // Use VS Code workspace fs to delete the file
+            await vscode.workspace.fs.delete(vscode.Uri.file(filePath));
+            return true;
+        } catch (error) {
+            getExtensionLogger().error(LogCategory.GIT, 'Failed to delete untracked file', error instanceof Error ? error : undefined, { filePath });
             return false;
         }
     }

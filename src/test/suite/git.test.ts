@@ -2162,6 +2162,152 @@ suite('Git View Tests', () => {
     });
 
     // ============================================
+    // GitService Discard/Delete Methods Tests
+    // ============================================
+    suite('GitService Discard/Delete Methods', () => {
+        test('GitService should have discardChanges method', async () => {
+            const { GitService } = await import('../../shortcuts/git/git-service');
+            const service = new GitService();
+
+            assert.ok(typeof service.discardChanges === 'function');
+
+            service.dispose();
+        });
+
+        test('GitService should have deleteUntrackedFile method', async () => {
+            const { GitService } = await import('../../shortcuts/git/git-service');
+            const service = new GitService();
+
+            assert.ok(typeof service.deleteUntrackedFile === 'function');
+
+            service.dispose();
+        });
+
+        test('discardChanges should return false when not initialized', async () => {
+            const { GitService } = await import('../../shortcuts/git/git-service');
+            const service = new GitService();
+
+            // Not initialized, should return false
+            const result = await service.discardChanges('/some/path/file.ts');
+            assert.strictEqual(result, false);
+
+            service.dispose();
+        });
+
+        test('deleteUntrackedFile should return false when not initialized', async () => {
+            const { GitService } = await import('../../shortcuts/git/git-service');
+            const service = new GitService();
+
+            // Not initialized, should return false
+            const result = await service.deleteUntrackedFile('/some/path/file.ts');
+            assert.strictEqual(result, false);
+
+            service.dispose();
+        });
+    });
+
+    // ============================================
+    // Discard/Delete Inline Button Tests
+    // ============================================
+    suite('Discard/Delete Inline Buttons', () => {
+        const isWindowsDiscard = process.platform === 'win32';
+        const repoRootDiscard = isWindowsDiscard ? 'C:\\repo' : '/repo';
+
+        const createMockChangeDiscard = (
+            status: GitChangeStatus,
+            stage: GitChangeStage,
+            filePath: string
+        ): GitChange => ({
+            path: filePath,
+            status,
+            stage,
+            repositoryRoot: repoRootDiscard,
+            repositoryName: 'repo',
+            uri: vscode.Uri.file(filePath)
+        });
+
+        test('unstaged file should have correct contextValue for discard button', () => {
+            const filePath = isWindowsDiscard ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChangeDiscard('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change);
+            
+            // Should match /^gitChange_unstaged/ for discard button
+            assert.strictEqual(item.contextValue, 'gitChange_unstaged');
+            assert.ok(/^gitChange_unstaged/.test(item.contextValue));
+        });
+
+        test('untracked file should have correct contextValue for delete button', () => {
+            const filePath = isWindowsDiscard ? 'C:\\repo\\newfile.ts' : '/repo/newfile.ts';
+            const change = createMockChangeDiscard('untracked', 'untracked', filePath);
+            const item = new GitChangeItem(change);
+            
+            // Should match /^gitChange_untracked/ for delete button
+            assert.strictEqual(item.contextValue, 'gitChange_untracked');
+            assert.ok(/^gitChange_untracked/.test(item.contextValue));
+        });
+
+        test('staged file should NOT match discard button pattern', () => {
+            const filePath = isWindowsDiscard ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChangeDiscard('modified', 'staged', filePath);
+            const item = new GitChangeItem(change);
+            
+            // Should NOT match /^gitChange_unstaged/ for discard button
+            assert.strictEqual(item.contextValue, 'gitChange_staged');
+            assert.ok(!/^gitChange_unstaged/.test(item.contextValue));
+        });
+
+        test('unstaged file should NOT match delete button pattern', () => {
+            const filePath = isWindowsDiscard ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChangeDiscard('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change);
+            
+            // Should NOT match /^gitChange_untracked/ for delete button
+            assert.strictEqual(item.contextValue, 'gitChange_unstaged');
+            assert.ok(!/^gitChange_untracked/.test(item.contextValue));
+        });
+
+        test('unstaged markdown file should have correct contextValue for discard button', () => {
+            const filePath = isWindowsDiscard ? 'C:\\repo\\README.md' : '/repo/README.md';
+            const change = createMockChangeDiscard('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change);
+            
+            // Should match /^gitChange_unstaged/ for discard button
+            assert.strictEqual(item.contextValue, 'gitChange_unstaged_md');
+            assert.ok(/^gitChange_unstaged/.test(item.contextValue));
+        });
+
+        test('untracked markdown file should have correct contextValue for delete button', () => {
+            const filePath = isWindowsDiscard ? 'C:\\repo\\newfile.md' : '/repo/newfile.md';
+            const change = createMockChangeDiscard('untracked', 'untracked', filePath);
+            const item = new GitChangeItem(change);
+            
+            // Should match /^gitChange_untracked/ for delete button
+            assert.strictEqual(item.contextValue, 'gitChange_untracked_md');
+            assert.ok(/^gitChange_untracked/.test(item.contextValue));
+        });
+
+        test('loading unstaged file should still match discard button pattern', () => {
+            const filePath = isWindowsDiscard ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChangeDiscard('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change, true);
+            
+            // Should match /^gitChange_unstaged/ even with loading suffix
+            assert.strictEqual(item.contextValue, 'gitChange_unstaged_loading');
+            assert.ok(/^gitChange_unstaged/.test(item.contextValue));
+        });
+
+        test('loading untracked file should still match delete button pattern', () => {
+            const filePath = isWindowsDiscard ? 'C:\\repo\\newfile.ts' : '/repo/newfile.ts';
+            const change = createMockChangeDiscard('untracked', 'untracked', filePath);
+            const item = new GitChangeItem(change, true);
+            
+            // Should match /^gitChange_untracked/ even with loading suffix
+            assert.strictEqual(item.contextValue, 'gitChange_untracked_loading');
+            assert.ok(/^gitChange_untracked/.test(item.contextValue));
+        });
+    });
+
+    // ============================================
     // StageSectionItem Export Tests
     // ============================================
     suite('StageSectionItem Exports', () => {

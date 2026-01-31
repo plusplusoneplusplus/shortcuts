@@ -631,6 +631,8 @@ export async function activate(context: vscode.ExtensionContext) {
         let gitDiffCommentsCleanupCommand: vscode.Disposable | undefined;
         let gitStageFileCommand: vscode.Disposable | undefined;
         let gitUnstageFileCommand: vscode.Disposable | undefined;
+        let gitDiscardChangesCommand: vscode.Disposable | undefined;
+        let gitDeleteUntrackedFileCommand: vscode.Disposable | undefined;
         let gitStageAllCommand: vscode.Disposable | undefined;
         let gitUnstageAllCommand: vscode.Disposable | undefined;
         let gitRefreshCommitRangeCommand: vscode.Disposable | undefined;
@@ -975,6 +977,76 @@ export async function activate(context: vscode.ExtensionContext) {
                             const success = await gitService.unstageFile(filePath);
                             if (!success) {
                                 vscode.window.showErrorMessage(`Failed to unstage file: ${filePath}`);
+                            }
+                        } finally {
+                            // Clear loading state
+                            gitTreeDataProvider.clearFileLoading(filePath);
+                        }
+                    }
+                }
+            );
+
+            // Register discard changes command
+            gitDiscardChangesCommand = vscode.commands.registerCommand(
+                'gitView.discardChanges',
+                async (item: GitChangeItem) => {
+                    if (item?.change?.path) {
+                        const filePath = item.change.path;
+                        const fileName = path.basename(filePath);
+                        const gitService = gitTreeDataProvider['gitService'];
+
+                        // Show confirmation dialog
+                        const confirm = await vscode.window.showWarningMessage(
+                            `Discard changes to "${fileName}"? This cannot be undone.`,
+                            { modal: true },
+                            'Discard'
+                        );
+                        if (confirm !== 'Discard') {
+                            return;
+                        }
+
+                        // Set loading state
+                        gitTreeDataProvider.setFileLoading(filePath);
+
+                        try {
+                            const success = await gitService.discardChanges(filePath);
+                            if (!success) {
+                                vscode.window.showErrorMessage(`Failed to discard changes: ${filePath}`);
+                            }
+                        } finally {
+                            // Clear loading state
+                            gitTreeDataProvider.clearFileLoading(filePath);
+                        }
+                    }
+                }
+            );
+
+            // Register delete untracked file command
+            gitDeleteUntrackedFileCommand = vscode.commands.registerCommand(
+                'gitView.deleteUntrackedFile',
+                async (item: GitChangeItem) => {
+                    if (item?.change?.path) {
+                        const filePath = item.change.path;
+                        const fileName = path.basename(filePath);
+                        const gitService = gitTreeDataProvider['gitService'];
+
+                        // Show confirmation dialog with stronger warning
+                        const confirm = await vscode.window.showWarningMessage(
+                            `Delete "${fileName}"? This will permanently remove the file from disk.`,
+                            { modal: true },
+                            'Delete'
+                        );
+                        if (confirm !== 'Delete') {
+                            return;
+                        }
+
+                        // Set loading state
+                        gitTreeDataProvider.setFileLoading(filePath);
+
+                        try {
+                            const success = await gitService.deleteUntrackedFile(filePath);
+                            if (!success) {
+                                vscode.window.showErrorMessage(`Failed to delete file: ${filePath}`);
                             }
                         } finally {
                             // Clear loading state
@@ -2719,6 +2791,8 @@ export async function activate(context: vscode.ExtensionContext) {
         if (gitClearAllLookedUpCommitsCommand) disposables.push(gitClearAllLookedUpCommitsCommand);
         if (gitStageFileCommand) disposables.push(gitStageFileCommand);
         if (gitUnstageFileCommand) disposables.push(gitUnstageFileCommand);
+        if (gitDiscardChangesCommand) disposables.push(gitDiscardChangesCommand);
+        if (gitDeleteUntrackedFileCommand) disposables.push(gitDeleteUntrackedFileCommand);
         if (gitStageAllCommand) disposables.push(gitStageAllCommand);
         if (gitUnstageAllCommand) disposables.push(gitUnstageAllCommand);
         if (gitRefreshCommitRangeCommand) disposables.push(gitRefreshCommitRangeCommand);
