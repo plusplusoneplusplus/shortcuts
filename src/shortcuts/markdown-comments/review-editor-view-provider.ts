@@ -63,7 +63,7 @@ interface AskAIContext {
 interface WebviewMessage {
     type: 'addComment' | 'editComment' | 'deleteComment' | 'resolveComment' |
     'reopenComment' | 'updateContent' | 'ready' | 'generatePrompt' |
-    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument';
+    'copyPrompt' | 'sendToChat' | 'sendCommentToChat' | 'sendToCLIInteractive' | 'resolveAll' | 'deleteAll' | 'requestState' | 'resolveImagePath' | 'openFile' | 'askAI' | 'askAIInteractive' | 'collapsedSectionsChanged' | 'requestPromptFiles' | 'requestSkills' | 'executeWorkPlan' | 'executeWorkPlanWithSkill' | 'promptSearch' | 'followPromptDialogResult' | 'copyFollowPrompt' | 'requestUpdateDocumentDialog' | 'updateDocument' | 'requestRefreshPlanDialog' | 'refreshPlan';
     commentId?: string;
     content?: string;
     selection?: {
@@ -715,6 +715,20 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                         document.uri.fsPath
                     );
                 }
+                break;
+
+            case 'requestRefreshPlanDialog':
+                // Send message to webview to show the refresh plan dialog
+                webviewPanel.webview.postMessage({
+                    type: 'showRefreshPlanDialog'
+                });
+                break;
+
+            case 'refreshPlan':
+                await this.handleRefreshPlan(
+                    document.uri.fsPath,
+                    message.additionalContext
+                );
                 break;
         }
     }
@@ -1954,6 +1968,84 @@ Please make the requested changes to the document.`;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             vscode.window.showErrorMessage(`Failed to start Update Document session: ${errorMessage}`);
+        }
+    }
+
+    /**
+     * Handle the Refresh Plan action from the webview.
+     * Starts an interactive AI session to regenerate/rewrite the plan based on
+     * the latest codebase state and optional user-provided context.
+     * 
+     * @param filePath - Absolute path to the plan document being refreshed
+     * @param additionalContext - Optional additional context/background from user
+     */
+    private async handleRefreshPlan(filePath: string, additionalContext?: string): Promise<void> {
+        try {
+            // Read current plan content
+            const planContent = await fs.promises.readFile(filePath, 'utf-8');
+            const fileName = path.basename(filePath);
+
+            // Build the prompt for refreshing the plan
+            let prompt = `You are tasked with refreshing and regenerating a plan document based on the latest codebase state.
+
+## Current Plan
+File: ${fileName}
+---
+${planContent}
+---
+
+## Instructions
+Please analyze the current state of the codebase and rewrite this plan to reflect:
+1. What has already been completed (mark as done or remove)
+2. What is still pending and needs to be updated based on current code
+3. Any new tasks that should be added based on recent changes
+4. Updated acceptance criteria if the requirements have evolved
+
+Maintain the same general structure and format of the original plan, but update the content to be accurate and relevant.`;
+
+            // Add user-provided context if available
+            if (additionalContext && additionalContext.trim()) {
+                prompt += `
+
+## Additional Context from User
+${additionalContext}
+
+Please take this additional context into account when refreshing the plan.`;
+            }
+
+            prompt += `
+
+## Output
+Please update the plan file at: ${filePath}
+Preserve the file format (markdown) and any frontmatter if present.`;
+
+            // Get the interactive session manager
+            const sessionManager = getInteractiveSessionManager();
+
+            // Get settings for the tool
+            const config = vscode.workspace.getConfiguration('workspaceShortcuts.workPlan');
+            const tool = config.get<'copilot' | 'claude'>('defaultTool', 'copilot');
+            const workingDirectory = this.resolveWorkPlanWorkingDirectory(filePath);
+
+            // Launch interactive session
+            const sessionId = await sessionManager.startSession({
+                workingDirectory,
+                tool,
+                initialPrompt: prompt
+            });
+
+            if (sessionId) {
+                vscode.window.showInformationMessage(
+                    `Refresh Plan session started for: ${fileName}`
+                );
+            } else {
+                vscode.window.showErrorMessage(
+                    'Failed to start interactive session. Please check that the AI CLI tool is installed.'
+                );
+            }
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to start Refresh Plan session: ${errorMessage}`);
         }
     }
 

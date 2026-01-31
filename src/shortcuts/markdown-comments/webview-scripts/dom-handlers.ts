@@ -21,7 +21,7 @@ import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
 import { AICommandMode, PromptFileInfo, RecentPrompt, SkillInfo } from './types';
-import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, updateContent } from './vscode-bridge';
+import { openFile, requestAskAI, requestAskAIInteractive, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendToChat, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
 import {
@@ -787,6 +787,17 @@ function setupAIActionDropdown(): void {
             hideAIActionMenu();
             // Request the extension to show the update document dialog
             requestUpdateDocument();
+        });
+    }
+
+    // Handle Refresh Plan menu item click
+    const refreshPlanItem = document.getElementById('refreshPlanItem');
+    if (refreshPlanItem) {
+        refreshPlanItem.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideAIActionMenu();
+            // Request the extension to show the refresh plan dialog
+            requestRefreshPlan();
         });
     }
 

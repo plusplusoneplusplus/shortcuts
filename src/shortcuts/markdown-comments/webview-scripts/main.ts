@@ -8,6 +8,7 @@
 
 import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu, updateActionItemsSubmenu, updateExecuteWorkPlanSubmenu, updatePromptFileSubmenu, updateSkillSubmenu } from './dom-handlers';
 import { initFollowPromptDialog, showFollowPromptDialog } from './follow-prompt-dialog';
+import { initRefreshPlanDialog, showRefreshPlanDialog } from './refresh-plan-dialog';
 import { initUpdateDocumentDialog, showUpdateDocumentDialog } from './update-document-dialog';
 import { updateResolvedImage } from './image-handlers';
 import { initPanelManager, scrollToComment } from './panel-manager';
@@ -45,6 +46,10 @@ function init(): void {
     // Initialize Update Document dialog
     initUpdateDocumentDialog();
     console.log('[Webview] Update Document dialog initialized');
+
+    // Initialize Refresh Plan dialog
+    initRefreshPlanDialog();
+    console.log('[Webview] Refresh Plan dialog initialized');
 
     // Setup message listener from extension
     setupMessageListener(handleMessage);
@@ -152,6 +157,11 @@ function handleMessage(message: ExtensionMessage): void {
         case 'showUpdateDocumentDialog':
             // Show the Update Document dialog
             showUpdateDocumentDialog();
+            break;
+
+        case 'showRefreshPlanDialog':
+            // Show the Refresh Plan dialog
+            showRefreshPlanDialog();
             break;
     }
 }

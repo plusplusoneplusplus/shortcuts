@@ -175,7 +175,9 @@ export type WebviewMessage =
     | { type: 'showFollowPromptDialog'; promptFilePath: string; promptName: string; skillName?: string }
     | { type: 'followPromptDialogResult'; promptFilePath: string; skillName?: string; options: FollowPromptDialogOptions }
     | { type: 'copyFollowPrompt'; promptFilePath: string; skillName?: string; additionalContext?: string }
-    | { type: 'updateDocument'; instruction: string };
+    | { type: 'updateDocument'; instruction: string }
+    | { type: 'requestRefreshPlanDialog' }
+    | { type: 'refreshPlan'; additionalContext?: string };
 
 /**
  * Options selected in the Follow Prompt dialog
@@ -253,7 +255,8 @@ export type ExtensionMessage =
     | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[]; skills?: SkillInfo[] }
     | { type: 'skillsResponse'; skills: SkillInfo[] }
     | { type: 'showFollowPromptDialog'; promptName: string; promptFilePath: string; skillName?: string; availableModels: AIModelOption[]; defaults: { mode: 'interactive' | 'background'; model: string } }
-    | { type: 'showUpdateDocumentDialog' };
+    | { type: 'showUpdateDocumentDialog' }
+    | { type: 'showRefreshPlanDialog' };
 
 /**
  * AI model option for dialog dropdown

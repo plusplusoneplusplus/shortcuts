@@ -173,6 +173,10 @@ export function getWebviewContent(
                         <span class="ai-action-icon">📝</span>
                         <span class="ai-action-label">Update Document</span>
                     </div>
+                    <div class="ai-action-menu-item" id="refreshPlanItem">
+                        <span class="ai-action-icon">🔄</span>
+                        <span class="ai-action-label">Refresh Plan</span>
+                    </div>
                     <div class="ai-action-menu-divider"></div>
                     <div class="ai-action-menu-item ai-action-menu-parent" id="resolveCommentsItem">
                         <span class="ai-action-icon">✨</span>
@@ -409,6 +413,34 @@ export function getWebviewContent(
             <div class="modal-footer">
                 <button id="udCancelBtn" class="btn btn-secondary">Cancel</button>
                 <button id="udSubmitBtn" class="btn btn-primary">Update</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Refresh Plan Dialog -->
+    <div class="modal-overlay" id="refreshPlanDialog" style="display: none;">
+        <div class="modal-dialog refresh-plan-dialog">
+            <div class="modal-header">
+                <h3>🔄 Refresh Plan</h3>
+                <button id="rpCloseBtn" class="modal-close-btn">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <p class="modal-description">
+                    Ask AI to rewrite and regenerate this plan based on the latest codebase state.
+                </p>
+                <div class="form-group">
+                    <label for="rpContext">Additional Context <span class="optional">(optional)</span></label>
+                    <textarea id="rpContext" 
+                              placeholder="e.g., Focus on the authentication changes, consider the new API endpoints we added, update based on the refactoring we did..."
+                              rows="4"></textarea>
+                    <div class="form-hint">Provide any additional background or context to help AI understand what has changed.</div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button id="rpCancelBtn" class="btn btn-secondary">Cancel</button>
+                <button id="rpSubmitBtn" class="btn btn-primary">Refresh Plan</button>
             </div>
         </div>
     </div>

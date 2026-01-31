@@ -245,6 +245,16 @@ export function requestUpdateDocument(): void {
 }
 
 /**
+ * Request to show the Refresh Plan dialog
+ * The dialog allows users to optionally provide context for plan refresh
+ */
+export function requestRefreshPlan(): void {
+    // We'll send a message to show the dialog first
+    // The extension will respond with showRefreshPlanDialog
+    postMessage({ type: 'requestRefreshPlanDialog' } as any);
+}
+
+/**
  * Message handler type
  * Re-exported from shared module for backward compatibility
  */
