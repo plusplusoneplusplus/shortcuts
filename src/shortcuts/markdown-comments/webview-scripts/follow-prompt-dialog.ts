@@ -83,6 +83,14 @@ export function initFollowPromptDialog(): void {
             }
         });
     }
+
+    // Listen for mode changes to show/hide priority selector
+    const modeRadios = document.querySelectorAll('input[name="fpMode"]');
+    modeRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            updatePriorityVisibility();
+        });
+    });
     
     console.log('[FollowPromptDialog] Initialized');
 }
@@ -95,7 +103,7 @@ export function showFollowPromptDialog(
     promptFilePath: string,
     skillName: string | undefined,
     availableModels: AIModelOption[],
-    defaults: { mode: 'interactive' | 'background'; model: string }
+    defaults: { mode: 'interactive' | 'background' | 'queued'; model: string }
 ): void {
     const dialog = document.getElementById('followPromptDialog');
     const promptNameEl = document.getElementById('fpPromptName');
@@ -124,13 +132,19 @@ export function showFollowPromptDialog(
     // Set default execution mode
     const interactiveRadio = document.querySelector('input[name="fpMode"][value="interactive"]') as HTMLInputElement;
     const backgroundRadio = document.querySelector('input[name="fpMode"][value="background"]') as HTMLInputElement;
+    const queuedRadio = document.querySelector('input[name="fpMode"][value="queued"]') as HTMLInputElement;
     if (interactiveRadio && backgroundRadio) {
         if (defaults.mode === 'background') {
             backgroundRadio.checked = true;
+        } else if (defaults.mode === 'queued' && queuedRadio) {
+            queuedRadio.checked = true;
         } else {
             interactiveRadio.checked = true;
         }
     }
+
+    // Show/hide priority selector based on mode
+    updatePriorityVisibility();
 
     // Populate model select
     modelSelect.innerHTML = '';
@@ -193,12 +207,34 @@ function getDialogOptions(): FollowPromptDialogOptions {
     const contextInput = document.getElementById('fpAdditionalContext') as HTMLTextAreaElement;
     const modelSelect = document.getElementById('fpModelSelect') as HTMLSelectElement;
     const modeRadio = document.querySelector('input[name="fpMode"]:checked') as HTMLInputElement;
+    const prioritySelect = document.getElementById('fpPrioritySelect') as HTMLSelectElement;
 
-    return {
-        mode: (modeRadio?.value === 'background' ? 'background' : 'interactive') as 'interactive' | 'background',
+    const mode = modeRadio?.value as 'interactive' | 'background' | 'queued' || 'interactive';
+
+    const options: FollowPromptDialogOptions = {
+        mode,
         model: modelSelect?.value || 'claude-sonnet-4.5',
         additionalContext: contextInput?.value?.trim() || undefined
     };
+
+    // Add priority only for queued mode
+    if (mode === 'queued' && prioritySelect) {
+        options.priority = prioritySelect.value as 'high' | 'normal' | 'low';
+    }
+
+    return options;
+}
+
+/**
+ * Update visibility of priority selector based on execution mode
+ */
+function updatePriorityVisibility(): void {
+    const priorityGroup = document.getElementById('fpPriorityGroup');
+    const modeRadio = document.querySelector('input[name="fpMode"]:checked') as HTMLInputElement;
+
+    if (priorityGroup) {
+        priorityGroup.style.display = modeRadio?.value === 'queued' ? 'block' : 'none';
+    }
 }
 
 /**

@@ -102,12 +102,14 @@ export function getAvailableModels(): AIModelConfig[] {
 /**
  * Get the default Follow Prompt execution mode from settings.
  *
- * @returns Default execution mode ('interactive' or 'background')
+ * @returns Default execution mode ('interactive', 'background', or 'queued')
  */
-export function getFollowPromptDefaultMode(): 'interactive' | 'background' {
+export function getFollowPromptDefaultMode(): 'interactive' | 'background' | 'queued' {
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.followPrompt');
     const mode = config.get<string>('defaultMode', 'interactive');
-    return mode === 'background' ? 'background' : 'interactive';
+    if (mode === 'background') return 'background';
+    if (mode === 'queued') return 'queued';
+    return 'interactive';
 }
 
 /**

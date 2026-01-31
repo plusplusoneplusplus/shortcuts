@@ -458,3 +458,71 @@ export {
     GeneratedItem,
     GenerateState
 } from './pipeline';
+
+// ============================================================================
+// Queue System
+// ============================================================================
+
+export {
+    // Core types
+    TaskType,
+    TaskPriority,
+    QueueStatus,
+
+    // Payload types
+    FollowPromptPayload,
+    ResolveCommentsPayload,
+    CodeReviewPayload,
+    AIClarificationPayload,
+    CustomTaskPayload,
+    TaskPayload,
+
+    // Task configuration
+    TaskExecutionConfig,
+    DEFAULT_TASK_CONFIG,
+
+    // Queued task
+    QueuedTask,
+    CreateTaskInput,
+    TaskUpdate,
+
+    // Events
+    QueueChangeType,
+    QueueChangeEvent,
+    QueueEvents,
+
+    // Executor types
+    TaskExecutionResult,
+    TaskExecutor,
+    QueueExecutorOptions,
+    DEFAULT_EXECUTOR_OPTIONS,
+
+    // Queue manager types
+    TaskQueueManagerOptions,
+    DEFAULT_QUEUE_MANAGER_OPTIONS,
+    QueueStats,
+
+    // Priority helpers
+    PRIORITY_VALUES,
+    comparePriority,
+
+    // Type guards
+    isFollowPromptPayload,
+    isResolveCommentsPayload,
+    isCodeReviewPayload,
+    isAIClarificationPayload,
+    isCustomTaskPayload,
+
+    // Utilities
+    generateTaskId,
+
+    // Task Queue Manager
+    TaskQueueManager,
+    createTaskQueueManager,
+
+    // Queue Executor
+    QueueExecutor,
+    createQueueExecutor,
+    SimpleTaskExecutor,
+    createSimpleTaskExecutor,
+} from './queue';

@@ -16,7 +16,8 @@ import {
     getInteractiveSessionManager,
     IAIProcessManager,
     FollowPromptExecutionOptions,
-    FollowPromptProcessMetadata
+    FollowPromptProcessMetadata,
+    getAIQueueService
 } from '../ai-service';
 import { getPredefinedCommentRegistry } from '../shared/predefined-comment-registry';
 import { getPromptFiles } from '../shared/prompt-files-utils';
@@ -1675,7 +1676,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             this.saveLastFollowPromptSelection(options.mode, options.model);
         }
 
-        if (options.mode === 'background') {
+        if (options.mode === 'queued') {
+            await this.executeFollowPromptQueued(planFilePath, promptFilePath, options, skillName);
+        } else if (options.mode === 'background') {
             await this.executeFollowPromptInBackground(planFilePath, promptFilePath, options, skillName);
         } else {
             await this.executeFollowPromptInteractive(planFilePath, promptFilePath, options, skillName);
@@ -1851,10 +1854,64 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     }
 
     /**
+     * Execute Follow Prompt in queued mode (add to queue for sequential execution).
+     * 
+     * @param planFilePath - Absolute path to the plan file
+     * @param promptFilePath - Absolute path to the prompt file
+     * @param options - Execution options
+     * @param skillName - Optional skill name for display
+     */
+    private async executeFollowPromptQueued(
+        planFilePath: string,
+        promptFilePath: string,
+        options: FollowPromptExecutionOptions,
+        skillName?: string
+    ): Promise<void> {
+        const queueService = getAIQueueService();
+        
+        if (!queueService) {
+            vscode.window.showErrorMessage('Queue service not available');
+            return;
+        }
+
+        if (!queueService.isEnabled()) {
+            vscode.window.showWarningMessage(
+                'Queue feature is disabled. Enable it in settings: workspaceShortcuts.queue.enabled'
+            );
+            return;
+        }
+
+        const displayName = skillName ? `Skill: ${skillName}` : path.basename(promptFilePath, '.prompt.md');
+        const workingDirectory = this.resolveWorkPlanWorkingDirectory(planFilePath);
+
+        // Queue the task
+        const result = queueService.queueTask({
+            type: 'follow-prompt',
+            payload: {
+                promptFilePath,
+                planFilePath,
+                skillName,
+                additionalContext: options.additionalContext,
+                workingDirectory
+            },
+            priority: options.priority || 'normal',
+            displayName: `${displayName} → ${path.basename(planFilePath)}`,
+            config: {
+                model: options.model,
+                timeoutMs: options.timeoutMs ?? 600000 // 10 minutes default
+            }
+        });
+
+        vscode.window.showInformationMessage(
+            `Added to queue (#${result.position}): ${displayName} → ${path.basename(planFilePath)}`
+        );
+    }
+
+    /**
      * Get the last Follow Prompt selection from workspace state.
      */
-    private getLastFollowPromptSelection(): { mode: 'interactive' | 'background'; model: string } | undefined {
-        return this.context.workspaceState.get<{ mode: 'interactive' | 'background'; model: string }>(
+    private getLastFollowPromptSelection(): { mode: 'interactive' | 'background' | 'queued'; model: string } | undefined {
+        return this.context.workspaceState.get<{ mode: 'interactive' | 'background' | 'queued'; model: string }>(
             'followPrompt.lastSelection'
         );
     }
@@ -1862,7 +1919,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     /**
      * Save the last Follow Prompt selection to workspace state.
      */
-    private saveLastFollowPromptSelection(mode: 'interactive' | 'background', model: string): void {
+    private saveLastFollowPromptSelection(mode: 'interactive' | 'background' | 'queued', model: string): void {
         this.context.workspaceState.update('followPrompt.lastSelection', { mode, model });
     }
 

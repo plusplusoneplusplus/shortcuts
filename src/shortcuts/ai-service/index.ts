@@ -164,3 +164,19 @@ export {
     AIInvokerResult,
     AIInvoker
 } from './ai-invoker-factory';
+
+// Export AI Queue Service
+export {
+    AIQueueService,
+    getAIQueueService,
+    initializeAIQueueService,
+    resetAIQueueService,
+    QueueTaskOptions,
+    QueueTaskResult
+} from './ai-queue-service';
+
+// Export AI Queue Commands
+export { registerQueueCommands } from './ai-queue-commands';
+
+// Export AI Queue Status Bar
+export { AIQueueStatusBarItem, createQueueStatusBarItem } from './ai-queue-status-bar';

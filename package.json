@@ -532,6 +532,38 @@
           "default": true,
           "markdownDescription": "Remember the last used execution mode and model selection. When enabled, the dialog will default to your previous choices."
         },
+        "workspaceShortcuts.queue.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Enable the AI task queue system. When enabled, tasks can be queued for sequential execution instead of running immediately."
+        },
+        "workspaceShortcuts.queue.maxConcurrency": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 10,
+          "markdownDescription": "Maximum number of concurrent task executions. Default is 1 (sequential execution). Higher values allow parallel processing but may hit API rate limits."
+        },
+        "workspaceShortcuts.queue.defaultPriority": {
+          "type": "string",
+          "enum": [
+            "high",
+            "normal",
+            "low"
+          ],
+          "enumDescriptions": [
+            "High priority - Execute before normal and low priority tasks",
+            "Normal priority - Default priority level",
+            "Low priority - Execute after high and normal priority tasks"
+          ],
+          "default": "normal",
+          "markdownDescription": "Default priority for queued tasks. Higher priority tasks are executed first."
+        },
+        "workspaceShortcuts.queue.notifyOnComplete": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a notification when a queued task completes."
+        },
         "workspaceShortcuts.codeReview.rulesFolder": {
           "type": "string",
           "default": ".github/cr-rules",
@@ -1197,6 +1229,48 @@
         "title": "Copy Session ID",
         "category": "AI Processes",
         "icon": "$(key)"
+      },
+      {
+        "command": "shortcuts.queue.pauseQueue",
+        "title": "Pause Queue",
+        "category": "AI Queue",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "shortcuts.queue.resumeQueue",
+        "title": "Resume Queue",
+        "category": "AI Queue",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "shortcuts.queue.clearQueue",
+        "title": "Clear Queue",
+        "category": "AI Queue",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "shortcuts.queue.cancelTask",
+        "title": "Cancel Task",
+        "category": "AI Queue",
+        "icon": "$(close)"
+      },
+      {
+        "command": "shortcuts.queue.moveToTop",
+        "title": "Move to Top",
+        "category": "AI Queue",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "shortcuts.queue.moveUp",
+        "title": "Move Up",
+        "category": "AI Queue",
+        "icon": "$(chevron-up)"
+      },
+      {
+        "command": "shortcuts.queue.moveDown",
+        "title": "Move Down",
+        "category": "AI Queue",
+        "icon": "$(chevron-down)"
       },
       {
         "command": "interactiveSessions.start",

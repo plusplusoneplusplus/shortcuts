@@ -406,13 +406,15 @@ export interface IAIProcessManager {
  */
 export interface FollowPromptExecutionOptions {
     /** Execution mode */
-    mode: 'interactive' | 'background';
+    mode: 'interactive' | 'background' | 'queued';
     /** AI model to use */
     model: string;
     /** Additional context/instructions */
     additionalContext?: string;
     /** Timeout in ms (for background mode) */
     timeoutMs?: number;
+    /** Priority for queued mode */
+    priority?: 'high' | 'normal' | 'low';
 }
 
 /**

@@ -185,11 +185,13 @@ export type WebviewMessage =
  */
 export interface FollowPromptDialogOptions {
     /** Execution mode */
-    mode: 'interactive' | 'background';
+    mode: 'interactive' | 'background' | 'queued';
     /** AI model to use */
     model: string;
     /** Additional context/instructions */
     additionalContext?: string;
+    /** Priority for queued mode */
+    priority?: 'high' | 'normal' | 'low';
 }
 
 /**
@@ -255,7 +257,7 @@ export type ExtensionMessage =
     | { type: 'scrollToComment'; commentId: string }
     | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[]; skills?: SkillInfo[] }
     | { type: 'skillsResponse'; skills: SkillInfo[] }
-    | { type: 'showFollowPromptDialog'; promptName: string; promptFilePath: string; skillName?: string; availableModels: AIModelOption[]; defaults: { mode: 'interactive' | 'background'; model: string } }
+    | { type: 'showFollowPromptDialog'; promptName: string; promptFilePath: string; skillName?: string; availableModels: AIModelOption[]; defaults: { mode: 'interactive' | 'background' | 'queued'; model: string } }
     | { type: 'showUpdateDocumentDialog' }
     | { type: 'showRefreshPlanDialog' };
 
