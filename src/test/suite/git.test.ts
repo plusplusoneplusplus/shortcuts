@@ -2033,6 +2033,135 @@ suite('Git View Tests', () => {
     });
 
     // ============================================
+    // Stage/Unstage Inline Button Tests
+    // ============================================
+    suite('Stage/Unstage Inline Buttons', () => {
+        const isWindowsBtn = process.platform === 'win32';
+        const repoRootBtn = isWindowsBtn ? 'C:\\repo' : '/repo';
+
+        const createMockChangeBtn = (
+            status: GitChangeStatus,
+            stage: GitChangeStage,
+            filePath: string
+        ): GitChange => ({
+            path: filePath,
+            status,
+            stage,
+            repositoryRoot: repoRootBtn,
+            repositoryName: 'repo',
+            uri: vscode.Uri.file(filePath)
+        });
+
+        test('loading state should add _loading suffix to contextValue', () => {
+            const filePath = isWindowsBtn ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChangeBtn('modified', 'unstaged', filePath);
+            
+            // Without loading
+            const itemNormal = new GitChangeItem(change, false);
+            assert.strictEqual(itemNormal.contextValue, 'gitChange_unstaged');
+            
+            // With loading
+            const itemLoading = new GitChangeItem(change, true);
+            assert.strictEqual(itemLoading.contextValue, 'gitChange_unstaged_loading');
+        });
+
+        test('loading state should show spinner icon', () => {
+            const filePath = isWindowsBtn ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChangeBtn('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change, true);
+            
+            assert.ok(item.iconPath instanceof vscode.ThemeIcon);
+            assert.strictEqual((item.iconPath as vscode.ThemeIcon).id, 'loading~spin');
+        });
+
+        test('loading state should disable command', () => {
+            const filePath = isWindowsBtn ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChangeBtn('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change, true);
+            
+            assert.strictEqual(item.command, undefined);
+        });
+
+        test('non-loading state should have command', () => {
+            const filePath = isWindowsBtn ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            const change = createMockChangeBtn('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change, false);
+            
+            assert.ok(item.command);
+            assert.strictEqual(item.command.command, 'gitDiffComments.openWithReview');
+        });
+
+        test('staged markdown file should have correct contextValue for inline button', () => {
+            const filePath = isWindowsBtn ? 'C:\\repo\\README.md' : '/repo/README.md';
+            const change = createMockChangeBtn('modified', 'staged', filePath);
+            const item = new GitChangeItem(change);
+            
+            // Should match /^gitChange_staged/ for unstage button
+            assert.strictEqual(item.contextValue, 'gitChange_staged_md');
+            assert.ok(/^gitChange_staged/.test(item.contextValue));
+        });
+
+        test('unstaged markdown file should have correct contextValue for inline button', () => {
+            const filePath = isWindowsBtn ? 'C:\\repo\\README.md' : '/repo/README.md';
+            const change = createMockChangeBtn('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change);
+            
+            // Should match /^gitChange_(unstaged|untracked)/ for stage button
+            assert.strictEqual(item.contextValue, 'gitChange_unstaged_md');
+            assert.ok(/^gitChange_(unstaged|untracked)/.test(item.contextValue));
+        });
+
+        test('loading markdown file should have _loading suffix', () => {
+            const filePath = isWindowsBtn ? 'C:\\repo\\README.md' : '/repo/README.md';
+            const change = createMockChangeBtn('modified', 'staged', filePath);
+            const item = new GitChangeItem(change, true);
+            
+            assert.strictEqual(item.contextValue, 'gitChange_staged_md_loading');
+        });
+
+        test('all stage types should have correct contextValue pattern', () => {
+            const filePath = isWindowsBtn ? 'C:\\repo\\file.ts' : '/repo/file.ts';
+            
+            // Staged
+            const stagedChange = createMockChangeBtn('modified', 'staged', filePath);
+            const stagedItem = new GitChangeItem(stagedChange);
+            assert.ok(/^gitChange_staged/.test(stagedItem.contextValue || ''));
+            
+            // Unstaged
+            const unstagedChange = createMockChangeBtn('modified', 'unstaged', filePath);
+            const unstagedItem = new GitChangeItem(unstagedChange);
+            assert.ok(/^gitChange_(unstaged|untracked)/.test(unstagedItem.contextValue || ''));
+            
+            // Untracked
+            const untrackedChange = createMockChangeBtn('untracked', 'untracked', filePath);
+            const untrackedItem = new GitChangeItem(untrackedChange);
+            assert.ok(/^gitChange_(unstaged|untracked)/.test(untrackedItem.contextValue || ''));
+        });
+
+        test('loading description should include loading indicator', () => {
+            const filePath = isWindowsBtn ? 'C:\\repo\\src\\file.ts' : '/repo/src/file.ts';
+            const change = createMockChangeBtn('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change, true);
+            
+            // Description should contain loading indicator
+            const description = typeof item.description === 'string' ? item.description : '';
+            assert.ok(description.includes('⏳'), 
+                `Description "${description}" should include loading indicator`);
+        });
+
+        test('non-loading description should not include loading indicator', () => {
+            const filePath = isWindowsBtn ? 'C:\\repo\\src\\file.ts' : '/repo/src/file.ts';
+            const change = createMockChangeBtn('modified', 'unstaged', filePath);
+            const item = new GitChangeItem(change, false);
+            
+            // Description should not contain loading indicator
+            const description = typeof item.description === 'string' ? item.description : '';
+            assert.ok(!description.includes('⏳'), 
+                `Description "${description}" should not include loading indicator`);
+        });
+    });
+
+    // ============================================
     // StageSectionItem Export Tests
     // ============================================
     suite('StageSectionItem Exports', () => {
