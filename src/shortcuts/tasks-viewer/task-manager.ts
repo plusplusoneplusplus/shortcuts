@@ -1,10 +1,101 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import * as yaml from 'js-yaml';
 import { ensureDirectoryExists, safeExists, safeReadDir, safeRename, safeStats, safeWriteFile } from '../shared';
-import { Task, TasksViewerSettings, TaskSortBy, TaskDocument, TaskDocumentGroup, TaskFolder, DiscoverySettings, DiscoveryDefaultScope } from './types';
+import { Task, TasksViewerSettings, TaskSortBy, TaskDocument, TaskDocumentGroup, TaskFolder, DiscoverySettings, DiscoveryDefaultScope, TaskStatus } from './types';
 import { loadRelatedItems, mergeRelatedItems, RELATED_ITEMS_FILENAME } from './related-items-loader';
 import { RelatedItem } from './types';
+
+/** Valid task status values */
+const VALID_TASK_STATUSES: TaskStatus[] = ['pending', 'in-progress', 'done', 'future'];
+
+/**
+ * Parse frontmatter from a markdown file and extract task status
+ * @param filePath - Absolute path to the markdown file
+ * @returns TaskStatus or undefined if no valid status found
+ */
+function parseTaskStatus(filePath: string): TaskStatus | undefined {
+    try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        
+        // Check for frontmatter (starts with ---)
+        if (!content.startsWith('---')) {
+            return undefined;
+        }
+        
+        // Find the closing ---
+        const endIndex = content.indexOf('---', 3);
+        if (endIndex === -1) {
+            return undefined;
+        }
+        
+        const frontmatterContent = content.substring(3, endIndex).trim();
+        if (!frontmatterContent) {
+            return undefined;
+        }
+        
+        // Parse YAML frontmatter
+        const frontmatter = yaml.load(frontmatterContent) as Record<string, unknown>;
+        if (!frontmatter || typeof frontmatter !== 'object') {
+            return undefined;
+        }
+        
+        // Extract status field
+        const status = frontmatter.status;
+        if (typeof status === 'string' && VALID_TASK_STATUSES.includes(status as TaskStatus)) {
+            return status as TaskStatus;
+        }
+        
+        return undefined;
+    } catch {
+        // Silently ignore parsing errors
+        return undefined;
+    }
+}
+
+/**
+ * Update the status field in a markdown file's frontmatter
+ * Creates frontmatter if it doesn't exist
+ * @param filePath - Absolute path to the markdown file
+ * @param status - New status to set
+ */
+export async function updateTaskStatus(filePath: string, status: TaskStatus): Promise<void> {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    
+    if (content.startsWith('---')) {
+        // Has existing frontmatter - update it
+        const endIndex = content.indexOf('---', 3);
+        if (endIndex !== -1) {
+            const frontmatterContent = content.substring(3, endIndex).trim();
+            let frontmatter: Record<string, unknown> = {};
+            
+            if (frontmatterContent) {
+                try {
+                    frontmatter = (yaml.load(frontmatterContent) as Record<string, unknown>) || {};
+                } catch {
+                    frontmatter = {};
+                }
+            }
+            
+            // Update status
+            frontmatter.status = status;
+            
+            // Rebuild the file
+            const newFrontmatter = yaml.dump(frontmatter, { lineWidth: -1 }).trim();
+            const bodyContent = content.substring(endIndex + 3);
+            const newContent = `---\n${newFrontmatter}\n---${bodyContent}`;
+            
+            await fs.promises.writeFile(filePath, newContent, 'utf-8');
+            return;
+        }
+    }
+    
+    // No frontmatter - add it
+    const newFrontmatter = yaml.dump({ status }, { lineWidth: -1 }).trim();
+    const newContent = `---\n${newFrontmatter}\n---\n\n${content}`;
+    await fs.promises.writeFile(filePath, newContent, 'utf-8');
+}
 
 /**
  * Manages task files stored in the tasks folder
@@ -107,13 +198,15 @@ export class TaskManager implements vscode.Disposable {
                 const subTasks = this.scanTasksRecursively(itemPath, subRelativePath, isArchived);
                 tasks.push(...subTasks);
             } else if (statsResult.data.isFile() && item.endsWith('.md')) {
-                // Found a markdown file
+                // Found a markdown file - parse status from frontmatter
+                const status = parseTaskStatus(itemPath);
                 tasks.push({
                     name: path.basename(item, '.md'),
                     filePath: itemPath,
                     modifiedTime: statsResult.data.mtime,
                     isArchived,
-                    relativePath: relativePath || undefined
+                    relativePath: relativePath || undefined,
+                    status
                 });
             }
         }
@@ -577,6 +670,7 @@ export class TaskManager implements vscode.Disposable {
             enabled: config.get<boolean>('enabled', true),
             folderPath: config.get<string>('folderPath', '.vscode/tasks'),
             showArchived: config.get<boolean>('showArchived', false),
+            showFuture: config.get<boolean>('showFuture', true),
             sortBy: config.get<TaskSortBy>('sortBy', 'modifiedDate'),
             groupRelatedDocuments: config.get<boolean>('groupRelatedDocuments', true),
             discovery
@@ -675,8 +769,9 @@ export class TaskManager implements vscode.Disposable {
                 const subDocuments = this.scanDocumentsRecursively(itemPath, subRelativePath, isArchived);
                 documents.push(...subDocuments);
             } else if (statsResult.data.isFile() && item.endsWith('.md')) {
-                // Found a markdown file
+                // Found a markdown file - parse status from frontmatter
                 const { baseName, docType } = this.parseFileName(item);
+                const status = parseTaskStatus(itemPath);
                 documents.push({
                     baseName,
                     docType,
@@ -684,7 +779,8 @@ export class TaskManager implements vscode.Disposable {
                     filePath: itemPath,
                     modifiedTime: statsResult.data.mtime,
                     isArchived,
-                    relativePath: relativePath || undefined
+                    relativePath: relativePath || undefined,
+                    status
                 });
             }
         }

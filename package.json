@@ -684,6 +684,11 @@
           "default": true,
           "description": "Show archived tasks in the Tasks Viewer (grouped into Active/Archived sections)"
         },
+        "workspaceShortcuts.tasksViewer.showFuture": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show tasks marked as 'future' in the Tasks Viewer. Future tasks are captured but not ready to work on (backlog/someday)."
+        },
         "workspaceShortcuts.tasksViewer.sortBy": {
           "type": "string",
           "enum": [
@@ -1794,6 +1799,30 @@
         "icon": "$(pass-filled)"
       },
       {
+        "command": "tasksViewer.markAsFuture",
+        "title": "Mark as Future",
+        "category": "Tasks",
+        "icon": "$(calendar)"
+      },
+      {
+        "command": "tasksViewer.markAsPending",
+        "title": "Mark as Pending",
+        "category": "Tasks",
+        "icon": "$(circle-outline)"
+      },
+      {
+        "command": "tasksViewer.markAsInProgress",
+        "title": "Mark as In Progress",
+        "category": "Tasks",
+        "icon": "$(play-circle)"
+      },
+      {
+        "command": "tasksViewer.markAsDone",
+        "title": "Mark as Done",
+        "category": "Tasks",
+        "icon": "$(check)"
+      },
+      {
         "command": "debugPanel.executeCommand",
         "title": "Execute Debug Command",
         "category": "Debug Panel"
@@ -2212,18 +2241,38 @@
           "group": "review@1"
         },
         {
+          "command": "tasksViewer.markAsFuture",
+          "when": "view == tasksView && viewItem =~ /^task(_reviewed|_needsReReview|_inProgress|_done)?$/ && viewItem != task_future",
+          "group": "status@1"
+        },
+        {
+          "command": "tasksViewer.markAsPending",
+          "when": "view == tasksView && viewItem =~ /^task_(future|inProgress|done)(_reviewed|_needsReReview)?$/",
+          "group": "status@2"
+        },
+        {
+          "command": "tasksViewer.markAsInProgress",
+          "when": "view == tasksView && viewItem =~ /^task(_future|_done)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_inProgress/",
+          "group": "status@3"
+        },
+        {
+          "command": "tasksViewer.markAsDone",
+          "when": "view == tasksView && viewItem =~ /^task(_future|_inProgress)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_done/",
+          "group": "status@4"
+        },
+        {
           "command": "tasksViewer.rename",
-          "when": "view == tasksView && viewItem =~ /^task(_reviewed|_needsReReview)?$/",
+          "when": "view == tasksView && viewItem =~ /^task(_future|_inProgress|_done)?(_reviewed|_needsReReview)?$/",
           "group": "task@1"
         },
         {
           "command": "tasksViewer.archive",
-          "when": "view == tasksView && viewItem =~ /^task(_reviewed|_needsReReview)?$/",
+          "when": "view == tasksView && viewItem =~ /^task(_future|_inProgress|_done)?(_reviewed|_needsReReview)?$/",
           "group": "task@2"
         },
         {
           "command": "tasksViewer.delete",
-          "when": "view == tasksView && viewItem =~ /^task(_reviewed|_needsReReview)?$/",
+          "when": "view == tasksView && viewItem =~ /^task(_future|_inProgress|_done)?(_reviewed|_needsReReview)?$/",
           "group": "task@3"
         },
         {
@@ -2282,13 +2331,33 @@
           "group": "review@1"
         },
         {
+          "command": "tasksViewer.markAsFuture",
+          "when": "view == tasksView && viewItem =~ /^taskDocument(_reviewed|_needsReReview|_inProgress|_done)?$/ && viewItem !~ /_future/",
+          "group": "status@1"
+        },
+        {
+          "command": "tasksViewer.markAsPending",
+          "when": "view == tasksView && viewItem =~ /^taskDocument_(future|inProgress|done)(_reviewed|_needsReReview)?$/",
+          "group": "status@2"
+        },
+        {
+          "command": "tasksViewer.markAsInProgress",
+          "when": "view == tasksView && viewItem =~ /^taskDocument(_future|_done)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_inProgress/",
+          "group": "status@3"
+        },
+        {
+          "command": "tasksViewer.markAsDone",
+          "when": "view == tasksView && viewItem =~ /^taskDocument(_future|_inProgress)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_done/",
+          "group": "status@4"
+        },
+        {
           "command": "tasksViewer.renameDocument",
-          "when": "view == tasksView && viewItem =~ /^(archived)?taskDocument(_reviewed|_needsReReview)?$/",
+          "when": "view == tasksView && viewItem =~ /^(archived)?taskDocument(_future|_inProgress|_done)?(_reviewed|_needsReReview)?$/",
           "group": "document@1"
         },
         {
           "command": "tasksViewer.archiveDocument",
-          "when": "view == tasksView && viewItem =~ /^taskDocument(_reviewed|_needsReReview)?$/",
+          "when": "view == tasksView && viewItem =~ /^taskDocument(_future|_inProgress|_done)?(_reviewed|_needsReReview)?$/",
           "group": "document@2"
         },
         {

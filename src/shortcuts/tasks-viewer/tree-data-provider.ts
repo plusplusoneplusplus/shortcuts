@@ -173,12 +173,15 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
      * Split a folder hierarchy into active and archived portions
      */
     private splitFolderByArchiveStatus(folder: TaskFolder): { activeFolder: TaskFolder; archivedFolder: TaskFolder } {
+        const settings = this.taskManager.getSettings();
+        const showFuture = settings.showFuture;
+        
         const activeFolder: TaskFolder = {
             ...folder,
             children: [],
-            documentGroups: folder.documentGroups.filter(g => !g.isArchived),
-            singleDocuments: folder.singleDocuments.filter(d => !d.isArchived),
-            tasks: folder.tasks.filter(t => !t.isArchived)
+            documentGroups: folder.documentGroups.filter(g => !g.isArchived && this.filterDocumentGroupByFutureStatus(g, showFuture)),
+            singleDocuments: folder.singleDocuments.filter(d => !d.isArchived && this.filterDocumentByFutureStatus(d, showFuture)),
+            tasks: folder.tasks.filter(t => !t.isArchived && this.filterTaskByFutureStatus(t, showFuture))
         };
 
         const archivedFolder: TaskFolder = {
@@ -204,6 +207,41 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
         }
 
         return { activeFolder, archivedFolder };
+    }
+
+    /**
+     * Filter a task by future status
+     * Returns true if the task should be shown
+     */
+    private filterTaskByFutureStatus(task: Task, showFuture: boolean): boolean {
+        if (showFuture) {
+            return true;
+        }
+        return task.status !== 'future';
+    }
+
+    /**
+     * Filter a document by future status
+     * Returns true if the document should be shown
+     */
+    private filterDocumentByFutureStatus(doc: TaskDocument, showFuture: boolean): boolean {
+        if (showFuture) {
+            return true;
+        }
+        return doc.status !== 'future';
+    }
+
+    /**
+     * Filter a document group by future status
+     * Returns true if any document in the group should be shown
+     * A group is hidden only if ALL documents are future status
+     */
+    private filterDocumentGroupByFutureStatus(group: TaskDocumentGroup, showFuture: boolean): boolean {
+        if (showFuture) {
+            return true;
+        }
+        // Show group if at least one document is not future
+        return group.documents.some(d => d.status !== 'future');
     }
 
     /**
@@ -384,23 +422,34 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
             items.push(new TaskFolderItem(subfolder));
         }
 
-        // Add document groups
-        const sortedGroups = this.sortDocumentGroups(folder.documentGroups);
+        // Filter document groups by future status
+        const showFuture = settings.showFuture;
+        const filteredGroups = folder.documentGroups.filter(g => this.filterDocumentGroupByFutureStatus(g, showFuture));
+        const sortedGroups = this.sortDocumentGroups(filteredGroups);
+        
         for (const group of sortedGroups) {
-            const groupItem = new TaskDocumentGroupItem(group.baseName, group.documents, group.isArchived);
+            // Filter documents within the group if not showing future
+            const filteredDocs = showFuture ? group.documents : group.documents.filter(d => d.status !== 'future');
+            if (filteredDocs.length === 0) {
+                continue; // Skip empty groups after filtering
+            }
+            const groupItem = new TaskDocumentGroupItem(group.baseName, filteredDocs, group.isArchived);
             this.applyGroupReviewStatus(groupItem);
             items.push(groupItem);
         }
 
-        // Add single documents
-        const sortedDocs = this.sortDocuments(folder.singleDocuments);
+        // Filter single documents by future status
+        const filteredDocs = folder.singleDocuments.filter(d => this.filterDocumentByFutureStatus(d, showFuture));
+        const sortedDocs = this.sortDocuments(filteredDocs);
+        
         for (const doc of sortedDocs) {
             const taskItem = new TaskItem({
                 name: doc.fileName.replace(/\.md$/i, ''),
                 filePath: doc.filePath,
                 modifiedTime: doc.modifiedTime,
                 isArchived: doc.isArchived,
-                relativePath: doc.relativePath
+                relativePath: doc.relativePath,
+                status: doc.status
             });
             this.applyReviewStatus(taskItem);
             items.push(taskItem);
@@ -528,9 +577,17 @@ export class TasksTreeDataProvider extends BaseTreeDataProvider<vscode.TreeItem>
      * Get flat task items (when showArchived is disabled)
      */
     private getFlatTaskItems(tasks: Task[]): TaskItem[] {
+        const settings = this.taskManager.getSettings();
+        
+        // Filter by future status
+        let filteredTasks = tasks;
+        if (!settings.showFuture) {
+            filteredTasks = tasks.filter(t => t.status !== 'future');
+        }
+        
         // Sort tasks
-        tasks = this.sortTasks(tasks);
-        return tasks.map(task => {
+        filteredTasks = this.sortTasks(filteredTasks);
+        return filteredTasks.map(task => {
             const item = new TaskItem(task);
             this.applyReviewStatus(item);
             return item;

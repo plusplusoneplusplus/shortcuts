@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Task, ReviewStatus } from './types';
+import { Task, ReviewStatus, TaskStatus } from './types';
 
 /**
  * Tree item representing a task in the Tasks Viewer
@@ -8,6 +8,7 @@ export class TaskItem extends vscode.TreeItem {
     public contextValue: string;
     public readonly filePath: string;
     public readonly isArchived: boolean;
+    public readonly taskStatus?: TaskStatus;
     private _reviewStatus: ReviewStatus = 'unreviewed';
 
     constructor(task: Task) {
@@ -15,10 +16,11 @@ export class TaskItem extends vscode.TreeItem {
 
         this.filePath = task.filePath;
         this.isArchived = task.isArchived;
-        this.contextValue = task.isArchived ? 'archivedTask' : 'task';
-        this.tooltip = task.filePath;
-        this.description = this.formatModifiedTime(task.modifiedTime);
-        this.iconPath = this.getIconPath(task.isArchived, 'unreviewed');
+        this.taskStatus = task.status;
+        this.contextValue = this.getContextValue(task.isArchived, task.status, 'unreviewed');
+        this.tooltip = this.getTooltip(task);
+        this.description = this.formatDescription(task);
+        this.iconPath = this.getIconPath(task.isArchived, task.status, 'unreviewed');
 
         // Set resourceUri for drag-and-drop support
         this.resourceUri = vscode.Uri.file(task.filePath);
@@ -43,25 +45,88 @@ export class TaskItem extends vscode.TreeItem {
      */
     setReviewStatus(status: ReviewStatus): void {
         this._reviewStatus = status;
-        this.iconPath = this.getIconPath(this.isArchived, status);
-        // Update context value to enable/disable menu items
-        if (this.isArchived) {
-            this.contextValue = 'archivedTask';
-        } else {
-            this.contextValue = status === 'reviewed' ? 'task_reviewed' : 
-                               status === 'needs-re-review' ? 'task_needsReReview' : 'task';
+        this.iconPath = this.getIconPath(this.isArchived, this.taskStatus, status);
+        this.contextValue = this.getContextValue(this.isArchived, this.taskStatus, status);
+    }
+
+    /**
+     * Get the context value for menu visibility
+     */
+    private getContextValue(isArchived: boolean, taskStatus: TaskStatus | undefined, reviewStatus: ReviewStatus): string {
+        if (isArchived) {
+            return 'archivedTask';
         }
+        
+        // Build context value based on task status and review status
+        let base = 'task';
+        
+        // Add task status suffix for future tasks
+        if (taskStatus === 'future') {
+            base = 'task_future';
+        } else if (taskStatus === 'in-progress') {
+            base = 'task_inProgress';
+        } else if (taskStatus === 'done') {
+            base = 'task_done';
+        }
+        
+        // Add review status suffix
+        if (reviewStatus === 'reviewed') {
+            return `${base}_reviewed`;
+        } else if (reviewStatus === 'needs-re-review') {
+            return `${base}_needsReReview`;
+        }
+        
+        return base;
+    }
+
+    /**
+     * Get the tooltip for the task
+     */
+    private getTooltip(task: Task): string {
+        let tooltip = task.filePath;
+        if (task.status) {
+            tooltip += `\nStatus: ${task.status}`;
+        }
+        return tooltip;
+    }
+
+    /**
+     * Format the description (modified time + optional status indicator)
+     */
+    private formatDescription(task: Task): string {
+        const timeStr = this.formatModifiedTime(task.modifiedTime);
+        // Add status indicator for future tasks
+        if (task.status === 'future') {
+            return `${timeStr} • future`;
+        }
+        if (task.status === 'in-progress') {
+            return `${timeStr} • in-progress`;
+        }
+        if (task.status === 'done') {
+            return `${timeStr} • done`;
+        }
+        return timeStr;
     }
 
     /**
      * Get the icon for the task item
      */
-    private getIconPath(isArchived: boolean, reviewStatus: ReviewStatus): vscode.ThemeIcon {
+    private getIconPath(isArchived: boolean, taskStatus: TaskStatus | undefined, reviewStatus: ReviewStatus): vscode.ThemeIcon {
         if (isArchived) {
             return new vscode.ThemeIcon('archive', new vscode.ThemeColor('disabledForeground'));
         }
         
-        // Apply review status icon
+        // Task status icons take priority over review status for visual distinction
+        switch (taskStatus) {
+            case 'future':
+                return new vscode.ThemeIcon('calendar', new vscode.ThemeColor('disabledForeground'));
+            case 'in-progress':
+                return new vscode.ThemeIcon('play-circle', new vscode.ThemeColor('charts.blue'));
+            case 'done':
+                return new vscode.ThemeIcon('check', new vscode.ThemeColor('testing.iconPassed'));
+        }
+        
+        // Apply review status icon for pending/unspecified tasks
         switch (reviewStatus) {
             case 'reviewed':
                 return new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));

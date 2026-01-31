@@ -12,6 +12,8 @@ export interface Task {
     isArchived: boolean;
     /** Relative path from tasks root folder (undefined for root-level files) */
     relativePath?: string;
+    /** Task workflow status parsed from frontmatter (defaults to 'pending' if not specified) */
+    status?: TaskStatus;
 }
 
 /**
@@ -33,6 +35,8 @@ export interface TaskDocument {
     isArchived: boolean;
     /** Relative path from tasks root folder (undefined for root-level files) */
     relativePath?: string;
+    /** Task workflow status parsed from frontmatter (defaults to 'pending' if not specified) */
+    status?: TaskStatus;
 }
 
 /**
@@ -52,6 +56,15 @@ export interface TaskDocumentGroup {
 
 /** Sort options for tasks */
 export type TaskSortBy = 'name' | 'modifiedDate';
+
+/**
+ * Task workflow status - represents the lifecycle state of a task
+ * - pending: Task is ready to be worked on (default for new tasks)
+ * - in-progress: Task is currently being worked on
+ * - done: Task is completed
+ * - future: Task is captured but not ready to work on (backlog/someday)
+ */
+export type TaskStatus = 'pending' | 'in-progress' | 'done' | 'future';
 
 /**
  * Represents a folder containing task files
@@ -83,6 +96,8 @@ export interface TasksViewerSettings {
     /** Path to tasks folder relative to workspace root */
     folderPath: string;
     showArchived: boolean;
+    /** Whether to show tasks marked as 'future' in the Tasks Viewer */
+    showFuture: boolean;
     sortBy: TaskSortBy;
     /** Whether to group related documents (e.g., task1.plan.md, task1.test.md) under a single parent */
     groupRelatedDocuments: boolean;

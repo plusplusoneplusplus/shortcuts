@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
-import { TaskManager } from './task-manager';
+import { TaskManager, updateTaskStatus } from './task-manager';
 import { TasksTreeDataProvider } from './tree-data-provider';
 import { TaskItem } from './task-item';
 import { TaskDocumentItem } from './task-document-item';
 import { TaskDocumentGroupItem } from './task-document-group-item';
 import { TaskFolderItem } from './task-folder-item';
 import { ReviewStatusManager } from './review-status-manager';
+import { TaskStatus } from './types';
 
 /**
  * Command handlers for the Tasks Viewer
@@ -64,7 +65,12 @@ export class TasksCommands {
             vscode.commands.registerCommand('tasksViewer.markAsUnreviewed', (item: TaskItem | TaskDocumentItem) => this.markAsUnreviewed(item)),
             vscode.commands.registerCommand('tasksViewer.markGroupAsReviewed', (item: TaskDocumentGroupItem) => this.markGroupAsReviewed(item)),
             vscode.commands.registerCommand('tasksViewer.markGroupAsUnreviewed', (item: TaskDocumentGroupItem) => this.markGroupAsUnreviewed(item)),
-            vscode.commands.registerCommand('tasksViewer.markFolderAsReviewed', (item: TaskFolderItem) => this.markFolderAsReviewed(item))
+            vscode.commands.registerCommand('tasksViewer.markFolderAsReviewed', (item: TaskFolderItem) => this.markFolderAsReviewed(item)),
+            // Task status commands
+            vscode.commands.registerCommand('tasksViewer.markAsFuture', (item: TaskItem | TaskDocumentItem) => this.setTaskStatus(item, 'future')),
+            vscode.commands.registerCommand('tasksViewer.markAsPending', (item: TaskItem | TaskDocumentItem) => this.setTaskStatus(item, 'pending')),
+            vscode.commands.registerCommand('tasksViewer.markAsInProgress', (item: TaskItem | TaskDocumentItem) => this.setTaskStatus(item, 'in-progress')),
+            vscode.commands.registerCommand('tasksViewer.markAsDone', (item: TaskItem | TaskDocumentItem) => this.setTaskStatus(item, 'done'))
         );
 
         return disposables;
@@ -663,6 +669,35 @@ export class TasksCommands {
         } catch (error) {
             const err = error instanceof Error ? error : new Error('Unknown error');
             vscode.window.showErrorMessage(`Failed to mark folder as reviewed: ${err.message}`);
+        }
+    }
+
+    // ========================================================================
+    // Task Status Commands
+    // ========================================================================
+
+    /**
+     * Set the task status (pending, in-progress, done, future)
+     */
+    private async setTaskStatus(item: TaskItem | TaskDocumentItem, status: TaskStatus): Promise<void> {
+        if (!item) {
+            return;
+        }
+
+        try {
+            await updateTaskStatus(item.filePath, status);
+            this.treeDataProvider.refresh();
+            
+            const statusLabels: Record<TaskStatus, string> = {
+                'pending': 'pending',
+                'in-progress': 'in progress',
+                'done': 'done',
+                'future': 'future'
+            };
+            vscode.window.showInformationMessage(`Task marked as ${statusLabels[status]}`);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error('Unknown error');
+            vscode.window.showErrorMessage(`Failed to update task status: ${err.message}`);
         }
     }
 }
