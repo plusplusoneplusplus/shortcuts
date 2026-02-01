@@ -39,6 +39,15 @@ Use this skill when the user asks you to **implement** a change in the codebase 
 7. **Commit when clean**
    - When tests pass, create a commit with a clear message describing the change and test additions.
 
+8. **Archive the task file (if applicable)**
+   - If the task/plan file you followed lives under `.vscode/`, archive it after the commit succeeds:
+
+     ```bash
+     python3 .github/skills/impl/scripts/archive-task-file.py --task <path-to-task-file>
+     ```
+
+   - This moves the file into `.vscode/tasks/archive/` (no-op if the file is not under `.vscode/`).
+
 ## Notes
 
 - Prefer existing repo commands (e.g. `npm test`, `npm run lint`) rather than introducing new tooling.
@@ -47,3 +56,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
 ## References
 
 - [impl.prompt.md](references/impl.prompt.md) - Original short-form prompt this skill was derived from.
+
+## Scripts
+
+- `scripts/archive-task-file.py` - Moves a task file under `.vscode/` into `.vscode/tasks/archive/` after a successful commit.
