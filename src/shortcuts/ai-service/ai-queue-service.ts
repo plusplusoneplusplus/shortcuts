@@ -95,6 +95,15 @@ export interface BatchQueueResult {
 // AI Task Executor
 // ============================================================================
 
+export function buildFollowPromptText(payload: FollowPromptPayload): string {
+    // Keep this aligned with the interactive/background Follow Prompt behavior.
+    let fullPrompt = `Follow the instruction ${payload.promptFilePath}. ${payload.planFilePath || ''}`.trim();
+    if (payload.additionalContext && payload.additionalContext.trim()) {
+        fullPrompt += `\n\nAdditional context: ${payload.additionalContext.trim()}`;
+    }
+    return fullPrompt;
+}
+
 /**
  * Task executor that uses CopilotSDKService for AI execution
  */
@@ -121,18 +130,22 @@ class AITaskExecutor implements TaskExecutor {
 
         try {
             // Register process in AIProcessManager
-            const processId = this.processManager.registerTypedProcess(
-                task.displayName || `Queue task: ${task.type}`,
-                {
+            // NOTE: queued follow-prompt tasks should match the interactive/background prompt format
+            // so the AI sees both the instruction and the target plan file.
+            const promptForTracking =
+                isFollowPromptPayload(task.payload)
+                    ? buildFollowPromptText(task.payload as FollowPromptPayload)
+                    : task.displayName || `Queue task: ${task.type}`;
+
+            const processId = this.processManager.registerTypedProcess(promptForTracking, {
+                type: `queue-${task.type}`,
+                idPrefix: 'queue',
+                metadata: {
                     type: `queue-${task.type}`,
-                    idPrefix: 'queue',
-                    metadata: {
-                        type: `queue-${task.type}`,
-                        queueTaskId: task.id,
-                        priority: task.priority,
-                    },
-                }
-            );
+                    queueTaskId: task.id,
+                    priority: task.priority,
+                },
+            });
 
             // Link process ID to task
             task.processId = processId;
@@ -195,13 +208,11 @@ class AITaskExecutor implements TaskExecutor {
             throw new Error(`Copilot SDK not available: ${availability.error}`);
         }
 
-        // Build prompt from file path
-        const fs = await import('fs');
-        const promptContent = fs.readFileSync(payload.promptFilePath, 'utf-8');
+        const prompt = buildFollowPromptText(payload);
 
         // Execute via SDK
         const result = await sdkService.sendMessage({
-            prompt: promptContent,
+            prompt,
             model: task.config.model,
             workingDirectory: payload.workingDirectory,
             timeoutMs: task.config.timeoutMs,

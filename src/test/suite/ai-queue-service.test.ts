@@ -12,6 +12,7 @@ import {
     resetAIQueueService,
     getAIQueueService
 } from '../../shortcuts/ai-service';
+import { buildFollowPromptText } from '../../shortcuts/ai-service/ai-queue-service';
 
 /**
  * Mock ExtensionContext for testing
@@ -74,6 +75,19 @@ suite('AIQueueService Tests', () => {
     });
 
     suite('Queue Operations', () => {
+
+        test('should build follow-prompt text matching interactive/background format', () => {
+            const text = buildFollowPromptText({
+                promptFilePath: '/test/impl.prompt.md',
+                planFilePath: '/test/task.plan.md',
+                additionalContext: 'Focus on edge cases.'
+            });
+
+            assert.strictEqual(
+                text,
+                'Follow the instruction /test/impl.prompt.md. /test/task.plan.md\n\nAdditional context: Focus on edge cases.'
+            );
+        });
 
         test('should queue a task', () => {
             const service = initializeAIQueueService(processManager as unknown as AIProcessManager);
