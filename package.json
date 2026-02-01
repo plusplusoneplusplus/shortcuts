@@ -504,10 +504,10 @@
           ],
           "enumDescriptions": [
             "Interactive Session - Launch in external terminal for real-time interaction",
-            "Background - Run via SDK, track progress in AI Processes panel"
+            "Background - Queue as a work item, track progress in AI Processes panel"
           ],
           "default": "interactive",
-          "markdownDescription": "Default execution mode for Follow Prompt. **Interactive** launches an external terminal session. **Background** runs asynchronously via SDK with progress tracking."
+          "markdownDescription": "Default execution mode for Follow Prompt. **Interactive** launches an external terminal session. **Background** queues the task for execution and tracks progress in the AI Processes panel."
         },
         "workspaceShortcuts.followPrompt.defaultModel": {
           "type": "string",

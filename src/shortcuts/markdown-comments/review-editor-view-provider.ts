@@ -1745,9 +1745,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             this.saveLastFollowPromptSelection(options.mode, options.model);
         }
 
-        if (options.mode === 'queued') {
-            await this.executeFollowPromptQueued(planFilePath, promptFilePath, options, skillName);
-        } else if (options.mode === 'background') {
+        if (options.mode === 'background') {
             await this.executeFollowPromptInBackground(planFilePath, promptFilePath, options, skillName);
         } else {
             await this.executeFollowPromptInteractive(planFilePath, promptFilePath, options, skillName);
@@ -1825,13 +1823,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     }
 
     /**
-     * Execute Follow Prompt in background mode (SDK).
-     * Tracks progress in the AI Processes panel.
-     * 
-     * @param planFilePath - Absolute path to the plan file
-     * @param promptFilePath - Absolute path to the prompt file
-     * @param options - Execution options
-     * @param skillName - Optional skill name for display
+     * Execute Follow Prompt in background mode.
+     * Background is treated as a queued work item (sequential execution).
      */
     private async executeFollowPromptInBackground(
         planFilePath: string,
@@ -1839,105 +1832,8 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         options: FollowPromptExecutionOptions,
         skillName?: string
     ): Promise<void> {
-        const sdkService = getCopilotSDKService();
-        
-        // Check if SDK is available
-        if (!sdkService.isAvailable()) {
-            vscode.window.showErrorMessage(
-                'Copilot SDK is not available. Please ensure you are signed in to GitHub Copilot.'
-            );
-            return;
-        }
-
-        // Get the process manager to track progress
-        const processManager = this.aiProcessManager;
-        if (!processManager) {
-            vscode.window.showErrorMessage('AI Process Manager not available');
-            return;
-        }
-
-        // Build full prompt
-        let fullPrompt = `Follow the instruction ${promptFilePath}. ${planFilePath}`;
-        if (options.additionalContext && options.additionalContext.trim()) {
-            fullPrompt += `\n\nAdditional context: ${options.additionalContext.trim()}`;
-        }
-
-        const displayName = skillName ? `Skill: ${skillName}` : path.basename(promptFilePath, '.prompt.md');
-        
-        // Register the process
-        const metadata: FollowPromptProcessMetadata = {
-            promptFile: promptFilePath,
-            planFile: planFilePath,
-            model: options.model,
-            additionalContext: options.additionalContext,
-            skillName
-        };
-
-        const processId = processManager.registerTypedProcess(fullPrompt, {
-            type: 'follow-prompt',
-            idPrefix: 'follow-prompt',
-            metadata: {
-                type: 'follow-prompt',
-                ...metadata
-            }
-        });
-
-        vscode.window.showInformationMessage(
-            `Started background execution: ${displayName} → ${path.basename(planFilePath)}`
-        );
-
-        try {
-            const workingDirectory = this.resolveWorkPlanWorkingDirectory(planFilePath);
-            
-            // Execute via SDK
-            const result = await sdkService.sendMessage({
-                prompt: fullPrompt,
-                model: options.model,
-                workingDirectory,
-                timeoutMs: options.timeoutMs ?? 600000, // 10 minutes default
-                usePool: false, // Use direct session for long-running tasks
-                onPermissionRequest: approveAllPermissions
-            });
-
-            if (result.success && result.response) {
-                processManager.completeProcess(processId, result.response);
-                
-                const action = await vscode.window.showInformationMessage(
-                    `✅ Follow Prompt completed: ${displayName}`,
-                    'View Result'
-                );
-                
-                if (action === 'View Result') {
-                    await vscode.commands.executeCommand('shortcuts.aiProcesses.showResult', processId);
-                }
-            } else {
-                const errorMsg = result.error || 'Unknown error';
-                processManager.failProcess(processId, errorMsg);
-                vscode.window.showErrorMessage(`Follow Prompt failed: ${errorMsg}`);
-            }
-        } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            processManager.failProcess(processId, errorMsg);
-            vscode.window.showErrorMessage(`Follow Prompt failed: ${errorMsg}`);
-        }
-    }
-
-    /**
-     * Execute Follow Prompt in queued mode (add to queue for sequential execution).
-     * 
-     * @param planFilePath - Absolute path to the plan file
-     * @param promptFilePath - Absolute path to the prompt file
-     * @param options - Execution options
-     * @param skillName - Optional skill name for display
-     */
-    private async executeFollowPromptQueued(
-        planFilePath: string,
-        promptFilePath: string,
-        options: FollowPromptExecutionOptions,
-        skillName?: string
-    ): Promise<void> {
         const queueService = getAIQueueService();
-        
+
         if (!queueService) {
             vscode.window.showErrorMessage('Queue service not available');
             return;
@@ -1953,7 +1849,6 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         const displayName = skillName ? `Skill: ${skillName}` : path.basename(promptFilePath, '.prompt.md');
         const workingDirectory = this.resolveWorkPlanWorkingDirectory(planFilePath);
 
-        // Queue the task
         const result = queueService.queueTask({
             type: 'follow-prompt',
             payload: {
@@ -1961,9 +1856,10 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 planFilePath,
                 skillName,
                 additionalContext: options.additionalContext,
-                workingDirectory
+                workingDirectory,
+                model: options.model
             },
-            priority: options.priority || 'normal',
+            priority: 'normal',
             displayName: `${displayName} → ${path.basename(planFilePath)}`,
             config: {
                 model: options.model,
@@ -1972,23 +1868,28 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         });
 
         vscode.window.showInformationMessage(
-            `Added to queue (#${result.position}): ${displayName} → ${path.basename(planFilePath)}`
+            `Queued background execution (#${result.position}): ${displayName} → ${path.basename(planFilePath)}`
         );
     }
 
     /**
      * Get the last Follow Prompt selection from workspace state.
      */
-    private getLastFollowPromptSelection(): { mode: 'interactive' | 'background' | 'queued'; model: string } | undefined {
-        return this.context.workspaceState.get<{ mode: 'interactive' | 'background' | 'queued'; model: string }>(
+    private getLastFollowPromptSelection(): { mode: 'interactive' | 'background'; model: string } | undefined {
+        const stored = this.context.workspaceState.get<{ mode: 'interactive' | 'background' | 'queued'; model: string }>(
             'followPrompt.lastSelection'
         );
+        if (!stored) return undefined;
+        return {
+            mode: stored.mode === 'queued' ? 'background' : stored.mode,
+            model: stored.model
+        };
     }
 
     /**
      * Save the last Follow Prompt selection to workspace state.
      */
-    private saveLastFollowPromptSelection(mode: 'interactive' | 'background' | 'queued', model: string): void {
+    private saveLastFollowPromptSelection(mode: 'interactive' | 'background', model: string): void {
         this.context.workspaceState.update('followPrompt.lastSelection', { mode, model });
     }
 

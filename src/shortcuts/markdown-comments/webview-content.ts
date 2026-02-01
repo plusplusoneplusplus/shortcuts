@@ -373,31 +373,11 @@ export function getWebviewContent(
                                 <span class="radio-icon">⏳</span>
                                 <span class="radio-content">
                                     <span class="radio-title">Background</span>
-                                    <span class="radio-desc">Track progress in AI Processes panel</span>
-                                </span>
-                            </span>
-                        </label>
-                        <label class="radio-option">
-                            <input type="radio" name="fpMode" value="queued" />
-                            <span class="radio-label">
-                                <span class="radio-icon">📋</span>
-                                <span class="radio-content">
-                                    <span class="radio-title">Add to Queue</span>
-                                    <span class="radio-desc">Queue for sequential execution</span>
+                                    <span class="radio-desc">Queue as a work item (track in AI Processes panel)</span>
                                 </span>
                             </span>
                         </label>
                     </div>
-                </div>
-
-                <!-- Priority (shown only for queued mode) -->
-                <div class="form-group" id="fpPriorityGroup" style="display: none;">
-                    <label for="fpPrioritySelect">Priority</label>
-                    <select id="fpPrioritySelect" class="model-select">
-                        <option value="high">High - Execute first</option>
-                        <option value="normal" selected>Normal</option>
-                        <option value="low">Low - Execute last</option>
-                    </select>
                 </div>
                 
                 <!-- AI Model -->
