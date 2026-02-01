@@ -9,7 +9,10 @@ import {
     AIProcessTreeDataProvider,
     InteractiveSessionManager,
     InteractiveSessionItem,
-    getWindowFocusService
+    createQueueStatusBarItem,
+    getWindowFocusService,
+    initializeAIQueueService,
+    registerQueueCommands
 } from './shortcuts/ai-service';
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
@@ -2026,6 +2029,12 @@ export async function activate(context: vscode.ExtensionContext) {
         // Initialize AI Process Manager with persistence (must be before ReviewEditorViewProvider and DiffReviewEditorProvider)
         const aiProcessManager = new AIProcessManager();
         await aiProcessManager.initialize(context);
+
+        // Initialize AI Queue Service (needed for queued Ask AI / Follow Prompt modes)
+        const aiQueueService = initializeAIQueueService(aiProcessManager);
+        context.subscriptions.push(aiQueueService);
+        registerQueueCommands(context);
+        context.subscriptions.push(createQueueStatusBarItem(aiQueueService));
 
         // Register command to test Copilot SDK (now that aiProcessManager is available)
         const testCopilotSDKCommand = vscode.commands.registerCommand(
