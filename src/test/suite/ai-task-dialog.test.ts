@@ -565,10 +565,10 @@ suite('AI Task Dialog Service Tests', () => {
         test('saveLastUsedAIModel should persist model to workspace state', () => {
             const context = new MockExtensionContext();
             
-            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'gpt-5.1-codex');
+            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'gpt-5.2');
             
             const storedValue = context.workspaceState.getStoredValue('workspaceShortcuts.aiTask.lastUsedModel');
-            assert.strictEqual(storedValue, 'gpt-5.1-codex', 
+            assert.strictEqual(storedValue, 'gpt-5.2', 
                 'Should store model in workspace state');
         });
 
@@ -606,18 +606,18 @@ suite('AI Task Dialog Service Tests', () => {
             saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'claude-sonnet-4.5');
             
             // Save second model (overwrite)
-            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'gpt-5.1-codex-max');
+            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'gpt-5.2');
             
             // Retrieve should return the latest
             const model = getLastUsedAIModel(context as unknown as vscode.ExtensionContext);
             
-            assert.strictEqual(model, 'gpt-5.1-codex-max', 
+            assert.strictEqual(model, 'gpt-5.2', 
                 'Should return the most recently saved model');
         });
 
         test('model persistence should work across multiple valid models', () => {
             const context = new MockExtensionContext();
-            const testModels = ['claude-sonnet-4.5', 'claude-haiku-4.5', 'claude-opus-4.5', 'gpt-5.1-codex-max'];
+            const testModels = ['claude-sonnet-4.5', 'claude-haiku-4.5', 'claude-opus-4.5', 'gpt-5.2'];
             
             for (const testModel of testModels) {
                 saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, testModel);

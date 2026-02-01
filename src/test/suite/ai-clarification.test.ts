@@ -946,12 +946,13 @@ Total usage est:       1 Premium request`;
             assert.ok(VALID_MODELS.includes('claude-sonnet-4.5'));
             assert.ok(VALID_MODELS.includes('claude-haiku-4.5'));
             assert.ok(VALID_MODELS.includes('claude-opus-4.5'));
+            assert.ok(VALID_MODELS.includes('gpt-5.2'));
             assert.ok(VALID_MODELS.includes('gpt-5.1-codex-max'));
             assert.ok(VALID_MODELS.includes('gemini-3-pro-preview'));
         });
 
-        test('VALID_MODELS should have exactly 5 models', () => {
-            assert.strictEqual(VALID_MODELS.length, 5);
+        test('VALID_MODELS should have exactly 6 models', () => {
+            assert.strictEqual(VALID_MODELS.length, 6);
         });
 
         test('getAIModelSetting should return undefined when no model configured', () => {

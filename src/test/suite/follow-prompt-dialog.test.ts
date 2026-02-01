@@ -38,13 +38,13 @@ suite('Follow Prompt Dialog - Type Definitions', () => {
     test('FollowPromptExecutionOptions should support optional fields', () => {
         const options: FollowPromptExecutionOptions = {
             mode: 'background',
-            model: 'gpt-5.1-codex-max',
+            model: 'gpt-5.2',
             additionalContext: 'Focus on error handling',
             timeoutMs: 300000
         };
         
         assert.strictEqual(options.mode, 'background');
-        assert.strictEqual(options.model, 'gpt-5.1-codex-max');
+        assert.strictEqual(options.model, 'gpt-5.2');
         assert.strictEqual(options.additionalContext, 'Focus on error handling');
         assert.strictEqual(options.timeoutMs, 300000);
     });

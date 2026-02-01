@@ -77,6 +77,7 @@ const MODEL_DISPLAY_NAMES: Record<string, { label: string; description?: string 
     'claude-sonnet-4.5': { label: 'Claude Sonnet 4.5', description: '(Recommended)' },
     'claude-haiku-4.5': { label: 'Claude Haiku 4.5', description: '(Fast)' },
     'claude-opus-4.5': { label: 'Claude Opus 4.5', description: '(Premium)' },
+    'gpt-5.2': { label: 'GPT-5.2' },
     'gpt-5.1-codex-max': { label: 'GPT-5.1 Codex Max' },
     'gemini-3-pro-preview': { label: 'Gemini 3 Pro', description: '(Preview)' }
 };
@@ -150,17 +151,24 @@ const LAST_USED_MODEL_KEY = 'workspaceShortcuts.aiTask.lastUsedModel';
  */
 export function getLastUsedAIModel(context: vscode.ExtensionContext): string {
     const savedModel = context.workspaceState.get<string>(LAST_USED_MODEL_KEY);
-    
+
     if (savedModel) {
-        // Validate that the saved model is still available
+        // Migrate deprecated GPT-5.1 Codex selection to GPT-5.2 for AI task creation.
+        const migratedModel = savedModel === 'gpt-5.1-codex'
+            ? 'gpt-5.2'
+            : savedModel;
+
         const availableModels = getAvailableModels();
-        const isValid = availableModels.some(m => m.id === savedModel);
+        const isValid = availableModels.some(m => m.id === migratedModel);
         if (isValid) {
-            return savedModel;
+            if (migratedModel !== savedModel) {
+                void context.workspaceState.update(LAST_USED_MODEL_KEY, migratedModel);
+            }
+            return migratedModel;
         }
         // Model no longer available, fall through to defaults
     }
-    
+
     // Fall back to config setting or hardcoded default
     return getFollowPromptDefaultModel();
 }
