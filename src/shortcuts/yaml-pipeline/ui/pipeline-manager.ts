@@ -788,9 +788,9 @@ map:
   # Model: Override the default AI model
   # model: gpt-4
   #
-  # Timeout for each AI call in milliseconds (default: 600000 = 10 minutes)
+  # Timeout for each AI call in milliseconds (default: 1800000 = 30 minutes)
   # On timeout, automatically retries once with doubled timeout value
-  # timeoutMs: 600000
+  # timeoutMs: 1800000
 
 reduce:
   # Reduce types:

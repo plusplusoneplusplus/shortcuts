@@ -120,7 +120,7 @@ export interface MapReduceOptions {
     /** Number of retry attempts for failed operations (default: 1) */
     retryAttempts?: number;
     /** 
-     * Timeout for each map operation in ms (default: 600000 = 10 minutes).
+     * Timeout for each map operation in ms (default: 1800000 = 30 minutes).
      * On timeout, the system automatically retries once with doubled timeout value.
      */
     timeoutMs?: number;
@@ -131,13 +131,15 @@ export interface MapReduceOptions {
 /**
  * Default options for map-reduce execution
  */
+import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
+
 export const DEFAULT_MAP_REDUCE_OPTIONS: MapReduceOptions = {
     maxConcurrency: 5,
     reduceMode: 'deterministic',
     showProgress: true,
     retryOnFailure: false,
     retryAttempts: 1,
-    timeoutMs: 600000 // 10 minutes
+    timeoutMs: DEFAULT_AI_TIMEOUT_MS
 };
 
 /**

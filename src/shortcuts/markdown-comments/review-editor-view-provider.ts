@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getCopilotSDKService, approveAllPermissions } from '@plusplusoneplusplus/pipeline-core';
+import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 import { 
     getAICommandRegistry, 
     getAvailableModels, 
@@ -1863,7 +1864,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             displayName: `${displayName} → ${path.basename(planFilePath)}`,
             config: {
                 model: options.model,
-                timeoutMs: options.timeoutMs ?? 600000 // 10 minutes default
+                timeoutMs: options.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS
             }
         });
 

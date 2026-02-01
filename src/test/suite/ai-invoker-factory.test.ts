@@ -433,14 +433,14 @@ suite('AI Invoker Factory Tests', () => {
     suite('AI Config Helpers', () => {
         test('getSDKRequestTimeoutSetting should return default value', () => {
             const timeout = getSDKRequestTimeoutSetting();
-            // Default is 600000 (10 minutes)
-            assert.strictEqual(timeout, 600000, 'Default request timeout should be 600000ms (10 minutes)');
+            // Default is 1800000 (30 minutes)
+            assert.strictEqual(timeout, 1800000, 'Default request timeout should be 1800000ms (30 minutes)');
         });
 
         test('getSDKSessionTimeoutSetting should return default value', () => {
             const timeout = getSDKSessionTimeoutSetting();
-            // Default is 600000 (10 minutes)
-            assert.strictEqual(timeout, 600000, 'Default session timeout should be 600000ms (10 minutes)');
+            // Default is 1800000 (30 minutes)
+            assert.strictEqual(timeout, 1800000, 'Default session timeout should be 1800000ms (30 minutes)');
         });
 
         test('getSDKMaxSessionsSetting should return default value', () => {

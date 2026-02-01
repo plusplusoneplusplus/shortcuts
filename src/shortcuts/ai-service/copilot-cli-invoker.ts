@@ -23,12 +23,13 @@ import {
     clearProgramExistsCache as coreClearProgramExistsCache,
     parseCopilotOutput
 } from '@plusplusoneplusplus/pipeline-core';
+import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 
 // Re-export shared utilities for backward compatibility
 export { COPILOT_BASE_FLAGS, escapeShellArg, buildCliCommand, parseCopilotOutput };
 
 /** Timeout for copilot CLI execution in milliseconds */
-const COPILOT_TIMEOUT_MS = 300000; // 5 minutes
+const COPILOT_TIMEOUT_MS = DEFAULT_AI_TIMEOUT_MS;
 
 /**
  * Check if a program/command exists in the system PATH.
@@ -319,7 +320,7 @@ export async function invokeCopilotCLI(
                     if (error) {
                         // Check if it's a timeout
                         if (error.killed) {
-                            const errorMsg = 'Copilot CLI timed out after 5 minutes. The process was force killed.';
+                            const errorMsg = `Copilot CLI timed out after ${Math.round(COPILOT_TIMEOUT_MS / 60000)} minutes. The process was force killed.`;
                             logger.logAIProcessLaunchFailure('Process timed out', error, {
                                 processId,
                                 durationMs,

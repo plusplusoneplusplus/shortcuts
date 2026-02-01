@@ -109,6 +109,9 @@ export {
     denyAllPermissions
 } from './copilot-sdk-service';
 
+// Default timeouts
+export { DEFAULT_AI_TIMEOUT_MS } from './timeouts';
+
 // MCP Config Loader
 export {
     MCPConfigFile,

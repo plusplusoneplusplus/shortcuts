@@ -32,6 +32,7 @@ import {
     FollowPromptPayload,
     AIClarificationPayload,
 } from '@plusplusoneplusplus/pipeline-core';
+import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 import { AIProcessManager } from './ai-process-manager';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
 
@@ -436,7 +437,7 @@ export class AIQueueService implements vscode.Disposable {
             payload: options.payload,
             displayName: options.displayName,
             config: options.config || {
-                timeoutMs: 600000, // 10 minutes
+                timeoutMs: DEFAULT_AI_TIMEOUT_MS,
             },
         });
 

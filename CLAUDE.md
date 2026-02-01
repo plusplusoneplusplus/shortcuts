@@ -474,7 +474,7 @@ map:
   parallel: 5
   # batchSize: 10  # Optional: Items per AI call (default: 1)
                    # When > 1, use {{ITEMS}} in prompt for batch processing
-  # timeoutMs: 600000  # Optional: Default is 10 minutes (600000ms)
+  # timeoutMs: 1800000  # Optional: Default is 30 minutes (1800000ms)
                         # On timeout, retries once with doubled timeout (20 minutes)
 
 reduce:

@@ -337,7 +337,7 @@ describe('Pipeline Executor', () => {
                 map: {
                     prompt: 'Analyze: {{title}}',
                     output: ['result']
-                    // No timeout specified - should default to 600000ms (10 minutes)
+                    // No timeout specified - should default to 1800000ms (30 minutes)
                 },
                 reduce: { type: 'list' }
             };

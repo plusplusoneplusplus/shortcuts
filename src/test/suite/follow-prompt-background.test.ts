@@ -265,11 +265,11 @@ suite('Follow Prompt Background Execution Tests', () => {
             const options: FollowPromptExecutionOptions = {
                 mode: 'background',
                 model: 'claude-sonnet-4.5',
-                timeoutMs: 600000 // 10 minutes default
+                timeoutMs: 1800000 // 30 minutes default
             };
             
             assert.strictEqual(options.mode, 'background');
-            assert.strictEqual(options.timeoutMs, 600000);
+            assert.strictEqual(options.timeoutMs, 1800000);
         });
 
         test('should validate all supported AI models', () => {
@@ -287,7 +287,7 @@ suite('Follow Prompt Background Execution Tests', () => {
         });
 
         test('should allow custom timeout values', () => {
-            const customTimeouts = [30000, 60000, 300000, 600000, 1200000];
+            const customTimeouts = [30000, 60000, 300000, 1800000, 3600000];
             
             for (const timeout of customTimeouts) {
                 const options: FollowPromptExecutionOptions = {
@@ -395,7 +395,7 @@ suite('Follow Prompt Background Execution Tests', () => {
                 idPrefix: 'follow-prompt'
             });
 
-            const timeoutError = 'Request timed out after 600000ms';
+            const timeoutError = 'Request timed out after 1800000ms';
             manager.failProcess(processId, timeoutError);
 
             const process = manager.getProcess(processId);

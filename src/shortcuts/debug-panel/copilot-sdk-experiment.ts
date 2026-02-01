@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { getCopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
 import { IAIProcessManager } from '../ai-service';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
+import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 
 /**
  * Test the Copilot SDK with a user-provided prompt.
@@ -73,7 +74,7 @@ export async function testCopilotSDK(aiProcessManager?: IAIProcessManager): Prom
         const result = await sdkService.sendMessage({
             prompt,
             workingDirectory: workspaceRoot,
-            timeoutMs: 300000 // 5 minutes
+            timeoutMs: DEFAULT_AI_TIMEOUT_MS
         });
 
         if (!result.success) {

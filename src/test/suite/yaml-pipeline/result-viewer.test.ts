@@ -1290,7 +1290,7 @@ suite('Pipeline Result Viewer - Retry Functionality Tests', () => {
             output: { severity: 'high' },
             success: true,
             retryCount: 1,
-            originalError: 'Connection timeout after 600000ms',
+            originalError: 'Connection timeout after 1800000ms',
             retriedAt: new Date('2024-01-15T10:30:00Z'),
             executionTimeMs: 2500
         };
@@ -1437,7 +1437,7 @@ suite('Pipeline Result Viewer - Retry Functionality Tests', () => {
 
     test('should handle retry with different error types', () => {
         const errorTypes = [
-            'Connection timeout after 600000ms',
+            'Connection timeout after 1800000ms',
             'Rate limit exceeded',
             'AI service unavailable',
             'Failed to parse AI response: Unexpected token',

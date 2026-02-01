@@ -226,7 +226,7 @@ export interface MapConfig {
      */
     model?: string;
     /** 
-     * Timeout for each AI call in milliseconds (default: 600000 = 10 minutes).
+     * Timeout for each AI call in milliseconds (default: 1800000 = 30 minutes).
      * On timeout, the system automatically retries once with doubled timeout value.
      */
     timeoutMs?: number;

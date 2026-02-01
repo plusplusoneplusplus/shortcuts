@@ -19,6 +19,7 @@ import {
     PromptMapOutput,
     PromptMapSummary
 } from '../map-reduce';
+import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
 import { readCSVFile, resolveCSVPath } from './csv-reader';
 import { extractVariables } from './template';
 import {
@@ -435,7 +436,7 @@ async function executeStandardMode(
     filterResult?: FilterResult
 ): Promise<PipelineExecutionResult> {
     const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
-    const timeoutMs = config.map.timeoutMs ?? 600000;
+    const timeoutMs = config.map.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
 
     const executorOptions: ExecutorOptions = {
         aiInvoker: options.aiInvoker,
@@ -515,7 +516,7 @@ async function executeBatchMode(
 ): Promise<PipelineExecutionResult> {
     const batchSize = config.map.batchSize ?? 1;
     const parallelLimit = config.map.parallel ?? DEFAULT_PARALLEL_LIMIT;
-    const timeoutMs = config.map.timeoutMs ?? 600000;
+    const timeoutMs = config.map.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
     const outputFields = config.map.output || [];
     const isTextMode = outputFields.length === 0;
 

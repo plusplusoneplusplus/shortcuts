@@ -175,10 +175,10 @@ suite('Follow Prompt Dialog - Execution Options Validation', () => {
         const options: FollowPromptExecutionOptions = {
             mode: 'background',
             model: 'claude-sonnet-4.5',
-            timeoutMs: 600000 // 10 minutes
+            timeoutMs: 1800000 // 30 minutes
         };
         
-        assert.strictEqual(options.timeoutMs, 600000);
+        assert.strictEqual(options.timeoutMs, 1800000);
     });
 
     test('Additional context should be optional', () => {

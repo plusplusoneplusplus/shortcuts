@@ -39,6 +39,7 @@ import {
 import { getWorkspaceRoot } from '../../shared/workspace-utils';
 import { WebviewSetupHelper, WebviewMessageRouter } from '../../shared/webview/extension-webview-utils';
 import { createAIInvoker, getAIModelSetting } from '../../ai-service';
+import { DEFAULT_AI_TIMEOUT_MS } from '../../shared/ai-timeouts';
 
 /**
  * URI scheme for exporting results
@@ -594,7 +595,7 @@ export class PipelineResultViewerProvider {
         config: PipelineConfig,
         aiInvoker: AIInvoker
     ): Promise<PipelineItemResultNode> {
-        const timeoutMs = config.map.timeoutMs ?? 600000;
+        const timeoutMs = config.map.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
         const outputFields = config.map.output || [];
         const isTextMode = outputFields.length === 0;
 

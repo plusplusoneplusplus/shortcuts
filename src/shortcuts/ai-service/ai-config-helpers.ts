@@ -10,6 +10,7 @@
  */
 
 import * as vscode from 'vscode';
+import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 import { AIBackendType, AIModelConfig, VALID_MODELS } from './types';
 
 /**
@@ -47,7 +48,7 @@ export function getSDKMaxSessionsSetting(): number {
  */
 export function getSDKSessionTimeoutSetting(): number {
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
-    return config.get<number>('sessionTimeout', 600000);
+    return config.get<number>('sessionTimeout', DEFAULT_AI_TIMEOUT_MS);
 }
 
 /**
@@ -63,11 +64,11 @@ export function getSDKLoadMcpConfigSetting(): boolean {
 /**
  * Get the SDK request timeout setting.
  *
- * @returns Request timeout in milliseconds (default: 600000 = 10 minutes)
+ * @returns Request timeout in milliseconds (default: 1800000 = 30 minutes)
  */
 export function getSDKRequestTimeoutSetting(): number {
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.sdk');
-    return config.get<number>('requestTimeout', 600000);
+    return config.get<number>('requestTimeout', DEFAULT_AI_TIMEOUT_MS);
 }
 
 /**

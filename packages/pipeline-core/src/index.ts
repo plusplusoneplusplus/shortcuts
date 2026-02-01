@@ -205,6 +205,7 @@ export {
     DEFAULT_SESSION_POOL_CONFIG,
     approveAllPermissions,
     denyAllPermissions,
+    DEFAULT_AI_TIMEOUT_MS,
     // MCP Config Loader
     MCPConfigFile,
     MCPConfigLoadResult,

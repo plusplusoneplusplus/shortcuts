@@ -21,6 +21,7 @@ import { getLogger, LogCategory } from '../logger';
 // Note: SessionPool is kept for backward compatibility but not used for clarification requests
 import { SessionPool, IPoolableSession, SessionPoolStats } from './session-pool';
 import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
+import { DEFAULT_AI_TIMEOUT_MS } from './timeouts';
 
 /**
  * Base configuration for MCP (Model Context Protocol) servers.
@@ -142,7 +143,7 @@ export interface SendMessageOptions {
     model?: string;
     /** Optional working directory for context (set at client level) */
     workingDirectory?: string;
-    /** Optional timeout in milliseconds (default: 600000 = 10 minutes) */
+    /** Optional timeout in milliseconds (default: 1800000 = 30 minutes) */
     timeoutMs?: number;
     /** Use session pool for efficient parallel requests (default: false) */
     usePool?: boolean;
@@ -397,8 +398,8 @@ export class CopilotSDKService {
     /** Map of active sessions for cancellation support */
     private activeSessions: Map<string, ICopilotSession> = new Map();
 
-    /** Default timeout for SDK requests (10 minutes) */
-    private static readonly DEFAULT_TIMEOUT_MS = 600000;
+    /** Default timeout for SDK requests */
+    private static readonly DEFAULT_TIMEOUT_MS = DEFAULT_AI_TIMEOUT_MS;
 
     private constructor() {
         // Private constructor for singleton pattern

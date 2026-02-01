@@ -375,7 +375,7 @@ suite('CopilotSDKService - Configuration Helpers', () => {
 
         assert.ok(typeof timeout === 'number', 'Should return a number');
         assert.ok(timeout >= 30000, 'Should be at least 30 seconds');
-        assert.ok(timeout <= 600000, 'Should be at most 10 minutes');
+        assert.ok(timeout <= 1800000, 'Should be at most 30 minutes');
     });
 
     test('default backend should be copilot-cli', () => {
@@ -394,11 +394,11 @@ suite('CopilotSDKService - Configuration Helpers', () => {
         assert.strictEqual(maxSessions, 5, 'Default max sessions should be 5');
     });
 
-    test('default session timeout should be 600000ms (10 minutes)', () => {
+    test('default session timeout should be 1800000ms (30 minutes)', () => {
         const timeout = getSDKSessionTimeoutSetting();
 
-        // Default is 600000 according to package.json
-        assert.strictEqual(timeout, 600000, 'Default session timeout should be 600000ms');
+        // Default is 1800000 according to package.json
+        assert.strictEqual(timeout, 1800000, 'Default session timeout should be 1800000ms');
     });
 });
 

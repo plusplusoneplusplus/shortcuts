@@ -320,7 +320,7 @@ map:
     - severity
     - category
   parallel: 5        # Concurrent batch calls (default: 5)
-  timeoutMs: 600000  # Timeout per batch (default: 10 min)
+  timeoutMs: 1800000  # Timeout per batch (default: 30 min)
 ```
 
 **Error Handling:**
