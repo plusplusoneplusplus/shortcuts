@@ -8,6 +8,97 @@
  */
 
 /**
+ * Configuration for bracket matching operations
+ */
+interface BracketConfig {
+    open: string;   // Opening bracket character: '{' or '['
+    close: string;  // Closing bracket character: '}' or ']'
+    name: string;   // Type name for error messages: 'object' or 'array'
+}
+
+/** Configuration for JSON object extraction */
+const OBJECT_BRACKET_CONFIG: BracketConfig = { open: '{', close: '}', name: 'object' };
+
+/** Configuration for JSON array extraction */
+const ARRAY_BRACKET_CONFIG: BracketConfig = { open: '[', close: ']', name: 'array' };
+
+/**
+ * Check if a string has balanced brackets for the given configuration
+ */
+function hasBalanced(str: string, config: BracketConfig): boolean {
+    let depth = 0;
+    for (const char of str) {
+        if (char === config.open) depth++;
+        else if (char === config.close) depth--;
+        if (depth < 0) return false;
+    }
+    return depth === 0;
+}
+
+/**
+ * Find all matching bracket positions for the given configuration
+ */
+function findAllBracketPositions(str: string, config: BracketConfig): Array<{start: number, end: number}> {
+    const positions: Array<{start: number, end: number}> = [];
+    let depth = 0;
+    let start = -1;
+
+    for (let i = 0; i < str.length; i++) {
+        if (str[i] === config.open) {
+            if (depth === 0) start = i;
+            depth++;
+        } else if (str[i] === config.close) {
+            depth--;
+            if (depth === 0 && start !== -1) {
+                positions.push({ start, end: i });
+                start = -1;
+            }
+        }
+    }
+    return positions;
+}
+
+/**
+ * Try to extract a JSON structure (object or array) from text
+ * @param text Text to search in
+ * @param config Bracket configuration
+ * @param additionalValidation Optional additional validation (e.g., objects must contain ':')
+ */
+function tryExtractStructure(
+    text: string,
+    config: BracketConfig,
+    additionalValidation?: (candidate: string) => boolean
+): string | null {
+    const pattern = new RegExp(`\\${config.open}[\\s\\S]*\\${config.close}`);
+    const match = text.match(pattern);
+    if (match) {
+        const candidate = match[0];
+        try {
+            JSON.parse(candidate);
+            return candidate;
+        } catch {
+            // Try to find valid JSON by checking all bracket pairs
+            const positions = findAllBracketPositions(text, config);
+            for (let i = positions.length - 1; i >= 0; i--) {
+                const {start, end} = positions[i];
+                const subCandidate = text.substring(start, end + 1);
+                try {
+                    JSON.parse(subCandidate);
+                    return subCandidate;
+                } catch {
+                    continue;
+                }
+            }
+            // Return candidate if balanced (and passes additional validation if provided)
+            if (hasBalanced(candidate, config) && (!additionalValidation || additionalValidation(candidate))) {
+                return candidate;
+            }
+        }
+    }
+    return null;
+}
+
+/**
  * Extract JSON from a response string with comprehensive edge case handling
  * Handles JSON in markdown code blocks, inline, malformed responses, and various AI quirks
  * @param response Response string from AI
@@ -42,65 +133,9 @@ export function extractJSON(response: string): string | null {
     const firstBrace = response.indexOf('{');
     const firstBracket = response.indexOf('[');
 
-    // Helper function to try extracting JSON object
-    const tryExtractObject = (): string | null => {
-        const objectMatch = response.match(/\{[\s\S]*\}/);
-        if (objectMatch) {
-            const candidate = objectMatch[0];
-            try {
-                JSON.parse(candidate);
-                return candidate;
-            } catch {
-                // Try to find valid JSON by checking all brace pairs
-                const positions = findAllBracePositions(response);
-                for (let i = positions.length - 1; i >= 0; i--) {
-                    const {start, end} = positions[i];
-                    const subCandidate = response.substring(start, end + 1);
-                    try {
-                        JSON.parse(subCandidate);
-                        return subCandidate;
-                    } catch {
-                        continue;
-                    }
-                }
-                // Return the original candidate even if malformed - attemptJSONFix may fix it
-                // Only return if it looks like JSON (has balanced braces and contains colon)
-                if (hasBalancedBraces(candidate) && candidate.includes(':')) {
-                    return candidate;
-                }
-            }
-        }
-        return null;
-    };
-
-    // Helper function to try extracting JSON array
-    const tryExtractArray = (): string | null => {
-        const arrayMatch = response.match(/\[[\s\S]*\]/);
-        if (arrayMatch) {
-            const candidate = arrayMatch[0];
-            try {
-                JSON.parse(candidate);
-                return candidate;
-            } catch {
-                const positions = findAllBracketPositions(response);
-                for (let i = positions.length - 1; i >= 0; i--) {
-                    const {start, end} = positions[i];
-                    const subCandidate = response.substring(start, end + 1);
-                    try {
-                        JSON.parse(subCandidate);
-                        return subCandidate;
-                    } catch {
-                        continue;
-                    }
-                }
-                // Return candidate if it has balanced brackets
-                if (hasBalancedBrackets(candidate)) {
-                    return candidate;
-                }
-            }
-        }
-        return null;
-    };
+    // Object extraction requires colon to look like JSON
+    const tryExtractObject = () => tryExtractStructure(response, OBJECT_BRACKET_CONFIG, c => c.includes(':'));
+    const tryExtractArray = () => tryExtractStructure(response, ARRAY_BRACKET_CONFIG);
 
     // Try to extract based on which comes first in the string
     // This ensures that top-level arrays are detected before embedded arrays in objects
@@ -125,32 +160,6 @@ export function extractJSON(response: string): string | null {
     }
 
     return null;
-}
-
-/**
- * Check if a string has balanced curly braces
- */
-function hasBalancedBraces(str: string): boolean {
-    let depth = 0;
-    for (const char of str) {
-        if (char === '{') depth++;
-        else if (char === '}') depth--;
-        if (depth < 0) return false;
-    }
-    return depth === 0;
-}
-
-/**
- * Check if a string has balanced square brackets
- */
-function hasBalancedBrackets(str: string): boolean {
-    let depth = 0;
-    for (const char of str) {
-        if (char === '[') depth++;
-        else if (char === ']') depth--;
-        if (depth < 0) return false;
-    }
-    return depth === 0;
 }
 
 /**
@@ -234,52 +243,6 @@ export function parseAIResponse(
         }
     }
     return result;
-}
-
-/**
- * Find all matching brace positions for JSON objects
- */
-function findAllBracePositions(str: string): Array<{start: number, end: number}> {
-    const positions: Array<{start: number, end: number}> = [];
-    let depth = 0;
-    let start = -1;
-
-    for (let i = 0; i < str.length; i++) {
-        if (str[i] === '{') {
-            if (depth === 0) start = i;
-            depth++;
-        } else if (str[i] === '}') {
-            depth--;
-            if (depth === 0 && start !== -1) {
-                positions.push({ start, end: i });
-                start = -1;
-            }
-        }
-    }
-    return positions;
-}
-
-/**
- * Find all matching bracket positions for JSON arrays
- */
-function findAllBracketPositions(str: string): Array<{start: number, end: number}> {
-    const positions: Array<{start: number, end: number}> = [];
-    let depth = 0;
-    let start = -1;
-
-    for (let i = 0; i < str.length; i++) {
-        if (str[i] === '[') {
-            if (depth === 0) start = i;
-            depth++;
-        } else if (str[i] === ']') {
-            depth--;
-            if (depth === 0 && start !== -1) {
-                positions.push({ start, end: i });
-                start = -1;
-            }
-        }
-    }
-    return positions;
 }
 
 /**
