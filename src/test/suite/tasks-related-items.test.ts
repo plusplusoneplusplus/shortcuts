@@ -341,6 +341,57 @@ suite('Tasks Discovery - Tree Items', () => {
         assert.strictEqual(item.contextValue, 'relatedCommit');
         assert.ok(item.tooltip?.toString().includes('Recent feature addition'));
     });
+
+    test('RelatedCommitItem exposes full hash for copy command', () => {
+        const relatedItem: RelatedItem = {
+            name: 'feat: add JWT refresh tokens',
+            type: 'commit',
+            hash: 'abc1234567890def1234567890',
+            category: 'commit',
+            relevance: 88,
+            reason: 'Recent feature addition'
+        };
+
+        const item = new RelatedCommitItem(relatedItem, '/path/to/folder', '/workspace');
+
+        // The full hash should be accessible via relatedItem.hash
+        assert.strictEqual(item.relatedItem.hash, 'abc1234567890def1234567890');
+        // Label shows short hash (7 chars)
+        assert.ok(item.label?.toString().startsWith('abc1234'));
+    });
+
+    test('RelatedCommitItem without hash handles gracefully', () => {
+        const relatedItem: RelatedItem = {
+            name: 'commit without hash',
+            type: 'commit',
+            category: 'commit',
+            relevance: 50,
+            reason: 'Test'
+        };
+
+        const item = new RelatedCommitItem(relatedItem, '/path/to/folder', '/workspace');
+
+        assert.strictEqual(item.relatedItem.hash, undefined);
+        assert.strictEqual(item.contextValue, 'relatedCommit');
+        // Should not have a command since hash is missing
+        assert.strictEqual(item.command, undefined);
+    });
+
+    test('RelatedCommitItem has viewRelatedCommit command', () => {
+        const relatedItem: RelatedItem = {
+            name: 'feat: add feature',
+            type: 'commit',
+            hash: 'abc1234567890',
+            category: 'commit',
+            relevance: 88,
+            reason: 'Feature commit'
+        };
+
+        const item = new RelatedCommitItem(relatedItem, '/path/to/folder', '/workspace');
+
+        assert.strictEqual(item.command?.command, 'tasksViewer.viewRelatedCommit');
+        assert.deepStrictEqual(item.command?.arguments, ['abc1234567890', '/workspace']);
+    });
 });
 
 suite('Tasks Discovery - TaskFolder with relatedItems', () => {

@@ -1834,6 +1834,12 @@
         "icon": "$(git-commit)"
       },
       {
+        "command": "tasksViewer.copyCommitHash",
+        "title": "Copy Commit Hash",
+        "category": "Tasks",
+        "icon": "$(clippy)"
+      },
+      {
         "command": "tasksViewer.createWithAI",
         "title": "Create Task with AI...",
         "category": "Tasks",
@@ -2506,6 +2512,11 @@
           "command": "tasksViewer.removeRelatedItem",
           "when": "view == tasksView && (viewItem == relatedFile || viewItem == relatedCommit)",
           "group": "relatedItem@1"
+        },
+        {
+          "command": "tasksViewer.copyCommitHash",
+          "when": "view == tasksView && viewItem == relatedCommit",
+          "group": "relatedItem@2"
         },
         {
           "command": "markdownComments.resolveComment",

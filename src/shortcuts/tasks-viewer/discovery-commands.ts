@@ -192,6 +192,19 @@ export function registerTasksDiscoveryCommands(
         )
     );
 
+    // Copy commit hash to clipboard
+    disposables.push(
+        vscode.commands.registerCommand(
+            'tasksViewer.copyCommitHash',
+            async (item: RelatedCommitItem) => {
+                if (item.relatedItem.hash) {
+                    await vscode.env.clipboard.writeText(item.relatedItem.hash);
+                    vscode.window.showInformationMessage(`Copied: ${item.relatedItem.hash.substring(0, 7)}`);
+                }
+            }
+        )
+    );
+
     return disposables;
 }
 
