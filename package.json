@@ -33,6 +33,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onView:shortcutsView",
     "onView:markdownCommentsView",
     "onView:gitView",
