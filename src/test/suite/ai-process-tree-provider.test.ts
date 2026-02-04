@@ -428,4 +428,287 @@ suite('AI Process Tree Provider Tests', () => {
             provider.dispose();
         });
     });
+
+    suite('Queued Status Display', () => {
+
+        test('should show queued processes in tree', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+
+            // Register a queued process
+            const queuedId = manager.registerTypedProcess(
+                'Queued task prompt',
+                { type: 'clarification', initialStatus: 'queued' }
+            );
+
+            const topLevel = await provider.getChildren();
+            const processItems = assertAIProcessItems(topLevel);
+            assert.strictEqual(processItems.length, 1);
+            assert.strictEqual(processItems[0].process.id, queuedId);
+            assert.strictEqual(processItems[0].process.status, 'queued');
+
+            provider.dispose();
+        });
+
+        test('should sort running before queued at top level', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+
+            // Create queued process first
+            const queuedId = manager.registerTypedProcess(
+                'Queued task',
+                { type: 'clarification', initialStatus: 'queued' }
+            );
+
+            // Then running process
+            const runningId = manager.registerTypedProcess(
+                'Running task',
+                { type: 'clarification', initialStatus: 'running' }
+            );
+
+            const topLevel = await provider.getChildren();
+            const processItems = assertAIProcessItems(topLevel);
+
+            // Running should be first, queued second
+            assert.strictEqual(processItems[0].process.id, runningId);
+            assert.strictEqual(processItems[0].process.status, 'running');
+            assert.strictEqual(processItems[1].process.id, queuedId);
+            assert.strictEqual(processItems[1].process.status, 'queued');
+
+            provider.dispose();
+        });
+
+        test('should sort queued before completed at top level', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+
+            // Create completed process first
+            const completedId = manager.registerTypedProcess(
+                'Completed task',
+                { type: 'clarification', initialStatus: 'running' }
+            );
+            manager.completeProcess(completedId, 'Done');
+
+            // Then queued process
+            const queuedId = manager.registerTypedProcess(
+                'Queued task',
+                { type: 'clarification', initialStatus: 'queued' }
+            );
+
+            const topLevel = await provider.getChildren();
+            const processItems = assertAIProcessItems(topLevel);
+
+            // Queued should be first, completed second
+            assert.strictEqual(processItems[0].process.id, queuedId);
+            assert.strictEqual(processItems[0].process.status, 'queued');
+            assert.strictEqual(processItems[1].process.id, completedId);
+            assert.strictEqual(processItems[1].process.status, 'completed');
+
+            provider.dispose();
+        });
+
+        test('should have correct context value for queued process', () => {
+            const queuedProcess = {
+                id: 'process-1',
+                type: 'clarification' as const,
+                promptPreview: 'Test prompt',
+                fullPrompt: 'Full test prompt',
+                status: 'queued' as const,
+                startTime: new Date()
+            };
+
+            const item = new AIProcessItem(queuedProcess);
+
+            assert.strictEqual(item.contextValue, 'clarificationProcess_queued');
+        });
+
+        test('should have correct context value for queued code-review process', () => {
+            const queuedProcess = {
+                id: 'process-1',
+                type: 'code-review' as const,
+                promptPreview: 'Review prompt',
+                fullPrompt: 'Full review prompt',
+                status: 'queued' as const,
+                startTime: new Date(),
+                codeReviewMetadata: {
+                    reviewType: 'commit' as const,
+                    commitSha: 'abc123',
+                    rulesUsed: ['rule1.md']
+                }
+            };
+
+            const item = new AIProcessItem(queuedProcess);
+
+            assert.strictEqual(item.contextValue, 'codeReviewProcess_queued');
+        });
+
+        test('should have correct context value for queued code-review-group', () => {
+            const queuedGroup = {
+                id: 'group-1',
+                type: 'code-review-group' as const,
+                promptPreview: 'Review: abc123',
+                fullPrompt: 'Group prompt',
+                status: 'queued' as const,
+                startTime: new Date(),
+                codeReviewGroupMetadata: {
+                    reviewType: 'commit' as const,
+                    commitSha: 'abc123',
+                    rulesUsed: ['rule1.md', 'rule2.md'],
+                    childProcessIds: []
+                }
+            };
+
+            const item = new AIProcessItem(queuedGroup);
+
+            assert.strictEqual(item.contextValue, 'codeReviewGroupProcess_queued');
+        });
+
+        test('should show queued child processes within group', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+
+            // Create a group
+            const groupId = manager.registerCodeReviewGroup({
+                reviewType: 'commit',
+                commitSha: 'abc123',
+                rulesUsed: ['rule1.md', 'rule2.md']
+            });
+
+            // Add queued child
+            const queuedChildId = manager.registerTypedProcess(
+                'Queued child review',
+                { 
+                    type: 'code-review', 
+                    initialStatus: 'queued',
+                    parentProcessId: groupId 
+                }
+            );
+
+            // Get group item
+            const topLevel = await provider.getChildren();
+            const processItems = assertAIProcessItems(topLevel);
+            const groupItem = processItems[0];
+
+            // Get children
+            const children = await provider.getChildren(groupItem);
+            const childItems = assertAIProcessItems(children);
+            
+            assert.strictEqual(childItems.length, 1);
+            assert.strictEqual(childItems[0].process.id, queuedChildId);
+            assert.strictEqual(childItems[0].process.status, 'queued');
+
+            provider.dispose();
+        });
+
+        test('should sort running children before queued children', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+
+            // Create a group
+            const groupId = manager.registerCodeReviewGroup({
+                reviewType: 'commit',
+                commitSha: 'abc123',
+                rulesUsed: ['rule1.md', 'rule2.md']
+            });
+
+            // Add queued child first
+            const queuedChildId = manager.registerTypedProcess(
+                'Queued child',
+                { 
+                    type: 'code-review', 
+                    initialStatus: 'queued',
+                    parentProcessId: groupId 
+                }
+            );
+
+            // Add running child second
+            const runningChildId = manager.registerTypedProcess(
+                'Running child',
+                { 
+                    type: 'code-review', 
+                    initialStatus: 'running',
+                    parentProcessId: groupId 
+                }
+            );
+
+            // Get group item
+            const topLevel = await provider.getChildren();
+            const processItems = assertAIProcessItems(topLevel);
+            const groupItem = processItems[0];
+
+            // Get children - running should be first
+            const children = await provider.getChildren(groupItem);
+            const childItems = assertAIProcessItems(children);
+            
+            assert.strictEqual(childItems.length, 2);
+            assert.strictEqual(childItems[0].process.id, runningChildId);
+            assert.strictEqual(childItems[0].process.status, 'running');
+            assert.strictEqual(childItems[1].process.id, queuedChildId);
+            assert.strictEqual(childItems[1].process.status, 'queued');
+
+            provider.dispose();
+        });
+
+        test('should update display when queued transitions to running', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+
+            // Register a queued process
+            const processId = manager.registerTypedProcess(
+                'Task to transition',
+                { type: 'clarification', initialStatus: 'queued' }
+            );
+
+            // Verify initial state
+            let topLevel = await provider.getChildren();
+            let processItems = assertAIProcessItems(topLevel);
+            assert.strictEqual(processItems[0].process.status, 'queued');
+
+            // Transition to running
+            manager.updateProcess(processId, 'running');
+
+            // Verify updated state
+            topLevel = await provider.getChildren();
+            processItems = assertAIProcessItems(topLevel);
+            assert.strictEqual(processItems[0].process.status, 'running');
+
+            provider.dispose();
+        });
+
+        test('should show multiple queued processes sorted by start time', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+
+            // Register multiple queued processes with small delays
+            const id1 = manager.registerTypedProcess(
+                'First queued',
+                { type: 'clarification', initialStatus: 'queued' }
+            );
+
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            const id2 = manager.registerTypedProcess(
+                'Second queued',
+                { type: 'clarification', initialStatus: 'queued' }
+            );
+
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            const id3 = manager.registerTypedProcess(
+                'Third queued',
+                { type: 'clarification', initialStatus: 'queued' }
+            );
+
+            const topLevel = await provider.getChildren();
+            const processItems = assertAIProcessItems(topLevel);
+            
+            // All queued, should be sorted by start time (newest first for top level)
+            assert.strictEqual(processItems.length, 3);
+            assert.strictEqual(processItems[0].process.id, id3);
+            assert.strictEqual(processItems[1].process.id, id2);
+            assert.strictEqual(processItems[2].process.id, id1);
+
+            provider.dispose();
+        });
+    });
 });
