@@ -10,13 +10,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { CSVParseOptions, CSVParseResult, PromptItem } from './types';
+import {
+    DEFAULT_CSV_DELIMITER,
+    DEFAULT_CSV_HAS_HEADER
+} from '../config/defaults';
 
 /**
  * Default CSV parsing options
  */
 export const DEFAULT_CSV_OPTIONS: Required<CSVParseOptions> = {
-    delimiter: ',',
-    hasHeaders: true,
+    delimiter: DEFAULT_CSV_DELIMITER,
+    hasHeaders: DEFAULT_CSV_HAS_HEADER,
     encoding: 'utf-8'
 };
 

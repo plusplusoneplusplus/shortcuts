@@ -19,9 +19,10 @@ import {
     PromptMapOutput,
     PromptMapSummary
 } from '../map-reduce';
-import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
+import { DEFAULT_AI_TIMEOUT_MS, DEFAULT_PARALLEL_LIMIT } from '../config/defaults';
 import { readCSVFile, resolveCSVPath } from './csv-reader';
 import { extractVariables } from './template';
+import { substituteVariables } from '../utils/template-engine';
 import {
     AIInvoker,
     CSVSource,
@@ -37,10 +38,8 @@ import { executeFilter } from './filter-executor';
 import { resolvePromptFile } from './prompt-resolver';
 import { resolveSkill } from './skill-resolver';
 
-/**
- * Default parallel concurrency limit
- */
-export const DEFAULT_PARALLEL_LIMIT = 5;
+// Re-export for backward compatibility
+export { DEFAULT_PARALLEL_LIMIT } from '../config/defaults';
 
 /**
  * Error thrown for pipeline execution issues
@@ -499,6 +498,29 @@ function splitIntoBatches(items: PromptItem[], batchSize: number): PromptItem[][
 }
 
 /**
+ * Substitute model template variables using item values.
+ * Used for dynamic model selection based on item properties.
+ *
+ * @param modelTemplate The model template string (e.g., "gpt-4" or "{{model}}")
+ * @param item The item to use for variable substitution
+ * @returns The substituted model string, or undefined if result is empty
+ */
+function substituteModelTemplate(
+    modelTemplate: string | undefined,
+    item: Record<string, unknown>
+): string | undefined {
+    if (!modelTemplate || typeof modelTemplate !== 'string') {
+        return undefined;
+    }
+    const substituted = substituteVariables(modelTemplate, item, {
+        strict: false,
+        missingValueBehavior: 'empty',
+        preserveSpecialVariables: false
+    });
+    return substituted || undefined;
+}
+
+/**
  * Execute pipeline in batch mode (multiple items per AI call)
  * 
  * In batch mode:
@@ -572,14 +594,7 @@ async function executeBatchMode(
             const batchPrompt = buildBatchPrompt(prompts.mapPrompt, batch, outputFields);
             
             // Resolve model (use first item for template substitution if model is templated)
-            let model: string | undefined;
-            if (config.map.model && typeof config.map.model === 'string') {
-                // For batch mode, use the first item for model template substitution
-                const substitutedModel = config.map.model.replace(/\{\{(\w+)\}\}/g, (_, varName) => {
-                    return varName in batch[0] ? batch[0][varName] : '';
-                });
-                model = substitutedModel || undefined;
-            }
+            const model = substituteModelTemplate(config.map.model, batch[0]);
 
             // Call AI with timeout
             const aiResult = await Promise.race([
@@ -631,13 +646,7 @@ async function executeBatchMode(
             if (errorMsg.includes('timed out')) {
                 try {
                     const batchPrompt = buildBatchPrompt(prompts.mapPrompt, batch, outputFields);
-                    let model: string | undefined;
-                    if (config.map.model && typeof config.map.model === 'string') {
-                        const substitutedModel = config.map.model.replace(/\{\{(\w+)\}\}/g, (_, varName) => {
-                            return varName in batch[0] ? batch[0][varName] : '';
-                        });
-                        model = substitutedModel || undefined;
-                    }
+                    const model = substituteModelTemplate(config.map.model, batch[0]);
 
                     const aiResult = await Promise.race([
                         options.aiInvoker(batchPrompt, { model }),

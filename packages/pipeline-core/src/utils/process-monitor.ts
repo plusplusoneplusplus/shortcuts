@@ -51,10 +51,11 @@ interface MonitoredSession {
     onTerminated: () => void;
 }
 
-/**
- * Default poll interval (5 seconds)
- */
-export const DEFAULT_POLL_INTERVAL_MS = 5000;
+// Re-export for backward compatibility
+export { DEFAULT_POLL_INTERVAL_MS } from '../config/defaults';
+
+// Import for internal use
+import { DEFAULT_POLL_INTERVAL_MS } from '../config/defaults';
 
 /**
  * ProcessMonitor

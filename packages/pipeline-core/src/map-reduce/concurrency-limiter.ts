@@ -147,7 +147,5 @@ export class ConcurrencyLimiter {
     }
 }
 
-/**
- * Default concurrency limit for map-reduce operations
- */
-export const DEFAULT_MAX_CONCURRENCY = 5;
+// Re-export for backward compatibility
+export { DEFAULT_MAX_CONCURRENCY } from '../config/defaults';

@@ -5,6 +5,8 @@
  * No VS Code dependencies - can be used in CLI tools and other environments.
  */
 
+import { substituteVariables } from '../utils/template-engine';
+
 /**
  * Context for building prompts
  */
@@ -22,6 +24,12 @@ export interface PromptContext {
 }
 
 /**
+ * Prompt-specific variable names used in AI prompts.
+ * These map to PromptContext fields.
+ */
+const PROMPT_VARIABLE_NAMES = ['selection', 'file', 'heading', 'context', 'headings'] as const;
+
+/**
  * Substitute template variables in a prompt
  *
  * Template variables supported:
@@ -36,24 +44,20 @@ export interface PromptContext {
  * @returns The prompt with variables substituted
  */
 export function substitutePromptVariables(template: string, context: PromptContext): string {
-    let result = template;
+    // Build variables object from context
+    const variables: Record<string, string> = {
+        selection: context.selectedText,
+        file: context.filePath,
+        heading: context.nearestHeading ?? '',
+        context: context.surroundingContent ?? '',
+        headings: context.headings?.join(', ') ?? ''
+    };
 
-    // {{selection}} - The selected text
-    result = result.replace(/\{\{selection\}\}/g, context.selectedText);
-
-    // {{file}} - The file path
-    result = result.replace(/\{\{file\}\}/g, context.filePath);
-
-    // {{heading}} - The nearest heading above selection
-    result = result.replace(/\{\{heading\}\}/g, context.nearestHeading ?? '');
-
-    // {{context}} - Surrounding content
-    result = result.replace(/\{\{context\}\}/g, context.surroundingContent ?? '');
-
-    // {{headings}} - All document headings (comma-separated)
-    result = result.replace(/\{\{headings\}\}/g, context.headings?.join(', ') ?? '');
-
-    return result;
+    return substituteVariables(template, variables, {
+        strict: false,
+        missingValueBehavior: 'empty',
+        preserveSpecialVariables: false
+    });
 }
 
 /**
@@ -92,7 +96,8 @@ export function buildPromptFromContext(
  * Check if a prompt template uses template variables
  */
 export function usesTemplateVariables(template: string): boolean {
-    return /\{\{(selection|file|heading|context|headings)\}\}/.test(template);
+    const pattern = new RegExp(`\\{\\{(${PROMPT_VARIABLE_NAMES.join('|')})\\}\\}`);
+    return pattern.test(template);
 }
 
 /**

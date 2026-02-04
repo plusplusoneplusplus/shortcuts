@@ -116,8 +116,60 @@ export {
     ProcessMonitor,
     getProcessMonitor,
     resetProcessMonitor,
-    DEFAULT_POLL_INTERVAL_MS
+    DEFAULT_POLL_INTERVAL_MS,
+    // Template engine
+    TEMPLATE_VARIABLE_REGEX,
+    SPECIAL_VARIABLES,
+    SubstituteVariablesOptions,
+    TemplateVariableError,
+    substituteVariables,
+    extractTemplateVariables,
+    hasVariables,
+    containsVariables,
+    validateVariables
 } from './utils';
+
+// ============================================================================
+// Config (Centralized Defaults)
+// ============================================================================
+
+export {
+    // Timeouts
+    DEFAULT_AI_TIMEOUT_MS,
+    // Concurrency
+    DEFAULT_PARALLEL_LIMIT,
+    DEFAULT_MAX_CONCURRENCY,
+    // Session Pool
+    DEFAULT_MAX_SESSIONS,
+    DEFAULT_IDLE_TIMEOUT_MS,
+    DEFAULT_MIN_SESSIONS,
+    DEFAULT_CLEANUP_INTERVAL_MS,
+    DEFAULT_ACQUIRE_TIMEOUT_MS,
+    // Chunk Splitter
+    DEFAULT_CHUNK_MAX_SIZE,
+    DEFAULT_CHUNK_OVERLAP_SIZE,
+    DEFAULT_CHUNK_STRATEGY,
+    DEFAULT_CHUNK_PRESERVE_BOUNDARIES,
+    // CSV Reader
+    DEFAULT_CSV_DELIMITER,
+    DEFAULT_CSV_QUOTE,
+    DEFAULT_CSV_HAS_HEADER,
+    DEFAULT_CSV_SKIP_EMPTY_LINES,
+    DEFAULT_CSV_TRIM_FIELDS,
+    // Queue Executor
+    DEFAULT_RETRY_ATTEMPTS,
+    DEFAULT_RETRY_DELAY_MS,
+    DEFAULT_QUEUE_MAX_CONCURRENT,
+    DEFAULT_QUEUE_PROCESS_ON_STARTUP,
+    DEFAULT_QUEUE_AUTO_START,
+    DEFAULT_QUEUE_AUTO_PERSIST,
+    // Skills
+    DEFAULT_SKILLS_DIRECTORY,
+    // Text Matching
+    DEFAULT_FUZZY_MATCH_THRESHOLD,
+    DEFAULT_CONTEXT_LINES,
+    DEFAULT_CASE_SENSITIVE
+} from './config';
 
 // ============================================================================
 // AI Service

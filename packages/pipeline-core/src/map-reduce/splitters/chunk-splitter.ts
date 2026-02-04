@@ -8,6 +8,12 @@
  */
 
 import { Splitter, WorkItem } from '../types';
+import {
+    DEFAULT_CHUNK_MAX_SIZE,
+    DEFAULT_CHUNK_OVERLAP_SIZE,
+    DEFAULT_CHUNK_STRATEGY,
+    DEFAULT_CHUNK_PRESERVE_BOUNDARIES
+} from '../../config/defaults';
 
 /**
  * Input for chunk splitter
@@ -80,10 +86,10 @@ export interface ChunkSplitterOptions {
  * Default chunk splitter options
  */
 const DEFAULT_CHUNK_OPTIONS: ChunkSplitterOptions = {
-    maxChunkSize: 4000,
-    overlapSize: 200,
-    strategy: 'character',
-    preserveBoundaries: true
+    maxChunkSize: DEFAULT_CHUNK_MAX_SIZE,
+    overlapSize: DEFAULT_CHUNK_OVERLAP_SIZE,
+    strategy: DEFAULT_CHUNK_STRATEGY,
+    preserveBoundaries: DEFAULT_CHUNK_PRESERVE_BOUNDARIES
 };
 
 /**

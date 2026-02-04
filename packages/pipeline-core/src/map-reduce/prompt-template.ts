@@ -8,6 +8,11 @@
  */
 
 import { PromptRenderOptions, PromptTemplate } from './types';
+import {
+    TEMPLATE_VARIABLE_REGEX,
+    substituteVariables,
+    extractVariables as extractTemplateVariables
+} from '../utils/template-engine';
 
 // Re-export PromptTemplate for convenience
 export type { PromptTemplate } from './types';
@@ -61,16 +66,12 @@ export function renderTemplate(
     }
 
     try {
-        // Perform variable substitution
-        let rendered = template.template;
-
-        // Replace all {{variable}} patterns
-        rendered = rendered.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
-            if (varName in variables) {
-                return String(variables[varName]);
-            }
-            // Leave unmatched variables as-is (they may be optional)
-            return match;
+        // Perform variable substitution using shared engine
+        // Use 'preserve' mode for missing variables (they may be optional)
+        let rendered = substituteVariables(template.template, variables, {
+            strict: false,
+            missingValueBehavior: 'preserve',
+            preserveSpecialVariables: false // Don't treat any as special in this context
         });
 
         // Prepend system prompt if requested
@@ -115,14 +116,8 @@ export function createTemplate(config: {
  * @returns Array of variable names found in the template
  */
 export function extractVariables(template: string): string[] {
-    const matches = template.matchAll(/\{\{(\w+)\}\}/g);
-    const variables = new Set<string>();
-
-    for (const match of matches) {
-        variables.add(match[1]);
-    }
-
-    return Array.from(variables);
+    // Use shared implementation but don't exclude any variables
+    return extractTemplateVariables(template, false);
 }
 
 /**

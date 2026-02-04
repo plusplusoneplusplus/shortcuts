@@ -131,10 +131,10 @@ export interface MapReduceOptions {
 /**
  * Default options for map-reduce execution
  */
-import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
+import { DEFAULT_AI_TIMEOUT_MS, DEFAULT_MAX_CONCURRENCY } from '../config/defaults';
 
 export const DEFAULT_MAP_REDUCE_OPTIONS: MapReduceOptions = {
-    maxConcurrency: 5,
+    maxConcurrency: DEFAULT_MAX_CONCURRENCY,
     reduceMode: 'deterministic',
     showProgress: true,
     retryOnFailure: false,

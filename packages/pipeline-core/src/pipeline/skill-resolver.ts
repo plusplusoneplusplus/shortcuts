@@ -19,11 +19,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { extractPromptContent } from './prompt-resolver';
+import { DEFAULT_SKILLS_DIRECTORY as SKILLS_DIR_DEFAULT } from '../config/defaults';
 
-/**
- * Default skills directory relative to workspace root
- */
-export const DEFAULT_SKILLS_DIRECTORY = '.github/skills';
+// Re-export for backward compatibility
+export const DEFAULT_SKILLS_DIRECTORY = SKILLS_DIR_DEFAULT;
 
 /**
  * Standard skill filename within a skill directory (required)

@@ -156,13 +156,17 @@ export interface TaskExecutionConfig {
 /**
  * Default task execution configuration
  */
-import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
+import {
+    DEFAULT_AI_TIMEOUT_MS,
+    DEFAULT_RETRY_ATTEMPTS,
+    DEFAULT_RETRY_DELAY_MS
+} from '../config/defaults';
 
 export const DEFAULT_TASK_CONFIG: TaskExecutionConfig = {
     timeoutMs: DEFAULT_AI_TIMEOUT_MS,
     retryOnFailure: false,
-    retryAttempts: 1,
-    retryDelayMs: 1000,
+    retryAttempts: DEFAULT_RETRY_ATTEMPTS,
+    retryDelayMs: DEFAULT_RETRY_DELAY_MS,
 };
 
 // ============================================================================

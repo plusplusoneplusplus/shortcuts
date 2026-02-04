@@ -104,3 +104,16 @@ export {
     resetProcessMonitor,
     DEFAULT_POLL_INTERVAL_MS
 } from './process-monitor';
+
+// Template engine
+export {
+    TEMPLATE_VARIABLE_REGEX,
+    SPECIAL_VARIABLES,
+    SubstituteVariablesOptions,
+    TemplateVariableError,
+    substituteVariables,
+    extractVariables as extractTemplateVariables,
+    hasVariables,
+    containsVariables,
+    validateVariables
+} from './template-engine';

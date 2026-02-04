@@ -12,6 +12,13 @@ import {
     extractJSON as sharedExtractJSON, 
     parseAIResponse as sharedParseAIResponse 
 } from '../utils/ai-response-parser';
+import {
+    TEMPLATE_VARIABLE_REGEX,
+    SPECIAL_VARIABLES,
+    TemplateVariableError,
+    extractVariables as extractTemplateVariables,
+    validateVariables
+} from '../utils/template-engine';
 
 /**
  * Error thrown when a template variable is missing
@@ -25,11 +32,6 @@ export class TemplateError extends Error {
         this.name = 'TemplateError';
     }
 }
-
-/**
- * Regular expression to match {{variable}} placeholders
- */
-const TEMPLATE_VARIABLE_REGEX = /\{\{(\w+)\}\}/g;
 
 /**
  * Options for template substitution
@@ -64,7 +66,10 @@ export function substituteTemplate(
     
     const { strict = false, allItems } = options;
     
-    return template.replace(TEMPLATE_VARIABLE_REGEX, (match, variableName) => {
+    // Create a fresh regex instance to avoid issues with global flag and lastIndex
+    const regex = new RegExp(TEMPLATE_VARIABLE_REGEX.source, 'g');
+    
+    return template.replace(regex, (match, variableName) => {
         // Handle special {{ITEMS}} variable - returns JSON array of all items
         if (variableName === 'ITEMS' && allItems) {
             return JSON.stringify(allItems, null, 2);
@@ -74,7 +79,7 @@ export function substituteTemplate(
         if (SPECIAL_VARIABLES.has(variableName)) {
             // In non-strict mode, return placeholder; in strict mode, also return placeholder
             // since these are system-provided at runtime
-            return `{{${variableName}}}`;
+            return match;
         }
         
         if (variableName in item) {
@@ -94,37 +99,13 @@ export function substituteTemplate(
 }
 
 /**
- * Special template variables that are automatically provided by the system
- * and should not be validated against item fields.
- * 
- * - ITEMS: JSON array of all input items (available in map phase)
- * - RESULTS: JSON array of map results (available in reduce phase)
- * - RESULTS_FILE: Path to temp file with results (available in reduce phase)
- * - COUNT: Total count of items/results
- * - SUCCESS_COUNT: Count of successful items
- * - FAILURE_COUNT: Count of failed items
- */
-const SPECIAL_VARIABLES = new Set(['ITEMS', 'RESULTS', 'RESULTS_FILE', 'COUNT', 'SUCCESS_COUNT', 'FAILURE_COUNT']);
-
-/**
  * Extract all variable names from a template
  * @param template Template string
  * @param excludeSpecial If true, excludes special system variables (ITEMS, RESULTS, etc.)
  * @returns Array of unique variable names
  */
 export function extractVariables(template: string, excludeSpecial: boolean = true): string[] {
-    const variables = new Set<string>();
-    const matches = template.matchAll(TEMPLATE_VARIABLE_REGEX);
-
-    for (const match of matches) {
-        const varName = match[1];
-        // Optionally exclude special system-provided variables
-        if (!excludeSpecial || !SPECIAL_VARIABLES.has(varName)) {
-            variables.add(varName);
-        }
-    }
-
-    return Array.from(variables);
+    return extractTemplateVariables(template, excludeSpecial);
 }
 
 /**
@@ -137,13 +118,7 @@ export function validateItemForTemplate(
     template: string,
     item: PromptItem
 ): { valid: boolean; missingVariables: string[] } {
-    const requiredVariables = extractVariables(template);
-    const missingVariables = requiredVariables.filter(v => !(v in item));
-
-    return {
-        valid: missingVariables.length === 0,
-        missingVariables
-    };
+    return validateVariables(template, item);
 }
 
 /**
