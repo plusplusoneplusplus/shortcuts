@@ -2325,22 +2325,22 @@
         },
         {
           "command": "tasksViewer.markAsFuture",
-          "when": "view == tasksView && viewItem =~ /^task(_reviewed|_needsReReview|_inProgress|_done)?$/ && viewItem != task_future",
+          "when": "view == tasksView && viewItem =~ /^task(_reviewed|_needsReReview|_inProgress|_done)?$/ && viewItem != task_future && viewItem !~ /^related/",
           "group": "status@1"
         },
         {
           "command": "tasksViewer.markAsPending",
-          "when": "view == tasksView && viewItem =~ /^task_(future|inProgress|done)(_reviewed|_needsReReview)?$/",
+          "when": "view == tasksView && viewItem =~ /^task_(future|inProgress|done)(_reviewed|_needsReReview)?$/ && viewItem !~ /^related/",
           "group": "status@2"
         },
         {
           "command": "tasksViewer.markAsInProgress",
-          "when": "view == tasksView && viewItem =~ /^task(_future|_done)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_inProgress/",
+          "when": "view == tasksView && viewItem =~ /^task(_future|_done)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_inProgress/ && viewItem !~ /^related/",
           "group": "status@3"
         },
         {
           "command": "tasksViewer.markAsDone",
-          "when": "view == tasksView && viewItem =~ /^task(_future|_inProgress)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_done/",
+          "when": "view == tasksView && viewItem =~ /^task(_future|_inProgress)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_done/ && viewItem !~ /^related/",
           "group": "status@4"
         },
         {
@@ -2415,22 +2415,22 @@
         },
         {
           "command": "tasksViewer.markAsFuture",
-          "when": "view == tasksView && viewItem =~ /^taskDocument(_reviewed|_needsReReview|_inProgress|_done)?$/ && viewItem !~ /_future/",
+          "when": "view == tasksView && viewItem =~ /^taskDocument(_reviewed|_needsReReview|_inProgress|_done)?$/ && viewItem !~ /_future/ && viewItem !~ /^related/",
           "group": "status@1"
         },
         {
           "command": "tasksViewer.markAsPending",
-          "when": "view == tasksView && viewItem =~ /^taskDocument_(future|inProgress|done)(_reviewed|_needsReReview)?$/",
+          "when": "view == tasksView && viewItem =~ /^taskDocument_(future|inProgress|done)(_reviewed|_needsReReview)?$/ && viewItem !~ /^related/",
           "group": "status@2"
         },
         {
           "command": "tasksViewer.markAsInProgress",
-          "when": "view == tasksView && viewItem =~ /^taskDocument(_future|_done)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_inProgress/",
+          "when": "view == tasksView && viewItem =~ /^taskDocument(_future|_done)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_inProgress/ && viewItem !~ /^related/",
           "group": "status@3"
         },
         {
           "command": "tasksViewer.markAsDone",
-          "when": "view == tasksView && viewItem =~ /^taskDocument(_future|_inProgress)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_done/",
+          "when": "view == tasksView && viewItem =~ /^taskDocument(_future|_inProgress)?(_reviewed|_needsReReview)?$/ && viewItem !~ /_done/ && viewItem !~ /^related/",
           "group": "status@4"
         },
         {

@@ -587,3 +587,149 @@ suite('Tasks Discovery - TaskManager.addRelatedItems', () => {
         assert.strictEqual(loaded?.items.length, 1);
     });
 });
+
+/**
+ * Test suite to verify that related item contextValues do NOT match
+ * the regex patterns used for status commands in package.json.
+ * 
+ * This is a defensive test to ensure related items never show
+ * "Mark as Done", "Mark as In-Progress", etc. context menu options.
+ * 
+ * Status command patterns from package.json:
+ * - task items: /^task(_reviewed|_needsReReview|_inProgress|_done)?$/
+ * - taskDocument items: /^taskDocument(_reviewed|_needsReReview|_inProgress|_done)?$/
+ */
+suite('Tasks Related Items - contextValue should NOT match status command patterns', () => {
+    // Regex patterns that would allow status commands (from package.json)
+    const taskStatusPatterns = [
+        /^task(_reviewed|_needsReReview|_inProgress|_done)?$/,
+        /^task_(future|inProgress|done)(_reviewed|_needsReReview)?$/,
+        /^task(_future|_done)?(_reviewed|_needsReReview)?$/,
+        /^task(_future|_inProgress)?(_reviewed|_needsReReview)?$/
+    ];
+    
+    const taskDocumentStatusPatterns = [
+        /^taskDocument(_reviewed|_needsReReview|_inProgress|_done)?$/,
+        /^taskDocument_(future|inProgress|done)(_reviewed|_needsReReview)?$/,
+        /^taskDocument(_future|_done)?(_reviewed|_needsReReview)?$/,
+        /^taskDocument(_future|_inProgress)?(_reviewed|_needsReReview)?$/
+    ];
+
+    // All related item contextValues
+    const relatedContextValues = [
+        'relatedItemsSection',
+        'relatedCategory',
+        'relatedFile',
+        'relatedCommit'
+    ];
+
+    test('relatedItemsSection contextValue does not match any task status pattern', () => {
+        const contextValue = 'relatedItemsSection';
+        for (const pattern of [...taskStatusPatterns, ...taskDocumentStatusPatterns]) {
+            assert.strictEqual(
+                pattern.test(contextValue),
+                false,
+                `'${contextValue}' should NOT match pattern ${pattern}`
+            );
+        }
+    });
+
+    test('relatedCategory contextValue does not match any task status pattern', () => {
+        const contextValue = 'relatedCategory';
+        for (const pattern of [...taskStatusPatterns, ...taskDocumentStatusPatterns]) {
+            assert.strictEqual(
+                pattern.test(contextValue),
+                false,
+                `'${contextValue}' should NOT match pattern ${pattern}`
+            );
+        }
+    });
+
+    test('relatedFile contextValue does not match any task status pattern', () => {
+        const contextValue = 'relatedFile';
+        for (const pattern of [...taskStatusPatterns, ...taskDocumentStatusPatterns]) {
+            assert.strictEqual(
+                pattern.test(contextValue),
+                false,
+                `'${contextValue}' should NOT match pattern ${pattern}`
+            );
+        }
+    });
+
+    test('relatedCommit contextValue does not match any task status pattern', () => {
+        const contextValue = 'relatedCommit';
+        for (const pattern of [...taskStatusPatterns, ...taskDocumentStatusPatterns]) {
+            assert.strictEqual(
+                pattern.test(contextValue),
+                false,
+                `'${contextValue}' should NOT match pattern ${pattern}`
+            );
+        }
+    });
+
+    test('all related contextValues start with "related" prefix', () => {
+        // This ensures the defensive exclusion pattern /^related/ works
+        for (const contextValue of relatedContextValues) {
+            assert.strictEqual(
+                contextValue.startsWith('related'),
+                true,
+                `'${contextValue}' should start with 'related' prefix`
+            );
+        }
+    });
+
+    test('related contextValues match the exclusion pattern /^related/', () => {
+        const exclusionPattern = /^related/;
+        for (const contextValue of relatedContextValues) {
+            assert.strictEqual(
+                exclusionPattern.test(contextValue),
+                true,
+                `'${contextValue}' should match exclusion pattern ${exclusionPattern}`
+            );
+        }
+    });
+
+    test('RelatedItemsSectionItem has correct contextValue constant', () => {
+        const config: RelatedItemsConfig = {
+            description: 'Test',
+            items: []
+        };
+        const item = new RelatedItemsSectionItem('/path', config);
+        assert.strictEqual(item.contextValue, 'relatedItemsSection');
+        assert.strictEqual(/^related/.test(item.contextValue), true);
+    });
+
+    test('RelatedCategoryItem has correct contextValue constant', () => {
+        const item = new RelatedCategoryItem('source', [], '/path');
+        assert.strictEqual(item.contextValue, 'relatedCategory');
+        assert.strictEqual(/^related/.test(item.contextValue), true);
+    });
+
+    test('RelatedFileItem has correct contextValue constant', () => {
+        const relatedItem: RelatedItem = {
+            name: 'test.ts',
+            path: 'src/test.ts',
+            type: 'file',
+            category: 'source',
+            relevance: 90,
+            reason: 'Test'
+        };
+        const item = new RelatedFileItem(relatedItem, '/path', '/workspace');
+        assert.strictEqual(item.contextValue, 'relatedFile');
+        assert.strictEqual(/^related/.test(item.contextValue), true);
+    });
+
+    test('RelatedCommitItem has correct contextValue constant', () => {
+        const relatedItem: RelatedItem = {
+            name: 'feat: test',
+            type: 'commit',
+            hash: 'abc123',
+            category: 'commit',
+            relevance: 90,
+            reason: 'Test'
+        };
+        const item = new RelatedCommitItem(relatedItem, '/path', '/workspace');
+        assert.strictEqual(item.contextValue, 'relatedCommit');
+        assert.strictEqual(/^related/.test(item.contextValue), true);
+    });
+});
