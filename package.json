@@ -3098,6 +3098,41 @@
           "command": "pipelinesViewer.viewBundled",
           "when": "view == pipelinesView && viewItem == pipeline_bundled",
           "group": "pipeline@3"
+        },
+        {
+          "command": "shortcuts.queue.cancelTask",
+          "when": "view == clarificationProcessesView && viewItem =~ /^queuedTask_/",
+          "group": "queuedTask@1"
+        },
+        {
+          "command": "shortcuts.queue.moveToTop",
+          "when": "view == clarificationProcessesView && viewItem =~ /^queuedTask_/",
+          "group": "queuedTask@2"
+        },
+        {
+          "command": "shortcuts.queue.moveUp",
+          "when": "view == clarificationProcessesView && viewItem =~ /^queuedTask_/",
+          "group": "queuedTask@3"
+        },
+        {
+          "command": "shortcuts.queue.moveDown",
+          "when": "view == clarificationProcessesView && viewItem =~ /^queuedTask_/",
+          "group": "queuedTask@4"
+        },
+        {
+          "command": "shortcuts.queue.clearQueue",
+          "when": "view == clarificationProcessesView && viewItem == queuedTasksSection",
+          "group": "queueSection@1"
+        },
+        {
+          "command": "shortcuts.queue.pauseQueue",
+          "when": "view == clarificationProcessesView && viewItem == queuedTasksSection",
+          "group": "queueSection@2"
+        },
+        {
+          "command": "shortcuts.queue.resumeQueue",
+          "when": "view == clarificationProcessesView && viewItem == queuedTasksSection",
+          "group": "queueSection@3"
         }
       ],
       "explorer/context": [

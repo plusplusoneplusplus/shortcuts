@@ -712,3 +712,327 @@ suite('AI Process Tree Provider Tests', () => {
         });
     });
 });
+
+// Import additional types for queue service tests
+import { QueuedTaskItem, QueuedTasksSectionItem } from '../../shortcuts/ai-service/queued-task-tree-item';
+import * as vscode from 'vscode';
+import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/pipeline-core';
+
+/**
+ * Type guard to check if a tree item is a QueuedTasksSectionItem
+ */
+function isQueuedTasksSectionItem(item: AIProcessTreeItem): item is QueuedTasksSectionItem {
+    return item.contextValue === 'queuedTasksSection';
+}
+
+/**
+ * Type guard to check if a tree item is a QueuedTaskItem
+ */
+function isQueuedTaskItem(item: AIProcessTreeItem): item is QueuedTaskItem {
+    return item.contextValue?.startsWith('queuedTask_') ?? false;
+}
+
+/**
+ * Mock AIQueueService for testing
+ */
+class MockAIQueueService {
+    private _onDidChangeQueue = new vscode.EventEmitter<void>();
+    readonly onDidChangeQueue = this._onDidChangeQueue.event;
+
+    private _onDidChangeStats = new vscode.EventEmitter<void>();
+    readonly onDidChangeStats = this._onDidChangeStats.event;
+
+    private queuedTasks: QueuedTask[] = [];
+    private paused = false;
+
+    getQueuedTasks(): QueuedTask[] {
+        return [...this.queuedTasks];
+    }
+
+    isPaused(): boolean {
+        return this.paused;
+    }
+
+    // Test helpers
+    addTask(task: Partial<QueuedTask>): void {
+        this.queuedTasks.push({
+            id: task.id || `task-${this.queuedTasks.length + 1}`,
+            type: task.type || 'follow-prompt',
+            priority: task.priority || 'normal',
+            status: 'queued',
+            createdAt: task.createdAt || Date.now(),
+            payload: task.payload || { type: 'follow-prompt' } as any,
+            config: task.config || { timeoutMs: 30000 },
+            displayName: task.displayName,
+        } as QueuedTask);
+        this._onDidChangeQueue.fire();
+    }
+
+    clearTasks(): void {
+        this.queuedTasks = [];
+        this._onDidChangeQueue.fire();
+    }
+
+    setPaused(paused: boolean): void {
+        this.paused = paused;
+        this._onDidChangeStats.fire();
+    }
+
+    dispose(): void {
+        this._onDidChangeQueue.dispose();
+        this._onDidChangeStats.dispose();
+    }
+}
+
+suite('AI Process Tree Provider - Queue Service Integration Tests', () => {
+
+    suite('Queued Tasks Section Display', () => {
+
+        test('should show queued tasks section when queue has items', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+            const queueService = new MockAIQueueService();
+
+            provider.setQueueService(queueService as any);
+
+            queueService.addTask({ displayName: 'Task 1' });
+            queueService.addTask({ displayName: 'Task 2' });
+
+            const topLevel = await provider.getChildren();
+
+            // Should have a queued tasks section
+            const sectionItems = topLevel.filter(isQueuedTasksSectionItem);
+            assert.strictEqual(sectionItems.length, 1);
+            assert.strictEqual(sectionItems[0].label, 'Queued Tasks (2)');
+
+            provider.dispose();
+            queueService.dispose();
+        });
+
+        test('should not show queued tasks section when queue is empty', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+            const queueService = new MockAIQueueService();
+
+            provider.setQueueService(queueService as any);
+
+            const topLevel = await provider.getChildren();
+
+            // Should not have a queued tasks section
+            const sectionItems = topLevel.filter(isQueuedTasksSectionItem);
+            assert.strictEqual(sectionItems.length, 0);
+
+            provider.dispose();
+            queueService.dispose();
+        });
+
+        test('should show paused indicator in section header', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+            const queueService = new MockAIQueueService();
+
+            provider.setQueueService(queueService as any);
+
+            queueService.addTask({ displayName: 'Task 1' });
+            queueService.setPaused(true);
+
+            const topLevel = await provider.getChildren();
+
+            const sectionItems = topLevel.filter(isQueuedTasksSectionItem);
+            assert.strictEqual(sectionItems.length, 1);
+            assert.strictEqual(sectionItems[0].label, 'Queued Tasks (1, paused)');
+
+            provider.dispose();
+            queueService.dispose();
+        });
+    });
+
+    suite('Queued Task Items', () => {
+
+        test('should return queued task items as children of section', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+            const queueService = new MockAIQueueService();
+
+            provider.setQueueService(queueService as any);
+
+            queueService.addTask({ id: 'task-1', displayName: 'First Task' });
+            queueService.addTask({ id: 'task-2', displayName: 'Second Task' });
+            queueService.addTask({ id: 'task-3', displayName: 'Third Task' });
+
+            const topLevel = await provider.getChildren();
+            const sectionItem = topLevel.find(isQueuedTasksSectionItem)!;
+
+            const children = await provider.getChildren(sectionItem);
+
+            assert.strictEqual(children.length, 3);
+
+            // All should be QueuedTaskItem instances
+            for (const child of children) {
+                assert.ok(isQueuedTaskItem(child), 'Expected QueuedTaskItem');
+            }
+
+            // Check positions
+            const taskItems = children as QueuedTaskItem[];
+            assert.strictEqual(taskItems[0].position, 1);
+            assert.strictEqual(taskItems[1].position, 2);
+            assert.strictEqual(taskItems[2].position, 3);
+
+            provider.dispose();
+            queueService.dispose();
+        });
+
+        test('should preserve task order from queue', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+            const queueService = new MockAIQueueService();
+
+            provider.setQueueService(queueService as any);
+
+            queueService.addTask({ id: 'first', displayName: 'First' });
+            queueService.addTask({ id: 'second', displayName: 'Second' });
+            queueService.addTask({ id: 'third', displayName: 'Third' });
+
+            const topLevel = await provider.getChildren();
+            const sectionItem = topLevel.find(isQueuedTasksSectionItem)!;
+            const children = await provider.getChildren(sectionItem) as QueuedTaskItem[];
+
+            assert.strictEqual(children[0].task.id, 'first');
+            assert.strictEqual(children[1].task.id, 'second');
+            assert.strictEqual(children[2].task.id, 'third');
+
+            provider.dispose();
+            queueService.dispose();
+        });
+    });
+
+    suite('Get Parent', () => {
+
+        test('should return section as parent for queued task item', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+            const queueService = new MockAIQueueService();
+
+            provider.setQueueService(queueService as any);
+
+            queueService.addTask({ displayName: 'Task 1' });
+
+            const topLevel = await provider.getChildren();
+            const sectionItem = topLevel.find(isQueuedTasksSectionItem)!;
+            const children = await provider.getChildren(sectionItem) as QueuedTaskItem[];
+
+            const parent = provider.getParent(children[0]);
+
+            assert.ok(parent);
+            assert.ok(isQueuedTasksSectionItem(parent));
+
+            provider.dispose();
+            queueService.dispose();
+        });
+
+        test('should return undefined for queued tasks section', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+            const queueService = new MockAIQueueService();
+
+            provider.setQueueService(queueService as any);
+
+            queueService.addTask({ displayName: 'Task 1' });
+
+            const topLevel = await provider.getChildren();
+            const sectionItem = topLevel.find(isQueuedTasksSectionItem)!;
+
+            const parent = provider.getParent(sectionItem);
+
+            assert.strictEqual(parent, undefined);
+
+            provider.dispose();
+            queueService.dispose();
+        });
+    });
+
+    suite('Coexistence with Processes', () => {
+
+        test('should show both processes and queued tasks', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+            const queueService = new MockAIQueueService();
+
+            provider.setQueueService(queueService as any);
+
+            // Add a process
+            manager.registerProcess('Test process');
+
+            // Add a queued task
+            queueService.addTask({ displayName: 'Queued Task' });
+
+            const topLevel = await provider.getChildren();
+
+            // Should have queued tasks section and process
+            const sectionItems = topLevel.filter(isQueuedTasksSectionItem);
+            const processItems = topLevel.filter(isAIProcessItem);
+
+            assert.strictEqual(sectionItems.length, 1);
+            assert.strictEqual(processItems.length, 1);
+
+            provider.dispose();
+            queueService.dispose();
+        });
+
+        test('queued tasks section should appear before processes', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+            const queueService = new MockAIQueueService();
+
+            provider.setQueueService(queueService as any);
+
+            // Add a process first
+            manager.registerProcess('Test process');
+
+            // Add a queued task
+            queueService.addTask({ displayName: 'Queued Task' });
+
+            const topLevel = await provider.getChildren();
+
+            // Find the indices
+            const sectionIndex = topLevel.findIndex(isQueuedTasksSectionItem);
+            const processIndex = topLevel.findIndex(isAIProcessItem);
+
+            // Section should come before processes
+            assert.ok(sectionIndex < processIndex, 'Queued tasks section should appear before processes');
+
+            provider.dispose();
+            queueService.dispose();
+        });
+    });
+
+    suite('Priority Display', () => {
+
+        test('should show correct context value for different priorities', async () => {
+            const manager = new MockAIProcessManager();
+            const provider = new AIProcessTreeDataProvider(manager);
+            const queueService = new MockAIQueueService();
+
+            provider.setQueueService(queueService as any);
+
+            queueService.addTask({ id: 'high', priority: 'high', displayName: 'High Priority' });
+            queueService.addTask({ id: 'normal', priority: 'normal', displayName: 'Normal Priority' });
+            queueService.addTask({ id: 'low', priority: 'low', displayName: 'Low Priority' });
+
+            const topLevel = await provider.getChildren();
+            const sectionItem = topLevel.find(isQueuedTasksSectionItem)!;
+            const children = await provider.getChildren(sectionItem) as QueuedTaskItem[];
+
+            const highItem = children.find(c => c.task.id === 'high')!;
+            const normalItem = children.find(c => c.task.id === 'normal')!;
+            const lowItem = children.find(c => c.task.id === 'low')!;
+
+            assert.strictEqual(highItem.contextValue, 'queuedTask_high');
+            assert.strictEqual(normalItem.contextValue, 'queuedTask_normal');
+            assert.strictEqual(lowItem.contextValue, 'queuedTask_low');
+
+            provider.dispose();
+            queueService.dispose();
+        });
+    });
+});

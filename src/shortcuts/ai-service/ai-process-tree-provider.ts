@@ -11,6 +11,8 @@ import { IAIProcessManager } from './types';
 import { AIProcess } from './types';
 import { InteractiveSessionManager } from './interactive-session-manager';
 import { InteractiveSessionItem, InteractiveSessionSectionItem } from './interactive-session-tree-item';
+import { QueuedTaskItem, QueuedTasksSectionItem } from './queued-task-tree-item';
+import { AIQueueService } from './ai-queue-service';
 
 /**
  * Tree item representing an AI process
@@ -524,7 +526,7 @@ export class AIProcessItem extends vscode.TreeItem {
 /**
  * Union type for all tree items in the AI Processes panel
  */
-export type AIProcessTreeItem = AIProcessItem | InteractiveSessionItem | InteractiveSessionSectionItem;
+export type AIProcessTreeItem = AIProcessItem | InteractiveSessionItem | InteractiveSessionSectionItem | QueuedTaskItem | QueuedTasksSectionItem;
 
 /**
  * Tree data provider for AI processes
@@ -535,6 +537,7 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
 
     private processManager: IAIProcessManager;
     private sessionManager?: InteractiveSessionManager;
+    private queueService?: AIQueueService;
     private disposables: vscode.Disposable[] = [];
     private refreshInterval?: NodeJS.Timeout;
 
@@ -563,7 +566,8 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
             const hasRunningProcesses = this.processManager.hasRunningProcesses();
             const hasQueuedProcesses = this.hasQueuedProcesses();
             const hasActiveSessions = this.sessionManager?.hasActiveSessions() ?? false;
-            if (hasRunningProcesses || hasQueuedProcesses || hasActiveSessions) {
+            const hasQueuedTasks = this.hasQueuedTasks();
+            if (hasRunningProcesses || hasQueuedProcesses || hasActiveSessions || hasQueuedTasks) {
                 this._onDidChangeTreeData.fire();
             }
         }, 1000);
@@ -586,6 +590,25 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
     }
 
     /**
+     * Set the queue service (can be set after construction)
+     */
+    setQueueService(queueService: AIQueueService): void {
+        this.queueService = queueService;
+
+        // Listen for queue changes
+        this.disposables.push(
+            queueService.onDidChangeQueue(() => {
+                this.refresh();
+            }),
+            queueService.onDidChangeStats(() => {
+                this.refresh();
+            })
+        );
+
+        this.refresh();
+    }
+
+    /**
      * Refresh the tree view
      */
     refresh(): void {
@@ -600,12 +623,17 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
     }
 
     /**
-     * Get children - supports hierarchical display for code review groups and interactive sessions
+     * Get children - supports hierarchical display for code review groups, interactive sessions, and queued tasks
      */
     async getChildren(element?: AIProcessTreeItem): Promise<AIProcessTreeItem[]> {
         // Handle interactive sessions section
         if (element instanceof InteractiveSessionSectionItem) {
             return this.getInteractiveSessionItems();
+        }
+
+        // Handle queued tasks section
+        if (element instanceof QueuedTasksSectionItem) {
+            return this.getQueuedTaskItems();
         }
 
         // If we're getting children of a code review group or pipeline execution, return its child processes
@@ -640,7 +668,7 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
             return [];
         }
 
-        // Root level - return interactive sessions section (if any) + top-level processes
+        // Root level - return interactive sessions section, queued tasks section (if any), + top-level processes
         const items: AIProcessTreeItem[] = [];
 
         // Add interactive sessions section if there are any sessions
@@ -649,6 +677,15 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
             if (sessions.length > 0) {
                 const activeSessions = this.sessionManager.getActiveSessions();
                 items.push(new InteractiveSessionSectionItem(activeSessions.length));
+            }
+        }
+
+        // Add queued tasks section if there are queued tasks
+        if (this.queueService) {
+            const queuedTasks = this.queueService.getQueuedTasks();
+            if (queuedTasks.length > 0) {
+                const isPaused = this.queueService.isPaused();
+                items.push(new QueuedTasksSectionItem(queuedTasks.length, isPaused));
             }
         }
 
@@ -707,6 +744,21 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
     }
 
     /**
+     * Get queued task items sorted by queue position
+     */
+    private getQueuedTaskItems(): QueuedTaskItem[] {
+        if (!this.queueService) {
+            return [];
+        }
+
+        const queuedTasks = this.queueService.getQueuedTasks();
+
+        // Tasks are already sorted by queue position (priority ordering)
+        // Map each task to a tree item with its position
+        return queuedTasks.map((task, index) => new QueuedTaskItem(task, index + 1));
+    }
+
+    /**
      * Get parent for tree item (needed for reveal)
      */
     getParent(element: AIProcessTreeItem): AIProcessTreeItem | undefined {
@@ -716,8 +768,15 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
             return new InteractiveSessionSectionItem(activeSessions.length);
         }
 
+        // Queued task items have the section as parent
+        if (element instanceof QueuedTaskItem) {
+            const queuedTasks = this.queueService?.getQueuedTasks() ?? [];
+            const isPaused = this.queueService?.isPaused() ?? false;
+            return new QueuedTasksSectionItem(queuedTasks.length, isPaused);
+        }
+
         // Section items have no parent
-        if (element instanceof InteractiveSessionSectionItem) {
+        if (element instanceof InteractiveSessionSectionItem || element instanceof QueuedTasksSectionItem) {
             return undefined;
         }
 
@@ -737,6 +796,16 @@ export class AIProcessTreeDataProvider implements vscode.TreeDataProvider<AIProc
     private hasQueuedProcesses(): boolean {
         const processes = this.processManager.getProcesses();
         return processes.some(p => p.status === 'queued');
+    }
+
+    /**
+     * Check if there are any queued tasks in the queue service
+     */
+    private hasQueuedTasks(): boolean {
+        if (!this.queueService) {
+            return false;
+        }
+        return this.queueService.getQueuedTasks().length > 0;
     }
 
     /**

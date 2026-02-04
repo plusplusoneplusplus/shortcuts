@@ -7,6 +7,23 @@
 import * as vscode from 'vscode';
 import { getAIQueueService } from './ai-queue-service';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
+import { QueuedTaskItem } from './queued-task-tree-item';
+
+/**
+ * Extract task ID from argument (can be string, QueuedTaskItem, or undefined)
+ */
+function extractTaskId(arg: string | QueuedTaskItem | undefined): string | undefined {
+    if (!arg) {
+        return undefined;
+    }
+    if (typeof arg === 'string') {
+        return arg;
+    }
+    if (arg instanceof QueuedTaskItem) {
+        return arg.task.id;
+    }
+    return undefined;
+}
 
 /**
  * Register all queue-related commands
@@ -85,12 +102,14 @@ export function registerQueueCommands(context: vscode.ExtensionContext): void {
 
     // Cancel task
     context.subscriptions.push(
-        vscode.commands.registerCommand('shortcuts.queue.cancelTask', async (taskId?: string) => {
+        vscode.commands.registerCommand('shortcuts.queue.cancelTask', async (arg?: string | QueuedTaskItem) => {
             const queueService = getAIQueueService();
             if (!queueService) {
                 vscode.window.showWarningMessage('Queue service not initialized');
                 return;
             }
+
+            let taskId = extractTaskId(arg);
 
             // If no taskId provided, show picker
             if (!taskId) {
@@ -128,12 +147,14 @@ export function registerQueueCommands(context: vscode.ExtensionContext): void {
 
     // Move to top
     context.subscriptions.push(
-        vscode.commands.registerCommand('shortcuts.queue.moveToTop', async (taskId?: string) => {
+        vscode.commands.registerCommand('shortcuts.queue.moveToTop', async (arg?: string | QueuedTaskItem) => {
             const queueService = getAIQueueService();
             if (!queueService) {
                 vscode.window.showWarningMessage('Queue service not initialized');
                 return;
             }
+
+            let taskId = extractTaskId(arg);
 
             // If no taskId provided, show picker
             if (!taskId) {
@@ -170,13 +191,14 @@ export function registerQueueCommands(context: vscode.ExtensionContext): void {
 
     // Move up
     context.subscriptions.push(
-        vscode.commands.registerCommand('shortcuts.queue.moveUp', (taskId?: string) => {
+        vscode.commands.registerCommand('shortcuts.queue.moveUp', (arg?: string | QueuedTaskItem) => {
             const queueService = getAIQueueService();
             if (!queueService) {
                 vscode.window.showWarningMessage('Queue service not initialized');
                 return;
             }
 
+            const taskId = extractTaskId(arg);
             if (!taskId) {
                 vscode.window.showWarningMessage('No task specified');
                 return;
@@ -190,13 +212,14 @@ export function registerQueueCommands(context: vscode.ExtensionContext): void {
 
     // Move down
     context.subscriptions.push(
-        vscode.commands.registerCommand('shortcuts.queue.moveDown', (taskId?: string) => {
+        vscode.commands.registerCommand('shortcuts.queue.moveDown', (arg?: string | QueuedTaskItem) => {
             const queueService = getAIQueueService();
             if (!queueService) {
                 vscode.window.showWarningMessage('Queue service not initialized');
                 return;
             }
 
+            const taskId = extractTaskId(arg);
             if (!taskId) {
                 vscode.window.showWarningMessage('No task specified');
                 return;

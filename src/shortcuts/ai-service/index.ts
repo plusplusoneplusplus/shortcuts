@@ -89,6 +89,9 @@ export { AIProcessItem, AIProcessTreeDataProvider, AIProcessTreeItem } from './a
 // Export interactive session tree items
 export { InteractiveSessionItem, InteractiveSessionSectionItem } from './interactive-session-tree-item';
 
+// Export queued task tree items
+export { QueuedTaskItem, QueuedTasksSectionItem } from './queued-task-tree-item';
+
 // Export document provider for read-only process viewing
 export { AI_PROCESS_SCHEME, AIProcessDocumentProvider } from './ai-process-document-provider';
 

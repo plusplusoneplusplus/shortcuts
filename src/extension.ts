@@ -2090,6 +2090,9 @@ export async function activate(context: vscode.ExtensionContext) {
         // Initialize AI Process tree data provider (with session manager for interactive sessions)
         const aiProcessTreeDataProvider = new AIProcessTreeDataProvider(aiProcessManager, interactiveSessionManager);
 
+        // Wire queue service to tree provider for queue visibility in panel
+        aiProcessTreeDataProvider.setQueueService(aiQueueService);
+
         // Initialize AI Process document provider for read-only viewing
         const aiProcessDocumentProvider = new AIProcessDocumentProvider(aiProcessManager);
         const aiProcessDocumentProviderDisposable = vscode.workspace.registerTextDocumentContentProvider(
