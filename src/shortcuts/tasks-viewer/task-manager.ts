@@ -462,9 +462,11 @@ export class TaskManager implements vscode.Disposable {
 
     /**
      * Archive a task (move to archive folder)
+     * @param filePath - Absolute path to the task file
+     * @param preserveStructure - If true, preserves the relative folder structure under archive
      * @returns The new file path
      */
-    async archiveTask(filePath: string): Promise<string> {
+    async archiveTask(filePath: string, preserveStructure: boolean = false): Promise<string> {
         if (!safeExists(filePath)) {
             throw new Error(`Task file not found: ${filePath}`);
         }
@@ -472,14 +474,34 @@ export class TaskManager implements vscode.Disposable {
         this.ensureFoldersExist();
 
         const fileName = path.basename(filePath);
-        const newPath = path.join(this.getArchiveFolder(), fileName);
+        const tasksFolder = this.getTasksFolder();
+        const archiveFolder = this.getArchiveFolder();
+
+        let targetFolder = archiveFolder;
+
+        if (preserveStructure) {
+            // Calculate relative path from tasks folder to the file's directory
+            const fileDir = path.dirname(filePath);
+            const normalizedTasksFolder = tasksFolder.replace(/\\/g, '/');
+            const normalizedFileDir = fileDir.replace(/\\/g, '/');
+            
+            if (normalizedFileDir.startsWith(normalizedTasksFolder)) {
+                const relativePath = normalizedFileDir.substring(normalizedTasksFolder.length).replace(/^[/\\]/, '');
+                if (relativePath && relativePath !== 'archive' && !relativePath.startsWith('archive/') && !relativePath.startsWith('archive\\')) {
+                    targetFolder = path.join(archiveFolder, relativePath);
+                    ensureDirectoryExists(targetFolder);
+                }
+            }
+        }
+
+        const newPath = path.join(targetFolder, fileName);
 
         // Handle name collision in archive
         let finalPath = newPath;
         if (safeExists(newPath)) {
             const baseName = path.basename(fileName, '.md');
             const timestamp = Date.now();
-            finalPath = path.join(this.getArchiveFolder(), `${baseName}-${timestamp}.md`);
+            finalPath = path.join(targetFolder, `${baseName}-${timestamp}.md`);
         }
 
         safeRename(filePath, finalPath);
@@ -512,10 +534,12 @@ export class TaskManager implements vscode.Disposable {
 
     /**
      * Archive a document (move to archive folder)
+     * @param filePath - Absolute path to the document file
+     * @param preserveStructure - If true, preserves the relative folder structure under archive
      * @returns The new file path
      */
-    async archiveDocument(filePath: string): Promise<string> {
-        return this.archiveTask(filePath);
+    async archiveDocument(filePath: string, preserveStructure: boolean = false): Promise<string> {
+        return this.archiveTask(filePath, preserveStructure);
     }
 
     /**
@@ -529,12 +553,13 @@ export class TaskManager implements vscode.Disposable {
     /**
      * Archive a document group (move all documents to archive folder)
      * @param filePaths - Array of file paths in the group
+     * @param preserveStructure - If true, preserves the relative folder structure under archive
      * @returns Array of new file paths
      */
-    async archiveDocumentGroup(filePaths: string[]): Promise<string[]> {
+    async archiveDocumentGroup(filePaths: string[], preserveStructure: boolean = false): Promise<string[]> {
         const newPaths: string[] = [];
         for (const filePath of filePaths) {
-            const newPath = await this.archiveTask(filePath);
+            const newPath = await this.archiveTask(filePath, preserveStructure);
             newPaths.push(newPath);
         }
         return newPaths;

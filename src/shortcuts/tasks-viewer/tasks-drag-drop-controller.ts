@@ -205,27 +205,37 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
     }
 
     /**
-     * Handle internal drop - move tasks between folders
+     * Handle internal drop - move tasks between folders or archive tasks
      */
     private async handleInternalDrop(
         target: vscode.TreeItem | undefined,
         internalDataItem: vscode.DataTransferItem,
         token: vscode.CancellationToken
     ): Promise<void> {
+        // Determine if this is an archive drop or a regular move
+        const isArchiveDrop = this.isArchiveDropTarget(target);
+        
         // Determine target folder
-        let targetFolder: string;
+        let targetFolder: string | undefined;
         
         if (target instanceof TaskFolderItem) {
-            // Reject drops on archived folders
-            if (target.folder.isArchived) {
+            if (target.folder.isArchived && !isArchiveDrop) {
+                // Should not happen since isArchiveDrop checks this, but safety check
                 vscode.window.showWarningMessage('Cannot move tasks to archived folders. Use the archive command instead.');
                 return;
             }
             targetFolder = target.folder.folderPath;
-        } else if (target instanceof TaskGroupItem && target.groupType === 'active') {
-            // Move to tasks root
-            targetFolder = this.taskManager.getTasksFolder();
-        } else {
+        } else if (target instanceof TaskGroupItem) {
+            if (target.groupType === 'active') {
+                // Move to tasks root
+                targetFolder = this.taskManager.getTasksFolder();
+            } else if (target.groupType === 'archived') {
+                // Archive drop - target is archive root
+                targetFolder = this.taskManager.getArchiveFolder();
+            }
+        }
+        
+        if (!targetFolder) {
             // Invalid drop target
             return;
         }
@@ -243,43 +253,79 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
             return;
         }
 
-        // Collect all file paths to move
-        const filesToMove: string[] = [];
+        // Collect all file paths to process
+        const filesToProcess: string[] = [];
         for (const dragData of dragDataArray) {
-            // Skip if source and target are the same
-            if (this.normalizePath(dragData.sourceFolderPath) === this.normalizePath(targetFolder)) {
-                continue;
+            // For archive drops, skip files already in archive
+            if (isArchiveDrop) {
+                const archiveFolder = this.taskManager.getArchiveFolder();
+                const normalizedSource = this.normalizePath(dragData.sourceFolderPath);
+                const normalizedArchive = this.normalizePath(archiveFolder);
+                if (normalizedSource.startsWith(normalizedArchive) || normalizedSource === normalizedArchive) {
+                    continue; // Already archived
+                }
+            } else {
+                // For regular moves, skip if source and target are the same
+                if (this.normalizePath(dragData.sourceFolderPath) === this.normalizePath(targetFolder)) {
+                    continue;
+                }
             }
-            filesToMove.push(...dragData.filePaths);
+            filesToProcess.push(...dragData.filePaths);
         }
 
-        if (filesToMove.length === 0) {
+        if (filesToProcess.length === 0) {
             return;
         }
 
-        // Move files
+        // Process files
         let successCount = 0;
-        for (const filePath of filesToMove) {
+        for (const filePath of filesToProcess) {
             if (token.isCancellationRequested) {
                 break;
             }
 
             try {
-                await this.taskManager.moveTask(filePath, targetFolder);
+                if (isArchiveDrop) {
+                    // Archive the task, preserving folder structure
+                    await this.taskManager.archiveTask(filePath, true);
+                } else {
+                    // Regular move
+                    await this.taskManager.moveTask(filePath, targetFolder);
+                }
                 successCount++;
             } catch (error) {
                 // Log error but continue with other files
-                console.error(`Failed to move ${filePath}:`, error);
+                console.error(`Failed to ${isArchiveDrop ? 'archive' : 'move'} ${filePath}:`, error);
             }
         }
 
         if (successCount > 0) {
             this.refreshCallback();
-            const message = successCount === 1
-                ? '1 task moved successfully.'
-                : `${successCount} tasks moved successfully.`;
-            vscode.window.showInformationMessage(message);
+            if (isArchiveDrop) {
+                const message = successCount === 1
+                    ? '1 task archived successfully.'
+                    : `${successCount} tasks archived successfully.`;
+                vscode.window.showInformationMessage(message);
+            } else {
+                const message = successCount === 1
+                    ? '1 task moved successfully.'
+                    : `${successCount} tasks moved successfully.`;
+                vscode.window.showInformationMessage(message);
+            }
         }
+    }
+    
+    /**
+     * Check if the drop target is an archive target (Archived group or archived folder)
+     */
+    private isArchiveDropTarget(target: vscode.TreeItem | undefined): boolean {
+        if (target instanceof TaskGroupItem && target.groupType === 'archived') {
+            return true;
+        }
+        if (target instanceof TaskFolderItem && target.folder.isArchived) {
+            return true;
+        }
+        return false;
     }
 
     /**
