@@ -288,7 +288,26 @@ body.source-mode .toolbar-review-only {
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     z-index: 1001;
-    overflow: hidden;
+    overflow-y: auto;
+    max-height: 60vh;
+}
+
+/* Custom scrollbar for submenu */
+.ai-action-submenu::-webkit-scrollbar {
+    width: 6px;
+}
+
+.ai-action-submenu::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.ai-action-submenu::-webkit-scrollbar-thumb {
+    background: var(--comment-border);
+    border-radius: 3px;
+}
+
+.ai-action-submenu::-webkit-scrollbar-thumb:hover {
+    background: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
 }
 
 /* Show submenu on hover (for mouse users) */

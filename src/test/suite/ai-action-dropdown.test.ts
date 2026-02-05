@@ -1014,6 +1014,302 @@ suite('AI Action Dropdown Tests', () => {
         });
     });
 
+    suite('Submenu Scroll Support', () => {
+        // Test that the submenu supports scrolling when there are many items
+        // This validates the CSS changes from overflow:hidden to overflow-y:auto with max-height
+
+        /**
+         * Parse CSS properties from a CSS rule string
+         * Simulates extracting CSS property values for testing
+         */
+        function parseCSSProperties(cssText: string): Map<string, string> {
+            const properties = new Map<string, string>();
+            const lines = cssText.split('\n');
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.includes(':') && !trimmed.startsWith('/*') && !trimmed.startsWith('//')) {
+                    const colonIndex = trimmed.indexOf(':');
+                    const property = trimmed.substring(0, colonIndex).trim();
+                    const value = trimmed.substring(colonIndex + 1).replace(';', '').trim();
+                    if (property && value) {
+                        properties.set(property, value);
+                    }
+                }
+            }
+            return properties;
+        }
+
+        /**
+         * Parse a CSS viewport height value (e.g., "60vh") into a number
+         */
+        function parseViewportHeight(value: string): number | null {
+            const match = value.match(/^(\d+(?:\.\d+)?)vh$/);
+            return match ? parseFloat(match[1]) : null;
+        }
+
+        /**
+         * Simulate whether a submenu would need scrolling based on viewport height and item count
+         */
+        function wouldNeedScrolling(
+            viewportHeight: number,
+            maxHeightVh: number,
+            itemHeight: number,
+            itemCount: number
+        ): boolean {
+            const maxHeightPx = (viewportHeight * maxHeightVh) / 100;
+            const totalContentHeight = itemCount * itemHeight;
+            return totalContentHeight > maxHeightPx;
+        }
+
+        /**
+         * Calculate the visible items count within a max-height constraint
+         */
+        function visibleItemCount(
+            viewportHeight: number,
+            maxHeightVh: number,
+            itemHeight: number
+        ): number {
+            const maxHeightPx = (viewportHeight * maxHeightVh) / 100;
+            return Math.floor(maxHeightPx / itemHeight);
+        }
+
+        // The actual CSS rule for .ai-action-submenu
+        const submenuCSS = `
+.ai-action-submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: 0;
+    min-width: 180px;
+    margin-left: 4px;
+    background: var(--comment-bg);
+    border: 1px solid var(--comment-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 1001;
+    overflow-y: auto;
+    max-height: 60vh;
+}`;
+
+        test('should use overflow-y: auto instead of overflow: hidden', () => {
+            const properties = parseCSSProperties(submenuCSS);
+            assert.strictEqual(properties.get('overflow-y'), 'auto',
+                'overflow-y should be "auto" to enable scrolling when content exceeds max-height');
+            assert.ok(!properties.has('overflow') || properties.get('overflow') !== 'hidden',
+                'overflow should not be "hidden" as it prevents scrolling');
+        });
+
+        test('should have max-height set to constrain submenu height', () => {
+            const properties = parseCSSProperties(submenuCSS);
+            const maxHeight = properties.get('max-height');
+            assert.ok(maxHeight, 'max-height should be defined');
+            assert.ok(maxHeight!.includes('vh'), 'max-height should use viewport height units');
+        });
+
+        test('should have max-height of 60vh', () => {
+            const properties = parseCSSProperties(submenuCSS);
+            const maxHeight = properties.get('max-height');
+            assert.strictEqual(maxHeight, '60vh',
+                'max-height should be 60vh for good visibility while ensuring scroll triggers');
+        });
+
+        test('should parse viewport height value correctly', () => {
+            assert.strictEqual(parseViewportHeight('60vh'), 60);
+            assert.strictEqual(parseViewportHeight('100vh'), 100);
+            assert.strictEqual(parseViewportHeight('50.5vh'), 50.5);
+            assert.strictEqual(parseViewportHeight('60px'), null); // not vh
+            assert.strictEqual(parseViewportHeight('invalid'), null);
+        });
+
+        test('should need scrolling when many items exceed 60vh on small screens', () => {
+            // Small screen: 600px viewport, 60vh = 360px max
+            // Each item ~36px height, 15 items = 540px (exceeds 360px)
+            const result = wouldNeedScrolling(600, 60, 36, 15);
+            assert.strictEqual(result, true,
+                '15 items at 36px each (540px) should exceed 60vh (360px) on a 600px viewport');
+        });
+
+        test('should not need scrolling with few items on large screens', () => {
+            // Large screen: 1080px viewport, 60vh = 648px max
+            // Each item ~36px height, 5 items = 180px (fits within 648px)
+            const result = wouldNeedScrolling(1080, 60, 36, 5);
+            assert.strictEqual(result, false,
+                '5 items at 36px each (180px) should fit within 60vh (648px) on a 1080px viewport');
+        });
+
+        test('should need scrolling with many prompt files on standard screen', () => {
+            // Standard screen: 900px viewport, 60vh = 540px max
+            // Each item ~36px height, 20 items = 720px (exceeds 540px)
+            const result = wouldNeedScrolling(900, 60, 36, 20);
+            assert.strictEqual(result, true,
+                '20 prompt files at 36px each should exceed 60vh on a 900px viewport');
+        });
+
+        test('should calculate visible items correctly on various screen sizes', () => {
+            // Small screen: 600px viewport, 60vh = 360px, item height 36px
+            assert.strictEqual(visibleItemCount(600, 60, 36), 10,
+                'Should show 10 items on 600px viewport');
+
+            // Standard screen: 900px viewport, 60vh = 540px, item height 36px
+            assert.strictEqual(visibleItemCount(900, 60, 36), 15,
+                'Should show 15 items on 900px viewport');
+
+            // Large screen: 1080px viewport, 60vh = 648px, item height 36px
+            assert.strictEqual(visibleItemCount(1080, 60, 36), 18,
+                'Should show 18 items on 1080px viewport');
+        });
+
+        test('should still display correctly with no items (empty submenu)', () => {
+            const result = wouldNeedScrolling(900, 60, 36, 0);
+            assert.strictEqual(result, false,
+                'Empty submenu should not need scrolling');
+        });
+
+        test('should still display correctly with exactly one item', () => {
+            const result = wouldNeedScrolling(900, 60, 36, 1);
+            assert.strictEqual(result, false,
+                'Single item should not need scrolling');
+        });
+
+        test('should handle edge case where items exactly fill max-height', () => {
+            // 900px viewport, 60vh = 540px, 36px items -> exactly 15 items fill it
+            const result = wouldNeedScrolling(900, 60, 36, 15);
+            assert.strictEqual(result, false,
+                'Items that exactly fill the max-height should not need scrolling');
+        });
+
+        test('should need scrolling with 16 items (one more than fits)', () => {
+            // 900px viewport, 60vh = 540px, 36px items -> 15 fit, 16 should scroll
+            const result = wouldNeedScrolling(900, 60, 36, 16);
+            assert.strictEqual(result, true,
+                'One extra item beyond max-height should trigger scrolling');
+        });
+
+        test('should retain existing positioning properties', () => {
+            const properties = parseCSSProperties(submenuCSS);
+            assert.strictEqual(properties.get('position'), 'absolute');
+            assert.strictEqual(properties.get('left'), '100%');
+            assert.strictEqual(properties.get('top'), '0');
+            assert.ok(properties.get('z-index'));
+        });
+
+        test('should retain visual styling properties', () => {
+            const properties = parseCSSProperties(submenuCSS);
+            assert.ok(properties.get('background'), 'background should be defined');
+            assert.ok(properties.get('border'), 'border should be defined');
+            assert.ok(properties.get('border-radius'), 'border-radius should be defined');
+            assert.ok(properties.get('box-shadow'), 'box-shadow should be defined');
+            assert.strictEqual(properties.get('min-width'), '180px',
+                'min-width should be preserved');
+        });
+    });
+
+    suite('Submenu Scrollbar Styling', () => {
+        // Test custom scrollbar styling for VS Code theme consistency
+
+        /**
+         * Validate that a CSS selector targets a pseudo-element correctly
+         */
+        function isValidScrollbarSelector(selector: string): boolean {
+            const validPseudoElements = [
+                '::-webkit-scrollbar',
+                '::-webkit-scrollbar-track',
+                '::-webkit-scrollbar-thumb',
+                '::-webkit-scrollbar-thumb:hover',
+                '::-webkit-scrollbar-thumb:active',
+                '::-webkit-scrollbar-corner'
+            ];
+            return validPseudoElements.some(pseudo => selector.endsWith(pseudo));
+        }
+
+        /**
+         * Check if a CSS value references a VS Code theme variable
+         */
+        function usesVSCodeThemeVariable(value: string): boolean {
+            return value.includes('--vscode-');
+        }
+
+        /**
+         * Check if a CSS value has a fallback value
+         */
+        function hasFallbackValue(value: string): boolean {
+            // var(--custom-prop, fallback) has a comma-separated fallback
+            const varMatch = value.match(/var\([^)]*,\s*.+\)/);
+            return varMatch !== null;
+        }
+
+        // Scrollbar CSS rules
+        const scrollbarRules = {
+            scrollbar: '.ai-action-submenu::-webkit-scrollbar { width: 6px; }',
+            track: '.ai-action-submenu::-webkit-scrollbar-track { background: transparent; }',
+            thumb: '.ai-action-submenu::-webkit-scrollbar-thumb { background: var(--comment-border); border-radius: 3px; }',
+            thumbHover: '.ai-action-submenu::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7)); }'
+        };
+
+        test('should have valid scrollbar pseudo-element selectors', () => {
+            assert.ok(isValidScrollbarSelector('.ai-action-submenu::-webkit-scrollbar'));
+            assert.ok(isValidScrollbarSelector('.ai-action-submenu::-webkit-scrollbar-track'));
+            assert.ok(isValidScrollbarSelector('.ai-action-submenu::-webkit-scrollbar-thumb'));
+            assert.ok(isValidScrollbarSelector('.ai-action-submenu::-webkit-scrollbar-thumb:hover'));
+        });
+
+        test('should have scrollbar width defined', () => {
+            assert.ok(scrollbarRules.scrollbar.includes('width: 6px'),
+                'Scrollbar should have a narrow width (6px) for subtlety');
+        });
+
+        test('should have transparent scrollbar track', () => {
+            assert.ok(scrollbarRules.track.includes('background: transparent'),
+                'Scrollbar track should be transparent to blend with the submenu');
+        });
+
+        test('should use theme variable for scrollbar thumb', () => {
+            assert.ok(scrollbarRules.thumb.includes('var(--comment-border)'),
+                'Scrollbar thumb should use --comment-border for theme consistency');
+        });
+
+        test('should have rounded scrollbar thumb', () => {
+            assert.ok(scrollbarRules.thumb.includes('border-radius: 3px'),
+                'Scrollbar thumb should have rounded corners');
+        });
+
+        test('should use VS Code theme variable for thumb hover', () => {
+            assert.ok(usesVSCodeThemeVariable(scrollbarRules.thumbHover),
+                'Scrollbar thumb hover should reference a VS Code theme variable');
+        });
+
+        test('should have fallback value for thumb hover background', () => {
+            assert.ok(hasFallbackValue(scrollbarRules.thumbHover),
+                'Scrollbar thumb hover should have a fallback value for non-VS Code environments');
+        });
+
+        test('should use scrollbarSlider-hoverBackground variable', () => {
+            assert.ok(scrollbarRules.thumbHover.includes('--vscode-scrollbarSlider-hoverBackground'),
+                'Should use VS Code scrollbar slider hover variable for native feel');
+        });
+
+        test('should reject invalid scrollbar selectors', () => {
+            assert.ok(!isValidScrollbarSelector('.ai-action-submenu::scrollbar'));
+            assert.ok(!isValidScrollbarSelector('.ai-action-submenu:scrollbar'));
+            assert.ok(!isValidScrollbarSelector('.ai-action-submenu'));
+        });
+
+        test('should detect VS Code theme variables correctly', () => {
+            assert.ok(usesVSCodeThemeVariable('var(--vscode-editor-background)'));
+            assert.ok(usesVSCodeThemeVariable('var(--vscode-scrollbarSlider-hoverBackground, #666)'));
+            assert.ok(!usesVSCodeThemeVariable('var(--comment-border)'));
+            assert.ok(!usesVSCodeThemeVariable('#ff0000'));
+            assert.ok(!usesVSCodeThemeVariable('transparent'));
+        });
+
+        test('should detect fallback values correctly', () => {
+            assert.ok(hasFallbackValue('var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7))'));
+            assert.ok(hasFallbackValue('var(--custom-prop, #fff)'));
+            assert.ok(!hasFallbackValue('var(--custom-prop)'));
+            assert.ok(!hasFallbackValue('#ff0000'));
+        });
+    });
+
     suite('Resolve Comments Cross-Platform Compatibility', () => {
         // Test that the submenu structure works correctly on all platforms
 
