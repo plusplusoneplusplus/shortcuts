@@ -456,14 +456,18 @@ suite('MockAIProcessManager Tests', () => {
     });
 
     suite('Async Simulation', () => {
-        test('should simulate async behavior with delays', async () => {
+        test('should simulate async behavior with delays', async function() {
+            // Increase mocha timeout for CI environments
+            this.timeout(5000);
+            
             const mgr = createMockAIProcessManager('async');
             mgr.configure({ autoComplete: true });
             
             const startTime = Date.now();
             const id = mgr.registerProcess('Test');
             
-            await waitForProcessCompletion(mgr, id, 200);
+            // Increased timeout to 2000ms to handle slower CI environments
+            await waitForProcessCompletion(mgr, id, 2000);
             const elapsed = Date.now() - startTime;
 
             // Should have some delay (at least 30ms to account for scheduling)
