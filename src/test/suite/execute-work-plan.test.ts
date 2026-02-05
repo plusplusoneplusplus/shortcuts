@@ -264,10 +264,10 @@ suite('Execute Work Plan - Configuration', () => {
         assert.ok(tools.includes('claude'));
     });
 
-    test('should have default working directory as {workspaceFolder}/src', () => {
-        const defaultWorkingDir = '{workspaceFolder}/src';
+    test('should have default working directory as {workspaceFolder}', () => {
+        const defaultWorkingDir = '{workspaceFolder}';
         assert.ok(defaultWorkingDir.includes('{workspaceFolder}'));
-        assert.ok(defaultWorkingDir.endsWith('/src'));
+        assert.ok(!defaultWorkingDir.endsWith('/src'));
     });
 });
 

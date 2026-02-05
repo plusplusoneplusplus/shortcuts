@@ -62,8 +62,8 @@ The skill-based execution path:
 ### ✅ Working Directory Resolution is Consistent
 
 All paths use `resolveWorkPlanWorkingDirectory()` from the same ReviewEditorViewProvider:
-1. If `{workspaceFolder}/src` exists, use it
-2. Otherwise, use workspace root
+1. Default is `{workspaceFolder}` (workspace root)
+2. If the configured directory doesn't exist, falls back to workspace root
 
 ### ✅ Model and Options Consistency
 

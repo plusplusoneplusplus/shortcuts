@@ -494,7 +494,7 @@
         },
         "workspaceShortcuts.workPlan.workingDirectory": {
           "type": "string",
-          "default": "{workspaceFolder}/src",
+          "default": "{workspaceFolder}",
           "markdownDescription": "Working directory for work plan execution. Supports `{workspaceFolder}` variable. If the specified directory doesn't exist, falls back to workspace root."
         },
         "workspaceShortcuts.followPrompt.defaultMode": {

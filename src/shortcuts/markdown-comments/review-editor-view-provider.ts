@@ -2171,7 +2171,7 @@ Please take this additional context into account when refreshing the plan.`;
 
     private resolveWorkPlanWorkingDirectory(planFilePath: string): string {
         const config = vscode.workspace.getConfiguration('workspaceShortcuts.workPlan');
-        const configPath = config.get<string>('workingDirectory', '{workspaceFolder}/src');
+        const configPath = config.get<string>('workingDirectory', '{workspaceFolder}');
 
         const workspaceRoot = getWorkspaceRoot();
         if (!workspaceRoot) {
