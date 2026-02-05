@@ -20,7 +20,7 @@ import {
 import { render } from './render';
 import { getSelectionPosition } from './selection-handler';
 import { state } from './state';
-import { AICommandMode, PromptFileInfo, RecentPrompt, SkillInfo } from './types';
+import { AICommandMode, PromptFileInfo, RecentItem, RecentPrompt, SkillInfo } from './types';
 import { openFile, requestAskAI, requestAskAIInteractive, requestAskAIQueued, requestCopyPrompt, requestDeleteAll, requestExecuteWorkPlan, requestExecuteWorkPlanWithSkill, requestPromptFiles, requestPromptSearch, requestRefreshPlan, requestResolveAll, requestSendToChat, requestSendToCLIBackground, requestSendToCLIInteractive, requestSkills, requestUpdateDocument, updateContent } from './vscode-bridge';
 import { DEFAULT_MARKDOWN_PREDEFINED_COMMENTS, serializePredefinedComments } from '../../shared/predefined-comment-types';
 import { initSearch, SearchController } from '../../shared/webview/search-handler';
@@ -152,10 +152,11 @@ function formatRelativeTime(timestamp: number): string {
 /**
  * Update the Execute Work Plan submenu with available prompt files and skills
  * @param promptFiles - Array of prompt file info from the extension
- * @param recentPrompts - Optional array of recent prompts for quick access
+ * @param recentPrompts - Optional array of recent prompts for quick access (legacy, used as fallback)
  * @param skills - Optional array of skills from .github/skills/
+ * @param recentItems - Optional unified array of recent prompts and skills for quick access
  */
-export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[], recentPrompts?: RecentPrompt[], skills?: SkillInfo[]): void {
+export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[], recentPrompts?: RecentPrompt[], skills?: SkillInfo[], recentItems?: RecentItem[]): void {
     const submenu = document.getElementById('executeWorkPlanSubmenu');
     if (!submenu) return;
 
@@ -186,10 +187,71 @@ export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[], rece
         return;
     }
 
-    // Add recent section if we have recent prompts
-    if (recentPrompts && recentPrompts.length > 0) {
-        // Filter recent prompts to only include those still in promptFiles
-        const validRecent = recentPrompts.filter(r =>
+    // Add recent section using unified recentItems (preferred) or legacy recentPrompts
+    const hasRecentItems = recentItems && recentItems.length > 0;
+    const hasLegacyRecent = !hasRecentItems && recentPrompts && recentPrompts.length > 0;
+
+    if (hasRecentItems) {
+        // Use unified recent items (prompts + skills combined, already sorted by lastUsed)
+        // Validate: prompts must exist in promptFiles, skills must exist in skills array
+        const validRecentItems = recentItems!.filter(item => {
+            if (item.type === 'prompt') {
+                return promptFiles.some(p => p.absolutePath === item.identifier);
+            } else {
+                return skills && skills.some(s => s.name === item.identifier);
+            }
+        }).slice(0, 3);
+
+        if (validRecentItems.length > 0) {
+            const header = document.createElement('div');
+            header.className = 'ai-action-menu-header';
+            header.textContent = '⭐ Recent';
+            submenu.appendChild(header);
+
+            for (const recent of validRecentItems) {
+                const item = document.createElement('div');
+                item.className = 'ai-action-menu-item';
+
+                if (recent.type === 'prompt') {
+                    item.dataset.promptPath = recent.identifier;
+                    item.innerHTML = `
+                        <span class="ai-action-icon">📝</span>
+                        <span class="ai-action-label">${escapeHtml(recent.name)}</span>
+                    `;
+                    item.title = `${recent.relativePath || recent.identifier} (${formatRelativeTime(recent.lastUsed)})`;
+
+                    item.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        hideAIActionMenu();
+                        requestExecuteWorkPlan(recent.identifier);
+                    });
+                } else {
+                    // Skill
+                    item.dataset.skillName = recent.identifier;
+                    item.innerHTML = `
+                        <span class="ai-action-icon">🎯</span>
+                        <span class="ai-action-label">${escapeHtml(recent.name)}</span>
+                    `;
+                    item.title = `Skill: ${recent.name} (${formatRelativeTime(recent.lastUsed)})`;
+
+                    item.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        hideAIActionMenu();
+                        requestExecuteWorkPlanWithSkill(recent.identifier);
+                    });
+                }
+
+                submenu.appendChild(item);
+            }
+
+            // Add divider
+            const divider = document.createElement('div');
+            divider.className = 'ai-action-menu-divider';
+            submenu.appendChild(divider);
+        }
+    } else if (hasLegacyRecent) {
+        // Fallback: legacy recentPrompts (prompts only, no skills)
+        const validRecent = recentPrompts!.filter(r =>
             promptFiles.some(p => p.absolutePath === r.absolutePath)
         ).slice(0, 3);
 
@@ -209,7 +271,6 @@ export function updateExecuteWorkPlanSubmenu(promptFiles: PromptFileInfo[], rece
                 `;
                 item.title = `${recent.relativePath} (${formatRelativeTime(recent.lastUsed)})`;
 
-                // Add click handler
                 item.addEventListener('click', (e) => {
                     e.stopPropagation();
                     hideAIActionMenu();

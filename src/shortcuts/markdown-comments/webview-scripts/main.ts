@@ -130,8 +130,8 @@ function handleMessage(message: ExtensionMessage): void {
             break;
 
         case 'promptFilesResponse':
-            // Update the Execute Work Plan submenu with available prompt files and skills
-            updateExecuteWorkPlanSubmenu(message.promptFiles || [], message.recentPrompts, message.skills);
+            // Update the Execute Work Plan submenu with available prompt files, skills, and unified recent items
+            updateExecuteWorkPlanSubmenu(message.promptFiles || [], message.recentPrompts, message.skills, message.recentItems);
             // Also update the context menu prompt files submenu (legacy)
             updatePromptFileSubmenu(message.promptFiles || []);
             // Update the combined action items submenu (new unified menu)

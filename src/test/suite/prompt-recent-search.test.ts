@@ -1,6 +1,7 @@
 /**
- * Tests for Recent Prompts and Search functionality
- * Tests the new UX enhancements for the "Follow Prompt" feature
+ * Tests for Recent Prompts, Skills, and Search functionality
+ * Tests the UX enhancements for the "Follow Prompt" feature including
+ * unified recent items (prompts + skills) support.
  */
 
 import * as assert from 'assert';
@@ -8,6 +9,18 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+
+/**
+ * RecentItem type (mirrors src/shortcuts/markdown-comments/webview-scripts/types.ts)
+ * Used for testing unified recent items logic without importing browser-only types.
+ */
+interface RecentItem {
+    type: 'prompt' | 'skill';
+    identifier: string;
+    name: string;
+    relativePath?: string;
+    lastUsed: number;
+}
 
 suite('Prompt Recent and Search Tests', () => {
     let tempDir: string;
@@ -404,6 +417,567 @@ suite('Prompt Recent and Search Tests', () => {
             };
 
             assert.strictEqual(promptFile.name, 'test (copy)');
+        });
+    });
+
+    suite('RecentItem Unified Type', () => {
+        test('should have correct structure for prompt type', () => {
+            const item: RecentItem = {
+                type: 'prompt',
+                identifier: '/workspace/.github/prompts/impl.prompt.md',
+                name: 'impl',
+                relativePath: '.github/prompts/impl.prompt.md',
+                lastUsed: Date.now()
+            };
+
+            assert.strictEqual(item.type, 'prompt');
+            assert.strictEqual(typeof item.identifier, 'string');
+            assert.strictEqual(typeof item.name, 'string');
+            assert.strictEqual(typeof item.relativePath, 'string');
+            assert.strictEqual(typeof item.lastUsed, 'number');
+        });
+
+        test('should have correct structure for skill type', () => {
+            const item: RecentItem = {
+                type: 'skill',
+                identifier: 'code-review',
+                name: 'code-review',
+                lastUsed: Date.now()
+            };
+
+            assert.strictEqual(item.type, 'skill');
+            assert.strictEqual(item.identifier, 'code-review');
+            assert.strictEqual(item.name, 'code-review');
+            assert.strictEqual(item.relativePath, undefined);
+            assert.strictEqual(typeof item.lastUsed, 'number');
+        });
+
+        test('should distinguish between prompt and skill types', () => {
+            const promptItem: RecentItem = {
+                type: 'prompt',
+                identifier: '/path/to/impl.prompt.md',
+                name: 'impl',
+                relativePath: '.github/prompts/impl.prompt.md',
+                lastUsed: 100
+            };
+            const skillItem: RecentItem = {
+                type: 'skill',
+                identifier: 'code-review',
+                name: 'code-review',
+                lastUsed: 200
+            };
+
+            assert.notStrictEqual(promptItem.type, skillItem.type);
+            assert.strictEqual(promptItem.type, 'prompt');
+            assert.strictEqual(skillItem.type, 'skill');
+        });
+    });
+
+    suite('Skill Usage Tracking', () => {
+        test('should track skill with name as identifier', () => {
+            const recentSkills: Array<{ name: string; lastUsed: number }> = [];
+
+            // Simulate trackSkillUsage
+            const skillName = 'code-review';
+            const filtered = recentSkills.filter(r => r.name !== skillName);
+            filtered.unshift({ name: skillName, lastUsed: Date.now() });
+
+            assert.strictEqual(filtered.length, 1);
+            assert.strictEqual(filtered[0].name, 'code-review');
+        });
+
+        test('should move re-used skill to front', () => {
+            let recentSkills = [
+                { name: 'skill-a', lastUsed: 3 },
+                { name: 'skill-b', lastUsed: 2 },
+                { name: 'skill-c', lastUsed: 1 }
+            ];
+
+            // Simulate re-using skill-c
+            const filtered = recentSkills.filter(r => r.name !== 'skill-c');
+            recentSkills = [{ name: 'skill-c', lastUsed: 10 }, ...filtered];
+
+            assert.strictEqual(recentSkills[0].name, 'skill-c');
+            assert.strictEqual(recentSkills[0].lastUsed, 10);
+            assert.strictEqual(recentSkills.length, 3);
+        });
+
+        test('should remove duplicate skill entries', () => {
+            let recentSkills = [
+                { name: 'skill-a', lastUsed: 1 }
+            ];
+
+            // Simulate using the same skill again
+            const filtered = recentSkills.filter(r => r.name !== 'skill-a');
+            recentSkills = [{ name: 'skill-a', lastUsed: 5 }, ...filtered];
+
+            assert.strictEqual(recentSkills.length, 1);
+            assert.strictEqual(recentSkills[0].lastUsed, 5);
+        });
+
+        test('should limit recent skills to max count', () => {
+            const MAX_RECENT = 5;
+            const recentSkills = [
+                { name: '1', lastUsed: 6 },
+                { name: '2', lastUsed: 5 },
+                { name: '3', lastUsed: 4 },
+                { name: '4', lastUsed: 3 },
+                { name: '5', lastUsed: 2 },
+                { name: '6', lastUsed: 1 }
+            ];
+
+            const limited = recentSkills.slice(0, MAX_RECENT);
+            assert.strictEqual(limited.length, 5);
+            assert.strictEqual(limited[0].name, '1');
+            assert.strictEqual(limited[4].name, '5');
+        });
+    });
+
+    suite('Unified Recent Items (Merged Prompts + Skills)', () => {
+        test('should merge prompts and skills sorted by lastUsed descending', () => {
+            const recentPrompts = [
+                { absolutePath: '/a.prompt.md', relativePath: 'a.prompt.md', name: 'prompt-a', lastUsed: 5 },
+                { absolutePath: '/b.prompt.md', relativePath: 'b.prompt.md', name: 'prompt-b', lastUsed: 2 }
+            ];
+            const recentSkills = [
+                { name: 'skill-x', lastUsed: 4 },
+                { name: 'skill-y', lastUsed: 1 }
+            ];
+
+            const recentItems: RecentItem[] = [];
+
+            for (const rp of recentPrompts) {
+                recentItems.push({
+                    type: 'prompt',
+                    identifier: rp.absolutePath,
+                    name: rp.name,
+                    relativePath: rp.relativePath,
+                    lastUsed: rp.lastUsed
+                });
+            }
+            for (const rs of recentSkills) {
+                recentItems.push({
+                    type: 'skill',
+                    identifier: rs.name,
+                    name: rs.name,
+                    lastUsed: rs.lastUsed
+                });
+            }
+
+            // Sort by lastUsed descending
+            recentItems.sort((a, b) => b.lastUsed - a.lastUsed);
+
+            assert.strictEqual(recentItems.length, 4);
+            assert.strictEqual(recentItems[0].name, 'prompt-a'); // lastUsed: 5
+            assert.strictEqual(recentItems[0].type, 'prompt');
+            assert.strictEqual(recentItems[1].name, 'skill-x'); // lastUsed: 4
+            assert.strictEqual(recentItems[1].type, 'skill');
+            assert.strictEqual(recentItems[2].name, 'prompt-b'); // lastUsed: 2
+            assert.strictEqual(recentItems[2].type, 'prompt');
+            assert.strictEqual(recentItems[3].name, 'skill-y'); // lastUsed: 1
+            assert.strictEqual(recentItems[3].type, 'skill');
+        });
+
+        test('should limit unified list to MAX_RECENT_PROMPTS (5)', () => {
+            const MAX_RECENT = 5;
+            const recentItems: RecentItem[] = [
+                { type: 'prompt', identifier: '/1', name: '1', lastUsed: 7 },
+                { type: 'skill', identifier: 's1', name: 's1', lastUsed: 6 },
+                { type: 'prompt', identifier: '/2', name: '2', lastUsed: 5 },
+                { type: 'skill', identifier: 's2', name: 's2', lastUsed: 4 },
+                { type: 'prompt', identifier: '/3', name: '3', lastUsed: 3 },
+                { type: 'skill', identifier: 's3', name: 's3', lastUsed: 2 },
+                { type: 'prompt', identifier: '/4', name: '4', lastUsed: 1 }
+            ];
+
+            const limited = recentItems.slice(0, MAX_RECENT);
+            assert.strictEqual(limited.length, 5);
+            assert.strictEqual(limited[0].name, '1');
+            assert.strictEqual(limited[4].name, '3');
+        });
+
+        test('should handle only prompts in unified list', () => {
+            const recentItems: RecentItem[] = [
+                { type: 'prompt', identifier: '/a', name: 'a', lastUsed: 3 },
+                { type: 'prompt', identifier: '/b', name: 'b', lastUsed: 2 }
+            ];
+
+            const skillItems = recentItems.filter(r => r.type === 'skill');
+            const promptItems = recentItems.filter(r => r.type === 'prompt');
+
+            assert.strictEqual(skillItems.length, 0);
+            assert.strictEqual(promptItems.length, 2);
+        });
+
+        test('should handle only skills in unified list', () => {
+            const recentItems: RecentItem[] = [
+                { type: 'skill', identifier: 'skill-a', name: 'skill-a', lastUsed: 3 },
+                { type: 'skill', identifier: 'skill-b', name: 'skill-b', lastUsed: 2 }
+            ];
+
+            const skillItems = recentItems.filter(r => r.type === 'skill');
+            const promptItems = recentItems.filter(r => r.type === 'prompt');
+
+            assert.strictEqual(skillItems.length, 2);
+            assert.strictEqual(promptItems.length, 0);
+        });
+
+        test('should handle empty unified list', () => {
+            const recentItems: RecentItem[] = [];
+
+            assert.strictEqual(recentItems.length, 0);
+        });
+
+        test('should handle items with same lastUsed timestamp', () => {
+            const recentItems: RecentItem[] = [
+                { type: 'prompt', identifier: '/a', name: 'a', lastUsed: 5 },
+                { type: 'skill', identifier: 's1', name: 's1', lastUsed: 5 }
+            ];
+
+            recentItems.sort((a, b) => b.lastUsed - a.lastUsed);
+
+            // Both have same timestamp - order is stable
+            assert.strictEqual(recentItems.length, 2);
+            assert.strictEqual(recentItems[0].lastUsed, 5);
+            assert.strictEqual(recentItems[1].lastUsed, 5);
+        });
+    });
+
+    suite('Unified Recent Items Validation', () => {
+        test('should filter out deleted prompts from unified list', () => {
+            const promptFiles = [
+                { absolutePath: '/a.prompt.md', relativePath: 'a.prompt.md', name: 'a', sourceFolder: '.github/prompts' }
+            ];
+            const skills = [
+                { absolutePath: '/skills/s1', relativePath: '.github/skills/s1', name: 's1' }
+            ];
+
+            const recentItems: RecentItem[] = [
+                { type: 'prompt', identifier: '/a.prompt.md', name: 'a', lastUsed: 5 },
+                { type: 'prompt', identifier: '/deleted.prompt.md', name: 'deleted', lastUsed: 4 },
+                { type: 'skill', identifier: 's1', name: 's1', lastUsed: 3 }
+            ];
+
+            const validItems = recentItems.filter(item => {
+                if (item.type === 'prompt') {
+                    return promptFiles.some(p => p.absolutePath === item.identifier);
+                } else {
+                    return skills.some(s => s.name === item.identifier);
+                }
+            });
+
+            assert.strictEqual(validItems.length, 2);
+            assert.strictEqual(validItems[0].name, 'a');
+            assert.strictEqual(validItems[0].type, 'prompt');
+            assert.strictEqual(validItems[1].name, 's1');
+            assert.strictEqual(validItems[1].type, 'skill');
+        });
+
+        test('should filter out deleted skills from unified list', () => {
+            const promptFiles = [
+                { absolutePath: '/a.prompt.md', relativePath: 'a.prompt.md', name: 'a', sourceFolder: '.github/prompts' }
+            ];
+            const skills = [
+                { absolutePath: '/skills/s1', relativePath: '.github/skills/s1', name: 's1' }
+            ];
+
+            const recentItems: RecentItem[] = [
+                { type: 'skill', identifier: 's1', name: 's1', lastUsed: 5 },
+                { type: 'skill', identifier: 'deleted-skill', name: 'deleted-skill', lastUsed: 4 },
+                { type: 'prompt', identifier: '/a.prompt.md', name: 'a', lastUsed: 3 }
+            ];
+
+            const validItems = recentItems.filter(item => {
+                if (item.type === 'prompt') {
+                    return promptFiles.some(p => p.absolutePath === item.identifier);
+                } else {
+                    return skills.some(s => s.name === item.identifier);
+                }
+            });
+
+            assert.strictEqual(validItems.length, 2);
+            assert.strictEqual(validItems[0].name, 's1');
+            assert.strictEqual(validItems[0].type, 'skill');
+            assert.strictEqual(validItems[1].name, 'a');
+            assert.strictEqual(validItems[1].type, 'prompt');
+        });
+
+        test('should filter out all items when no prompts or skills exist', () => {
+            const promptFiles: any[] = [];
+            const skills: any[] = [];
+
+            const recentItems: RecentItem[] = [
+                { type: 'prompt', identifier: '/a.prompt.md', name: 'a', lastUsed: 5 },
+                { type: 'skill', identifier: 's1', name: 's1', lastUsed: 3 }
+            ];
+
+            const validItems = recentItems.filter(item => {
+                if (item.type === 'prompt') {
+                    return promptFiles.some((p: any) => p.absolutePath === item.identifier);
+                } else {
+                    return skills.some((s: any) => s.name === item.identifier);
+                }
+            });
+
+            assert.strictEqual(validItems.length, 0);
+        });
+
+        test('should validate and limit recent display to 3 items', () => {
+            const recentItems: RecentItem[] = [
+                { type: 'prompt', identifier: '/1', name: '1', lastUsed: 5 },
+                { type: 'skill', identifier: 's1', name: 's1', lastUsed: 4 },
+                { type: 'prompt', identifier: '/2', name: '2', lastUsed: 3 },
+                { type: 'skill', identifier: 's2', name: 's2', lastUsed: 2 },
+                { type: 'prompt', identifier: '/3', name: '3', lastUsed: 1 }
+            ];
+
+            const displayRecent = recentItems.slice(0, 3);
+            assert.strictEqual(displayRecent.length, 3);
+            assert.strictEqual(displayRecent[0].name, '1');
+            assert.strictEqual(displayRecent[0].type, 'prompt');
+            assert.strictEqual(displayRecent[1].name, 's1');
+            assert.strictEqual(displayRecent[1].type, 'skill');
+            assert.strictEqual(displayRecent[2].name, '2');
+            assert.strictEqual(displayRecent[2].type, 'prompt');
+        });
+    });
+
+    suite('Unified Recent Items - Integration Scenarios', () => {
+        test('should show skill in Recent after skill execution', () => {
+            // Simulate: user executes a skill via executeWorkPlanWithSkill
+            let recentSkills: Array<{ name: string; lastUsed: number }> = [];
+
+            // Track skill usage
+            const skillName = 'code-review';
+            const filtered = recentSkills.filter(r => r.name !== skillName);
+            recentSkills = [{ name: skillName, lastUsed: 100 }, ...filtered];
+
+            // Build unified list
+            const recentItems: RecentItem[] = [];
+            for (const rs of recentSkills) {
+                recentItems.push({
+                    type: 'skill',
+                    identifier: rs.name,
+                    name: rs.name,
+                    lastUsed: rs.lastUsed
+                });
+            }
+
+            assert.strictEqual(recentItems.length, 1);
+            assert.strictEqual(recentItems[0].type, 'skill');
+            assert.strictEqual(recentItems[0].identifier, 'code-review');
+        });
+
+        test('should interleave prompts and skills by recency', () => {
+            // Scenario: User uses prompt, then skill, then another prompt
+            const recentPrompts = [
+                { absolutePath: '/latest.prompt.md', relativePath: 'latest.prompt.md', name: 'latest', lastUsed: 300 },
+                { absolutePath: '/old.prompt.md', relativePath: 'old.prompt.md', name: 'old', lastUsed: 100 }
+            ];
+            const recentSkills = [
+                { name: 'middle-skill', lastUsed: 200 }
+            ];
+
+            const recentItems: RecentItem[] = [];
+            for (const rp of recentPrompts) {
+                recentItems.push({ type: 'prompt', identifier: rp.absolutePath, name: rp.name, relativePath: rp.relativePath, lastUsed: rp.lastUsed });
+            }
+            for (const rs of recentSkills) {
+                recentItems.push({ type: 'skill', identifier: rs.name, name: rs.name, lastUsed: rs.lastUsed });
+            }
+            recentItems.sort((a, b) => b.lastUsed - a.lastUsed);
+
+            assert.strictEqual(recentItems[0].name, 'latest');
+            assert.strictEqual(recentItems[0].type, 'prompt');
+            assert.strictEqual(recentItems[1].name, 'middle-skill');
+            assert.strictEqual(recentItems[1].type, 'skill');
+            assert.strictEqual(recentItems[2].name, 'old');
+            assert.strictEqual(recentItems[2].type, 'prompt');
+        });
+
+        test('should handle skill re-use bumping to top of recent', () => {
+            // Simulate: skill was used before, now used again
+            let recentSkills = [
+                { name: 'old-skill', lastUsed: 100 },
+                { name: 'other-skill', lastUsed: 50 }
+            ];
+
+            // Re-use 'old-skill'
+            const filtered = recentSkills.filter(r => r.name !== 'old-skill');
+            recentSkills = [{ name: 'old-skill', lastUsed: 500 }, ...filtered];
+
+            // Build unified list with a prompt
+            const recentPrompts = [
+                { absolutePath: '/p1', relativePath: 'p1', name: 'p1', lastUsed: 200 }
+            ];
+
+            const recentItems: RecentItem[] = [];
+            for (const rp of recentPrompts) {
+                recentItems.push({ type: 'prompt', identifier: rp.absolutePath, name: rp.name, relativePath: rp.relativePath, lastUsed: rp.lastUsed });
+            }
+            for (const rs of recentSkills) {
+                recentItems.push({ type: 'skill', identifier: rs.name, name: rs.name, lastUsed: rs.lastUsed });
+            }
+            recentItems.sort((a, b) => b.lastUsed - a.lastUsed);
+
+            // Re-used skill should be at top
+            assert.strictEqual(recentItems[0].name, 'old-skill');
+            assert.strictEqual(recentItems[0].type, 'skill');
+            assert.strictEqual(recentItems[0].lastUsed, 500);
+            assert.strictEqual(recentItems[1].name, 'p1');
+            assert.strictEqual(recentItems[1].type, 'prompt');
+        });
+
+        test('should use skill identifier (name) not path for matching', () => {
+            const skills = [
+                { absolutePath: '/ws/.github/skills/my-skill', relativePath: '.github/skills/my-skill', name: 'my-skill' }
+            ];
+
+            const recentItem: RecentItem = {
+                type: 'skill',
+                identifier: 'my-skill',  // name-based identifier
+                name: 'my-skill',
+                lastUsed: 100
+            };
+
+            // Validate by name matching
+            const isValid = skills.some(s => s.name === recentItem.identifier);
+            assert.strictEqual(isValid, true);
+        });
+
+        test('should maintain backward compatibility with legacy recentPrompts', () => {
+            // When recentItems is not provided, legacy recentPrompts should still work
+            const recentPrompts = [
+                { absolutePath: '/a.prompt.md', relativePath: 'a.prompt.md', name: 'a', lastUsed: 3 }
+            ];
+
+            // Simulate the check done in updateExecuteWorkPlanSubmenu
+            function checkRecent(items: RecentItem[] | undefined, legacy: any[]): { hasUnified: boolean; hasLegacy: boolean } {
+                const hasUnified = items !== undefined && items.length > 0;
+                const hasLegacy = !hasUnified && legacy !== undefined && legacy.length > 0;
+                return { hasUnified, hasLegacy };
+            }
+
+            const result = checkRecent(undefined, recentPrompts);
+            assert.strictEqual(result.hasUnified, false);
+            assert.strictEqual(result.hasLegacy, true);
+        });
+
+        test('should prefer unified recentItems over legacy recentPrompts', () => {
+            const recentPrompts = [
+                { absolutePath: '/a.prompt.md', relativePath: 'a.prompt.md', name: 'legacy-a', lastUsed: 3 }
+            ];
+            const recentItems: RecentItem[] = [
+                { type: 'prompt', identifier: '/a.prompt.md', name: 'unified-a', lastUsed: 5 },
+                { type: 'skill', identifier: 'skill-1', name: 'skill-1', lastUsed: 4 }
+            ];
+
+            // Simulate the check done in updateExecuteWorkPlanSubmenu
+            function checkRecent(items: RecentItem[] | undefined, legacy: any[]): { hasUnified: boolean; hasLegacy: boolean } {
+                const hasUnified = items !== undefined && items.length > 0;
+                const hasLegacy = !hasUnified && legacy !== undefined && legacy.length > 0;
+                return { hasUnified, hasLegacy };
+            }
+
+            const result = checkRecent(recentItems, recentPrompts);
+            assert.strictEqual(result.hasUnified, true);
+            assert.strictEqual(result.hasLegacy, false);
+        });
+    });
+
+    suite('Message Types - Unified Recent Items', () => {
+        test('should have promptFilesResponse with recentItems', () => {
+            const message = {
+                type: 'promptFilesResponse' as const,
+                promptFiles: [
+                    { absolutePath: '/test.prompt.md', relativePath: 'test.prompt.md', name: 'test', sourceFolder: '.github/prompts' }
+                ],
+                recentPrompts: [
+                    { absolutePath: '/test.prompt.md', relativePath: 'test.prompt.md', name: 'test', lastUsed: Date.now() }
+                ],
+                recentItems: [
+                    { type: 'prompt' as const, identifier: '/test.prompt.md', name: 'test', relativePath: 'test.prompt.md', lastUsed: Date.now() },
+                    { type: 'skill' as const, identifier: 'code-review', name: 'code-review', lastUsed: Date.now() - 1000 }
+                ],
+                skills: [
+                    { absolutePath: '/skills/code-review', relativePath: '.github/skills/code-review', name: 'code-review', description: 'Code review skill' }
+                ]
+            };
+
+            assert.strictEqual(message.type, 'promptFilesResponse');
+            assert.ok(Array.isArray(message.recentItems));
+            assert.strictEqual(message.recentItems!.length, 2);
+            assert.strictEqual(message.recentItems![0].type, 'prompt');
+            assert.strictEqual(message.recentItems![1].type, 'skill');
+        });
+
+        test('should allow optional recentItems', () => {
+            const message: {
+                type: 'promptFilesResponse';
+                promptFiles: any[];
+                recentPrompts?: any[];
+                recentItems?: RecentItem[];
+                skills?: any[];
+            } = {
+                type: 'promptFilesResponse' as const,
+                promptFiles: [],
+                recentPrompts: []
+            };
+
+            assert.strictEqual(message.recentItems, undefined);
+        });
+    });
+
+    suite('Concurrent Skill and Prompt Usage', () => {
+        test('should handle rapid alternating prompt and skill usage', () => {
+            let recentPrompts: Array<{ absolutePath: string; relativePath: string; name: string; lastUsed: number }> = [];
+            let recentSkills: Array<{ name: string; lastUsed: number }> = [];
+
+            // Simulate rapid usage
+            const trackPrompt = (absPath: string, name: string, time: number) => {
+                const filtered = recentPrompts.filter(r => r.absolutePath !== absPath);
+                recentPrompts = [{ absolutePath: absPath, relativePath: name, name, lastUsed: time }, ...filtered];
+            };
+            const trackSkill = (name: string, time: number) => {
+                const filtered = recentSkills.filter(r => r.name !== name);
+                recentSkills = [{ name, lastUsed: time }, ...filtered];
+            };
+
+            trackPrompt('/p1', 'p1', 1);
+            trackSkill('s1', 2);
+            trackPrompt('/p2', 'p2', 3);
+            trackSkill('s1', 4); // Re-use s1
+            trackPrompt('/p1', 'p1', 5); // Re-use p1
+
+            // Build unified list
+            const recentItems: RecentItem[] = [];
+            for (const rp of recentPrompts) {
+                recentItems.push({ type: 'prompt', identifier: rp.absolutePath, name: rp.name, relativePath: rp.relativePath, lastUsed: rp.lastUsed });
+            }
+            for (const rs of recentSkills) {
+                recentItems.push({ type: 'skill', identifier: rs.name, name: rs.name, lastUsed: rs.lastUsed });
+            }
+            recentItems.sort((a, b) => b.lastUsed - a.lastUsed);
+
+            // p1 (5) > s1 (4) > p2 (3)
+            assert.strictEqual(recentItems[0].name, 'p1');
+            assert.strictEqual(recentItems[0].type, 'prompt');
+            assert.strictEqual(recentItems[1].name, 's1');
+            assert.strictEqual(recentItems[1].type, 'skill');
+            assert.strictEqual(recentItems[2].name, 'p2');
+            assert.strictEqual(recentItems[2].type, 'prompt');
+        });
+
+        test('should handle special characters in skill names', () => {
+            const skillItem: RecentItem = {
+                type: 'skill',
+                identifier: 'my-skill (v2)',
+                name: 'my-skill (v2)',
+                lastUsed: Date.now()
+            };
+
+            assert.strictEqual(skillItem.name, 'my-skill (v2)');
+            assert.strictEqual(skillItem.identifier, 'my-skill (v2)');
         });
     });
 });

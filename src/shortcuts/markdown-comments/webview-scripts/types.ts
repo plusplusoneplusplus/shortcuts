@@ -237,6 +237,23 @@ export interface RecentPrompt {
 }
 
 /**
+ * Unified recent item supporting both prompts and skills.
+ * Used in the "Recent" section of the Follow Prompt menu.
+ */
+export interface RecentItem {
+    /** Discriminator: 'prompt' for prompt files, 'skill' for skills */
+    type: 'prompt' | 'skill';
+    /** For prompts: absolute file path; for skills: skill name */
+    identifier: string;
+    /** Display name */
+    name: string;
+    /** Relative path (prompts only) */
+    relativePath?: string;
+    /** Timestamp when last used */
+    lastUsed: number;
+}
+
+/**
  * Messages sent from extension to webview
  */
 export type ExtensionMessage =
@@ -255,7 +272,7 @@ export type ExtensionMessage =
     }
     | { type: 'imageResolved'; imgId: string; uri?: string; alt?: string; error?: string }
     | { type: 'scrollToComment'; commentId: string }
-    | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[]; skills?: SkillInfo[] }
+    | { type: 'promptFilesResponse'; promptFiles: PromptFileInfo[]; recentPrompts?: RecentPrompt[]; recentItems?: RecentItem[]; skills?: SkillInfo[] }
     | { type: 'skillsResponse'; skills: SkillInfo[] }
     | { type: 'showFollowPromptDialog'; promptName: string; promptFilePath: string; skillName?: string; availableModels: AIModelOption[]; defaults: { mode: 'interactive' | 'background'; model: string } }
     | { type: 'showUpdateDocumentDialog' }

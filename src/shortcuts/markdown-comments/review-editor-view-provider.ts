@@ -126,6 +126,9 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     /** Storage key for recent prompts */
     private static readonly RECENT_PROMPTS_KEY = 'workspaceShortcuts.recentPrompts';
     
+    /** Storage key for recent skills */
+    private static readonly RECENT_SKILLS_KEY = 'workspaceShortcuts.recentSkills';
+    
     /** Maximum number of recent prompts to track */
     private static readonly MAX_RECENT_PROMPTS = 5;
 
@@ -1495,6 +1498,48 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             })
         );
 
+        // Build unified recent items (prompts + skills) sorted by lastUsed
+        const recentSkills = await this.getRecentSkills();
+        
+        // Filter recent skills to only include those still available
+        const validRecentSkills = recentSkills.filter(r =>
+            skills.some(s => s.name === r.name)
+        );
+
+        // Build unified list
+        const recentItems: Array<{
+            type: 'prompt' | 'skill';
+            identifier: string;
+            name: string;
+            relativePath?: string;
+            lastUsed: number;
+        }> = [];
+
+        for (const rp of validRecent) {
+            recentItems.push({
+                type: 'prompt',
+                identifier: rp.absolutePath,
+                name: rp.name,
+                relativePath: rp.relativePath,
+                lastUsed: rp.lastUsed
+            });
+        }
+
+        for (const rs of validRecentSkills) {
+            recentItems.push({
+                type: 'skill',
+                identifier: rs.name,
+                name: rs.name,
+                lastUsed: rs.lastUsed
+            });
+        }
+
+        // Sort by lastUsed descending (most recent first)
+        recentItems.sort((a, b) => b.lastUsed - a.lastUsed);
+
+        // Limit to MAX_RECENT_PROMPTS combined items
+        const limitedRecentItems = recentItems.slice(0, ReviewEditorViewProvider.MAX_RECENT_PROMPTS);
+
         webviewPanel.webview.postMessage({
             type: 'promptFilesResponse',
             promptFiles: promptFiles.map(f => ({
@@ -1504,6 +1549,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
                 sourceFolder: f.sourceFolder
             })),
             recentPrompts: validRecent,
+            recentItems: limitedRecentItems,
             skills: skillsWithDescriptions
         });
     }
@@ -1641,6 +1687,41 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     }
 
     /**
+     * Get recent skills from workspace state
+     */
+    private async getRecentSkills(): Promise<Array<{
+        name: string;
+        lastUsed: number;
+    }>> {
+        return this.context.workspaceState.get<Array<{
+            name: string;
+            lastUsed: number;
+        }>>(ReviewEditorViewProvider.RECENT_SKILLS_KEY, []);
+    }
+
+    /**
+     * Track skill usage in workspace state
+     */
+    private async trackSkillUsage(skillName: string): Promise<void> {
+        const recent = await this.getRecentSkills();
+        
+        // Remove if already exists
+        const filtered = recent.filter(r => r.name !== skillName);
+        
+        // Add to front
+        filtered.unshift({
+            name: skillName,
+            lastUsed: Date.now()
+        });
+        
+        // Keep only MAX_RECENT_PROMPTS (shared limit for combined recent items)
+        await this.context.workspaceState.update(
+            ReviewEditorViewProvider.RECENT_SKILLS_KEY,
+            filtered.slice(0, ReviewEditorViewProvider.MAX_RECENT_PROMPTS)
+        );
+    }
+
+    /**
      * Show the Follow Prompt dialog in the webview.
      * Sends dialog data including available models and default settings.
      * 
@@ -1657,6 +1738,11 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
     ): Promise<void> {
         // Track prompt usage for recent list
         await this.trackPromptUsage(promptFilePath);
+
+        // Track skill usage if this is a skill-based execution
+        if (skillName) {
+            await this.trackSkillUsage(skillName);
+        }
 
         // Get available models and defaults
         const availableModels = getAvailableModels();
