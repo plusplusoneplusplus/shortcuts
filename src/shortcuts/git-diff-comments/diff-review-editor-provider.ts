@@ -1283,6 +1283,12 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
 
     <!-- Context Menu (hidden by default) -->
     <div id="contextMenu" class="context-menu hidden">
+        <div class="context-menu-item" id="contextMenuCopy">
+            <span class="context-menu-icon">📋</span>
+            <span class="context-menu-label">Copy</span>
+            <span class="context-menu-shortcut">Ctrl+C</span>
+        </div>
+        <div class="context-menu-separator"></div>
         <div class="context-menu-item" id="contextMenuAddComment">
             <span class="context-menu-icon">💬</span>
             <span class="context-menu-label">Add Comment</span>

@@ -109,6 +109,16 @@ function handlePredefinedComment(predefinedText: string): void {
 }
 
 /**
+ * Handle copy operation
+ * Copies the currently selected text to clipboard
+ */
+function handleCopy(): void {
+    if (currentPanelSelection && currentPanelSelection.selectedText) {
+        navigator.clipboard.writeText(currentPanelSelection.selectedText);
+    }
+}
+
+/**
  * Handle AI command click
  */
 function handleAICommandClick(commandId: string, isCustomInput: boolean, mode: AICommandMode): void {
@@ -137,15 +147,18 @@ export function initPanelElements(): void {
     closeCommentsListButton = document.getElementById('close-comments-list') as HTMLButtonElement;
 
     // Initialize shared context menu manager (same rich style as markdown editor)
+    // Note: Only Copy is enabled since Git Diff Review is a read-only view (Cut/Paste don't apply)
     contextMenuManager = new ContextMenuManager(
         {
-            enableClipboardItems: false,
+            enableClipboardItems: true,
+            copyOnly: true,
             enablePreviewTooltips: true,
             minWidth: 220,
             borderRadius: 8,
             richMenuItems: true
         },
         {
+            onCopy: handleCopy,
             onAddComment: () => {
                 if (currentPanelSelection) {
                     showCommentPanel(currentPanelSelection);

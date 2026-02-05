@@ -57,6 +57,8 @@ export interface SerializedPredefinedComment {
 export interface ContextMenuConfig {
     /** Enable Cut/Copy/Paste menu items (default: false) */
     enableClipboardItems?: boolean;
+    /** Enable only Copy (not Cut/Paste) - useful for read-only views (default: false) */
+    copyOnly?: boolean;
     /** Enable preview tooltips on hover (default: false) */
     enablePreviewTooltips?: boolean;
     /** Minimum width of the context menu in pixels (default: 150) */

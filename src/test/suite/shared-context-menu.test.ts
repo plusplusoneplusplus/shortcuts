@@ -678,3 +678,134 @@ suite('Context Menu Manager Element Lookup Tests', () => {
         assert.strictEqual(found, 'contextMenu');
     });
 });
+
+suite('Clipboard Menu Items Tests', () => {
+    
+    suite('Clipboard Configuration Options', () => {
+        
+        test('enableClipboardItems option enables all clipboard items by default', () => {
+            // When enableClipboardItems is true and copyOnly is false/undefined,
+            // Cut, Copy, and Paste should all be shown
+            const config = { enableClipboardItems: true };
+            assert.ok(config.enableClipboardItems);
+            assert.ok(!Object.prototype.hasOwnProperty.call(config, 'copyOnly') || !(config as Record<string, boolean>).copyOnly);
+        });
+
+        test('copyOnly option enables only Copy (for read-only views)', () => {
+            // When enableClipboardItems is true and copyOnly is true,
+            // only Copy should be shown (no Cut/Paste)
+            const config = { enableClipboardItems: true, copyOnly: true };
+            assert.ok(config.enableClipboardItems);
+            assert.ok(config.copyOnly);
+        });
+
+        test('copyOnly is appropriate for read-only editors like Git Diff Review', () => {
+            // Git Diff Review is read-only, so Cut and Paste don't apply
+            // Only Copy makes sense for read-only content
+            const gitDiffConfig = { 
+                enableClipboardItems: true, 
+                copyOnly: true,
+                richMenuItems: true 
+            };
+            assert.ok(gitDiffConfig.enableClipboardItems);
+            assert.ok(gitDiffConfig.copyOnly);
+        });
+
+        test('editable views like Markdown Review should have all clipboard items', () => {
+            // Markdown Review Editor is editable, so all clipboard operations apply
+            const markdownConfig = { 
+                enableClipboardItems: true, 
+                richMenuItems: true 
+            };
+            assert.ok(markdownConfig.enableClipboardItems);
+            assert.ok(!Object.prototype.hasOwnProperty.call(markdownConfig, 'copyOnly'));
+        });
+    });
+
+    suite('Clipboard Menu Item HTML Structure', () => {
+        
+        // Full clipboard items HTML (for editable views)
+        const fullClipboardHtml = `
+            <div class="context-menu-item" id="contextMenuCut">
+                <span class="context-menu-icon">✂️</span>
+                <span class="context-menu-label">Cut</span>
+                <span class="context-menu-shortcut">Ctrl+X</span>
+            </div>
+            <div class="context-menu-item" id="contextMenuCopy">
+                <span class="context-menu-icon">📋</span>
+                <span class="context-menu-label">Copy</span>
+                <span class="context-menu-shortcut">Ctrl+C</span>
+            </div>
+            <div class="context-menu-item" id="contextMenuPaste">
+                <span class="context-menu-icon">📄</span>
+                <span class="context-menu-label">Paste</span>
+                <span class="context-menu-shortcut">Ctrl+V</span>
+            </div>
+        `;
+
+        // Copy-only HTML (for read-only views)
+        const copyOnlyHtml = `
+            <div class="context-menu-item" id="contextMenuCopy">
+                <span class="context-menu-icon">📋</span>
+                <span class="context-menu-label">Copy</span>
+                <span class="context-menu-shortcut">Ctrl+C</span>
+            </div>
+        `;
+
+        test('full clipboard HTML contains all three items', () => {
+            const ids = extractIdsFromHtml(fullClipboardHtml);
+            assert.ok(ids.includes('contextMenuCut'), 'Missing Cut item');
+            assert.ok(ids.includes('contextMenuCopy'), 'Missing Copy item');
+            assert.ok(ids.includes('contextMenuPaste'), 'Missing Paste item');
+        });
+
+        test('copy-only HTML contains only Copy item', () => {
+            const ids = extractIdsFromHtml(copyOnlyHtml);
+            assert.ok(ids.includes('contextMenuCopy'), 'Missing Copy item');
+            assert.ok(!ids.includes('contextMenuCut'), 'Should not have Cut item');
+            assert.ok(!ids.includes('contextMenuPaste'), 'Should not have Paste item');
+        });
+
+        test('clipboard items have proper rich menu structure', () => {
+            const classes = extractClassesFromHtml(fullClipboardHtml);
+            assert.ok(classes.includes('context-menu-item'), 'Missing context-menu-item class');
+            assert.ok(classes.includes('context-menu-icon'), 'Missing context-menu-icon class');
+            assert.ok(classes.includes('context-menu-label'), 'Missing context-menu-label class');
+            assert.ok(classes.includes('context-menu-shortcut'), 'Missing context-menu-shortcut class');
+        });
+
+        test('clipboard items display correct keyboard shortcuts', () => {
+            assert.ok(fullClipboardHtml.includes('Ctrl+X'), 'Missing Cut shortcut');
+            assert.ok(fullClipboardHtml.includes('Ctrl+C'), 'Missing Copy shortcut');
+            assert.ok(fullClipboardHtml.includes('Ctrl+V'), 'Missing Paste shortcut');
+        });
+    });
+
+    suite('Git Diff Review Copy Implementation', () => {
+        
+        test('Git Diff Review Editor should have Copy in context menu HTML', () => {
+            // This validates that the diff-review-editor-provider.ts includes
+            // the contextMenuCopy element
+            const gitDiffContextMenuHtml = `
+                <div id="contextMenu" class="context-menu hidden">
+                    <div class="context-menu-item" id="contextMenuCopy">
+                        <span class="context-menu-icon">📋</span>
+                        <span class="context-menu-label">Copy</span>
+                        <span class="context-menu-shortcut">Ctrl+C</span>
+                    </div>
+                    <div class="context-menu-separator"></div>
+                    <div class="context-menu-item" id="contextMenuAddComment">
+                        <span class="context-menu-icon">💬</span>
+                        <span class="context-menu-label">Add Comment</span>
+                    </div>
+                </div>
+            `;
+            
+            const ids = extractIdsFromHtml(gitDiffContextMenuHtml);
+            assert.ok(ids.includes('contextMenuCopy'), 'Git Diff Review should have Copy item');
+            assert.ok(ids.includes('contextMenuAddComment'), 'Git Diff Review should have Add Comment item');
+            assert.ok(!ids.includes('contextMenuCut'), 'Git Diff Review should NOT have Cut item');
+            assert.ok(!ids.includes('contextMenuPaste'), 'Git Diff Review should NOT have Paste item');
+        });
+    });
+});

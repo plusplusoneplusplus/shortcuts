@@ -91,12 +91,20 @@ export function buildMenuItemHTML(item: ContextMenuItem, config: ContextMenuConf
 }
 
 /**
- * Build clipboard items HTML (Cut/Copy/Paste)
+ * Build clipboard items HTML (Cut/Copy/Paste or Copy-only based on config)
  * @param config - Context menu configuration
  * @returns HTML string for clipboard items
  */
 export function buildClipboardItemsHTML(config: ContextMenuConfig = DEFAULT_CONFIG): string {
     const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+
+    // If copyOnly is set, only include Copy
+    if (mergedConfig.copyOnly) {
+        const items: ContextMenuItem[] = [
+            { id: 'contextMenuCopy', label: 'Copy', icon: '📋', shortcut: 'Ctrl+C' }
+        ];
+        return items.map(item => buildMenuItemHTML(item, mergedConfig)).join('');
+    }
 
     const items: ContextMenuItem[] = [
         { id: 'contextMenuCut', label: 'Cut', icon: '✂️', shortcut: 'Ctrl+X' },
