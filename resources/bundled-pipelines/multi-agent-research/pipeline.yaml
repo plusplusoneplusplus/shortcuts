@@ -85,7 +85,7 @@ input:
       - rationale
     
     # Use best model for query decomposition
-    model: "claude-opus-4.5"
+    model: "claude-opus-4.6"
 
   # Static parameters available to all subagents
   parameters:
@@ -276,4 +276,4 @@ reduce:
     - synthesis_notes
 
   # Use Claude Opus for lead agent (best reasoning for synthesis)
-  model: "claude-opus-4.5"
+  model: "claude-opus-4.6"

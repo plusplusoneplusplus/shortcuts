@@ -68,7 +68,7 @@ All paths use `resolveWorkPlanWorkingDirectory()` from the same ReviewEditorView
 ### ✅ Model and Options Consistency
 
 All paths:
-- Support the same set of AI models (claude-sonnet-4.5, claude-opus-4.5, gpt-4o, gpt-5.2, etc.)
+- Support the same set of AI models (claude-sonnet-4.5, claude-opus-4.6, gpt-4o, gpt-5.2, etc.)
 - Use the same default timeout (30 minutes via `DEFAULT_AI_TIMEOUT_MS`)
 - Support the same execution options structure (`FollowPromptExecutionOptions`)
 

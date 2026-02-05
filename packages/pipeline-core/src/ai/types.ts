@@ -19,7 +19,7 @@ export type AIBackendType = 'copilot-sdk' | 'copilot-cli' | 'clipboard';
 export const VALID_MODELS = [
     'claude-sonnet-4.5',
     'claude-haiku-4.5',
-    'claude-opus-4.5',
+    'claude-opus-4.6',
     'gpt-5.2',
     'gpt-5.1-codex-max',
     'gemini-3-pro-preview'

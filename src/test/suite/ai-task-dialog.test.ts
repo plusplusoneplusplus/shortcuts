@@ -617,7 +617,7 @@ suite('AI Task Dialog Service Tests', () => {
 
         test('model persistence should work across multiple valid models', () => {
             const context = new MockExtensionContext();
-            const testModels = ['claude-sonnet-4.5', 'claude-haiku-4.5', 'claude-opus-4.5', 'gpt-5.2'];
+            const testModels = ['claude-sonnet-4.5', 'claude-haiku-4.5', 'claude-opus-4.6', 'gpt-5.2'];
             
             for (const testModel of testModels) {
                 saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, testModel);
@@ -648,7 +648,7 @@ suite('AI Task Dialog Service Tests', () => {
 
         test('AITaskDialogService should use persisted model as default', () => {
             // Save a non-default model
-            saveLastUsedAIModel(mockContext as unknown as vscode.ExtensionContext, 'claude-opus-4.5');
+            saveLastUsedAIModel(mockContext as unknown as vscode.ExtensionContext, 'claude-opus-4.6');
             
             // Create new dialog service with the context
             const newDialogService = new AITaskDialogService(
@@ -662,7 +662,7 @@ suite('AI Task Dialog Service Tests', () => {
             
             // Verify the context has the saved model
             const persistedModel = getLastUsedAIModel(mockContext as unknown as vscode.ExtensionContext);
-            assert.strictEqual(persistedModel, 'claude-opus-4.5', 
+            assert.strictEqual(persistedModel, 'claude-opus-4.6', 
                 'Dialog service context should have persisted model');
         });
     });

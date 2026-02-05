@@ -498,7 +498,7 @@ Total usage est:       1 Premium request`;
         test('VALID_MODELS should contain expected model options', () => {
             assert.ok(VALID_MODELS.includes('claude-sonnet-4.5'));
             assert.ok(VALID_MODELS.includes('claude-haiku-4.5'));
-            assert.ok(VALID_MODELS.includes('claude-opus-4.5'));
+            assert.ok(VALID_MODELS.includes('claude-opus-4.6'));
         });
 
         test('DEFAULT_PROMPTS should have all required prompts', () => {

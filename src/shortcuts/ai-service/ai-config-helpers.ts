@@ -77,7 +77,7 @@ export function getSDKRequestTimeoutSetting(): number {
 const MODEL_DISPLAY_NAMES: Record<string, { label: string; description?: string }> = {
     'claude-sonnet-4.5': { label: 'Claude Sonnet 4.5', description: '(Recommended)' },
     'claude-haiku-4.5': { label: 'Claude Haiku 4.5', description: '(Fast)' },
-    'claude-opus-4.5': { label: 'Claude Opus 4.5', description: '(Premium)' },
+    'claude-opus-4.6': { label: 'Claude Opus 4.6', description: '(Premium)' },
     'gpt-5.2': { label: 'GPT-5.2' },
     'gpt-5.1-codex-max': { label: 'GPT-5.1 Codex Max' },
     'gemini-3-pro-preview': { label: 'Gemini 3 Pro', description: '(Preview)' }

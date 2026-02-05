@@ -86,7 +86,7 @@ suite('Follow Prompt Background Execution Tests', () => {
             const metadata: FollowPromptProcessMetadata = {
                 promptFile: '/workspace/.github/skills/code-review/SKILL.md',
                 planFile: '/workspace/.vscode/tasks/task.md',
-                model: 'claude-opus-4.5',
+                model: 'claude-opus-4.6',
                 skillName: 'code-review'
             };
 

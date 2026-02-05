@@ -67,7 +67,7 @@ suite('Follow Prompt Dialog - Type Definitions', () => {
         const metadata: FollowPromptProcessMetadata = {
             promptFile: '/path/to/skill/prompt.md',
             planFile: '/path/to/task.md',
-            model: 'claude-opus-4.5',
+            model: 'claude-opus-4.6',
             additionalContext: 'Custom context',
             skillName: 'code-review'
         };
@@ -225,7 +225,7 @@ suite('Follow Prompt Dialog - Process Metadata', () => {
         const metadata: FollowPromptProcessMetadata = {
             promptFile: '/workspace/.github/skills/code-review/SKILL.md',
             planFile: '/workspace/.vscode/tasks/task.md',
-            model: 'claude-opus-4.5',
+            model: 'claude-opus-4.6',
             skillName: 'code-review'
         };
         

@@ -217,7 +217,7 @@ suite('Follow Prompt Consistency Tests', () => {
             // Interactive, background, and skill-based should all support the same models
             const models = [
                 'claude-sonnet-4.5',
-                'claude-opus-4.5',
+                'claude-opus-4.6',
                 'gpt-4o',
                 'gpt-5.2'
             ];
