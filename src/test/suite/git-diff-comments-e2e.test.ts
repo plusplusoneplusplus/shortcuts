@@ -21,11 +21,17 @@ import {
     createRepoWithHistory
 } from '../helpers/git-test-helpers';
 
-suite('Git Diff Comments E2E Tests', () => {
+suite('Git Diff Comments E2E Tests', function() {
+    // Increase timeout for the entire suite, especially for Windows CI
+    this.timeout(10000);
+    
     let repo: GitTestRepo;
     let manager: DiffCommentsManager;
 
-    setup(async () => {
+    setup(async function() {
+        // Git operations can be slow on Windows CI, so increase the timeout
+        this.timeout(8000);
+        
         // Create test git repository with history
         repo = createRepoWithHistory();
         
