@@ -14,17 +14,25 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { PipelineCoreError, ErrorCode } from '../errors';
 
 /**
  * Error thrown for prompt file resolution issues
  */
-export class PromptResolverError extends Error {
+export class PromptResolverError extends PipelineCoreError {
+    /** Paths that were searched when resolving the prompt */
+    readonly searchedPaths?: string[];
+
     constructor(
         message: string,
-        public readonly searchedPaths?: string[]
+        searchedPaths?: string[]
     ) {
-        super(message);
+        super(message, {
+            code: ErrorCode.PROMPT_RESOLUTION_FAILED,
+            meta: searchedPaths ? { searchedPaths } : undefined,
+        });
         this.name = 'PromptResolverError';
+        this.searchedPaths = searchedPaths;
     }
 }
 

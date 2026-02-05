@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { extractPromptContent } from './prompt-resolver';
 import { DEFAULT_SKILLS_DIRECTORY as SKILLS_DIR_DEFAULT } from '../config/defaults';
+import { PipelineCoreError, ErrorCode } from '../errors';
 
 // Re-export for backward compatibility
 export const DEFAULT_SKILLS_DIRECTORY = SKILLS_DIR_DEFAULT;
@@ -32,14 +33,27 @@ export const SKILL_PROMPT_FILENAME = 'SKILL.md';
 /**
  * Error thrown for skill resolution issues
  */
-export class SkillResolverError extends Error {
+export class SkillResolverError extends PipelineCoreError {
+    /** Name of the skill that failed to resolve */
+    readonly skillName: string;
+    /** Path that was searched */
+    readonly searchedPath?: string;
+
     constructor(
         message: string,
-        public readonly skillName: string,
-        public readonly searchedPath?: string
+        skillName: string,
+        searchedPath?: string
     ) {
-        super(message);
+        super(message, {
+            code: ErrorCode.SKILL_RESOLUTION_FAILED,
+            meta: {
+                skillName,
+                ...(searchedPath && { searchedPath }),
+            },
+        });
         this.name = 'SkillResolverError';
+        this.skillName = skillName;
+        this.searchedPath = searchedPath;
     }
 }
 

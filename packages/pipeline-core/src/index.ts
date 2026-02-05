@@ -43,6 +43,61 @@ export {
 } from './logger';
 
 // ============================================================================
+// Errors
+// ============================================================================
+
+export {
+    // Error codes
+    ErrorCode,
+    ErrorCodeType,
+    mapSystemErrorCode,
+    // Core error class
+    PipelineCoreError,
+    ErrorMetadata,
+    isPipelineCoreError,
+    toPipelineCoreError,
+    wrapError,
+    getErrorCauseMessage,
+    logError,
+} from './errors';
+
+// ============================================================================
+// Runtime (Async Policies)
+// ============================================================================
+
+export {
+    // Cancellation
+    CancellationError,
+    IsCancelledFn,
+    isCancellationError,
+    throwIfCancelled,
+    createCancellationToken,
+    // Timeout
+    TimeoutError,
+    TimeoutOptions,
+    withTimeout,
+    isTimeoutError,
+    createTimeoutPromise,
+    // Retry
+    RetryExhaustedError,
+    BackoffStrategy,
+    OnAttemptFn,
+    RetryOnFn,
+    RetryOptions,
+    DEFAULT_RETRY_OPTIONS,
+    defaultRetryOn,
+    retryOnTimeout,
+    calculateDelay,
+    withRetry,
+    isRetryExhaustedError,
+    // Policy (unified runner)
+    PolicyOptions,
+    DEFAULT_POLICY_OPTIONS,
+    runWithPolicy,
+    createPolicyRunner,
+} from './runtime';
+
+// ============================================================================
 // Utils
 // ============================================================================
 
@@ -257,7 +312,7 @@ export {
     DEFAULT_SESSION_POOL_CONFIG,
     approveAllPermissions,
     denyAllPermissions,
-    DEFAULT_AI_TIMEOUT_MS,
+    // DEFAULT_AI_TIMEOUT_MS is exported from ./config
     // MCP Config Loader
     MCPConfigFile,
     MCPConfigLoadResult,
@@ -308,8 +363,8 @@ export {
     createExecutor,
     // Concurrency limiter
     ConcurrencyLimiter,
-    CancellationError,
-    DEFAULT_MAX_CONCURRENCY,
+    // CancellationError is now exported from ./runtime
+    // DEFAULT_MAX_CONCURRENCY is exported from ./config
     // Prompt template
     renderTemplate,
     createTemplate,
@@ -443,7 +498,7 @@ export {
     parsePipelineYAML,
     parsePipelineYAMLSync,
     PipelineExecutionError,
-    DEFAULT_PARALLEL_LIMIT,
+    // DEFAULT_PARALLEL_LIMIT is exported from ./config
     ExecutePipelineOptions,
     PipelineExecutionResult,
     // CSV Reader
@@ -494,7 +549,7 @@ export {
     listSkills,
     validateSkill,
     SkillResolverError,
-    DEFAULT_SKILLS_DIRECTORY,
+    // DEFAULT_SKILLS_DIRECTORY is exported from ./config
     SKILL_PROMPT_FILENAME,
     SkillResolutionResult,
     SkillMetadata,

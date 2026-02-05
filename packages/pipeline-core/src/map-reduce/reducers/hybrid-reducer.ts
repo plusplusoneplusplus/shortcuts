@@ -16,6 +16,7 @@ import {
 } from '../types';
 import { BaseReducer } from './reducer';
 import { DeterministicReducer, DeterministicReducerOptions, DeterministicReduceOutput, Deduplicatable } from './deterministic';
+import { getLogger, LogCategory } from '../../logger';
 
 /**
  * Options for the hybrid reducer
@@ -130,11 +131,11 @@ export class HybridReducer<T extends Deduplicatable, TPolished> extends BaseRedu
             }
 
             // AI failed, use fallback
-            console.warn('AI polishing failed, using deterministic result:', aiResult.error);
+            getLogger().warn(LogCategory.MAP_REDUCE, `AI polishing failed, using deterministic result: ${aiResult.error}`);
             return this.createFallbackResult(deterministicOutput, deterministicResult.stats, startTime);
 
         } catch (error) {
-            console.warn('AI polishing error, using deterministic result:', error);
+            getLogger().warn(LogCategory.MAP_REDUCE, `AI polishing error, using deterministic result: ${error instanceof Error ? error.message : String(error)}`);
             return this.createFallbackResult(deterministicOutput, deterministicResult.stats, startTime);
         }
     }

@@ -15,6 +15,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { getLogger, LogCategory } from '../logger';
 
 /** Directory name for map-reduce temp files */
 const TEMP_DIR_NAME = 'vscode-shortcuts-mapreduce';
@@ -41,7 +42,7 @@ export function ensureTempDir(): string | undefined {
         }
         return tempDir;
     } catch (error) {
-        console.error('Failed to create temp directory:', error);
+        getLogger().error(LogCategory.UTILS, 'Failed to create temp directory', error instanceof Error ? error : undefined);
         return undefined;
     }
 }
@@ -88,7 +89,7 @@ export function writeTempFile(
             cleanup: () => cleanupTempFile(filePath)
         };
     } catch (error) {
-        console.error('Failed to write temp file:', error);
+        getLogger().error(LogCategory.UTILS, 'Failed to write temp file', error instanceof Error ? error : undefined);
         return undefined;
     }
 }
@@ -105,7 +106,7 @@ export function cleanupTempFile(filePath: string): boolean {
         }
         return true;
     } catch (error) {
-        console.error('Failed to cleanup temp file:', error);
+        getLogger().error(LogCategory.UTILS, 'Failed to cleanup temp file', error instanceof Error ? error : undefined);
         return false;
     }
 }
@@ -135,7 +136,7 @@ export function cleanupAllTempFiles(): number {
             }
         }
     } catch (error) {
-        console.error('Failed to cleanup temp directory:', error);
+        getLogger().error(LogCategory.UTILS, 'Failed to cleanup temp directory', error instanceof Error ? error : undefined);
     }
 
     return count;
@@ -150,7 +151,7 @@ export function readTempFile(filePath: string): string | undefined {
     try {
         return fs.readFileSync(filePath, { encoding: 'utf8' });
     } catch (error) {
-        console.error('Failed to read temp file:', error);
+        getLogger().error(LogCategory.UTILS, 'Failed to read temp file', error instanceof Error ? error : undefined);
         return undefined;
     }
 }

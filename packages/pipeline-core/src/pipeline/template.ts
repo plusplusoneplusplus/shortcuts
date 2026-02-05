@@ -19,17 +19,25 @@ import {
     extractVariables as extractTemplateVariables,
     validateVariables
 } from '../utils/template-engine';
+import { PipelineCoreError, ErrorCode } from '../errors';
 
 /**
  * Error thrown when a template variable is missing
  */
-export class TemplateError extends Error {
+export class TemplateError extends PipelineCoreError {
+    /** Name of the variable that caused the error */
+    readonly variableName?: string;
+
     constructor(
         message: string,
-        public readonly variableName?: string
+        variableName?: string
     ) {
-        super(message);
+        super(message, {
+            code: ErrorCode.TEMPLATE_ERROR,
+            meta: variableName ? { variableName } : undefined,
+        });
         this.name = 'TemplateError';
+        this.variableName = variableName;
     }
 }
 

@@ -19,6 +19,7 @@ import {
     ProcessTracker
 } from './types';
 import { substituteTemplate } from './template';
+import { getLogger, LogCategory } from '../logger';
 
 /**
  * Options for filter execution
@@ -352,7 +353,7 @@ async function evaluateAIRule(
 
         if (!result.success) {
             // On error, default to excluding the item
-            console.error(`AI filter error for item: ${result.error}`);
+            getLogger().error(LogCategory.PIPELINE, `AI filter error for item: ${result.error}`);
             return false;
         }
 
@@ -364,7 +365,7 @@ async function evaluateAIRule(
                 response = JSON.parse(result.response || '');
             } catch {
                 // Failed to parse JSON, default to exclude
-                console.error(`Failed to parse AI filter response as JSON: ${result.response}`);
+                getLogger().error(LogCategory.PIPELINE, `Failed to parse AI filter response as JSON: ${result.response}`);
                 return false;
             }
         } else {
@@ -378,11 +379,11 @@ async function evaluateAIRule(
         }
 
         // Fallback: if no clear include field, default to false
-        console.error(`AI filter response missing 'include' field: ${JSON.stringify(response)}`);
+        getLogger().error(LogCategory.PIPELINE, `AI filter response missing 'include' field: ${JSON.stringify(response)}`);
         return false;
 
     } catch (error) {
-        console.error(`AI filter exception: ${error instanceof Error ? error.message : String(error)}`);
+        getLogger().error(LogCategory.PIPELINE, `AI filter exception: ${error instanceof Error ? error.message : String(error)}`);
         return false;
     }
 }

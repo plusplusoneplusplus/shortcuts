@@ -16,6 +16,7 @@ import {
 } from '../types';
 import { BaseReducer } from './reducer';
 import { ResponseParsers } from '../prompt-template';
+import { getLogger, LogCategory } from '../../logger';
 
 /**
  * Options for the AI reducer
@@ -105,12 +106,12 @@ export class AIReducer<TMapOutput, TReduceOutput> extends BaseReducer<TMapOutput
             }
 
             // AI failed, use fallback
-            console.warn('AI reduce failed, falling back to deterministic:', aiResult.error);
+            getLogger().warn(LogCategory.MAP_REDUCE, `AI reduce failed, falling back to deterministic: ${aiResult.error}`);
             return this.fallbackWithStats(results, context, startTime);
 
         } catch (error) {
             // On any error, use fallback
-            console.warn('AI reduce error, falling back to deterministic:', error);
+            getLogger().warn(LogCategory.MAP_REDUCE, `AI reduce error, falling back to deterministic: ${error instanceof Error ? error.message : String(error)}`);
             return this.fallbackWithStats(results, context, startTime);
         }
     }

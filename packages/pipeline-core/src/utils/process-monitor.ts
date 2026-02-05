@@ -10,6 +10,7 @@
  */
 
 import { execSync } from 'child_process';
+import { getLogger, LogCategory } from '../logger';
 
 /**
  * Disposable interface for cleanup
@@ -242,7 +243,7 @@ export class ProcessMonitor implements Disposable {
                     onTerminated();
                 } catch (error) {
                     // Log but don't throw - we want to continue checking other processes
-                    console.error(`Error in termination callback for session ${sessionId}:`, error);
+                    getLogger().error(LogCategory.UTILS, `Error in termination callback for session ${sessionId}`, error instanceof Error ? error : undefined);
                 }
             }
         }

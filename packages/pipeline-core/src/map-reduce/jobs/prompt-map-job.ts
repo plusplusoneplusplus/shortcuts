@@ -27,6 +27,7 @@ import {
     parseAIResponse as sharedParseAIResponse 
 } from '../../utils/ai-response-parser';
 import { writeTempFile, TempFileResult } from '../temp-file-utils';
+import { getLogger, LogCategory } from '../../logger';
 
 /**
  * A generic item with string key-value pairs for template substitution
@@ -527,7 +528,7 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
                 prompt = prompt.replace(/\{\{RESULTS_FILE\}\}/g, tempFileResult.filePath);
             } else {
                 // Fallback to inline if temp file creation fails
-                console.warn('Failed to create temp file for RESULTS_FILE, falling back to inline RESULTS');
+                getLogger().warn(LogCategory.MAP_REDUCE, 'Failed to create temp file for RESULTS_FILE, falling back to inline RESULTS');
                 prompt = prompt.replace(/\{\{RESULTS_FILE\}\}/g, resultsString);
             }
         }

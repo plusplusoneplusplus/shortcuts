@@ -14,6 +14,7 @@ import {
     DEFAULT_CSV_DELIMITER,
     DEFAULT_CSV_HAS_HEADER
 } from '../config/defaults';
+import { PipelineCoreError, ErrorCode } from '../errors';
 
 /**
  * Default CSV parsing options
@@ -27,14 +28,27 @@ export const DEFAULT_CSV_OPTIONS: Required<CSVParseOptions> = {
 /**
  * Error thrown for CSV parsing issues
  */
-export class CSVParseError extends Error {
+export class CSVParseError extends PipelineCoreError {
+    /** Line number where the error occurred */
+    readonly lineNumber?: number;
+    /** Column index where the error occurred */
+    readonly columnIndex?: number;
+
     constructor(
         message: string,
-        public readonly lineNumber?: number,
-        public readonly columnIndex?: number
+        lineNumber?: number,
+        columnIndex?: number
     ) {
-        super(message);
+        super(message, {
+            code: ErrorCode.CSV_PARSE_ERROR,
+            meta: {
+                ...(lineNumber !== undefined && { lineNumber }),
+                ...(columnIndex !== undefined && { columnIndex }),
+            },
+        });
         this.name = 'CSVParseError';
+        this.lineNumber = lineNumber;
+        this.columnIndex = columnIndex;
     }
 }
 

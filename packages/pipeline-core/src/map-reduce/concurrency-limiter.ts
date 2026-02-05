@@ -7,12 +7,16 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import { CancellationError as RuntimeCancellationError, IsCancelledFn } from '../runtime/cancellation';
+
 /**
- * Error thrown when an operation is cancelled
+ * Error thrown when an operation is cancelled.
+ * Re-exported from runtime for backward compatibility.
  */
-export class CancellationError extends Error {
+export class CancellationError extends RuntimeCancellationError {
     constructor(message = 'Operation cancelled') {
         super(message);
+        // Keep 'CancellationError' name for backward compatibility
         this.name = 'CancellationError';
     }
 }

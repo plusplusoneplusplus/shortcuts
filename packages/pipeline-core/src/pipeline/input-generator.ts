@@ -9,16 +9,20 @@
 
 import { GenerateInputConfig, PromptItem, AIInvoker } from './types';
 import { extractJSON } from '../utils/ai-response-parser';
+import { PipelineCoreError, ErrorCode } from '../errors';
 
 /**
  * Error thrown when input generation fails
  */
-export class InputGenerationError extends Error {
+export class InputGenerationError extends PipelineCoreError {
     constructor(
         message: string,
-        public readonly cause?: Error
+        cause?: Error
     ) {
-        super(message);
+        super(message, {
+            code: ErrorCode.INPUT_GENERATION_FAILED,
+            cause,
+        });
         this.name = 'InputGenerationError';
     }
 }

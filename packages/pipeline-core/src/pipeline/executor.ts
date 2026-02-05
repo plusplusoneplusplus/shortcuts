@@ -37,6 +37,8 @@ import { validateGenerateConfig } from './input-generator';
 import { executeFilter } from './filter-executor';
 import { resolvePromptFile } from './prompt-resolver';
 import { resolveSkill } from './skill-resolver';
+import { PipelineCoreError, ErrorCode } from '../errors';
+import { getLogger, LogCategory } from '../logger';
 
 // Re-export for backward compatibility
 export { DEFAULT_PARALLEL_LIMIT } from '../config/defaults';
@@ -44,13 +46,20 @@ export { DEFAULT_PARALLEL_LIMIT } from '../config/defaults';
 /**
  * Error thrown for pipeline execution issues
  */
-export class PipelineExecutionError extends Error {
+export class PipelineExecutionError extends PipelineCoreError {
+    /** Phase where the error occurred */
+    readonly phase?: 'input' | 'filter' | 'map' | 'reduce';
+
     constructor(
         message: string,
-        public readonly phase?: 'input' | 'filter' | 'map' | 'reduce'
+        phase?: 'input' | 'filter' | 'map' | 'reduce'
     ) {
-        super(message);
+        super(message, {
+            code: ErrorCode.PIPELINE_EXECUTION_FAILED,
+            meta: phase ? { phase } : undefined,
+        });
         this.name = 'PipelineExecutionError';
+        this.phase = phase;
     }
 }
 
@@ -393,13 +402,14 @@ async function executeWithItems(
 
             processItems = filterResult.included;
 
-            console.log(
+            getLogger().info(
+                LogCategory.PIPELINE,
                 `Filter: ${filterResult.stats.includedCount}/${filterResult.stats.totalItems} items passed ` +
                 `(${filterResult.stats.excludedCount} excluded, ${filterResult.stats.executionTimeMs}ms)`
             );
 
             if (processItems.length === 0) {
-                console.warn('Filter excluded all items - map phase will have no work');
+                getLogger().warn(LogCategory.PIPELINE, 'Filter excluded all items - map phase will have no work');
             }
         } catch (error) {
             if (error instanceof PipelineExecutionError) {
@@ -1358,7 +1368,7 @@ function validateMapConfig(config: PipelineConfig): void {
         if (config.map.batchSize > 1) {
             const prompt = config.map.prompt || '';
             if (!prompt.includes('{{ITEMS}}')) {
-                console.warn('Warning: batchSize > 1 but prompt does not contain {{ITEMS}}. Consider using {{ITEMS}} to access batch items.');
+                getLogger().warn(LogCategory.PIPELINE, 'Warning: batchSize > 1 but prompt does not contain {{ITEMS}}. Consider using {{ITEMS}} to access batch items.');
             }
         }
     }

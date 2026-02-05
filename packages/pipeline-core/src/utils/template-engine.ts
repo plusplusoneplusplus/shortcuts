@@ -7,6 +7,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import { PipelineCoreError, ErrorCode } from '../errors';
+
 /**
  * Regular expression to match {{variable}} placeholders.
  * Shared across all template substitution implementations.
@@ -61,13 +63,20 @@ export interface SubstituteVariablesOptions {
 /**
  * Error thrown when a template variable is missing in strict mode
  */
-export class TemplateVariableError extends Error {
+export class TemplateVariableError extends PipelineCoreError {
+    /** Name of the missing variable */
+    readonly variableName?: string;
+
     constructor(
         message: string,
-        public readonly variableName?: string
+        variableName?: string
     ) {
-        super(message);
+        super(message, {
+            code: ErrorCode.MISSING_VARIABLE,
+            meta: variableName ? { variableName } : undefined,
+        });
         this.name = 'TemplateVariableError';
+        this.variableName = variableName;
     }
 }
 

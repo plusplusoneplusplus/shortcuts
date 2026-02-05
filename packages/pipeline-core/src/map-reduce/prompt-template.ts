@@ -13,6 +13,7 @@ import {
     substituteVariables,
     extractVariables as extractTemplateVariables
 } from '../utils/template-engine';
+import { PipelineCoreError, ErrorCode } from '../errors';
 
 // Re-export PromptTemplate for convenience
 export type { PromptTemplate } from './types';
@@ -20,26 +21,42 @@ export type { PromptTemplate } from './types';
 /**
  * Error thrown when a required variable is missing
  */
-export class MissingVariableError extends Error {
+export class MissingVariableError extends PipelineCoreError {
+    /** Name of the missing variable */
+    readonly variableName: string;
+    /** Name of the template (if available) */
+    readonly templateName?: string;
+
     constructor(
-        public readonly variableName: string,
-        public readonly templateName?: string
+        variableName: string,
+        templateName?: string
     ) {
         const context = templateName ? ` in template "${templateName}"` : '';
-        super(`Missing required variable "${variableName}"${context}`);
+        super(`Missing required variable "${variableName}"${context}`, {
+            code: ErrorCode.MISSING_VARIABLE,
+            meta: {
+                variableName,
+                ...(templateName && { templateName }),
+            },
+        });
         this.name = 'MissingVariableError';
+        this.variableName = variableName;
+        this.templateName = templateName;
     }
 }
 
 /**
  * Error thrown when template rendering fails
  */
-export class TemplateRenderError extends Error {
+export class TemplateRenderError extends PipelineCoreError {
     constructor(
         message: string,
-        public readonly cause?: Error
+        cause?: Error
     ) {
-        super(message);
+        super(message, {
+            code: ErrorCode.TEMPLATE_ERROR,
+            cause,
+        });
         this.name = 'TemplateRenderError';
     }
 }
