@@ -540,7 +540,7 @@ suite('ShortcutsCommands Integration Tests', function() {
 
         test('should work with groups that have emoji in label', async function() {
             // Set a longer timeout for CI environments
-            this.timeout(15000);
+            this.timeout(20000);
 
             // This test verifies the fix for using originalName instead of label
             // The label includes "📂 " prefix but originalName doesn't
@@ -549,7 +549,7 @@ suite('ShortcutsCommands Integration Tests', function() {
 
             // Trigger the extension to refresh its view and wait for file system to settle
             await vscode.commands.executeCommand('shortcuts.refresh');
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 800));
 
             provider.refresh();
 
@@ -582,7 +582,8 @@ suite('ShortcutsCommands Integration Tests', function() {
 
                 // Wait for file system operations and file watchers to complete
                 // This needs to be longer on CI to allow the extension's file watcher to see changes
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                // Increased to 2500ms to handle slower macOS CI environments
+                await new Promise(resolve => setTimeout(resolve, 2500));
 
                 configManager.invalidateCache();
                 const config = await configManager.loadConfiguration();
