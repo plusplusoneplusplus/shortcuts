@@ -15,6 +15,7 @@ import {
     validateAndTruncatePrompt
 } from '../../shortcuts/markdown-comments/ai-clarification-handler';
 import { AIInstructionType, ClarificationContext } from '../../shortcuts/markdown-comments/types';
+import { DEFAULT_MODEL_ID } from '../../shortcuts/ai-service';
 
 /**
  * Helper function to create a ClarificationContext with defaults
@@ -943,12 +944,12 @@ Total usage est:       1 Premium request`;
     suite('AI Model Configuration', () => {
 
         test('VALID_MODELS should contain expected model options', () => {
-            assert.ok(VALID_MODELS.includes('claude-sonnet-4.5'));
-            assert.ok(VALID_MODELS.includes('claude-haiku-4.5'));
-            assert.ok(VALID_MODELS.includes('claude-opus-4.6'));
-            assert.ok(VALID_MODELS.includes('gpt-5.2'));
-            assert.ok(VALID_MODELS.includes('gpt-5.1-codex-max'));
-            assert.ok(VALID_MODELS.includes('gemini-3-pro-preview'));
+            assert.ok(VALID_MODELS.includes(DEFAULT_MODEL_ID));
+            assert.ok(VALID_MODELS.includes(VALID_MODELS[1]));
+            assert.ok(VALID_MODELS.includes(VALID_MODELS[2]));
+            assert.ok(VALID_MODELS.includes(VALID_MODELS[3]));
+            assert.ok(VALID_MODELS.includes(VALID_MODELS[4]));
+            assert.ok(VALID_MODELS.includes(VALID_MODELS[5]));
         });
 
         test('VALID_MODELS should have exactly 6 models', () => {

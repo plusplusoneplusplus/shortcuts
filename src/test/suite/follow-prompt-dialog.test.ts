@@ -10,6 +10,7 @@ import * as assert from 'assert';
 // Import types and helpers
 import { 
     VALID_MODELS,
+    DEFAULT_MODEL_ID,
     AIModelConfig,
     FollowPromptExecutionOptions,
     FollowPromptProcessMetadata
@@ -26,11 +27,11 @@ suite('Follow Prompt Dialog - Type Definitions', () => {
     test('FollowPromptExecutionOptions should have required fields', () => {
         const options: FollowPromptExecutionOptions = {
             mode: 'interactive',
-            model: 'claude-sonnet-4.5'
+            model: DEFAULT_MODEL_ID
         };
         
         assert.strictEqual(options.mode, 'interactive');
-        assert.strictEqual(options.model, 'claude-sonnet-4.5');
+        assert.strictEqual(options.model, DEFAULT_MODEL_ID);
         assert.strictEqual(options.additionalContext, undefined);
         assert.strictEqual(options.timeoutMs, undefined);
     });
@@ -38,13 +39,13 @@ suite('Follow Prompt Dialog - Type Definitions', () => {
     test('FollowPromptExecutionOptions should support optional fields', () => {
         const options: FollowPromptExecutionOptions = {
             mode: 'background',
-            model: 'gpt-5.2',
+            model: VALID_MODELS[3],
             additionalContext: 'Focus on error handling',
             timeoutMs: 300000
         };
         
         assert.strictEqual(options.mode, 'background');
-        assert.strictEqual(options.model, 'gpt-5.2');
+        assert.strictEqual(options.model, VALID_MODELS[3]);
         assert.strictEqual(options.additionalContext, 'Focus on error handling');
         assert.strictEqual(options.timeoutMs, 300000);
     });
@@ -53,12 +54,12 @@ suite('Follow Prompt Dialog - Type Definitions', () => {
         const metadata: FollowPromptProcessMetadata = {
             promptFile: '/path/to/prompt.md',
             planFile: '/path/to/plan.md',
-            model: 'claude-sonnet-4.5'
+            model: DEFAULT_MODEL_ID
         };
         
         assert.strictEqual(metadata.promptFile, '/path/to/prompt.md');
         assert.strictEqual(metadata.planFile, '/path/to/plan.md');
-        assert.strictEqual(metadata.model, 'claude-sonnet-4.5');
+        assert.strictEqual(metadata.model, DEFAULT_MODEL_ID);
         assert.strictEqual(metadata.additionalContext, undefined);
         assert.strictEqual(metadata.skillName, undefined);
     });
@@ -67,7 +68,7 @@ suite('Follow Prompt Dialog - Type Definitions', () => {
         const metadata: FollowPromptProcessMetadata = {
             promptFile: '/path/to/skill/prompt.md',
             planFile: '/path/to/task.md',
-            model: 'claude-opus-4.6',
+            model: VALID_MODELS[2],
             additionalContext: 'Custom context',
             skillName: 'code-review'
         };
@@ -98,7 +99,7 @@ suite('Follow Prompt Dialog - Model Configuration', () => {
     test('VALID_MODELS should be an array of model IDs', () => {
         assert.ok(Array.isArray(VALID_MODELS));
         assert.ok(VALID_MODELS.length > 0);
-        assert.ok(VALID_MODELS.includes('claude-sonnet-4.5'));
+        assert.ok(VALID_MODELS.includes(DEFAULT_MODEL_ID));
     });
 
     test('getAvailableModels should return AIModelConfig array', () => {
@@ -127,7 +128,7 @@ suite('Follow Prompt Dialog - Model Configuration', () => {
         const models = getAvailableModels();
         
         // Check that labels are user-friendly (not just the ID)
-        const claudeSonnet = models.find(m => m.id === 'claude-sonnet-4.5');
+        const claudeSonnet = models.find(m => m.id === DEFAULT_MODEL_ID);
         assert.ok(claudeSonnet);
         assert.strictEqual(claudeSonnet.label, 'Claude Sonnet 4.5');
         assert.strictEqual(claudeSonnet.description, '(Recommended)');
@@ -164,7 +165,7 @@ suite('Follow Prompt Dialog - Execution Options Validation', () => {
     test('Interactive mode options should not require timeoutMs', () => {
         const options: FollowPromptExecutionOptions = {
             mode: 'interactive',
-            model: 'claude-sonnet-4.5'
+            model: DEFAULT_MODEL_ID
         };
         
         // Interactive mode doesn't need timeout
@@ -174,7 +175,7 @@ suite('Follow Prompt Dialog - Execution Options Validation', () => {
     test('Background mode options should support timeoutMs', () => {
         const options: FollowPromptExecutionOptions = {
             mode: 'background',
-            model: 'claude-sonnet-4.5',
+            model: DEFAULT_MODEL_ID,
             timeoutMs: 1800000 // 30 minutes
         };
         
@@ -184,13 +185,13 @@ suite('Follow Prompt Dialog - Execution Options Validation', () => {
     test('Additional context should be optional', () => {
         const withContext: FollowPromptExecutionOptions = {
             mode: 'interactive',
-            model: 'claude-sonnet-4.5',
+            model: DEFAULT_MODEL_ID,
             additionalContext: 'Focus on error handling'
         };
         
         const withoutContext: FollowPromptExecutionOptions = {
             mode: 'interactive',
-            model: 'claude-sonnet-4.5'
+            model: DEFAULT_MODEL_ID
         };
         
         assert.strictEqual(withContext.additionalContext, 'Focus on error handling');
@@ -211,7 +212,7 @@ suite('Follow Prompt Dialog - Process Metadata', () => {
         const metadata: FollowPromptProcessMetadata = {
             promptFile: '/workspace/.github/prompts/implement.prompt.md',
             planFile: '/workspace/.vscode/tasks/feature/task.md',
-            model: 'claude-sonnet-4.5',
+            model: DEFAULT_MODEL_ID,
             additionalContext: 'Focus on TypeScript',
             skillName: undefined
         };
@@ -225,7 +226,7 @@ suite('Follow Prompt Dialog - Process Metadata', () => {
         const metadata: FollowPromptProcessMetadata = {
             promptFile: '/workspace/.github/skills/code-review/SKILL.md',
             planFile: '/workspace/.vscode/tasks/task.md',
-            model: 'claude-opus-4.6',
+            model: VALID_MODELS[2],
             skillName: 'code-review'
         };
         

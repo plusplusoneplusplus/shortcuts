@@ -238,6 +238,18 @@ export {
     AIInvocationResult,
     DEFAULT_PROMPTS,
     InteractiveToolType,
+    DEFAULT_MODEL_ID,
+    // Model registry
+    ModelDefinition,
+    MODEL_REGISTRY,
+    getModelLabel,
+    getModelDescription,
+    getModelDefinition,
+    getAllModels,
+    getActiveModels,
+    isValidModelId,
+    getModelCount,
+    getModelsByTier,
     // AI Command Types
     AICommand,
     AICommandMode,

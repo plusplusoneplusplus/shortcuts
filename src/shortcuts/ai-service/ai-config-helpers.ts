@@ -11,7 +11,7 @@
 
 import * as vscode from 'vscode';
 import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
-import { AIBackendType, AIModelConfig, VALID_MODELS } from './types';
+import { AIBackendType, AIModelConfig, DEFAULT_MODEL_ID, ModelDefinition, getAllModels, isValidModelId } from './types';
 
 /**
  * Get the configured AI backend from VS Code settings.
@@ -72,33 +72,19 @@ export function getSDKRequestTimeoutSetting(): number {
 }
 
 /**
- * Model display name mapping for user-friendly labels
- */
-const MODEL_DISPLAY_NAMES: Record<string, { label: string; description?: string }> = {
-    'claude-sonnet-4.5': { label: 'Claude Sonnet 4.5', description: '(Recommended)' },
-    'claude-haiku-4.5': { label: 'Claude Haiku 4.5', description: '(Fast)' },
-    'claude-opus-4.6': { label: 'Claude Opus 4.6', description: '(Premium)' },
-    'gpt-5.2': { label: 'GPT-5.2' },
-    'gpt-5.1-codex-max': { label: 'GPT-5.1 Codex Max' },
-    'gemini-3-pro-preview': { label: 'Gemini 3 Pro', description: '(Preview)' }
-};
-
-/**
  * Get available AI models with display labels for UI.
  * Returns models sorted with the default/recommended model first.
+ * Labels and descriptions are derived from the central model registry.
  *
  * @returns Array of AIModelConfig objects with display information
  */
 export function getAvailableModels(): AIModelConfig[] {
-    return VALID_MODELS.map((modelId, index) => {
-        const displayInfo = MODEL_DISPLAY_NAMES[modelId] || { label: modelId };
-        return {
-            id: modelId,
-            label: displayInfo.label,
-            description: displayInfo.description,
-            isDefault: index === 0 // First model is default
-        };
-    });
+    return getAllModels().map((model: ModelDefinition, index: number) => ({
+        id: model.id,
+        label: model.label,
+        description: model.description || undefined,
+        isDefault: index === 0 // First model is default
+    }));
 }
 
 /**
@@ -120,7 +106,7 @@ export function getFollowPromptDefaultMode(): 'interactive' | 'background' {
  */
 export function getFollowPromptDefaultModel(): string {
     const config = vscode.workspace.getConfiguration('workspaceShortcuts.followPrompt');
-    return config.get<string>('defaultModel', 'claude-sonnet-4.5');
+    return config.get<string>('defaultModel', DEFAULT_MODEL_ID);
 }
 
 /**
@@ -144,7 +130,7 @@ const LAST_USED_MODEL_KEY = 'workspaceShortcuts.aiTask.lastUsedModel';
  * Get the last-used AI model from workspace state, with fallback chain:
  * 1. Workspace state (persisted selection)
  * 2. Configuration setting (workspaceShortcuts.followPrompt.defaultModel)
- * 3. Hardcoded default (claude-sonnet-4.5)
+ * 3. Default model from registry
  *
  * @param context VS Code extension context for workspace state access
  * @returns The model ID to use as default
@@ -158,9 +144,7 @@ export function getLastUsedAIModel(context: vscode.ExtensionContext): string {
             ? 'gpt-5.2'
             : savedModel;
 
-        const availableModels = getAvailableModels();
-        const isValid = availableModels.some(m => m.id === migratedModel);
-        if (isValid) {
+        if (isValidModelId(migratedModel)) {
             if (migratedModel !== savedModel) {
                 void context.workspaceState.update(LAST_USED_MODEL_KEY, migratedModel);
             }

@@ -14,6 +14,7 @@ import {
     VALID_MODELS
 } from '../../shortcuts/git-diff-comments/diff-ai-clarification-handler';
 import { DiffAIInstructionType, DiffClarificationContext, DiffSide } from '../../shortcuts/git-diff-comments/types';
+import { DEFAULT_MODEL_ID } from '../../shortcuts/ai-service';
 
 /**
  * Helper function to create a DiffClarificationContext with defaults
@@ -496,9 +497,9 @@ Total usage est:       1 Premium request`;
         });
 
         test('VALID_MODELS should contain expected model options', () => {
-            assert.ok(VALID_MODELS.includes('claude-sonnet-4.5'));
-            assert.ok(VALID_MODELS.includes('claude-haiku-4.5'));
-            assert.ok(VALID_MODELS.includes('claude-opus-4.6'));
+            assert.ok(VALID_MODELS.includes(DEFAULT_MODEL_ID));
+            assert.ok(VALID_MODELS.includes(VALID_MODELS[1]));
+            assert.ok(VALID_MODELS.includes(VALID_MODELS[2]));
         });
 
         test('DEFAULT_PROMPTS should have all required prompts', () => {

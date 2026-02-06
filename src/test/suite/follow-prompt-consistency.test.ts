@@ -19,7 +19,9 @@ import {
     MockAIProcessManager,
     FollowPromptExecutionOptions,
     FollowPromptProcessMetadata,
-    AIProcess
+    AIProcess,
+    VALID_MODELS,
+    DEFAULT_MODEL_ID
 } from '../../shortcuts/ai-service';
 import { buildFollowPromptText } from '../../shortcuts/ai-service/ai-queue-service';
 import { FollowPromptPayload } from '@plusplusoneplusplus/pipeline-core';
@@ -155,7 +157,7 @@ suite('Follow Prompt Consistency Tests', () => {
                     promptFile: promptFilePath,
                     planFile: planFilePath,
                     skillName: skillName,
-                    model: 'claude-sonnet-4.5'
+                    model: DEFAULT_MODEL_ID
                 }
             });
 
@@ -216,10 +218,10 @@ suite('Follow Prompt Consistency Tests', () => {
         test('should support same models across all execution modes', () => {
             // Interactive, background, and skill-based should all support the same models
             const models = [
-                'claude-sonnet-4.5',
-                'claude-opus-4.6',
+                DEFAULT_MODEL_ID,
+                VALID_MODELS[2],
                 'gpt-4o',
-                'gpt-5.2'
+                VALID_MODELS[3]
             ];
 
             for (const model of models) {
@@ -252,7 +254,7 @@ suite('Follow Prompt Consistency Tests', () => {
                         type: 'follow-prompt',
                         promptFile: queuedPayload.promptFilePath,
                         planFile: queuedPayload.planFilePath || '',
-                        model: 'claude-sonnet-4.5'
+                        model: DEFAULT_MODEL_ID
                     }
                 }
             );
@@ -271,7 +273,7 @@ suite('Follow Prompt Consistency Tests', () => {
             // Test data
             const promptFile = '/workspace/.github/prompts/test.prompt.md';
             const planFile = '/workspace/.vscode/tasks/test.plan.md';
-            const model = 'claude-sonnet-4.5';
+            const model = DEFAULT_MODEL_ID;
             const additionalContext = 'Test context';
             
             // Register process (simulating queued execution)
@@ -313,7 +315,7 @@ suite('Follow Prompt Consistency Tests', () => {
             const skillName = 'impl';
             const promptFile = '/workspace/.github/skills/impl/prompt.md';
             const planFile = '/workspace/.vscode/tasks/task.plan.md';
-            const model = 'claude-sonnet-4.5';
+            const model = DEFAULT_MODEL_ID;
             
             const queuedPayload: FollowPromptPayload = {
                 promptFilePath: promptFile,

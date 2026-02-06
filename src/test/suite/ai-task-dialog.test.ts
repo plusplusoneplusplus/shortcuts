@@ -12,6 +12,7 @@ import { AITaskDialogService } from '../../shortcuts/tasks-viewer/ai-task-dialog
 import { TaskManager } from '../../shortcuts/tasks-viewer/task-manager';
 import { AITaskCreationOptions, AITaskDialogResult, AITaskCreateOptions, AITaskFromFeatureOptions } from '../../shortcuts/tasks-viewer/types';
 import { getLastUsedAIModel, saveLastUsedAIModel, getFollowPromptDefaultModel } from '../../shortcuts/ai-service/ai-config-helpers';
+import { VALID_MODELS, DEFAULT_MODEL_ID } from '../../shortcuts/ai-service';
 
 /**
  * Mock workspace state for testing persistence
@@ -249,13 +250,13 @@ suite('AI Task Dialog Service Tests', () => {
                 name: 'test-task',
                 location: 'feature1',
                 description: 'Test description',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.name, 'test-task');
             assert.strictEqual(options.location, 'feature1');
             assert.strictEqual(options.description, 'Test description');
-            assert.strictEqual(options.model, 'claude-sonnet-4.5');
+            assert.strictEqual(options.model, DEFAULT_MODEL_ID);
         });
 
         test('should allow empty location for root', () => {
@@ -263,7 +264,7 @@ suite('AI Task Dialog Service Tests', () => {
                 name: 'root-task',
                 location: '',
                 description: 'Root level task',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.location, '');
@@ -273,7 +274,7 @@ suite('AI Task Dialog Service Tests', () => {
             const options: AITaskCreateOptions = {
                 location: 'feature1',
                 description: 'Task without explicit name',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.name, undefined);
@@ -285,7 +286,7 @@ suite('AI Task Dialog Service Tests', () => {
                 name: '',
                 location: '',
                 description: 'Task with empty name',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.name, '');
@@ -296,7 +297,7 @@ suite('AI Task Dialog Service Tests', () => {
                 name: 'minimal-task',
                 location: '',
                 description: '',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.description, '');
@@ -309,13 +310,13 @@ suite('AI Task Dialog Service Tests', () => {
                 location: 'feature1',
                 focus: 'Implement the core API',
                 depth: 'simple',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.location, 'feature1');
             assert.strictEqual(options.focus, 'Implement the core API');
             assert.strictEqual(options.depth, 'simple');
-            assert.strictEqual(options.model, 'claude-sonnet-4.5');
+            assert.strictEqual(options.model, DEFAULT_MODEL_ID);
         });
 
         test('should allow deep depth', () => {
@@ -323,7 +324,7 @@ suite('AI Task Dialog Service Tests', () => {
                 location: 'feature1',
                 focus: 'Deep analysis',
                 depth: 'deep',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.depth, 'deep');
@@ -334,7 +335,7 @@ suite('AI Task Dialog Service Tests', () => {
                 location: 'feature1',
                 focus: '',
                 depth: 'simple',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.focus, '');
@@ -346,7 +347,7 @@ suite('AI Task Dialog Service Tests', () => {
                 location: 'feature1',
                 focus: 'Implement API',
                 depth: 'simple',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.name, 'my-custom-task');
@@ -357,7 +358,7 @@ suite('AI Task Dialog Service Tests', () => {
                 location: 'feature1',
                 focus: 'Implement API',
                 depth: 'simple',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.name, undefined);
@@ -369,7 +370,7 @@ suite('AI Task Dialog Service Tests', () => {
                 location: 'feature1',
                 focus: 'Implement API',
                 depth: 'simple',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.name, '');
@@ -384,7 +385,7 @@ suite('AI Task Dialog Service Tests', () => {
                     name: 'test-task',
                     location: 'feature1',
                     description: 'Test',
-                    model: 'claude-sonnet-4.5'
+                    model: DEFAULT_MODEL_ID
                 }
             };
             
@@ -400,7 +401,7 @@ suite('AI Task Dialog Service Tests', () => {
                     location: 'feature1',
                     focus: 'API implementation',
                     depth: 'deep',
-                    model: 'claude-sonnet-4.5'
+                    model: DEFAULT_MODEL_ID
                 }
             };
             
@@ -430,7 +431,7 @@ suite('AI Task Dialog Service Tests', () => {
                         name: 'test-task',
                         location: 'feature1',
                         description: 'Test',
-                        model: 'claude-sonnet-4.5'
+                        model: DEFAULT_MODEL_ID
                     }
                 }
             };
@@ -450,7 +451,7 @@ suite('AI Task Dialog Service Tests', () => {
                         location: 'feature1',
                         focus: 'Core implementation',
                         depth: 'simple',
-                        model: 'claude-sonnet-4.5'
+                        model: DEFAULT_MODEL_ID
                     }
                 }
             };
@@ -471,7 +472,7 @@ suite('AI Task Dialog Service Tests', () => {
                         location: 'feature1',
                         focus: 'Core implementation',
                         depth: 'simple',
-                        model: 'claude-sonnet-4.5'
+                        model: DEFAULT_MODEL_ID
                     }
                 }
             };
@@ -565,10 +566,10 @@ suite('AI Task Dialog Service Tests', () => {
         test('saveLastUsedAIModel should persist model to workspace state', () => {
             const context = new MockExtensionContext();
             
-            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'gpt-5.2');
+            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, VALID_MODELS[3]);
             
             const storedValue = context.workspaceState.getStoredValue('workspaceShortcuts.aiTask.lastUsedModel');
-            assert.strictEqual(storedValue, 'gpt-5.2', 
+            assert.strictEqual(storedValue, VALID_MODELS[3], 
                 'Should store model in workspace state');
         });
 
@@ -576,12 +577,12 @@ suite('AI Task Dialog Service Tests', () => {
             const context = new MockExtensionContext();
             
             // Save a model first
-            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'claude-haiku-4.5');
+            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, VALID_MODELS[1]);
             
             // Retrieve it
             const model = getLastUsedAIModel(context as unknown as vscode.ExtensionContext);
             
-            assert.strictEqual(model, 'claude-haiku-4.5', 
+            assert.strictEqual(model, VALID_MODELS[1], 
                 'Should retrieve previously saved model');
         });
 
@@ -603,21 +604,21 @@ suite('AI Task Dialog Service Tests', () => {
             const context = new MockExtensionContext();
             
             // Save first model
-            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'claude-sonnet-4.5');
+            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, DEFAULT_MODEL_ID);
             
             // Save second model (overwrite)
-            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, 'gpt-5.2');
+            saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, VALID_MODELS[3]);
             
             // Retrieve should return the latest
             const model = getLastUsedAIModel(context as unknown as vscode.ExtensionContext);
             
-            assert.strictEqual(model, 'gpt-5.2', 
+            assert.strictEqual(model, VALID_MODELS[3], 
                 'Should return the most recently saved model');
         });
 
         test('model persistence should work across multiple valid models', () => {
             const context = new MockExtensionContext();
-            const testModels = ['claude-sonnet-4.5', 'claude-haiku-4.5', 'claude-opus-4.6', 'gpt-5.2'];
+            const testModels = [VALID_MODELS[0], VALID_MODELS[1], VALID_MODELS[2], VALID_MODELS[3]];
             
             for (const testModel of testModels) {
                 saveLastUsedAIModel(context as unknown as vscode.ExtensionContext, testModel);
@@ -633,22 +634,22 @@ suite('AI Task Dialog Service Tests', () => {
             const context2 = new MockExtensionContext();
             
             // Save different models in different contexts
-            saveLastUsedAIModel(context1 as unknown as vscode.ExtensionContext, 'claude-sonnet-4.5');
-            saveLastUsedAIModel(context2 as unknown as vscode.ExtensionContext, 'claude-haiku-4.5');
+            saveLastUsedAIModel(context1 as unknown as vscode.ExtensionContext, DEFAULT_MODEL_ID);
+            saveLastUsedAIModel(context2 as unknown as vscode.ExtensionContext, VALID_MODELS[1]);
             
             // Each context should have its own value
             const model1 = getLastUsedAIModel(context1 as unknown as vscode.ExtensionContext);
             const model2 = getLastUsedAIModel(context2 as unknown as vscode.ExtensionContext);
             
-            assert.strictEqual(model1, 'claude-sonnet-4.5', 
+            assert.strictEqual(model1, DEFAULT_MODEL_ID, 
                 'Context 1 should have its own persisted model');
-            assert.strictEqual(model2, 'claude-haiku-4.5', 
+            assert.strictEqual(model2, VALID_MODELS[1], 
                 'Context 2 should have its own persisted model');
         });
 
         test('AITaskDialogService should use persisted model as default', () => {
             // Save a non-default model
-            saveLastUsedAIModel(mockContext as unknown as vscode.ExtensionContext, 'claude-opus-4.6');
+            saveLastUsedAIModel(mockContext as unknown as vscode.ExtensionContext, VALID_MODELS[2]);
             
             // Create new dialog service with the context
             const newDialogService = new AITaskDialogService(
@@ -662,7 +663,7 @@ suite('AI Task Dialog Service Tests', () => {
             
             // Verify the context has the saved model
             const persistedModel = getLastUsedAIModel(mockContext as unknown as vscode.ExtensionContext);
-            assert.strictEqual(persistedModel, 'claude-opus-4.6', 
+            assert.strictEqual(persistedModel, VALID_MODELS[2], 
                 'Dialog service context should have persisted model');
         });
     });

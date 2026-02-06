@@ -19,7 +19,8 @@ import {
     resetCopilotSDKService,
     SDKAvailabilityResult,
     SDKInvocationResult,
-    SendMessageOptions
+    SendMessageOptions,
+    DEFAULT_MODEL_ID
 } from '@plusplusoneplusplus/pipeline-core';
 import {
     getAIBackendSetting,
@@ -430,13 +431,13 @@ suite('CopilotSDKService - Type Definitions', () => {
     test('SendMessageOptions should support all fields', () => {
         const fullOptions: SendMessageOptions = {
             prompt: 'Test prompt',
-            model: 'claude-sonnet-4.5',
+            model: DEFAULT_MODEL_ID,
             workingDirectory: '/path/to/workspace',
             timeoutMs: 60000
         };
 
         assert.strictEqual(fullOptions.prompt, 'Test prompt');
-        assert.strictEqual(fullOptions.model, 'claude-sonnet-4.5');
+        assert.strictEqual(fullOptions.model, DEFAULT_MODEL_ID);
         assert.strictEqual(fullOptions.workingDirectory, '/path/to/workspace');
         assert.strictEqual(fullOptions.timeoutMs, 60000);
     });
@@ -691,14 +692,14 @@ suite('CopilotSDKService - Pool Options', () => {
     test('SendMessageOptions should support all pool-related fields', () => {
         const fullOptions: SendMessageOptions = {
             prompt: 'Test prompt',
-            model: 'claude-sonnet-4.5',
+            model: DEFAULT_MODEL_ID,
             workingDirectory: '/path/to/workspace',
             timeoutMs: 60000,
             usePool: true
         };
 
         assert.strictEqual(fullOptions.prompt, 'Test prompt');
-        assert.strictEqual(fullOptions.model, 'claude-sonnet-4.5');
+        assert.strictEqual(fullOptions.model, DEFAULT_MODEL_ID);
         assert.strictEqual(fullOptions.workingDirectory, '/path/to/workspace');
         assert.strictEqual(fullOptions.timeoutMs, 60000);
         assert.strictEqual(fullOptions.usePool, true);

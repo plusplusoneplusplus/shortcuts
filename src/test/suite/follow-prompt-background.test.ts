@@ -13,7 +13,8 @@ import {
     FollowPromptExecutionOptions,
     FollowPromptProcessMetadata,
     AIProcess,
-    VALID_MODELS
+    VALID_MODELS,
+    DEFAULT_MODEL_ID
 } from '../../shortcuts/ai-service';
 import {
     getAvailableModels,
@@ -37,7 +38,7 @@ suite('Follow Prompt Background Execution Tests', () => {
                     type: 'follow-prompt',
                     promptFile: '/path/to/prompt.md',
                     planFile: '/path/to/plan.md',
-                    model: 'claude-sonnet-4.5'
+                    model: DEFAULT_MODEL_ID
                 }
             });
 
@@ -54,7 +55,7 @@ suite('Follow Prompt Background Execution Tests', () => {
             const metadata: FollowPromptProcessMetadata = {
                 promptFile: '/workspace/.github/prompts/implement.prompt.md',
                 planFile: '/workspace/.vscode/tasks/feature.md',
-                model: 'claude-sonnet-4.5',
+                model: DEFAULT_MODEL_ID,
                 additionalContext: 'Focus on error handling',
                 skillName: undefined
             };
@@ -86,7 +87,7 @@ suite('Follow Prompt Background Execution Tests', () => {
             const metadata: FollowPromptProcessMetadata = {
                 promptFile: '/workspace/.github/skills/code-review/SKILL.md',
                 planFile: '/workspace/.vscode/tasks/task.md',
-                model: 'claude-opus-4.6',
+                model: VALID_MODELS[2],
                 skillName: 'code-review'
             };
 
@@ -254,7 +255,7 @@ suite('Follow Prompt Background Execution Tests', () => {
         test('should validate interactive mode options', () => {
             const options: FollowPromptExecutionOptions = {
                 mode: 'interactive',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
             
             assert.strictEqual(options.mode, 'interactive');
@@ -264,7 +265,7 @@ suite('Follow Prompt Background Execution Tests', () => {
         test('should validate background mode options with timeout', () => {
             const options: FollowPromptExecutionOptions = {
                 mode: 'background',
-                model: 'claude-sonnet-4.5',
+                model: DEFAULT_MODEL_ID,
                 timeoutMs: 1800000 // 30 minutes default
             };
             
@@ -292,7 +293,7 @@ suite('Follow Prompt Background Execution Tests', () => {
             for (const timeout of customTimeouts) {
                 const options: FollowPromptExecutionOptions = {
                     mode: 'background',
-                    model: 'claude-sonnet-4.5',
+                    model: DEFAULT_MODEL_ID,
                     timeoutMs: timeout
                 };
                 
@@ -445,7 +446,7 @@ suite('Follow Prompt Background Execution Tests', () => {
             const metadata: FollowPromptProcessMetadata = {
                 promptFile: '/home/user/workspace/.github/prompts/implement.prompt.md',
                 planFile: '/home/user/workspace/.vscode/tasks/feature.md',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
 
             const prompt = `Follow the instruction ${metadata.promptFile}. ${metadata.planFile}`;
@@ -466,7 +467,7 @@ suite('Follow Prompt Background Execution Tests', () => {
             const metadata: FollowPromptProcessMetadata = {
                 promptFile: 'C:\\Users\\user\\workspace\\.github\\prompts\\implement.prompt.md',
                 planFile: 'C:\\Users\\user\\workspace\\.vscode\\tasks\\feature.md',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
 
             const prompt = `Follow the instruction ${metadata.promptFile}. ${metadata.planFile}`;
@@ -487,7 +488,7 @@ suite('Follow Prompt Background Execution Tests', () => {
             const metadata: FollowPromptProcessMetadata = {
                 promptFile: '/Users/developer/Projects/app/.github/prompts/implement.prompt.md',
                 planFile: '/Users/developer/Projects/app/.vscode/tasks/feature.md',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
 
             const prompt = `Follow the instruction ${metadata.promptFile}. ${metadata.planFile}`;
@@ -508,7 +509,7 @@ suite('Follow Prompt Background Execution Tests', () => {
             const metadata: FollowPromptProcessMetadata = {
                 promptFile: '/Users/My User/My Project/.github/prompts/implement.prompt.md',
                 planFile: '/Users/My User/My Project/.vscode/tasks/my feature.md',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
 
             const processId = manager.registerTypedProcess('test', {
@@ -528,7 +529,7 @@ suite('Follow Prompt Background Execution Tests', () => {
             const metadata: FollowPromptProcessMetadata = {
                 promptFile: '/workspace/项目/.github/prompts/implement.prompt.md',
                 planFile: '/workspace/项目/.vscode/tasks/功能.md',
-                model: 'claude-sonnet-4.5'
+                model: DEFAULT_MODEL_ID
             };
 
             const processId = manager.registerTypedProcess('test', {

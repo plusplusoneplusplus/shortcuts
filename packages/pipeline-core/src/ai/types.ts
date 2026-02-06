@@ -14,18 +14,24 @@
 export type AIBackendType = 'copilot-sdk' | 'copilot-cli' | 'clipboard';
 
 /**
- * Valid AI model options for Copilot CLI
+ * Valid AI model options for Copilot CLI.
+ * Derived from the central model registry (model-registry.ts).
  */
-export const VALID_MODELS = [
-    'claude-sonnet-4.5',
-    'claude-haiku-4.5',
-    'claude-opus-4.6',
-    'gpt-5.2',
-    'gpt-5.1-codex-max',
-    'gemini-3-pro-preview'
-] as const;
+export { VALID_MODELS, AIModel, DEFAULT_MODEL_ID } from './model-registry';
 
-export type AIModel = typeof VALID_MODELS[number];
+// Re-export model registry helpers and types for convenience
+export {
+    ModelDefinition,
+    MODEL_REGISTRY,
+    getModelLabel,
+    getModelDescription,
+    getModelDefinition,
+    getAllModels,
+    getActiveModels,
+    isValidModelId,
+    getModelCount,
+    getModelsByTier
+} from './model-registry';
 
 /**
  * Result of an AI invocation
