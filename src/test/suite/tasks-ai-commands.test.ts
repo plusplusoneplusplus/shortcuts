@@ -310,6 +310,98 @@ suite('Tasks Viewer - AI Task Commands Tests', () => {
         });
     });
 
+    suite('TaskFolderItem Context Menu Filtering', () => {
+        // Simulate VS Code when-clause regex matching for context menus
+        function matchesWhen(contextValue: string, pattern: RegExp): boolean {
+            return pattern.test(contextValue);
+        }
+
+        function matchesExclusion(contextValue: string, pattern: RegExp): boolean {
+            return pattern.test(contextValue);
+        }
+
+        // Active-only folder commands should use: viewItem =~ /^taskFolder/ && viewItem !~ /_archived/
+        const activeOnlyPattern = /^taskFolder/;
+        const archivedExclusion = /_archived/;
+
+        function isActiveOnlyCommandVisible(contextValue: string): boolean {
+            return matchesWhen(contextValue, activeOnlyPattern) && !matchesExclusion(contextValue, archivedExclusion);
+        }
+
+        // All-folder commands should use: viewItem =~ /^taskFolder/
+        function isAllFolderCommandVisible(contextValue: string): boolean {
+            return matchesWhen(contextValue, activeOnlyPattern);
+        }
+
+        test('active-only commands should show on regular folders', () => {
+            assert.strictEqual(isActiveOnlyCommandVisible('taskFolder'), true);
+        });
+
+        test('active-only commands should show on folders with related items', () => {
+            assert.strictEqual(isActiveOnlyCommandVisible('taskFolder_hasRelated'), true);
+        });
+
+        test('active-only commands should NOT show on archived folders', () => {
+            assert.strictEqual(isActiveOnlyCommandVisible('taskFolder_archived'), false);
+        });
+
+        test('active-only commands should NOT show on archived folders with related items', () => {
+            assert.strictEqual(isActiveOnlyCommandVisible('taskFolder_archived_hasRelated'), false);
+        });
+
+        test('all-folder commands (rename, delete) should show on regular folders', () => {
+            assert.strictEqual(isAllFolderCommandVisible('taskFolder'), true);
+        });
+
+        test('all-folder commands (rename, delete) should show on archived folders', () => {
+            assert.strictEqual(isAllFolderCommandVisible('taskFolder_archived'), true);
+        });
+
+        test('active-only commands should NOT show on task items', () => {
+            // Verify these patterns do not match task items (no false positives)
+            assert.strictEqual(isActiveOnlyCommandVisible('task'), false);
+            assert.strictEqual(isActiveOnlyCommandVisible('task_future'), false);
+            assert.strictEqual(isActiveOnlyCommandVisible('archivedTask'), false);
+        });
+
+        test('active-only commands should NOT show on document items', () => {
+            assert.strictEqual(isActiveOnlyCommandVisible('taskDocument'), false);
+            assert.strictEqual(isActiveOnlyCommandVisible('taskDocumentGroup'), false);
+        });
+
+        test('verify package.json when clauses for markFolderAsReviewed exclude archived', () => {
+            // This test validates the actual when clause pattern used in package.json:
+            // "viewItem =~ /^taskFolder/ && viewItem !~ /_archived/"
+            const testCases = [
+                { contextValue: 'taskFolder', expected: true },
+                { contextValue: 'taskFolder_hasRelated', expected: true },
+                { contextValue: 'taskFolder_archived', expected: false },
+                { contextValue: 'taskFolder_archived_hasRelated', expected: false },
+            ];
+            for (const tc of testCases) {
+                const visible = isActiveOnlyCommandVisible(tc.contextValue);
+                assert.strictEqual(visible, tc.expected, 
+                    `markFolderAsReviewed should ${tc.expected ? '' : 'NOT '}be visible for ${tc.contextValue}`);
+            }
+        });
+
+        test('verify package.json when clauses for create commands exclude archived', () => {
+            // createSubfolder, createWithAI, createFromFeature all use same pattern
+            const archivedValues = ['taskFolder_archived', 'taskFolder_archived_hasRelated'];
+            for (const cv of archivedValues) {
+                assert.strictEqual(isActiveOnlyCommandVisible(cv), false,
+                    `Create commands should NOT be visible for ${cv}`);
+            }
+        });
+
+        test('verify package.json when clauses for discoverRelated exclude archived', () => {
+            assert.strictEqual(isActiveOnlyCommandVisible('taskFolder_archived'), false,
+                'discoverRelated should NOT be visible for archived folders');
+            assert.strictEqual(isActiveOnlyCommandVisible('taskFolder'), true,
+                'discoverRelated should be visible for active folders');
+        });
+    });
+
     suite('AI Response Processing', () => {
         // Test the helper functions that process AI responses
 

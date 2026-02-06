@@ -2471,27 +2471,27 @@
         },
         {
           "command": "tasksViewer.markFolderAsReviewed",
-          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/ && viewItem !~ /_archived/",
           "group": "review@1"
         },
         {
           "command": "tasksViewer.createSubfolder",
-          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/ && viewItem !~ /_archived/",
           "group": "create@1"
         },
         {
           "command": "tasksViewer.createWithAI",
-          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/ && viewItem !~ /_archived/",
           "group": "create@2"
         },
         {
           "command": "tasksViewer.createFromFeature",
-          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/ && viewItem !~ /_archived/",
           "group": "create@3"
         },
         {
           "command": "tasksViewer.discoverRelated",
-          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/ && viewItem !~ /_archived/",
           "group": "discovery@1"
         },
         {
