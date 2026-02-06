@@ -9,7 +9,8 @@
     "url": "https://github.com/plusplusoneplusplus/shortcuts.git"
   },
   "workspaces": [
-    "packages/pipeline-core"
+    "packages/pipeline-core",
+    "packages/pipeline-cli"
   ],
   "engines": {
     "vscode": "^1.95.0"
