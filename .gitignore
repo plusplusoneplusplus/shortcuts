@@ -126,3 +126,4 @@ out/
 dist/
 
 .vscode/
+.wiki/
