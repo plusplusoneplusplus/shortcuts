@@ -388,6 +388,15 @@ export interface ProcessTracker {
 }
 
 /**
+ * Callback invoked after each individual map item completes (success or failure).
+ * Receives the original work item and its result.
+ */
+export type ItemCompleteCallback<TWorkItemData = unknown, TMapOutput = unknown> = (
+    item: WorkItem<TWorkItemData>,
+    result: MapResult<TMapOutput>
+) => void;
+
+/**
  * Executor options that combine job options with runtime options
  */
 export interface ExecutorOptions extends MapReduceOptions {
@@ -399,4 +408,10 @@ export interface ExecutorOptions extends MapReduceOptions {
     onProgress?: ProgressCallback;
     /** Optional cancellation check function - returns true if execution should be cancelled */
     isCancelled?: () => boolean;
+    /**
+     * Optional callback invoked after each individual map item completes.
+     * Useful for incremental saving of results (e.g., per-module cache writes).
+     * Called for both successful and failed items.
+     */
+    onItemComplete?: ItemCompleteCallback;
 }

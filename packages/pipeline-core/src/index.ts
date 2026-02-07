@@ -369,6 +369,7 @@ export {
     ProcessTracker,
     ExecutorOptions,
     SessionMetadata,
+    ItemCompleteCallback,
     DEFAULT_MAP_REDUCE_OPTIONS,
     // Executor
     MapReduceExecutor,

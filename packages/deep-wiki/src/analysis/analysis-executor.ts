@@ -20,6 +20,7 @@ import type {
     PromptMapResult,
     PromptMapOutput,
     JobProgress,
+    ItemCompleteCallback,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ModuleInfo, ModuleGraph, ModuleAnalysis } from '../types';
 import { buildAnalysisPromptTemplate, getAnalysisOutputFields } from './prompts';
@@ -49,6 +50,11 @@ export interface AnalysisExecutorOptions {
     onProgress?: (progress: JobProgress) => void;
     /** Cancellation check function */
     isCancelled?: () => boolean;
+    /**
+     * Optional callback invoked after each individual module analysis completes.
+     * Useful for incremental per-module cache writes during long-running analysis.
+     */
+    onItemComplete?: ItemCompleteCallback;
 }
 
 /**
@@ -115,6 +121,7 @@ export async function runAnalysisExecutor(
         model,
         onProgress,
         isCancelled,
+        onItemComplete,
     } = options;
 
     const modules = graph.modules;
@@ -151,6 +158,7 @@ export async function runAnalysisExecutor(
         jobName: 'Deep Analysis',
         onProgress,
         isCancelled,
+        onItemComplete,
     });
 
     // Execute map-reduce

@@ -645,3 +645,161 @@ describe('MapReduceExecutor Cancellation', () => {
         expect(contextHasIsCancelled).toBe(true);
     });
 });
+
+describe('MapReduceExecutor onItemComplete', () => {
+    const createTestJobForCallback = (
+        mapper?: Mapper<TestWorkItemData, TestMapOutput>
+    ): MapReduceJob<TestInput, TestWorkItemData, TestMapOutput, TestReduceOutput> => ({
+        id: 'callback-test-job',
+        name: 'Callback Test Job',
+        splitter: new TestSplitter(),
+        mapper: mapper || new TestMapper(),
+        reducer: new TestReducer()
+    });
+
+    it('calls onItemComplete for each successful item', async () => {
+        const completedItems: { itemId: string; success: boolean; output?: TestMapOutput }[] = [];
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 5,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            onItemComplete: (item, result) => {
+                completedItems.push({
+                    itemId: item.id,
+                    success: result.success,
+                    output: result.output as TestMapOutput | undefined
+                });
+            }
+        });
+
+        const job = createTestJobForCallback();
+        await executor.execute(job, { items: [1, 2, 3] });
+
+        expect(completedItems).toHaveLength(3);
+        expect(completedItems.every(c => c.success)).toBe(true);
+        // All items should have doubled output
+        const outputs = completedItems.map(c => c.output!.doubled).sort();
+        expect(outputs).toEqual([2, 4, 6]);
+    });
+
+    it('calls onItemComplete for failed items', async () => {
+        const completedItems: { itemId: string; success: boolean; error?: string }[] = [];
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 1,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            onItemComplete: (item, result) => {
+                completedItems.push({
+                    itemId: item.id,
+                    success: result.success,
+                    error: result.error
+                });
+            }
+        });
+
+        const job = createTestJobForCallback(new TestMapper(0, 2)); // Fail on value 2
+        await executor.execute(job, { items: [1, 2, 3] });
+
+        expect(completedItems).toHaveLength(3);
+        const failed = completedItems.filter(c => !c.success);
+        expect(failed).toHaveLength(1);
+        expect(failed[0].error).toContain('Failed on value 2');
+    });
+
+    it('does not fail pipeline if onItemComplete throws', async () => {
+        let callCount = 0;
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 1,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            onItemComplete: () => {
+                callCount++;
+                throw new Error('Callback error!');
+            }
+        });
+
+        const job = createTestJobForCallback();
+        const result = await executor.execute(job, { items: [1, 2, 3] });
+
+        // Pipeline should still succeed despite callback errors
+        expect(result.success).toBe(true);
+        expect(result.output?.results.sort()).toEqual([2, 4, 6]);
+        // Callback was still called for each item
+        expect(callCount).toBe(3);
+    });
+
+    it('provides correct work item in callback', async () => {
+        const receivedItems: WorkItem<TestWorkItemData>[] = [];
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 1,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            onItemComplete: (item) => {
+                receivedItems.push(item as WorkItem<TestWorkItemData>);
+            }
+        });
+
+        const job = createTestJobForCallback();
+        await executor.execute(job, { items: [10, 20, 30] });
+
+        expect(receivedItems).toHaveLength(3);
+        const values = receivedItems.map(i => i.data.value).sort();
+        expect(values).toEqual([10, 20, 30]);
+    });
+
+    it('is not called when no items are provided', async () => {
+        let callCount = 0;
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 5,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            onItemComplete: () => { callCount++; }
+        });
+
+        const job = createTestJobForCallback();
+        await executor.execute(job, { items: [] });
+
+        expect(callCount).toBe(0);
+    });
+
+    it('is called after progress is updated', async () => {
+        const callOrder: string[] = [];
+
+        const executor = createExecutor({
+            aiInvoker: mockAIInvoker,
+            maxConcurrency: 1,
+            reduceMode: 'deterministic',
+            showProgress: false,
+            retryOnFailure: false,
+            onProgress: (progress) => {
+                if (progress.phase === 'mapping' && progress.completedItems > 0) {
+                    callOrder.push('progress');
+                }
+            },
+            onItemComplete: () => {
+                callOrder.push('itemComplete');
+            }
+        });
+
+        const job = createTestJobForCallback();
+        await executor.execute(job, { items: [1] });
+
+        // Progress should fire before onItemComplete
+        expect(callOrder).toEqual(['progress', 'itemComplete']);
+    });
+});

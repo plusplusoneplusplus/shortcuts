@@ -9,7 +9,7 @@
  */
 
 import type { AnalysisOptions, AnalysisResult, ModuleAnalysis } from '../types';
-import type { AIInvoker, JobProgress } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker, JobProgress, ItemCompleteCallback } from '@plusplusoneplusplus/pipeline-core';
 import { runAnalysisExecutor } from './analysis-executor';
 
 // Re-export for convenience
@@ -29,6 +29,7 @@ export type { AnalysisExecutorOptions, AnalysisExecutorResult } from './analysis
  * @param aiInvoker Configured AI invoker for analysis (with MCP tools)
  * @param onProgress Optional progress callback
  * @param isCancelled Optional cancellation check
+ * @param onItemComplete Optional per-item completion callback for incremental saving
  * @returns Analysis results
  */
 export async function analyzeModules(
@@ -36,6 +37,7 @@ export async function analyzeModules(
     aiInvoker: AIInvoker,
     onProgress?: (progress: JobProgress) => void,
     isCancelled?: () => boolean,
+    onItemComplete?: ItemCompleteCallback,
 ): Promise<AnalysisResult> {
     const startTime = Date.now();
 
@@ -48,6 +50,7 @@ export async function analyzeModules(
         model: options.model,
         onProgress,
         isCancelled,
+        onItemComplete,
     });
 
     return {

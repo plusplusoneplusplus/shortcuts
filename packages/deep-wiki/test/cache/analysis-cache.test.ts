@@ -30,6 +30,7 @@ import {
     getModulesNeedingReanalysis,
     getAnalysesCacheDir,
     getAnalysesMetadataPath,
+    scanIndividualAnalysesCache,
 } from '../../src/cache';
 import { getChangedFiles, getRepoHeadHash } from '../../src/cache/git-utils';
 
@@ -337,5 +338,170 @@ describe('getModulesNeedingReanalysis', () => {
         const result = await getModulesNeedingReanalysis(graph, outputDir, '/repo');
 
         expect(result).toContain('auth');
+    });
+});
+
+// ============================================================================
+// scanIndividualAnalysesCache
+// ============================================================================
+
+describe('scanIndividualAnalysesCache', () => {
+    it('should find individually cached modules with matching git hash', () => {
+        const hash = 'abc123';
+        saveAnalysis('auth', createTestAnalysis('auth'), outputDir, hash);
+        saveAnalysis('db', createTestAnalysis('db'), outputDir, hash);
+
+        const result = scanIndividualAnalysesCache(
+            ['auth', 'db', 'api'],
+            outputDir,
+            hash
+        );
+
+        expect(result.found).toHaveLength(2);
+        expect(result.found.map(a => a.moduleId).sort()).toEqual(['auth', 'db']);
+        expect(result.missing).toEqual(['api']);
+    });
+
+    it('should return all as missing when no cache exists', () => {
+        const result = scanIndividualAnalysesCache(
+            ['auth', 'db'],
+            outputDir,
+            'somehash'
+        );
+
+        expect(result.found).toHaveLength(0);
+        expect(result.missing).toEqual(['auth', 'db']);
+    });
+
+    it('should exclude modules with different git hash (stale cache)', () => {
+        saveAnalysis('auth', createTestAnalysis('auth'), outputDir, 'old_hash');
+        saveAnalysis('db', createTestAnalysis('db'), outputDir, 'current_hash');
+
+        const result = scanIndividualAnalysesCache(
+            ['auth', 'db'],
+            outputDir,
+            'current_hash'
+        );
+
+        expect(result.found).toHaveLength(1);
+        expect(result.found[0].moduleId).toBe('db');
+        expect(result.missing).toEqual(['auth']);
+    });
+
+    it('should handle corrupted cache files', () => {
+        const analysesDir = getAnalysesCacheDir(outputDir);
+        fs.mkdirSync(analysesDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(analysesDir, 'corrupted.json'),
+            'not valid json!!!',
+            'utf-8'
+        );
+
+        const result = scanIndividualAnalysesCache(
+            ['corrupted'],
+            outputDir,
+            'somehash'
+        );
+
+        expect(result.found).toHaveLength(0);
+        expect(result.missing).toEqual(['corrupted']);
+    });
+
+    it('should handle empty module list', () => {
+        const result = scanIndividualAnalysesCache(
+            [],
+            outputDir,
+            'somehash'
+        );
+
+        expect(result.found).toHaveLength(0);
+        expect(result.missing).toEqual([]);
+    });
+
+    it('should recover partial cache from interrupted run (no metadata)', () => {
+        // Simulate interrupted run: some modules saved individually, no metadata file
+        const hash = 'current_hash_123';
+        saveAnalysis('mod-1', createTestAnalysis('mod-1'), outputDir, hash);
+        saveAnalysis('mod-2', createTestAnalysis('mod-2'), outputDir, hash);
+        // mod-3 was not saved (process crashed)
+
+        // No metadata file exists (getCachedAnalyses would return null)
+        const bulkResult = getCachedAnalyses(outputDir);
+        expect(bulkResult).toBeNull(); // Confirms no metadata
+
+        // But scanIndividualAnalysesCache can recover the saved modules
+        const result = scanIndividualAnalysesCache(
+            ['mod-1', 'mod-2', 'mod-3'],
+            outputDir,
+            hash
+        );
+
+        expect(result.found).toHaveLength(2);
+        expect(result.found.map(a => a.moduleId).sort()).toEqual(['mod-1', 'mod-2']);
+        expect(result.missing).toEqual(['mod-3']);
+    });
+
+    it('should invalidate all modules when git hash changed', () => {
+        const oldHash = 'old_hash_abc';
+        saveAnalysis('auth', createTestAnalysis('auth'), outputDir, oldHash);
+        saveAnalysis('db', createTestAnalysis('db'), outputDir, oldHash);
+
+        const result = scanIndividualAnalysesCache(
+            ['auth', 'db'],
+            outputDir,
+            'new_hash_xyz'
+        );
+
+        expect(result.found).toHaveLength(0);
+        expect(result.missing).toEqual(['auth', 'db']);
+    });
+
+    it('should handle cache file with missing analysis field', () => {
+        const analysesDir = getAnalysesCacheDir(outputDir);
+        fs.mkdirSync(analysesDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(analysesDir, 'incomplete.json'),
+            JSON.stringify({ gitHash: 'hash123', timestamp: Date.now() }),
+            'utf-8'
+        );
+
+        const result = scanIndividualAnalysesCache(
+            ['incomplete'],
+            outputDir,
+            'hash123'
+        );
+
+        expect(result.found).toHaveLength(0);
+        expect(result.missing).toEqual(['incomplete']);
+    });
+
+    it('should handle mixed cache states (valid, stale, missing, corrupted)', () => {
+        const currentHash = 'current_hash';
+
+        // Valid
+        saveAnalysis('valid', createTestAnalysis('valid'), outputDir, currentHash);
+
+        // Stale (different hash)
+        saveAnalysis('stale', createTestAnalysis('stale'), outputDir, 'old_hash');
+
+        // Corrupted
+        const analysesDir = getAnalysesCacheDir(outputDir);
+        fs.writeFileSync(
+            path.join(analysesDir, 'corrupted.json'),
+            'invalid json',
+            'utf-8'
+        );
+
+        // Missing - not saved at all
+
+        const result = scanIndividualAnalysesCache(
+            ['valid', 'stale', 'corrupted', 'missing'],
+            outputDir,
+            currentHash
+        );
+
+        expect(result.found).toHaveLength(1);
+        expect(result.found[0].moduleId).toBe('valid');
+        expect(result.missing.sort()).toEqual(['corrupted', 'missing', 'stale']);
     });
 });

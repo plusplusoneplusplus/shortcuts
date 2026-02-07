@@ -360,6 +360,55 @@ export async function saveAllAnalyses(
     fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
 }
 
+/**
+ * Scan for individually cached analyses (even without metadata).
+ *
+ * This is used for crash recovery: if the process was interrupted before
+ * `saveAllAnalyses` wrote the metadata file, individual per-module files
+ * may still exist from incremental saves via `onItemComplete`.
+ *
+ * @param moduleIds - Module IDs to look for in the cache
+ * @param outputDir - Output directory
+ * @param currentGitHash - Current git hash for validation (modules cached with
+ *                         a different hash are considered stale and excluded)
+ * @returns Object with `found` (valid cached analyses) and `missing` (module IDs not found or stale)
+ */
+export function scanIndividualAnalysesCache(
+    moduleIds: string[],
+    outputDir: string,
+    currentGitHash: string
+): { found: ModuleAnalysis[]; missing: string[] } {
+    const found: ModuleAnalysis[] = [];
+    const missing: string[] = [];
+
+    for (const moduleId of moduleIds) {
+        const cachePath = getAnalysisCachePath(outputDir, moduleId);
+        if (!fs.existsSync(cachePath)) {
+            missing.push(moduleId);
+            continue;
+        }
+
+        try {
+            const content = fs.readFileSync(cachePath, 'utf-8');
+            const cached = JSON.parse(content) as CachedAnalysis;
+            if (
+                cached.analysis &&
+                cached.analysis.moduleId &&
+                cached.gitHash === currentGitHash
+            ) {
+                found.push(cached.analysis);
+            } else {
+                // Stale (different git hash) or invalid — needs re-analysis
+                missing.push(moduleId);
+            }
+        } catch {
+            missing.push(moduleId);
+        }
+    }
+
+    return { found, missing };
+}
+
 // ============================================================================
 // Analysis Cache Invalidation
 // ============================================================================

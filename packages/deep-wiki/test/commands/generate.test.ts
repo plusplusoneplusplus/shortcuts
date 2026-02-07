@@ -79,6 +79,9 @@ vi.mock('../../src/cache', () => ({
     getModulesNeedingReanalysis: vi.fn().mockResolvedValue(null),
     getCachedAnalysis: vi.fn().mockReturnValue(null),
     getAnalysesCacheMetadata: vi.fn().mockReturnValue(null),
+    saveAnalysis: vi.fn(),
+    getRepoHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    scanIndividualAnalysesCache: vi.fn().mockReturnValue({ found: [], missing: [] }),
 }));
 
 // Suppress logger output during tests
@@ -107,9 +110,16 @@ vi.mock('../../src/logger', () => ({
 import { executeGenerate } from '../../src/commands/generate';
 import { EXIT_CODES } from '../../src/cli';
 import { checkAIAvailability } from '../../src/ai-invoker';
-import { getCachedGraph, getCachedAnalyses } from '../../src/cache';
+import {
+    getCachedGraph,
+    getCachedAnalyses,
+    getModulesNeedingReanalysis,
+    scanIndividualAnalysesCache,
+    getRepoHeadHash,
+    saveAnalysis,
+} from '../../src/cache';
 import { discoverModuleGraph } from '../../src/discovery';
-import { printError } from '../../src/logger';
+import { printError, printInfo } from '../../src/logger';
 
 // ============================================================================
 // Test Helpers
@@ -281,5 +291,133 @@ describe('executeGenerate — --force option', () => {
 
         // Should still call discover even though cache exists
         expect(discoverModuleGraph).toHaveBeenCalled();
+    });
+});
+
+// ============================================================================
+// Incremental Per-Module Caching
+// ============================================================================
+
+describe('executeGenerate — incremental per-module caching', () => {
+    it('should attempt partial cache recovery when no metadata exists', async () => {
+        // getModulesNeedingReanalysis returns null (no metadata)
+        vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
+        vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+
+        // Simulate partial cache with 1 recovered module
+        vi.mocked(scanIndividualAnalysesCache).mockReturnValue({
+            found: [{
+                moduleId: 'test-module',
+                overview: 'Cached overview',
+                keyConcepts: [],
+                publicAPI: [],
+                internalArchitecture: '',
+                dataFlow: '',
+                patterns: [],
+                errorHandling: '',
+                codeExamples: [],
+                dependencies: { internal: [], external: [] },
+                suggestedDiagram: '',
+            }],
+            missing: [],
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions());
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Should have called scanIndividualAnalysesCache for crash recovery
+        expect(scanIndividualAnalysesCache).toHaveBeenCalled();
+    });
+
+    it('should not scan for partial cache when --force is used', async () => {
+        vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ force: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Should NOT have called scanIndividualAnalysesCache when force is used
+        expect(scanIndividualAnalysesCache).not.toHaveBeenCalled();
+    });
+
+    it('should skip partial cache scan when git hash unavailable', async () => {
+        vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
+        vi.mocked(getRepoHeadHash).mockResolvedValue(null);
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions());
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Should NOT have called scanIndividualAnalysesCache when no git hash
+        expect(scanIndividualAnalysesCache).not.toHaveBeenCalled();
+    });
+
+    it('should log recovery info when partial cache is found', async () => {
+        vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
+        vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+
+        vi.mocked(scanIndividualAnalysesCache).mockReturnValue({
+            found: [{
+                moduleId: 'recovered-module',
+                overview: 'Recovered',
+                keyConcepts: [],
+                publicAPI: [],
+                internalArchitecture: '',
+                dataFlow: '',
+                patterns: [],
+                errorHandling: '',
+                codeExamples: [],
+                dependencies: { internal: [], external: [] },
+                suggestedDiagram: '',
+            }],
+            missing: ['missing-module'],
+        });
+
+        // Need to set up a 2-module discovery for the partial cache to matter
+        const { discoverModuleGraph: discoverMock } = await import('../../src/discovery');
+        vi.mocked(discoverMock).mockResolvedValue({
+            graph: {
+                project: {
+                    name: 'TestProject',
+                    description: 'Test',
+                    language: 'TypeScript',
+                    buildSystem: 'npm',
+                    entryPoints: ['src/index.ts'],
+                },
+                modules: [
+                    {
+                        id: 'recovered-module',
+                        name: 'Recovered Module',
+                        path: 'src/recovered/',
+                        purpose: 'Testing',
+                        keyFiles: ['src/recovered/index.ts'],
+                        dependencies: [],
+                        dependents: [],
+                        complexity: 'medium',
+                        category: 'core',
+                    },
+                    {
+                        id: 'missing-module',
+                        name: 'Missing Module',
+                        path: 'src/missing/',
+                        purpose: 'Testing',
+                        keyFiles: ['src/missing/index.ts'],
+                        dependencies: [],
+                        dependents: [],
+                        complexity: 'medium',
+                        category: 'core',
+                    },
+                ],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: 'Test notes',
+            },
+            duration: 1000,
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions());
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Should have printed info about recovery
+        expect(printInfo).toHaveBeenCalledWith(
+            expect.stringContaining('Recovered 1 module analyses from partial cache')
+        );
     });
 });

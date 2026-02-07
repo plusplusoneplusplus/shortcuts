@@ -33,7 +33,8 @@ export type {
     AIInvokerResult,
     ProcessTracker,
     ExecutorOptions,
-    SessionMetadata
+    SessionMetadata,
+    ItemCompleteCallback
 } from './types';
 export { DEFAULT_MAP_REDUCE_OPTIONS } from './types';
 

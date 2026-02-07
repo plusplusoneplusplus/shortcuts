@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis } from '../types';
 import { discoverModuleGraph } from '../discovery';
-import { analyzeModules } from '../analysis';
+import { analyzeModules, parseAnalysisResponse } from '../analysis';
 import { generateArticles, writeWikiOutput } from '../writing';
 import { checkAIAvailability, createAnalysisInvoker, createWritingInvoker } from '../ai-invoker';
 import {
@@ -25,6 +25,9 @@ import {
     getModulesNeedingReanalysis,
     getCachedAnalysis,
     getAnalysesCacheMetadata,
+    saveAnalysis,
+    getRepoHeadHash,
+    scanIndividualAnalysesCache,
 } from '../cache';
 import {
     Spinner,
@@ -344,6 +347,24 @@ async function runPhase2(
                     m => needingReanalysis.includes(m.id)
                 );
             }
+        } else {
+            // No metadata (full rebuild indicated) — but check for partial cache
+            // from a previous interrupted run that saved modules incrementally.
+            const currentHash = await getRepoHeadHash(repoPath);
+            if (currentHash) {
+                const allModuleIds = graph.modules.map(m => m.id);
+                const { found, missing } = scanIndividualAnalysesCache(
+                    allModuleIds, options.output, currentHash
+                );
+
+                if (found.length > 0) {
+                    printInfo(`Recovered ${found.length} module analyses from partial cache, ${missing.length} remaining`);
+                    cachedAnalyses = found;
+                    modulesToAnalyze = graph.modules.filter(
+                        m => missing.includes(m.id)
+                    );
+                }
+            }
         }
     }
 
@@ -358,6 +379,14 @@ async function runPhase2(
         model: options.model,
         timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
     });
+
+    // Get git hash once upfront for per-module incremental saves
+    let gitHash: string | null = null;
+    try {
+        gitHash = await getRepoHeadHash(repoPath);
+    } catch {
+        // Non-fatal: incremental saves won't work but analysis continues
+    }
 
     const spinner = new Spinner();
     spinner.start(`Analyzing ${modulesToAnalyze.length} modules (${concurrency} parallel)...`);
@@ -388,6 +417,24 @@ async function runPhase2(
                 }
             },
             isCancelled,
+            // Per-module incremental save callback
+            (item, mapResult) => {
+                if (!gitHash || !mapResult.success || !mapResult.output) {
+                    return;
+                }
+                try {
+                    // Extract moduleId and rawResponse from the PromptMapResult
+                    const output = mapResult.output as { item?: { moduleId?: string }; rawResponse?: string };
+                    const moduleId = output?.item?.moduleId;
+                    const rawResponse = output?.rawResponse;
+                    if (moduleId && rawResponse) {
+                        const analysis = parseAnalysisResponse(rawResponse, moduleId);
+                        saveAnalysis(moduleId, analysis, options.output, gitHash);
+                    }
+                } catch {
+                    // Non-fatal: per-module save failed, bulk save at end will catch it
+                }
+            },
         );
 
         // Merge fresh + cached
@@ -406,7 +453,7 @@ async function runPhase2(
             spinner.succeed(`Analysis complete — ${result.analyses.length} modules analyzed`);
         }
 
-        // Save to cache
+        // Save to cache (writes metadata + any modules not yet saved incrementally)
         try {
             await saveAllAnalyses(allAnalyses, options.output, repoPath);
         } catch {

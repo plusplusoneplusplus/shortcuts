@@ -251,4 +251,63 @@ describe('runAnalysisExecutor', () => {
         // Pipeline should complete — not throw
         expect(result.duration).toBeGreaterThan(0);
     });
+
+    it('should pass onItemComplete callback to executor', async () => {
+        const graph = createTestGraph([
+            { id: 'mod-1' },
+            { id: 'mod-2' },
+        ]);
+
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: true,
+            response: VALID_ANALYSIS_RESPONSE,
+        });
+
+        const completedItems: string[] = [];
+
+        await runAnalysisExecutor({
+            aiInvoker: mockInvoker,
+            graph,
+            depth: 'normal',
+            concurrency: 1,
+            onItemComplete: (item, result) => {
+                completedItems.push(item.id);
+            },
+        });
+
+        // onItemComplete should be called for each module
+        expect(completedItems).toHaveLength(2);
+    });
+
+    it('should call onItemComplete for every module regardless of AI result', async () => {
+        const graph = createTestGraph([
+            { id: 'good' },
+            { id: 'bad' },
+        ]);
+
+        let callCount = 0;
+        const mockInvoker: AIInvoker = vi.fn().mockImplementation(async () => {
+            callCount++;
+            if (callCount === 2) {
+                // Returns AI-level failure (mapper still returns a PromptMapResult)
+                return { success: false, error: 'AI error' };
+            }
+            return { success: true, response: VALID_ANALYSIS_RESPONSE };
+        });
+
+        const callbackItems: string[] = [];
+
+        await runAnalysisExecutor({
+            aiInvoker: mockInvoker,
+            graph,
+            depth: 'normal',
+            concurrency: 1,
+            onItemComplete: (item) => {
+                callbackItems.push(item.id);
+            },
+        });
+
+        // Callback should be invoked for every module (both success and AI-level failure)
+        expect(callbackItems).toHaveLength(2);
+    });
 });

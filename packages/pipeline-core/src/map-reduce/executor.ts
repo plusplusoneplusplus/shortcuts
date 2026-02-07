@@ -300,6 +300,15 @@ export class MapReduceExecutor {
                         message: `Processed ${completedCount + failedCount}/${workItems.length} items...`
                     });
 
+                    // Notify per-item completion (for incremental saving, etc.)
+                    if (this.options.onItemComplete) {
+                        try {
+                            this.options.onItemComplete(item, result);
+                        } catch {
+                            // Don't let callback errors affect the pipeline
+                        }
+                    }
+
                     return result;
                 });
             };
