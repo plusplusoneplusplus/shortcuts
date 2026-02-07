@@ -22,8 +22,10 @@ import * as path from 'path';
 import type {
     ModuleGraph,
     ModuleAnalysis,
+    GeneratedArticle,
     CachedGraph,
     CachedAnalysis,
+    CachedArticle,
     CacheMetadata,
     AnalysisCacheMetadata,
 } from '../types';
@@ -44,6 +46,9 @@ const GRAPH_CACHE_FILE = 'module-graph.json';
 
 /** Subdirectory for per-module analysis cache */
 const ANALYSES_DIR = 'analyses';
+
+/** Subdirectory for per-module article cache */
+const ARTICLES_DIR = 'articles';
 
 /** Metadata file for the analyses cache */
 const ANALYSES_METADATA_FILE = '_metadata.json';
@@ -431,6 +436,281 @@ export function clearAnalysesCache(outputDir: string): boolean {
             fs.unlinkSync(path.join(analysesDir, file));
         }
         fs.rmdirSync(analysesDir);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// ============================================================================
+// Article Cache Paths
+// ============================================================================
+
+/**
+ * Get the articles cache directory.
+ */
+export function getArticlesCacheDir(outputDir: string): string {
+    return path.join(getCacheDir(outputDir), ARTICLES_DIR);
+}
+
+/**
+ * Get the path to a single cached article file.
+ */
+export function getArticleCachePath(outputDir: string, moduleId: string): string {
+    return path.join(getArticlesCacheDir(outputDir), `${moduleId}.json`);
+}
+
+/**
+ * Get the path to the articles metadata file.
+ */
+export function getArticlesMetadataPath(outputDir: string): string {
+    return path.join(getArticlesCacheDir(outputDir), ANALYSES_METADATA_FILE);
+}
+
+// ============================================================================
+// Article Cache Read
+// ============================================================================
+
+/**
+ * Get a single cached module article.
+ *
+ * @param moduleId - Module ID to look up
+ * @param outputDir - Output directory
+ * @returns The cached article, or null if not found
+ */
+export function getCachedArticle(moduleId: string, outputDir: string): GeneratedArticle | null {
+    const cachePath = getArticleCachePath(outputDir, moduleId);
+
+    if (!fs.existsSync(cachePath)) {
+        return null;
+    }
+
+    try {
+        const content = fs.readFileSync(cachePath, 'utf-8');
+        const cached = JSON.parse(content) as CachedArticle;
+        if (!cached.article || !cached.article.slug) {
+            return null;
+        }
+        return cached.article;
+    } catch {
+        return null; // Corrupted cache entry
+    }
+}
+
+/**
+ * Get all cached articles if the cache is valid (has metadata).
+ *
+ * @param outputDir - Output directory
+ * @returns Array of cached articles, or null if cache is invalid/missing
+ */
+export function getCachedArticles(outputDir: string): GeneratedArticle[] | null {
+    const metadataPath = getArticlesMetadataPath(outputDir);
+
+    if (!fs.existsSync(metadataPath)) {
+        return null;
+    }
+
+    // Read metadata
+    let metadata: AnalysisCacheMetadata;
+    try {
+        const content = fs.readFileSync(metadataPath, 'utf-8');
+        metadata = JSON.parse(content) as AnalysisCacheMetadata;
+    } catch {
+        return null;
+    }
+
+    if (!metadata.gitHash || !metadata.moduleCount) {
+        return null;
+    }
+
+    // Read all article files
+    const articlesDir = getArticlesCacheDir(outputDir);
+    const articles: GeneratedArticle[] = [];
+
+    try {
+        const files = fs.readdirSync(articlesDir);
+        for (const file of files) {
+            if (file === ANALYSES_METADATA_FILE || !file.endsWith('.json')) {
+                continue;
+            }
+
+            try {
+                const content = fs.readFileSync(path.join(articlesDir, file), 'utf-8');
+                const cached = JSON.parse(content) as CachedArticle;
+                if (cached.article && cached.article.slug) {
+                    articles.push(cached.article);
+                }
+            } catch {
+                // Skip corrupted entries
+            }
+        }
+    } catch {
+        return null;
+    }
+
+    return articles.length > 0 ? articles : null;
+}
+
+/**
+ * Get the articles cache metadata (for hash checking).
+ */
+export function getArticlesCacheMetadata(outputDir: string): AnalysisCacheMetadata | null {
+    const metadataPath = getArticlesMetadataPath(outputDir);
+    if (!fs.existsSync(metadataPath)) {
+        return null;
+    }
+
+    try {
+        const content = fs.readFileSync(metadataPath, 'utf-8');
+        return JSON.parse(content) as AnalysisCacheMetadata;
+    } catch {
+        return null;
+    }
+}
+
+// ============================================================================
+// Article Cache Write
+// ============================================================================
+
+/**
+ * Save a single module article to the cache.
+ *
+ * @param moduleId - Module ID
+ * @param article - The article to cache
+ * @param outputDir - Output directory
+ * @param gitHash - Git hash when the article was generated
+ */
+export function saveArticle(
+    moduleId: string,
+    article: GeneratedArticle,
+    outputDir: string,
+    gitHash: string
+): void {
+    const articlesDir = getArticlesCacheDir(outputDir);
+    const cachePath = getArticleCachePath(outputDir, moduleId);
+
+    fs.mkdirSync(articlesDir, { recursive: true });
+
+    const cached: CachedArticle = {
+        article,
+        gitHash,
+        timestamp: Date.now(),
+    };
+
+    fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
+}
+
+/**
+ * Save all articles to the cache (bulk save with metadata).
+ *
+ * @param articles - All module articles (only 'module' type articles are cached)
+ * @param outputDir - Output directory
+ * @param repoPath - Path to the git repository
+ */
+export async function saveAllArticles(
+    articles: GeneratedArticle[],
+    outputDir: string,
+    repoPath: string
+): Promise<void> {
+    const currentHash = await getRepoHeadHash(repoPath);
+    if (!currentHash) {
+        return; // Can't determine git hash
+    }
+
+    // Only cache module-type articles (not index/architecture/getting-started)
+    const moduleArticles = articles.filter(a => a.type === 'module' && a.moduleId);
+
+    const articlesDir = getArticlesCacheDir(outputDir);
+    fs.mkdirSync(articlesDir, { recursive: true });
+
+    // Write individual article files
+    for (const article of moduleArticles) {
+        saveArticle(article.moduleId!, article, outputDir, currentHash);
+    }
+
+    // Write metadata
+    const metadata: AnalysisCacheMetadata = {
+        gitHash: currentHash,
+        timestamp: Date.now(),
+        version: CACHE_VERSION,
+        moduleCount: moduleArticles.length,
+    };
+
+    const metadataPath = getArticlesMetadataPath(outputDir);
+    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+}
+
+/**
+ * Scan for individually cached articles (even without metadata).
+ *
+ * This is used for crash recovery: if the process was interrupted before
+ * `saveAllArticles` wrote the metadata file, individual per-module files
+ * may still exist from incremental saves via `onItemComplete`.
+ *
+ * @param moduleIds - Module IDs to look for in the cache
+ * @param outputDir - Output directory
+ * @param currentGitHash - Current git hash for validation (modules cached with
+ *                         a different hash are considered stale and excluded)
+ * @returns Object with `found` (valid cached articles) and `missing` (module IDs not found or stale)
+ */
+export function scanIndividualArticlesCache(
+    moduleIds: string[],
+    outputDir: string,
+    currentGitHash: string
+): { found: GeneratedArticle[]; missing: string[] } {
+    const found: GeneratedArticle[] = [];
+    const missing: string[] = [];
+
+    for (const moduleId of moduleIds) {
+        const cachePath = getArticleCachePath(outputDir, moduleId);
+        if (!fs.existsSync(cachePath)) {
+            missing.push(moduleId);
+            continue;
+        }
+
+        try {
+            const content = fs.readFileSync(cachePath, 'utf-8');
+            const cached = JSON.parse(content) as CachedArticle;
+            if (
+                cached.article &&
+                cached.article.slug &&
+                cached.gitHash === currentGitHash
+            ) {
+                found.push(cached.article);
+            } else {
+                // Stale (different git hash) or invalid — needs regeneration
+                missing.push(moduleId);
+            }
+        } catch {
+            missing.push(moduleId);
+        }
+    }
+
+    return { found, missing };
+}
+
+// ============================================================================
+// Article Cache Invalidation
+// ============================================================================
+
+/**
+ * Clear all cached articles.
+ *
+ * @param outputDir - Output directory
+ * @returns True if cache was cleared, false if no cache existed
+ */
+export function clearArticlesCache(outputDir: string): boolean {
+    const articlesDir = getArticlesCacheDir(outputDir);
+    if (!fs.existsSync(articlesDir)) {
+        return false;
+    }
+
+    try {
+        const files = fs.readdirSync(articlesDir);
+        for (const file of files) {
+            fs.unlinkSync(path.join(articlesDir, file));
+        }
+        fs.rmdirSync(articlesDir);
         return true;
     } catch {
         return false;

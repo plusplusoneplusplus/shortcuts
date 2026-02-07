@@ -8,7 +8,7 @@
  */
 
 import type { WritingOptions, WikiOutput } from '../types';
-import type { AIInvoker, JobProgress } from '@plusplusoneplusplus/pipeline-core';
+import type { AIInvoker, JobProgress, ItemCompleteCallback } from '@plusplusoneplusplus/pipeline-core';
 import { runArticleExecutor } from './article-executor';
 
 // Re-export for convenience
@@ -33,6 +33,7 @@ export type { ArticleExecutorOptions, ArticleExecutorResult } from './article-ex
  * @param aiInvoker Configured AI invoker for writing (session pool)
  * @param onProgress Optional progress callback
  * @param isCancelled Optional cancellation check
+ * @param onItemComplete Optional per-item completion callback for incremental saving
  * @returns Wiki output with all articles
  */
 export async function generateArticles(
@@ -40,6 +41,7 @@ export async function generateArticles(
     aiInvoker: AIInvoker,
     onProgress?: (progress: JobProgress) => void,
     isCancelled?: () => boolean,
+    onItemComplete?: ItemCompleteCallback,
 ): Promise<WikiOutput> {
     const startTime = Date.now();
 
@@ -53,6 +55,7 @@ export async function generateArticles(
         model: options.model,
         onProgress,
         isCancelled,
+        onItemComplete,
     });
 
     return {

@@ -447,3 +447,15 @@ export interface CachedAnalysis {
     /** Timestamp */
     timestamp: number;
 }
+
+/**
+ * A cached per-module generated article.
+ */
+export interface CachedArticle {
+    /** The generated article */
+    article: GeneratedArticle;
+    /** Git hash when this article was generated */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
+}

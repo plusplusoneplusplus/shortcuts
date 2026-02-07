@@ -82,6 +82,12 @@ vi.mock('../../src/cache', () => ({
     saveAnalysis: vi.fn(),
     getRepoHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
     scanIndividualAnalysesCache: vi.fn().mockReturnValue({ found: [], missing: [] }),
+    // Article cache functions (Phase 3)
+    saveArticle: vi.fn(),
+    saveAllArticles: vi.fn().mockResolvedValue(undefined),
+    scanIndividualArticlesCache: vi.fn().mockImplementation(
+        (moduleIds: string[]) => ({ found: [], missing: [...moduleIds] })
+    ),
 }));
 
 // Suppress logger output during tests
@@ -115,6 +121,7 @@ import {
     getCachedAnalyses,
     getModulesNeedingReanalysis,
     scanIndividualAnalysesCache,
+    scanIndividualArticlesCache,
     getRepoHeadHash,
     saveAnalysis,
 } from '../../src/cache';

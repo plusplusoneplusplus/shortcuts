@@ -19,6 +19,7 @@ import type {
     PromptItem,
     PromptMapOutput,
     JobProgress,
+    ItemCompleteCallback,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     ModuleGraph,
@@ -55,6 +56,11 @@ export interface ArticleExecutorOptions {
     onProgress?: (progress: JobProgress) => void;
     /** Cancellation check */
     isCancelled?: () => boolean;
+    /**
+     * Optional callback invoked after each individual article completes.
+     * Useful for incremental per-article cache writes during long-running generation.
+     */
+    onItemComplete?: ItemCompleteCallback;
 }
 
 /**
@@ -116,6 +122,7 @@ export async function runArticleExecutor(
         model,
         onProgress,
         isCancelled,
+        onItemComplete,
     } = options;
 
     if (analyses.length === 0) {
@@ -167,6 +174,7 @@ export async function runArticleExecutor(
         jobName: 'Article Generation',
         onProgress,
         isCancelled,
+        onItemComplete,
     });
 
     // Execute map-reduce

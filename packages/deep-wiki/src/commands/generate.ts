@@ -12,11 +12,12 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis } from '../types';
+import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis, GeneratedArticle } from '../types';
 import { discoverModuleGraph } from '../discovery';
 import { analyzeModules, parseAnalysisResponse } from '../analysis';
 import { generateArticles, writeWikiOutput } from '../writing';
 import { checkAIAvailability, createAnalysisInvoker, createWritingInvoker } from '../ai-invoker';
+import { normalizeModuleId } from '../schemas';
 import {
     getCachedGraph,
     saveGraph,
@@ -28,6 +29,9 @@ import {
     saveAnalysis,
     getRepoHeadHash,
     scanIndividualAnalysesCache,
+    saveArticle,
+    saveAllArticles,
+    scanIndividualArticlesCache,
 } from '../cache';
 import {
     Spinner,
@@ -181,7 +185,7 @@ export async function executeGenerate(
         // Phase 3: Article Generation
         // ================================================================
         const phase3Result = await runPhase3(
-            graph, analyses, options, isCancelled
+            absoluteRepoPath, graph, analyses, options, isCancelled
         );
         if (phase3Result.exitCode !== undefined) {
             return phase3Result.exitCode;
@@ -481,6 +485,7 @@ interface Phase3Result {
 }
 
 async function runPhase3(
+    repoPath: string,
     graph: ModuleGraph,
     analyses: ModuleAnalysis[],
     options: GenerateCommandOptions,
@@ -493,6 +498,45 @@ async function runPhase3(
 
     const concurrency = options.concurrency ? Math.min(options.concurrency * 2, 20) : 10;
 
+    // Get git hash once upfront for per-article incremental saves
+    let gitHash: string | null = null;
+    try {
+        gitHash = await getRepoHeadHash(repoPath);
+    } catch {
+        // Non-fatal: incremental saves won't work but generation continues
+    }
+
+    // Determine which modules need article generation
+    let analysesToGenerate = analyses;
+    let cachedArticles: GeneratedArticle[] = [];
+
+    if (!options.force && gitHash) {
+        // Scan for individually cached articles (handles crash recovery too)
+        const moduleIds = analyses
+            .map(a => a.moduleId)
+            .filter(id => !!id);
+
+        const { found, missing } = scanIndividualArticlesCache(
+            moduleIds, options.output, gitHash
+        );
+
+        if (found.length > 0) {
+            cachedArticles = found;
+
+            if (missing.length === 0) {
+                // All module articles are cached — skip map phase
+                printSuccess(`All ${found.length} module articles loaded from cache`);
+            } else {
+                printInfo(`Recovered ${found.length} cached articles, ${missing.length} remaining`);
+            }
+
+            // Only generate articles for modules NOT in cache
+            analysesToGenerate = analyses.filter(
+                a => missing.includes(a.moduleId)
+            );
+        }
+    }
+
     // Create writing invoker (session pool, no tools)
     const writingInvoker = createWritingInvoker({
         model: options.model,
@@ -500,36 +544,118 @@ async function runPhase3(
     });
 
     const spinner = new Spinner();
-    spinner.start(`Generating articles for ${analyses.length} modules...`);
 
     try {
-        const wikiOutput = await generateArticles(
-            {
-                graph,
-                analyses,
-                model: options.model,
-                concurrency,
-                timeout: options.timeout ? options.timeout * 1000 : undefined,
-                depth: options.depth,
-            },
-            writingInvoker,
-            (progress) => {
-                if (progress.phase === 'mapping') {
-                    spinner.update(
-                        `Generating articles: ${progress.completedItems}/${progress.totalItems}`
-                    );
-                } else if (progress.phase === 'reducing') {
-                    spinner.update('Generating index and overview pages...');
-                }
-            },
-            isCancelled,
-        );
+        let freshArticles: GeneratedArticle[] = [];
 
-        spinner.succeed(`Generated ${wikiOutput.articles.length} articles`);
+        if (analysesToGenerate.length > 0) {
+            // Generate articles for modules that are not cached
+            spinner.start(`Generating articles for ${analysesToGenerate.length} modules...`);
+
+            const wikiOutput = await generateArticles(
+                {
+                    graph,
+                    analyses: analysesToGenerate,
+                    model: options.model,
+                    concurrency,
+                    timeout: options.timeout ? options.timeout * 1000 : undefined,
+                    depth: options.depth,
+                },
+                writingInvoker,
+                (progress) => {
+                    if (progress.phase === 'mapping') {
+                        spinner.update(
+                            `Generating articles: ${progress.completedItems}/${progress.totalItems}`
+                        );
+                    } else if (progress.phase === 'reducing') {
+                        spinner.update('Generating index and overview pages...');
+                    }
+                },
+                isCancelled,
+                // Per-article incremental save callback
+                (item, mapResult) => {
+                    if (!gitHash || !mapResult.success) {
+                        return;
+                    }
+                    try {
+                        const output = mapResult.output as { item?: { moduleId?: string }; rawText?: string; rawResponse?: string };
+                        const moduleId = output?.item?.moduleId;
+                        const content = output?.rawText || output?.rawResponse;
+                        if (moduleId && content) {
+                            const moduleInfo = graph.modules.find(m => m.id === moduleId);
+                            const article: GeneratedArticle = {
+                                type: 'module',
+                                slug: normalizeModuleId(moduleId),
+                                title: moduleInfo?.name || moduleId,
+                                content,
+                                moduleId,
+                            };
+                            saveArticle(moduleId, article, options.output, gitHash);
+                        }
+                    } catch {
+                        // Non-fatal: per-article save failed, bulk save at end will catch it
+                    }
+                },
+            );
+
+            // Separate module articles from reduce-generated articles
+            freshArticles = wikiOutput.articles;
+
+            spinner.succeed(`Generated ${freshArticles.length} articles`);
+        }
+
+        // Merge cached + fresh module articles
+        const freshModuleArticles = freshArticles.filter(a => a.type === 'module');
+        const reduceArticles = freshArticles.filter(a => a.type !== 'module');
+        const allModuleArticles = [...cachedArticles, ...freshModuleArticles];
+
+        // If we had cached articles but skipped generation, we still need the reduce phase
+        // (index/architecture/getting-started) which depends on ALL module articles.
+        // The reduce phase always re-runs — it's fast and must reflect the latest full set.
+        if (analysesToGenerate.length === 0 && cachedArticles.length > 0) {
+            spinner.start('Generating index and overview pages...');
+
+            // Run article generation with all analyses to get reduce output
+            const reduceOutput = await generateArticles(
+                {
+                    graph,
+                    analyses,
+                    model: options.model,
+                    concurrency,
+                    timeout: options.timeout ? options.timeout * 1000 : undefined,
+                    depth: options.depth,
+                },
+                writingInvoker,
+                (progress) => {
+                    if (progress.phase === 'reducing') {
+                        spinner.update('Generating index and overview pages...');
+                    }
+                },
+                isCancelled,
+            );
+
+            // Extract only reduce articles (index, architecture, getting-started)
+            const reduceOnly = reduceOutput.articles.filter(a => a.type !== 'module');
+            reduceArticles.push(...reduceOnly);
+
+            // Also grab any module articles from reduce output in case map was rerun
+            const reduceModuleArticles = reduceOutput.articles.filter(a => a.type === 'module');
+            if (reduceModuleArticles.length > 0 && freshModuleArticles.length === 0) {
+                // Use the freshly-generated module articles from the reduce run
+                allModuleArticles.length = 0;
+                allModuleArticles.push(...reduceModuleArticles);
+            }
+
+            spinner.succeed('Generated index and overview pages');
+        }
+
+        // Combine all articles for writing
+        const allArticles = [...allModuleArticles, ...reduceArticles];
 
         // Write to disk
         const outputDir = path.resolve(options.output);
         try {
+            const wikiOutput = { articles: allArticles, duration: Date.now() - startTime };
             const writtenPaths = writeWikiOutput(wikiOutput, outputDir);
             printSuccess(`Wrote ${writtenPaths.length} files to ${bold(outputDir)}`);
 
@@ -547,8 +673,17 @@ async function runPhase3(
             };
         }
 
+        // Save article cache metadata (marks cache as "complete")
+        try {
+            await saveAllArticles(allModuleArticles, options.output, repoPath);
+        } catch {
+            if (options.verbose) {
+                printWarning('Failed to cache articles (non-fatal)');
+            }
+        }
+
         return {
-            articlesWritten: wikiOutput.articles.length,
+            articlesWritten: allArticles.length,
             duration: Date.now() - startTime,
         };
     } catch (error) {
