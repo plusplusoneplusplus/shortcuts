@@ -1,8 +1,8 @@
 # Deep Wiki Generator
 
-A standalone CLI tool that auto-generates a comprehensive module graph for any codebase. Uses the Copilot SDK with read-only MCP tools (grep, glob, view) to analyze repository structure, modules, and dependencies.
+A standalone CLI tool that auto-generates a comprehensive, browsable wiki for any codebase. Uses the Copilot SDK with MCP tools (grep, glob, view) to discover, analyze, and document repository structure, modules, and dependencies.
 
-> **Status:** Phase 1 (Discovery) is implemented. Phase 2 (Analysis) and Phase 3 (Writing) are planned for future milestones.
+All code stays local — nothing leaves your machine.
 
 ## Installation
 
@@ -17,55 +17,107 @@ npm run build
 
 ## Usage
 
-### Discover Module Graph (Phase 1)
+### Generate Full Wiki
 
 ```bash
-# Basic usage
-deep-wiki discover /path/to/repo
+# Basic — runs all 3 phases (discover → analyze → write)
+deep-wiki generate /path/to/repo --output ./wiki
 
 # With options
-deep-wiki discover /path/to/repo \
+deep-wiki generate /path/to/repo \
   --output ./wiki \
   --model claude-sonnet \
+  --concurrency 5 \
+  --depth normal \
   --focus "src/" \
   --timeout 300 \
-  --verbose \
-  --force
+  --verbose
+
+# Resume from Phase 2 (reuse cached discovery)
+deep-wiki generate /path/to/repo --output ./wiki --phase 2
+
+# Resume from Phase 3 (reuse cached discovery + analysis)
+deep-wiki generate /path/to/repo --output ./wiki --phase 3
+
+# Force full regeneration (ignore all caches)
+deep-wiki generate /path/to/repo --output ./wiki --force
 ```
 
-### Options
+### Discover Module Graph Only (Phase 1)
+
+```bash
+deep-wiki discover /path/to/repo --output ./wiki --verbose
+```
+
+### Generate Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-o, --output <path>` | Output directory for results | `./wiki` |
+| `-o, --output <path>` | Output directory for wiki | `./wiki` |
 | `-m, --model <model>` | AI model to use | SDK default |
-| `-t, --timeout <seconds>` | Timeout for discovery session | 300 (5 min) |
+| `-c, --concurrency <n>` | Parallel AI sessions | `5` |
+| `-t, --timeout <seconds>` | Timeout per phase | 300 (5 min) |
+| `--depth <level>` | Article detail: `shallow`, `normal`, `deep` | `normal` |
 | `--focus <path>` | Focus on a specific subtree | Full repo |
-| `--force` | Ignore cache, regenerate | `false` |
+| `--phase <n>` | Resume from phase N (1, 2, or 3) | `1` |
+| `--force` | Ignore all caches, regenerate everything | `false` |
 | `-v, --verbose` | Verbose logging | `false` |
 | `--no-color` | Disable colored output | Colors on |
 
-### Output
+### Output Structure
 
-The `discover` command produces a `module-graph.json` file containing:
+```
+wiki/
+├── index.md              # Project overview + categorized table of contents
+├── architecture.md       # High-level architecture with Mermaid diagrams
+├── getting-started.md    # Prerequisites, setup, build, run instructions
+├── module-graph.json     # Raw Phase 1 discovery output
+└── modules/
+    ├── auth.md           # Per-module article
+    ├── database.md
+    └── ...
+```
 
-- **Project info** — name, language, build system, entry points
-- **Modules** — id, name, path, purpose, key files, dependencies, complexity, category
-- **Categories** — groupings for modules
-- **Architecture notes** — high-level architecture summary
+## Three-Phase Pipeline
 
-JSON is also written to stdout for piping.
+### Phase 1: Discovery (~1-3 min)
 
-### Caching
+A single AI session with MCP tools scans the repo and produces a `ModuleGraph` JSON:
+- Project info (name, language, build system, entry points)
+- Modules (id, name, path, purpose, key files, dependencies, complexity, category)
+- Categories and architecture notes
 
-Discovery results are cached in `<output>/.wiki-cache/module-graph.json` with the git HEAD hash. Subsequent runs skip discovery if the hash matches. Use `--force` to bypass.
+Large repos (3000+ files) use multi-round discovery automatically.
 
-### Large Repos
+### Phase 2: Deep Analysis (~2-10 min)
 
-Repos with 3000+ files automatically use multi-round discovery:
-1. Structural scan — identifies top-level areas
-2. Per-area drill-down — focused discovery for each area
-3. Merge — combines sub-graphs into a unified ModuleGraph
+Parallel AI sessions (each with read-only MCP tools) analyze every module:
+- Public API, internal architecture, data flow
+- Design patterns, error handling, code examples
+- Internal and external dependency mapping
+- Suggested Mermaid diagrams
+
+Three depth levels control investigation thoroughness:
+- **shallow** — overview + public API only (fastest)
+- **normal** — 7-step investigation (default)
+- **deep** — 10-step exhaustive analysis with performance and edge cases
+
+### Phase 3: Article Generation (~2-5 min)
+
+Parallel AI sessions (session pool, no tools needed) write markdown articles:
+- **Map phase** — one article per module with cross-links between modules
+- **Reduce phase** — AI generates index, architecture, and getting-started pages
+
+## Incremental Rebuilds
+
+Subsequent runs are faster thanks to per-module caching:
+
+1. Git diff detects changed files since last analysis
+2. Changed files are mapped to affected modules
+3. Only affected modules are re-analyzed (unchanged modules load from cache)
+4. Phase 3 always re-runs (cheap, cross-links may need updating)
+
+Cache is stored in `<output>/.wiki-cache/`. Use `--force` to bypass.
 
 ## Testing
 
@@ -77,35 +129,47 @@ npm run test:run
 npm test
 ```
 
-156 tests across 8 test files covering types, schemas, response parsing, prompt generation, large repo handling, caching, CLI parsing, and command integration.
+304 tests across 17 test files covering all three phases: types, schemas, AI invoker, prompt generation, response parsing, map-reduce orchestration, file writing, caching (with incremental rebuild), CLI parsing, and command integration.
 
 ## Architecture
 
 ```
 src/
-├── index.ts              # CLI entry point
-├── cli.ts                # Commander program
-├── types.ts              # All shared types
-├── schemas.ts            # JSON schemas + validation helpers
-├── logger.ts             # Colored CLI output + spinner
+├── index.ts                # CLI entry point
+├── cli.ts                  # Commander program (discover + generate)
+├── types.ts                # All shared types (Phase 1+2+3)
+├── schemas.ts              # JSON schemas + validation helpers
+├── logger.ts               # Colored CLI output + spinner
+├── ai-invoker.ts           # Analysis + writing invoker factories
 ├── commands/
-│   ├── discover.ts       # deep-wiki discover <repo>
-│   └── generate.ts       # Stub for Phase 2+3
+│   ├── discover.ts         # deep-wiki discover <repo>
+│   └── generate.ts         # deep-wiki generate <repo> (3-phase orchestration)
 ├── discovery/
-│   ├── index.ts          # discoverModuleGraph() public API
-│   ├── prompts.ts        # AI prompt templates
-│   ├── discovery-session.ts  # SDK session orchestration
-│   ├── response-parser.ts    # JSON extraction + validation
-│   └── large-repo-handler.ts # Multi-round for big repos
+│   ├── index.ts            # discoverModuleGraph()
+│   ├── prompts.ts          # Discovery prompt templates
+│   ├── discovery-session.ts    # SDK session orchestration
+│   ├── response-parser.ts     # JSON extraction + validation
+│   └── large-repo-handler.ts  # Multi-round for big repos
+├── analysis/
+│   ├── index.ts            # analyzeModules()
+│   ├── prompts.ts          # Analysis prompt templates (3 depths)
+│   ├── analysis-executor.ts    # MapReduceExecutor orchestration
+│   └── response-parser.ts     # ModuleAnalysis JSON parsing + Mermaid validation
+├── writing/
+│   ├── index.ts            # generateArticles()
+│   ├── prompts.ts          # Module article prompt templates
+│   ├── reduce-prompts.ts   # Index/architecture/getting-started prompts
+│   ├── article-executor.ts # MapReduceExecutor orchestration
+│   └── file-writer.ts      # Write markdown to disk
 └── cache/
-    ├── index.ts          # Cache manager
-    └── git-utils.ts      # Git hash utilities
+    ├── index.ts            # Cache manager (graph + per-module analyses)
+    └── git-utils.ts        # Git hash + change detection
 ```
 
 ## Dependencies
 
 | Package | Purpose |
 |---------|---------|
-| `@plusplusoneplusplus/pipeline-core` | AI SDK, JSON extraction |
+| `@plusplusoneplusplus/pipeline-core` | AI SDK, MapReduceExecutor, JSON extraction |
 | `commander` | CLI argument parsing |
-| `js-yaml` | YAML handling (future config) |
+| `js-yaml` | YAML handling |
