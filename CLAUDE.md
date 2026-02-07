@@ -16,8 +16,21 @@ NEVER create document file unless user's explicit ask.
   - `map-reduce` - Parallel AI processing framework (executor, splitters, reducers, jobs)
   - `pipeline` - YAML pipeline execution (executor, CSV reader, template engine, filters)
 
-- **Monorepo Structure:** npm workspaces with `packages/pipeline-core` and root extension
-- **Testing:** Vitest for pipeline-core, Mocha for extension (6900+ tests passing)
+- **Monorepo Structure:** npm workspaces with `packages/pipeline-core`, `packages/pipeline-cli`, `packages/deep-wiki`, and root extension
+- **Testing:** Vitest for pipeline-core/pipeline-cli/deep-wiki, Mocha for extension (6900+ extension tests passing)
+
+**Deep Wiki Generator (Phase 1)** - A standalone CLI tool that auto-generates a module graph for any codebase:
+
+- **New Package:** `deep-wiki` in `packages/deep-wiki/`
+- **Pure Node.js:** No VS Code dependencies, uses `pipeline-core` for AI SDK
+- **Phase 1 (Discovery):** Single AI session with MCP tools (grep, glob, view) to produce a ModuleGraph JSON
+- **Modules:**
+  - `discovery` - SDK session orchestration, prompt templates, response parsing, large repo handler
+  - `cache` - Git-hash-based cache invalidation for incremental discovery
+  - `commands` - CLI commands (`discover` functional, `generate` stub for future phases)
+- **CLI:** `deep-wiki discover <repo-path>` with --output, --model, --timeout, --focus, --force, --verbose
+- **Large Repo Support:** Multi-round discovery for repos with 3000+ files (structural scan → per-area drill-down → merge)
+- **Testing:** 156 Vitest tests across 8 test files
 
 **Tree Data Provider Base Classes** - A refactoring was completed to eliminate code duplication across tree data providers:
 
@@ -738,6 +751,16 @@ interface ShortcutsConfig {
 - Temp file utilities tests
 - CSV reader tests
 - Run with `npm run test:run` in `packages/pipeline-core/` directory
+
+**Deep Wiki Tests** (Vitest) - Located in `packages/deep-wiki/test/`:
+- Type validation and schema tests (29 tests)
+- Discovery response parser tests (34 tests)
+- Discovery prompt template tests (21 tests)
+- Large repo handler and sub-graph merging tests (13 tests)
+- Cache read/write and git utility tests (29 tests)
+- CLI argument parsing tests (17 tests)
+- Discover command integration tests (13 tests)
+- Run with `npm run test:run` in `packages/deep-wiki/` directory
 
 ## Configuration Migration System
 

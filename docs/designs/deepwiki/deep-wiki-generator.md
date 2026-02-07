@@ -309,6 +309,77 @@ deep-wiki /path/to/repo \
 | `isCancelled()` | Graceful cancellation across all phases |
 | Progress callbacks | Per-phase progress reporting |
 
+## Phase 1 Implementation Details
+
+Phase 1 (Discovery) is fully implemented in `packages/deep-wiki/`. See the implementation plan at `docs/designs/deepwiki/phase1-plan.md` for the full workplan.
+
+### Package Structure (Implemented)
+
+```
+packages/deep-wiki/
+├── package.json
+├── tsconfig.json
+├── vitest.config.ts
+├── src/
+│   ├── index.ts                         # Shebang + CLI entry
+│   ├── cli.ts                           # Commander program
+│   ├── types.ts                         # All shared types
+│   ├── schemas.ts                       # JSON schemas for validation
+│   ├── logger.ts                        # CLI logger (spinner, colors)
+│   ├── commands/
+│   │   ├── discover.ts                  # deep-wiki discover <repo>
+│   │   └── generate.ts                  # Stub for full generation
+│   ├── discovery/
+│   │   ├── index.ts                     # discoverModuleGraph()
+│   │   ├── prompts.ts                   # Discovery prompt templates
+│   │   ├── discovery-session.ts         # SDK session orchestration
+│   │   ├── response-parser.ts           # JSON extraction + validation
+│   │   └── large-repo-handler.ts        # Multi-round for big repos
+│   └── cache/
+│       ├── index.ts                     # Cache manager
+│       └── git-utils.ts                 # Git hash utilities
+└── test/                                # 156 tests across 8 files
+    ├── types.test.ts
+    ├── cli.test.ts
+    ├── commands/
+    │   └── discover.test.ts
+    ├── discovery/
+    │   ├── response-parser.test.ts
+    │   ├── prompts.test.ts
+    │   └── large-repo-handler.test.ts
+    └── cache/
+        ├── index.test.ts
+        └── git-utils.test.ts
+```
+
+### Key Implementation Decisions
+
+1. **Large repo threshold set to 3000 files** — triggers multi-round discovery (structural scan → per-area drill-down → merge)
+2. **Read-only permissions only** — discovery sessions allow `read` permissions, deny `write`/`shell`/`mcp`/`url`
+3. **Response parser uses `extractJSON` from pipeline-core** — handles JSON in markdown code blocks, bracket matching, repair
+4. **Cache uses git HEAD hash** — `git rev-parse HEAD` for invalidation, stored in `<output>/.wiki-cache/module-graph.json`
+5. **Module IDs normalized to kebab-case** — invalid IDs auto-corrected with warnings
+6. **Dependencies validated against module set** — references to non-existent modules are stripped with warnings
+
+### CLI Usage (Phase 1)
+
+```bash
+# Discover module graph
+deep-wiki discover /path/to/repo --output ./wiki
+
+# With options
+deep-wiki discover /path/to/repo \
+  --output ./wiki \
+  --model claude-sonnet \
+  --focus "src/" \
+  --timeout 300 \
+  --verbose \
+  --force
+
+# Generate full wiki (stub — Phase 2+3 not yet implemented)
+deep-wiki generate /path/to/repo --output ./wiki
+```
+
 ## Open Questions
 
 1. **Monorepo support** — should each package get its own wiki, or one unified wiki?
