@@ -1,0 +1,30 @@
+{
+  "name": "@plusplusoneplusplus/deep-wiki",
+  "version": "1.0.0",
+  "description": "CLI tool to auto-generate comprehensive wikis for any codebase",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "deep-wiki": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@plusplusoneplusplus/pipeline-core": "1.0.0",
+    "commander": "^12.1.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0",
+    "@types/node": "^20.0.0",
+    "@types/js-yaml": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

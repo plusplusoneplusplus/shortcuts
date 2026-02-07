@@ -10,7 +10,8 @@
   },
   "workspaces": [
     "packages/pipeline-core",
-    "packages/pipeline-cli"
+    "packages/pipeline-cli",
+    "packages/deep-wiki"
   ],
   "engines": {
     "vscode": "^1.95.0"
