@@ -1,17 +1,33 @@
 /**
  * Cache Layer — Cache Manager
  *
- * Manages cached module graph results for incremental discovery.
- * Cache location: <output>/.wiki-cache/ or custom --cache path.
- * Uses git HEAD hash for invalidation.
+ * Manages cached module graph and per-module analysis results for incremental
+ * discovery and analysis. Cache location: <output>/.wiki-cache/.
+ * Uses git HEAD hash for invalidation with incremental rebuild support.
+ *
+ * Cache structure:
+ *   .wiki-cache/
+ *   ├── module-graph.json           # Phase 1 (discovery)
+ *   └── analyses/                   # Phase 2 (analysis)
+ *       ├── _metadata.json          # git hash + timestamp
+ *       ├── auth.json               # per-module analysis
+ *       ├── database.json
+ *       └── ...
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ModuleGraph, CachedGraph, CacheMetadata } from '../types';
-import { getRepoHeadHash } from './git-utils';
+import type {
+    ModuleGraph,
+    ModuleAnalysis,
+    CachedGraph,
+    CachedAnalysis,
+    CacheMetadata,
+    AnalysisCacheMetadata,
+} from '../types';
+import { getRepoHeadHash, getChangedFiles } from './git-utils';
 
 // Re-export git utilities
 export { getRepoHeadHash, getChangedFiles, hasChanges, isGitAvailable, isGitRepo } from './git-utils';
@@ -25,6 +41,12 @@ const CACHE_DIR_NAME = '.wiki-cache';
 
 /** Name of the cached module graph file */
 const GRAPH_CACHE_FILE = 'module-graph.json';
+
+/** Subdirectory for per-module analysis cache */
+const ANALYSES_DIR = 'analyses';
+
+/** Metadata file for the analyses cache */
+const ANALYSES_METADATA_FILE = '_metadata.json';
 
 /** Current version for cache metadata */
 const CACHE_VERSION = '1.0.0';
@@ -53,8 +75,29 @@ export function getGraphCachePath(outputDir: string): string {
     return path.join(getCacheDir(outputDir), GRAPH_CACHE_FILE);
 }
 
+/**
+ * Get the analyses cache directory.
+ */
+export function getAnalysesCacheDir(outputDir: string): string {
+    return path.join(getCacheDir(outputDir), ANALYSES_DIR);
+}
+
+/**
+ * Get the path to a single cached analysis file.
+ */
+export function getAnalysisCachePath(outputDir: string, moduleId: string): string {
+    return path.join(getAnalysesCacheDir(outputDir), `${moduleId}.json`);
+}
+
+/**
+ * Get the path to the analyses metadata file.
+ */
+export function getAnalysesMetadataPath(outputDir: string): string {
+    return path.join(getAnalysesCacheDir(outputDir), ANALYSES_METADATA_FILE);
+}
+
 // ============================================================================
-// Cache Read
+// Graph Cache Read
 // ============================================================================
 
 /**
@@ -102,7 +145,7 @@ export async function getCachedGraph(repoPath: string, outputDir: string): Promi
 }
 
 // ============================================================================
-// Cache Write
+// Graph Cache Write
 // ============================================================================
 
 /**
@@ -148,11 +191,292 @@ export async function saveGraph(
 }
 
 // ============================================================================
-// Cache Invalidation
+// Analysis Cache Read
 // ============================================================================
 
 /**
- * Clear the cache for a given output directory.
+ * Get a single cached module analysis.
+ *
+ * @param moduleId - Module ID to look up
+ * @param outputDir - Output directory
+ * @returns The cached analysis, or null if not found
+ */
+export function getCachedAnalysis(moduleId: string, outputDir: string): ModuleAnalysis | null {
+    const cachePath = getAnalysisCachePath(outputDir, moduleId);
+
+    if (!fs.existsSync(cachePath)) {
+        return null;
+    }
+
+    try {
+        const content = fs.readFileSync(cachePath, 'utf-8');
+        const cached = JSON.parse(content) as CachedAnalysis;
+        if (!cached.analysis || !cached.analysis.moduleId) {
+            return null;
+        }
+        return cached.analysis;
+    } catch {
+        return null; // Corrupted cache entry
+    }
+}
+
+/**
+ * Get all cached analyses if the cache is valid.
+ *
+ * @param outputDir - Output directory
+ * @returns Array of cached analyses, or null if cache is invalid/missing
+ */
+export function getCachedAnalyses(outputDir: string): ModuleAnalysis[] | null {
+    const metadataPath = getAnalysesMetadataPath(outputDir);
+
+    if (!fs.existsSync(metadataPath)) {
+        return null;
+    }
+
+    // Read metadata
+    let metadata: AnalysisCacheMetadata;
+    try {
+        const content = fs.readFileSync(metadataPath, 'utf-8');
+        metadata = JSON.parse(content) as AnalysisCacheMetadata;
+    } catch {
+        return null;
+    }
+
+    if (!metadata.gitHash || !metadata.moduleCount) {
+        return null;
+    }
+
+    // Read all analysis files
+    const analysesDir = getAnalysesCacheDir(outputDir);
+    const analyses: ModuleAnalysis[] = [];
+
+    try {
+        const files = fs.readdirSync(analysesDir);
+        for (const file of files) {
+            if (file === ANALYSES_METADATA_FILE || !file.endsWith('.json')) {
+                continue;
+            }
+
+            try {
+                const content = fs.readFileSync(path.join(analysesDir, file), 'utf-8');
+                const cached = JSON.parse(content) as CachedAnalysis;
+                if (cached.analysis && cached.analysis.moduleId) {
+                    analyses.push(cached.analysis);
+                }
+            } catch {
+                // Skip corrupted entries
+            }
+        }
+    } catch {
+        return null;
+    }
+
+    return analyses.length > 0 ? analyses : null;
+}
+
+/**
+ * Get the analyses cache metadata (for hash checking).
+ */
+export function getAnalysesCacheMetadata(outputDir: string): AnalysisCacheMetadata | null {
+    const metadataPath = getAnalysesMetadataPath(outputDir);
+    if (!fs.existsSync(metadataPath)) {
+        return null;
+    }
+
+    try {
+        const content = fs.readFileSync(metadataPath, 'utf-8');
+        return JSON.parse(content) as AnalysisCacheMetadata;
+    } catch {
+        return null;
+    }
+}
+
+// ============================================================================
+// Analysis Cache Write
+// ============================================================================
+
+/**
+ * Save a single module analysis to the cache.
+ *
+ * @param moduleId - Module ID
+ * @param analysis - The analysis to cache
+ * @param outputDir - Output directory
+ * @param gitHash - Git hash when the analysis was produced
+ */
+export function saveAnalysis(
+    moduleId: string,
+    analysis: ModuleAnalysis,
+    outputDir: string,
+    gitHash: string
+): void {
+    const analysesDir = getAnalysesCacheDir(outputDir);
+    const cachePath = getAnalysisCachePath(outputDir, moduleId);
+
+    fs.mkdirSync(analysesDir, { recursive: true });
+
+    const cached: CachedAnalysis = {
+        analysis,
+        gitHash,
+        timestamp: Date.now(),
+    };
+
+    fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
+}
+
+/**
+ * Save all analyses to the cache (bulk save with metadata).
+ *
+ * @param analyses - All module analyses
+ * @param outputDir - Output directory
+ * @param repoPath - Path to the git repository
+ */
+export async function saveAllAnalyses(
+    analyses: ModuleAnalysis[],
+    outputDir: string,
+    repoPath: string
+): Promise<void> {
+    const currentHash = await getRepoHeadHash(repoPath);
+    if (!currentHash) {
+        return; // Can't determine git hash
+    }
+
+    const analysesDir = getAnalysesCacheDir(outputDir);
+    fs.mkdirSync(analysesDir, { recursive: true });
+
+    // Write individual analysis files
+    for (const analysis of analyses) {
+        saveAnalysis(analysis.moduleId, analysis, outputDir, currentHash);
+    }
+
+    // Write metadata
+    const metadata: AnalysisCacheMetadata = {
+        gitHash: currentHash,
+        timestamp: Date.now(),
+        version: CACHE_VERSION,
+        moduleCount: analyses.length,
+    };
+
+    const metadataPath = getAnalysesMetadataPath(outputDir);
+    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+}
+
+// ============================================================================
+// Analysis Cache Invalidation
+// ============================================================================
+
+/**
+ * Clear all cached analyses.
+ *
+ * @param outputDir - Output directory
+ * @returns True if cache was cleared, false if no cache existed
+ */
+export function clearAnalysesCache(outputDir: string): boolean {
+    const analysesDir = getAnalysesCacheDir(outputDir);
+    if (!fs.existsSync(analysesDir)) {
+        return false;
+    }
+
+    try {
+        const files = fs.readdirSync(analysesDir);
+        for (const file of files) {
+            fs.unlinkSync(path.join(analysesDir, file));
+        }
+        fs.rmdirSync(analysesDir);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// ============================================================================
+// Incremental Rebuild
+// ============================================================================
+
+/**
+ * Determine which modules need re-analysis based on git changes.
+ *
+ * Algorithm:
+ * 1. Get changed files since the cached git hash
+ * 2. For each module, check if any changed file falls under module.path or matches module.keyFiles
+ * 3. Return affected module IDs
+ *
+ * @param graph - Module graph
+ * @param outputDir - Output directory (for cache access)
+ * @param repoPath - Path to the git repository
+ * @returns Array of module IDs that need re-analysis, or null if full rebuild needed
+ */
+export async function getModulesNeedingReanalysis(
+    graph: ModuleGraph,
+    outputDir: string,
+    repoPath: string
+): Promise<string[] | null> {
+    // Get cached analyses metadata
+    const metadata = getAnalysesCacheMetadata(outputDir);
+    if (!metadata || !metadata.gitHash) {
+        // No cache — full rebuild
+        return null;
+    }
+
+    // Get current git hash
+    const currentHash = await getRepoHeadHash(repoPath);
+    if (!currentHash) {
+        // Can't determine hash — full rebuild
+        return null;
+    }
+
+    // If same hash, nothing needs re-analysis
+    if (metadata.gitHash === currentHash) {
+        return [];
+    }
+
+    // Get changed files
+    const changedFiles = await getChangedFiles(repoPath, metadata.gitHash);
+    if (changedFiles === null) {
+        // Can't determine changes — full rebuild
+        return null;
+    }
+
+    if (changedFiles.length === 0) {
+        return [];
+    }
+
+    // Normalize changed file paths (forward slashes)
+    const normalizedChanged = changedFiles.map(f => f.replace(/\\/g, '/'));
+
+    // Check each module
+    const affectedModules: string[] = [];
+    for (const module of graph.modules) {
+        const modulePath = module.path.replace(/\\/g, '/').replace(/\/$/, '');
+        const keyFiles = module.keyFiles.map(f => f.replace(/\\/g, '/'));
+
+        const isAffected = normalizedChanged.some(changedFile => {
+            // Check if changed file is under the module's path
+            if (changedFile.startsWith(modulePath + '/') || changedFile === modulePath) {
+                return true;
+            }
+
+            // Check if changed file matches any key file
+            if (keyFiles.some(kf => changedFile === kf || changedFile.endsWith('/' + kf))) {
+                return true;
+            }
+
+            return false;
+        });
+
+        if (isAffected) {
+            affectedModules.push(module.id);
+        }
+    }
+
+    return affectedModules;
+}
+
+// ============================================================================
+// Graph Cache Invalidation
+// ============================================================================
+
+/**
+ * Clear the graph cache for a given output directory.
  *
  * @param outputDir - Output directory containing the cache
  * @returns True if cache was cleared, false if no cache existed
@@ -167,7 +491,7 @@ export function clearCache(outputDir: string): boolean {
 }
 
 /**
- * Check if a valid cache exists for the given configuration.
+ * Check if a valid graph cache exists for the given configuration.
  *
  * @param repoPath - Path to the git repository
  * @param outputDir - Output directory

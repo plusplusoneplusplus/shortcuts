@@ -74,7 +74,7 @@ export function createProgram(): Command {
 
     program
         .command('generate')
-        .description('Generate full wiki for a repository (Phase 2+3 — coming soon)')
+        .description('Generate full wiki for a repository (Discovery → Analysis → Articles)')
         .argument('<repo-path>', 'Path to the local git repository')
         .option('-o, --output <path>', 'Output directory for wiki', './wiki')
         .option('-m, --model <model>', 'AI model to use')
@@ -86,11 +86,21 @@ export function createProgram(): Command {
         .option('--phase <number>', 'Start from phase N (uses cached prior phases)', parseInt)
         .option('-v, --verbose', 'Verbose logging', false)
         .option('--no-color', 'Disable colored output')
-        .action(async (_repoPath: string, opts: Record<string, unknown>) => {
+        .action(async (repoPath: string, opts: Record<string, unknown>) => {
             applyGlobalOptions(opts);
 
             const { executeGenerate } = await import('./commands/generate');
-            const exitCode = executeGenerate();
+            const exitCode = await executeGenerate(repoPath, {
+                output: opts.output as string,
+                model: opts.model as string | undefined,
+                concurrency: opts.concurrency as number | undefined,
+                timeout: opts.timeout as number | undefined,
+                focus: opts.focus as string | undefined,
+                depth: (opts.depth as 'shallow' | 'normal' | 'deep') || 'normal',
+                force: Boolean(opts.force),
+                phase: opts.phase as number | undefined,
+                verbose: Boolean(opts.verbose),
+            });
             process.exit(exitCode);
         });
 

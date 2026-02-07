@@ -187,6 +187,214 @@ export interface StructuralScanResult {
 }
 
 // ============================================================================
+// Phase 2: Analysis Types
+// ============================================================================
+
+/**
+ * A key concept identified in a module.
+ */
+export interface KeyConcept {
+    /** Concept name */
+    name: string;
+    /** Description of the concept */
+    description: string;
+    /** Code reference (file:line or file path) */
+    codeRef?: string;
+}
+
+/**
+ * A public API entry point of a module.
+ */
+export interface PublicAPIEntry {
+    /** Function/class/constant name */
+    name: string;
+    /** Type signature or declaration */
+    signature: string;
+    /** Description of what it does */
+    description: string;
+}
+
+/**
+ * An illustrative code example from a module.
+ */
+export interface CodeExample {
+    /** Short title for the example */
+    title: string;
+    /** The code snippet */
+    code: string;
+    /** File path (relative to repo root) */
+    file?: string;
+    /** Line numbers [start, end] */
+    lines?: [number, number];
+}
+
+/**
+ * An internal dependency (another module in the same project).
+ */
+export interface InternalDependency {
+    /** Module ID of the dependency */
+    module: string;
+    /** How this module uses the dependency */
+    usage: string;
+}
+
+/**
+ * An external dependency (third-party package).
+ */
+export interface ExternalDependency {
+    /** Package name */
+    package: string;
+    /** How this module uses the package */
+    usage: string;
+}
+
+/**
+ * Deep analysis result for a single module — output of Phase 2 per-module AI session.
+ */
+export interface ModuleAnalysis {
+    /** Module ID (matches ModuleInfo.id) */
+    moduleId: string;
+    /** High-level overview paragraph */
+    overview: string;
+    /** Key concepts and abstractions */
+    keyConcepts: KeyConcept[];
+    /** Public API entries */
+    publicAPI: PublicAPIEntry[];
+    /** Internal architecture description */
+    internalArchitecture: string;
+    /** Data flow description */
+    dataFlow: string;
+    /** Design patterns used */
+    patterns: string[];
+    /** Error handling strategy */
+    errorHandling: string;
+    /** Illustrative code examples */
+    codeExamples: CodeExample[];
+    /** Dependencies (internal + external) */
+    dependencies: {
+        internal: InternalDependency[];
+        external: ExternalDependency[];
+    };
+    /** Suggested Mermaid diagram for the module */
+    suggestedDiagram: string;
+}
+
+/**
+ * Options for the analysis phase (Phase 2).
+ */
+export interface AnalysisOptions {
+    /** The discovered module graph */
+    graph: ModuleGraph;
+    /** AI model to use */
+    model?: string;
+    /** Timeout per module in milliseconds (default: 180000 = 3 min) */
+    timeout?: number;
+    /** Maximum parallel AI sessions (default: 5) */
+    concurrency?: number;
+    /** Analysis depth */
+    depth?: 'shallow' | 'normal' | 'deep';
+    /** Absolute path to the repository */
+    repoPath: string;
+}
+
+/**
+ * Result of the analysis phase (Phase 2).
+ */
+export interface AnalysisResult {
+    /** Per-module analysis results */
+    analyses: ModuleAnalysis[];
+    /** Total duration in milliseconds */
+    duration: number;
+    /** Token usage information (if available) */
+    tokenUsage?: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+    };
+}
+
+// ============================================================================
+// Phase 3: Writing Types
+// ============================================================================
+
+/**
+ * Type of generated article.
+ */
+export type ArticleType = 'module' | 'index' | 'architecture' | 'getting-started';
+
+/**
+ * A single generated wiki article.
+ */
+export interface GeneratedArticle {
+    /** Article type */
+    type: ArticleType;
+    /** URL-safe slug for the filename */
+    slug: string;
+    /** Human-readable title */
+    title: string;
+    /** Markdown content */
+    content: string;
+    /** Module ID (only for module articles) */
+    moduleId?: string;
+}
+
+/**
+ * Options for the writing phase (Phase 3).
+ */
+export interface WritingOptions {
+    /** The discovered module graph */
+    graph: ModuleGraph;
+    /** Per-module analysis results */
+    analyses: ModuleAnalysis[];
+    /** AI model to use */
+    model?: string;
+    /** Maximum parallel AI sessions (default: 10) */
+    concurrency?: number;
+    /** Timeout per article in milliseconds (default: 120000 = 2 min) */
+    timeout?: number;
+    /** Article depth */
+    depth?: 'shallow' | 'normal' | 'deep';
+}
+
+/**
+ * Output of the writing phase (Phase 3).
+ */
+export interface WikiOutput {
+    /** All generated articles */
+    articles: GeneratedArticle[];
+    /** Total duration in milliseconds */
+    duration: number;
+}
+
+// ============================================================================
+// Generate Command Options
+// ============================================================================
+
+/**
+ * Options for the `deep-wiki generate` command.
+ */
+export interface GenerateCommandOptions {
+    /** Output directory */
+    output: string;
+    /** AI model override */
+    model?: string;
+    /** Number of parallel AI sessions */
+    concurrency?: number;
+    /** Timeout in seconds per phase */
+    timeout?: number;
+    /** Focus on a specific subtree */
+    focus?: string;
+    /** Article detail level */
+    depth: 'shallow' | 'normal' | 'deep';
+    /** Ignore cache, regenerate everything */
+    force: boolean;
+    /** Start from phase N (1, 2, or 3) */
+    phase?: number;
+    /** Verbose logging */
+    verbose: boolean;
+}
+
+// ============================================================================
 // Cache Types
 // ============================================================================
 
@@ -212,4 +420,30 @@ export interface CachedGraph {
     metadata: CacheMetadata;
     /** The cached module graph */
     graph: ModuleGraph;
+}
+
+/**
+ * Metadata for cached analyses.
+ */
+export interface AnalysisCacheMetadata {
+    /** Git HEAD hash when analyses were created */
+    gitHash: string;
+    /** Timestamp when analyses were saved */
+    timestamp: number;
+    /** Deep-wiki version */
+    version: string;
+    /** Number of cached modules */
+    moduleCount: number;
+}
+
+/**
+ * A cached per-module analysis result.
+ */
+export interface CachedAnalysis {
+    /** The analysis result */
+    analysis: ModuleAnalysis;
+    /** Git hash when this analysis was created */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
 }

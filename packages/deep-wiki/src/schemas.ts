@@ -70,6 +70,100 @@ export const STRUCTURAL_SCAN_SCHEMA = `{
 }`;
 
 // ============================================================================
+// Module Analysis Schema (Phase 2 output)
+// ============================================================================
+
+/**
+ * JSON schema string for the ModuleAnalysis type.
+ * Used in analysis prompts to specify expected output format.
+ */
+export const MODULE_ANALYSIS_SCHEMA = `{
+  "moduleId": "string — must match the module ID provided",
+  "overview": "string — high-level overview paragraph",
+  "keyConcepts": [
+    {
+      "name": "string — concept name",
+      "description": "string — what this concept represents",
+      "codeRef": "string (optional) — file path or file:line reference"
+    }
+  ],
+  "publicAPI": [
+    {
+      "name": "string — function/class/constant name",
+      "signature": "string — type signature or declaration",
+      "description": "string — what it does"
+    }
+  ],
+  "internalArchitecture": "string — description of internal structure and design",
+  "dataFlow": "string — how data moves through this module",
+  "patterns": ["string — design patterns identified (e.g., Factory, Observer, Middleware)"],
+  "errorHandling": "string — error handling strategy description",
+  "codeExamples": [
+    {
+      "title": "string — short title",
+      "code": "string — the code snippet",
+      "file": "string (optional) — file path relative to repo root",
+      "lines": [0, 0]
+    }
+  ],
+  "dependencies": {
+    "internal": [
+      {
+        "module": "string — module ID",
+        "usage": "string — how this module uses it"
+      }
+    ],
+    "external": [
+      {
+        "package": "string — package name",
+        "usage": "string — how this module uses it"
+      }
+    ]
+  },
+  "suggestedDiagram": "string — Mermaid diagram code (e.g., graph TD; A-->B)"
+}`;
+
+/**
+ * JSON schema string for the reduce output (Phase 3 index/architecture generation).
+ */
+export const REDUCE_OUTPUT_SCHEMA = `{
+  "index": "string — full markdown content for index.md (categorized TOC, project overview, module summaries)",
+  "architecture": "string — full markdown content for architecture.md (high-level Mermaid diagram, layer descriptions)",
+  "gettingStarted": "string — full markdown content for getting-started.md (setup, build, run instructions)"
+}`;
+
+// ============================================================================
+// Module Analysis Validation Helpers
+// ============================================================================
+
+/**
+ * Required fields for a valid ModuleAnalysis
+ */
+export const MODULE_ANALYSIS_REQUIRED_FIELDS = ['moduleId', 'overview'] as const;
+
+/**
+ * Valid Mermaid diagram type keywords that a diagram should start with
+ */
+export const VALID_MERMAID_KEYWORDS = [
+    'graph', 'flowchart', 'sequenceDiagram', 'classDiagram', 'stateDiagram',
+    'erDiagram', 'gantt', 'pie', 'gitGraph', 'journey', 'mindmap',
+    'timeline', 'quadrantChart', 'sankey', 'xychart', 'block',
+] as const;
+
+/**
+ * Check if a string looks like a valid Mermaid diagram (starts with a known keyword).
+ */
+export function isValidMermaidDiagram(diagram: string): boolean {
+    if (!diagram || typeof diagram !== 'string') {
+        return false;
+    }
+    const trimmed = diagram.trim();
+    return VALID_MERMAID_KEYWORDS.some(keyword =>
+        trimmed.startsWith(keyword) || trimmed.startsWith(`${keyword}-`)
+    );
+}
+
+// ============================================================================
 // Validation Helpers
 // ============================================================================
 
