@@ -1354,6 +1354,83 @@ input:
             });
         });
 
+        suite('resolveWorkingDirectory', () => {
+            // Import the function directly - it's a pure function with no VS Code dependencies
+            const { resolveWorkingDirectory } = require('../../../shortcuts/yaml-pipeline/ui/pipeline-executor-service');
+
+            test('returns workspaceRoot when config has no workingDirectory', () => {
+                const config = { name: 'Test', input: {}, map: { prompt: 'test' }, reduce: { type: 'json' } };
+                const result = resolveWorkingDirectory(config, '/pipeline/pkg', '/workspace/root');
+                assert.strictEqual(result, '/workspace/root');
+            });
+
+            test('resolves relative workingDirectory against packagePath', () => {
+                const config = {
+                    name: 'Test',
+                    workingDirectory: '../../../frontend',
+                    input: {}, map: { prompt: 'test' }, reduce: { type: 'json' }
+                };
+                const result = resolveWorkingDirectory(config, '/workspace/.vscode/pipelines/my-pkg', '/workspace');
+                const expected = path.resolve('/workspace/.vscode/pipelines/my-pkg', '../../../frontend');
+                assert.strictEqual(result, expected);
+            });
+
+            test('uses absolute workingDirectory as-is', () => {
+                const absoluteDir = path.resolve('/opt/projects/frontend');
+                const config = {
+                    name: 'Test',
+                    workingDirectory: absoluteDir,
+                    input: {}, map: { prompt: 'test' }, reduce: { type: 'json' }
+                };
+                const result = resolveWorkingDirectory(config, '/pipeline/pkg', '/workspace');
+                assert.strictEqual(result, absoluteDir);
+            });
+
+            test('resolves dot path to packagePath', () => {
+                const config = {
+                    name: 'Test',
+                    workingDirectory: '.',
+                    input: {}, map: { prompt: 'test' }, reduce: { type: 'json' }
+                };
+                const packagePath = path.resolve('/workspace/.vscode/pipelines/my-pkg');
+                const result = resolveWorkingDirectory(config, packagePath, '/workspace');
+                assert.strictEqual(result, packagePath);
+            });
+
+            test('resolves subdirectory relative to packagePath', () => {
+                const config = {
+                    name: 'Test',
+                    workingDirectory: 'src',
+                    input: {}, map: { prompt: 'test' }, reduce: { type: 'json' }
+                };
+                const packagePath = path.resolve('/workspace/.vscode/pipelines/my-pkg');
+                const result = resolveWorkingDirectory(config, packagePath, '/workspace');
+                const expected = path.resolve(packagePath, 'src');
+                assert.strictEqual(result, expected);
+            });
+
+            test('returns workspaceRoot when workingDirectory is undefined', () => {
+                const config = {
+                    name: 'Test',
+                    workingDirectory: undefined,
+                    input: {}, map: { prompt: 'test' }, reduce: { type: 'json' }
+                };
+                const result = resolveWorkingDirectory(config, '/pipeline/pkg', '/workspace/root');
+                assert.strictEqual(result, '/workspace/root');
+            });
+
+            test('returns workspaceRoot when workingDirectory is empty string', () => {
+                // Empty string is falsy, so it should fall back to workspaceRoot
+                const config = {
+                    name: 'Test',
+                    workingDirectory: '',
+                    input: {}, map: { prompt: 'test' }, reduce: { type: 'json' }
+                };
+                const result = resolveWorkingDirectory(config, '/pipeline/pkg', '/workspace/root');
+                assert.strictEqual(result, '/workspace/root');
+            });
+        });
+
         suite('Pipeline Execution Cancellation', () => {
             test('cancelProcess cancels parent pipeline-execution process', () => {
                 const parentGroupId = processManager.registerProcessGroup(

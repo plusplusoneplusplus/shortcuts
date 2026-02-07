@@ -444,6 +444,8 @@ Define and execute AI-powered data processing pipelines via YAML configuration.
 ```yaml
 name: "Bug Triage"
 description: "Analyze and categorize bugs"
+# Optional: Working directory for AI SDK sessions (not for CSV/prompt resolution)
+# workingDirectory: "../../../frontend"  # Relative to pipeline package dir, or absolute
 
 input:
   type: csv

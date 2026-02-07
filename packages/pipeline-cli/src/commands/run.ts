@@ -145,10 +145,23 @@ export async function executeRun(
     setLogger(createCLILogger());
 
     // 6. Create AI invoker
+    // Working directory priority:
+    // 1. --workspace-root CLI flag (explicit override)
+    // 2. config.workingDirectory from YAML (resolved relative to pipeline dir)
+    // 3. pipeline directory (default fallback)
+    let workingDirectory: string;
+    if (options.workspaceRoot) {
+        workingDirectory = options.workspaceRoot;
+    } else if (config.workingDirectory) {
+        workingDirectory = path.resolve(pipelineDir, config.workingDirectory);
+    } else {
+        workingDirectory = pipelineDir;
+    }
+
     const invokerOptions: CLIAIInvokerOptions = {
         model: config.map.model || options.model,
         approvePermissions: options.approvePermissions,
-        workingDirectory: options.workspaceRoot || pipelineDir,
+        workingDirectory,
         timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
     };
 

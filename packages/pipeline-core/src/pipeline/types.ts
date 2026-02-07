@@ -37,6 +37,15 @@ export type {
 export interface PipelineConfig {
     /** Name of the pipeline */
     name: string;
+    /**
+     * Optional working directory for AI SDK sessions.
+     * Controls the file access context for AI calls (not CSV/prompt resolution).
+     * 
+     * - Absolute paths are used as-is
+     * - Relative paths are resolved relative to the pipeline package directory
+     * - If omitted, callers use their own default (VS Code uses workspaceRoot, CLI uses --workspace-root or pipeline dir)
+     */
+    workingDirectory?: string;
     /** Input configuration */
     input: InputConfig;
     /** Optional filter phase configuration */

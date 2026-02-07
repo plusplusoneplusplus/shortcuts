@@ -350,4 +350,95 @@ reduce:
             expect(exitCode).toBe(0);
         });
     });
+
+    // ========================================================================
+    // Working Directory
+    // ========================================================================
+
+    describe('workingDirectory in YAML', () => {
+        it('should use YAML workingDirectory when no --workspace-root', async () => {
+            const yamlPath = createPipeline(`
+name: "Working Dir Test"
+workingDirectory: "../frontend"
+input:
+  items:
+    - title: "Item 1"
+map:
+  prompt: "Process: {{title}}"
+  output:
+    - result
+reduce:
+  type: json
+`);
+            // No workspaceRoot in options
+            const exitCode = await executeRun(yamlPath, {
+                ...defaultOptions,
+                workspaceRoot: undefined,
+            });
+            expect(exitCode).toBe(0);
+        });
+
+        it('should use --workspace-root over YAML workingDirectory', async () => {
+            const yamlPath = createPipeline(`
+name: "Override Working Dir"
+workingDirectory: "../frontend"
+input:
+  items:
+    - title: "Item 1"
+map:
+  prompt: "Process: {{title}}"
+  output:
+    - result
+reduce:
+  type: json
+`);
+            // Explicit workspaceRoot in options should take precedence
+            const exitCode = await executeRun(yamlPath, {
+                ...defaultOptions,
+                workspaceRoot: tmpDir,
+            });
+            expect(exitCode).toBe(0);
+        });
+
+        it('should handle absolute workingDirectory in YAML', async () => {
+            const yamlPath = createPipeline(`
+name: "Absolute Working Dir"
+workingDirectory: "${tmpDir.replace(/\\/g, '/')}"
+input:
+  items:
+    - title: "Item 1"
+map:
+  prompt: "Process: {{title}}"
+  output:
+    - result
+reduce:
+  type: json
+`);
+            const exitCode = await executeRun(yamlPath, {
+                ...defaultOptions,
+                workspaceRoot: undefined,
+            });
+            expect(exitCode).toBe(0);
+        });
+
+        it('should fall back to pipeline dir when no workingDirectory and no --workspace-root', async () => {
+            const yamlPath = createPipeline(`
+name: "No Working Dir"
+input:
+  items:
+    - title: "Item 1"
+map:
+  prompt: "Process: {{title}}"
+  output:
+    - result
+reduce:
+  type: json
+`);
+            const exitCode = await executeRun(yamlPath, {
+                ...defaultOptions,
+                workspaceRoot: undefined,
+            });
+            expect(exitCode).toBe(0);
+        });
+    });
 });

@@ -1340,6 +1340,65 @@ reduce:
             expect(config.input.parameters![0].name).toBe('env');
             expect(config.input.parameters![0].value).toBe('production');
         });
+
+        it('parses YAML with workingDirectory field (relative path)', async () => {
+            const yaml = `
+name: "Working Dir Test"
+workingDirectory: "../../../frontend"
+input:
+  items:
+    - title: "Test"
+map:
+  prompt: "{{title}}"
+  output: [result]
+reduce:
+  type: json
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            expect(config.name).toBe('Working Dir Test');
+            expect(config.workingDirectory).toBe('../../../frontend');
+        });
+
+        it('parses YAML with workingDirectory field (absolute path)', async () => {
+            const yaml = `
+name: "Absolute Dir Test"
+workingDirectory: "/opt/projects/my-project"
+input:
+  items:
+    - title: "Test"
+map:
+  prompt: "{{title}}"
+  output: [result]
+reduce:
+  type: json
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            expect(config.name).toBe('Absolute Dir Test');
+            expect(config.workingDirectory).toBe('/opt/projects/my-project');
+        });
+
+        it('parses YAML without workingDirectory (backward compat)', async () => {
+            const yaml = `
+name: "No Working Dir"
+input:
+  items:
+    - title: "Test"
+map:
+  prompt: "{{title}}"
+  output: [result]
+reduce:
+  type: json
+`;
+
+            const config = await parsePipelineYAML(yaml);
+
+            expect(config.name).toBe('No Working Dir');
+            expect(config.workingDirectory).toBeUndefined();
+        });
     });
 
     describe('parsePipelineYAMLSync', () => {
@@ -1387,6 +1446,45 @@ reduce:
             expect(config.input.items).toBeTruthy();
             expect(config.input.items!.length).toBe(2);
             expect(config.reduce.type).toBe('json');
+        });
+
+        it('parses YAML synchronously with workingDirectory', () => {
+            const yaml = `
+name: "Sync Working Dir"
+workingDirectory: "../frontend/src"
+input:
+  items:
+    - title: "Test"
+map:
+  prompt: "{{title}}"
+  output: [result]
+reduce:
+  type: json
+`;
+
+            const config = parsePipelineYAMLSync(yaml);
+
+            expect(config.name).toBe('Sync Working Dir');
+            expect(config.workingDirectory).toBe('../frontend/src');
+        });
+
+        it('parses YAML synchronously without workingDirectory', () => {
+            const yaml = `
+name: "Sync No Working Dir"
+input:
+  items:
+    - title: "Test"
+map:
+  prompt: "{{title}}"
+  output: [result]
+reduce:
+  type: json
+`;
+
+            const config = parsePipelineYAMLSync(yaml);
+
+            expect(config.name).toBe('Sync No Working Dir');
+            expect(config.workingDirectory).toBeUndefined();
         });
     });
 

@@ -31,6 +31,31 @@ import {
 import { PipelineInfo } from './types';
 
 /**
+ * Resolve the working directory for AI SDK sessions.
+ * 
+ * Priority:
+ * 1. If config.workingDirectory is set:
+ *    - Absolute paths are used as-is
+ *    - Relative paths are resolved relative to the pipeline package directory
+ * 2. Otherwise, fall back to the provided workspaceRoot
+ * 
+ * @param config Pipeline configuration (may have workingDirectory)
+ * @param packagePath Pipeline package directory (for resolving relative paths)
+ * @param workspaceRoot Workspace root as default fallback
+ * @returns Resolved working directory path
+ */
+export function resolveWorkingDirectory(
+    config: PipelineConfig,
+    packagePath: string,
+    workspaceRoot: string
+): string {
+    if (config.workingDirectory) {
+        return path.resolve(packagePath, config.workingDirectory);
+    }
+    return workspaceRoot;
+}
+
+/**
  * Options for pipeline execution
  */
 export interface PipelineExecutionOptions {
@@ -100,13 +125,16 @@ export async function executeVSCodePipeline(
         );
     }
 
+    // Resolve working directory: config.workingDirectory takes precedence over workspaceRoot
+    const effectiveWorkingDirectory = resolveWorkingDirectory(config, pipeline.packagePath, workspaceRoot);
+
     // Create AI invoker using the unified factory
     // The invoker receives per-item model from options (resolved from template like {{model}})
     const defaultModel = getAIModelSetting();
 
     const aiInvoker: AIInvoker = createAIInvoker({
         usePool: true, // Use session pool for parallel pipeline execution
-        workingDirectory: workspaceRoot,
+        workingDirectory: effectiveWorkingDirectory,
         model: defaultModel,
         featureName: 'Pipeline'
     });
@@ -254,12 +282,15 @@ export async function executeVSCodePipelineWithItems(
         );
     }
 
+    // Resolve working directory: config.workingDirectory takes precedence over workspaceRoot
+    const effectiveWorkingDirectory = resolveWorkingDirectory(config, pipeline.packagePath, workspaceRoot);
+
     // Create AI invoker using the unified factory
     const defaultModel = getAIModelSetting();
 
     const aiInvoker: AIInvoker = createAIInvoker({
         usePool: true, // Use session pool for parallel pipeline execution
-        workingDirectory: workspaceRoot,
+        workingDirectory: effectiveWorkingDirectory,
         model: defaultModel,
         featureName: 'Pipeline'
     });
