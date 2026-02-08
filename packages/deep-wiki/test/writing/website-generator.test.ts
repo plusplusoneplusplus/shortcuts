@@ -399,19 +399,6 @@ describe('generateHtmlTemplate — mermaid diagram styling', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain('pre.mermaid svg');
         expect(html).toContain('height: auto');
-        expect(html).toContain('min-width: 600px');
-    });
-
-    it('should include mermaid-wrapper class for breakout layout', () => {
-        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('.mermaid-wrapper');
-        expect(html).toContain('overflow-x: auto');
-    });
-
-    it('should include mermaid-wrapper DOM creation in script', () => {
-        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain("wrapper.className = 'mermaid-wrapper'");
-        expect(html).toContain('wrapper.appendChild(pre)');
     });
 
     it('should configure mermaid flowchart with useMaxWidth false', () => {
@@ -430,17 +417,6 @@ describe('generateHtmlTemplate — mermaid diagram styling', () => {
         expect(html).toContain('rankSpacing: 50');
     });
 
-    it('should include responsive mermaid-wrapper styles for mobile', () => {
-        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        // Check that mobile responsive styles include mermaid wrapper adjustments
-        expect(html).toContain('.mermaid-wrapper pre.mermaid');
-    });
-
-    it('should have center alignment for mermaid diagrams', () => {
-        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('text-align: center');
-    });
-
     it('should configure mermaid flowchart with htmlLabels enabled', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain('htmlLabels: true');
@@ -448,7 +424,6 @@ describe('generateHtmlTemplate — mermaid diagram styling', () => {
 
     it('should set mermaid padding to remove code block padding', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        // CSS should set padding: 0 for mermaid pre elements (not the code block 16px)
         expect(html).toMatch(/pre\.mermaid\s*\{[^}]*padding:\s*0/);
     });
 
@@ -457,8 +432,195 @@ describe('generateHtmlTemplate — mermaid diagram styling', () => {
         for (const theme of themes) {
             const html = generateHtmlTemplate({ theme, title: 'Test', enableSearch: true });
             expect(html).toContain('pre.mermaid');
-            expect(html).toContain('.mermaid-wrapper');
+            expect(html).toContain('.mermaid-container');
             expect(html).toContain('useMaxWidth: false');
+        }
+    });
+});
+
+// ============================================================================
+// Mermaid Zoom & Pan
+// ============================================================================
+
+describe('generateHtmlTemplate — mermaid zoom and pan', () => {
+    // --- Container structure ---
+    it('should include mermaid-container class in CSS', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.mermaid-container');
+    });
+
+    it('should build mermaid-container DOM in script', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("container.className = 'mermaid-container'");
+    });
+
+    // --- Toolbar ---
+    it('should include mermaid-toolbar with label', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('mermaid-toolbar');
+        expect(html).toContain('mermaid-toolbar-label');
+    });
+
+    it('should include zoom in button', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('mermaid-zoom-in');
+        expect(html).toContain('Zoom in');
+    });
+
+    it('should include zoom out button', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('mermaid-zoom-out');
+        expect(html).toContain('Zoom out');
+    });
+
+    it('should include zoom reset button', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('mermaid-zoom-reset');
+        expect(html).toContain('Reset view');
+    });
+
+    it('should include zoom level display', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('mermaid-zoom-level');
+        expect(html).toContain('100%');
+    });
+
+    // --- Zoom button CSS ---
+    it('should style zoom buttons with hover and active states', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.mermaid-zoom-btn');
+        expect(html).toContain('.mermaid-zoom-btn:hover');
+        expect(html).toContain('.mermaid-zoom-btn:active');
+    });
+
+    it('should style zoom level display', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.mermaid-zoom-level');
+        expect(html).toContain('min-width: 42px');
+    });
+
+    // --- Viewport & SVG wrapper ---
+    it('should include mermaid-viewport class with grab cursor', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.mermaid-viewport');
+        expect(html).toContain('cursor: grab');
+    });
+
+    it('should include mermaid-svg-wrapper with transform-origin', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.mermaid-svg-wrapper');
+        expect(html).toContain('transform-origin: 0 0');
+    });
+
+    it('should disable transition during drag', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.mermaid-dragging .mermaid-svg-wrapper');
+        expect(html).toContain('transition: none');
+    });
+
+    it('should change cursor to grabbing during drag', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.mermaid-viewport.mermaid-dragging');
+        expect(html).toContain('cursor: grabbing');
+    });
+
+    // --- Zoom/Pan JS logic ---
+    it('should define zoom constants', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('MERMAID_MIN_ZOOM = 0.25');
+        expect(html).toContain('MERMAID_MAX_ZOOM = 4');
+        expect(html).toContain('MERMAID_ZOOM_STEP = 0.25');
+    });
+
+    it('should define initMermaidZoom function', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('function initMermaidZoom()');
+    });
+
+    it('should call initMermaidZoom after mermaid rendering', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('initMermaid().then(function() { initMermaidZoom(); })');
+    });
+
+    it('should implement applyTransform with translate and scale', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('applyTransform');
+        expect(html).toContain("'translate('");
+        expect(html).toContain("'px) scale('");
+    });
+
+    it('should implement ctrl/cmd + wheel zoom', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('e.ctrlKey');
+        expect(html).toContain('e.metaKey');
+        expect(html).toContain("'wheel'");
+        expect(html).toContain('passive: false');
+    });
+
+    it('should implement mouse drag panning', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("'mousedown'");
+        expect(html).toContain("'mousemove'");
+        expect(html).toContain("'mouseup'");
+        expect(html).toContain('isDragging');
+    });
+
+    it('should clamp zoom in to MAX_ZOOM', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('Math.min(MERMAID_MAX_ZOOM');
+    });
+
+    it('should clamp zoom out to MIN_ZOOM', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('Math.max(MERMAID_MIN_ZOOM');
+    });
+
+    it('should implement zoom-toward-cursor for wheel zoom', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // Zoom toward cursor uses getBoundingClientRect and adjusts translate
+        expect(html).toContain('getBoundingClientRect');
+        expect(html).toContain('e.clientX - rect.left');
+        expect(html).toContain('e.clientY - rect.top');
+    });
+
+    it('should reset zoom to scale 1 and translate 0 on reset button', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('state.scale = 1');
+        expect(html).toContain('state.translateX = 0');
+        expect(html).toContain('state.translateY = 0');
+    });
+
+    it('should add and remove mermaid-dragging class during drag', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("viewport.classList.add('mermaid-dragging')");
+        expect(html).toContain("viewport.classList.remove('mermaid-dragging')");
+    });
+
+    it('should return Promise.resolve from initMermaid when no blocks', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('return Promise.resolve()');
+    });
+
+    it('should return mermaid.run promise from initMermaid', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('return mermaid.run(');
+    });
+
+    // --- Responsive ---
+    it('should include responsive mermaid-container styles for mobile', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.mermaid-container');
+        expect(html).toContain('@media (max-width: 768px)');
+    });
+
+    // --- Cross-theme ---
+    it('zoom/pan should be present across all themes', () => {
+        const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
+        for (const theme of themes) {
+            const html = generateHtmlTemplate({ theme, title: 'Test', enableSearch: true });
+            expect(html).toContain('mermaid-container');
+            expect(html).toContain('initMermaidZoom');
+            expect(html).toContain('MERMAID_ZOOM_STEP');
         }
     });
 });
