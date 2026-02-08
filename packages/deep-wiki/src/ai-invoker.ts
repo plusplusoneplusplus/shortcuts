@@ -3,7 +3,7 @@
  *
  * Creates AIInvoker instances for different phases of deep-wiki generation.
  * Phase 2 (Analysis) uses direct sessions with MCP tools for code investigation.
- * Phase 3 (Writing) uses session pool without tools for article generation.
+ * Phase 3 (Writing) uses direct sessions without tools for article generation.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -39,7 +39,7 @@ export interface AnalysisInvokerOptions {
 
 /**
  * Options for creating a writing invoker (Phase 3).
- * Uses session pool without tools for article generation.
+ * Uses direct sessions without tools for article generation.
  */
 export interface WritingInvokerOptions {
     /** AI model to use */
@@ -147,7 +147,7 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
 /**
  * Create an AIInvoker for Phase 3 (Article Writing).
  *
- * Uses session pool (usePool: true) without tools for efficient
+ * Uses direct sessions (usePool: false) without tools for
  * article generation. No MCP tools are needed since all context
  * is provided in the prompt.
  */
@@ -163,7 +163,7 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
                 prompt,
                 model,
                 timeoutMs,
-                usePool: true, // Session pool — no tools needed
+                usePool: false, // Direct session — consistent with all deep-wiki phases
             };
 
             const result = await service.sendMessage(sendOptions);

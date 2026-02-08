@@ -229,14 +229,14 @@ describe('AI Invoker Factory', () => {
     // ========================================================================
 
     describe('createWritingInvoker', () => {
-        it('should use session pool (usePool: true)', async () => {
+        it('should use direct session (usePool: false)', async () => {
             mockSendMessage.mockResolvedValue({ success: true, response: 'ok' });
 
             const invoker = createWritingInvoker({});
             await invoker('test');
 
             const callArgs = mockSendMessage.mock.calls[0][0];
-            expect(callArgs.usePool).toBe(true);
+            expect(callArgs.usePool).toBe(false);
         });
 
         it('should not configure any tools', async () => {
