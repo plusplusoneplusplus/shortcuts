@@ -8,7 +8,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ModuleAnalysis, ModuleGraph, ModuleInfo } from '../types';
+import type { ModuleAnalysis, ModuleGraph, ModuleInfo, AreaInfo } from '../types';
 
 // ============================================================================
 // Simplified Graph for Cross-Linking
@@ -96,6 +96,8 @@ export function buildModuleArticlePrompt(
     // Find module info for additional context
     const moduleInfo = graph.modules.find(m => m.id === analysis.moduleId);
     const moduleName = moduleInfo?.name || analysis.moduleId;
+    const areaId = moduleInfo?.area;
+    const crossLinkRules = buildCrossLinkRules(areaId);
 
     return `You are writing a wiki article for the "${moduleName}" module.
 
@@ -118,12 +120,7 @@ ${simplifiedGraph}
 ## Instructions
 ${styleGuide}
 
-## Cross-Linking Rules
-
-- Link to other modules using relative paths: [Module Name](./modules/module-id.md)
-- For the index page, link as: [Module Name](./modules/module-id.md)
-- Use the module graph above to find valid module IDs for links
-- Only link to modules that actually exist in the graph
+${crossLinkRules}
 
 ## Mermaid Diagrams
 
@@ -144,14 +141,45 @@ Do NOT write, create, or save any files to disk. Return ONLY the markdown conten
 }
 
 /**
+ * Build cross-linking rules based on whether areas exist (hierarchical layout).
+ *
+ * @param areaId - The area this module belongs to (undefined for flat layout)
+ * @returns Cross-linking rules string for prompt
+ */
+export function buildCrossLinkRules(areaId?: string): string {
+    if (!areaId) {
+        // Flat layout (small repos)
+        return `## Cross-Linking Rules
+
+- Link to other modules using relative paths: [Module Name](./modules/module-id.md)
+- For the index page, link as: [Module Name](./modules/module-id.md)
+- Use the module graph above to find valid module IDs for links
+- Only link to modules that actually exist in the graph`;
+    }
+
+    // Hierarchical layout (large repos with areas)
+    return `## Cross-Linking Rules
+
+- This article is located at: areas/${areaId}/modules/<this-module>.md
+- Link to modules in the SAME area: [Module Name](./module-id.md) (they are sibling files)
+- Link to modules in OTHER areas: [Module Name](../../other-area-id/modules/module-id.md)
+- Link to this area's index: [Area Index](../index.md)
+- Link to the project index: [Project Index](../../../index.md)
+- Use the module graph above to find valid module IDs and their areas for links
+- Only link to modules that actually exist in the graph`;
+}
+
+/**
  * Build the prompt template for the map-reduce framework.
  * Uses {{variable}} placeholders for template substitution.
  *
  * @param depth Article depth
+ * @param areaId Optional area ID for hierarchical cross-linking
  * @returns Prompt template string
  */
-export function buildModuleArticlePromptTemplate(depth: 'shallow' | 'normal' | 'deep'): string {
+export function buildModuleArticlePromptTemplate(depth: 'shallow' | 'normal' | 'deep', areaId?: string): string {
     const styleGuide = getArticleStyleGuide(depth);
+    const crossLinkRules = buildCrossLinkRules(areaId);
 
     return `You are writing a wiki article for the "{{moduleName}}" module.
 
@@ -174,12 +202,7 @@ Use this to create cross-references to other modules:
 ## Instructions
 ${styleGuide}
 
-## Cross-Linking Rules
-
-- Link to other modules using relative paths: [Module Name](./modules/module-id.md)
-- For the index page, link as: [Module Name](./modules/module-id.md)
-- Use the module graph above to find valid module IDs for links
-- Only link to modules that actually exist in the graph
+${crossLinkRules}
 
 ## Mermaid Diagrams
 

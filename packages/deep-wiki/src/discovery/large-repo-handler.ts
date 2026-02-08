@@ -18,9 +18,11 @@ import type {
     ModuleGraph,
     ModuleInfo,
     CategoryInfo,
+    AreaInfo,
     StructuralScanResult,
     TopLevelArea,
 } from '../types';
+import { normalizeModuleId } from '../schemas';
 import { buildStructuralScanPrompt, buildFocusedDiscoveryPrompt } from './prompts';
 import { parseStructuralScanResponse, parseModuleGraphResponse } from './response-parser';
 
@@ -224,6 +226,8 @@ async function discoverArea(
  * Merge multiple sub-graphs from area discoveries into a unified ModuleGraph.
  *
  * - Deduplicates modules by ID
+ * - Tags each module with its area slug
+ * - Populates graph.areas from TopLevelArea[]
  * - Merges categories (deduplicating by name)
  * - Resolves cross-area dependencies
  * - Combines architecture notes
@@ -242,12 +246,30 @@ export function mergeSubGraphs(
         entryPoints: firstProject.entryPoints,
     };
 
-    // Merge modules (deduplicate by ID)
+    // Build area-to-graph mapping for tagging modules with their area
+    // Each sub-graph corresponds to one area (same order as scanResult.areas)
+    const areaModuleMap = new Map<string, string[]>();
+
+    // Merge modules (deduplicate by ID) and tag with area slug
     const moduleMap = new Map<string, ModuleInfo>();
-    for (const graph of subGraphs) {
+    for (let i = 0; i < subGraphs.length; i++) {
+        const graph = subGraphs[i];
+        const area = scanResult.areas[i];
+        const areaSlug = area ? normalizeModuleId(area.path) : undefined;
+
         for (const mod of graph.modules) {
             if (!moduleMap.has(mod.id)) {
-                moduleMap.set(mod.id, mod);
+                // Tag module with its area
+                const taggedMod = areaSlug ? { ...mod, area: areaSlug } : mod;
+                moduleMap.set(mod.id, taggedMod);
+
+                // Track which modules belong to each area
+                if (areaSlug) {
+                    if (!areaModuleMap.has(areaSlug)) {
+                        areaModuleMap.set(areaSlug, []);
+                    }
+                    areaModuleMap.get(areaSlug)!.push(mod.id);
+                }
             }
         }
     }
@@ -277,10 +299,25 @@ export function mergeSubGraphs(
         .filter(Boolean)
         .join('\n\n');
 
+    // Build AreaInfo[] from TopLevelArea[] + module assignments
+    const areas: AreaInfo[] | undefined = scanResult.areas.length > 0
+        ? scanResult.areas.map(topLevelArea => {
+            const areaSlug = normalizeModuleId(topLevelArea.path);
+            return {
+                id: areaSlug,
+                name: topLevelArea.name,
+                path: topLevelArea.path,
+                description: topLevelArea.description,
+                modules: areaModuleMap.get(areaSlug) || [],
+            };
+        })
+        : undefined;
+
     return {
         project,
         modules,
         categories,
         architectureNotes,
+        ...(areas ? { areas } : {}),
     };
 }

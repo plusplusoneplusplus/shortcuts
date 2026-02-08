@@ -518,8 +518,13 @@ export function getArticlesCacheDir(outputDir: string): string {
 
 /**
  * Get the path to a single cached article file.
+ * When areaId is provided, articles are cached under `articles/{area-id}/{module-id}.json`.
+ * Without areaId, articles are cached as `articles/{module-id}.json` (backward compat).
  */
-export function getArticleCachePath(outputDir: string, moduleId: string): string {
+export function getArticleCachePath(outputDir: string, moduleId: string, areaId?: string): string {
+    if (areaId) {
+        return path.join(getArticlesCacheDir(outputDir), areaId, `${moduleId}.json`);
+    }
     return path.join(getArticlesCacheDir(outputDir), `${moduleId}.json`);
 }
 
@@ -536,32 +541,42 @@ export function getArticlesMetadataPath(outputDir: string): string {
 
 /**
  * Get a single cached module article.
+ * Checks area-scoped path first (if areaId provided), then flat path.
  *
  * @param moduleId - Module ID to look up
  * @param outputDir - Output directory
+ * @param areaId - Optional area ID for hierarchical lookup
  * @returns The cached article, or null if not found
  */
-export function getCachedArticle(moduleId: string, outputDir: string): GeneratedArticle | null {
-    const cachePath = getArticleCachePath(outputDir, moduleId);
+export function getCachedArticle(moduleId: string, outputDir: string, areaId?: string): GeneratedArticle | null {
+    // Try area-scoped path first, then flat path
+    const pathsToTry = areaId
+        ? [getArticleCachePath(outputDir, moduleId, areaId), getArticleCachePath(outputDir, moduleId)]
+        : [getArticleCachePath(outputDir, moduleId)];
 
-    if (!fs.existsSync(cachePath)) {
-        return null;
-    }
-
-    try {
-        const content = fs.readFileSync(cachePath, 'utf-8');
-        const cached = JSON.parse(content) as CachedArticle;
-        if (!cached.article || !cached.article.slug) {
-            return null;
+    for (const cachePath of pathsToTry) {
+        if (!fs.existsSync(cachePath)) {
+            continue;
         }
-        return cached.article;
-    } catch {
-        return null; // Corrupted cache entry
+
+        try {
+            const content = fs.readFileSync(cachePath, 'utf-8');
+            const cached = JSON.parse(content) as CachedArticle;
+            if (!cached.article || !cached.article.slug) {
+                continue;
+            }
+            return cached.article;
+        } catch {
+            continue; // Corrupted cache entry
+        }
     }
+
+    return null;
 }
 
 /**
  * Get all cached articles if the cache is valid (has metadata).
+ * Supports both flat and area-scoped directory layouts.
  *
  * @param outputDir - Output directory
  * @returns Array of cached articles, or null if cache is invalid/missing
@@ -586,25 +601,48 @@ export function getCachedArticles(outputDir: string): GeneratedArticle[] | null 
         return null;
     }
 
-    // Read all article files
+    // Read all article files (flat + area-scoped)
     const articlesDir = getArticlesCacheDir(outputDir);
     const articles: GeneratedArticle[] = [];
 
     try {
-        const files = fs.readdirSync(articlesDir);
-        for (const file of files) {
-            if (file === ANALYSES_METADATA_FILE || !file.endsWith('.json')) {
+        const entries = fs.readdirSync(articlesDir, { withFileTypes: true });
+        for (const entry of entries) {
+            if (entry.name === ANALYSES_METADATA_FILE) {
                 continue;
             }
 
-            try {
-                const content = fs.readFileSync(path.join(articlesDir, file), 'utf-8');
-                const cached = JSON.parse(content) as CachedArticle;
-                if (cached.article && cached.article.slug) {
-                    articles.push(cached.article);
+            if (entry.isFile() && entry.name.endsWith('.json')) {
+                // Flat layout: articles/{module-id}.json
+                try {
+                    const content = fs.readFileSync(path.join(articlesDir, entry.name), 'utf-8');
+                    const cached = JSON.parse(content) as CachedArticle;
+                    if (cached.article && cached.article.slug) {
+                        articles.push(cached.article);
+                    }
+                } catch {
+                    // Skip corrupted entries
                 }
-            } catch {
-                // Skip corrupted entries
+            } else if (entry.isDirectory()) {
+                // Area-scoped layout: articles/{area-id}/{module-id}.json
+                const areaDir = path.join(articlesDir, entry.name);
+                try {
+                    const areaFiles = fs.readdirSync(areaDir);
+                    for (const file of areaFiles) {
+                        if (!file.endsWith('.json')) { continue; }
+                        try {
+                            const content = fs.readFileSync(path.join(areaDir, file), 'utf-8');
+                            const cached = JSON.parse(content) as CachedArticle;
+                            if (cached.article && cached.article.slug) {
+                                articles.push(cached.article);
+                            }
+                        } catch {
+                            // Skip corrupted entries
+                        }
+                    }
+                } catch {
+                    // Skip inaccessible area directories
+                }
             }
         }
     } catch {
@@ -637,6 +675,7 @@ export function getArticlesCacheMetadata(outputDir: string): AnalysisCacheMetada
 
 /**
  * Save a single module article to the cache.
+ * Area-scoped articles are cached under `articles/{area-id}/{module-id}.json`.
  *
  * @param moduleId - Module ID
  * @param article - The article to cache
@@ -649,10 +688,11 @@ export function saveArticle(
     outputDir: string,
     gitHash: string
 ): void {
-    const articlesDir = getArticlesCacheDir(outputDir);
-    const cachePath = getArticleCachePath(outputDir, moduleId);
+    const areaId = article.areaId;
+    const cachePath = getArticleCachePath(outputDir, moduleId, areaId);
 
-    fs.mkdirSync(articlesDir, { recursive: true });
+    // Ensure parent directory exists (handles area subdirectories too)
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
 
     const cached: CachedArticle = {
         article,
@@ -680,13 +720,13 @@ export async function saveAllArticles(
         return; // Can't determine git hash
     }
 
-    // Only cache module-type articles (not index/architecture/getting-started)
+    // Only cache module-type articles (not index/architecture/getting-started/area-*)
     const moduleArticles = articles.filter(a => a.type === 'module' && a.moduleId);
 
     const articlesDir = getArticlesCacheDir(outputDir);
     fs.mkdirSync(articlesDir, { recursive: true });
 
-    // Write individual article files
+    // Write individual article files (saveArticle handles area subdirectories)
     for (const article of moduleArticles) {
         saveArticle(article.moduleId!, article, outputDir, currentHash);
     }
@@ -704,11 +744,46 @@ export async function saveAllArticles(
 }
 
 /**
+ * Find all possible cache paths for a module article (checks area subdirectories + flat).
+ * Returns the first existing path, or null if none found.
+ */
+function findArticleCachePath(outputDir: string, moduleId: string): string | null {
+    // Check flat path first
+    const flatPath = getArticleCachePath(outputDir, moduleId);
+    if (fs.existsSync(flatPath)) {
+        return flatPath;
+    }
+
+    // Check area subdirectories
+    const articlesDir = getArticlesCacheDir(outputDir);
+    if (fs.existsSync(articlesDir)) {
+        try {
+            const entries = fs.readdirSync(articlesDir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isDirectory() && entry.name !== '_metadata.json') {
+                    const areaPath = path.join(articlesDir, entry.name, `${moduleId}.json`);
+                    if (fs.existsSync(areaPath)) {
+                        return areaPath;
+                    }
+                }
+            }
+        } catch {
+            // Ignore errors scanning area dirs
+        }
+    }
+
+    return null;
+}
+
+/**
  * Scan for individually cached articles (even without metadata).
  *
  * This is used for crash recovery: if the process was interrupted before
  * `saveAllArticles` wrote the metadata file, individual per-module files
  * may still exist from incremental saves via `onItemComplete`.
+ *
+ * Supports both flat (`articles/{module-id}.json`) and area-scoped
+ * (`articles/{area-id}/{module-id}.json`) cache layouts.
  *
  * @param moduleIds - Module IDs to look for in the cache
  * @param outputDir - Output directory
@@ -725,8 +800,8 @@ export function scanIndividualArticlesCache(
     const missing: string[] = [];
 
     for (const moduleId of moduleIds) {
-        const cachePath = getArticleCachePath(outputDir, moduleId);
-        if (!fs.existsSync(cachePath)) {
+        const cachePath = findArticleCachePath(outputDir, moduleId);
+        if (!cachePath) {
             missing.push(moduleId);
             continue;
         }
@@ -755,6 +830,8 @@ export function scanIndividualArticlesCache(
 /**
  * Scan for individually cached articles, ignoring git hash validation.
  *
+ * Supports both flat and area-scoped cache layouts.
+ *
  * @param moduleIds - Module IDs to look for in the cache
  * @param outputDir - Output directory
  * @returns Object with `found` (valid cached articles) and `missing` (module IDs not found)
@@ -767,8 +844,8 @@ export function scanIndividualArticlesCacheAny(
     const missing: string[] = [];
 
     for (const moduleId of moduleIds) {
-        const cachePath = getArticleCachePath(outputDir, moduleId);
-        if (!fs.existsSync(cachePath)) {
+        const cachePath = findArticleCachePath(outputDir, moduleId);
+        if (!cachePath) {
             missing.push(moduleId);
             continue;
         }
@@ -794,7 +871,7 @@ export function scanIndividualArticlesCacheAny(
 // ============================================================================
 
 /**
- * Clear all cached articles.
+ * Clear all cached articles (including area subdirectories).
  *
  * @param outputDir - Output directory
  * @returns True if cache was cleared, false if no cache existed
@@ -806,11 +883,7 @@ export function clearArticlesCache(outputDir: string): boolean {
     }
 
     try {
-        const files = fs.readdirSync(articlesDir);
-        for (const file of files) {
-            fs.unlinkSync(path.join(articlesDir, file));
-        }
-        fs.rmdirSync(articlesDir);
+        fs.rmSync(articlesDir, { recursive: true, force: true });
         return true;
     } catch {
         return false;

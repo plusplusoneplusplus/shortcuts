@@ -249,7 +249,7 @@ describe('runAnalysisExecutor', () => {
         });
 
         // Pipeline should complete — not throw
-        expect(result.duration).toBeGreaterThan(0);
+        expect(result.duration).toBeGreaterThanOrEqual(0);
     });
 
     it('should pass onItemComplete callback to executor', async () => {

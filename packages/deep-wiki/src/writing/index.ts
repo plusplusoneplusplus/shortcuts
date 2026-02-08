@@ -12,9 +12,9 @@ import type { AIInvoker, JobProgress, ItemCompleteCallback } from '@plusplusonep
 import { runArticleExecutor } from './article-executor';
 
 // Re-export for convenience
-export { buildModuleArticlePrompt, buildModuleArticlePromptTemplate, buildSimplifiedGraph, getArticleStyleGuide } from './prompts';
-export { buildReducePromptTemplate, getReduceOutputFields, buildModuleSummaryForReduce } from './reduce-prompts';
-export { runArticleExecutor, analysisToPromptItem, generateStaticIndexPages } from './article-executor';
+export { buildModuleArticlePrompt, buildModuleArticlePromptTemplate, buildSimplifiedGraph, getArticleStyleGuide, buildCrossLinkRules } from './prompts';
+export { buildReducePromptTemplate, getReduceOutputFields, buildModuleSummaryForReduce, buildAreaReducePromptTemplate, getAreaReduceOutputFields, buildHierarchicalReducePromptTemplate } from './reduce-prompts';
+export { runArticleExecutor, analysisToPromptItem, generateStaticIndexPages, generateStaticAreaPages, generateStaticHierarchicalIndexPages } from './article-executor';
 export { writeWikiOutput, getArticleFilePath, slugify, normalizeLineEndings } from './file-writer';
 export type { ArticleExecutorOptions, ArticleExecutorResult } from './article-executor';
 

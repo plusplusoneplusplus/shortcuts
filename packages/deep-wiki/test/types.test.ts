@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { isValidModuleId, normalizeModuleId, MODULE_GRAPH_REQUIRED_FIELDS, PROJECT_INFO_REQUIRED_FIELDS, MODULE_INFO_REQUIRED_FIELDS, VALID_COMPLEXITY_VALUES, MODULE_GRAPH_SCHEMA, STRUCTURAL_SCAN_SCHEMA } from '../src/schemas';
-import type { ModuleGraph, ModuleInfo, ProjectInfo, CategoryInfo, DiscoveryOptions, DiscoveryResult, DeepWikiConfig, DiscoverCommandOptions, TopLevelArea, StructuralScanResult, CacheMetadata, CachedGraph } from '../src/types';
+import type { ModuleGraph, ModuleInfo, ProjectInfo, CategoryInfo, DiscoveryOptions, DiscoveryResult, DeepWikiConfig, DiscoverCommandOptions, TopLevelArea, StructuralScanResult, CacheMetadata, CachedGraph, AreaInfo, GeneratedArticle, ArticleType } from '../src/types';
 
 describe('Types and Schemas', () => {
     // ========================================================================
@@ -280,6 +280,198 @@ describe('Types and Schemas', () => {
                 verbose: true,
             };
             expect(opts.output).toBe('./wiki');
+        });
+    });
+
+    // ========================================================================
+    // AreaInfo Type
+    // ========================================================================
+
+    describe('AreaInfo type', () => {
+        it('should allow constructing valid AreaInfo', () => {
+            const area: AreaInfo = {
+                id: 'packages-core',
+                name: 'packages/core',
+                path: 'packages/core',
+                description: 'Core library modules',
+                modules: ['auth', 'database'],
+            };
+            expect(area.id).toBe('packages-core');
+            expect(area.modules).toHaveLength(2);
+        });
+
+        it('should allow empty modules array', () => {
+            const area: AreaInfo = {
+                id: 'empty-area',
+                name: 'Empty',
+                path: 'empty',
+                description: 'No modules',
+                modules: [],
+            };
+            expect(area.modules).toHaveLength(0);
+        });
+    });
+
+    // ========================================================================
+    // ModuleGraph with Areas
+    // ========================================================================
+
+    describe('ModuleGraph with areas', () => {
+        it('should allow ModuleGraph without areas (backward compat)', () => {
+            const graph: ModuleGraph = {
+                project: {
+                    name: 'test',
+                    description: '',
+                    language: 'TypeScript',
+                    buildSystem: 'npm',
+                    entryPoints: [],
+                },
+                modules: [],
+                categories: [],
+                architectureNotes: '',
+            };
+            expect(graph.areas).toBeUndefined();
+        });
+
+        it('should allow ModuleGraph with areas', () => {
+            const graph: ModuleGraph = {
+                project: {
+                    name: 'test',
+                    description: '',
+                    language: 'TypeScript',
+                    buildSystem: 'npm',
+                    entryPoints: [],
+                },
+                modules: [{
+                    id: 'auth',
+                    name: 'Auth',
+                    path: 'src/auth/',
+                    purpose: 'Auth',
+                    keyFiles: [],
+                    dependencies: [],
+                    dependents: [],
+                    complexity: 'medium',
+                    category: 'core',
+                    area: 'packages-core',
+                }],
+                categories: [],
+                architectureNotes: '',
+                areas: [{
+                    id: 'packages-core',
+                    name: 'Core',
+                    path: 'packages/core',
+                    description: 'Core library',
+                    modules: ['auth'],
+                }],
+            };
+            expect(graph.areas).toHaveLength(1);
+            expect(graph.modules[0].area).toBe('packages-core');
+        });
+    });
+
+    // ========================================================================
+    // Extended ArticleType and GeneratedArticle
+    // ========================================================================
+
+    describe('extended ArticleType', () => {
+        it('should support area-index type', () => {
+            const articleType: ArticleType = 'area-index';
+            expect(articleType).toBe('area-index');
+        });
+
+        it('should support area-architecture type', () => {
+            const articleType: ArticleType = 'area-architecture';
+            expect(articleType).toBe('area-architecture');
+        });
+
+        it('should still support original types', () => {
+            const types: ArticleType[] = ['module', 'index', 'architecture', 'getting-started'];
+            expect(types).toHaveLength(4);
+        });
+    });
+
+    describe('GeneratedArticle with areaId', () => {
+        it('should allow GeneratedArticle without areaId (backward compat)', () => {
+            const article: GeneratedArticle = {
+                type: 'module',
+                slug: 'auth',
+                title: 'Auth',
+                content: '# Auth',
+                moduleId: 'auth',
+            };
+            expect(article.areaId).toBeUndefined();
+        });
+
+        it('should allow GeneratedArticle with areaId', () => {
+            const article: GeneratedArticle = {
+                type: 'module',
+                slug: 'auth',
+                title: 'Auth',
+                content: '# Auth',
+                moduleId: 'auth',
+                areaId: 'packages-core',
+            };
+            expect(article.areaId).toBe('packages-core');
+        });
+
+        it('should allow area-index article with areaId', () => {
+            const article: GeneratedArticle = {
+                type: 'area-index',
+                slug: 'index',
+                title: 'Core Overview',
+                content: '# Core',
+                areaId: 'packages-core',
+            };
+            expect(article.type).toBe('area-index');
+            expect(article.areaId).toBe('packages-core');
+        });
+
+        it('should allow area-architecture article with areaId', () => {
+            const article: GeneratedArticle = {
+                type: 'area-architecture',
+                slug: 'architecture',
+                title: 'Core Architecture',
+                content: '# Core Arch',
+                areaId: 'packages-core',
+            };
+            expect(article.type).toBe('area-architecture');
+        });
+    });
+
+    // ========================================================================
+    // ModuleInfo with area
+    // ========================================================================
+
+    describe('ModuleInfo with area', () => {
+        it('should allow ModuleInfo without area (backward compat)', () => {
+            const mod: ModuleInfo = {
+                id: 'auth',
+                name: 'Auth',
+                path: 'src/auth/',
+                purpose: 'Authentication',
+                keyFiles: [],
+                dependencies: [],
+                dependents: [],
+                complexity: 'medium',
+                category: 'core',
+            };
+            expect(mod.area).toBeUndefined();
+        });
+
+        it('should allow ModuleInfo with area', () => {
+            const mod: ModuleInfo = {
+                id: 'auth',
+                name: 'Auth',
+                path: 'src/auth/',
+                purpose: 'Authentication',
+                keyFiles: [],
+                dependencies: [],
+                dependents: [],
+                complexity: 'medium',
+                category: 'core',
+                area: 'packages-core',
+            };
+            expect(mod.area).toBe('packages-core');
         });
     });
 });

@@ -25,6 +25,9 @@ import type { WikiOutput, GeneratedArticle } from '../types';
 /** Subdirectory for module articles */
 const MODULES_DIR = 'modules';
 
+/** Subdirectory for area articles */
+const AREAS_DIR = 'areas';
+
 // ============================================================================
 // File Writer
 // ============================================================================
@@ -34,6 +37,11 @@ const MODULES_DIR = 'modules';
  *
  * Creates the directory structure and writes each article as a .md file.
  * UTF-8 encoding with LF line endings. Overwrites existing files.
+ *
+ * Supports both flat layout (small repos):
+ *   wiki/modules/auth.md
+ * And hierarchical layout (large repos with areas):
+ *   wiki/areas/core/modules/auth.md
  *
  * @param output The wiki output containing all articles
  * @param outputDir The output directory path
@@ -48,8 +56,25 @@ export function writeWikiOutput(output: WikiOutput, outputDir: string): string[]
     fs.mkdirSync(resolvedDir, { recursive: true });
     fs.mkdirSync(modulesDir, { recursive: true });
 
+    // Collect unique area IDs to create area directories
+    const areaIds = new Set<string>();
+    for (const article of output.articles) {
+        if (article.areaId) {
+            areaIds.add(article.areaId);
+        }
+    }
+
+    // Create area directories if needed
+    for (const areaId of areaIds) {
+        const areaModulesDir = path.join(resolvedDir, AREAS_DIR, areaId, MODULES_DIR);
+        fs.mkdirSync(areaModulesDir, { recursive: true });
+    }
+
     for (const article of output.articles) {
         const filePath = getArticleFilePath(article, resolvedDir);
+
+        // Ensure parent directory exists (for safety with deeply nested paths)
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
         // Normalize line endings to LF
         const content = normalizeLineEndings(article.content);
@@ -67,14 +92,32 @@ export function writeWikiOutput(output: WikiOutput, outputDir: string): string[]
 // ============================================================================
 
 /**
- * Get the file path for an article based on its type and slug.
+ * Get the file path for an article based on its type, slug, and optional areaId.
+ *
+ * For articles with areaId set (hierarchical layout):
+ *   - module → areas/{areaId}/modules/{slug}.md
+ *   - area-index → areas/{areaId}/index.md
+ *   - area-architecture → areas/{areaId}/architecture.md
+ *
+ * For articles without areaId (flat layout):
+ *   - module → modules/{slug}.md
+ *   - index → index.md
+ *   - architecture → architecture.md
+ *   - getting-started → getting-started.md
  */
 export function getArticleFilePath(article: GeneratedArticle, outputDir: string): string {
     const slug = slugify(article.slug);
 
     switch (article.type) {
         case 'module':
+            if (article.areaId) {
+                return path.join(outputDir, AREAS_DIR, article.areaId, MODULES_DIR, `${slug}.md`);
+            }
             return path.join(outputDir, MODULES_DIR, `${slug}.md`);
+        case 'area-index':
+            return path.join(outputDir, AREAS_DIR, article.areaId!, 'index.md');
+        case 'area-architecture':
+            return path.join(outputDir, AREAS_DIR, article.areaId!, 'architecture.md');
         case 'index':
             return path.join(outputDir, 'index.md');
         case 'architecture':

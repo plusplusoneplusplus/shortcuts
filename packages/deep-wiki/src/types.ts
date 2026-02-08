@@ -52,6 +52,8 @@ export interface ModuleInfo {
     complexity: 'low' | 'medium' | 'high';
     /** Category this module belongs to */
     category: string;
+    /** Area slug from large-repo discovery (only set for large repos) */
+    area?: string;
 }
 
 /**
@@ -62,6 +64,23 @@ export interface CategoryInfo {
     name: string;
     /** Short description of what this category contains */
     description: string;
+}
+
+/**
+ * Information about a top-level area in a large repo.
+ * Used to organize modules into hierarchical wiki output.
+ */
+export interface AreaInfo {
+    /** Unique kebab-case identifier (derived from area path) */
+    id: string;
+    /** Human-readable area name */
+    name: string;
+    /** Path relative to repo root */
+    path: string;
+    /** Brief description of the area */
+    description: string;
+    /** IDs of modules belonging to this area */
+    modules: string[];
 }
 
 /**
@@ -76,6 +95,8 @@ export interface ModuleGraph {
     categories: CategoryInfo[];
     /** Architecture notes (free-text summary) */
     architectureNotes: string;
+    /** Top-level areas (only present for large repos with 3000+ files) */
+    areas?: AreaInfo[];
 }
 
 /**
@@ -324,7 +345,7 @@ export interface AnalysisResult {
 /**
  * Type of generated article.
  */
-export type ArticleType = 'module' | 'index' | 'architecture' | 'getting-started';
+export type ArticleType = 'module' | 'index' | 'architecture' | 'getting-started' | 'area-index' | 'area-architecture';
 
 /**
  * A single generated wiki article.
@@ -340,6 +361,8 @@ export interface GeneratedArticle {
     content: string;
     /** Module ID (only for module articles) */
     moduleId?: string;
+    /** Area ID (for area-level and module articles in hierarchical layout) */
+    areaId?: string;
 }
 
 /**

@@ -204,6 +204,10 @@ export async function executeGenerate(
         process.stderr.write('\n');
         printHeader('Generation Summary');
         printKeyValue('Modules Discovered', String(graph.modules.length));
+        if (graph.areas && graph.areas.length > 0) {
+            printKeyValue('Areas', String(graph.areas.length));
+            printKeyValue('Layout', 'Hierarchical (3-level)');
+        }
         printKeyValue('Modules Analyzed', String(analyses.length));
         printKeyValue('Articles Written', String(phase3Result.articlesWritten));
         if (phase1Duration > 0) { printKeyValue('Phase 1 Duration', formatDuration(phase1Duration)); }
@@ -620,6 +624,7 @@ async function runPhase3(
                                 title: moduleInfo?.name || moduleId,
                                 content,
                                 moduleId,
+                                areaId: moduleInfo?.area,
                             };
                             saveArticle(moduleId, article, options.output, gitHash);
                         }
@@ -636,8 +641,10 @@ async function runPhase3(
         }
 
         // Merge cached + fresh module articles
-        const freshModuleArticles = freshArticles.filter(a => a.type === 'module');
-        const reduceArticles = freshArticles.filter(a => a.type !== 'module');
+        // Module-type articles are the per-module ones; all others are reduce/area artifacts
+        const moduleTypes = new Set(['module']);
+        const freshModuleArticles = freshArticles.filter(a => moduleTypes.has(a.type));
+        const reduceArticles = freshArticles.filter(a => !moduleTypes.has(a.type));
         const allModuleArticles = [...cachedArticles, ...freshModuleArticles];
 
         // If we had cached articles but skipped generation, we still need the reduce phase
