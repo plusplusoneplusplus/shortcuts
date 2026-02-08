@@ -309,7 +309,7 @@ suite('AI Session Resume', () => {
             );
 
             assert.ok(prompt.includes('Structured result (JSON):'));
-            assert.ok(prompt.includes('"issues": 3'));
+            assert.ok(prompt.includes('"issues":3'));
         });
 
         test('should not include structured result when same as text result', () => {
@@ -519,14 +519,8 @@ suite('AI Session Resume', () => {
             // Complete with result text
             processManager.completeProcess(processId, 'Found 3 issues');
 
-            // Attach structured result
-            const process = processManager.getProcess(processId);
-            if (process) {
-                // Access internal process to set structuredResult
-                // (Normally set via completeProcessGroup or similar)
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (process as any).structuredResult = '{"issues": 3}';
-            }
+            // Attach structured result using the proper API method
+            processManager.updateProcessStructuredResult(processId, '{"issues": 3}');
 
             let capturedPrompt = '';
 
