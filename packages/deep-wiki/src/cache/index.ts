@@ -134,18 +134,6 @@ export async function getCachedGraph(repoPath: string, outputDir: string): Promi
         return null;
     }
 
-    // Check git hash
-    const currentHash = await getRepoHeadHash(repoPath);
-    if (!currentHash) {
-        // Can't determine git hash — cache is unreliable
-        return null;
-    }
-
-    if (cached.metadata.gitHash !== currentHash) {
-        // Repo has changed since cache was created
-        return null;
-    }
-
     return cached;
 }
 
