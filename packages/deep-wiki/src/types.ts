@@ -375,7 +375,7 @@ export interface WritingOptions {
     analyses: ModuleAnalysis[];
     /** AI model to use */
     model?: string;
-    /** Maximum parallel AI sessions (default: 10) */
+    /** Maximum parallel AI sessions (default: 5) */
     concurrency?: number;
     /** Timeout per article in milliseconds (default: 120000 = 2 min) */
     timeout?: number;

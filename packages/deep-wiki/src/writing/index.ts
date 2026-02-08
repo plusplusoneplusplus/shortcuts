@@ -51,7 +51,7 @@ export async function generateArticles(
         graph: options.graph,
         analyses: options.analyses,
         depth: options.depth || 'normal',
-        concurrency: options.concurrency || 10,
+        concurrency: options.concurrency || 5,
         timeoutMs: options.timeout || 120_000,
         model: options.model,
         onProgress,

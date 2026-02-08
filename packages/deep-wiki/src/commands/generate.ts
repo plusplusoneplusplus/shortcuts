@@ -550,7 +550,7 @@ async function runPhase3(
     process.stderr.write('\n');
     printHeader('Phase 3: Article Generation');
 
-    const concurrency = options.concurrency ? Math.min(options.concurrency * 2, 20) : 10;
+    const concurrency = options.concurrency ? Math.min(options.concurrency * 2, 20) : 5;
 
     // Get git hash once upfront for per-article incremental saves
     let gitHash: string | null = null;
