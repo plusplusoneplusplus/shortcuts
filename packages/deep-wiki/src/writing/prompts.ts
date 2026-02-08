@@ -140,7 +140,7 @@ If the analysis includes a suggestedDiagram, include it in the article wrapped i
 - Use fenced code blocks with language tags for code examples
 - Use tables for API references where appropriate
 
-Return ONLY the markdown content for the article, no JSON wrapping.`;
+Do NOT write, create, or save any files to disk. Return ONLY the markdown content in your response.`;
 }
 
 /**
@@ -196,5 +196,5 @@ If the analysis includes a suggestedDiagram, include it in the article wrapped i
 - Use fenced code blocks with language tags for code examples
 - Use tables for API references where appropriate
 
-Return ONLY the markdown content for the article, no JSON wrapping.`;
+Do NOT write, create, or save any files to disk. Return ONLY the markdown content in your response.`;
 }

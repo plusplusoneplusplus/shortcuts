@@ -88,7 +88,9 @@ IMPORTANT:
 - All links to modules must use the format: [Module Name](./modules/module-id.md)
 - Mermaid diagrams should use \`\`\`mermaid code blocks
 - Each page should be a complete, standalone markdown document
-- Use proper heading hierarchy starting with # for each page`;
+- Use proper heading hierarchy starting with # for each page
+
+Do NOT write, create, or save any files to disk. Return ONLY the JSON object in your response.`;
 }
 
 /**
