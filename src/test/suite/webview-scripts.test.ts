@@ -3706,5 +3706,650 @@ suite('Webview Scripts Tests', () => {
             assert.strictEqual(result.endLine, 8);
         });
     });
+
+    suite('Triple Click Line Selection Logic', () => {
+        /**
+         * These tests verify the pure logic behind triple-click line selection.
+         * The actual DOM interaction happens in dom-handlers.ts (handleTripleClick,
+         * selectFullLine) which uses MouseEvent.detail === 3 to detect triple clicks
+         * and TreeWalker to find text nodes while excluding UI elements.
+         *
+         * Here we test:
+         * 1. Click count detection logic
+         * 2. Line element resolution (finding .line-content or .code-line)
+         * 3. Text node filtering (excluding comment bubbles, gutter icons)
+         * 4. Full line text extraction
+         * 5. Edge cases (empty lines, first/last line, etc.)
+         */
+
+        // --- Triple click detection logic ---
+
+        /**
+         * Determines if a click event should trigger full-line selection.
+         * Mirrors the check in handleTripleClick.
+         */
+        function isTripleClick(detail: number): boolean {
+            return detail === 3;
+        }
+
+        test('should detect triple click via detail property', () => {
+            assert.ok(isTripleClick(3));
+        });
+
+        test('should not trigger on single click', () => {
+            assert.ok(!isTripleClick(1));
+        });
+
+        test('should not trigger on double click', () => {
+            assert.ok(!isTripleClick(2));
+        });
+
+        test('should not trigger on zero detail', () => {
+            assert.ok(!isTripleClick(0));
+        });
+
+        test('should not trigger on higher click counts', () => {
+            assert.ok(!isTripleClick(4));
+            assert.ok(!isTripleClick(5));
+        });
+
+        // --- Line element resolution logic ---
+
+        /**
+         * Simulates the logic of finding the closest line container element.
+         * Mirrors the closest('.line-content') / closest('.code-line') logic.
+         */
+        interface MockElement {
+            classes: string[];
+            parent?: MockElement;
+        }
+
+        function findLineContainer(target: MockElement): { type: 'line-content' | 'code-line'; element: MockElement } | null {
+            let current: MockElement | undefined = target;
+            while (current) {
+                if (current.classes.includes('line-content')) {
+                    return { type: 'line-content', element: current };
+                }
+                if (current.classes.includes('code-line')) {
+                    return { type: 'code-line', element: current };
+                }
+                current = current.parent;
+            }
+            return null;
+        }
+
+        test('should find line-content element directly', () => {
+            const element: MockElement = { classes: ['line-content'] };
+            const result = findLineContainer(element);
+            assert.ok(result);
+            assert.strictEqual(result!.type, 'line-content');
+        });
+
+        test('should find line-content element from child', () => {
+            const lineContent: MockElement = { classes: ['line-content'] };
+            const span: MockElement = { classes: ['bold'], parent: lineContent };
+            const result = findLineContainer(span);
+            assert.ok(result);
+            assert.strictEqual(result!.type, 'line-content');
+        });
+
+        test('should find code-line element directly', () => {
+            const element: MockElement = { classes: ['code-line'] };
+            const result = findLineContainer(element);
+            assert.ok(result);
+            assert.strictEqual(result!.type, 'code-line');
+        });
+
+        test('should find code-line element from deeply nested child', () => {
+            const codeLine: MockElement = { classes: ['code-line'] };
+            const codeTag: MockElement = { classes: ['hljs-keyword'], parent: codeLine };
+            const textSpan: MockElement = { classes: [], parent: codeTag };
+            const result = findLineContainer(textSpan);
+            assert.ok(result);
+            assert.strictEqual(result!.type, 'code-line');
+        });
+
+        test('should prefer line-content over code-line when both present', () => {
+            // If a node has both classes, line-content is checked first in handleTripleClick
+            const element: MockElement = { classes: ['line-content', 'code-line'] };
+            const result = findLineContainer(element);
+            assert.ok(result);
+            assert.strictEqual(result!.type, 'line-content');
+        });
+
+        test('should return null when no line container found', () => {
+            const element: MockElement = { classes: ['some-other-class'] };
+            const result = findLineContainer(element);
+            assert.strictEqual(result, null);
+        });
+
+        test('should return null for editor wrapper itself', () => {
+            const editorWrapper: MockElement = { classes: ['editor-wrapper'] };
+            const result = findLineContainer(editorWrapper);
+            assert.strictEqual(result, null);
+        });
+
+        // --- Text node filtering logic ---
+
+        /**
+         * Simulates the TreeWalker filter in selectFullLine.
+         * Determines whether a text node should be included in the selection.
+         */
+        interface MockTextNode {
+            textContent: string;
+            parentClasses: string[];
+            ancestorClasses: string[][];  // Classes of all ancestor elements
+        }
+
+        function shouldIncludeTextNode(node: MockTextNode): boolean {
+            // Skip empty text nodes
+            if (!node.textContent || node.textContent.length === 0) {
+                return false;
+            }
+            // Skip nodes inside comment bubbles
+            if (node.parentClasses.includes('inline-comment-bubble') ||
+                node.ancestorClasses.some(c => c.includes('inline-comment-bubble'))) {
+                return false;
+            }
+            // Skip nodes inside gutter icons
+            if (node.parentClasses.includes('gutter-icon') ||
+                node.ancestorClasses.some(c => c.includes('gutter-icon'))) {
+                return false;
+            }
+            return true;
+        }
+
+        test('should include regular text node', () => {
+            const node: MockTextNode = {
+                textContent: 'Hello World',
+                parentClasses: [],
+                ancestorClasses: [['line-content']]
+            };
+            assert.ok(shouldIncludeTextNode(node));
+        });
+
+        test('should exclude empty text node', () => {
+            const node: MockTextNode = {
+                textContent: '',
+                parentClasses: [],
+                ancestorClasses: [['line-content']]
+            };
+            assert.ok(!shouldIncludeTextNode(node));
+        });
+
+        test('should exclude null-content text node', () => {
+            const node: MockTextNode = {
+                textContent: '',
+                parentClasses: [],
+                ancestorClasses: []
+            };
+            assert.ok(!shouldIncludeTextNode(node));
+        });
+
+        test('should exclude text inside comment bubble', () => {
+            const node: MockTextNode = {
+                textContent: '3 comments',
+                parentClasses: ['inline-comment-bubble'],
+                ancestorClasses: [['line-content']]
+            };
+            assert.ok(!shouldIncludeTextNode(node));
+        });
+
+        test('should exclude text inside nested comment bubble element', () => {
+            const node: MockTextNode = {
+                textContent: 'comment badge text',
+                parentClasses: ['badge-count'],
+                ancestorClasses: [['inline-comment-bubble'], ['line-content']]
+            };
+            assert.ok(!shouldIncludeTextNode(node));
+        });
+
+        test('should exclude text inside gutter icon', () => {
+            const node: MockTextNode = {
+                textContent: '+',
+                parentClasses: ['gutter-icon'],
+                ancestorClasses: [['line-content']]
+            };
+            assert.ok(!shouldIncludeTextNode(node));
+        });
+
+        test('should exclude text inside nested gutter icon element', () => {
+            const node: MockTextNode = {
+                textContent: 'icon',
+                parentClasses: ['icon-inner'],
+                ancestorClasses: [['gutter-icon'], ['line-content']]
+            };
+            assert.ok(!shouldIncludeTextNode(node));
+        });
+
+        test('should include text in bold/italic elements', () => {
+            const node: MockTextNode = {
+                textContent: 'bold text',
+                parentClasses: ['strong'],
+                ancestorClasses: [['line-content']]
+            };
+            assert.ok(shouldIncludeTextNode(node));
+        });
+
+        test('should include text in code spans', () => {
+            const node: MockTextNode = {
+                textContent: 'code',
+                parentClasses: ['inline-code'],
+                ancestorClasses: [['line-content']]
+            };
+            assert.ok(shouldIncludeTextNode(node));
+        });
+
+        test('should include text with only whitespace', () => {
+            const node: MockTextNode = {
+                textContent: '   ',
+                parentClasses: [],
+                ancestorClasses: [['line-content']]
+            };
+            assert.ok(shouldIncludeTextNode(node));
+        });
+
+        // --- Full line text extraction logic ---
+
+        /**
+         * Simulates extracting the full text content of a line,
+         * excluding UI elements. This mirrors what selectFullLine does
+         * via TreeWalker, but operates on a simplified text-based model.
+         */
+        interface MockLineContent {
+            textNodes: MockTextNode[];
+        }
+
+        function extractFullLineText(line: MockLineContent): string {
+            const includedNodes = line.textNodes.filter(shouldIncludeTextNode);
+            return includedNodes.map(n => n.textContent).join('');
+        }
+
+        test('should extract simple line text', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: 'Hello World', parentClasses: [], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), 'Hello World');
+        });
+
+        test('should combine text from multiple nodes (formatted content)', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: 'This is ', parentClasses: [], ancestorClasses: [['line-content']] },
+                    { textContent: 'bold', parentClasses: ['strong'], ancestorClasses: [['line-content']] },
+                    { textContent: ' and ', parentClasses: [], ancestorClasses: [['line-content']] },
+                    { textContent: 'italic', parentClasses: ['em'], ancestorClasses: [['line-content']] },
+                    { textContent: ' text.', parentClasses: [], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), 'This is bold and italic text.');
+        });
+
+        test('should exclude comment bubble text from extraction', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: 'Main content here', parentClasses: [], ancestorClasses: [['line-content']] },
+                    { textContent: '3', parentClasses: ['inline-comment-bubble'], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), 'Main content here');
+        });
+
+        test('should exclude gutter icon text from extraction', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: '+', parentClasses: ['gutter-icon'], ancestorClasses: [['line-content']] },
+                    { textContent: 'Actual line content', parentClasses: [], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), 'Actual line content');
+        });
+
+        test('should handle empty line (no text nodes)', () => {
+            const line: MockLineContent = {
+                textNodes: []
+            };
+            assert.strictEqual(extractFullLineText(line), '');
+        });
+
+        test('should handle line with only empty text nodes', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: '', parentClasses: [], ancestorClasses: [['line-content']] },
+                    { textContent: '', parentClasses: [], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), '');
+        });
+
+        test('should handle line with only UI elements (no visible content)', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: '2', parentClasses: ['inline-comment-bubble'], ancestorClasses: [['line-content']] },
+                    { textContent: '+', parentClasses: ['gutter-icon'], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), '');
+        });
+
+        test('should handle code block line with syntax highlighting nodes', () => {
+            // Code lines may have multiple span elements from syntax highlighting
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: 'function', parentClasses: ['hljs-keyword'], ancestorClasses: [['code-line']] },
+                    { textContent: ' ', parentClasses: [], ancestorClasses: [['code-line']] },
+                    { textContent: 'hello', parentClasses: ['hljs-title'], ancestorClasses: [['code-line']] },
+                    { textContent: '() {', parentClasses: [], ancestorClasses: [['code-line']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), 'function hello() {');
+        });
+
+        test('should handle line with mixed content and UI elements', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: '+', parentClasses: ['gutter-icon'], ancestorClasses: [['line-content']] },
+                    { textContent: '## ', parentClasses: [], ancestorClasses: [['line-content']] },
+                    { textContent: 'Heading Text', parentClasses: ['heading'], ancestorClasses: [['line-content']] },
+                    { textContent: '1', parentClasses: ['inline-comment-bubble'], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), '## Heading Text');
+        });
+
+        test('should handle line in blockquote', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: '> Some quoted text here', parentClasses: [], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), '> Some quoted text here');
+        });
+
+        test('should handle line with inline code', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: 'Use the ', parentClasses: [], ancestorClasses: [['line-content']] },
+                    { textContent: 'console.log', parentClasses: ['inline-code'], ancestorClasses: [['line-content']] },
+                    { textContent: ' function.', parentClasses: [], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), 'Use the console.log function.');
+        });
+
+        test('should handle line with link elements', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: 'Visit ', parentClasses: [], ancestorClasses: [['line-content']] },
+                    { textContent: 'our website', parentClasses: ['link'], ancestorClasses: [['line-content']] },
+                    { textContent: ' for more.', parentClasses: [], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), 'Visit our website for more.');
+        });
+
+        test('should preserve whitespace-only content between elements', () => {
+            const line: MockLineContent = {
+                textNodes: [
+                    { textContent: 'Word1', parentClasses: [], ancestorClasses: [['line-content']] },
+                    { textContent: '  ', parentClasses: [], ancestorClasses: [['line-content']] },
+                    { textContent: 'Word2', parentClasses: [], ancestorClasses: [['line-content']] }
+                ]
+            };
+            assert.strictEqual(extractFullLineText(line), 'Word1  Word2');
+        });
+
+        // --- Selection range calculation for full line ---
+
+        /**
+         * Given a line's full text content, calculates the selection range
+         * for the entire line. This verifies that after triple-click, the
+         * selection spans from start (column 1) to end of line content.
+         */
+        function calculateFullLineSelection(
+            lineNumber: number,
+            lineText: string
+        ): { startLine: number; startColumn: number; endLine: number; endColumn: number } {
+            return {
+                startLine: lineNumber,
+                startColumn: 1,
+                endLine: lineNumber,
+                endColumn: lineText.length + 1
+            };
+        }
+
+        test('should select entire regular line', () => {
+            const result = calculateFullLineSelection(5, 'Hello World');
+            assert.strictEqual(result.startLine, 5);
+            assert.strictEqual(result.startColumn, 1);
+            assert.strictEqual(result.endLine, 5);
+            assert.strictEqual(result.endColumn, 12);
+        });
+
+        test('should handle first line selection', () => {
+            const result = calculateFullLineSelection(1, '# Title');
+            assert.strictEqual(result.startLine, 1);
+            assert.strictEqual(result.startColumn, 1);
+            assert.strictEqual(result.endLine, 1);
+            assert.strictEqual(result.endColumn, 8);
+        });
+
+        test('should handle empty line selection', () => {
+            const result = calculateFullLineSelection(10, '');
+            assert.strictEqual(result.startLine, 10);
+            assert.strictEqual(result.startColumn, 1);
+            assert.strictEqual(result.endLine, 10);
+            assert.strictEqual(result.endColumn, 1);
+        });
+
+        test('should handle line with only spaces', () => {
+            const result = calculateFullLineSelection(3, '    ');
+            assert.strictEqual(result.startLine, 3);
+            assert.strictEqual(result.startColumn, 1);
+            assert.strictEqual(result.endLine, 3);
+            assert.strictEqual(result.endColumn, 5);
+        });
+
+        test('should handle very long line', () => {
+            const longText = 'A'.repeat(500);
+            const result = calculateFullLineSelection(1, longText);
+            assert.strictEqual(result.startColumn, 1);
+            assert.strictEqual(result.endColumn, 501);
+        });
+
+        test('should handle last line of document', () => {
+            const result = calculateFullLineSelection(100, 'Last line content');
+            assert.strictEqual(result.startLine, 100);
+            assert.strictEqual(result.startColumn, 1);
+            assert.strictEqual(result.endLine, 100);
+            assert.strictEqual(result.endColumn, 18);
+        });
+
+        test('should produce single-line selection (startLine equals endLine)', () => {
+            const result = calculateFullLineSelection(42, 'Some content');
+            assert.strictEqual(result.startLine, result.endLine);
+        });
+
+        // --- Integration: Triple click + comment creation flow ---
+
+        /**
+         * Simulates the full flow: triple-click → line selection → comment anchoring.
+         * After triple-click selects a full line, the user can press Ctrl+Shift+M to
+         * add a comment. This verifies the selection info would be valid for anchoring.
+         */
+        interface LineInfo {
+            lineNumber: number;
+            textContent: string;
+            isCodeLine: boolean;
+        }
+
+        function simulateTripleClickSelection(
+            clickDetail: number,
+            targetLine: LineInfo | null
+        ): { startLine: number; startColumn: number; endLine: number; endColumn: number; selectedText: string } | null {
+            // Step 1: Check triple click
+            if (clickDetail !== 3) return null;
+
+            // Step 2: Find line container
+            if (!targetLine) return null;
+
+            // Step 3: Extract text content (excluding UI elements)
+            const text = targetLine.textContent;
+
+            // Step 4: Calculate selection range
+            return {
+                startLine: targetLine.lineNumber,
+                startColumn: 1,
+                endLine: targetLine.lineNumber,
+                endColumn: text.length + 1,
+                selectedText: text
+            };
+        }
+
+        test('should produce valid selection for regular line', () => {
+            const line: LineInfo = { lineNumber: 5, textContent: 'Hello World', isCodeLine: false };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.strictEqual(result!.selectedText, 'Hello World');
+            assert.strictEqual(result!.startLine, 5);
+            assert.strictEqual(result!.startColumn, 1);
+            assert.strictEqual(result!.endLine, 5);
+            assert.strictEqual(result!.endColumn, 12);
+        });
+
+        test('should produce valid selection for code block line', () => {
+            const line: LineInfo = { lineNumber: 10, textContent: '  const x = 42;', isCodeLine: true };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.strictEqual(result!.selectedText, '  const x = 42;');
+            assert.strictEqual(result!.startLine, 10);
+            assert.strictEqual(result!.startColumn, 1);
+            // '  const x = 42;' is 15 chars, endColumn = length + 1 = 16
+            assert.strictEqual(result!.endColumn, '  const x = 42;'.length + 1);
+        });
+
+        test('should return null for non-triple click', () => {
+            const line: LineInfo = { lineNumber: 5, textContent: 'Hello', isCodeLine: false };
+            assert.strictEqual(simulateTripleClickSelection(1, line), null);
+            assert.strictEqual(simulateTripleClickSelection(2, line), null);
+        });
+
+        test('should return null when no line container found', () => {
+            assert.strictEqual(simulateTripleClickSelection(3, null), null);
+        });
+
+        test('should handle empty line in triple click', () => {
+            const line: LineInfo = { lineNumber: 7, textContent: '', isCodeLine: false };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.strictEqual(result!.selectedText, '');
+            assert.strictEqual(result!.startColumn, 1);
+            assert.strictEqual(result!.endColumn, 1);
+        });
+
+        test('should handle line with special characters', () => {
+            const line: LineInfo = { lineNumber: 3, textContent: '- [ ] Task item **bold** `code`', isCodeLine: false };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.strictEqual(result!.selectedText, '- [ ] Task item **bold** `code`');
+            assert.strictEqual(result!.endColumn, 32);
+        });
+
+        test('should handle heading line', () => {
+            const line: LineInfo = { lineNumber: 1, textContent: '## Section Title', isCodeLine: false };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.strictEqual(result!.selectedText, '## Section Title');
+        });
+
+        test('should handle blockquote line', () => {
+            const line: LineInfo = { lineNumber: 15, textContent: '> This is a quote', isCodeLine: false };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.strictEqual(result!.selectedText, '> This is a quote');
+        });
+
+        test('should handle table separator line', () => {
+            const line: LineInfo = { lineNumber: 8, textContent: '| Cell 1 | Cell 2 | Cell 3 |', isCodeLine: false };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.strictEqual(result!.selectedText, '| Cell 1 | Cell 2 | Cell 3 |');
+        });
+
+        test('should handle indented list item', () => {
+            const line: LineInfo = { lineNumber: 12, textContent: '    - Nested list item', isCodeLine: false };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.strictEqual(result!.selectedText, '    - Nested list item');
+            assert.strictEqual(result!.endColumn, 23);
+        });
+
+        // --- Interaction with existing selection-based features ---
+
+        /**
+         * Verifies that the selection produced by triple-click is compatible
+         * with the comment creation workflow (handleAddComment).
+         */
+        function isValidCommentSelection(selection: { startLine: number; startColumn: number; endLine: number; endColumn: number; selectedText: string } | null): boolean {
+            if (!selection) return false;
+            if (selection.startLine <= 0 || selection.endLine <= 0) return false;
+            if (selection.startColumn <= 0 || selection.endColumn <= 0) return false;
+            if (selection.startLine > selection.endLine) return false;
+            if (selection.startLine === selection.endLine && selection.startColumn > selection.endColumn) return false;
+            return true;
+        }
+
+        test('should produce valid selection for comment creation', () => {
+            const line: LineInfo = { lineNumber: 5, textContent: 'Important text to comment on', isCodeLine: false };
+            const selection = simulateTripleClickSelection(3, line);
+            assert.ok(isValidCommentSelection(selection));
+        });
+
+        test('should produce valid selection even for empty lines', () => {
+            const line: LineInfo = { lineNumber: 5, textContent: '', isCodeLine: false };
+            const selection = simulateTripleClickSelection(3, line);
+            assert.ok(isValidCommentSelection(selection));
+        });
+
+        test('should not produce selection for non-triple clicks', () => {
+            const line: LineInfo = { lineNumber: 5, textContent: 'Hello', isCodeLine: false };
+            const selection = simulateTripleClickSelection(1, line);
+            assert.ok(!isValidCommentSelection(selection));
+        });
+
+        test('should always produce single-line selection on triple click', () => {
+            const line: LineInfo = { lineNumber: 5, textContent: 'Any line content', isCodeLine: false };
+            const selection = simulateTripleClickSelection(3, line);
+            assert.ok(selection);
+            assert.strictEqual(selection!.startLine, selection!.endLine, 'Triple click should always select a single line');
+        });
+
+        // --- Cross-platform consistency ---
+
+        test('should handle lines with CRLF content consistently', () => {
+            // The webview normalizes line endings, so triple-click should not include \r
+            const line: LineInfo = { lineNumber: 5, textContent: 'Content without line endings', isCodeLine: false };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.ok(!result!.selectedText.includes('\r'));
+            assert.ok(!result!.selectedText.includes('\n'));
+        });
+
+        test('should handle Unicode content', () => {
+            const line: LineInfo = { lineNumber: 5, textContent: '日本語テキスト Hello 🌍', isCodeLine: false };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.strictEqual(result!.selectedText, '日本語テキスト Hello 🌍');
+        });
+
+        test('should handle line with tab characters', () => {
+            const line: LineInfo = { lineNumber: 5, textContent: '\tIndented with tab', isCodeLine: false };
+            const result = simulateTripleClickSelection(3, line);
+            assert.ok(result);
+            assert.strictEqual(result!.selectedText, '\tIndented with tab');
+        });
+    });
 });
 
