@@ -24,17 +24,21 @@ This module provides cloud synchronization capabilities for shortcuts configurat
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │                   ISyncProvider                             ││
 │  │  - Interface for sync providers                             ││
-│  │  - upload(), download(), getStatus()                        ││
+│  │  - upload(), download(), initialize(), dispose()           ││
+│  │  - getStatus(), getLastModified()                           ││
+│  └─────────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                CloudSyncProvider (Base)                      ││
+│  │  - Abstract base class for cloud providers                  ││
+│  │  - Retry logic with exponential backoff                     ││
+│  │  - Authentication error detection                           ││
+│  │  - Checksum calculation for integrity                       ││
 │  └─────────────────────────────────────────────────────────────┘│
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │                VSCodeSyncProvider                           ││
 │  │  - Uses VSCode Settings Sync                                ││
 │  │  - Global or workspace scope                                ││
-│  └─────────────────────────────────────────────────────────────┘│
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │                CloudSyncProvider                            ││
-│  │  - Generic cloud provider interface                         ││
-│  │  - For future cloud backends                                ││
+│  │  - Extends CloudSyncProvider                               ││
 │  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -89,6 +93,73 @@ const status = await syncManager.getSyncStatus();
 syncManager.dispose();
 ```
 
+### ISyncProvider Interface
+
+Interface for implementing custom sync providers. All providers must implement these methods.
+
+```typescript
+import { ISyncProvider, SyncedConfig, SyncResult, SyncStatus } from '../sync';
+
+interface ISyncProvider {
+    /** Initialize the provider (set up connections, authenticate, etc.) */
+    initialize(): Promise<void>;
+    
+    /** Upload configuration to cloud */
+    upload(config: SyncedConfig): Promise<SyncResult>;
+    
+    /** Download configuration from cloud */
+    download(): Promise<SyncResult>;
+    
+    /** Get last modification timestamp */
+    getLastModified(): Promise<number | undefined>;
+    
+    /** Get current sync status */
+    getStatus(): Promise<SyncStatus>;
+    
+    /** Get provider name */
+    getName(): string;
+    
+    /** Clean up resources */
+    dispose(): void;
+}
+```
+
+### CloudSyncProvider
+
+Abstract base class for cloud-based sync providers. Provides common functionality including retry logic with exponential backoff, authentication error detection, and checksum calculation for data integrity.
+
+```typescript
+import { CloudSyncProvider } from '../sync';
+
+class MyCloudProvider extends CloudSyncProvider {
+    constructor(context: vscode.ExtensionContext) {
+        super(context);
+    }
+    
+    // Implement abstract methods
+    protected async doUpload(config: SyncedConfig): Promise<void> {
+        // Upload implementation
+        // Retry logic is handled by base class
+    }
+    
+    protected async doDownload(): Promise<SyncedConfig | undefined> {
+        // Download implementation
+        // Checksum validation is handled by base class
+    }
+    
+    protected async doGetLastModified(): Promise<number | undefined> {
+        // Get timestamp implementation
+    }
+}
+
+// Features provided by CloudSyncProvider:
+// - Retry logic: Exponential backoff (100ms, 200ms, 400ms, ...)
+// - Max retries: 3 attempts
+// - Authentication error detection: Identifies auth failures vs network errors
+// - Checksum calculation: SHA-256 hash for data integrity verification
+// - Error handling: Categorizes errors (network, auth, server, unknown)
+```
+
 ### VSCodeSyncProvider
 
 Sync provider using VSCode's built-in Settings Sync.
@@ -124,48 +195,41 @@ const timestamp = await provider.getLastModified();
 const status = await provider.getStatus();
 ```
 
-### ISyncProvider Interface
+### Device ID Management
 
-Interface for implementing custom sync providers.
+The sync system uses device IDs for conflict resolution and tracking which device last modified the configuration.
 
 ```typescript
-import { ISyncProvider, SyncedConfig, SyncResult, SyncStatus } from '../sync';
+import { generateDeviceId, getDeviceId } from '../sync';
 
-class MyCloudProvider implements ISyncProvider {
-    async initialize(): Promise<void> {
-        // Set up connection
-    }
-    
-    async upload(config: SyncedConfig): Promise<SyncResult> {
-        // Upload to cloud
-        return { success: true };
-    }
-    
-    async download(): Promise<SyncResult> {
-        // Download from cloud
-        return { success: true, config: syncedConfig };
-    }
-    
-    async getLastModified(): Promise<number | undefined> {
-        // Return timestamp
-        return Date.now();
-    }
-    
-    async getStatus(): Promise<SyncStatus> {
-        return {
-            connected: true,
-            lastSync: new Date(),
-            error: undefined
-        };
-    }
-    
-    getName(): string {
-        return 'My Cloud Provider';
-    }
-    
-    dispose(): void {
-        // Clean up
-    }
+// Generate a unique device ID (stored in globalState)
+const deviceId = await generateDeviceId(context);
+
+// Get existing device ID
+const existingId = await getDeviceId(context);
+
+// Device IDs are used in conflict resolution:
+// - Last-write-wins strategy uses deviceId + timestamp
+// - Shows which device made the last change
+// - Helps identify sync conflicts
+```
+
+## SyncStatus Enum
+
+The `SyncStatus` enum represents the current state of synchronization:
+
+```typescript
+enum SyncStatus {
+    /** Successfully synced */
+    synced = 'synced',
+    /** Pending sync (queued but not yet executed) */
+    pending = 'pending',
+    /** Sync error occurred */
+    error = 'error',
+    /** Provider disconnected or unavailable */
+    disconnected = 'disconnected',
+    /** Sync in progress */
+    syncing = 'syncing'
 }
 ```
 
@@ -274,13 +338,15 @@ vscode.commands.registerCommand('shortcuts.sync.check', async () => {
 ### Example 3: Implementing a Custom Provider
 
 ```typescript
-import { ISyncProvider, SyncedConfig, SyncResult } from '../sync';
+import { CloudSyncProvider, SyncedConfig, SyncResult } from '../sync';
 
-class FirebaseSyncProvider implements ISyncProvider {
+class FirebaseSyncProvider extends CloudSyncProvider {
     private db: Firestore;
     private userId: string;
     
-    constructor(private readonly context: vscode.ExtensionContext) {}
+    constructor(context: vscode.ExtensionContext) {
+        super(context);
+    }
     
     async initialize(): Promise<void> {
         // Initialize Firebase
@@ -288,48 +354,42 @@ class FirebaseSyncProvider implements ISyncProvider {
         this.userId = await this.authenticate();
     }
     
-    async upload(config: SyncedConfig): Promise<SyncResult> {
-        try {
-            const docRef = this.db.collection('shortcuts').doc(this.userId);
-            await docRef.set({
-                config: JSON.stringify(config.config),
-                metadata: config.metadata
-            });
-            return { success: true };
-        } catch (error) {
-            return { 
-                success: false, 
-                error: error instanceof Error ? error.message : 'Unknown error' 
-            };
-        }
+    protected async doUpload(config: SyncedConfig): Promise<void> {
+        const docRef = this.db.collection('shortcuts').doc(this.userId);
+        await docRef.set({
+            config: JSON.stringify(config.config),
+            metadata: config.metadata,
+            checksum: this.calculateChecksum(config) // From base class
+        });
     }
     
-    async download(): Promise<SyncResult> {
-        try {
-            const docRef = this.db.collection('shortcuts').doc(this.userId);
-            const doc = await docRef.get();
-            
-            if (!doc.exists) {
-                return { success: true }; // No config yet
-            }
-            
-            const data = doc.data();
-            return {
-                success: true,
-                config: {
-                    config: JSON.parse(data.config),
-                    metadata: data.metadata
-                }
-            };
-        } catch (error) {
-            return { 
-                success: false, 
-                error: error instanceof Error ? error.message : 'Unknown error' 
-            };
+    protected async doDownload(): Promise<SyncedConfig | undefined> {
+        const docRef = this.db.collection('shortcuts').doc(this.userId);
+        const doc = await docRef.get();
+        
+        if (!doc.exists) {
+            return undefined;
         }
+        
+        const data = doc.data();
+        const config: SyncedConfig = {
+            config: JSON.parse(data.config),
+            metadata: data.metadata
+        };
+        
+        // Base class validates checksum automatically
+        return config;
     }
     
-    // ... other methods
+    protected async doGetLastModified(): Promise<number | undefined> {
+        const docRef = this.db.collection('shortcuts').doc(this.userId);
+        const doc = await docRef.get();
+        return doc.data()?.metadata?.lastModified;
+    }
+    
+    getName(): string {
+        return 'Firebase Sync';
+    }
 }
 ```
 
@@ -339,19 +399,30 @@ class FirebaseSyncProvider implements ISyncProvider {
 async function resolveConflict(
     localConfig: ShortcutsConfig,
     localTimestamp: number,
+    localDeviceId: string,
     remoteConfig: ShortcutsConfig,
-    remoteTimestamp: number
+    remoteTimestamp: number,
+    remoteDeviceId: string
 ): Promise<ShortcutsConfig> {
     // Last-write-wins (default strategy)
     if (remoteTimestamp > localTimestamp) {
+        console.log(`Using remote config from device ${remoteDeviceId}`);
         return remoteConfig;
     }
+    
+    console.log(`Using local config from device ${localDeviceId}`);
     return localConfig;
     
     // Alternative: Ask user
     const choice = await vscode.window.showQuickPick([
-        { label: 'Use Local', description: `Modified: ${new Date(localTimestamp)}` },
-        { label: 'Use Remote', description: `Modified: ${new Date(remoteTimestamp)}` },
+        { 
+            label: 'Use Local', 
+            description: `Modified: ${new Date(localTimestamp)} (Device: ${localDeviceId})` 
+        },
+        { 
+            label: 'Use Remote', 
+            description: `Modified: ${new Date(remoteTimestamp)} (Device: ${remoteDeviceId})` 
+        },
         { label: 'Merge', description: 'Combine both configurations' }
     ], { placeHolder: 'Configuration conflict detected' });
     
@@ -421,6 +492,8 @@ interface SyncResult {
 
 ```typescript
 interface SyncStatus {
+    /** Current sync status */
+    status: SyncStatus; // 'synced' | 'pending' | 'error' | 'disconnected' | 'syncing'
     /** Whether provider is connected */
     connected: boolean;
     /** Last successful sync */
@@ -444,15 +517,19 @@ interface SyncStatus {
 
 1. **Debounce changes**: Use `scheduleSyncToCloud` to avoid rapid syncs.
 
-2. **Handle conflicts**: Implement clear conflict resolution strategy.
+2. **Handle conflicts**: Implement clear conflict resolution strategy using device IDs and timestamps.
 
-3. **Device identification**: Use unique device IDs for tracking changes.
+3. **Device identification**: Use unique device IDs for tracking changes and conflict resolution.
 
 4. **Version compatibility**: Check config version before applying.
 
-5. **Error handling**: Handle network failures gracefully.
+5. **Error handling**: Handle network failures gracefully with retry logic.
 
 6. **User feedback**: Show sync status and errors to users.
+
+7. **Checksum validation**: Always validate data integrity using checksums.
+
+8. **Authentication errors**: Distinguish between authentication failures and network errors for better error messages.
 
 ## See Also
 

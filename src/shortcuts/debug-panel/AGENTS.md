@@ -100,6 +100,17 @@ debugCommands.register();
 - **Show Process List**: Display all AI processes
 - **Clear Completed Processes**: Remove completed/failed processes
 - **Test Copilot Connection**: Verify Copilot CLI is available
+- **Test Copilot SDK**: Send a prompt to Copilot SDK and display raw response (`testCopilotSDK` in `copilot-sdk-experiment.ts`)
+
+## Module Files
+
+| File | Purpose |
+|------|---------|
+| `debug-panel-tree-provider.ts` | `DebugPanelTreeDataProvider` - populates tree with static command list |
+| `debug-command-item.ts` | `DebugCommandItem` - clickable tree item with label, icon, command ID |
+| `debug-commands.ts` | `getDefaultDebugCommands()` - hardcoded list of debug commands |
+| `copilot-sdk-experiment.ts` | `testCopilotSDK()` - sends user prompt to SDK, shows response in output channel |
+| `index.ts` | Module exports |
 
 ### Tree View Commands
 

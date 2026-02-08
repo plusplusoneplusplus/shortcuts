@@ -56,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 ### ResolveCommentsTool
 
-Tool that allows Copilot to access and resolve review comments.
+Tool that allows Copilot to access and resolve review comments. Implements `vscode.LanguageModelTool<ResolveCommentsInput>` and supports both markdown and git diff comments.
 
 ```typescript
 import { ResolveCommentsTool, ResolveCommentsInput } from '../lm-tools';
@@ -66,6 +66,47 @@ const tool = new ResolveCommentsTool(
     markdownCommentsManager,
     diffCommentsManager
 );
+
+// The tool implements vscode.LanguageModelTool interface
+class ResolveCommentsTool implements vscode.LanguageModelTool<ResolveCommentsInput> {
+    readonly name = 'resolveComments';
+    readonly description = 'Get review comments from the workspace';
+    readonly parametersSchema = { /* ... */ };
+    
+    // prepareInvocation provides user confirmation before execution
+    async prepareInvocation(
+        input: ResolveCommentsInput,
+        token: vscode.CancellationToken,
+        context: vscode.LanguageModelToolContext
+    ): Promise<vscode.LanguageModelToolInvocation> {
+        // Show confirmation dialog
+        const confirmed = await vscode.window.showInformationMessage(
+            `Resolve comments with filters: ${JSON.stringify(input)}`,
+            'Continue',
+            'Cancel'
+        );
+        
+        if (confirmed !== 'Continue') {
+            throw new vscode.CancellationError();
+        }
+        
+        return {
+            toolCallId: context.toolCallId,
+            toolName: this.name,
+            arguments: input
+        };
+    }
+    
+    async invoke(
+        input: ResolveCommentsInput,
+        token: vscode.CancellationToken
+    ): Promise<vscode.LanguageModelToolResult> {
+        // Implementation
+    }
+}
+
+// Register the tool with VSCode
+vscode.lm.registerTool('resolveComments', tool);
 
 // The tool is invoked by Copilot with input like:
 const input: ResolveCommentsInput = {
@@ -276,6 +317,15 @@ if (resolveTool) {
     console.log('Tool result:', result);
 }
 ```
+
+## Module Files
+
+| File | Purpose |
+|------|---------|
+| `resolve-comments-tool.ts` | `ResolveCommentsTool` implements `vscode.LanguageModelTool`: filters and returns review comments |
+| `register-tools.ts` | `registerLanguageModelTools()`: registers all LM tools with VS Code API |
+| `types.ts` | Input types and schemas for tool parameters |
+| `index.ts` | Module exports |
 
 ## See Also
 

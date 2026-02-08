@@ -25,6 +25,17 @@ This module provides a global notes feature that allows users to create and mana
 │  │  - Virtual document provider (shortcuts-note: scheme)       ││
 │  │  - Provides note content for editors                        ││
 │  └─────────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │           NoteFileSystemProvider                             ││
+│  │  - Implements vscode.FileSystemProvider                     ││
+│  │  - Full file system operations (read, write, delete)       ││
+│  │  - Retry logic with exponential backoff                    ││
+│  └─────────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │           NoteDocumentManager                                ││
+│  │  - Handles opening notes in editors                         ││
+│  │  - Prevents double registration                             ││
+│  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
                               │
                               │ Storage
@@ -92,6 +103,59 @@ await provider.updateContent(noteId, 'New content');
 const content = provider.getContent(noteId);
 ```
 
+### NoteFileSystemProvider
+
+Full file system provider that implements `vscode.FileSystemProvider` (not just `TextDocumentContentProvider`). Provides complete file system operations including read, write, delete, and stat operations. Includes retry logic with exponential backoff for content loading to handle transient failures.
+
+```typescript
+import { NoteFileSystemProvider } from '../global-notes';
+
+// Register the file system provider
+const fsProvider = new NoteFileSystemProvider(context);
+context.subscriptions.push(
+    vscode.workspace.registerFileSystemProvider('shortcuts-note', fsProvider, {
+        isCaseSensitive: false
+    })
+);
+
+// The provider handles:
+// - readFile() - Loads note content with retry logic
+// - writeFile() - Saves note content
+// - delete() - Removes notes
+// - stat() - Gets note metadata
+// - readDirectory() - Lists all notes
+
+// Retry logic uses exponential backoff:
+// - Initial delay: 100ms
+// - Max retries: 3
+// - Backoff multiplier: 2x
+```
+
+### NoteDocumentManager
+
+Manages opening notes in editors and prevents double registration in tests.
+
+```typescript
+import { NoteDocumentManager } from '../global-notes';
+
+const manager = new NoteDocumentManager(context, noteProvider);
+
+// Open a note in an editor
+await manager.openNote(noteId, {
+    preview: false,
+    viewColumn: vscode.ViewColumn.One
+});
+
+// Check if note is already open
+const isOpen = manager.isNoteOpen(noteId);
+
+// Close a note
+await manager.closeNote(noteId);
+
+// Prevents double registration in tests by tracking
+// which providers have been registered
+```
+
 ## Usage Examples
 
 ### Example 1: Creating and Managing Notes
@@ -118,10 +182,10 @@ async function setupNotes(
 ### Example 2: Opening Note for Editing
 
 ```typescript
-async function editNote(noteId: string) {
-    const uri = vscode.Uri.parse(`shortcuts-note:${noteId}`);
-    const doc = await vscode.workspace.openTextDocument(uri);
-    await vscode.window.showTextDocument(doc, {
+import { NoteDocumentManager } from '../global-notes';
+
+async function editNote(noteId: string, manager: NoteDocumentManager) {
+    await manager.openNote(noteId, {
         preview: false,
         viewColumn: vscode.ViewColumn.One
     });
@@ -278,8 +342,13 @@ The module registers these commands:
 
 5. **Cleanup**: Clean up orphaned content when notes are deleted.
 
+6. **Retry logic**: The `NoteFileSystemProvider` includes exponential backoff retry logic for content loading to handle transient failures gracefully.
+
+7. **Prevent double registration**: Use `NoteDocumentManager` to prevent double registration of providers in tests.
+
 ## See Also
 
 - `src/shortcuts/configuration-manager.ts` - Configuration storage
 - `src/shortcuts/types.ts` - Type definitions
 - VSCode Memento API documentation
+- VSCode FileSystemProvider API documentation

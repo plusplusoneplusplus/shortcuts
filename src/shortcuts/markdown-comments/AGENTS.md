@@ -174,6 +174,195 @@ const prompt = generator.generate(comment, documentContent, {
 const batchPrompt = generator.generateBatch(comments, documentContent);
 ```
 
+## Supporting Files
+
+### base-types.ts
+
+Generic base interfaces for reuse across comment systems (markdown and git diff).
+
+```typescript
+import { CommentAnchor, CommentBase } from '../markdown-comments/base-types';
+
+// Base comment interface
+interface CommentBase {
+    id: string;
+    text: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+// Anchor interface for positioning
+interface CommentAnchor {
+    startLine: number;
+    endLine: number;
+    selectedText: string;
+    contentHash: string;
+}
+```
+
+### markdown-parser.ts
+
+Comprehensive markdown parsing utilities that handle code blocks, mermaid diagrams, tables, headings, links, images, and other markdown elements.
+
+```typescript
+import {
+    parseMarkdown,
+    extractCodeBlocks,
+    extractMermaidDiagrams,
+    extractTables,
+    extractHeadings,
+    extractLinks,
+    extractImages
+} from '../markdown-comments/markdown-parser';
+
+// Parse markdown content
+const parsed = parseMarkdown(content);
+
+// Extract specific elements
+const codeBlocks = extractCodeBlocks(content);
+const mermaidDiagrams = extractMermaidDiagrams(content);
+const tables = extractTables(content);
+const headings = extractHeadings(content);
+const links = extractLinks(content);
+const images = extractImages(content);
+```
+
+### file-path-utils.ts
+
+File path resolution utilities for resolving file paths from markdown links.
+
+```typescript
+import {
+    resolveMarkdownLink,
+    resolveRelativePath,
+    normalizePath
+} from '../markdown-comments/file-path-utils';
+
+// Resolve markdown link to absolute path
+const absolutePath = resolveMarkdownLink('[Link Text](./file.md)', basePath);
+
+// Resolve relative path
+const resolved = resolveRelativePath('../other/file.md', currentPath);
+
+// Normalize path
+const normalized = normalizePath('path/to/../file.md');
+```
+
+### line-change-tracker.ts
+
+Line-level change detection between text versions. Tracks insertions, deletions, and modifications.
+
+```typescript
+import {
+    trackLineChanges,
+    calculateLineMapping,
+    mapLineNumber
+} from '../markdown-comments/line-change-tracker';
+
+// Track changes between two versions
+const changes = trackLineChanges(oldContent, newContent);
+
+// Calculate line number mapping
+const mapping = calculateLineMapping(oldContent, newContent);
+
+// Map old line number to new line number
+const newLine = mapLineNumber(oldLine, mapping);
+```
+
+### code-block-themes.ts
+
+Syntax highlighting themes for code blocks (dark/light theme support).
+
+```typescript
+import {
+    getCodeBlockTheme,
+    applySyntaxHighlighting,
+    getThemeCSS
+} from '../markdown-comments/code-block-themes';
+
+// Get theme CSS for current VSCode theme
+const themeCSS = getCodeBlockTheme(vscode.window.activeColorTheme.kind);
+
+// Apply syntax highlighting to code block
+const highlighted = applySyntaxHighlighting(code, language, theme);
+
+// Get theme-specific CSS
+const css = getThemeCSS('dark'); // or 'light'
+```
+
+### comments-manager-base.ts
+
+Abstract base class for comment managers, providing common CRUD operations and event handling.
+
+```typescript
+import { CommentsManagerBase } from '../markdown-comments/comments-manager-base';
+
+class MyCommentsManager extends CommentsManagerBase {
+    // Implement abstract methods
+    protected async loadComments(uri: vscode.Uri): Promise<Comment[]> {
+        // Load implementation
+    }
+    
+    protected async saveComments(uri: vscode.Uri, comments: Comment[]): Promise<void> {
+        // Save implementation
+    }
+}
+
+// Base class provides:
+// - addComment(), updateComment(), deleteComment()
+// - getComments(), getAllComments()
+// - onDidChangeComments event emitter
+// - Comment storage abstraction
+```
+
+### webview-content.ts
+
+HTML generation for ReviewEditor webview. Creates the complete HTML structure with styles, scripts, and content.
+
+```typescript
+import {
+    generateWebviewContent,
+    generateHTML,
+    generateStyles,
+    generateScripts
+} from '../markdown-comments/webview-content';
+
+// Generate complete webview HTML
+const html = generateWebviewContent({
+    content: markdownContent,
+    comments: commentList,
+    theme: 'dark',
+    nonce: securityNonce
+});
+
+// Generate individual components
+const htmlContent = generateHTML(markdownContent);
+const styles = generateStyles(theme);
+const scripts = generateScripts(nonce);
+```
+
+### webview-utils.ts
+
+Line number calculation utilities for tables and code blocks. Handles complex markdown structures.
+
+```typescript
+import {
+    calculateLineNumber,
+    getLineNumberForElement,
+    calculateTableLineNumbers,
+    calculateCodeBlockLineNumbers
+} from '../markdown-comments/webview-utils';
+
+// Calculate line number for a DOM element
+const lineNumber = getLineNumberForElement(element, documentContent);
+
+// Calculate line numbers for table rows
+const tableLineNumbers = calculateTableLineNumbers(tableElement, content);
+
+// Calculate line numbers for code blocks
+const codeBlockLines = calculateCodeBlockLineNumbers(codeBlock, content);
+```
+
 ## Webview Architecture
 
 ### Webview Logic (Extension Side)
@@ -411,6 +600,28 @@ Comments are stored in JSON files under `.vscode/comments/`:
 5. **Selection handling**: Handle edge cases in text selection.
 
 6. **Sync with file**: Update comments when document is saved.
+
+## Module Files
+
+| File | Purpose |
+|------|---------|
+| `review-editor-view-provider.ts` | CustomTextEditorProvider for markdown with inline comments, AI, image resolution |
+| `comments-manager.ts` | `CommentsManager` (extends `CommentsManagerBase`): CRUD, persistence, anchor relocation |
+| `comments-manager-base.ts` | Abstract base class for comment managers: loading/saving JSON, ID generation, events |
+| `comments-tree-provider.ts` | `MarkdownCommentsTreeDataProvider` (extends `CommentsTreeProviderBase`): tree view |
+| `comment-anchor.ts` | Anchor creation, relocation, batch operations, content-based position tracking |
+| `prompt-generator.ts` | `PromptGenerator` (extends `PromptGeneratorBase`): AI prompt generation from comments |
+| `comments-commands.ts` | `MarkdownCommentsCommands`: resolve, reopen, delete, generate prompt, go to comment |
+| `ai-clarification-handler.ts` | AI clarification workflow for selected markdown text |
+| `markdown-parser.ts` | Comprehensive markdown parsing: code blocks, mermaid, tables, headings, links, images |
+| `file-path-utils.ts` | File path resolution from markdown links (absolute, relative, workspace-relative) |
+| `line-change-tracker.ts` | Line-level change detection between text versions for visual indicators |
+| `webview-content.ts` | HTML generation for ReviewEditor webview panel |
+| `webview-utils.ts` | Line number calculation utilities for tables and code blocks |
+| `code-block-themes.ts` | Syntax highlighting themes (dark/light) with CSS generation |
+| `base-types.ts` | Generic base interfaces reused across comment systems |
+| `types.ts` | All types: comment, anchor, status, events, config, AI clarification |
+| `index.ts` | Module exports |
 
 ## See Also
 

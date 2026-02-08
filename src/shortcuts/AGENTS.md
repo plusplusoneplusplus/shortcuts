@@ -11,6 +11,12 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 - Monorepo with npm workspaces
 - Extension imports core functionality from the package
 
+**Deep Wiki Generator** - Standalone CLI tool for auto-generating wiki documentation:
+- New package: `deep-wiki` in `packages/deep-wiki/`
+- CLI tool that auto-generates wiki documentation for any codebase
+- 3-phase pipeline: Discovery → Analysis → Writing
+- Uses pipeline-core for AI SDK and map-reduce
+
 **Tree Data Provider Base Classes** - Eliminated code duplication across tree data providers:
 - Created 5 new shared modules: `base-tree-data-provider`, `filterable-tree-data-provider`, `tree-filter-utils`, `tree-icon-utils`, `tree-error-handler`
 - Migrated 4 providers to extend base classes: GlobalNotesTreeDataProvider, TasksTreeDataProvider, PipelinesTreeDataProvider, LogicalTreeDataProvider
@@ -28,7 +34,6 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 | **git-diff-comments** | Inline commenting on Git diffs |
 | **global-notes** | Quick-access notes available across workspaces |
 | **lm-tools** | Language model tools for Copilot Chat integration |
-| **map-reduce** | VS Code integration layer (core in `pipeline-core`) |
 | **markdown-comments** | Inline commenting on markdown files |
 | **shared** | Shared utilities (logging, text matching, **tree provider base classes**) |
 | **sync** | Cloud synchronization via VSCode Settings Sync |
@@ -42,13 +47,13 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 │              pipeline-core (npm package)          │
 │  (logger, utils, ai/copilot-sdk, map-reduce core, pipeline)     │
 └─────────────────────────────────────────────────────────────────┘
-        ▲           ▲           ▲           ▲           ▲
-        │           │           │           │           │
-┌───────┴───┐ ┌─────┴─────┐ ┌───┴───────┐ ┌─┴───────────┴───┐
-│ai-service │ │map-reduce │ │yaml-      │ │  code-review    │
-│(VS Code)  │ │(VS Code)  │ │pipeline   │ │                 │
-└───────────┘ └───────────┘ │(VS Code)  │ └─────────────────┘
-                            └───────────┘
+        ▲           ▲           ▲           ▲
+        │           │           │           │
+┌───────┴───┐ ┌─────┴─────┐ ┌───┴───────────┴───┐
+│ai-service │ │yaml-      │ │  code-review      │
+│(VS Code)  │ │pipeline   │ │                   │
+└───────────┘ │(VS Code)  │ └───────────────────┘
+              └───────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │                         shared                                  │
@@ -87,7 +92,6 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 
 ### AI Processing Stack
 - **ai-service** → VS Code integration layer, uses pipeline-core for SDK/CLI
-- **map-reduce** → VS Code integration layer, uses pipeline-core for execution
 - **yaml-pipeline** → VS Code UI layer, uses pipeline-core for execution
 - **code-review** → Uses pipeline-core map-reduce for parallel rule checking
 
@@ -114,12 +118,12 @@ This is the main module directory for the "Markdown Review & Workspace Shortcuts
 | `commands.ts` | Centralized command registration |
 | `configuration-manager.ts` | YAML config management |
 | `config-migrations.ts` | Version migration for configs |
-| `logical-tree-data-provider.ts` | Main tree view provider |
-| `tree-items.ts` | Tree item classes |
+| `logical-tree-data-provider.ts` | Main tree view provider (supports commit items) |
+| `tree-items.ts` | Tree item classes (includes `CommitShortcutItem`, `CommitFileItem`) |
 | `drag-drop-controller.ts` | Drag and drop handling |
 | `error-handler.ts` | Error handling utilities |
 | `theme-manager.ts` | Theme-aware icons |
-| `types.ts` | Shared type definitions |
+| `types.ts` | Shared type definitions (`LogicalGroupItemType` includes `'commit'`) |
 | `notification-manager.ts` | User notifications |
 | `inline-search-provider.ts` | Tree search functionality |
 | `keyboard-navigation.ts` | Keyboard shortcuts |

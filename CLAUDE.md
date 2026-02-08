@@ -19,18 +19,26 @@ NEVER create document file unless user's explicit ask.
 - **Monorepo Structure:** npm workspaces with `packages/pipeline-core`, `packages/pipeline-cli`, `packages/deep-wiki`, and root extension
 - **Testing:** Vitest for pipeline-core/pipeline-cli/deep-wiki, Mocha for extension (6900+ extension tests passing)
 
-**Deep Wiki Generator (Phase 1)** - A standalone CLI tool that auto-generates a module graph for any codebase:
+**Deep Wiki Generator** - A standalone CLI tool that auto-generates comprehensive wikis for any codebase:
 
 - **New Package:** `deep-wiki` in `packages/deep-wiki/`
 - **Pure Node.js:** No VS Code dependencies, uses `pipeline-core` for AI SDK
-- **Phase 1 (Discovery):** Single AI session with MCP tools (grep, glob, view) to produce a ModuleGraph JSON
+- **Three-Phase Pipeline:**
+  - **Phase 1 (Discovery):** AI session with MCP tools to produce a `ModuleGraph` JSON
+  - **Phase 2 (Analysis):** Per-module deep analysis producing `ModuleAnalysis[]` with incremental caching
+  - **Phase 3 (Writing):** Article generation, reduce/synthesis, and static website output
 - **Modules:**
   - `discovery` - SDK session orchestration, prompt templates, response parsing, large repo handler
-  - `cache` - Git-hash-based cache invalidation for incremental discovery
-  - `commands` - CLI commands (`discover` functional, `generate` stub for future phases)
-- **CLI:** `deep-wiki discover <repo-path>` with --output, --model, --timeout, --focus, --force, --verbose
+  - `analysis` - Per-module analysis executor, prompts, and response parsing
+  - `writing` - Article executor, file writer, website generator, reduce prompts
+  - `cache` - Git-hash-based cache invalidation for discovery, analysis, and articles
+  - `commands` - CLI commands (`discover` and `generate`)
+- **CLI Commands:**
+  - `deep-wiki discover <repo-path>` - Discover module graph only
+  - `deep-wiki generate <repo-path>` - Full pipeline: Discovery → Analysis → Articles → Website
+  - Options: --output, --model, --concurrency, --timeout, --focus, --force, --use-cache, --phase, --depth, --skip-website, --theme, --title, --verbose, --no-color
 - **Large Repo Support:** Multi-round discovery for repos with 3000+ files (structural scan → per-area drill-down → merge)
-- **Testing:** 156 Vitest tests across 8 test files
+- **Testing:** Vitest tests across 23 test files
 
 **Tree Data Provider Base Classes** - A refactoring was completed to eliminate code duplication across tree data providers:
 
@@ -725,10 +733,12 @@ interface ShortcutsConfig {
 ## Development Notes
 
 - Uses webpack for bundling with TypeScript compilation
-- VSCode API minimum version: 1.74.0
+- VSCode API minimum version: 1.95.0
 - Format on save and import organization enabled
 - **Monorepo structure** with npm workspaces:
-  - `packages/pipeline-core` - Pure Node.js package (Vitest tests)
+  - `packages/pipeline-core` - Pure Node.js AI pipeline engine (Vitest tests)
+  - `packages/pipeline-cli` - Standalone CLI for YAML pipelines (Vitest tests)
+  - `packages/deep-wiki` - CLI tool for auto-generating codebase wikis (Vitest tests)
   - Root extension - VS Code extension (Mocha tests)
 - Extension activates on view container or command usage
 - Supports both workspace and global configuration modes
@@ -747,20 +757,21 @@ interface ShortcutsConfig {
 - Run with `npm test` which handles compilation and setup automatically
 
 **Pipeline Core Tests** (Vitest) - Located in `packages/pipeline-core/test/`:
-- Concurrency limiter tests
-- Temp file utilities tests
-- CSV reader tests
+- Concurrency limiter, temp file utilities, CSV reader tests
 - Run with `npm run test:run` in `packages/pipeline-core/` directory
 
+**Pipeline CLI Tests** (Vitest) - Located in `packages/pipeline-cli/test/`:
+- CLI argument parsing, run/validate/list commands, config, output formatter, AI invoker, logger
+- 8 test files; run with `npm run test:run` in `packages/pipeline-cli/` directory
+
 **Deep Wiki Tests** (Vitest) - Located in `packages/deep-wiki/test/`:
-- Type validation and schema tests (29 tests)
-- Discovery response parser tests (34 tests)
-- Discovery prompt template tests (21 tests)
-- Large repo handler and sub-graph merging tests (13 tests)
-- Cache read/write and git utility tests (29 tests)
-- CLI argument parsing tests (17 tests)
-- Discover command integration tests (13 tests)
-- Run with `npm run test:run` in `packages/deep-wiki/` directory
+- Discovery: prompt templates, response parsing, large repo handler, area tagging
+- Analysis: executor, prompts, response parsing
+- Writing: article executor, file writer, prompts, website generator, hierarchical structure
+- Cache: discovery cache, analysis cache, article cache, reduce-article cache, git utilities
+- Commands: discover and generate integration tests
+- CLI argument parsing, AI invoker, types
+- 23 test files; run with `npm run test:run` in `packages/deep-wiki/` directory
 
 ## Configuration Migration System
 

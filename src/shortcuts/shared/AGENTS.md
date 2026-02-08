@@ -88,13 +88,6 @@ class MyTreeProvider extends BaseTreeDataProvider<vscode.TreeItem> {
 }
 ```
 
-**Key Features:**
-- Automatic EventEmitter setup (`onDidChangeTreeData`)
-- Built-in `refresh()` method with optional element parameter
-- Error handling with logging and user notifications
-- Disposable management (`dispose()` method automatically called)
-- Eliminates ~40-50 lines of boilerplate per provider
-
 **Providers using BaseTreeDataProvider (as of 2026-01):**
 - GlobalNotesTreeDataProvider
 
@@ -110,11 +103,6 @@ Extends BaseTreeDataProvider with filtering/search capabilities. Perfect for tre
 - `hasFilter` property to check if filter is active
 - Auto-refresh on filter changes
 - Eliminates ~60-70 lines of boilerplate per provider
-
-**Providers using FilterableTreeDataProvider (as of 2026-01):**
-- TasksTreeDataProvider
-- PipelinesTreeDataProvider
-- LogicalTreeDataProvider
 
 **Usage:**
 
@@ -147,30 +135,7 @@ const current = provider.getFilter(); // Gets current filter
 const isActive = provider.hasFilter; // Check if filter is active
 ```
 
-**Key Features:**
-- All features from BaseTreeDataProvider
-- Automatic filter state management (lowercase storage)
-- Case-insensitive filtering by default
-- Helper method `matchesFilter(...fields)` for multi-field matching
-- `hasFilter` property to check if filter is active
-- Auto-refresh on filter changes
-- Eliminates ~60-70 lines of boilerplate per provider
-
-**Providers using FilterableTreeDataProvider:**
-- TasksTreeDataProvider
-- PipelinesTreeDataProvider
-- LogicalTreeDataProvider
-
-**Key Features:**
-- All features from BaseTreeDataProvider
-- Automatic filter state management (lowercase storage)
-- Case-insensitive filtering by default
-- Helper method `matchesFilter(...fields)` for multi-field matching
-- `hasFilter` property to check if filter is active
-- Auto-refresh on filter changes
-- Eliminates ~60-70 lines of boilerplate per provider
-
-**Providers using FilterableTreeDataProvider:**
+**Providers using FilterableTreeDataProvider (as of 2026-01):**
 - TasksTreeDataProvider
 - PipelinesTreeDataProvider
 - LogicalTreeDataProvider
@@ -185,7 +150,7 @@ import { getExtensionLogger, LogCategory, LogLevel } from '../shared';
 const logger = getExtensionLogger();
 
 // Log at different levels
-logger.debug(LogCategory.AI_SERVICE, 'Starting process', { processId: '123' });
+logger.debug(LogCategory.AI, 'Starting process', { processId: '123' });
 logger.info(LogCategory.GIT, 'Repository detected', { path: '/repo' });
 logger.warn(LogCategory.CONFIG, 'Deprecated setting used');
 logger.error(LogCategory.SYNC, 'Sync failed', error, { attempt: 3 });
@@ -443,6 +408,170 @@ const result = await handleAIClarificationBase({
 });
 ```
 
+### ReadOnlyDocumentProvider
+
+A flexible, generic read-only document provider with multiple content strategies. Supports different methods of content retrieval through a strategy pattern.
+
+**Content Strategies:**
+
+1. **FileContentStrategy** - Reads content from the filesystem
+   - Supports base path configuration
+   - Configurable error messages and encoding
+   - Cross-platform file path handling
+
+2. **MemoryContentStrategy** - Stores/retrieves content from an in-memory Map
+   - Useful for dynamically generated content (e.g., pipeline results)
+   - Supports content change events
+   - Provides `store()`, `has()`, `delete()`, and `clear()` methods
+
+3. **DynamicContentStrategy** - Uses a callback function to provide content
+   - Supports reactive updates via optional change event
+   - Can accept context objects for flexible content generation
+   - Useful for computed or transformed content
+
+4. **GitContentStrategy** - Retrieves file content from git at a specific commit
+   - Executes `git show <commit>:<path>` to get content
+   - Supports query parameters for commit hash, repository root, and file path
+   - Handles empty tree hash for new files
+   - Cross-platform git command execution
+
+**Usage:**
+
+```typescript
+import {
+    ReadOnlyDocumentProvider,
+    FileContentStrategy,
+    MemoryContentStrategy,
+    DynamicContentStrategy,
+    GitContentStrategy
+} from '../shared/readonly-document-provider';
+
+const provider = new ReadOnlyDocumentProvider();
+
+// Register file-based strategy
+provider.registerScheme('my-file', new FileContentStrategy({
+    basePath: '/workspace',
+    encoding: 'utf-8'
+}));
+
+// Register memory-based strategy
+const memoryStrategy = new MemoryContentStrategy();
+provider.registerScheme('my-memory', memoryStrategy);
+
+// Store content in memory
+memoryStrategy.store(vscode.Uri.parse('my-memory://doc1'), 'Content here');
+
+// Register dynamic strategy
+provider.registerScheme('my-dynamic', new DynamicContentStrategy({
+    getContent: (uri) => `Dynamic content for ${uri.path}`,
+    onChange: someEventEmitter.event
+}));
+
+// Register git strategy
+provider.registerScheme('git-file', new GitContentStrategy({
+    commitParam: 'commit',
+    repoParam: 'repo',
+    timeout: 30000
+}));
+
+// Open document
+const uri = vscode.Uri.parse('my-memory://doc1');
+await vscode.window.showTextDocument(uri);
+
+// Unregister when done
+provider.unregisterScheme('my-file');
+provider.dispose();
+```
+
+**Key Features:**
+- Multiple URI schemes supported (one strategy per scheme)
+- Automatic content refresh via strategy change events
+- Cross-platform compatibility (Windows, macOS, Linux)
+- Proper resource disposal and cleanup
+- Error handling with logging
+
+### ReadOnlyDocumentProvider
+
+A flexible, generic read-only document provider with multiple content strategies. Supports different methods of content retrieval through a strategy pattern.
+
+**Content Strategies:**
+
+1. **FileContentStrategy** - Reads content from the filesystem
+   - Supports base path configuration
+   - Configurable error messages and encoding
+   - Cross-platform file path handling
+
+2. **MemoryContentStrategy** - Stores/retrieves content from an in-memory Map
+   - Useful for dynamically generated content (e.g., pipeline results)
+   - Supports content change events
+   - Provides `store()`, `has()`, `delete()`, and `clear()` methods
+
+3. **DynamicContentStrategy** - Uses a callback function to provide content
+   - Supports reactive updates via optional change event
+   - Can accept context objects for flexible content generation
+   - Useful for computed or transformed content
+
+4. **GitContentStrategy** - Retrieves file content from git at a specific commit
+   - Executes `git show <commit>:<path>` to get content
+   - Supports query parameters for commit hash, repository root, and file path
+   - Handles empty tree hash for new files
+   - Cross-platform git command execution
+
+**Usage:**
+
+```typescript
+import {
+    ReadOnlyDocumentProvider,
+    FileContentStrategy,
+    MemoryContentStrategy,
+    DynamicContentStrategy,
+    GitContentStrategy
+} from '../shared/readonly-document-provider';
+
+const provider = new ReadOnlyDocumentProvider();
+
+// Register file-based strategy
+provider.registerScheme('my-file', new FileContentStrategy({
+    basePath: '/workspace',
+    encoding: 'utf-8'
+}));
+
+// Register memory-based strategy
+const memoryStrategy = new MemoryContentStrategy();
+provider.registerScheme('my-memory', memoryStrategy);
+
+// Store content in memory
+memoryStrategy.store(vscode.Uri.parse('my-memory://doc1'), 'Content here');
+
+// Register dynamic strategy
+provider.registerScheme('my-dynamic', new DynamicContentStrategy({
+    getContent: (uri) => `Dynamic content for ${uri.path}`,
+    onChange: someEventEmitter.event
+}));
+
+// Register git strategy
+provider.registerScheme('git-file', new GitContentStrategy({
+    commitParam: 'commit',
+    repoParam: 'repo',
+    timeout: 30000
+}));
+
+// Open document
+const uri = vscode.Uri.parse('my-memory://doc1');
+await vscode.window.showTextDocument(uri);
+
+// Unregister when done
+provider.unregisterScheme('my-file');
+provider.dispose();
+```
+
+**Key Features:**
+- Multiple URI schemes supported (one strategy per scheme)
+- Automatic content refresh via strategy change events
+- Cross-platform compatibility (Windows, macOS, Linux)
+- Proper resource disposal and cleanup
+- Error handling with logging
+
 ### Glob Utilities
 
 File pattern matching utilities.
@@ -461,7 +590,34 @@ const tsFiles = getFilesWithExtension(workspaceRoot, '.ts', {
 
 ## Webview Utilities
 
-Shared utilities for webview components (in `./webview` subdirectory).
+Shared utilities for webview components (in `./webview` subdirectory). Provides comprehensive support for building custom editors, panels, and interactive webviews.
+
+### Core Components
+
+**Base Classes:**
+- `base-custom-editor-provider.ts` - Base class for custom editor providers with common functionality
+- `base-panel-manager.ts` - Panel positioning and management utilities
+- `base-state.ts` - State management base classes
+- `base-vscode-bridge.ts` - Bridge utilities for VS Code API integration
+
+**Content & Rendering:**
+- `markdown-renderer.ts` - Markdown rendering with syntax highlighting and mermaid.js support
+- `extension-webview-utils.ts` - Core webview utilities (content generation, nonce, URI helpers)
+
+**User Interaction:**
+- `context-menu-builder.ts` / `context-menu-manager.ts` / `context-menu-types.ts` - Context menu system for webviews
+- `selection-utils.ts` - Text selection handling utilities
+- `search-handler.ts` - Search functionality within webviews
+
+**Communication & State:**
+- `webview-message-router.ts` - Message routing between webview and extension host
+- `webview-state-manager.ts` - State persistence and synchronization
+- `webview-setup-helper.ts` - Webview initialization and setup utilities
+
+**Dialogs:**
+- `custom-instruction-dialog.ts` - Custom instruction dialog components
+
+**Usage:**
 
 ```typescript
 import {
@@ -499,14 +655,14 @@ export class MyService {
     private readonly logger = getExtensionLogger();
     
     async doSomething(input: string): Promise<Result> {
-        this.logger.logOperationStart(LogCategory.AI_SERVICE, 'Processing', { input });
+        this.logger.logOperationStart(LogCategory.AI, 'Processing', { input });
         
         try {
             const startTime = Date.now();
             const result = await this.process(input);
             
             this.logger.logOperationComplete(
-                LogCategory.AI_SERVICE,
+                LogCategory.AI,
                 'Processing',
                 Date.now() - startTime,
                 { resultSize: result.length }
@@ -515,7 +671,7 @@ export class MyService {
             return result;
         } catch (error) {
             this.logger.logOperationFailed(
-                LogCategory.AI_SERVICE,
+                LogCategory.AI,
                 'Processing',
                 error instanceof Error ? error : undefined,
                 { input }
@@ -598,15 +754,26 @@ export class ReviewCommentsTreeProvider extends CommentsTreeProviderBase<ReviewC
 
 ```typescript
 enum LogCategory {
-    EXTENSION = 'Extension',
-    CONFIG = 'Config',
+    /** AI Service operations (Copilot CLI, clarifications, code review) */
+    AI = 'AI Service',
+    /** Git operations (commits, changes, diff) */
     GIT = 'Git',
-    AI_SERVICE = 'AI-Service',
+    /** Configuration management */
+    CONFIG = 'Configuration',
+    /** Markdown comments feature */
+    MARKDOWN = 'Markdown Comments',
+    /** Git diff comments feature */
+    DIFF_COMMENTS = 'Diff Comments',
+    /** Discovery feature */
     DISCOVERY = 'Discovery',
+    /** Sync operations */
     SYNC = 'Sync',
-    COMMENTS = 'Comments',
-    TREE = 'Tree',
-    WEBVIEW = 'Webview'
+    /** Tasks viewer */
+    TASKS = 'Tasks',
+    /** General extension operations */
+    EXTENSION = 'Extension',
+    /** File system operations */
+    FILESYSTEM = 'FileSystem'
 }
 ```
 
@@ -681,11 +848,31 @@ shared/
 ├── comments-tree-provider-base.ts    # Tree provider base for comments
 ├── prompt-generator-base.ts          # Prompt generator base
 ├── ai-clarification-handler-base.ts  # AI handler base
+├── ai-timeouts.ts                    # Re-exports timeout constants from pipeline-core
+├── predefined-comment-registry.ts    # Singleton registry for predefined comments
+├── predefined-comment-types.ts       # Types and defaults for predefined comments
+├── prompt-files-utils.ts             # Utilities for VS Code Copilot .prompt.md files
+├── readonly-document-provider.ts     # Read-only document provider with content strategies
+├── search-skip-selectors.ts          # CSS selectors for search exclusion
+├── skill-files-utils.ts              # Utilities for finding skill directories
+├── workspace-utils.ts                # Workspace path resolution utilities
 └── webview/                          # Webview utilities
     ├── index.ts
-    ├── content-generator.ts
-    ├── message-handler.ts
-    └── theme-utils.ts
+    ├── base-custom-editor-provider.ts
+    ├── base-panel-manager.ts
+    ├── base-state.ts
+    ├── base-vscode-bridge.ts
+    ├── context-menu-builder.ts
+    ├── context-menu-manager.ts
+    ├── context-menu-types.ts
+    ├── custom-instruction-dialog.ts
+    ├── extension-webview-utils.ts
+    ├── markdown-renderer.ts
+    ├── search-handler.ts
+    ├── selection-utils.ts
+    ├── webview-message-router.ts
+    ├── webview-setup-helper.ts
+    └── webview-state-manager.ts
 ```
 
 ## See Also

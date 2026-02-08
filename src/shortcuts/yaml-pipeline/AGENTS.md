@@ -77,6 +77,30 @@ Given package at `.vscode/pipelines/run-tests/`:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Module Files
+
+This section lists all files in the module's UI layer:
+
+### Core Module Files
+- `index.ts` - Module exports
+- `bundled/index.ts` - Bundled pipelines registry
+
+### UI Module Files
+- `ui/index.ts` - UI module exports
+- `ui/types.ts` - Type definitions (PipelineInfo, PipelineSource, PipelineTemplateType, etc.)
+- `ui/pipeline-manager.ts` - Pipeline CRUD, discovery, validation, bundled pipelines
+- `ui/tree-data-provider.ts` - PipelinesTreeDataProvider (extends FilterableTreeDataProvider)
+- `ui/pipeline-item.ts` - Tree items: PipelineCategoryItem, PipelineItem, ResourceItem
+- `ui/commands.ts` - PipelineCommands class, VS Code command handlers
+- `ui/pipeline-executor-service.ts` - VS Code pipeline execution, progress, process tracking
+- `ui/preview-provider.ts` - CustomTextEditorProvider for pipeline.yaml preview
+- `ui/preview-content.ts` - Preview HTML with interactive Mermaid diagrams
+- `ui/preview-mermaid.ts` - Mermaid flowchart diagram generation
+- `ui/result-viewer-provider.ts` - Enhanced result display with retry/export
+- `ui/result-viewer-content.ts` - Result viewer HTML generation
+- `ui/result-viewer-types.ts` - Result viewer type definitions
+- `ui/bundled-readonly-provider.ts` - Read-only bundled pipeline provider
+
 ## Key Components
 
 ### Pipeline Executor
@@ -199,6 +223,8 @@ const json = extractJSON('Some text {"result": true} more text');
 # pipeline.yaml (in package directory)
 name: "Code Analysis Pipeline"
 description: "Analyze code files for issues"
+# Optional: Working directory for AI SDK sessions (not for CSV/prompt resolution)
+# workingDirectory: "../../../frontend" # Relative to pipeline package dir, or absolute
 
 input:
   type: csv
@@ -1137,6 +1163,43 @@ await showPipelineResults(result, pipelineName);
 
 **Reason:** Basic viewer lacks individual item inspection and detailed result breakdown. The enhanced viewer provides superior user experience with node-level details and interactive features.
 
+### Pipeline Preview Editor
+
+A custom editor (`CustomTextEditorProvider`) that provides a visual preview of pipeline YAML files with interactive Mermaid diagrams.
+
+**Features:**
+- Visual flowchart representation of pipeline structure (input → filter → map → reduce)
+- CSV data preview showing sample rows and column headers
+- AI input generation flow visualization
+- Interactive Mermaid diagrams rendered in webview
+- Syntax highlighting for YAML content
+- Real-time preview updates as pipeline.yaml is edited
+
+**Usage:**
+- Right-click `pipeline.yaml` → "Open with Pipeline Preview"
+- Or use command: `pipeline.preview`
+- Shows visual representation of the pipeline execution flow
+
+**Components:**
+- `preview-provider.ts` - CustomTextEditorProvider implementation
+- `preview-content.ts` - HTML generation with Mermaid integration
+- `preview-mermaid.ts` - Mermaid flowchart diagram generation logic
+
+**Mermaid Diagram Types:**
+- Pipeline flow: Shows input → filter → map → reduce phases
+- Data flow: Visualizes CSV columns → template variables → AI output
+- Execution flow: Shows parallel processing and batch grouping
+
+```typescript
+import { registerPipelinePreview, PipelinePreviewEditorProvider } from '../yaml-pipeline';
+
+// Register preview editor provider
+registerPipelinePreview(context);
+
+// Preview is automatically available for pipeline.yaml files
+// Users can right-click → "Open with Pipeline Preview"
+```
+
 ### PipelinesTreeDataProvider
 
 Tree data provider for the Pipelines Viewer. **Extends `FilterableTreeDataProvider`** (as of 2026-01 refactoring) for built-in search, filtering, EventEmitter, refresh, dispose, and error handling capabilities.
@@ -1195,6 +1258,48 @@ const currentFilter = provider.getFilter();
 provider.refresh();
 ```
 
+### Bundled Pipelines
+
+The extension ships with several pre-configured pipelines that users can copy to their workspace for customization. Bundled pipelines are read-only and stored in the extension's resources folder.
+
+**Registry:**
+- Bundled pipelines are registered in `bundled/index.ts` via the `BUNDLED_PIPELINES` array
+- Each bundled pipeline has a manifest with `id`, `name`, `description`, `category`, `directory`, and optional `resources`
+- Examples: `code-review-checklist`, `bug-triage`, `doc-generator`, `multi-agent-research`
+
+**Copy to Workspace:**
+- Users can copy bundled pipelines to `.vscode/pipelines/` via the "Copy to Workspace" command
+- Copied pipelines become editable workspace pipelines
+- Original bundled pipelines remain read-only
+
+**Read-only Provider:**
+- `BundledPipelineContentProvider` provides read-only access to bundled pipeline files
+- Uses `bundled-pipeline:` URI scheme
+- Prevents accidental modification of bundled templates
+
+```typescript
+import {
+    BUNDLED_PIPELINES,
+    getBundledPipelineManifest,
+    getBundledPipelineDirectory,
+    isValidBundledPipelineId
+} from '../yaml-pipeline';
+
+// List all bundled pipelines
+const allBundled = BUNDLED_PIPELINES;
+
+// Get specific bundled pipeline manifest
+const manifest = getBundledPipelineManifest('bug-triage');
+
+// Check if bundled pipeline ID is valid
+if (isValidBundledPipelineId('code-review-checklist')) {
+    // Pipeline exists
+}
+
+// Get bundled pipeline directory path
+const bundledPath = getBundledPipelineDirectory(context, 'bug-triage');
+```
+
 ### Tree View Components
 
 ```typescript
@@ -1208,6 +1313,33 @@ const packages = await provider.getChildren();
 // Get resources for a package
 const resources = await provider.getChildren(pipelineItem);
 ```
+
+**Pipeline Categories:**
+
+The tree view organizes pipelines into categories:
+
+```
+Pipelines Viewer
+├── 📦 Bundled Pipelines (category)
+│   ├── Code Review Checklist
+│   ├── Bug Triage
+│   ├── Documentation Generator
+│   └── Multi-Agent Research System
+└── 📁 Workspace Pipelines (category)
+    ├── my-pipeline/ (package)
+    │   ├── pipeline.yaml
+    │   ├── input.csv
+    │   └── data/
+    │       └── test-cases.csv
+    └── analyze-code/ (package)
+        ├── pipeline.yaml
+        └── rules.csv
+```
+
+- **Bundled Pipelines** category shows read-only templates shipped with the extension
+- **Workspace Pipelines** category shows editable pipelines in `.vscode/pipelines/`
+- Each package can be expanded to show its resource files
+- Categories use `PipelineCategoryItem` tree items
 
 ### PipelineInfo Type
 
@@ -1279,9 +1411,9 @@ If you have existing flat `.yaml` files in `.vscode/pipelines/`:
 
 ## See Also
 
-- `packages/pipeline-core/src/pipeline/` - Core pipeline engine (pure Node.js)
+- `packages/pipeline-core/AGENTS.md` - Core pipeline engine documentation (pure Node.js)
+- `packages/pipeline-core/src/pipeline/` - Core pipeline engine implementation
 - `packages/pipeline-core/test/pipeline/` - Core tests (Vitest)
-- `src/shortcuts/map-reduce/AGENTS.md` - Underlying map-reduce framework
 - `docs/designs/yaml-pipeline-framework.md` - Design documentation
 - `docs/designs/pipeline-core-extraction.md` - Package extraction design
 - `src/shortcuts/code-review/AGENTS.md` - Example pipeline usage

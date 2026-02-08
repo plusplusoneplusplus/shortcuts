@@ -89,6 +89,84 @@ const files = await logService.getCommitFiles(repoPath, commitHash);
 const diff = await logService.getFileDiff(repoPath, commitHash, filePath);
 ```
 
+### BranchService
+
+Service for branch operations: list, search, switch, create, delete, rename branches; stash/pop; fetch/pull/push.
+
+```typescript
+import { BranchService } from '../git';
+
+const branchService = new BranchService(gitService);
+
+// List all branches
+const branches = await branchService.listBranches(repoPath);
+
+// Search branches by name
+const matching = await branchService.searchBranches(repoPath, 'feature');
+
+// Switch to a branch
+await branchService.switchBranch(repoPath, 'feature/new-feature');
+
+// Create a new branch
+await branchService.createBranch(repoPath, 'feature/new-feature', 'main');
+
+// Delete a branch
+await branchService.deleteBranch(repoPath, 'old-branch', true); // force delete
+
+// Rename a branch
+await branchService.renameBranch(repoPath, 'old-name', 'new-name');
+
+// Stash changes
+await branchService.stash(repoPath, 'Stash message');
+
+// Pop stash
+await branchService.popStash(repoPath, 0); // index 0
+
+// Fetch from remote
+await branchService.fetch(repoPath, 'origin');
+
+// Pull from remote
+await branchService.pull(repoPath, 'origin', 'main');
+
+// Push to remote
+await branchService.push(repoPath, 'origin', 'main');
+```
+
+### GitRangeService
+
+Service for commit range analysis: default remote branch detection, changed files in range, diff statistics.
+
+```typescript
+import { GitRangeService } from '../git';
+
+const rangeService = new GitRangeService(gitService);
+
+// Get default remote branch
+const defaultBranch = await rangeService.getDefaultRemoteBranch(repoPath);
+// Returns: 'origin/main' or 'origin/master'
+
+// Get changed files in commit range
+const files = await rangeService.getChangedFilesInRange(
+    repoPath,
+    'abc123',  // from commit
+    'def456'   // to commit
+);
+
+// Get diff statistics for range
+const stats = await rangeService.getDiffStatistics(
+    repoPath,
+    'abc123',
+    'def456'
+);
+// Returns: { additions: 100, deletions: 50, files: 5 }
+
+// Analyze commit range
+const analysis = await rangeService.analyzeRange(
+    repoPath,
+    { from: 'abc123', to: 'def456' }
+);
+```
+
 ### TreeDataProvider
 
 The main tree data provider for the Git changes panel.
@@ -118,13 +196,18 @@ Various tree item classes for different Git entities:
 
 ```typescript
 import {
-    GitChangeItem,        // Individual file change
-    GitCommitItem,        // Commit entry
-    GitCommitFileItem,    // File within a commit
-    SectionHeaderItem,    // Section headers (Staged, Unstaged, etc.)
-    StageSectionItem,     // Staging sections
-    LoadMoreItem,         // Pagination item
-    LookedUpCommitItem    // Searched/looked-up commit
+    GitChangeItem,              // Individual file change
+    GitCommitItem,              // Commit entry
+    GitCommitFileItem,          // File within a commit
+    BranchItem,                 // Branch entry
+    BranchChangesSectionItem,   // Section for branch changes
+    GitRangeFileItem,           // File within a commit range
+    GitCommitRangeItem,         // Commit range entry
+    LookedUpCommitItem,         // Searched/looked-up commit
+    LookedUpCommitsSectionItem, // Section for looked-up commits
+    SectionHeaderItem,          // Section headers (Staged, Unstaged, etc.)
+    StageSectionItem,           // Staging sections
+    LoadMoreItem                // Pagination item
 } from '../git';
 ```
 
@@ -355,6 +438,34 @@ gitService.onDidChangeRepository((repo) => {
     console.log('Repository changed:', repo.rootUri.fsPath);
 });
 ```
+
+## Module Files
+
+| File | Purpose |
+|------|---------|
+| `git-service.ts` | `GitService` singleton: VS Code Git extension abstraction, status, stage/unstage |
+| `git-log-service.ts` | `GitLogService`: commit history, search, filtering, commit details/files/diff |
+| `git-range-service.ts` | `GitRangeService`: commit range analysis, default remote branch, changed files, diff stats |
+| `branch-service.ts` | `BranchService`: list/search/switch/create/delete/rename branches; stash/pop; fetch/pull/push |
+| `tree-data-provider.ts` | `GitTreeDataProvider`: staged/unstaged/untracked, commit history (paginated), branch status |
+| `git-show-text-document-provider.ts` | Read-only file content from commits via `ReadOnlyDocumentProvider` with `GitContentStrategy` |
+| `types.ts` | Git types: `GitChange`, `GitCommit`, `GitCommitFile`, `GitCommitRange`, `GitRepository`, etc. |
+| `index.ts` | Module exports |
+
+### Additional Tree Items
+
+| Item | Purpose |
+|------|---------|
+| `BranchItem` | Current branch display |
+| `BranchChangesSectionItem` | Branch changes section header |
+| `GitCommitRangeItem` | Commit range display |
+| `GitRangeFileItem` | File within a commit range |
+| `LookedUpCommitItem` | Searched/looked-up commit |
+| `LookedUpCommitsSectionItem` | Section for looked-up commits |
+| `SectionHeaderItem` | Generic section headers |
+| `StageSectionItem` | Staging section items |
+| `LoadMoreItem` | Pagination for commit history |
+| `GitDragDropController` | Drag and drop for git tree view items |
 
 ## See Also
 

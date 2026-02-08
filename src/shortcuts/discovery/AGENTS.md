@@ -79,6 +79,107 @@ if (process.status === 'completed') {
 }
 ```
 
+### ai-discovery-engine.ts
+
+AI-powered search engine using Copilot SDK/CLI with prompt construction, response parsing, and process cancellation support.
+
+```typescript
+import {
+    AIDiscoveryEngine,
+    buildDiscoveryPrompt,
+    parseDiscoveryResponse,
+    cancelDiscoveryProcess
+} from '../discovery/ai-discovery-engine';
+
+const engine = new AIDiscoveryEngine();
+
+// Build discovery prompt with feature description and keywords
+const prompt = buildDiscoveryPrompt(
+    'User authentication with OAuth',
+    ['oauth', 'authentication', 'login'],
+    { includeSourceFiles: true, includeDocs: true }
+);
+
+// Parse AI response into structured discovery results
+const results = parseDiscoveryResponse(aiOutput, featureDescription);
+
+// Cancel a running discovery process
+await cancelDiscoveryProcess(processId);
+```
+
+### keyword-extractor.ts
+
+NLP utilities for extracting keywords, filtering stop words, and generating search patterns. Used as fallback when AI is unavailable.
+
+```typescript
+import {
+    extractKeywords,
+    filterStopWords,
+    generateSearchPatterns,
+    tokenizeText
+} from '../discovery/keyword-extractor';
+
+// Extract keywords from feature description
+const keywords = extractKeywords('User authentication with OAuth');
+// Returns: ['user', 'authentication', 'oauth']
+
+// Filter out common stop words
+const filtered = filterStopWords(['the', 'user', 'authentication', 'with', 'oauth']);
+// Returns: ['user', 'authentication', 'oauth']
+
+// Generate search patterns for grep/glob
+const patterns = generateSearchPatterns(['auth', 'login', 'session']);
+// Returns: ['*auth*', '*login*', '*session*']
+
+// Tokenize text for analysis
+const tokens = tokenizeText('User authentication system');
+// Returns: ['user', 'authentication', 'system']
+```
+
+### relevance-scorer.ts
+
+Scoring system with heuristics: keyword matches, directory relevance, deduplication, and grouping by type.
+
+```typescript
+import {
+    RelevanceScorer,
+    scoreResult,
+    calculateKeywordMatches,
+    calculateDirectoryRelevance,
+    deduplicateResults,
+    groupByType
+} from '../discovery/relevance-scorer';
+
+const scorer = new RelevanceScorer();
+
+// Score a discovery result
+const score = scoreResult(
+    result,
+    featureDescription,
+    keywords
+);
+// Returns: 0-100 relevance score
+
+// Calculate keyword match score
+const keywordScore = calculateKeywordMatches(
+    result,
+    keywords
+);
+
+// Calculate directory relevance (e.g., src/ more relevant than docs/)
+const dirScore = calculateDirectoryRelevance(
+    result.path,
+    focusAreas
+);
+
+// Deduplicate results by path/content
+const unique = deduplicateResults(results);
+
+// Group results by type (file, doc, commit)
+const grouped = groupByType(results);
+// Returns: { files: [...], docs: [...], commits: [...] }
+```
+
 ### DiscoveryEngine (Keyword-based Fallback)
 
 Used when AI is not available or disabled.
@@ -352,6 +453,20 @@ interface DiscoveryProcess {
 5. **Cache results**: Consider caching discovery results for repeated queries.
 
 6. **Fallback gracefully**: Use keyword-based discovery when AI is unavailable.
+
+## Module Files
+
+| File | Purpose |
+|------|---------|
+| `discovery-engine.ts` | `DiscoveryEngine`: primary orchestrator, defaults to AI with keyword fallback |
+| `ai-discovery-engine.ts` | `AIDiscoveryEngine`: Copilot SDK/CLI semantic search, prompt construction, response parsing |
+| `keyword-extractor.ts` | NLP utilities: stop words, keyword extraction, search pattern generation |
+| `relevance-scorer.ts` | Heuristic scoring: keyword matches, directory relevance, deduplication, grouping |
+| `discovery-commands.ts` | VS Code commands: discover globally or for a specific group |
+| `search-providers/` | Pluggable search providers for files and git history |
+| `discovery-webview/` | Webview preview panel for interactive result selection |
+| `types.ts` | All types: requests, results, process states, scoring config |
+| `index.ts` | Module exports |
 
 ## See Also
 

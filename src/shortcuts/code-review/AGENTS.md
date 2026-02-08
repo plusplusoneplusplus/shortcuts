@@ -100,6 +100,110 @@ for (const finding of response.findings) {
 }
 ```
 
+### code-review-viewer.ts
+
+Webview panel for displaying CodeReviewResults with severity filtering, interactive fix selection, and applying selected fixes.
+
+```typescript
+import {
+    CodeReviewViewerProvider,
+    showCodeReviewResults
+} from '../code-review/code-review-viewer';
+
+const viewer = new CodeReviewViewerProvider(context.extensionUri);
+
+// Show review results in webview
+await viewer.showResults(reviewResults, {
+    title: 'Code Review Results',
+    severityFilter: ['error', 'warning'], // Filter by severity
+    allowFixSelection: true // Enable interactive fix selection
+});
+
+// Listen for fix selection
+viewer.onDidSelectFixes((selectedFixes) => {
+    // Apply selected fixes
+    fixApplier.applySelectedFixes(selectedFixes);
+});
+```
+
+### fix-applier.ts
+
+Applies AI-suggested fixes: preview changes, bottom-to-top editing to maintain line numbers, and `applySelectedFixes` method.
+
+```typescript
+import {
+    FixApplier,
+    previewFix,
+    applySelectedFixes,
+    applyFix
+} from '../code-review/fix-applier';
+
+const applier = new FixApplier();
+
+// Preview a fix before applying
+const preview = await previewFix(fix, document);
+// Shows diff preview in webview
+
+// Apply a single fix
+await applyFix(fix, document);
+// Edits are applied bottom-to-top to maintain line numbers
+
+// Apply multiple selected fixes
+await applySelectedFixes(selectedFixes, documents);
+// Processes fixes in reverse order (bottom-to-top) to preserve line numbers
+```
+
+### front-matter-parser.ts
+
+Parse YAML front matter from rule markdown files.
+
+```typescript
+import {
+    parseFrontMatter,
+    extractFrontMatter,
+    stripFrontMatter
+} from '../code-review/front-matter-parser';
+
+// Parse front matter from rule file
+const { frontMatter, content } = parseFrontMatter(ruleFileContent);
+// Returns: { frontMatter: { priority: 'high', category: 'security' }, content: '...' }
+
+// Extract just the front matter
+const metadata = extractFrontMatter(ruleFileContent);
+// Returns: { priority: 'high', category: 'security', enabled: true }
+
+// Strip front matter to get just the content
+const ruleContent = stripFrontMatter(ruleFileContent);
+// Returns: '# Security: Input Validation\n\nAlways validate user input...'
+```
+
+### response-parser.ts
+
+Parse AI text responses into structured CodeReviewResult; aggregate results; format as markdown.
+
+```typescript
+import {
+    ResponseParser,
+    parseReviewResponse,
+    aggregateResults,
+    formatAsMarkdown
+} from '../code-review/response-parser';
+
+// Parse AI text response into structured result
+const result = parseReviewResponse(aiOutput, ruleName);
+// Returns: CodeReviewResult with findings array
+
+// Aggregate multiple review results
+const aggregated = aggregateResults(results);
+// Returns: { totalFindings: 10, bySeverity: { error: 3, warning: 7 }, findings: [...] }
+
+// Format results as markdown
+const markdown = formatAsMarkdown(results);
+// Returns: Formatted markdown report
+```
+
+**Note:** Rules loading functionality is implemented in `code-review-service.ts` (there is no separate `rules-loader.ts` file). The `CodeReviewService` class handles loading rules from `.github/cr-rules/` directory.
+
 ## Configuration
 
 The module reads configuration from VSCode settings:
@@ -300,8 +404,25 @@ interface ReviewFinding {
 
 5. **Use parallel execution**: For multiple rules, leverage the map-reduce framework to review in parallel.
 
+## Module Files
+
+| File | Purpose |
+|------|---------|
+| `code-review-service.ts` | Core service: config, rule loading from `.github/cr-rules/*.md`, prompt building, diff stats |
+| `code-review-commands.ts` | VS Code commands: review commit/pending/staged/range; orchestrates multi-rule review via pipeline-core map-reduce |
+| `code-review-viewer.ts` | Webview panel: displays CodeReviewResults, severity filtering, interactive fix selection, apply fixes |
+| `fix-applier.ts` | Applies AI-suggested fixes: preview changes, bottom-to-top editing to maintain line numbers |
+| `front-matter-parser.ts` | Parse YAML front matter from rule markdown files (extracts model, metadata) |
+| `response-parser.ts` | Parse AI responses into structured CodeReviewResult; aggregate results; format as markdown |
+| `process-adapter.ts` | Adapter between code-review and generic IAIProcessManager; creates ProcessTracker for map-reduce |
+| `concurrency-limiter.ts` | Re-exports ConcurrencyLimiter from pipeline-core |
+| `types.ts` | All types: config, rules, findings, review results, prompt templates, severity levels |
+| `index.ts` | Module exports |
+
+**Note:** Rule loading logic is in `code-review-service.ts` (no separate `rules-loader.ts` file).
+
 ## See Also
 
 - `src/shortcuts/ai-service/AGENTS.md` - AI process tracking
-- `src/shortcuts/map-reduce/` - Map-reduce framework for parallel execution
+- `packages/pipeline-core/AGENTS.md` - Map-reduce framework for parallel execution
 - `.github/cr-rules/` - Example rule files in this repository

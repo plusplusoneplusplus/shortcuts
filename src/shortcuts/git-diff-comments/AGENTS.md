@@ -171,6 +171,72 @@ const batchPrompt = generator.generateBatchPrompt(comments, diffContent, {
 await vscode.env.clipboard.writeText(prompt);
 ```
 
+## Supporting Files
+
+### diff-content-provider.ts
+
+Fetches file contents at various Git refs (HEAD, index, working tree, commits) and generates diff content. Handles binary files gracefully.
+
+```typescript
+import {
+    DiffContentProvider,
+    getFileContentAtRef,
+    generateDiffContent,
+    isBinaryFile
+} from '../git-diff-comments/diff-content-provider';
+
+const provider = new DiffContentProvider(gitService);
+
+// Get file content at specific Git ref
+const content = await getFileContentAtRef(
+    filePath,
+    { type: 'commit', commitHash: 'abc123' },
+    repoPath
+);
+
+// Generate diff content between two refs
+const diff = await generateDiffContent(
+    filePath,
+    { type: 'staged' },
+    repoPath
+);
+
+// Check if file is binary
+if (isBinaryFile(filePath, content)) {
+    // Handle binary file appropriately
+}
+```
+
+### git-ref-utils.ts
+
+Git reference URI parsing and commit hash shortening utilities.
+
+```typescript
+import {
+    parseGitRefUri,
+    shortenCommitHash,
+    expandCommitHash,
+    isValidCommitHash
+} from '../git-diff-comments/git-ref-utils';
+
+// Parse Git reference URI
+const ref = parseGitRefUri('git-show:abc123def456/path/to/file.ts');
+// Returns: { commitHash: 'abc123def456', filePath: 'path/to/file.ts' }
+
+// Shorten commit hash (7 chars)
+const short = shortenCommitHash('abc123def4567890123456789012345678901234');
+// Returns: 'abc123d'
+
+// Expand short hash to full hash
+const full = await expandCommitHash('abc123d', repoPath);
+// Returns: 'abc123def4567890123456789012345678901234'
+
+// Validate commit hash format
+if (isValidCommitHash('abc123')) {
+    // Valid hash
+}
+```
+
 ## Comment Categories
 
 Comments can be categorized for organization:
@@ -393,6 +459,21 @@ webview.postMessage({ type: 'highlightComment', commentId: id });
 4. **Batch operations**: Use batch operations for bulk updates.
 
 5. **Dispose properly**: Clean up event listeners and subscriptions.
+
+## Module Files
+
+| File | Purpose |
+|------|---------|
+| `diff-review-editor-provider.ts` | `DiffReviewEditorProvider` (CustomTextEditorProvider): side-by-side diff view with inline comments |
+| `diff-comments-manager.ts` | `DiffCommentsManager` (extends `CommentsManagerBase`): CRUD, persistence, category support |
+| `diff-comments-tree-provider.ts` | `DiffCommentsTreeDataProvider` (extends `CommentsTreeProviderBase`): tree by category/file |
+| `diff-anchor.ts` | Diff-specific anchor creation and relocation for comment positioning |
+| `diff-prompt-generator.ts` | `DiffPromptGenerator` (extends `PromptGeneratorBase`): AI prompt generation for diff comments |
+| `diff-comments-commands.ts` | VS Code commands: add/edit/delete/resolve/reopen diff comments, generate prompt |
+| `diff-content-provider.ts` | Provides diff content from Git for rendering in webview |
+| `git-ref-utils.ts` | Git reference resolution utilities for commit/branch/tag refs |
+| `types.ts` | All types: DiffComment, DiffAnchor, DiffGitContext, CommentCategory |
+| `index.ts` | Module exports |
 
 ## See Also
 

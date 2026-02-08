@@ -9,12 +9,37 @@ packages/pipeline-core/
 ├── src/
 │   ├── index.ts              # Main public API
 │   ├── logger.ts             # Pluggable logger abstraction
+│   ├── errors/               # Error handling
+│   │   ├── index.ts          # Error module exports
+│   │   ├── error-codes.ts    # ErrorCode enum, mapSystemErrorCode()
+│   │   └── pipeline-core-error.ts  # PipelineCoreError base class
+│   ├── config/               # Configuration defaults
+│   │   ├── index.ts          # Config module exports
+│   │   └── defaults.ts       # Centralized default constants
+│   ├── runtime/              # Runtime policies
+│   │   ├── index.ts          # Runtime module exports
+│   │   ├── cancellation.ts   # CancellationError, createCancellationToken
+│   │   ├── timeout.ts        # TimeoutError, withTimeout
+│   │   ├── retry.ts          # RetryExhaustedError, withRetry, backoff strategies
+│   │   └── policy.ts         # Unified policy runner (runWithPolicy)
+│   ├── queue/                # Task queue system
+│   │   ├── index.ts          # Queue module exports
+│   │   ├── types.ts          # TaskType, TaskPriority, QueueStatus, payload types
+│   │   ├── task-queue-manager.ts  # TaskQueueManager (priority-based queue)
+│   │   └── queue-executor.ts     # QueueExecutor (executes tasks with concurrency)
 │   ├── ai/                   # AI service components
 │   │   ├── index.ts          # AI module exports
 │   │   ├── types.ts          # AI types (backends, models, results)
 │   │   ├── session-pool.ts   # Reusable Copilot SDK session pool
 │   │   ├── cli-utils.ts      # Shell escaping, temp file handling
-│   │   └── copilot-sdk-service.ts  # Copilot SDK wrapper
+│   │   ├── copilot-sdk-service.ts  # Copilot SDK wrapper
+│   │   ├── model-registry.ts      # Central AI model registry (6 models)
+│   │   ├── mcp-config-loader.ts   # MCP server config loader
+│   │   ├── command-types.ts       # AI command type definitions
+│   │   ├── process-types.ts       # AI process tracking types
+│   │   ├── prompt-builder.ts      # Pure prompt template variable substitution
+│   │   ├── program-utils.ts       # Program existence checking
+│   │   └── timeouts.ts            # Re-exports default AI timeout
 │   ├── map-reduce/           # Map-reduce framework
 │   │   ├── index.ts          # Map-reduce exports
 │   │   ├── types.ts          # Core types (WorkItem, MapResult, etc.)
@@ -42,29 +67,47 @@ packages/pipeline-core/
 │       ├── exec-utils.ts     # Shell execution
 │       ├── http-utils.ts     # HTTP requests
 │       ├── text-matching.ts  # Fuzzy matching
-│       └── ai-response-parser.ts  # JSON extraction
-├── test/                     # Vitest tests (569 tests total)
-│   ├── map-reduce/           # 162 tests
-│   │   ├── concurrency-limiter.test.ts (21)
-│   │   ├── executor.test.ts (19)
-│   │   ├── prompt-template.test.ts (35)
-│   │   ├── reduce-process-tracking.test.ts (6)
-│   │   ├── reducers.test.ts (20)
-│   │   ├── splitters.test.ts (23)
-│   │   └── temp-file-utils.test.ts (38)
-│   └── pipeline/             # 407 tests
-│       ├── ai-reduce.test.ts (19)
-│       ├── batch-mapping.test.ts (26)
-│       ├── csv-reader.test.ts (40)
-│       ├── edge-cases.test.ts (22)
-│       ├── executor.test.ts (56)
-│       ├── index.test.ts (25)
-│       ├── input-generator.test.ts (48)
-│       ├── multi-model-fanout.test.ts (32)
-│       ├── results-file.test.ts (12)
-│       ├── skill-resolver.test.ts (42)
-│       ├── template.test.ts (65)
-│       └── text-mode.test.ts (38)
+│       ├── ai-response-parser.ts  # JSON extraction
+│       ├── template-engine.ts     # Template variable substitution engine
+│       ├── terminal-types.ts      # Terminal type definitions
+│       ├── window-focus-service.ts  # Window focus service
+│       ├── external-terminal-launcher.ts  # External terminal launcher
+│       └── process-monitor.ts     # Process monitoring utilities
+├── test/                     # Vitest tests (27 test files)
+│   ├── ai/                   # AI tests
+│   │   ├── mcp-config-loader.test.ts
+│   │   └── model-registry.test.ts
+│   ├── errors/               # Error handling tests
+│   │   └── pipeline-core-error.test.ts
+│   ├── map-reduce/           # Map-reduce tests
+│   │   ├── concurrency-limiter.test.ts
+│   │   ├── executor.test.ts
+│   │   ├── prompt-template.test.ts
+│   │   ├── reduce-process-tracking.test.ts
+│   │   ├── reducers.test.ts
+│   │   ├── splitters.test.ts
+│   │   └── temp-file-utils.test.ts
+│   ├── pipeline/             # Pipeline tests
+│   │   ├── ai-reduce.test.ts
+│   │   ├── batch-mapping.test.ts
+│   │   ├── csv-reader.test.ts
+│   │   ├── edge-cases.test.ts
+│   │   ├── executor.test.ts
+│   │   ├── index.test.ts
+│   │   ├── input-generator.test.ts
+│   │   ├── multi-model-fanout.test.ts
+│   │   ├── results-file.test.ts
+│   │   ├── skill-resolver.test.ts
+│   │   ├── template.test.ts
+│   │   └── text-mode.test.ts
+│   ├── queue/                # Queue tests
+│   │   ├── queue-executor.test.ts
+│   │   └── task-queue-manager.test.ts
+│   ├── runtime/              # Runtime policy tests
+│   │   └── policy.test.ts
+│   └── utils/                # Utils tests
+│       ├── ai-response-parser.test.ts
+│       └── template-engine.test.ts
 ├── package.json
 ├── tsconfig.json
 └── vitest.config.ts
@@ -95,6 +138,208 @@ setLogger({
 setLogger(nullLogger);
 ```
 
+### Error Handling
+
+Structured error handling with error codes, metadata, and error chaining.
+
+```typescript
+import { 
+    PipelineCoreError, 
+    ErrorCode, 
+    toPipelineCoreError,
+    wrapError,
+    isPipelineCoreError 
+} from 'pipeline-core';
+
+// Create a structured error
+throw new PipelineCoreError('Failed to parse CSV', {
+    code: ErrorCode.CSV_PARSE_ERROR,
+    cause: originalError,
+    meta: { filePath: 'input.csv', line: 42, phase: 'input' }
+});
+
+// Convert any error to PipelineCoreError
+try {
+    await riskyOperation();
+} catch (error) {
+    const pipelineError = toPipelineCoreError(error, ErrorCode.UNKNOWN, {
+        executionId: 'exec-123',
+        phase: 'map'
+    });
+    throw pipelineError;
+}
+
+// Wrap error with context
+try {
+    await processItem(item);
+} catch (error) {
+    throw wrapError(
+        `Failed to process item ${item.id}`,
+        error,
+        ErrorCode.PROCESSING_ERROR,
+        { itemIndex: 0, totalItems: 10 }
+    );
+}
+
+// Check error type
+if (isPipelineCoreError(error)) {
+    console.log(`Error code: ${error.code}`);
+    console.log(`Metadata:`, error.meta);
+    console.log(`Detailed:`, error.toDetailedString());
+}
+```
+
+### Runtime Policies
+
+Unified policy system for timeout, retry, and cancellation.
+
+```typescript
+import { 
+    runWithPolicy, 
+    withTimeout, 
+    withRetry,
+    createPolicyRunner,
+    TimeoutError,
+    RetryExhaustedError 
+} from 'pipeline-core';
+
+// Simple timeout
+const result = await withTimeout(
+    () => fetchData(),
+    { timeoutMs: 5000, operationName: 'fetchData' }
+);
+
+// Retry with exponential backoff
+const result = await withRetry(
+    () => apiCall(),
+    {
+        attempts: 3,
+        delayMs: 1000,
+        backoff: 'exponential',
+        maxDelayMs: 30000,
+        operationName: 'apiCall'
+    }
+);
+
+// Unified policy (timeout + retry + cancellation)
+const cancellationToken = createCancellationToken();
+const result = await runWithPolicy(
+    () => processData(),
+    {
+        timeoutMs: 10000,
+        retryOnFailure: true,
+        retryAttempts: 3,
+        retryDelayMs: 1000,
+        backoff: 'exponential',
+        isCancelled: cancellationToken.isCancelled,
+        operationName: 'processData',
+        meta: { executionId: 'exec-123' }
+    }
+);
+
+// Create a reusable policy runner
+const aiPolicy = createPolicyRunner({
+    timeoutMs: 30000,
+    retryOnFailure: true,
+    retryAttempts: 2,
+    operationName: 'AI Invocation'
+});
+
+// Use the policy runner
+const result = await aiPolicy(() => invokeAI(prompt));
+```
+
+### Task Queue
+
+Priority-based task queue with concurrency control.
+
+```typescript
+import { 
+    TaskQueueManager, 
+    QueueExecutor,
+    TaskType,
+    TaskPriority 
+} from 'pipeline-core';
+
+// Create queue manager
+const queueManager = new TaskQueueManager({
+    maxQueueSize: 100,
+    maxHistorySize: 1000
+});
+
+// Enqueue tasks with priorities
+const taskId1 = queueManager.enqueue({
+    type: TaskType.AI_REQUEST,
+    priority: TaskPriority.HIGH,
+    payload: { prompt: 'Analyze code', model: 'claude-sonnet-4.5' }
+});
+
+const taskId2 = queueManager.enqueue({
+    type: TaskType.AI_REQUEST,
+    priority: TaskPriority.LOW,
+    payload: { prompt: 'Generate summary', model: 'claude-haiku-4.5' }
+});
+
+// Create executor
+const executor = new QueueExecutor(
+    queueManager,
+    async (task) => {
+        // Execute the task
+        if (task.type === TaskType.AI_REQUEST) {
+            return await processAIRequest(task.payload);
+        }
+        throw new Error(`Unknown task type: ${task.type}`);
+    },
+    {
+        maxConcurrency: 3,
+        autoStart: true
+    }
+);
+
+// Listen to events
+executor.on('taskStarted', (task) => {
+    console.log(`Task ${task.id} started`);
+});
+
+executor.on('taskCompleted', (task, result) => {
+    console.log(`Task ${task.id} completed:`, result);
+});
+
+executor.on('taskFailed', (task, error) => {
+    console.error(`Task ${task.id} failed:`, error);
+});
+
+// Control execution
+executor.start();  // Start processing
+executor.stop();   // Stop processing (running tasks complete)
+executor.cancelTask(taskId1);  // Cancel specific task
+```
+
+### Config Defaults
+
+Centralized default constants for consistent configuration across the package.
+
+```typescript
+import {
+    DEFAULT_AI_TIMEOUT_MS,
+    DEFAULT_PARALLEL_LIMIT,
+    DEFAULT_MAX_CONCURRENCY,
+    DEFAULT_MAX_SESSIONS,
+    DEFAULT_RETRY_ATTEMPTS,
+    DEFAULT_QUEUE_MAX_CONCURRENT
+} from 'pipeline-core';
+
+// Use defaults in configuration
+const executor = createExecutor({
+    maxConcurrency: DEFAULT_MAX_CONCURRENCY,
+    timeoutMs: DEFAULT_AI_TIMEOUT_MS
+});
+
+const queueExecutor = new QueueExecutor(queueManager, taskExecutor, {
+    maxConcurrency: DEFAULT_QUEUE_MAX_CONCURRENT
+});
+```
+
 ### AI Service
 
 Copilot SDK integration with session pooling and CLI utilities.
@@ -105,7 +350,9 @@ import {
     getCopilotSDKService,
     approveAllPermissions,
     escapeShellArg,
-    buildCliCommand 
+    buildCliCommand,
+    getModelLabel,
+    isValidModel
 } from 'pipeline-core';
 
 // Get singleton service
@@ -131,6 +378,12 @@ const { command, deliveryMethod } = buildCliCommand('copilot', {
     prompt: 'Hello world',
     model: 'gpt-4'
 });
+
+// Model registry utilities
+if (isValidModel('claude-sonnet-4.5')) {
+    const label = getModelLabel('claude-sonnet-4.5');
+    console.log(`Using model: ${label}`);
+}
 ```
 
 ### Map-Reduce Framework
@@ -181,7 +434,7 @@ const result = await executePipeline(config, {
 
 ### Utilities
 
-Safe file operations, HTTP requests, text matching.
+Safe file operations, HTTP requests, text matching, and more.
 
 ```typescript
 import {
@@ -190,7 +443,8 @@ import {
     glob,
     httpGet,
     calculateSimilarity,
-    extractJSON
+    extractJSON,
+    substituteTemplateVariables
 } from 'pipeline-core';
 
 // Safe file operations
@@ -208,11 +462,18 @@ const similarity = calculateSimilarity('hello', 'hallo');
 
 // Extract JSON from AI response
 const json = extractJSON('Some text {"result": true} more text');
+
+// Template variable substitution
+const result = substituteTemplateVariables(
+    'Hello {{name}}, you have {{count}} items',
+    { name: 'Alice', count: 5 }
+);
+// Result: 'Hello Alice, you have 5 items'
 ```
 
 ## Testing
 
-Tests use Vitest and are located in `test/`.
+Tests use Vitest and are located in `test/`. There are 27 test files covering all modules.
 
 ```bash
 # Run all tests
@@ -223,6 +484,9 @@ npm test
 
 # Run specific test file
 npx vitest run test/map-reduce/concurrency-limiter.test.ts
+
+# Run tests for a specific module
+npx vitest run test/queue/
 ```
 
 ## Building
@@ -244,7 +508,10 @@ The VS Code extension imports from this package:
 import { 
     executePipeline,
     CopilotSDKService,
-    setLogger 
+    setLogger,
+    PipelineCoreError,
+    ErrorCode,
+    runWithPolicy
 } from 'pipeline-core';
 
 // Set up VS Code logger
@@ -254,6 +521,17 @@ setLogger({
     warn: (cat, msg) => getExtensionLogger().warn(cat, msg),
     error: (cat, msg, err) => getExtensionLogger().error(cat, msg, err),
 });
+
+// Use structured error handling
+try {
+    await executePipeline(config, options);
+} catch (error) {
+    if (isPipelineCoreError(error)) {
+        vscode.window.showErrorMessage(
+            `Pipeline failed: ${error.message} (${error.code})`
+        );
+    }
+}
 ```
 
 ## Cross-Platform Compatibility
@@ -263,6 +541,7 @@ All code is designed to work on Linux, macOS, and Windows:
 - Shell escaping handles platform differences
 - Line endings are normalized
 - Temp files use `os.tmpdir()`
+- EventEmitter-based queue system (no platform-specific APIs)
 
 ## See Also
 
