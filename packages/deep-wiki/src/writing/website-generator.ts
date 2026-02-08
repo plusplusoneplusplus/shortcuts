@@ -501,12 +501,13 @@ function getStyles(): string {
         .content-body {
             flex: 1;
             overflow-y: auto;
+            overflow-x: hidden;
             padding: 32px;
             background: var(--content-bg);
         }
 
         /* Markdown styles */
-        .markdown-body { max-width: 900px; margin: 0 auto; line-height: 1.6; }
+        .markdown-body { max-width: 900px; margin: 0 auto; line-height: 1.6; overflow-wrap: break-word; word-wrap: break-word; }
         .markdown-body h1 { margin-top: 32px; margin-bottom: 16px; font-size: 2em; border-bottom: 1px solid var(--content-border); padding-bottom: 8px; }
         .markdown-body h1:first-child { margin-top: 0; }
         .markdown-body h2 { margin-top: 28px; margin-bottom: 16px; font-size: 1.5em; border-bottom: 1px solid var(--content-border); padding-bottom: 6px; }
@@ -531,7 +532,7 @@ function getStyles(): string {
             position: relative;
         }
         .markdown-body pre code { background: none; padding: 0; border-radius: 0; font-size: 13px; }
-        .markdown-body table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+        .markdown-body table { border-collapse: collapse; width: 100%; margin: 16px 0; display: block; overflow-x: auto; }
         .markdown-body table th, .markdown-body table td {
             border: 1px solid var(--content-border);
             padding: 8px 12px;
@@ -714,14 +715,10 @@ function getStyles(): string {
         .mermaid-viewport.mermaid-dragging .mermaid-svg-wrapper {
             transition: none;
         }
-        /* Allow mermaid containers to break out of markdown-body max-width */
+        /* Allow mermaid containers to use full available width */
         .markdown-body .mermaid-container {
-            margin-left: calc(-50vw + 50%);
-            margin-right: calc(-50vw + 50%);
-            max-width: calc(100vw - 344px); /* viewport - sidebar - padding */
-            margin-left: auto;
-            margin-right: auto;
-            width: calc(100vw - 380px);
+            max-width: 100%;
+            width: 100%;
         }
 
         /* Responsive */
@@ -731,8 +728,8 @@ function getStyles(): string {
             .content-header { padding: 12px 16px; }
             .content-body { padding: 16px; }
             .markdown-body .mermaid-container {
-                width: calc(100vw - 32px);
-                max-width: calc(100vw - 32px);
+                max-width: 100%;
+                width: 100%;
             }
         }`;
 }
