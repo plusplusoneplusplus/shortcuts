@@ -756,11 +756,34 @@ function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): string {
             moduleGraph = MODULE_GRAPH;
             initTheme();
             initializeSidebar();
-            showHome();
+            showHome(true);
+            // Use replaceState for initial load to avoid extra history entry
+            history.replaceState({ type: 'home' }, '', location.pathname);
         } catch(err) {
             document.getElementById('content').innerHTML =
                 '<p style="color: red;">Error loading module graph: ' + err.message + '</p>';
         }
+
+        // ================================================================
+        // Browser History (Back/Forward)
+        // ================================================================
+
+        window.addEventListener('popstate', function(e) {
+            var state = e.state;
+            if (!state) {
+                showHome(true);
+                return;
+            }
+            if (state.type === 'home') {
+                showHome(true);
+            } else if (state.type === 'module' && state.id) {
+                loadModule(state.id, true);
+            } else if (state.type === 'special' && state.key && state.title) {
+                loadSpecialPage(state.key, state.title, true);
+            } else {
+                showHome(true);
+            }
+        });
 
         // ================================================================
         // Theme
@@ -912,11 +935,14 @@ ${enableSearch ? `
         // Content
         // ================================================================
 
-        function showHome() {
+        function showHome(skipHistory) {
             currentModuleId = null;
             setActive('__home');
             document.getElementById('breadcrumb').textContent = 'Home';
             document.getElementById('content-title').textContent = 'Project Overview';
+            if (!skipHistory) {
+                history.pushState({ type: 'home' }, '', location.pathname);
+            }
 
             var stats = {
                 modules: moduleGraph.modules.length,
@@ -958,7 +984,7 @@ ${enableSearch ? `
             document.getElementById('content').innerHTML = html;
         }
 
-        function loadModule(moduleId) {
+        function loadModule(moduleId, skipHistory) {
             var mod = moduleGraph.modules.find(function(m) { return m.id === moduleId; });
             if (!mod) return;
 
@@ -967,6 +993,9 @@ ${enableSearch ? `
 
             document.getElementById('breadcrumb').textContent = mod.category + ' / ' + mod.name;
             document.getElementById('content-title').textContent = mod.name;
+            if (!skipHistory) {
+                history.pushState({ type: 'module', id: moduleId }, '', location.pathname + '#module-' + encodeURIComponent(moduleId));
+            }
 
             var markdown = (typeof MARKDOWN_DATA !== 'undefined') ? MARKDOWN_DATA[moduleId] : null;
             if (markdown) {
@@ -989,11 +1018,14 @@ ${enableSearch ? `
             document.querySelector('.content-body').scrollTop = 0;
         }
 
-        function loadSpecialPage(key, title) {
+        function loadSpecialPage(key, title, skipHistory) {
             currentModuleId = null;
             setActive(key);
             document.getElementById('breadcrumb').textContent = title;
             document.getElementById('content-title').textContent = title;
+            if (!skipHistory) {
+                history.pushState({ type: 'special', key: key, title: title }, '', location.pathname + '#' + encodeURIComponent(key));
+            }
 
             var markdown = MARKDOWN_DATA[key];
             if (markdown) {
@@ -1061,6 +1093,65 @@ ${enableSearch ? `
 
             // Render mermaid then attach zoom controls
             initMermaid().then(function() { initMermaidZoom(); });
+
+            // Intercept internal .md links
+            container.addEventListener('click', function(e) {
+                var target = e.target;
+                while (target && target !== container) {
+                    if (target.tagName === 'A') break;
+                    target = target.parentElement;
+                }
+                if (!target || target.tagName !== 'A') return;
+                var href = target.getAttribute('href');
+                if (!href || !href.match(/\\.md(#.*)?$/)) return;
+                // Don't intercept external links
+                if (/^https?:\\/\\//.test(href)) return;
+
+                e.preventDefault();
+                var hashPart = '';
+                var hashIdx = href.indexOf('#');
+                if (hashIdx !== -1) {
+                    hashPart = href.substring(hashIdx + 1);
+                    href = href.substring(0, hashIdx);
+                }
+
+                // Extract slug from the href path
+                var slug = href.replace(/^(\\.\\/|\\.\\.\\/)*/, '').replace(/^modules\\//, '').replace(/\\.md$/, '');
+
+                // Check special pages
+                var specialPages = {
+                    'index': { key: '__index', title: 'Index' },
+                    'architecture': { key: '__architecture', title: 'Architecture' },
+                    'getting-started': { key: '__getting-started', title: 'Getting Started' }
+                };
+                if (specialPages[slug]) {
+                    loadSpecialPage(specialPages[slug].key, specialPages[slug].title);
+                    return;
+                }
+
+                // Try to find matching module ID
+                var matchedId = findModuleIdBySlugClient(slug);
+                if (matchedId) {
+                    loadModule(matchedId);
+                    if (hashPart) {
+                        setTimeout(function() {
+                            var el = document.getElementById(hashPart);
+                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }, 100);
+                    }
+                }
+            });
+        }
+
+        // Client-side module ID lookup by slug
+        function findModuleIdBySlugClient(slug) {
+            var normalized = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            for (var i = 0; i < moduleGraph.modules.length; i++) {
+                var mod = moduleGraph.modules[i];
+                var modSlug = mod.id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                if (modSlug === normalized) return mod.id;
+            }
+            return null;
         }
 
         function addCopyButton(pre) {

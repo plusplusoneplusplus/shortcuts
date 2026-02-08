@@ -1151,3 +1151,265 @@ describe('generateWebsite — options combinations', () => {
         expect(html).toContain('data-theme="auto"');
     });
 });
+
+// ============================================================================
+// Internal Link Interception
+// ============================================================================
+
+describe('generateHtmlTemplate — internal link interception', () => {
+    // --- Delegated click handler ---
+    it('should add a delegated click handler on the content container', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("container.addEventListener('click'");
+    });
+
+    it('should detect clicks on <a> tags by walking up the DOM', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("target.tagName === 'A'");
+    });
+
+    it('should check for .md file extension in href', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.md');
+        // Check the regex that matches .md links
+        expect(html).toContain("getAttribute('href')");
+    });
+
+    it('should not intercept external http/https links', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('https?:\\/\\/');
+    });
+
+    it('should call preventDefault on intercepted links', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('e.preventDefault()');
+    });
+
+    // --- Slug extraction ---
+    it('should strip leading relative paths from href', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // Strips ./ and ../ prefixes — template literal resolves escapes
+        expect(html).toContain("replace(/^(\\.\\/|\\.\\.\\/)*/, '')");
+    });
+
+    it('should strip modules/ prefix from href', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("replace(/^modules\\//, '')");
+    });
+
+    it('should strip .md extension from slug', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("replace(/\\.md$/, '')");
+    });
+
+    // --- Special page handling ---
+    it('should recognize index.md as a special page', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("'index': { key: '__index', title: 'Index' }");
+    });
+
+    it('should recognize architecture.md as a special page', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("'architecture': { key: '__architecture', title: 'Architecture' }");
+    });
+
+    it('should recognize getting-started.md as a special page', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("'getting-started': { key: '__getting-started', title: 'Getting Started' }");
+    });
+
+    it('should call loadSpecialPage for special page slugs', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('loadSpecialPage(specialPages[slug].key, specialPages[slug].title)');
+    });
+
+    // --- Module matching ---
+    it('should define findModuleIdBySlugClient function', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('function findModuleIdBySlugClient(slug)');
+    });
+
+    it('should normalize slug with lowercase and hyphen replacement', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // The client-side function normalizes slugs same as server-side
+        expect(html).toContain("slug.toLowerCase().replace(/[^a-z0-9]+/g, '-')");
+    });
+
+    it('should call loadModule for matched module IDs', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('loadModule(matchedId)');
+    });
+
+    it('should call findModuleIdBySlugClient with extracted slug', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('findModuleIdBySlugClient(slug)');
+    });
+
+    // --- Hash fragment handling ---
+    it('should handle hash fragments in .md links', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("href.indexOf('#')");
+        expect(html).toContain('hashPart');
+    });
+
+    it('should scroll to hash target after module load', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('scrollIntoView');
+    });
+
+    // --- Cross-theme ---
+    it('link interception should be present across all themes', () => {
+        const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
+        for (const theme of themes) {
+            const html = generateHtmlTemplate({ theme, title: 'Test', enableSearch: true });
+            expect(html).toContain('findModuleIdBySlugClient');
+            expect(html).toContain("container.addEventListener('click'");
+        }
+    });
+
+    // --- Integration with full website ---
+    it('link interception should be present in generated website', () => {
+        const graph = createTestModuleGraph();
+        const wikiDir = setupWikiDir(graph);
+        generateWebsite(wikiDir);
+
+        const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
+        expect(html).toContain('findModuleIdBySlugClient');
+        expect(html).toContain("container.addEventListener('click'");
+    });
+});
+
+// ============================================================================
+// Browser History Management (pushState/popstate)
+// ============================================================================
+
+describe('generateHtmlTemplate — browser history management', () => {
+    // --- pushState in showHome ---
+    it('should call history.pushState in showHome', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("history.pushState({ type: 'home' }");
+    });
+
+    it('showHome should accept skipHistory parameter', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('function showHome(skipHistory)');
+    });
+
+    it('showHome should skip pushState when skipHistory is true', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // The pattern: if (!skipHistory) { history.pushState... }
+        expect(html).toContain('if (!skipHistory)');
+    });
+
+    // --- pushState in loadModule ---
+    it('should call history.pushState in loadModule with module state', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("history.pushState({ type: 'module', id: moduleId }");
+    });
+
+    it('loadModule should accept skipHistory parameter', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('function loadModule(moduleId, skipHistory)');
+    });
+
+    it('loadModule pushState should include module ID in hash', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("'#module-' + encodeURIComponent(moduleId)");
+    });
+
+    // --- pushState in loadSpecialPage ---
+    it('should call history.pushState in loadSpecialPage with special state', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("history.pushState({ type: 'special', key: key, title: title }");
+    });
+
+    it('loadSpecialPage should accept skipHistory parameter', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('function loadSpecialPage(key, title, skipHistory)');
+    });
+
+    // --- replaceState for initial load ---
+    it('should use history.replaceState for initial page load', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("history.replaceState({ type: 'home' }");
+    });
+
+    it('initial showHome should pass true to skip pushState', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('showHome(true)');
+    });
+
+    // --- popstate listener ---
+    it('should add a popstate event listener', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("window.addEventListener('popstate'");
+    });
+
+    it('popstate handler should handle home state', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("state.type === 'home'");
+    });
+
+    it('popstate handler should handle module state', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("state.type === 'module' && state.id");
+    });
+
+    it('popstate handler should handle special page state', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("state.type === 'special' && state.key && state.title");
+    });
+
+    it('popstate handler should call loadModule with skipHistory=true', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('loadModule(state.id, true)');
+    });
+
+    it('popstate handler should call loadSpecialPage with skipHistory=true', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('loadSpecialPage(state.key, state.title, true)');
+    });
+
+    it('popstate handler should fall back to showHome when state is null', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // When state is null/falsy, showHome(true) is called
+        expect(html).toContain('if (!state)');
+    });
+
+    it('popstate handler should fall back to showHome for unknown state types', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // The else clause falls back to showHome(true)
+        expect(html).toContain('} else {\n                showHome(true)');
+    });
+
+    // --- Cross-theme ---
+    it('history management should be present across all themes', () => {
+        const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
+        for (const theme of themes) {
+            const html = generateHtmlTemplate({ theme, title: 'Test', enableSearch: true });
+            expect(html).toContain('history.pushState');
+            expect(html).toContain('history.replaceState');
+            expect(html).toContain("window.addEventListener('popstate'");
+        }
+    });
+
+    // --- Integration with full website ---
+    it('history management should be present in generated website', () => {
+        const graph = createTestModuleGraph();
+        const wikiDir = setupWikiDir(graph);
+        generateWebsite(wikiDir);
+
+        const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
+        expect(html).toContain('history.pushState');
+        expect(html).toContain('history.replaceState');
+        expect(html).toContain("window.addEventListener('popstate'");
+    });
+
+    it('history should work with search disabled', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: false });
+        expect(html).toContain('history.pushState');
+        expect(html).toContain('history.replaceState');
+        expect(html).toContain("window.addEventListener('popstate'");
+        expect(html).toContain('findModuleIdBySlugClient');
+    });
+});
