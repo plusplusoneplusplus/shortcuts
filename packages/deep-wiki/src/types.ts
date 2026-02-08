@@ -132,6 +132,8 @@ export interface DeepWikiConfig {
     cache?: string;
     /** Ignore cache, regenerate everything */
     force: boolean;
+    /** Always use existing cache regardless of git hash */
+    useCache: boolean;
     /** Start from phase N (1, 2, or 3) */
     phase: number;
 }
@@ -154,6 +156,8 @@ export interface DiscoverCommandOptions {
     focus?: string;
     /** Force re-discovery (ignore cache) */
     force: boolean;
+    /** Always use existing cache regardless of git hash */
+    useCache: boolean;
     /** Verbose logging */
     verbose: boolean;
 }
@@ -388,6 +392,8 @@ export interface GenerateCommandOptions {
     depth: 'shallow' | 'normal' | 'deep';
     /** Ignore cache, regenerate everything */
     force: boolean;
+    /** Always use existing cache regardless of git hash */
+    useCache: boolean;
     /** Start from phase N (1, 2, or 3) */
     phase?: number;
     /** Verbose logging */

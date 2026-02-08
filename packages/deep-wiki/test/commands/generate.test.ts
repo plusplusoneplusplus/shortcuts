@@ -73,6 +73,7 @@ vi.mock('../../src/discovery', () => ({
 // Mock cache
 vi.mock('../../src/cache', () => ({
     getCachedGraph: vi.fn().mockResolvedValue(null),
+    getCachedGraphAny: vi.fn().mockReturnValue(null),
     saveGraph: vi.fn().mockResolvedValue(undefined),
     getCachedAnalyses: vi.fn().mockReturnValue(null),
     saveAllAnalyses: vi.fn().mockResolvedValue(undefined),
@@ -82,10 +83,14 @@ vi.mock('../../src/cache', () => ({
     saveAnalysis: vi.fn(),
     getRepoHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
     scanIndividualAnalysesCache: vi.fn().mockReturnValue({ found: [], missing: [] }),
+    scanIndividualAnalysesCacheAny: vi.fn().mockReturnValue({ found: [], missing: [] }),
     // Article cache functions (Phase 3)
     saveArticle: vi.fn(),
     saveAllArticles: vi.fn().mockResolvedValue(undefined),
     scanIndividualArticlesCache: vi.fn().mockImplementation(
+        (moduleIds: string[]) => ({ found: [], missing: [...moduleIds] })
+    ),
+    scanIndividualArticlesCacheAny: vi.fn().mockImplementation(
         (moduleIds: string[]) => ({ found: [], missing: [...moduleIds] })
     ),
 }));
@@ -118,10 +123,13 @@ import { EXIT_CODES } from '../../src/cli';
 import { checkAIAvailability } from '../../src/ai-invoker';
 import {
     getCachedGraph,
+    getCachedGraphAny,
     getCachedAnalyses,
     getModulesNeedingReanalysis,
     scanIndividualAnalysesCache,
+    scanIndividualAnalysesCacheAny,
     scanIndividualArticlesCache,
+    scanIndividualArticlesCacheAny,
     getRepoHeadHash,
     saveAnalysis,
 } from '../../src/cache';
@@ -156,6 +164,7 @@ function defaultOptions(overrides: Record<string, any> = {}) {
         output: path.join(tempDir, 'wiki'),
         depth: 'normal' as const,
         force: false,
+        useCache: false,
         verbose: false,
         ...overrides,
     };
@@ -426,5 +435,89 @@ describe('executeGenerate — incremental per-module caching', () => {
         expect(printInfo).toHaveBeenCalledWith(
             expect.stringContaining('Recovered 1 module analyses from partial cache')
         );
+    });
+});
+
+// ============================================================================
+// --use-cache option
+// ============================================================================
+
+describe('executeGenerate — --use-cache option', () => {
+    it('--use-cache should use getCachedGraphAny for Phase 1', async () => {
+        vi.mocked(getCachedGraphAny).mockReturnValue({
+            metadata: { gitHash: 'old-stale-hash', timestamp: Date.now(), version: '1.0.0' },
+            graph: {
+                project: { name: 'Stale', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
+                modules: [{
+                    id: 'stale-mod',
+                    name: 'Stale Module',
+                    path: 'src/stale/',
+                    purpose: 'Stale',
+                    keyFiles: [],
+                    dependencies: [],
+                    dependents: [],
+                    complexity: 'low',
+                    category: 'core',
+                }],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: '',
+            },
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ useCache: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Should use getCachedGraphAny (not getCachedGraph with hash validation)
+        expect(getCachedGraphAny).toHaveBeenCalled();
+        // Should NOT call discoverModuleGraph since cache was used
+        expect(discoverModuleGraph).not.toHaveBeenCalled();
+    });
+
+    it('--use-cache should use scanIndividualAnalysesCacheAny for Phase 2', async () => {
+        vi.mocked(scanIndividualAnalysesCacheAny).mockReturnValue({
+            found: [{
+                moduleId: 'test-module',
+                overview: 'Cached overview',
+                keyConcepts: [],
+                publicAPI: [],
+                internalArchitecture: '',
+                dataFlow: '',
+                patterns: [],
+                errorHandling: '',
+                codeExamples: [],
+                dependencies: { internal: [], external: [] },
+                suggestedDiagram: '',
+            }],
+            missing: [],
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ useCache: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Should use scanIndividualAnalysesCacheAny (no hash check)
+        expect(scanIndividualAnalysesCacheAny).toHaveBeenCalled();
+        // Should NOT use the hash-validated version
+        expect(scanIndividualAnalysesCache).not.toHaveBeenCalled();
+    });
+
+    it('--use-cache should use scanIndividualArticlesCacheAny for Phase 3', async () => {
+        vi.mocked(scanIndividualArticlesCacheAny).mockReturnValue({
+            found: [{
+                type: 'module',
+                slug: 'test-module',
+                title: 'Test Module',
+                content: '# Test',
+                moduleId: 'test-module',
+            }],
+            missing: [],
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ useCache: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Should use scanIndividualArticlesCacheAny (no hash check)
+        expect(scanIndividualArticlesCacheAny).toHaveBeenCalled();
+        // Should NOT use the hash-validated version
+        expect(scanIndividualArticlesCache).not.toHaveBeenCalled();
     });
 });

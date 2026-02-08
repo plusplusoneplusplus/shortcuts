@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { DiscoverCommandOptions } from '../types';
 import { discoverModuleGraph, DiscoveryError } from '../discovery';
-import { getCachedGraph, saveGraph } from '../cache';
+import { getCachedGraph, getCachedGraphAny, saveGraph } from '../cache';
 import {
     Spinner,
     printSuccess,
@@ -70,7 +70,9 @@ export async function executeDiscover(
     // Check cache (unless --force)
     if (!options.force) {
         try {
-            const cached = await getCachedGraph(absoluteRepoPath, options.output);
+            const cached = options.useCache
+                ? getCachedGraphAny(options.output)
+                : await getCachedGraph(absoluteRepoPath, options.output);
             if (cached) {
                 printSuccess('Found cached module graph (git hash matches)');
                 printKeyValue('Modules', String(cached.graph.modules.length));

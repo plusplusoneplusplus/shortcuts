@@ -13,11 +13,16 @@ import {
     getCacheDir,
     getGraphCachePath,
     getCachedGraph,
+    getCachedGraphAny,
     saveGraph,
     clearCache,
     hasCachedGraph,
+    getAnalysisCachePath,
+    scanIndividualAnalysesCacheAny,
+    getArticleCachePath,
+    scanIndividualArticlesCacheAny,
 } from '../../src/cache';
-import type { ModuleGraph, CachedGraph } from '../../src/types';
+import type { ModuleGraph, CachedGraph, CachedAnalysis, CachedArticle } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -254,5 +259,164 @@ describe('Cache Invalidation', () => {
             const result = await hasCachedGraph('/some/repo', path.join(tmpDir, 'output'));
             expect(result).toBe(false);
         });
+    });
+});
+
+// ============================================================================
+// getCachedGraphAny (--use-cache support)
+// ============================================================================
+
+describe('getCachedGraphAny', () => {
+    it('should return null when no cache exists', () => {
+        const result = getCachedGraphAny(path.join(tmpDir, 'output'));
+        expect(result).toBeNull();
+    });
+
+    it('should return null for corrupted cache file', () => {
+        const outputDir = path.join(tmpDir, 'output');
+        const cacheDir = getCacheDir(outputDir);
+        fs.mkdirSync(cacheDir, { recursive: true });
+        fs.writeFileSync(getGraphCachePath(outputDir), 'not valid json', 'utf-8');
+
+        const result = getCachedGraphAny(outputDir);
+        expect(result).toBeNull();
+    });
+
+    it('should return null for cache with missing metadata', () => {
+        const outputDir = path.join(tmpDir, 'output');
+        const cacheDir = getCacheDir(outputDir);
+        fs.mkdirSync(cacheDir, { recursive: true });
+        fs.writeFileSync(
+            getGraphCachePath(outputDir),
+            JSON.stringify({ graph: createTestGraph() }),
+            'utf-8'
+        );
+
+        const result = getCachedGraphAny(outputDir);
+        expect(result).toBeNull();
+    });
+
+    it('should return cached graph regardless of git hash', () => {
+        const outputDir = path.join(tmpDir, 'output');
+        const cacheDir = getCacheDir(outputDir);
+        fs.mkdirSync(cacheDir, { recursive: true });
+
+        const cached: CachedGraph = {
+            metadata: {
+                gitHash: '0000000000000000000000000000000000000000',
+                timestamp: Date.now(),
+                version: '1.0.0',
+            },
+            graph: createTestGraph(),
+        };
+        fs.writeFileSync(getGraphCachePath(outputDir), JSON.stringify(cached), 'utf-8');
+
+        const result = getCachedGraphAny(outputDir);
+        expect(result).not.toBeNull();
+        expect(result!.graph.project.name).toBe('test-project');
+        expect(result!.graph.modules).toHaveLength(1);
+    });
+});
+
+// ============================================================================
+// scanIndividualAnalysesCacheAny (--use-cache support)
+// ============================================================================
+
+describe('scanIndividualAnalysesCacheAny', () => {
+    it('should return all missing when no cache exists', () => {
+        const outputDir = path.join(tmpDir, 'output');
+        const { found, missing } = scanIndividualAnalysesCacheAny(['mod-a', 'mod-b'], outputDir);
+        expect(found).toHaveLength(0);
+        expect(missing).toEqual(['mod-a', 'mod-b']);
+    });
+
+    it('should return cached analyses regardless of git hash', () => {
+        const outputDir = path.join(tmpDir, 'output');
+        const cacheDir = getCacheDir(outputDir);
+        const analysesDir = path.join(cacheDir, 'analyses');
+        fs.mkdirSync(analysesDir, { recursive: true });
+
+        const cachedAnalysis: CachedAnalysis = {
+            analysis: {
+                moduleId: 'mod-a',
+                overview: 'Test overview',
+                keyConcepts: [],
+                publicAPI: [],
+                internalArchitecture: '',
+                dataFlow: '',
+                patterns: [],
+                errorHandling: '',
+                codeExamples: [],
+                dependencies: { internal: [], external: [] },
+                suggestedDiagram: '',
+            },
+            gitHash: 'stale-hash-that-does-not-match',
+            timestamp: Date.now(),
+        };
+        fs.writeFileSync(
+            getAnalysisCachePath(outputDir, 'mod-a'),
+            JSON.stringify(cachedAnalysis),
+            'utf-8'
+        );
+
+        const { found, missing } = scanIndividualAnalysesCacheAny(['mod-a', 'mod-b'], outputDir);
+        expect(found).toHaveLength(1);
+        expect(found[0].moduleId).toBe('mod-a');
+        expect(missing).toEqual(['mod-b']);
+    });
+
+    it('should skip corrupted cache entries', () => {
+        const outputDir = path.join(tmpDir, 'output');
+        const cacheDir = getCacheDir(outputDir);
+        const analysesDir = path.join(cacheDir, 'analyses');
+        fs.mkdirSync(analysesDir, { recursive: true });
+
+        fs.writeFileSync(getAnalysisCachePath(outputDir, 'mod-a'), 'not json', 'utf-8');
+
+        const { found, missing } = scanIndividualAnalysesCacheAny(['mod-a'], outputDir);
+        expect(found).toHaveLength(0);
+        expect(missing).toEqual(['mod-a']);
+    });
+});
+
+// ============================================================================
+// scanIndividualArticlesCacheAny (--use-cache support)
+// ============================================================================
+
+describe('scanIndividualArticlesCacheAny', () => {
+    it('should return all missing when no cache exists', () => {
+        const outputDir = path.join(tmpDir, 'output');
+        const { found, missing } = scanIndividualArticlesCacheAny(['mod-a'], outputDir);
+        expect(found).toHaveLength(0);
+        expect(missing).toEqual(['mod-a']);
+    });
+
+    it('should return cached articles regardless of git hash', () => {
+        const outputDir = path.join(tmpDir, 'output');
+        const cacheDir = getCacheDir(outputDir);
+        const articlesDir = path.join(cacheDir, 'articles');
+        fs.mkdirSync(articlesDir, { recursive: true });
+
+        const cachedArticle: CachedArticle = {
+            article: {
+                type: 'module',
+                slug: 'mod-a',
+                title: 'Module A',
+                content: '# Module A',
+                moduleId: 'mod-a',
+            },
+            gitHash: 'completely-different-hash',
+            timestamp: Date.now(),
+        };
+        fs.writeFileSync(
+            getArticleCachePath(outputDir, 'mod-a'),
+            JSON.stringify(cachedArticle),
+            'utf-8'
+        );
+
+        const { found, missing } = scanIndividualArticlesCacheAny(['mod-a', 'mod-b'], outputDir);
+        expect(found).toHaveLength(1);
+        expect(found[0].slug).toBe('mod-a');
+        expect(missing).toEqual(['mod-b']);
     });
 });

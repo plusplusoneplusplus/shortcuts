@@ -50,6 +50,7 @@ export function createProgram(): Command {
         .option('-t, --timeout <seconds>', 'Timeout in seconds for discovery', parseInt)
         .option('--focus <path>', 'Focus discovery on a specific subtree')
         .option('--force', 'Ignore cache, regenerate discovery', false)
+        .option('--use-cache', 'Use existing cache regardless of git hash', false)
         .option('-v, --verbose', 'Verbose logging', false)
         .option('--no-color', 'Disable colored output')
         .action(async (repoPath: string, opts: Record<string, unknown>) => {
@@ -63,6 +64,7 @@ export function createProgram(): Command {
                 timeout: opts.timeout as number | undefined,
                 focus: opts.focus as string | undefined,
                 force: Boolean(opts.force),
+                useCache: Boolean(opts.useCache),
                 verbose: Boolean(opts.verbose),
             });
             process.exit(exitCode);
@@ -83,6 +85,7 @@ export function createProgram(): Command {
         .option('--focus <path>', 'Focus on a specific subtree')
         .option('--depth <level>', 'Article detail level: shallow, normal, deep', 'normal')
         .option('--force', 'Ignore cache, regenerate everything', false)
+        .option('--use-cache', 'Use existing cache regardless of git hash', false)
         .option('--phase <number>', 'Start from phase N (uses cached prior phases)', parseInt)
         .option('-v, --verbose', 'Verbose logging', false)
         .option('--no-color', 'Disable colored output')
@@ -98,6 +101,7 @@ export function createProgram(): Command {
                 focus: opts.focus as string | undefined,
                 depth: (opts.depth as 'shallow' | 'normal' | 'deep') || 'normal',
                 force: Boolean(opts.force),
+                useCache: Boolean(opts.useCache),
                 phase: opts.phase as number | undefined,
                 verbose: Boolean(opts.verbose),
             });

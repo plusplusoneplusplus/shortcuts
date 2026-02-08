@@ -27,6 +27,7 @@ vi.mock('../../src/discovery', () => ({
 // Mock the cache module
 vi.mock('../../src/cache', () => ({
     getCachedGraph: vi.fn().mockResolvedValue(null),
+    getCachedGraphAny: vi.fn().mockReturnValue(null),
     saveGraph: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -70,6 +71,7 @@ describe('Discover Command', () => {
             const exitCode = await executeDiscover('/nonexistent/path/that/doesnt/exist', {
                 output: path.join(tmpDir, 'output'),
                 force: false,
+                useCache: false,
                 verbose: false,
             });
             expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
@@ -84,6 +86,7 @@ describe('Discover Command', () => {
             const exitCode = await executeDiscover(filePath, {
                 output: path.join(tmpDir, 'output'),
                 force: false,
+                useCache: false,
                 verbose: false,
             });
             expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
@@ -104,6 +107,7 @@ describe('Discover Command', () => {
             await executeDiscover(repoDir, {
                 output: path.join(tmpDir, 'output'),
                 force: true,
+                useCache: false,
                 verbose: false,
             });
 
@@ -120,6 +124,7 @@ describe('Discover Command', () => {
                 output: path.join(tmpDir, 'output'),
                 focus: 'src/',
                 force: true,
+                useCache: false,
                 verbose: false,
             });
 
@@ -135,6 +140,7 @@ describe('Discover Command', () => {
                 output: path.join(tmpDir, 'output'),
                 model: 'claude-sonnet',
                 force: true,
+                useCache: false,
                 verbose: false,
             });
 
@@ -155,6 +161,7 @@ describe('Discover Command', () => {
             const exitCode = await executeDiscover(repoDir, {
                 output: path.join(tmpDir, 'output'),
                 force: true,
+                useCache: false,
                 verbose: false,
             });
 
@@ -176,6 +183,7 @@ describe('Discover Command', () => {
             const exitCode = await executeDiscover(repoDir, {
                 output: path.join(tmpDir, 'output'),
                 force: true,
+                useCache: false,
                 verbose: false,
             });
 
@@ -196,6 +204,7 @@ describe('Discover Command', () => {
             const exitCode = await executeDiscover(repoDir, {
                 output: path.join(tmpDir, 'output'),
                 force: true,
+                useCache: false,
                 verbose: false,
             });
 
@@ -230,6 +239,7 @@ describe('Discover Command', () => {
             const exitCode = await executeDiscover(repoDir, {
                 output: outputDir,
                 force: true,
+                useCache: false,
                 verbose: false,
             });
 
@@ -265,6 +275,7 @@ describe('Discover Command', () => {
             await executeDiscover(repoDir, {
                 output: path.join(tmpDir, 'output'),
                 force: true,
+                useCache: false,
                 verbose: false,
             });
 
@@ -292,6 +303,7 @@ describe('Discover Command', () => {
             await executeDiscover(repoDir, {
                 output: path.join(tmpDir, 'output'),
                 force: true,
+                useCache: false,
                 verbose: false,
             });
 
@@ -320,6 +332,7 @@ describe('Discover Command', () => {
             await executeDiscover(repoDir, {
                 output: path.join(tmpDir, 'output'),
                 force: true,
+                useCache: false,
                 verbose: true,
             });
 
@@ -354,6 +367,7 @@ describe('Discover Command', () => {
             const exitCode = await executeDiscover(repoDir, {
                 output: path.join(tmpDir, 'output'),
                 force: false,
+                useCache: false,
                 verbose: false,
             });
 
@@ -363,6 +377,38 @@ describe('Discover Command', () => {
             // Should output the cached graph
             const parsed = JSON.parse(stdoutOutput.trim());
             expect(parsed.project.name).toBe('cached-project');
+        });
+
+        it('--use-cache should use getCachedGraphAny (skip hash validation)', async () => {
+            const cache = await import('../../src/cache');
+            vi.mocked(cache.getCachedGraphAny).mockReturnValue({
+                metadata: { gitHash: 'stale-hash', timestamp: Date.now(), version: '1.0.0' },
+                graph: {
+                    project: { name: 'stale-cached', description: '', language: 'Go', buildSystem: 'go mod', entryPoints: [] },
+                    modules: [
+                        { id: 'stale-mod', name: 'Stale', path: 'src/', purpose: 'stale', keyFiles: [], dependencies: [], dependents: [], complexity: 'low', category: 'core' },
+                    ],
+                    categories: [{ name: 'core', description: '' }],
+                    architectureNotes: '',
+                },
+            });
+
+            const repoDir = path.join(tmpDir, 'repo');
+            fs.mkdirSync(repoDir);
+
+            const { executeDiscover } = await import('../../src/commands/discover');
+            const exitCode = await executeDiscover(repoDir, {
+                output: path.join(tmpDir, 'output'),
+                force: false,
+                useCache: true,
+                verbose: false,
+            });
+
+            expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+            // Should output the stale cached graph
+            const parsed = JSON.parse(stdoutOutput.trim());
+            expect(parsed.project.name).toBe('stale-cached');
         });
     });
 });

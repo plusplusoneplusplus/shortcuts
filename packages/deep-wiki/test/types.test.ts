@@ -226,6 +226,7 @@ describe('Types and Schemas', () => {
                 depth: 'normal',
                 cache: '.wiki-cache',
                 force: false,
+                useCache: false,
                 phase: 1,
             };
             expect(config.depth).toBe('normal');
@@ -275,6 +276,7 @@ describe('Types and Schemas', () => {
                 timeout: 300,
                 focus: 'src/',
                 force: false,
+                useCache: false,
                 verbose: true,
             };
             expect(opts.output).toBe('./wiki');

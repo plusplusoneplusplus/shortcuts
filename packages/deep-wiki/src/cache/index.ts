@@ -147,6 +147,34 @@ export async function getCachedGraph(repoPath: string, outputDir: string): Promi
     return cached;
 }
 
+/**
+ * Get a cached module graph regardless of git hash (skip hash validation).
+ *
+ * @param outputDir - Output directory containing the cache
+ * @returns The cached graph if it exists and is structurally valid, or null
+ */
+export function getCachedGraphAny(outputDir: string): CachedGraph | null {
+    const cachePath = getGraphCachePath(outputDir);
+
+    if (!fs.existsSync(cachePath)) {
+        return null;
+    }
+
+    let cached: CachedGraph;
+    try {
+        const content = fs.readFileSync(cachePath, 'utf-8');
+        cached = JSON.parse(content) as CachedGraph;
+    } catch {
+        return null;
+    }
+
+    if (!cached.metadata || !cached.graph) {
+        return null;
+    }
+
+    return cached;
+}
+
 // ============================================================================
 // Graph Cache Write
 // ============================================================================
@@ -402,6 +430,43 @@ export function scanIndividualAnalysesCache(
                 found.push(cached.analysis);
             } else {
                 // Stale (different git hash) or invalid — needs re-analysis
+                missing.push(moduleId);
+            }
+        } catch {
+            missing.push(moduleId);
+        }
+    }
+
+    return { found, missing };
+}
+
+/**
+ * Scan for individually cached analyses, ignoring git hash validation.
+ *
+ * @param moduleIds - Module IDs to look for in the cache
+ * @param outputDir - Output directory
+ * @returns Object with `found` (valid cached analyses) and `missing` (module IDs not found)
+ */
+export function scanIndividualAnalysesCacheAny(
+    moduleIds: string[],
+    outputDir: string
+): { found: ModuleAnalysis[]; missing: string[] } {
+    const found: ModuleAnalysis[] = [];
+    const missing: string[] = [];
+
+    for (const moduleId of moduleIds) {
+        const cachePath = getAnalysisCachePath(outputDir, moduleId);
+        if (!fs.existsSync(cachePath)) {
+            missing.push(moduleId);
+            continue;
+        }
+
+        try {
+            const content = fs.readFileSync(cachePath, 'utf-8');
+            const cached = JSON.parse(content) as CachedAnalysis;
+            if (cached.analysis && cached.analysis.moduleId) {
+                found.push(cached.analysis);
+            } else {
                 missing.push(moduleId);
             }
         } catch {
@@ -677,6 +742,43 @@ export function scanIndividualArticlesCache(
                 found.push(cached.article);
             } else {
                 // Stale (different git hash) or invalid — needs regeneration
+                missing.push(moduleId);
+            }
+        } catch {
+            missing.push(moduleId);
+        }
+    }
+
+    return { found, missing };
+}
+
+/**
+ * Scan for individually cached articles, ignoring git hash validation.
+ *
+ * @param moduleIds - Module IDs to look for in the cache
+ * @param outputDir - Output directory
+ * @returns Object with `found` (valid cached articles) and `missing` (module IDs not found)
+ */
+export function scanIndividualArticlesCacheAny(
+    moduleIds: string[],
+    outputDir: string
+): { found: GeneratedArticle[]; missing: string[] } {
+    const found: GeneratedArticle[] = [];
+    const missing: string[] = [];
+
+    for (const moduleId of moduleIds) {
+        const cachePath = getArticleCachePath(outputDir, moduleId);
+        if (!fs.existsSync(cachePath)) {
+            missing.push(moduleId);
+            continue;
+        }
+
+        try {
+            const content = fs.readFileSync(cachePath, 'utf-8');
+            const cached = JSON.parse(content) as CachedArticle;
+            if (cached.article && cached.article.slug) {
+                found.push(cached.article);
+            } else {
                 missing.push(moduleId);
             }
         } catch {

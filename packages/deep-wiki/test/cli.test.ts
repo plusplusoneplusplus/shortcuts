@@ -97,6 +97,7 @@ describe('CLI', () => {
             expect(optionNames).toContain('--timeout');
             expect(optionNames).toContain('--focus');
             expect(optionNames).toContain('--force');
+            expect(optionNames).toContain('--use-cache');
             expect(optionNames).toContain('--verbose');
         });
 
@@ -134,6 +135,7 @@ describe('CLI', () => {
             expect(optionNames).toContain('--focus');
             expect(optionNames).toContain('--depth');
             expect(optionNames).toContain('--force');
+            expect(optionNames).toContain('--use-cache');
             expect(optionNames).toContain('--phase');
             expect(optionNames).toContain('--verbose');
         });

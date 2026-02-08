@@ -20,6 +20,7 @@ import { checkAIAvailability, createAnalysisInvoker, createWritingInvoker } from
 import { normalizeModuleId } from '../schemas';
 import {
     getCachedGraph,
+    getCachedGraphAny,
     saveGraph,
     getCachedAnalyses,
     saveAllAnalyses,
@@ -29,9 +30,11 @@ import {
     saveAnalysis,
     getRepoHeadHash,
     scanIndividualAnalysesCache,
+    scanIndividualAnalysesCacheAny,
     saveArticle,
     saveAllArticles,
     scanIndividualArticlesCache,
+    scanIndividualArticlesCacheAny,
 } from '../cache';
 import {
     Spinner,
@@ -97,6 +100,7 @@ export async function executeGenerate(
     if (options.concurrency) { printKeyValue('Concurrency', String(options.concurrency)); }
     if (startPhase > 1) { printKeyValue('Starting Phase', String(startPhase)); }
     if (options.force) { printKeyValue('Force', 'yes (ignoring all caches)'); }
+    if (options.useCache) { printKeyValue('Use Cache', 'yes (ignoring git hash)'); }
     process.stderr.write('\n');
 
     // Check AI availability
@@ -138,7 +142,9 @@ export async function executeGenerate(
             phase1Duration = phase1Result.duration;
         } else {
             // Load from cache
-            const cached = await getCachedGraph(absoluteRepoPath, options.output);
+            const cached = options.useCache
+                ? getCachedGraphAny(options.output)
+                : await getCachedGraph(absoluteRepoPath, options.output);
             if (!cached) {
                 printError(`No cached module graph found. Run with --phase 1 (or without --phase) first.`);
                 return EXIT_CODES.CONFIG_ERROR;
@@ -237,7 +243,9 @@ async function runPhase1(
     // Check cache (unless --force)
     if (!options.force) {
         try {
-            const cached = await getCachedGraph(repoPath, options.output);
+            const cached = options.useCache
+                ? getCachedGraphAny(options.output)
+                : await getCachedGraph(repoPath, options.output);
             if (cached) {
                 const duration = Date.now() - startTime;
                 printSuccess(`Using cached module graph (${cached.graph.modules.length} modules)`);
@@ -316,6 +324,26 @@ async function runPhase2(
     let cachedAnalyses: ModuleAnalysis[] = [];
 
     if (!options.force) {
+        if (options.useCache) {
+            // --use-cache: load all cached analyses regardless of git hash
+            const allModuleIds = graph.modules.map(m => m.id);
+            const { found, missing } = scanIndividualAnalysesCacheAny(
+                allModuleIds, options.output
+            );
+
+            if (found.length > 0) {
+                cachedAnalyses = found;
+                modulesToAnalyze = graph.modules.filter(
+                    m => missing.includes(m.id)
+                );
+
+                if (missing.length === 0) {
+                    printSuccess(`All ${found.length} module analyses loaded from cache`);
+                } else {
+                    printInfo(`Loaded ${found.length} cached analyses, ${missing.length} remaining`);
+                }
+            }
+        } else {
         // Try incremental rebuild
         const needingReanalysis = await getModulesNeedingReanalysis(
             graph, options.output, repoPath
@@ -369,6 +397,7 @@ async function runPhase2(
                     );
                 }
             }
+        }
         }
     }
 
@@ -510,15 +539,17 @@ async function runPhase3(
     let analysesToGenerate = analyses;
     let cachedArticles: GeneratedArticle[] = [];
 
-    if (!options.force && gitHash) {
+    if (!options.force) {
         // Scan for individually cached articles (handles crash recovery too)
         const moduleIds = analyses
             .map(a => a.moduleId)
             .filter(id => !!id);
 
-        const { found, missing } = scanIndividualArticlesCache(
-            moduleIds, options.output, gitHash
-        );
+        const { found, missing } = options.useCache
+            ? scanIndividualArticlesCacheAny(moduleIds, options.output)
+            : gitHash
+                ? scanIndividualArticlesCache(moduleIds, options.output, gitHash)
+                : { found: [] as GeneratedArticle[], missing: [...moduleIds] };
 
         if (found.length > 0) {
             cachedArticles = found;
