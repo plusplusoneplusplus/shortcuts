@@ -623,12 +623,49 @@ function getStyles(): string {
         .module-card h4 { margin-bottom: 6px; font-size: 14px; }
         .module-card p { font-size: 12px; color: var(--content-muted); line-height: 1.4; }
 
+        /* Mermaid diagrams */
+        .markdown-body pre.mermaid {
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 24px 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            text-align: center;
+        }
+        .markdown-body pre.mermaid svg {
+            max-width: 100%;
+            height: auto;
+            min-width: 600px;
+        }
+        /* Allow mermaid diagrams to break out of markdown-body max-width */
+        .markdown-body .mermaid-wrapper {
+            margin-left: calc(-50vw + 50%);
+            margin-right: calc(-50vw + 50%);
+            padding: 0 32px;
+            overflow-x: auto;
+            text-align: center;
+        }
+        .markdown-body .mermaid-wrapper pre.mermaid {
+            display: inline-block;
+            min-width: 600px;
+            max-width: calc(100vw - 344px); /* viewport - sidebar - padding */
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .sidebar { position: fixed; z-index: 100; height: 100vh; }
             .sidebar.hidden { margin-left: -280px; }
             .content-header { padding: 12px 16px; }
             .content-body { padding: 16px; }
+            .markdown-body .mermaid-wrapper {
+                margin-left: -16px;
+                margin-right: -16px;
+                padding: 0 16px;
+            }
+            .markdown-body .mermaid-wrapper pre.mermaid {
+                max-width: calc(100vw - 32px);
+            }
         }`;
 }
 
@@ -918,6 +955,11 @@ ${enableSearch ? `
                     pre.classList.add('mermaid');
                     pre.textContent = block.textContent;
                     pre.removeAttribute('style');
+                    // Wrap in a breakout container for wider diagrams
+                    var wrapper = document.createElement('div');
+                    wrapper.className = 'mermaid-wrapper';
+                    pre.parentNode.insertBefore(wrapper, pre);
+                    wrapper.appendChild(pre);
                 } else {
                     hljs.highlightElement(block);
                     addCopyButton(block.parentElement);
@@ -969,6 +1011,15 @@ ${enableSearch ? `
                 startOnLoad: false,
                 theme: isDark ? 'dark' : 'default',
                 securityLevel: 'loose',
+                flowchart: {
+                    useMaxWidth: false,
+                    htmlLabels: true,
+                    curve: 'basis',
+                    padding: 15,
+                    nodeSpacing: 50,
+                    rankSpacing: 50,
+                },
+                fontSize: 14,
             });
             mermaid.run({ nodes: mermaidBlocks });
         }

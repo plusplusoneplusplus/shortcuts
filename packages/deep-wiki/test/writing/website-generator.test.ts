@@ -379,6 +379,91 @@ describe('generateHtmlTemplate', () => {
 });
 
 // ============================================================================
+// Mermaid Diagram Styling
+// ============================================================================
+
+describe('generateHtmlTemplate — mermaid diagram styling', () => {
+    it('should include mermaid-specific CSS for transparent background', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('pre.mermaid');
+        expect(html).toContain('background: transparent');
+    });
+
+    it('should include mermaid-specific CSS to remove code block border', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('pre.mermaid');
+        expect(html).toContain('border: none');
+    });
+
+    it('should include mermaid SVG sizing styles', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('pre.mermaid svg');
+        expect(html).toContain('height: auto');
+        expect(html).toContain('min-width: 600px');
+    });
+
+    it('should include mermaid-wrapper class for breakout layout', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.mermaid-wrapper');
+        expect(html).toContain('overflow-x: auto');
+    });
+
+    it('should include mermaid-wrapper DOM creation in script', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("wrapper.className = 'mermaid-wrapper'");
+        expect(html).toContain('wrapper.appendChild(pre)');
+    });
+
+    it('should configure mermaid flowchart with useMaxWidth false', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('useMaxWidth: false');
+    });
+
+    it('should configure mermaid with font size', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('fontSize: 14');
+    });
+
+    it('should configure mermaid flowchart with nodeSpacing and rankSpacing', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('nodeSpacing: 50');
+        expect(html).toContain('rankSpacing: 50');
+    });
+
+    it('should include responsive mermaid-wrapper styles for mobile', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // Check that mobile responsive styles include mermaid wrapper adjustments
+        expect(html).toContain('.mermaid-wrapper pre.mermaid');
+    });
+
+    it('should have center alignment for mermaid diagrams', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('text-align: center');
+    });
+
+    it('should configure mermaid flowchart with htmlLabels enabled', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('htmlLabels: true');
+    });
+
+    it('should set mermaid padding to remove code block padding', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // CSS should set padding: 0 for mermaid pre elements (not the code block 16px)
+        expect(html).toMatch(/pre\.mermaid\s*\{[^}]*padding:\s*0/);
+    });
+
+    it('mermaid styles should be present across all themes', () => {
+        const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
+        for (const theme of themes) {
+            const html = generateHtmlTemplate({ theme, title: 'Test', enableSearch: true });
+            expect(html).toContain('pre.mermaid');
+            expect(html).toContain('.mermaid-wrapper');
+            expect(html).toContain('useMaxWidth: false');
+        }
+    });
+});
+
+// ============================================================================
 // readModuleGraph
 // ============================================================================
 
