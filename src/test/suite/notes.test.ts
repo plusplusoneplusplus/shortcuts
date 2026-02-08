@@ -568,7 +568,8 @@ suite('Notes Feature Tests', () => {
             }
         });
 
-        test('should handle errors when opening note', async () => {
+        test('should handle errors when opening note', async function () {
+            this.timeout(10000); // Increase timeout for Windows CI where openTextDocument can be slow
             const originalShowTextDocument = vscode.window.showTextDocument;
             const originalShowErrorMessage = vscode.window.showErrorMessage;
 
