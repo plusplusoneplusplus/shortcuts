@@ -250,6 +250,16 @@ describe('AI Invoker Factory', () => {
             expect(callArgs.onPermissionRequest).toBeUndefined();
         });
 
+        it('should not load default MCP config', async () => {
+            mockSendMessage.mockResolvedValue({ success: true, response: 'ok' });
+
+            const invoker = createWritingInvoker({});
+            await invoker('test');
+
+            const callArgs = mockSendMessage.mock.calls[0][0];
+            expect(callArgs.loadDefaultMcpConfig).toBe(false);
+        });
+
         it('should use default timeout of 120s', async () => {
             mockSendMessage.mockResolvedValue({ success: true, response: 'ok' });
 

@@ -128,7 +128,7 @@ vi.mock('../../src/logger', () => ({
 
 import { executeGenerate } from '../../src/commands/generate';
 import { EXIT_CODES } from '../../src/cli';
-import { checkAIAvailability } from '../../src/ai-invoker';
+import { checkAIAvailability, createWritingInvoker } from '../../src/ai-invoker';
 import {
     getCachedGraph,
     getCachedGraphAny,
@@ -140,6 +140,7 @@ import {
     scanIndividualArticlesCacheAny,
     getRepoHeadHash,
     saveAnalysis,
+    saveReduceArticles,
 } from '../../src/cache';
 import { discoverModuleGraph } from '../../src/discovery';
 import { generateWebsite } from '../../src/writing/website-generator';
@@ -528,6 +529,76 @@ describe('executeGenerate — --use-cache option', () => {
         expect(scanIndividualArticlesCacheAny).toHaveBeenCalled();
         // Should NOT use the hash-validated version
         expect(scanIndividualArticlesCache).not.toHaveBeenCalled();
+    });
+
+    it('should generate reduce pages without regenerating modules when module articles are cached', async () => {
+        vi.mocked(getCachedGraphAny).mockReturnValue({
+            metadata: { gitHash: 'old-stale-hash', timestamp: Date.now(), version: '1.0.0' },
+            graph: {
+                project: { name: 'TestProject', description: 'Test', language: 'TypeScript', buildSystem: 'npm', entryPoints: [] },
+                modules: [{
+                    id: 'test-module',
+                    name: 'Test Module',
+                    path: 'src/test/',
+                    purpose: 'Testing',
+                    keyFiles: [],
+                    dependencies: [],
+                    dependents: [],
+                    complexity: 'low',
+                    category: 'core',
+                }],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: '',
+            },
+        });
+
+        vi.mocked(getCachedAnalyses).mockReturnValue([{
+            moduleId: 'test-module',
+            overview: 'Cached overview',
+            keyConcepts: [],
+            publicAPI: [],
+            internalArchitecture: '',
+            dataFlow: '',
+            patterns: [],
+            errorHandling: '',
+            codeExamples: [],
+            dependencies: { internal: [], external: [] },
+            suggestedDiagram: '',
+        }]);
+
+        vi.mocked(scanIndividualArticlesCacheAny).mockReturnValue({
+            found: [{
+                type: 'module',
+                slug: 'test-module',
+                title: 'Test Module',
+                content: '# Cached module article',
+                moduleId: 'test-module',
+            }],
+            missing: [],
+        });
+
+        const writingFn = vi.fn().mockResolvedValue({
+            success: true,
+            response: "```json\n{\n  \"index\": \"# Index\\n\\nHello\",\n  \"architecture\": \"# Architecture\\n\\nHello\",\n  \"gettingStarted\": \"# Getting Started\\n\\nHello\"\n}\n```",
+        });
+        vi.mocked(createWritingInvoker).mockReturnValue(writingFn);
+
+        const options = defaultOptions({ useCache: true, phase: 3, skipWebsite: true });
+        const exitCode = await executeGenerate(repoDir, options);
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Reduce-only should be a single AI call
+        expect(writingFn).toHaveBeenCalledTimes(1);
+        expect(writingFn.mock.calls[0][0]).toContain('Generate THREE pages');
+
+        expect(saveReduceArticles).toHaveBeenCalledTimes(1);
+        const saved = vi.mocked(saveReduceArticles).mock.calls[0][0] as Array<{ type: string }>;
+        expect(saved.map(a => a.type).sort()).toEqual(['architecture', 'getting-started', 'index']);
+
+        // Ensure the markdown files were written
+        expect(fs.existsSync(path.join(options.output, 'index.md'))).toBe(true);
+        expect(fs.existsSync(path.join(options.output, 'architecture.md'))).toBe(true);
+        expect(fs.existsSync(path.join(options.output, 'getting-started.md'))).toBe(true);
     });
 });
 

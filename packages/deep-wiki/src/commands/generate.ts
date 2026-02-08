@@ -15,8 +15,15 @@ import * as fs from 'fs';
 import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis, GeneratedArticle } from '../types';
 import { discoverModuleGraph } from '../discovery';
 import { analyzeModules, parseAnalysisResponse } from '../analysis';
-import { generateArticles, writeWikiOutput, generateWebsite } from '../writing';
+import {
+    generateArticles,
+    writeWikiOutput,
+    generateWebsite,
+    buildReducePromptTemplate,
+    generateStaticIndexPages,
+} from '../writing';
 import { checkAIAvailability, createAnalysisInvoker, createWritingInvoker } from '../ai-invoker';
+import { extractJSON, type AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 import { normalizeModuleId } from '../schemas';
 import {
     getCachedGraph,
@@ -687,39 +694,17 @@ async function runPhase3(
                     `All ${cachedArticles.length} module articles + ${cachedReduceArticles.length} reduce articles loaded from cache`
                 );
             } else {
-                // Reduce articles not cached — generate them
+                // Reduce articles not cached — generate them (reduce-only; don't re-generate module articles)
                 spinner.start('Generating index and overview pages...');
 
-                // Run article generation with all analyses to get reduce output
-                const reduceOutput = await generateArticles(
-                    {
-                        graph,
-                        analyses,
-                        model: options.model,
-                        concurrency,
-                        timeout: options.timeout ? options.timeout * 1000 : undefined,
-                        depth: options.depth,
-                    },
+                const reduceOnly = await generateReduceOnlyArticles(
+                    graph,
+                    analyses,
                     writingInvoker,
-                    (progress) => {
-                        if (progress.phase === 'reducing') {
-                            spinner.update('Generating index and overview pages...');
-                        }
-                    },
-                    isCancelled,
+                    options.model,
+                    options.timeout ? options.timeout * 1000 : undefined,
                 );
-
-                // Extract only reduce articles (index, architecture, getting-started)
-                const reduceOnly = reduceOutput.articles.filter(a => a.type !== 'module');
                 reduceArticles.push(...reduceOnly);
-
-                // Also grab any module articles from reduce output in case map was rerun
-                const reduceModuleArticles = reduceOutput.articles.filter(a => a.type === 'module');
-                if (reduceModuleArticles.length > 0 && freshModuleArticles.length === 0) {
-                    // Use the freshly-generated module articles from the reduce run
-                    allModuleArticles.length = 0;
-                    allModuleArticles.push(...reduceModuleArticles);
-                }
 
                 // Cache the newly generated reduce articles
                 if (gitHash && reduceOnly.length > 0) {
@@ -833,6 +818,99 @@ function runPhase4(options: GenerateCommandOptions): Phase4Result {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Generate reduce-only articles (index/architecture/getting-started) without re-generating module articles.
+ */
+async function generateReduceOnlyArticles(
+    graph: ModuleGraph,
+    analyses: ModuleAnalysis[],
+    writingInvoker: AIInvoker,
+    model?: string,
+    timeoutMs?: number,
+): Promise<GeneratedArticle[]> {
+    if (analyses.length === 0) {
+        return [];
+    }
+
+    // Provide compact per-module summaries to the reducer (avoid re-generating module articles).
+    const resultsForPrompt = analyses.map(a => {
+        const mod = graph.modules.find(m => m.id === a.moduleId);
+        return {
+            id: a.moduleId,
+            name: mod?.name || a.moduleId,
+            category: mod?.category || 'uncategorized',
+            overview: (a.overview || '').substring(0, 500),
+        };
+    });
+
+    const resultsString = JSON.stringify(resultsForPrompt, null, 2);
+
+    let prompt = buildReducePromptTemplate();
+
+    prompt = prompt
+        .replace(/\{\{RESULTS\}\}/g, resultsString)
+        .replace(/\{\{COUNT\}\}/g, String(resultsForPrompt.length))
+        .replace(/\{\{SUCCESS_COUNT\}\}/g, String(resultsForPrompt.length))
+        .replace(/\{\{FAILURE_COUNT\}\}/g, '0');
+
+    const reduceParameters: Record<string, string> = {
+        projectName: graph.project.name,
+        projectDescription: graph.project.description || 'No description available',
+        buildSystem: graph.project.buildSystem || 'Unknown',
+        language: graph.project.language || 'Unknown',
+    };
+
+    for (const [key, value] of Object.entries(reduceParameters)) {
+        prompt = prompt.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+    }
+
+    const aiResult = await writingInvoker(prompt, { model, timeoutMs });
+    if (!aiResult.success || !aiResult.response) {
+        return generateStaticIndexPages(graph, analyses);
+    }
+
+    const jsonStr = extractJSON(aiResult.response);
+    if (!jsonStr) {
+        return generateStaticIndexPages(graph, analyses);
+    }
+
+    try {
+        const parsed = JSON.parse(jsonStr) as Record<string, string>;
+        const articles: GeneratedArticle[] = [];
+
+        if (parsed.index) {
+            articles.push({
+                type: 'index',
+                slug: 'index',
+                title: `${graph.project.name} Wiki`,
+                content: parsed.index,
+            });
+        }
+
+        if (parsed.architecture) {
+            articles.push({
+                type: 'architecture',
+                slug: 'architecture',
+                title: 'Architecture Overview',
+                content: parsed.architecture,
+            });
+        }
+
+        if (parsed.gettingStarted) {
+            articles.push({
+                type: 'getting-started',
+                slug: 'getting-started',
+                title: 'Getting Started',
+                content: parsed.gettingStarted,
+            });
+        }
+
+        return articles.length > 0 ? articles : generateStaticIndexPages(graph, analyses);
+    } catch {
+        return generateStaticIndexPages(graph, analyses);
+    }
+}
 
 /**
  * Format a duration in milliseconds to a human-readable string.

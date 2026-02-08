@@ -10,8 +10,6 @@
 
 import {
     getCopilotSDKService,
-    approveAllPermissions,
-    denyAllPermissions,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     AIInvoker,
@@ -164,6 +162,7 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
                 model,
                 timeoutMs,
                 usePool: false, // Direct session — consistent with all deep-wiki phases
+                loadDefaultMcpConfig: false, // Writing doesn't need MCP; avoid user's global MCP config
             };
 
             const result = await service.sendMessage(sendOptions);
