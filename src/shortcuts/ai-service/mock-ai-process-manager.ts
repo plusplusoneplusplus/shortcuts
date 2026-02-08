@@ -474,9 +474,9 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
             return false;
         }
         return !!(
-            process.sdkSessionId &&
             process.status === 'completed' &&
-            process.backend === 'copilot-sdk'
+            process.fullPrompt &&
+            process.result
         );
     }
 

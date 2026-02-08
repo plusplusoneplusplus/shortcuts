@@ -672,7 +672,16 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
     }
 
     /**
-     * Check if a process is resumable (has session ID, completed, SDK backend).
+     * Check if a process is resumable.
+     * 
+     * A process is resumable when:
+     * - Status is 'completed'
+     * - Has a `fullPrompt` (the original prompt)
+     * - Has a `result` (the AI response)
+     * 
+     * Note: sdkSessionId and backend are no longer required. Instead of resuming
+     * an SDK session, we create a new interactive session pre-filled with the
+     * original prompt and previous result as context.
      * 
      * @param id Process ID
      * @returns True if the process can be resumed
@@ -684,10 +693,118 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
         }
 
         return !!(
-            process.sdkSessionId &&
             process.status === 'completed' &&
-            process.backend === 'copilot-sdk'
+            process.fullPrompt &&
+            process.result
         );
+    }
+
+    /**
+     * Maximum length for the previous AI result included in a resume prompt.
+     * Results longer than this are truncated to avoid overwhelming the new session context.
+     */
+    private static readonly MAX_RESUME_RESULT_LENGTH = 10000;
+
+    /**
+     * Build a context prompt for resuming a completed process.
+     * 
+     * Instead of resuming an SDK session, this composes a new prompt that includes
+     * the original request and previous AI response as context, allowing the user
+     * to continue the conversation in a new interactive session.
+     * 
+     * @param fullPrompt The original prompt sent to the AI
+     * @param result The AI's response text
+     * @param structuredResult Optional structured result (JSON) from the AI
+     * @returns The composed context prompt string
+     */
+    buildResumePrompt(fullPrompt: string, result: string, structuredResult?: string): string {
+        const lines: string[] = [];
+
+        lines.push('[Previous conversation context]');
+        lines.push('');
+        lines.push('Original request:');
+        lines.push(fullPrompt);
+        lines.push('');
+        lines.push('Previous AI response:');
+
+        // Truncate long results
+        if (result.length > AIProcessManager.MAX_RESUME_RESULT_LENGTH) {
+            const truncated = result.substring(0, AIProcessManager.MAX_RESUME_RESULT_LENGTH);
+            lines.push(truncated);
+            lines.push(`\n[... response truncated, ${result.length - AIProcessManager.MAX_RESUME_RESULT_LENGTH} characters omitted ...]`);
+        } else {
+            lines.push(result);
+        }
+
+        // Include structured result if available and different from the text result
+        if (structuredResult && structuredResult !== result) {
+            lines.push('');
+            lines.push('Structured result (JSON):');
+            if (structuredResult.length > AIProcessManager.MAX_RESUME_RESULT_LENGTH) {
+                const truncated = structuredResult.substring(0, AIProcessManager.MAX_RESUME_RESULT_LENGTH);
+                lines.push(truncated);
+                lines.push(`\n[... structured result truncated ...]`);
+            } else {
+                lines.push(structuredResult);
+            }
+        }
+
+        lines.push('');
+        lines.push('Continue the conversation from where we left off. The user wants to follow up.');
+
+        return lines.join('\n');
+    }
+
+    /**
+     * Resume a completed process by launching a new interactive session
+     * pre-filled with the original prompt and previous result as context.
+     * 
+     * @param id The process ID to resume
+     * @returns Object with success status and optional sessionId or error message
+     */
+    async resumeProcess(id: string, startSessionFn: (options: { workingDirectory: string; tool: 'copilot'; initialPrompt: string }) => Promise<string | undefined>): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+        // Validate the process is resumable
+        if (!this.isProcessResumable(id)) {
+            const process = this.processes.get(id);
+            if (!process) {
+                return { success: false, error: 'Process not found' };
+            }
+            if (process.status !== 'completed') {
+                return { success: false, error: `Only completed processes can be resumed. Current status: ${process.status}` };
+            }
+            if (!process.fullPrompt) {
+                return { success: false, error: 'Cannot resume: process data is incomplete (missing prompt)' };
+            }
+            if (!process.result) {
+                return { success: false, error: 'Cannot resume: process data is incomplete (missing result)' };
+            }
+            return { success: false, error: 'This process cannot be resumed' };
+        }
+
+        const process = this.processes.get(id)!;
+
+        // Build the context prompt
+        const contextPrompt = this.buildResumePrompt(
+            process.fullPrompt,
+            process.result!,
+            process.structuredResult
+        );
+
+        // Determine working directory
+        const workingDirectory = process.workingDirectory || '';
+
+        // Launch the interactive session with the context prompt
+        const sessionId = await startSessionFn({
+            workingDirectory,
+            tool: 'copilot',
+            initialPrompt: contextPrompt
+        });
+
+        if (sessionId) {
+            return { success: true, sessionId };
+        } else {
+            return { success: false, error: 'Could not open terminal for interactive session' };
+        }
     }
 
     /**

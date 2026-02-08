@@ -1173,7 +1173,7 @@ input:
                 assert.strictEqual(processManager.isProcessResumable(processId), true);
             });
 
-            test('attachSessionMetadata with CLI backend does not make process resumable', () => {
+            test('attachSessionMetadata with CLI backend is still resumable (no-reuse approach)', () => {
                 const parentGroupId = processManager.registerProcessGroup(
                     'Pipeline: Test',
                     {
@@ -1195,11 +1195,11 @@ input:
                 // Complete the process
                 tracker.updateProcess(processId, 'completed', 'Success');
 
-                // Should NOT be resumable (CLI backend)
-                assert.strictEqual(processManager.isProcessResumable(processId), false);
+                // Resumable: completed + fullPrompt + result (backend no longer matters)
+                assert.strictEqual(processManager.isProcessResumable(processId), true);
             });
 
-            test('attachSessionMetadata without sessionId does not make process resumable', () => {
+            test('attachSessionMetadata without sessionId is still resumable (no-reuse approach)', () => {
                 const parentGroupId = processManager.registerProcessGroup(
                     'Pipeline: Test',
                     {
@@ -1221,8 +1221,8 @@ input:
                 // Complete the process
                 tracker.updateProcess(processId, 'completed', 'Success');
 
-                // Should NOT be resumable (no session ID)
-                assert.strictEqual(processManager.isProcessResumable(processId), false);
+                // Resumable: completed + fullPrompt + result (sessionId no longer required)
+                assert.strictEqual(processManager.isProcessResumable(processId), true);
             });
 
             test('session metadata persists through getProcesses', () => {

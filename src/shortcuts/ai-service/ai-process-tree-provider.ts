@@ -472,7 +472,7 @@ export class AIProcessItem extends vscode.TreeItem {
         if (this.isProcessResumable(process)) {
             lines.push('');
             lines.push('---');
-            lines.push('💡 *This session can be resumed*');
+            lines.push('💡 *This session can be continued with original context*');
         }
 
         const tooltip = new vscode.MarkdownString(lines.join('\n'));
@@ -481,13 +481,17 @@ export class AIProcessItem extends vscode.TreeItem {
     }
 
     /**
-     * Check if a process is resumable (has session ID, completed, SDK backend)
+     * Check if a process is resumable.
+     * 
+     * A process is resumable when it is completed and has both
+     * the original prompt and a result. No longer requires sdkSessionId
+     * or copilot-sdk backend — we create a new session with context instead.
      */
     private isProcessResumable(process: AIProcess): boolean {
         return !!(
-            process.sdkSessionId &&
             process.status === 'completed' &&
-            process.backend === 'copilot-sdk'
+            process.fullPrompt &&
+            process.result
         );
     }
 

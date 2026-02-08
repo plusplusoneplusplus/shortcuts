@@ -2328,98 +2328,34 @@ export async function activate(context: vscode.ExtensionContext) {
         );
 
         // Command to resume a completed AI session in interactive mode
+        // Uses the no-reuse approach: creates a new interactive session pre-filled
+        // with the original prompt and previous result as context.
         const resumeSessionCommand = vscode.commands.registerCommand(
             'clarificationProcesses.resumeSession',
-            async (item: { process?: { id: string; sdkSessionId?: string; backend?: string; workingDirectory?: string; fullPrompt?: string } }) => {
+            async (item: { process?: { id: string } }) => {
                 if (!item?.process?.id) {
                     vscode.window.showWarningMessage('No process selected.');
                     return;
                 }
 
                 const processId = item.process.id;
-                
-                // Check if the process is resumable
-                if (!aiProcessManager.isProcessResumable(processId)) {
-                    // Get session metadata to provide a more specific error message
-                    const metadata = aiProcessManager.getSessionMetadata(processId);
-                    const process = aiProcessManager.getProcess(processId);
-                    
-                    if (!metadata?.sdkSessionId) {
-                        // No session ID - offer to start a new session with the original prompt
-                        const action = await vscode.window.showWarningMessage(
-                            'This process does not have a resumable session ID. Would you like to start a new interactive session with the original prompt?',
-                            'Start New Session',
-                            'Cancel'
-                        );
-                        
-                        if (action === 'Start New Session' && process?.fullPrompt) {
-                            const sessionId = await interactiveSessionManager.startSession({
-                                workingDirectory: metadata?.workingDirectory || workspaceRoot,
-                                tool: 'copilot',
-                                initialPrompt: process.fullPrompt
-                            });
-                            
-                            if (sessionId) {
-                                vscode.window.showInformationMessage('New interactive session started with original prompt.');
-                            }
-                        }
-                        return;
-                    }
-                    
-                    if (metadata?.backend !== 'copilot-sdk') {
-                        vscode.window.showWarningMessage(
-                            `Session resume is only available for processes using the Copilot SDK backend. This process used: ${metadata?.backend || 'unknown'}`
-                        );
-                        return;
-                    }
-                    
-                    if (process?.status !== 'completed') {
-                        vscode.window.showWarningMessage(
-                            `Only completed processes can be resumed. Current status: ${process?.status || 'unknown'}`
-                        );
-                        return;
-                    }
-                    
-                    vscode.window.showWarningMessage('This process cannot be resumed.');
-                    return;
-                }
 
-                // Get session metadata for resume
-                const metadata = aiProcessManager.getSessionMetadata(processId);
-                if (!metadata?.sdkSessionId) {
-                    vscode.window.showErrorMessage('Session ID not found. Cannot resume session.');
-                    return;
-                }
-
-                // Launch external terminal with session resume using the --resume flag
-                const { getExternalTerminalLauncher } = await import('./shortcuts/ai-service');
-                const launcher = getExternalTerminalLauncher();
-                
-                const result = await launcher.launch({
-                    workingDirectory: metadata.workingDirectory || workspaceRoot,
-                    tool: 'copilot',
-                    resumeSessionId: metadata.sdkSessionId
-                });
+                // Use resumeProcess() which validates, builds context prompt, and launches session
+                const result = await aiProcessManager.resumeProcess(
+                    processId,
+                    async (options) => {
+                        return interactiveSessionManager.startSession({
+                            workingDirectory: options.workingDirectory || workspaceRoot,
+                            tool: options.tool,
+                            initialPrompt: options.initialPrompt
+                        });
+                    }
+                );
 
                 if (result.success) {
-                    vscode.window.showInformationMessage('Session resumed in external terminal.');
+                    vscode.window.showInformationMessage('Session continued in external terminal with original context.');
                 } else {
-                    // Session might have expired - offer to start a new session
-                    const process = aiProcessManager.getProcess(processId);
-                    const action = await vscode.window.showWarningMessage(
-                        `Could not resume session: ${result.error}. The session may have expired. Would you like to start a new session with the original prompt?`,
-                        'Start New Session',
-                        'Cancel'
-                    );
-                    
-                    if (action === 'Start New Session' && process?.fullPrompt) {
-                        await interactiveSessionManager.startSession({
-                            workingDirectory: metadata.workingDirectory || workspaceRoot,
-                            tool: 'copilot',
-                            initialPrompt: process.fullPrompt
-                        });
-                        vscode.window.showInformationMessage('New interactive session started with original prompt.');
-                    }
+                    vscode.window.showErrorMessage(`Cannot resume: ${result.error}`);
                 }
             }
         );

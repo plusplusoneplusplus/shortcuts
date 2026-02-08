@@ -536,25 +536,25 @@ suite('AI Invoker Factory Tests', () => {
             assert.strictEqual(metadata?.workingDirectory, '/workspace', 'Should store working directory');
         });
 
-        test('isProcessResumable should return true for SDK process with session ID', () => {
+        test('isProcessResumable should return true for completed process with prompt and result', () => {
             const processId = mockProcessManager.registerTypedProcess('test prompt', {
                 type: 'generic',
                 metadata: { type: 'generic', feature: 'Test' }
             });
 
-            // Attach session metadata
+            // Attach session metadata (still stored for metadata purposes)
             mockProcessManager.attachSdkSessionId(processId, 'session-abc');
             mockProcessManager.attachSessionMetadata(processId, 'copilot-sdk', '/workspace');
             
             // Complete the process
             mockProcessManager.completeProcess(processId, 'Response');
 
-            // Check resumability
+            // Check resumability — now based on completed + fullPrompt + result
             const isResumable = mockProcessManager.isProcessResumable(processId);
-            assert.strictEqual(isResumable, true, 'Should be resumable with SDK backend and session ID');
+            assert.strictEqual(isResumable, true, 'Should be resumable with completed status, prompt, and result');
         });
 
-        test('isProcessResumable should return false for CLI process', () => {
+        test('isProcessResumable should return true for CLI process too (no-reuse approach)', () => {
             const processId = mockProcessManager.registerTypedProcess('test prompt', {
                 type: 'generic',
                 metadata: { type: 'generic', feature: 'Test' }
@@ -567,9 +567,9 @@ suite('AI Invoker Factory Tests', () => {
             // Complete the process
             mockProcessManager.completeProcess(processId, 'Response');
 
-            // Check resumability
+            // Check resumability — backend no longer matters
             const isResumable = mockProcessManager.isProcessResumable(processId);
-            assert.strictEqual(isResumable, false, 'Should not be resumable with CLI backend');
+            assert.strictEqual(isResumable, true, 'Should be resumable regardless of backend');
         });
 
         test('isProcessResumable should return false for running process', () => {
@@ -588,7 +588,7 @@ suite('AI Invoker Factory Tests', () => {
             assert.strictEqual(isResumable, false, 'Should not be resumable while running');
         });
 
-        test('isProcessResumable should return false without session ID', () => {
+        test('isProcessResumable should return true without session ID (no-reuse approach)', () => {
             const processId = mockProcessManager.registerTypedProcess('test prompt', {
                 type: 'generic',
                 metadata: { type: 'generic', feature: 'Test' }
@@ -600,9 +600,9 @@ suite('AI Invoker Factory Tests', () => {
             // Complete the process
             mockProcessManager.completeProcess(processId, 'Response');
 
-            // Check resumability
+            // Check resumability — sdkSessionId no longer required
             const isResumable = mockProcessManager.isProcessResumable(processId);
-            assert.strictEqual(isResumable, false, 'Should not be resumable without session ID');
+            assert.strictEqual(isResumable, true, 'Should be resumable without session ID (no-reuse approach)');
         });
 
         test('getSessionMetadata should include sdkSessionId when attached', () => {
@@ -700,9 +700,9 @@ suite('AI Invoker Factory Tests', () => {
             assert.strictEqual(metadata2?.backend, 'copilot-cli');
             assert.strictEqual(metadata2?.workingDirectory, '/workspace/b');
 
-            // Only the first should be resumable (SDK backend)
+            // Both should be resumable (no-reuse approach: backend no longer matters)
             assert.strictEqual(mockProcessManager.isProcessResumable(processId1), true);
-            assert.strictEqual(mockProcessManager.isProcessResumable(processId2), false);
+            assert.strictEqual(mockProcessManager.isProcessResumable(processId2), true);
         });
     });
 });

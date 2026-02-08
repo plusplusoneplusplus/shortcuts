@@ -284,7 +284,9 @@ export interface IAIProcessManager {
     getSessionMetadata(id: string): { sdkSessionId?: string; backend?: AIBackendType; workingDirectory?: string } | undefined;
 
     /**
-     * Check if a process is resumable (has session ID, completed, SDK backend).
+     * Check if a process is resumable.
+     * A process is resumable when: status is 'completed', has fullPrompt, and has result.
+     * Note: sdkSessionId and backend are no longer required (no-reuse approach).
      * 
      * @param id Process ID
      * @returns True if the process can be resumed
