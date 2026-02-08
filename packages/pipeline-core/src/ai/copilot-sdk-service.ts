@@ -754,9 +754,10 @@ export class CopilotSDKService {
             // Send the message with timeout
             const timeoutMs = options.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
 
-            // Use streaming mode if enabled and supported
+            // Use streaming mode if enabled and supported, OR if timeout > 120s
+            // (SDK's sendAndWait has hardcoded 120s timeout for session.idle)
             let response: string;
-            if (options.streaming && session.on && session.send) {
+            if ((options.streaming || timeoutMs > 120000) && session.on && session.send) {
                 response = await this.sendWithStreaming(session, options.prompt, timeoutMs);
             } else {
                 const result = await this.sendWithTimeout(session, options.prompt, timeoutMs);
@@ -1074,7 +1075,8 @@ export class CopilotSDKService {
 
     /**
      * Send a message with timeout support (non-streaming).
-     * Passes the timeout directly to the SDK's sendAndWait method.
+     * WARNING: SDK's sendAndWait has a hardcoded 120-second timeout for session.idle event.
+     * For longer timeouts, use sendWithStreaming instead (automatically done for timeoutMs > 120s).
      */
     private async sendWithTimeout(
         session: ICopilotSession,
@@ -1082,7 +1084,7 @@ export class CopilotSDKService {
         timeoutMs: number
     ): Promise<{ data?: { content?: string } }> {
         // Pass timeout directly to SDK's sendAndWait method
-        // The SDK uses 60000ms (60s) as default, we override with our configured timeout
+        // Note: SDK internally limits this to 120 seconds for the session.idle event
         return session.sendAndWait({ prompt }, timeoutMs);
     }
 
