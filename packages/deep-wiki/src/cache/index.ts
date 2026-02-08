@@ -53,6 +53,12 @@ const ARTICLES_DIR = 'articles';
 /** Metadata file for the analyses cache */
 const ANALYSES_METADATA_FILE = '_metadata.json';
 
+/** Metadata file for reduce-phase article cache */
+const REDUCE_METADATA_FILE = '_reduce-metadata.json';
+
+/** Prefix for reduce article cache files */
+const REDUCE_ARTICLE_PREFIX = '_reduce-';
+
 /** Current version for cache metadata */
 const CACHE_VERSION = '1.0.0';
 
@@ -536,6 +542,43 @@ export function getArticlesMetadataPath(outputDir: string): string {
 }
 
 // ============================================================================
+// Reduce Article Cache Paths
+// ============================================================================
+
+/**
+ * Get the path to the reduce articles metadata file.
+ */
+export function getReduceMetadataPath(outputDir: string): string {
+    return path.join(getArticlesCacheDir(outputDir), REDUCE_METADATA_FILE);
+}
+
+/**
+ * Get the cache path for a reduce-phase article.
+ *
+ * Naming convention:
+ * - `_reduce-index.json` for index article
+ * - `_reduce-architecture.json` for architecture article
+ * - `_reduce-getting-started.json` for getting-started article
+ * - `_reduce-area-{areaId}-index.json` for area-index article
+ * - `_reduce-area-{areaId}-architecture.json` for area-architecture article
+ *
+ * @param outputDir - Output directory
+ * @param articleType - Article type (e.g., 'index', 'architecture', 'getting-started')
+ * @param areaId - Optional area ID for area-scoped reduce articles
+ * @returns Absolute path to the reduce article cache file
+ */
+export function getReduceArticleCachePath(
+    outputDir: string,
+    articleType: string,
+    areaId?: string
+): string {
+    const filename = areaId
+        ? `${REDUCE_ARTICLE_PREFIX}area-${areaId}-${articleType}.json`
+        : `${REDUCE_ARTICLE_PREFIX}${articleType}.json`;
+    return path.join(getArticlesCacheDir(outputDir), filename);
+}
+
+// ============================================================================
 // Article Cache Read
 // ============================================================================
 
@@ -608,7 +651,8 @@ export function getCachedArticles(outputDir: string): GeneratedArticle[] | null 
     try {
         const entries = fs.readdirSync(articlesDir, { withFileTypes: true });
         for (const entry of entries) {
-            if (entry.name === ANALYSES_METADATA_FILE) {
+            // Skip metadata and reduce-phase files
+            if (entry.name === ANALYSES_METADATA_FILE || entry.name.startsWith(REDUCE_ARTICLE_PREFIX)) {
                 continue;
             }
 
@@ -667,6 +711,89 @@ export function getArticlesCacheMetadata(outputDir: string): AnalysisCacheMetada
     } catch {
         return null;
     }
+}
+
+// ============================================================================
+// Reduce Article Cache Read
+// ============================================================================
+
+/**
+ * Get the reduce articles cache metadata (for hash checking).
+ */
+export function getReduceCacheMetadata(outputDir: string): AnalysisCacheMetadata | null {
+    const metadataPath = getReduceMetadataPath(outputDir);
+    if (!fs.existsSync(metadataPath)) {
+        return null;
+    }
+
+    try {
+        const content = fs.readFileSync(metadataPath, 'utf-8');
+        return JSON.parse(content) as AnalysisCacheMetadata;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Get all cached reduce-phase articles if the cache is valid.
+ *
+ * Reads all `_reduce-*.json` files (excluding `_reduce-metadata.json`) from the
+ * articles cache directory. Validates against the provided git hash if specified.
+ *
+ * @param outputDir - Output directory
+ * @param gitHash - Optional git hash for validation. If provided, only returns
+ *                  articles if the reduce metadata git hash matches.
+ * @returns Array of cached reduce articles, or null if cache miss
+ */
+export function getCachedReduceArticles(
+    outputDir: string,
+    gitHash?: string
+): GeneratedArticle[] | null {
+    // Check reduce metadata first
+    const metadata = getReduceCacheMetadata(outputDir);
+    if (!metadata) {
+        return null;
+    }
+
+    // Validate git hash if provided
+    if (gitHash && metadata.gitHash !== gitHash) {
+        return null;
+    }
+
+    // Read all _reduce-*.json files (excluding metadata)
+    const articlesDir = getArticlesCacheDir(outputDir);
+    if (!fs.existsSync(articlesDir)) {
+        return null;
+    }
+
+    const articles: GeneratedArticle[] = [];
+
+    try {
+        const files = fs.readdirSync(articlesDir);
+        for (const file of files) {
+            if (
+                !file.startsWith(REDUCE_ARTICLE_PREFIX) ||
+                file === REDUCE_METADATA_FILE ||
+                !file.endsWith('.json')
+            ) {
+                continue;
+            }
+
+            try {
+                const content = fs.readFileSync(path.join(articlesDir, file), 'utf-8');
+                const cached = JSON.parse(content) as CachedArticle;
+                if (cached.article && cached.article.slug) {
+                    articles.push(cached.article);
+                }
+            } catch {
+                // Skip corrupted entries
+            }
+        }
+    } catch {
+        return null;
+    }
+
+    return articles.length > 0 ? articles : null;
 }
 
 // ============================================================================
@@ -740,6 +867,58 @@ export async function saveAllArticles(
     };
 
     const metadataPath = getArticlesMetadataPath(outputDir);
+    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+}
+
+// ============================================================================
+// Reduce Article Cache Write
+// ============================================================================
+
+/**
+ * Save reduce-phase articles to the cache.
+ *
+ * Filters the provided articles to only reduce-type articles (NOT 'module'),
+ * writes each to a `_reduce-{type}.json` file, and writes reduce metadata
+ * with the git hash and count.
+ *
+ * @param articles - All articles (will be filtered to reduce types only)
+ * @param outputDir - Output directory
+ * @param gitHash - Git hash when the articles were generated
+ */
+export function saveReduceArticles(
+    articles: GeneratedArticle[],
+    outputDir: string,
+    gitHash: string
+): void {
+    // Only cache reduce-type articles (not 'module')
+    const reduceArticles = articles.filter(a => a.type !== 'module');
+    if (reduceArticles.length === 0) {
+        return;
+    }
+
+    const articlesDir = getArticlesCacheDir(outputDir);
+    fs.mkdirSync(articlesDir, { recursive: true });
+
+    // Write individual reduce article files
+    for (const article of reduceArticles) {
+        const cachePath = getReduceArticleCachePath(outputDir, article.type, article.areaId);
+        const cached: CachedArticle = {
+            article,
+            gitHash,
+            timestamp: Date.now(),
+        };
+        fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
+    }
+
+    // Write reduce metadata
+    const metadata: AnalysisCacheMetadata = {
+        gitHash,
+        timestamp: Date.now(),
+        version: CACHE_VERSION,
+        moduleCount: reduceArticles.length,
+    };
+
+    const metadataPath = getReduceMetadataPath(outputDir);
     fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
 }
 

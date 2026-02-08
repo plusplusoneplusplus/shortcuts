@@ -35,6 +35,8 @@ import {
     saveAllArticles,
     scanIndividualArticlesCache,
     scanIndividualArticlesCacheAny,
+    getCachedReduceArticles,
+    saveReduceArticles,
 } from '../cache';
 import {
     Spinner,
@@ -668,42 +670,81 @@ async function runPhase3(
 
         // If we had cached articles but skipped generation, we still need the reduce phase
         // (index/architecture/getting-started) which depends on ALL module articles.
-        // The reduce phase always re-runs — it's fast and must reflect the latest full set.
+        // Try to load reduce articles from cache first — skip reduce phase if cached.
         if (analysesToGenerate.length === 0 && cachedArticles.length > 0) {
-            spinner.start('Generating index and overview pages...');
-
-            // Run article generation with all analyses to get reduce output
-            const reduceOutput = await generateArticles(
-                {
-                    graph,
-                    analyses,
-                    model: options.model,
-                    concurrency,
-                    timeout: options.timeout ? options.timeout * 1000 : undefined,
-                    depth: options.depth,
-                },
-                writingInvoker,
-                (progress) => {
-                    if (progress.phase === 'reducing') {
-                        spinner.update('Generating index and overview pages...');
-                    }
-                },
-                isCancelled,
-            );
-
-            // Extract only reduce articles (index, architecture, getting-started)
-            const reduceOnly = reduceOutput.articles.filter(a => a.type !== 'module');
-            reduceArticles.push(...reduceOnly);
-
-            // Also grab any module articles from reduce output in case map was rerun
-            const reduceModuleArticles = reduceOutput.articles.filter(a => a.type === 'module');
-            if (reduceModuleArticles.length > 0 && freshModuleArticles.length === 0) {
-                // Use the freshly-generated module articles from the reduce run
-                allModuleArticles.length = 0;
-                allModuleArticles.push(...reduceModuleArticles);
+            // Try loading cached reduce articles
+            let cachedReduceArticles: GeneratedArticle[] | null = null;
+            if (!options.force) {
+                cachedReduceArticles = options.useCache
+                    ? getCachedReduceArticles(options.output)
+                    : (gitHash ? getCachedReduceArticles(options.output, gitHash) : null);
             }
 
-            spinner.succeed('Generated index and overview pages');
+            if (cachedReduceArticles && cachedReduceArticles.length > 0) {
+                // All reduce articles loaded from cache — skip reduce phase entirely
+                reduceArticles.push(...cachedReduceArticles);
+                printSuccess(
+                    `All ${cachedArticles.length} module articles + ${cachedReduceArticles.length} reduce articles loaded from cache`
+                );
+            } else {
+                // Reduce articles not cached — generate them
+                spinner.start('Generating index and overview pages...');
+
+                // Run article generation with all analyses to get reduce output
+                const reduceOutput = await generateArticles(
+                    {
+                        graph,
+                        analyses,
+                        model: options.model,
+                        concurrency,
+                        timeout: options.timeout ? options.timeout * 1000 : undefined,
+                        depth: options.depth,
+                    },
+                    writingInvoker,
+                    (progress) => {
+                        if (progress.phase === 'reducing') {
+                            spinner.update('Generating index and overview pages...');
+                        }
+                    },
+                    isCancelled,
+                );
+
+                // Extract only reduce articles (index, architecture, getting-started)
+                const reduceOnly = reduceOutput.articles.filter(a => a.type !== 'module');
+                reduceArticles.push(...reduceOnly);
+
+                // Also grab any module articles from reduce output in case map was rerun
+                const reduceModuleArticles = reduceOutput.articles.filter(a => a.type === 'module');
+                if (reduceModuleArticles.length > 0 && freshModuleArticles.length === 0) {
+                    // Use the freshly-generated module articles from the reduce run
+                    allModuleArticles.length = 0;
+                    allModuleArticles.push(...reduceModuleArticles);
+                }
+
+                // Cache the newly generated reduce articles
+                if (gitHash && reduceOnly.length > 0) {
+                    try {
+                        saveReduceArticles(reduceOnly, options.output, gitHash);
+                    } catch {
+                        if (options.verbose) {
+                            printWarning('Failed to cache reduce articles (non-fatal)');
+                        }
+                    }
+                }
+
+                spinner.succeed('Generated index and overview pages');
+            }
+        }
+
+        // Cache reduce articles from the map+reduce pass (when articles were freshly generated)
+        if (reduceArticles.length > 0 && analysesToGenerate.length > 0 && gitHash) {
+            try {
+                saveReduceArticles(reduceArticles, options.output, gitHash);
+            } catch {
+                if (options.verbose) {
+                    printWarning('Failed to cache reduce articles (non-fatal)');
+                }
+            }
         }
 
         // Combine all articles for writing

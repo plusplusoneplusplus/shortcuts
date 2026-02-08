@@ -93,6 +93,9 @@ vi.mock('../../src/cache', () => ({
     scanIndividualArticlesCacheAny: vi.fn().mockImplementation(
         (moduleIds: string[]) => ({ found: [], missing: [...moduleIds] })
     ),
+    // Reduce article cache functions (Phase 3 reduce)
+    getCachedReduceArticles: vi.fn().mockReturnValue(null),
+    saveReduceArticles: vi.fn(),
 }));
 
 // Mock website generator
