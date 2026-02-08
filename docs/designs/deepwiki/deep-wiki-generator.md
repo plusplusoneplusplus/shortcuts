@@ -6,7 +6,7 @@ A standalone CLI tool that auto-generates a comprehensive, browsable wiki for an
 
 **Output:** Markdown files in a folder, ready for conversion to a static site (e.g., via MkDocs, Docusaurus, or similar).
 
-**Status:** All three phases are implemented and functional. 304 tests passing across 17 test files.
+**Status:** All three phases are implemented and functional. 451 tests passing across 21 test files.
 
 ## Goals
 
@@ -86,16 +86,28 @@ A single long-running AI session with MCP tool access (`grep`, `glob`, `view`). 
       "dependencies": ["database", "config"],
       "dependents": ["api", "web"],
       "complexity": "medium",
-      "category": "core"
+      "category": "core",
+      "area": "packages-core"
     }
   ],
   "categories": [
     { "name": "core", "description": "Core business logic" },
     { "name": "infra", "description": "Infrastructure and utilities" }
   ],
+  "areas": [
+    {
+      "id": "packages-core",
+      "name": "Core Packages",
+      "path": "packages/core",
+      "description": "Core business logic packages",
+      "modules": ["auth", "database", "config"]
+    }
+  ],
   "architectureNotes": "Layered architecture with dependency injection..."
 }
 ```
+
+The `area` field on modules and the top-level `areas` array are only present for large repos (3000+ files) where multi-round discovery identifies top-level areas. For small repos, these fields are absent and the output remains flat.
 
 ### Scaling for Large Repos
 
@@ -251,6 +263,8 @@ service.sendMessage({
 | `architecture.md` | Reduce phase | High-level Mermaid component diagram, layer descriptions |
 | `getting-started.md` | Reduce phase | Prerequisites, setup, build, run instructions |
 | `modules/{slug}.md` | Map phase (1 per module) | Detailed module documentation |
+| `areas/{id}/index.md` | Area reduce (hierarchical only) | Area-level index with links to its modules |
+| `areas/{id}/architecture.md` | Area reduce (hierarchical only) | Area-level architecture diagram |
 
 ### Map Phase: Module Articles (Text Mode)
 
@@ -262,9 +276,14 @@ Each session receives a `PromptItem` with:
 - `{{moduleName}}` — human-readable module name
 - Depth-dependent style guide (shallow: 500-800 words, normal: 800-1500, deep: 1500-3000)
 
-Cross-links use relative paths: `[Module Name](./modules/module-id.md)`
+Cross-links use relative paths and are area-aware:
+- **Flat layout**: `[Module Name](./modules/module-id.md)`
+- **Hierarchical layout (within same area)**: `[Module Name](./module-id.md)`
+- **Hierarchical layout (cross-area)**: `[Module Name](../../other-area-id/modules/module-id.md)`
 
 ### Reduce Phase: Index & Architecture (AI Reduce)
+
+#### Flat Layout (Small Repos)
 
 Uses `outputFormat: 'ai'` with `aiReducePrompt` and `aiReduceOutput: ['index', 'architecture', 'gettingStarted']`.
 
@@ -273,6 +292,25 @@ The reducer receives **module summaries** (name + overview, not full articles �
 Returns structured JSON with three fields, each containing full markdown content.
 
 **Fallback:** If AI reduce fails, static index and architecture pages are generated deterministically from the module graph (categorized TOC, basic architecture placeholder).
+
+#### Hierarchical Layout (Large Repos — 2-Tier Reduce)
+
+For repos with `areas`, the reduce uses a 2-tier approach to keep AI context windows manageable:
+
+**Tier 1: Per-Area Reduce** — For each area, gathers module summaries belonging to that area and runs an AI reduce to generate:
+- `areas/{id}/index.md` — Area index with module listing and overview
+- `areas/{id}/architecture.md` — Area-level architecture diagram
+
+Uses `buildAreaReducePromptTemplate()` with area-specific parameters (`areaName`, `areaDescription`, `areaPath`, `projectName`). Returns `['index', 'architecture']` fields.
+
+**Tier 2: Project-Level Reduce** — Receives **area summaries** (not individual module summaries) and generates:
+- `index.md` — Project-level index linking to each area
+- `architecture.md` — Project-level architecture
+- `getting-started.md` — Project-level getting started
+
+Uses `buildHierarchicalReducePromptTemplate()` with area summaries as `{{RESULTS}}`.
+
+**Fallback:** If either tier's AI reduce fails, static fallback pages are generated via `generateStaticAreaPages()` (tier 1) or `generateStaticHierarchicalIndexPages()` (tier 2).
 
 ### AIInvoker Configuration (Writing)
 
@@ -293,12 +331,16 @@ service.sendMessage({
 ### File Writer
 
 `writeWikiOutput()` writes all articles to disk with:
-- Directory structure: `wiki/` root + `wiki/modules/` subdirectory
+- **Flat layout:** `wiki/` root + `wiki/modules/` subdirectory
+- **Hierarchical layout:** `wiki/` root + `wiki/areas/{area-id}/modules/` subdirectories, plus area-level `index.md` and `architecture.md`
 - Slug-based filenames: `normalizeModuleId()` for module slugs
 - UTF-8 encoding, LF line endings (CRLF/CR normalized)
 - Overwrites existing files on re-generation
+- Automatically creates all area subdirectories before writing files
 
 ## Output Structure
+
+### Flat Layout (Small Repos)
 
 ```
 wiki/
@@ -311,14 +353,56 @@ wiki/
 │   ├── database.md             # Database layer
 │   ├── api.md                  # API endpoints
 │   └── ...
-└── .wiki-cache/                # Cached Phase 1+2 results for incremental rebuilds
+└── .wiki-cache/                # Cached Phase 1+2+3 results for incremental rebuilds
     ├── module-graph.json       # Phase 1 cache (with metadata)
-    └── analyses/               # Phase 2 per-module cache
-        ├── _metadata.json      # { gitHash, timestamp, version, moduleCount }
-        ├── auth.json           # { analysis: ModuleAnalysis, gitHash, timestamp }
-        ├── database.json
+    ├── analyses/               # Phase 2 per-module cache
+    │   ├── _metadata.json      # { gitHash, timestamp, version, moduleCount }
+    │   ├── auth.json           # { analysis: ModuleAnalysis, gitHash, timestamp }
+    │   └── ...
+    └── articles/               # Phase 3 per-module article cache
+        ├── auth.json
         └── ...
 ```
+
+### Hierarchical Layout (Large Repos with Areas)
+
+```
+wiki/
+├── index.md                    # Project-level overview (links to areas)
+├── architecture.md             # Project-level architecture
+├── getting-started.md          # Project-level getting started
+├── module-graph.json           # Phase 1 discovery output (with areas)
+├── areas/
+│   ├── packages-core/
+│   │   ├── index.md            # Area index (links to its modules)
+│   │   ├── architecture.md     # Area-level architecture diagram
+│   │   └── modules/
+│   │       ├── auth.md
+│   │       ├── database.md
+│   │       └── ...
+│   ├── packages-api/
+│   │   ├── index.md
+│   │   ├── architecture.md
+│   │   └── modules/
+│   │       ├── routes.md
+│   │       └── ...
+│   └── ...
+└── .wiki-cache/
+    ├── module-graph.json
+    ├── analyses/
+    │   ├── _metadata.json
+    │   ├── auth.json
+    │   └── ...
+    └── articles/               # Area-scoped article cache
+        ├── packages-core/      # Articles cached per area
+        │   ├── auth.json
+        │   └── database.json
+        ├── packages-api/
+        │   └── routes.json
+        └── ...
+```
+
+The hierarchical layout is activated automatically when Phase 1 discovers top-level areas (repos with 3000+ files). No additional CLI flags required.
 
 ## Incremental Rebuilds
 
@@ -336,12 +420,20 @@ After the initial generation, subsequent runs are faster:
 ```
 .wiki-cache/
 ├── module-graph.json           # Phase 1 (git hash validated)
-└── analyses/                   # Phase 2 (per-module, git hash tracked)
-    ├── _metadata.json          # { gitHash, timestamp, version, moduleCount }
-    ├── auth.json               # { analysis: ModuleAnalysis, gitHash, timestamp }
+├── analyses/                   # Phase 2 (per-module, git hash tracked)
+│   ├── _metadata.json          # { gitHash, timestamp, version, moduleCount }
+│   ├── auth.json               # { analysis: ModuleAnalysis, gitHash, timestamp }
+│   ├── database.json
+│   └── ...
+└── articles/                   # Phase 3 (per-module article cache)
+    ├── auth.json               # Flat layout articles
     ├── database.json
+    ├── packages-core/          # Area-scoped articles (hierarchical layout)
+    │   └── auth.json
     └── ...
 ```
+
+Article cache lookup checks both area-scoped paths (`articles/{area-id}/{module-id}.json`) and flat paths (`articles/{module-id}.json`) for backward compatibility.
 
 ### Incremental Rebuild Algorithm
 
@@ -423,7 +515,7 @@ The `MapReduceExecutor` calls `AIInvoker(prompt, options?)` for each work item. 
 
 ## Implementation Details
 
-All three phases are fully implemented in `packages/deep-wiki/`. 304 tests across 17 test files.
+All three phases are fully implemented in `packages/deep-wiki/`. 451 tests across 21 test files.
 
 ### Package Structure
 
@@ -455,36 +547,40 @@ packages/deep-wiki/
 │   │   └── response-parser.ts           # ModuleAnalysis JSON parsing
 │   ├── writing/
 │   │   ├── index.ts                     # generateArticles() public API
-│   │   ├── prompts.ts                   # Module article prompt templates
-│   │   ├── reduce-prompts.ts            # Index/architecture/getting-started prompts
-│   │   ├── article-executor.ts          # MapReduceExecutor orchestration
-│   │   └── file-writer.ts              # Write markdown to disk
+│   │   ├── prompts.ts                   # Module article prompt templates + area-aware cross-links
+│   │   ├── reduce-prompts.ts            # Flat, area-level, and hierarchical reduce prompts
+│   │   ├── article-executor.ts          # Flat + hierarchical article executor orchestration
+│   │   └── file-writer.ts              # Write markdown to disk (flat + hierarchical layouts)
 │   └── cache/
-│       ├── index.ts                     # Cache manager (graph + analyses)
+│       ├── index.ts                     # Cache manager (graph + analyses + area-scoped articles)
 │       └── git-utils.ts                 # Git hash + change detection
-└── test/                                # 304 tests across 17 files
-    ├── types.test.ts                    # (29 tests)
+└── test/                                # 451 tests across 21 files
+    ├── types.test.ts                    # (42 tests — includes AreaInfo, extended ModuleGraph)
     ├── cli.test.ts                      # (17 tests)
     ├── ai-invoker.test.ts               # (22 tests)
     ├── commands/
-    │   ├── discover.test.ts             # (13 tests)
-    │   └── generate.test.ts             # (10 tests)
+    │   ├── discover.test.ts             # (14 tests)
+    │   └── generate.test.ts             # (17 tests)
     ├── discovery/
     │   ├── response-parser.test.ts      # (34 tests)
     │   ├── prompts.test.ts              # (21 tests)
-    │   └── large-repo-handler.test.ts   # (13 tests)
+    │   ├── large-repo-handler.test.ts   # (13 tests)
+    │   └── area-tagging.test.ts         # (8 tests — mergeSubGraphs area tagging)
     ├── analysis/
     │   ├── response-parser.test.ts      # (25 tests)
     │   ├── prompts.test.ts              # (11 tests)
-    │   └── analysis-executor.test.ts    # (9 tests)
+    │   └── analysis-executor.test.ts    # (11 tests)
     ├── writing/
     │   ├── prompts.test.ts              # (14 tests)
     │   ├── article-executor.test.ts     # (13 tests)
-    │   └── file-writer.test.ts          # (24 tests)
+    │   ├── file-writer.test.ts          # (24 tests)
+    │   └── hierarchical.test.ts         # (42 tests — cross-links, file paths, static fallbacks)
     └── cache/
-        ├── index.test.ts               # (17 tests)
+        ├── index.test.ts               # (26 tests)
         ├── git-utils.test.ts            # (12 tests)
-        └── analysis-cache.test.ts       # (20 tests)
+        ├── analysis-cache.test.ts       # (29 tests)
+        ├── article-cache.test.ts        # (37 tests)
+        └── area-article-cache.test.ts   # (19 tests — area-scoped article caching)
 ```
 
 ### Key Implementation Decisions
@@ -510,11 +606,15 @@ packages/deep-wiki/
 14. **Simplified graph in prompts** — only id/name/path/category sent to article writer (not full analysis) for token efficiency
 15. **Static fallback** — if AI reduce fails, generates deterministic TOC and architecture placeholder from module graph
 16. **LF line endings** — CRLF/CR normalized to LF for cross-platform consistency
+17. **Area-aware cross-links** — module article prompts include dynamic cross-linking rules based on whether the module belongs to an area (hierarchical) or not (flat)
+18. **2-tier reduce for large repos** — per-area reduce generates area index/architecture from module summaries; project-level reduce receives area summaries (not 200+ module summaries) to stay within context limits
+19. **Automatic layout detection** — `runArticleExecutor()` dispatches to `runHierarchicalArticleExecutor()` or `runFlatArticleExecutor()` based on presence of `graph.areas`
 
 **Generate Command:**
-17. **Three-phase orchestration** — Phase 1→2→3 with `--phase N` to resume from cached prior phases
-18. **SIGINT graceful cancellation** — `isCancelled()` propagated to MapReduceExecutor; second SIGINT force-exits
-19. **Phase 3 always re-runs** — article cross-links may need updating even when analyses are cached
+20. **Three-phase orchestration** — Phase 1→2→3 with `--phase N` to resume from cached prior phases
+21. **SIGINT graceful cancellation** — `isCancelled()` propagated to MapReduceExecutor; second SIGINT force-exits
+22. **Phase 3 always re-runs** — article cross-links may need updating even when analyses are cached
+23. **Area-scoped article caching** — `onItemComplete` passes `areaId` so articles are cached under `articles/{area-id}/{module-id}.json`
 
 ### Error Handling
 
@@ -526,6 +626,8 @@ packages/deep-wiki/
 | All analyses failed | 2 | Exit 1, suggest checking SDK or reducing scope |
 | Article generation timeout | 3 | Mark failed, continue others |
 | Reduce failure | 3 | Fallback: generate static TOC without AI |
+| Area reduce failure | 3 | Fallback: static area index/architecture via `generateStaticAreaPages()` |
+| Hierarchical reduce failure | 3 | Fallback: static project index/architecture via `generateStaticHierarchicalIndexPages()` |
 | Disk write failure | 3 | Exit 1, print path and error |
 | Partial cache corruption | 2 | Skip corrupted entries, re-analyze |
 | Missing cache + --phase N | Any | Exit 2, explain which phase needs to run first |
@@ -538,7 +640,7 @@ packages/deep-wiki/
 4. **Static site integration** — bundle a default MkDocs/Docusaurus config, or just output raw markdown? *(Current: raw markdown only)*
 5. **Interactive Q&A** — after generation, allow follow-up questions against the wiki as context?
 6. **Cost control** — should there be a `--budget` flag to limit total API calls?
-7. **Phase 3 incremental** — currently Phase 3 always re-runs; could cache articles and only regenerate for re-analyzed modules + index pages
+7. **Phase 3 incremental** — ~~currently Phase 3 always re-runs~~ Phase 3 now caches per-module articles (including area-scoped) and reuses them on incremental rebuilds; index/architecture pages are always regenerated
 8. **Token usage tracking** — `AnalysisResult.tokenUsage` and `DiscoveryResult.tokenUsage` are typed but not yet populated by the SDK
 9. **Custom writing templates** — allow users to provide their own article prompt templates (e.g., for different audiences or styles)
 10. **Multi-model support** — use different models for different phases (e.g., larger model for discovery, faster model for writing)

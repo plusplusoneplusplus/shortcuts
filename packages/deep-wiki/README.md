@@ -66,6 +66,7 @@ deep-wiki discover /path/to/repo --output ./wiki --verbose
 
 ### Output Structure
 
+**Small repos** (flat layout):
 ```
 wiki/
 ├── index.md              # Project overview + categorized table of contents
@@ -77,6 +78,33 @@ wiki/
     ├── database.md
     └── ...
 ```
+
+**Large repos** (3-level hierarchical layout — automatic for repos with 3000+ files):
+```
+wiki/
+├── index.md                    # Project-level index (links to areas)
+├── architecture.md             # Project-level architecture
+├── getting-started.md          # Project-level getting started
+├── module-graph.json           # Raw Phase 1 discovery output
+├── areas/
+│   ├── packages-core/
+│   │   ├── index.md            # Area index (links to its modules)
+│   │   ├── architecture.md     # Area-level architecture diagram
+│   │   └── modules/
+│   │       ├── auth.md
+│   │       ├── database.md
+│   │       └── ...
+│   ├── packages-api/
+│   │   ├── index.md
+│   │   ├── architecture.md
+│   │   └── modules/
+│   │       ├── routes.md
+│   │       └── ...
+│   └── ...
+└── modules/                    # (empty — modules live under their area)
+```
+
+The hierarchical layout activates automatically when Phase 1 discovers top-level areas (repos with 3000+ files). No additional CLI flags needed.
 
 ## Three-Phase Pipeline
 
@@ -108,6 +136,10 @@ Parallel AI sessions (session pool, no tools needed) write markdown articles:
 - **Map phase** — one article per module with cross-links between modules
 - **Reduce phase** — AI generates index, architecture, and getting-started pages
 
+For large repos with areas, Phase 3 uses a 2-tier reduce:
+1. **Per-area reduce** — generates area index + area architecture (10-30 modules per area)
+2. **Project-level reduce** — receives area summaries → generates project index + architecture + getting-started
+
 ## Incremental Rebuilds
 
 Subsequent runs are faster thanks to per-module caching:
@@ -117,7 +149,7 @@ Subsequent runs are faster thanks to per-module caching:
 3. Only affected modules are re-analyzed (unchanged modules load from cache)
 4. Phase 3 always re-runs (cheap, cross-links may need updating)
 
-Cache is stored in `<output>/.wiki-cache/`. Use `--force` to bypass.
+Cache is stored in `<output>/.wiki-cache/`. Use `--force` to bypass. Article cache supports area-scoped storage: `articles/{area-id}/{module-id}.json`.
 
 ## Testing
 
@@ -129,7 +161,7 @@ npm run test:run
 npm test
 ```
 
-304 tests across 17 test files covering all three phases: types, schemas, AI invoker, prompt generation, response parsing, map-reduce orchestration, file writing, caching (with incremental rebuild), CLI parsing, and command integration.
+451 tests across 21 test files covering all three phases: types, schemas, AI invoker, prompt generation, response parsing, map-reduce orchestration, file writing, caching (with incremental rebuild), CLI parsing, command integration, hierarchical output, area tagging, and area-scoped article caching.
 
 ## Architecture
 
@@ -160,9 +192,9 @@ src/
 │   ├── prompts.ts          # Module article prompt templates
 │   ├── reduce-prompts.ts   # Index/architecture/getting-started prompts
 │   ├── article-executor.ts # MapReduceExecutor orchestration
-│   └── file-writer.ts      # Write markdown to disk
+│   └── file-writer.ts      # Write markdown to disk (flat + hierarchical layouts)
 └── cache/
-    ├── index.ts            # Cache manager (graph + per-module analyses)
+    ├── index.ts            # Cache manager (graph + analyses + area-scoped articles)
     └── git-utils.ts        # Git hash + change detection
 ```
 
