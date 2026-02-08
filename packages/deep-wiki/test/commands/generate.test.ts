@@ -1,8 +1,8 @@
 /**
  * Generate Command Tests
  *
- * Tests for the full three-phase generate command orchestration:
- * Phase 1→2→3 flow, --phase skipping, --force bypass, and error handling.
+ * Tests for the full four-phase generate command orchestration:
+ * Phase 1→2→3→4 flow, --phase skipping, --force bypass, --skip-website, and error handling.
  *
  * Uses extensive mocking since the actual AI calls are integration-tested separately.
  */
@@ -95,6 +95,11 @@ vi.mock('../../src/cache', () => ({
     ),
 }));
 
+// Mock website generator
+vi.mock('../../src/writing/website-generator', () => ({
+    generateWebsite: vi.fn().mockReturnValue(['/mock/index.html', '/mock/embedded-data.js']),
+}));
+
 // Suppress logger output during tests
 vi.mock('../../src/logger', () => ({
     Spinner: vi.fn().mockImplementation(() => ({
@@ -134,7 +139,8 @@ import {
     saveAnalysis,
 } from '../../src/cache';
 import { discoverModuleGraph } from '../../src/discovery';
-import { printError, printInfo } from '../../src/logger';
+import { generateWebsite } from '../../src/writing/website-generator';
+import { printError, printInfo, printSuccess, printWarning, printKeyValue } from '../../src/logger';
 
 // ============================================================================
 // Test Helpers
@@ -519,5 +525,81 @@ describe('executeGenerate — --use-cache option', () => {
         expect(scanIndividualArticlesCacheAny).toHaveBeenCalled();
         // Should NOT use the hash-validated version
         expect(scanIndividualArticlesCache).not.toHaveBeenCalled();
+    });
+});
+
+// ============================================================================
+// Phase 4: Website Generation
+// ============================================================================
+
+describe('executeGenerate — Phase 4: Website Generation', () => {
+    it('should call generateWebsite by default', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions());
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        expect(generateWebsite).toHaveBeenCalled();
+    });
+
+    it('should skip website generation with --skip-website', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ skipWebsite: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        expect(generateWebsite).not.toHaveBeenCalled();
+    });
+
+    it('should pass theme option to generateWebsite', async () => {
+        await executeGenerate(repoDir, defaultOptions({ theme: 'dark' }));
+        expect(generateWebsite).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({ theme: 'dark' })
+        );
+    });
+
+    it('should pass title option to generateWebsite', async () => {
+        await executeGenerate(repoDir, defaultOptions({ title: 'My Wiki' }));
+        expect(generateWebsite).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({ title: 'My Wiki' })
+        );
+    });
+
+    it('should report website in summary', async () => {
+        await executeGenerate(repoDir, defaultOptions());
+        expect(printKeyValue).toHaveBeenCalledWith('Website', 'Generated');
+    });
+
+    it('should not report website when skipped', async () => {
+        await executeGenerate(repoDir, defaultOptions({ skipWebsite: true }));
+        expect(printKeyValue).not.toHaveBeenCalledWith('Website', 'Generated');
+    });
+
+    it('should succeed even if website generation fails', async () => {
+        vi.mocked(generateWebsite).mockImplementation(() => {
+            throw new Error('Website generation error');
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions());
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        expect(printWarning).toHaveBeenCalledWith(
+            expect.stringContaining('Website generation failed')
+        );
+    });
+
+    it('should report website generation failure as warning', async () => {
+        vi.mocked(generateWebsite).mockImplementation(() => {
+            throw new Error('Template error');
+        });
+
+        await executeGenerate(repoDir, defaultOptions());
+        expect(printWarning).toHaveBeenCalledWith(
+            expect.stringContaining('Template error')
+        );
+    });
+
+    it('should print website path on success', async () => {
+        vi.mocked(generateWebsite).mockReturnValue(['/mock/index.html', '/mock/embedded-data.js']);
+
+        await executeGenerate(repoDir, defaultOptions());
+        expect(printSuccess).toHaveBeenCalledWith(
+            expect.stringContaining('index.html')
+        );
     });
 });

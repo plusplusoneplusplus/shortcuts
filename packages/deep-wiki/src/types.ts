@@ -394,6 +394,29 @@ export interface WikiOutput {
 }
 
 // ============================================================================
+// Phase 4: Website Generation Types
+// ============================================================================
+
+/**
+ * Theme for the generated website.
+ */
+export type WebsiteTheme = 'light' | 'dark' | 'auto';
+
+/**
+ * Options for the website generation phase.
+ */
+export interface WebsiteOptions {
+    /** Theme for the generated website (default: 'auto') */
+    theme?: WebsiteTheme;
+    /** Override project name in website title */
+    title?: string;
+    /** Disable search functionality */
+    noSearch?: boolean;
+    /** Path to a custom HTML template */
+    customTemplate?: string;
+}
+
+// ============================================================================
 // Generate Command Options
 // ============================================================================
 
@@ -421,6 +444,12 @@ export interface GenerateCommandOptions {
     phase?: number;
     /** Verbose logging */
     verbose: boolean;
+    /** Skip website generation (Phase 4) */
+    skipWebsite?: boolean;
+    /** Website theme */
+    theme?: WebsiteTheme;
+    /** Override website title */
+    title?: string;
 }
 
 // ============================================================================

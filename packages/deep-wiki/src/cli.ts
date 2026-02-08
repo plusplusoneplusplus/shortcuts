@@ -76,7 +76,7 @@ export function createProgram(): Command {
 
     program
         .command('generate')
-        .description('Generate full wiki for a repository (Discovery → Analysis → Articles)')
+        .description('Generate full wiki for a repository (Discovery → Analysis → Articles → Website)')
         .argument('<repo-path>', 'Path to the local git repository')
         .option('-o, --output <path>', 'Output directory for wiki', './wiki')
         .option('-m, --model <model>', 'AI model to use')
@@ -87,6 +87,9 @@ export function createProgram(): Command {
         .option('--force', 'Ignore cache, regenerate everything', false)
         .option('--use-cache', 'Use existing cache regardless of git hash', false)
         .option('--phase <number>', 'Start from phase N (uses cached prior phases)', parseInt)
+        .option('--skip-website', 'Skip website generation (Phase 4)', false)
+        .option('--theme <theme>', 'Website theme: light, dark, auto', 'auto')
+        .option('--title <title>', 'Override project name in website title')
         .option('-v, --verbose', 'Verbose logging', false)
         .option('--no-color', 'Disable colored output')
         .action(async (repoPath: string, opts: Record<string, unknown>) => {
@@ -103,6 +106,9 @@ export function createProgram(): Command {
                 force: Boolean(opts.force),
                 useCache: Boolean(opts.useCache),
                 phase: opts.phase as number | undefined,
+                skipWebsite: Boolean(opts.skipWebsite),
+                theme: (opts.theme as 'light' | 'dark' | 'auto') || undefined,
+                title: opts.title as string | undefined,
                 verbose: Boolean(opts.verbose),
             });
             process.exit(exitCode);

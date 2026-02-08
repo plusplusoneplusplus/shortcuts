@@ -138,6 +138,10 @@ describe('CLI', () => {
             expect(optionNames).toContain('--use-cache');
             expect(optionNames).toContain('--phase');
             expect(optionNames).toContain('--verbose');
+            // Website generation options (Phase 4)
+            expect(optionNames).toContain('--skip-website');
+            expect(optionNames).toContain('--theme');
+            expect(optionNames).toContain('--title');
         });
 
         it('should have default values for depth', () => {
@@ -146,6 +150,22 @@ describe('CLI', () => {
             const depthOpt = cmd.options.find(o => o.long === '--depth');
             expect(depthOpt).toBeDefined();
             expect(depthOpt!.defaultValue).toBe('normal');
+        });
+
+        it('should have default value for --theme', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'generate')!;
+            const themeOpt = cmd.options.find(o => o.long === '--theme');
+            expect(themeOpt).toBeDefined();
+            expect(themeOpt!.defaultValue).toBe('auto');
+        });
+
+        it('should have --skip-website defaulting to false', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'generate')!;
+            const skipOpt = cmd.options.find(o => o.long === '--skip-website');
+            expect(skipOpt).toBeDefined();
+            expect(skipOpt!.defaultValue).toBe(false);
         });
     });
 });

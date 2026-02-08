@@ -15,7 +15,7 @@ import * as fs from 'fs';
 import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis, GeneratedArticle } from '../types';
 import { discoverModuleGraph } from '../discovery';
 import { analyzeModules, parseAnalysisResponse } from '../analysis';
-import { generateArticles, writeWikiOutput } from '../writing';
+import { generateArticles, writeWikiOutput, generateWebsite } from '../writing';
 import { checkAIAvailability, createAnalysisInvoker, createWritingInvoker } from '../ai-invoker';
 import { normalizeModuleId } from '../schemas';
 import {
@@ -198,6 +198,18 @@ export async function executeGenerate(
         }
 
         // ================================================================
+        // Phase 4: Website Generation
+        // ================================================================
+        let websiteGenerated = false;
+        let phase4Duration = 0;
+
+        if (!options.skipWebsite) {
+            const phase4Result = runPhase4(options);
+            websiteGenerated = phase4Result.success;
+            phase4Duration = phase4Result.duration;
+        }
+
+        // ================================================================
         // Summary
         // ================================================================
         const totalDuration = Date.now() - startTime;
@@ -210,12 +222,19 @@ export async function executeGenerate(
         }
         printKeyValue('Modules Analyzed', String(analyses.length));
         printKeyValue('Articles Written', String(phase3Result.articlesWritten));
+        if (websiteGenerated) {
+            printKeyValue('Website', 'Generated');
+        }
         if (phase1Duration > 0) { printKeyValue('Phase 1 Duration', formatDuration(phase1Duration)); }
         if (phase2Duration > 0) { printKeyValue('Phase 2 Duration', formatDuration(phase2Duration)); }
         printKeyValue('Phase 3 Duration', formatDuration(phase3Result.duration));
+        if (phase4Duration > 0) { printKeyValue('Phase 4 Duration', formatDuration(phase4Duration)); }
         printKeyValue('Total Duration', formatDuration(totalDuration));
         process.stderr.write('\n');
         printSuccess(`Wiki generated at ${bold(path.resolve(options.output))}`);
+        if (websiteGenerated) {
+            printSuccess(`Website: ${bold(path.join(path.resolve(options.output), 'index.html'))}`);
+        }
 
         return EXIT_CODES.SUCCESS;
 
@@ -732,6 +751,41 @@ async function runPhase3(
             duration: Date.now() - startTime,
             exitCode: EXIT_CODES.EXECUTION_ERROR,
         };
+    }
+}
+
+// ============================================================================
+// Phase 4: Website Generation
+// ============================================================================
+
+interface Phase4Result {
+    success: boolean;
+    duration: number;
+}
+
+function runPhase4(options: GenerateCommandOptions): Phase4Result {
+    const startTime = Date.now();
+
+    process.stderr.write('\n');
+    printHeader('Phase 4: Website Generation');
+
+    const spinner = new Spinner();
+    spinner.start('Generating website...');
+
+    try {
+        const outputDir = path.resolve(options.output);
+        const files = generateWebsite(outputDir, {
+            theme: options.theme,
+            title: options.title,
+        });
+
+        spinner.succeed(`Website generated (${files.length} files)`);
+        return { success: true, duration: Date.now() - startTime };
+    } catch (error) {
+        spinner.fail('Website generation failed');
+        printWarning(`Website generation failed: ${(error as Error).message}`);
+        printWarning('Wiki markdown files were still written successfully.');
+        return { success: false, duration: Date.now() - startTime };
     }
 }
 
