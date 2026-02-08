@@ -134,6 +134,16 @@ export async function getCachedGraph(repoPath: string, outputDir: string): Promi
         return null;
     }
 
+    // Validate git hash matches current HEAD
+    try {
+        const currentHash = await getRepoHeadHash(repoPath);
+        if (!currentHash || currentHash !== cached.metadata.gitHash) {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+
     return cached;
 }
 
