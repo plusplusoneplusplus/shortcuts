@@ -2,6 +2,8 @@
  * SPA Template Tests
  *
  * Tests for the server-mode SPA HTML template generation.
+ * Tests the DeepWiki-style UI with top bar, collapsible sidebar,
+ * source files section, TOC sidebar, and bottom Ask AI bar.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -52,6 +54,48 @@ describe('generateSpaHtml — basic structure', () => {
 });
 
 // ============================================================================
+// Top Navigation Bar
+// ============================================================================
+
+describe('generateSpaHtml — top bar', () => {
+    it('should include the top navigation bar', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('id="top-bar"');
+        expect(html).toContain('class="top-bar"');
+    });
+
+    it('should include DeepWiki logo text', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('class="top-bar-logo"');
+        expect(html).toContain('DeepWiki');
+    });
+
+    it('should include project name in top bar', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'MyProject', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('id="top-bar-project"');
+        expect(html).toContain('MyProject');
+    });
+
+    it('should include top-bar CSS styles', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.top-bar');
+        expect(html).toContain('--topbar-bg');
+    });
+});
+
+// ============================================================================
 // Server-Mode Specific Features
 // ============================================================================
 
@@ -61,7 +105,6 @@ describe('generateSpaHtml — server mode', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        // Server mode fetches from API, not embedded data
         expect(html).not.toContain('src="embedded-data.js"');
     });
 
@@ -182,29 +225,29 @@ describe('generateSpaHtml — search', () => {
 // ============================================================================
 
 describe('generateSpaHtml — AI features', () => {
-    it('should include Ask AI button when AI is enabled', () => {
+    it('should include Ask AI bottom bar when AI is enabled', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
-        expect(html).toContain('id="ask-toggle"');
-        expect(html).toContain('Ask AI');
+        expect(html).toContain('id="ask-bar"');
+        expect(html).toContain('Ask AI about');
     });
 
-    it('should NOT include Ask AI button when AI is disabled', () => {
+    it('should NOT include Ask AI bottom bar when AI is disabled', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).not.toContain('id="ask-toggle"');
+        expect(html).not.toContain('id="ask-bar"');
     });
 
-    it('should include AI button styling when enabled', () => {
+    it('should include AI bar styling when enabled', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
-        expect(html).toContain('.ask-toggle-btn');
+        expect(html).toContain('.ask-bar');
     });
 });
 
@@ -285,6 +328,113 @@ describe('generateSpaHtml — markdown rendering', () => {
 });
 
 // ============================================================================
+// Source Files Section
+// ============================================================================
+
+describe('generateSpaHtml — source files', () => {
+    it('should include source-files-section CSS', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.source-files-section');
+        expect(html).toContain('.source-pill');
+    });
+
+    it('should include toggleSourceFiles function', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('function toggleSourceFiles');
+    });
+
+    it('should include renderModulePage function', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('function renderModulePage');
+    });
+
+    it('should include Relevant source files toggle', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('Relevant source files');
+    });
+});
+
+// ============================================================================
+// Table of Contents Sidebar
+// ============================================================================
+
+describe('generateSpaHtml — TOC sidebar', () => {
+    it('should include TOC sidebar HTML', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('id="toc-sidebar"');
+        expect(html).toContain('id="toc-nav"');
+    });
+
+    it('should include On this page title', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('On this page');
+    });
+
+    it('should include buildToc function', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('function buildToc');
+    });
+
+    it('should include scroll spy for active TOC tracking', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('function setupScrollSpy');
+        expect(html).toContain('function updateActiveToc');
+    });
+
+    it('should include TOC CSS styles', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.toc-sidebar');
+        expect(html).toContain('.toc-nav');
+        expect(html).toContain('.toc-title');
+    });
+
+    it('should include TOC heading level classes', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.toc-h3');
+        expect(html).toContain('.toc-h4');
+    });
+
+    it('should hide TOC on small screens', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('@media (max-width: 1024px)');
+        expect(html).toContain('.toc-sidebar { display: none; }');
+    });
+});
+
+// ============================================================================
 // Responsive
 // ============================================================================
 
@@ -295,14 +445,6 @@ describe('generateSpaHtml — responsive', () => {
             enableAI: false, enableGraph: false,
         });
         expect(html).toContain('@media (max-width: 768px)');
-    });
-
-    it('should include sidebar toggle', () => {
-        const html = generateSpaHtml({
-            theme: 'auto', title: 'Test', enableSearch: true,
-            enableAI: false, enableGraph: false,
-        });
-        expect(html).toContain('id="sidebar-toggle"');
     });
 });
 
@@ -382,9 +524,7 @@ describe('generateSpaHtml — sidebar collapse/expand', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        // Right arrow for expand
         expect(html).toContain('&#x25B6;');
-        // Left arrow for collapse
         expect(html).toContain('&#x25C0;');
     });
 
@@ -410,6 +550,44 @@ describe('generateSpaHtml — sidebar collapse/expand', () => {
 });
 
 // ============================================================================
+// Collapsible Nav Sections
+// ============================================================================
+
+describe('generateSpaHtml — collapsible nav sections', () => {
+    it('should include nav-section-title class', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.nav-section-title');
+    });
+
+    it('should include nav-section-arrow for toggle indicator', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('nav-section-arrow');
+    });
+
+    it('should include collapsed nav-section CSS', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.nav-section.collapsed .nav-section-items');
+    });
+
+    it('should include section toggle onclick handler', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain("section.classList.toggle('collapsed')");
+    });
+});
+
+// ============================================================================
 // Cross-theme Consistency
 // ============================================================================
 
@@ -425,6 +603,8 @@ describe('generateSpaHtml — cross-theme', () => {
             expect(html).toContain('renderMarkdownContent');
             expect(html).toContain('history.pushState');
             expect(html).toContain('initMermaid');
+            expect(html).toContain('id="top-bar"');
+            expect(html).toContain('id="toc-sidebar"');
         }
     });
 });

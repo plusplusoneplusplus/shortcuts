@@ -192,9 +192,9 @@ describe('Dependency Graph — showGraph function', () => {
         expect(html).toContain("history.pushState({ type: 'graph' }");
     });
 
-    it('should set breadcrumb to Dependency Graph', () => {
+    it('should reference Dependency Graph text', () => {
         const html = getGraphHtml();
-        expect(html).toContain("'Dependency Graph'");
+        expect(html).toContain("Dependency Graph");
     });
 
     it('should create graph-container DOM element', () => {
@@ -426,19 +426,20 @@ describe('Dependency Graph — history', () => {
 });
 
 // ============================================================================
-// Content Padding Restoration
+// Content Style Restoration
 // ============================================================================
 
-describe('Dependency Graph — content padding', () => {
-    it('should define restoreContentPadding function', () => {
+describe('Dependency Graph — content style restoration', () => {
+    it('should restore article styles when clicking graph node to navigate', () => {
         const html = getGraphHtml();
-        expect(html).toContain('function restoreContentPadding()');
+        // When navigating from graph to module, article styles are restored
+        expect(html).toContain("article.style.maxWidth = ''");
+        expect(html).toContain("article.style.padding = ''");
     });
 
-    it('should call restoreContentPadding in showHome', () => {
+    it('should clear TOC on showGraph', () => {
         const html = getGraphHtml();
-        // showHome should call restoreContentPadding
-        expect(html).toContain('restoreContentPadding()');
+        expect(html).toContain("document.getElementById('toc-nav').innerHTML = ''");
     });
 });
 

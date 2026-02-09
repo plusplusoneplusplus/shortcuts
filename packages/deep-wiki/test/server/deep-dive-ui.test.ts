@@ -148,10 +148,10 @@ describe('Deep Dive UI', () => {
             expect(html).toContain('.deep-dive-status');
         });
 
-        it('should not include deep-dive styles when AI is disabled', () => {
+        it('should not include deep-dive JS functions when AI is disabled', () => {
             const html = generateSpaHtml(createOptions({ enableAI: false }));
-            expect(html).not.toContain('.deep-dive-btn');
-            expect(html).not.toContain('.deep-dive-section');
+            expect(html).not.toContain('function addDeepDiveButton');
+            expect(html).not.toContain('function startDeepDive');
         });
     });
 

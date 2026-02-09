@@ -1,13 +1,13 @@
 /**
  * SPA Template for Server Mode
  *
- * Generates a modified version of the static HTML template that fetches
- * data from the server's REST API instead of using embedded data.
- *
- * The key differences from the static site:
- *   - No embedded <script> with MODULE_GRAPH / MARKDOWN_DATA
- *   - Data is fetched lazily via /api/* endpoints
- *   - Module markdown is loaded on-demand (not all at once)
+ * Generates a DeepWiki-style SPA that fetches data from the server's REST API.
+ * Designed to match the real DeepWiki (deepwiki.com) UI:
+ *   - Top navigation bar with project name and dark/light toggle
+ *   - Collapsible left sidebar with nested navigation
+ *   - "Relevant source files" collapsible per article
+ *   - "On this page" right-hand TOC
+ *   - Bottom "Ask AI" input bar (like DeepWiki's "Ask Devin")
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -75,55 +75,74 @@ ${getSpaStyles(enableAI)}
     </style>
 </head>
 <body>
-    <div class="sidebar" id="sidebar">
-        <button class="sidebar-collapse-btn" id="sidebar-collapse" aria-label="Collapse sidebar" title="Collapse sidebar">&#x25C0;</button>
-        <div class="sidebar-header">
-            <h1 id="project-name">${escapeHtml(title)}</h1>
-            <p id="project-description"></p>
+    <!-- Top Navigation Bar -->
+    <header class="top-bar" id="top-bar">
+        <div class="top-bar-left">
+            <span class="top-bar-logo">DeepWiki</span>
+            <span class="top-bar-project" id="top-bar-project">${escapeHtml(title)}</span>
         </div>
-${enableSearch ? `        <div class="search-box">
-            <input type="text" id="search" placeholder="Search modules..." aria-label="Search modules">
-        </div>` : ''}
-        <div id="nav-container"></div>
-    </div>
+        <div class="top-bar-right">
+            <button class="top-bar-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle theme">&#9790;</button>
+        </div>
+    </header>
 
-    <div class="main-area">
-        <div class="content" id="content-area">
-            <div class="content-header">
-                <div class="header-left">
-                    <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
-                    <div>
-                        <div class="breadcrumb" id="breadcrumb">Home</div>
-                        <h2 class="content-title" id="content-title">Project Overview</h2>
+    <div class="app-layout">
+        <!-- Left Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <button class="sidebar-collapse-btn" id="sidebar-collapse" aria-label="Collapse sidebar" title="Collapse sidebar">&#x25C0;</button>
+${enableSearch ? `            <div class="search-box">
+                <input type="text" id="search" placeholder="Search modules..." aria-label="Search modules">
+            </div>` : ''}
+            <nav id="nav-container" class="sidebar-nav"></nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content" id="main-content">
+            <div class="content-scroll" id="content-scroll">
+                <div class="content-layout">
+                    <article class="article" id="article">
+                        <div id="content" class="markdown-body">
+                            <div class="loading">Loading wiki data...</div>
+                        </div>
+                    </article>
+
+                    <!-- Right TOC Sidebar -->
+                    <aside class="toc-sidebar" id="toc-sidebar">
+                        <div class="toc-container" id="toc-container">
+                            <h4 class="toc-title">On this page</h4>
+                            <nav id="toc-nav" class="toc-nav"></nav>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+
+${enableAI ? `            <!-- Bottom Ask AI Bar -->
+            <div class="ask-bar" id="ask-bar">
+                <div class="ask-bar-inner">
+                    <span class="ask-bar-label">Ask AI about <strong id="ask-bar-subject">${escapeHtml(title)}</strong></span>
+                    <div class="ask-bar-input-row">
+                        <input type="text" class="ask-bar-input" id="ask-input" placeholder="Ask about this codebase..." aria-label="Ask AI">
+                        <button class="ask-bar-send" id="ask-send" aria-label="Send question">&#10148;</button>
                     </div>
                 </div>
-                <div class="header-right">
-${enableAI ? `                    <button class="ask-toggle-btn" id="ask-toggle" aria-label="Toggle Ask AI panel">Ask AI</button>` : ''}
-                    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">&#9790;</button>
+            </div>
+
+            <!-- Expanded Ask Panel (slide-up overlay) -->
+            <div class="ask-panel hidden" id="ask-panel">
+                <div class="ask-panel-header">
+                    <h3>Ask AI</h3>
+                    <div class="ask-panel-actions">
+                        <button class="ask-panel-clear" id="ask-clear" title="Clear conversation">Clear</button>
+                        <button class="ask-panel-close" id="ask-close" aria-label="Close">&times;</button>
+                    </div>
                 </div>
-            </div>
-            <div class="content-body">
-                <div id="content" class="markdown-body">
-                    <div class="loading">Loading wiki data...</div>
+                <div class="ask-messages" id="ask-messages"></div>
+                <div class="ask-input-area">
+                    <textarea class="ask-textarea" id="ask-textarea" placeholder="Ask about this codebase..." rows="1"></textarea>
+                    <button class="ask-panel-send" id="ask-panel-send">Send</button>
                 </div>
-            </div>
-        </div>
-${enableAI ? `        <div class="ask-resize-handle hidden" id="ask-resize-handle" title="Drag to resize"></div>
-        <div class="ask-panel hidden" id="ask-panel">
-            <div class="ask-panel-header">
-                <h3>Ask AI</h3>
-                <div class="ask-panel-actions">
-                    <button class="ask-panel-expand" id="ask-expand" title="Expand panel">Expand</button>
-                    <button class="ask-panel-clear" id="ask-clear" title="Clear conversation">Clear</button>
-                    <button class="ask-panel-close" id="ask-close" aria-label="Close Ask panel">&times;</button>
-                </div>
-            </div>
-            <div class="ask-messages" id="ask-messages"></div>
-            <div class="ask-input-area">
-                <textarea class="ask-input" id="ask-input" placeholder="Ask about this codebase..." rows="1"></textarea>
-                <button class="ask-send-btn" id="ask-send">Send</button>
-            </div>
-        </div>` : ''}
+            </div>` : ''}
+        </main>
     </div>
 
 ${enableWatch ? `    <div class="live-reload-bar" id="live-reload-bar"></div>` : ''}
@@ -140,47 +159,67 @@ ${getSpaScript({ enableSearch, enableAI, enableGraph, enableWatch, defaultTheme:
 // ============================================================================
 
 function getSpaStyles(enableAI: boolean): string {
-    // Reuse the same base styles as the static site
     let styles = `        :root {
-            --sidebar-bg: #1e293b;
-            --sidebar-header-bg: #0f172a;
-            --sidebar-border: #334155;
-            --sidebar-text: #e2e8f0;
-            --sidebar-muted: #94a3b8;
-            --sidebar-hover: #334155;
-            --sidebar-active-border: #3b82f6;
+            --sidebar-bg: #ffffff;
+            --sidebar-header-bg: #ffffff;
+            --sidebar-border: #e5e7eb;
+            --sidebar-text: #1f2937;
+            --sidebar-muted: #6b7280;
+            --sidebar-hover: #f3f4f6;
+            --sidebar-active-bg: #eff6ff;
+            --sidebar-active-text: #2563eb;
+            --sidebar-active-border: #2563eb;
             --content-bg: #ffffff;
-            --content-text: #1e293b;
-            --content-muted: #64748b;
-            --content-border: #e2e8f0;
+            --content-text: #1f2937;
+            --content-muted: #6b7280;
+            --content-border: #e5e7eb;
             --header-bg: #ffffff;
-            --header-shadow: rgba(0,0,0,0.05);
-            --code-bg: #f1f5f9;
-            --code-border: #e2e8f0;
+            --header-shadow: rgba(0,0,0,0.06);
+            --code-bg: #f3f4f6;
+            --code-border: #e5e7eb;
             --link-color: #2563eb;
             --badge-high-bg: #ef4444;
             --badge-medium-bg: #f59e0b;
             --badge-low-bg: #22c55e;
             --card-bg: #ffffff;
-            --card-border: #e2e8f0;
-            --card-hover-border: #3b82f6;
-            --stat-bg: #f8fafc;
-            --stat-border: #3b82f6;
+            --card-border: #e5e7eb;
+            --card-hover-border: #2563eb;
+            --stat-bg: #f9fafb;
+            --stat-border: #2563eb;
             --copy-btn-bg: rgba(0,0,0,0.05);
             --copy-btn-hover-bg: rgba(0,0,0,0.1);
-            --search-bg: #334155;
-            --search-text: #e2e8f0;
-            --search-placeholder: #94a3b8;
+            --search-bg: #f3f4f6;
+            --search-text: #1f2937;
+            --search-placeholder: #9ca3af;
+            --topbar-bg: #18181b;
+            --topbar-text: #ffffff;
+            --topbar-muted: #a1a1aa;
+            --source-pill-bg: #f3f4f6;
+            --source-pill-border: #e5e7eb;
+            --source-pill-text: #374151;
+            --toc-active: #2563eb;
+            --toc-text: #6b7280;
+            --toc-hover: #374151;
+            --ask-bar-bg: #f9fafb;
+            --ask-bar-border: #e5e7eb;
         }
 
         .dark-theme,
         html[data-theme="dark"] {
+            --sidebar-bg: #111827;
+            --sidebar-header-bg: #111827;
+            --sidebar-border: #1f2937;
+            --sidebar-text: #e5e7eb;
+            --sidebar-muted: #9ca3af;
+            --sidebar-hover: #1f2937;
+            --sidebar-active-bg: #1e3a5f;
+            --sidebar-active-text: #60a5fa;
             --content-bg: #0f172a;
-            --content-text: #e2e8f0;
-            --content-muted: #94a3b8;
-            --content-border: #334155;
-            --header-bg: #1e293b;
-            --header-shadow: rgba(0,0,0,0.2);
+            --content-text: #e5e7eb;
+            --content-muted: #9ca3af;
+            --content-border: #1f2937;
+            --header-bg: #111827;
+            --header-shadow: rgba(0,0,0,0.3);
             --code-bg: #1e293b;
             --code-border: #334155;
             --link-color: #60a5fa;
@@ -189,16 +228,35 @@ function getSpaStyles(enableAI: boolean): string {
             --stat-bg: #1e293b;
             --copy-btn-bg: rgba(255,255,255,0.08);
             --copy-btn-hover-bg: rgba(255,255,255,0.15);
+            --search-bg: #1f2937;
+            --search-text: #e5e7eb;
+            --search-placeholder: #6b7280;
+            --source-pill-bg: #1e293b;
+            --source-pill-border: #334155;
+            --source-pill-text: #d1d5db;
+            --toc-active: #60a5fa;
+            --toc-text: #9ca3af;
+            --toc-hover: #e5e7eb;
+            --ask-bar-bg: #111827;
+            --ask-bar-border: #1f2937;
         }
 
         @media (prefers-color-scheme: dark) {
             html[data-theme="auto"] {
+                --sidebar-bg: #111827;
+                --sidebar-header-bg: #111827;
+                --sidebar-border: #1f2937;
+                --sidebar-text: #e5e7eb;
+                --sidebar-muted: #9ca3af;
+                --sidebar-hover: #1f2937;
+                --sidebar-active-bg: #1e3a5f;
+                --sidebar-active-text: #60a5fa;
                 --content-bg: #0f172a;
-                --content-text: #e2e8f0;
-                --content-muted: #94a3b8;
-                --content-border: #334155;
-                --header-bg: #1e293b;
-                --header-shadow: rgba(0,0,0,0.2);
+                --content-text: #e5e7eb;
+                --content-muted: #9ca3af;
+                --content-border: #1f2937;
+                --header-bg: #111827;
+                --header-shadow: rgba(0,0,0,0.3);
                 --code-bg: #1e293b;
                 --code-border: #334155;
                 --link-color: #60a5fa;
@@ -207,6 +265,17 @@ function getSpaStyles(enableAI: boolean): string {
                 --stat-bg: #1e293b;
                 --copy-btn-bg: rgba(255,255,255,0.08);
                 --copy-btn-hover-bg: rgba(255,255,255,0.15);
+                --search-bg: #1f2937;
+                --search-text: #e5e7eb;
+                --search-placeholder: #6b7280;
+                --source-pill-bg: #1e293b;
+                --source-pill-border: #334155;
+                --source-pill-text: #d1d5db;
+                --toc-active: #60a5fa;
+                --toc-text: #9ca3af;
+                --toc-hover: #e5e7eb;
+                --ask-bar-bg: #111827;
+                --ask-bar-border: #1f2937;
             }
         }
 
@@ -215,110 +284,118 @@ function getSpaStyles(enableAI: boolean): string {
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             display: flex;
+            flex-direction: column;
             height: 100vh;
             overflow: hidden;
             background: var(--content-bg);
             color: var(--content-text);
         }
 
-        .sidebar {
-            width: 280px;
-            min-width: 280px;
-            background: var(--sidebar-bg);
-            color: var(--sidebar-text);
-            overflow-y: auto;
-            border-right: 1px solid var(--sidebar-border);
-            transition: width 0.3s, min-width 0.3s, margin-left 0.3s;
-            position: relative;
+        /* ========== Top Bar ========== */
+        .top-bar {
+            height: 48px;
+            background: var(--topbar-bg);
+            color: var(--topbar-text);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            flex-shrink: 0;
+            z-index: 200;
         }
-        .sidebar.hidden { margin-left: -280px; }
+        .top-bar-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        .top-bar-logo {
+            font-weight: 700;
+            font-size: 15px;
+            letter-spacing: -0.01em;
+        }
+        .top-bar-project {
+            color: var(--topbar-muted);
+            font-weight: 400;
+        }
+        .top-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .top-bar-btn {
+            background: transparent;
+            border: none;
+            color: var(--topbar-muted);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: color 0.15s, background 0.15s;
+        }
+        .top-bar-btn:hover {
+            color: var(--topbar-text);
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* ========== App Layout ========== */
+        .app-layout {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        /* ========== Sidebar ========== */
+        .sidebar {
+            width: 260px;
+            min-width: 260px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--sidebar-border);
+            overflow-y: auto;
+            overflow-x: hidden;
+            transition: width 0.25s, min-width 0.25s;
+            position: relative;
+            flex-shrink: 0;
+        }
         .sidebar.collapsed {
             width: 0;
             min-width: 0;
             overflow: hidden;
             border-right: none;
         }
-
-        /* Sidebar collapse/expand button */
         .sidebar-collapse-btn {
             position: absolute;
-            top: 12px;
+            top: 10px;
             right: -14px;
             width: 28px;
             height: 28px;
             border-radius: 50%;
             background: var(--sidebar-bg);
             border: 1px solid var(--sidebar-border);
-            color: var(--sidebar-text);
+            color: var(--sidebar-muted);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 101;
-            font-size: 14px;
-            transition: background 0.15s, transform 0.3s;
+            font-size: 12px;
+            transition: background 0.15s, transform 0.25s;
             padding: 0;
             line-height: 1;
         }
         .sidebar-collapse-btn:hover { background: var(--sidebar-hover); }
         .sidebar.collapsed .sidebar-collapse-btn {
             right: -36px;
-            background: var(--header-bg);
+            background: var(--content-bg);
             border-color: var(--content-border);
-            color: var(--content-muted);
         }
-        .sidebar.collapsed .sidebar-collapse-btn:hover {
-            background: var(--code-bg);
-        }
+        .sidebar.collapsed .sidebar-collapse-btn:hover { background: var(--code-bg); }
 
-        .sidebar-header {
-            padding: 20px;
-            background: var(--sidebar-header-bg);
-            border-bottom: 1px solid var(--sidebar-border);
-        }
-        .sidebar-header h1 { font-size: 18px; margin-bottom: 8px; }
-        .sidebar-header p { font-size: 12px; color: var(--sidebar-muted); line-height: 1.4; }
-
-        .nav-section { padding: 12px 0; border-bottom: 1px solid var(--sidebar-border); }
-        .nav-section h3 {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--sidebar-muted);
-            padding: 8px 20px;
-            font-weight: 600;
-        }
-
-        .nav-item {
-            padding: 8px 20px;
-            cursor: pointer;
-            transition: background 0.15s;
-            font-size: 14px;
-            border-left: 3px solid transparent;
-            display: block;
-        }
-        .nav-item:hover { background: var(--sidebar-hover); }
-        .nav-item.active { background: var(--sidebar-hover); border-left-color: var(--sidebar-active-border); }
-        .nav-item-name { display: block; color: var(--sidebar-text); margin-bottom: 2px; }
-        .nav-item-path { display: block; font-size: 11px; color: var(--sidebar-muted); }
-
-        .complexity-badge {
-            display: inline-block;
-            padding: 1px 6px;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: 600;
-            margin-left: 6px;
-            color: white;
-        }
-        .complexity-high { background: var(--badge-high-bg); }
-        .complexity-medium { background: var(--badge-medium-bg); }
-        .complexity-low { background: var(--badge-low-bg); }
-
-        .search-box { margin: 12px 16px; }
+        .search-box { padding: 12px 14px 8px; }
         .search-box input {
             width: 100%;
-            padding: 8px 12px;
+            padding: 7px 10px;
             border: 1px solid var(--sidebar-border);
             border-radius: 6px;
             background: var(--search-bg);
@@ -329,62 +406,208 @@ function getSpaStyles(enableAI: boolean): string {
         .search-box input::placeholder { color: var(--search-placeholder); }
         .search-box input:focus { border-color: var(--sidebar-active-border); }
 
-        .main-area {
-            flex: 1;
-            display: flex;
-            overflow: hidden;
-            min-width: 0;
-        }
+        .sidebar-nav { padding: 4px 0 16px; }
 
-        .content {
+        .nav-section { padding: 4px 0; }
+        .nav-section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--sidebar-text);
+            padding: 8px 14px 4px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .nav-section-title:hover { color: var(--sidebar-active-text); }
+        .nav-section-arrow {
+            font-size: 10px;
+            transition: transform 0.2s;
+            color: var(--sidebar-muted);
+        }
+        .nav-section.collapsed .nav-section-arrow { transform: rotate(-90deg); }
+        .nav-section.collapsed .nav-section-items { display: none; }
+
+        .nav-item {
+            padding: 6px 14px 6px 24px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--sidebar-text);
+            border-radius: 4px;
+            margin: 1px 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.1s, color 0.1s;
+        }
+        .nav-item:hover { background: var(--sidebar-hover); }
+        .nav-item.active {
+            background: var(--sidebar-active-bg);
+            color: var(--sidebar-active-text);
+            font-weight: 500;
+        }
+        .nav-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .complexity-badge {
+            display: inline-block;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+            color: white;
+            flex-shrink: 0;
+            margin-left: 6px;
+        }
+        .complexity-high { background: var(--badge-high-bg); }
+        .complexity-medium { background: var(--badge-medium-bg); }
+        .complexity-low { background: var(--badge-low-bg); }
+
+        /* ========== Main Content ========== */
+        .main-content {
             flex: 1;
             display: flex;
             flex-direction: column;
             overflow: hidden;
             min-width: 0;
+            position: relative;
         }
 
-        .content-header {
-            background: var(--header-bg);
-            padding: 16px 32px;
-            border-bottom: 1px solid var(--content-border);
-            box-shadow: 0 1px 3px var(--header-shadow);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header-left { display: flex; align-items: center; gap: 12px; }
-        .header-right { display: flex; align-items: center; gap: 8px; }
-        .breadcrumb { font-size: 13px; color: var(--content-muted); margin-bottom: 4px; }
-        .content-title { font-size: 24px; color: var(--content-text); }
-
-        .sidebar-toggle, .theme-toggle {
-            background: none;
-            border: 1px solid var(--content-border);
-            border-radius: 6px;
-            padding: 6px 10px;
-            cursor: pointer;
-            font-size: 18px;
-            color: var(--content-muted);
-        }
-        .sidebar-toggle:hover, .theme-toggle:hover { background: var(--code-bg); }
-
-        .content-body {
+        .content-scroll {
             flex: 1;
             overflow-y: auto;
             overflow-x: hidden;
-            padding: 32px;
-            background: var(--content-bg);
         }
 
-        .markdown-body { max-width: 900px; margin: 0 auto; line-height: 1.6; overflow-wrap: break-word; }
-        .markdown-body h1 { margin-top: 32px; margin-bottom: 16px; font-size: 2em; border-bottom: 1px solid var(--content-border); padding-bottom: 8px; }
+        .content-layout {
+            display: flex;
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0;
+            min-height: 100%;
+        }
+
+        .article {
+            flex: 1;
+            min-width: 0;
+            padding: 32px 40px;
+            max-width: 820px;
+        }
+
+        /* ========== Source Files Section ========== */
+        .source-files-section {
+            margin-bottom: 20px;
+            border: 1px solid var(--content-border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .source-files-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: var(--stat-bg);
+            border: none;
+            width: 100%;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--content-text);
+            font-weight: 500;
+            text-align: left;
+        }
+        .source-files-toggle:hover { background: var(--code-bg); }
+        .source-files-arrow {
+            font-size: 10px;
+            transition: transform 0.2s;
+            color: var(--content-muted);
+        }
+        .source-files-section.expanded .source-files-arrow { transform: rotate(90deg); }
+        .source-files-list {
+            display: none;
+            padding: 10px 14px;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .source-files-section.expanded .source-files-list { display: flex; }
+        .source-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: var(--source-pill-bg);
+            border: 1px solid var(--source-pill-border);
+            border-radius: 14px;
+            font-size: 12px;
+            color: var(--source-pill-text);
+            cursor: default;
+        }
+        .source-pill-icon {
+            font-size: 11px;
+            color: var(--content-muted);
+        }
+        .source-pill-lines {
+            background: var(--code-bg);
+            border-radius: 8px;
+            padding: 1px 6px;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--content-muted);
+            margin-left: 2px;
+        }
+
+        /* ========== TOC Sidebar ========== */
+        .toc-sidebar {
+            width: 220px;
+            flex-shrink: 0;
+            padding: 32px 16px 32px 0;
+            position: sticky;
+            top: 0;
+            align-self: flex-start;
+            max-height: calc(100vh - 48px);
+            overflow-y: auto;
+        }
+        .toc-container {
+            border-left: 1px solid var(--content-border);
+            padding-left: 16px;
+        }
+        .toc-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--content-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 10px;
+        }
+        .toc-nav a {
+            display: block;
+            padding: 3px 0;
+            font-size: 13px;
+            color: var(--toc-text);
+            text-decoration: none;
+            line-height: 1.5;
+            transition: color 0.15s;
+            border-left: 2px solid transparent;
+            padding-left: 0;
+            margin-left: -17px;
+            padding-left: 15px;
+        }
+        .toc-nav a:hover { color: var(--toc-hover); }
+        .toc-nav a.active {
+            color: var(--toc-active);
+            border-left-color: var(--toc-active);
+            font-weight: 500;
+        }
+        .toc-nav a.toc-h3 { padding-left: 27px; font-size: 12px; }
+        .toc-nav a.toc-h4 { padding-left: 39px; font-size: 12px; }
+
+        /* ========== Markdown Body ========== */
+        .markdown-body { line-height: 1.7; overflow-wrap: break-word; }
+        .markdown-body h1 { margin-top: 32px; margin-bottom: 16px; font-size: 1.85em; font-weight: 700; border-bottom: 1px solid var(--content-border); padding-bottom: 8px; }
         .markdown-body h1:first-child { margin-top: 0; }
-        .markdown-body h2 { margin-top: 28px; margin-bottom: 16px; font-size: 1.5em; border-bottom: 1px solid var(--content-border); padding-bottom: 6px; }
-        .markdown-body h3 { margin-top: 24px; margin-bottom: 12px; font-size: 1.25em; }
-        .markdown-body h4 { margin-top: 20px; margin-bottom: 8px; font-size: 1.1em; }
-        .markdown-body p { margin-bottom: 16px; }
+        .markdown-body h2 { margin-top: 28px; margin-bottom: 14px; font-size: 1.4em; font-weight: 600; border-bottom: 1px solid var(--content-border); padding-bottom: 6px; }
+        .markdown-body h3 { margin-top: 22px; margin-bottom: 10px; font-size: 1.15em; font-weight: 600; }
+        .markdown-body h4 { margin-top: 18px; margin-bottom: 8px; font-size: 1em; font-weight: 600; }
+        .markdown-body p { margin-bottom: 14px; }
         .markdown-body > *:last-child { margin-bottom: 0; }
         .markdown-body code {
             background: var(--code-bg);
@@ -396,28 +619,28 @@ function getSpaStyles(enableAI: boolean): string {
         .markdown-body pre {
             background: var(--code-bg);
             border: 1px solid var(--code-border);
-            padding: 16px;
+            padding: 14px;
             border-radius: 8px;
             overflow-x: auto;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
             position: relative;
         }
         .markdown-body pre code { background: none; padding: 0; border-radius: 0; font-size: 13px; }
-        .markdown-body table { border-collapse: collapse; width: 100%; margin: 16px 0; display: block; overflow-x: auto; }
+        .markdown-body table { border-collapse: collapse; width: 100%; margin: 14px 0; display: block; overflow-x: auto; }
         .markdown-body table th, .markdown-body table td {
             border: 1px solid var(--content-border);
             padding: 8px 12px;
             text-align: left;
         }
         .markdown-body table th { background: var(--code-bg); font-weight: 600; }
-        .markdown-body ul, .markdown-body ol { margin-bottom: 16px; padding-left: 2em; }
-        .markdown-body li { margin-bottom: 6px; }
+        .markdown-body ul, .markdown-body ol { margin-bottom: 14px; padding-left: 2em; }
+        .markdown-body li { margin-bottom: 4px; }
         .markdown-body a { color: var(--link-color); text-decoration: none; }
         .markdown-body a:hover { text-decoration: underline; }
         .markdown-body blockquote {
             border-left: 4px solid var(--content-border);
             padding: 8px 16px;
-            margin: 16px 0;
+            margin: 14px 0;
             color: var(--content-muted);
         }
         .markdown-body img { max-width: 100%; border-radius: 8px; }
@@ -443,9 +666,9 @@ function getSpaStyles(enableAI: boolean): string {
             background: var(--copy-btn-bg);
             border: 1px solid var(--code-border);
             border-radius: 4px;
-            padding: 4px 8px;
+            padding: 3px 8px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 11px;
             color: var(--content-muted);
             opacity: 0;
             transition: opacity 0.15s;
@@ -453,60 +676,59 @@ function getSpaStyles(enableAI: boolean): string {
         .markdown-body pre:hover .copy-btn { opacity: 1; }
         .copy-btn:hover { background: var(--copy-btn-hover-bg); }
 
-        .home-view { max-width: 900px; margin: 0 auto; }
+        /* ========== Home View ========== */
+        .home-view { max-width: 100%; }
         .project-stats {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-            margin: 24px 0;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin: 20px 0;
         }
         .stat-card {
             background: var(--stat-bg);
-            padding: 16px;
+            padding: 14px;
             border-radius: 8px;
             border-left: 4px solid var(--stat-border);
         }
-        .stat-card h3 { font-size: 13px; color: var(--content-muted); margin-bottom: 6px; font-weight: 500; }
-        .stat-card .value { font-size: 28px; font-weight: 700; color: var(--content-text); }
-        .stat-card .value.small { font-size: 16px; }
+        .stat-card h3 { font-size: 12px; color: var(--content-muted); margin-bottom: 4px; font-weight: 500; }
+        .stat-card .value { font-size: 24px; font-weight: 700; color: var(--content-text); }
+        .stat-card .value.small { font-size: 15px; }
 
         .module-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-            gap: 12px;
-            margin-top: 24px;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 10px;
+            margin-top: 20px;
         }
         .module-card {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
             border-radius: 8px;
-            padding: 14px;
+            padding: 12px;
             cursor: pointer;
             transition: border-color 0.15s, box-shadow 0.15s;
         }
         .module-card:hover {
             border-color: var(--card-hover-border);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }
-        .module-card h4 { margin-bottom: 6px; font-size: 14px; }
+        .module-card h4 { margin-bottom: 4px; font-size: 14px; }
         .module-card p { font-size: 12px; color: var(--content-muted); line-height: 1.4; }
 
         .loading {
             text-align: center;
             padding: 48px;
             color: var(--content-muted);
-            font-size: 16px;
+            font-size: 15px;
         }
 
         .mermaid-container {
             position: relative;
-            margin: 24px 0;
+            margin: 20px 0;
             border: 1px solid var(--content-border);
             border-radius: 8px;
             overflow: hidden;
             background: var(--code-bg);
-            max-width: 100%;
-            width: 100%;
         }
         .markdown-body pre.mermaid {
             background: transparent;
@@ -515,21 +737,11 @@ function getSpaStyles(enableAI: boolean): string {
             margin: 0;
             text-align: center;
         }
-        .markdown-body pre.mermaid svg {
-            max-width: 100%;
-            height: auto;
-        }
+        .markdown-body pre.mermaid svg { max-width: 100%; height: auto; }
 
-        /* Dependency Graph */
-        .graph-container {
-            width: 100%;
-            height: 100%;
-            position: relative;
-        }
-        .graph-container svg {
-            width: 100%;
-            height: 100%;
-        }
+        /* ========== Dependency Graph ========== */
+        .graph-container { width: 100%; height: 100%; position: relative; }
+        .graph-container svg { width: 100%; height: 100%; }
         .graph-toolbar {
             position: absolute;
             top: 12px;
@@ -547,10 +759,7 @@ function getSpaStyles(enableAI: boolean): string {
             font-size: 13px;
             color: var(--content-text);
         }
-        .graph-toolbar button:hover {
-            background: var(--code-bg);
-            border-color: var(--sidebar-active-border);
-        }
+        .graph-toolbar button:hover { background: var(--code-bg); }
         .graph-legend {
             position: absolute;
             bottom: 12px;
@@ -562,11 +771,7 @@ function getSpaStyles(enableAI: boolean): string {
             z-index: 10;
             font-size: 12px;
         }
-        .graph-legend-title {
-            font-weight: 600;
-            margin-bottom: 6px;
-            color: var(--content-text);
-        }
+        .graph-legend-title { font-weight: 600; margin-bottom: 6px; color: var(--content-text); }
         .graph-legend-item {
             display: flex;
             align-items: center;
@@ -575,27 +780,11 @@ function getSpaStyles(enableAI: boolean): string {
             cursor: pointer;
             user-select: none;
         }
-        .graph-legend-item.disabled {
-            opacity: 0.3;
-        }
-        .graph-legend-swatch {
-            width: 12px;
-            height: 12px;
-            border-radius: 3px;
-        }
-        .graph-node text {
-            font-size: 11px;
-            fill: var(--content-text);
-            pointer-events: none;
-        }
-        .graph-link {
-            stroke: var(--content-border);
-            stroke-opacity: 0.6;
-        }
-        .graph-link-arrow {
-            fill: var(--content-border);
-            fill-opacity: 0.6;
-        }
+        .graph-legend-item.disabled { opacity: 0.3; }
+        .graph-legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
+        .graph-node text { font-size: 11px; fill: var(--content-text); pointer-events: none; }
+        .graph-link { stroke: var(--content-border); stroke-opacity: 0.6; }
+        .graph-link-arrow { fill: var(--content-border); fill-opacity: 0.6; }
         .graph-tooltip {
             position: absolute;
             background: var(--card-bg);
@@ -608,68 +797,10 @@ function getSpaStyles(enableAI: boolean): string {
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             max-width: 250px;
         }
-        .graph-tooltip-name {
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-        .graph-tooltip-purpose {
-            color: var(--content-muted);
-            line-height: 1.4;
-        }
+        .graph-tooltip-name { font-weight: 600; margin-bottom: 4px; }
+        .graph-tooltip-purpose { color: var(--content-muted); line-height: 1.4; }
 
-        /* Live Reload Notification */
-        .live-reload-bar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            padding: 8px 16px;
-            font-size: 13px;
-            text-align: center;
-            transition: transform 0.3s;
-            transform: translateY(-100%);
-        }
-        .live-reload-bar.visible { transform: translateY(0); }
-        .live-reload-bar.rebuilding {
-            background: var(--badge-medium-bg);
-            color: white;
-        }
-        .live-reload-bar.reloaded {
-            background: var(--badge-low-bg);
-            color: white;
-        }
-        .live-reload-bar.error {
-            background: var(--badge-high-bg);
-            color: white;
-        }
-
-        @media (max-width: 768px) {
-            .sidebar { position: fixed; z-index: 100; height: 100vh; }
-            .sidebar.hidden { margin-left: -280px; }
-            .sidebar.collapsed { width: 0; min-width: 0; }
-            .sidebar-collapse-btn { display: none; }
-            .content-header { padding: 12px 16px; }
-            .content-body { padding: 16px; }
-        }`;
-
-    if (enableAI) {
-        styles += `
-
-        /* Ask AI button */
-        .ask-toggle-btn {
-            background: var(--sidebar-active-border);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 6px 14px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-        }
-        .ask-toggle-btn:hover { opacity: 0.9; }
-
-        /* Deep Dive */
+        /* ========== Deep Dive ========== */
         .deep-dive-btn {
             display: inline-flex;
             align-items: center;
@@ -685,22 +816,15 @@ function getSpaStyles(enableAI: boolean): string {
             margin-bottom: 16px;
             transition: background 0.15s, border-color 0.15s;
         }
-        .deep-dive-btn:hover {
-            background: var(--code-bg);
-            border-color: var(--link-color);
-        }
+        .deep-dive-btn:hover { background: var(--code-bg); border-color: var(--link-color); }
         .deep-dive-section {
             margin-top: 16px;
-            padding: 16px;
+            padding: 14px;
             background: var(--stat-bg);
             border: 1px solid var(--content-border);
             border-radius: 8px;
         }
-        .deep-dive-input-area {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 12px;
-        }
+        .deep-dive-input-area { display: flex; gap: 8px; margin-bottom: 12px; }
         .deep-dive-input {
             flex: 1;
             padding: 8px 12px;
@@ -726,104 +850,118 @@ function getSpaStyles(enableAI: boolean): string {
         }
         .deep-dive-submit:hover { opacity: 0.9; }
         .deep-dive-submit:disabled { opacity: 0.5; cursor: not-allowed; }
-        .deep-dive-result {
-            margin-top: 12px;
+        .deep-dive-result { margin-top: 12px; }
+        .deep-dive-status { font-size: 12px; color: var(--content-muted); margin-bottom: 8px; }
+
+        /* ========== Live Reload ========== */
+        .live-reload-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 8px 16px;
+            font-size: 13px;
+            text-align: center;
+            transition: transform 0.3s;
+            transform: translateY(-100%);
         }
-        .deep-dive-status {
+        .live-reload-bar.visible { transform: translateY(0); }
+        .live-reload-bar.rebuilding { background: var(--badge-medium-bg); color: white; }
+        .live-reload-bar.reloaded { background: var(--badge-low-bg); color: white; }
+        .live-reload-bar.error { background: var(--badge-high-bg); color: white; }
+
+        /* ========== Responsive ========== */
+        @media (max-width: 1024px) {
+            .toc-sidebar { display: none; }
+            .article { max-width: 100%; }
+        }
+        @media (max-width: 768px) {
+            .sidebar { position: fixed; z-index: 100; height: calc(100vh - 48px); top: 48px; }
+            .sidebar.collapsed { width: 0; min-width: 0; }
+            .sidebar-collapse-btn { display: none; }
+            .article { padding: 16px 20px; }
+        }`;
+
+    if (enableAI) {
+        styles += `
+
+        /* ========== Ask AI Bar (bottom) ========== */
+        .ask-bar {
+            border-top: 1px solid var(--ask-bar-border);
+            background: var(--ask-bar-bg);
+            padding: 12px 20px;
+            flex-shrink: 0;
+        }
+        .ask-bar-inner {
+            max-width: 720px;
+            margin: 0 auto;
+        }
+        .ask-bar-label {
+            display: block;
             font-size: 12px;
             color: var(--content-muted);
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
-
-        /* Ask Panel (slide-out) */
-        .ask-panel {
-            width: 380px;
-            min-width: 280px;
+        .ask-bar-label strong { color: var(--content-text); }
+        .ask-bar-input-row {
+            display: flex;
+            gap: 8px;
+        }
+        .ask-bar-input {
+            flex: 1;
+            padding: 9px 14px;
+            border: 1px solid var(--content-border);
+            border-radius: 8px;
+            font-size: 14px;
             background: var(--content-bg);
-            border-left: none;
+            color: var(--content-text);
+            outline: none;
+            font-family: inherit;
+        }
+        .ask-bar-input:focus { border-color: var(--sidebar-active-border); }
+        .ask-bar-input::placeholder { color: var(--content-muted); }
+        .ask-bar-send {
+            background: var(--sidebar-active-border);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0 14px;
+            cursor: pointer;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .ask-bar-send:hover { opacity: 0.9; }
+        .ask-bar-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ========== Ask Panel (expanded chat) ========== */
+        .ask-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 70%;
+            max-height: 600px;
+            background: var(--content-bg);
+            border-top: 1px solid var(--content-border);
             display: flex;
             flex-direction: column;
-            transition: width 0.3s, min-width 0.3s, flex 0.3s;
-            height: 100%;
+            z-index: 150;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+            border-radius: 12px 12px 0 0;
+            transition: height 0.3s;
         }
         .ask-panel.hidden { display: none; }
-        .ask-panel.resizing { transition: none; }
-        .ask-panel.expanded {
-            flex: 1;
-            width: auto;
-            min-width: 0;
-        }
-        .content.ask-expanded {
-            flex: 0 0 auto;
-            width: 320px;
-            min-width: 240px;
-        }
-
-        /* Resize handle between content and Ask panel */
-        .ask-resize-handle {
-            width: 5px;
-            cursor: col-resize;
-            background: var(--content-border);
-            transition: background 0.15s;
-            flex-shrink: 0;
-            position: relative;
-            z-index: 10;
-        }
-        .ask-resize-handle.hidden { display: none; }
-        .ask-resize-handle:hover,
-        .ask-resize-handle.dragging {
-            background: var(--sidebar-active-border);
-        }
-        .ask-resize-handle::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 3px;
-            height: 32px;
-            border-left: 1px solid var(--content-muted);
-            border-right: 1px solid var(--content-muted);
-            opacity: 0;
-            transition: opacity 0.15s;
-        }
-        .ask-resize-handle:hover::after,
-        .ask-resize-handle.dragging::after {
-            opacity: 0.5;
-        }
-
         .ask-panel-header {
             padding: 12px 16px;
             border-bottom: 1px solid var(--content-border);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0;
         }
         .ask-panel-header h3 { font-size: 15px; color: var(--content-text); margin: 0; }
-        .ask-panel-close {
-            background: none;
-            border: none;
-            font-size: 20px;
-            cursor: pointer;
-            color: var(--content-muted);
-            padding: 0 4px;
-        }
-        .ask-panel-close:hover { color: var(--content-text); }
-        .ask-panel-actions {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-        }
-        .ask-panel-expand {
-            background: none;
-            border: 1px solid var(--content-border);
-            border-radius: 4px;
-            padding: 2px 8px;
-            cursor: pointer;
-            font-size: 11px;
-            color: var(--content-muted);
-        }
-        .ask-panel-expand:hover { background: var(--code-bg); }
+        .ask-panel-actions { display: flex; gap: 6px; align-items: center; }
         .ask-panel-clear {
             background: none;
             border: 1px solid var(--content-border);
@@ -834,16 +972,22 @@ function getSpaStyles(enableAI: boolean): string {
             color: var(--content-muted);
         }
         .ask-panel-clear:hover { background: var(--code-bg); }
+        .ask-panel-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: var(--content-muted);
+            padding: 0 4px;
+        }
+        .ask-panel-close:hover { color: var(--content-text); }
 
         .ask-messages {
             flex: 1;
             overflow-y: auto;
             padding: 16px;
         }
-        .ask-message {
-            margin-bottom: 16px;
-            line-height: 1.5;
-        }
+        .ask-message { margin-bottom: 14px; line-height: 1.5; }
         .ask-message-user {
             background: var(--sidebar-active-border);
             color: white;
@@ -861,11 +1005,7 @@ function getSpaStyles(enableAI: boolean): string {
             max-width: 95%;
             word-wrap: break-word;
         }
-        .ask-message-assistant .markdown-body {
-            max-width: 100%;
-            font-size: 13px;
-            line-height: 1.5;
-        }
+        .ask-message-assistant .markdown-body { max-width: 100%; font-size: 13px; line-height: 1.5; }
         .ask-message-assistant .markdown-body p { margin-bottom: 8px; }
         .ask-message-assistant .markdown-body p:last-child { margin-bottom: 0; }
         .ask-message-context {
@@ -877,11 +1017,7 @@ function getSpaStyles(enableAI: boolean): string {
             border-radius: 6px;
             border: 1px solid var(--content-border);
         }
-        .ask-message-context a {
-            color: var(--link-color);
-            cursor: pointer;
-            text-decoration: none;
-        }
+        .ask-message-context a { color: var(--link-color); cursor: pointer; text-decoration: none; }
         .ask-message-context a:hover { text-decoration: underline; }
         .ask-message-error {
             color: var(--badge-high-bg);
@@ -911,8 +1047,9 @@ function getSpaStyles(enableAI: boolean): string {
             border-top: 1px solid var(--content-border);
             display: flex;
             gap: 8px;
+            flex-shrink: 0;
         }
-        .ask-input {
+        .ask-textarea {
             flex: 1;
             padding: 8px 12px;
             border: 1px solid var(--content-border);
@@ -926,9 +1063,9 @@ function getSpaStyles(enableAI: boolean): string {
             max-height: 120px;
             font-family: inherit;
         }
-        .ask-input:focus { border-color: var(--sidebar-active-border); }
-        .ask-input::placeholder { color: var(--content-muted); }
-        .ask-send-btn {
+        .ask-textarea:focus { border-color: var(--sidebar-active-border); }
+        .ask-textarea::placeholder { color: var(--content-muted); }
+        .ask-panel-send {
             background: var(--sidebar-active-border);
             color: white;
             border: none;
@@ -940,8 +1077,8 @@ function getSpaStyles(enableAI: boolean): string {
             white-space: nowrap;
             align-self: flex-end;
         }
-        .ask-send-btn:hover { opacity: 0.9; }
-        .ask-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }`;
+        .ask-panel-send:hover { opacity: 0.9; }
+        .ask-panel-send:disabled { opacity: 0.5; cursor: not-allowed; }`;
     }
 
     return styles;
@@ -961,7 +1098,7 @@ interface ScriptOptions {
 
 function getSpaScript(opts: ScriptOptions): string {
     return `        // ====================================================================
-        // Deep Wiki Server Mode
+        // Deep Wiki — Server Mode SPA
         // ====================================================================
 
         var moduleGraph = null;
@@ -1037,19 +1174,8 @@ function getSpaScript(opts: ScriptOptions): string {
 
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateThemeStyles);
         document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
-        // Sidebar toggle (hamburger button in content header - for mobile/hidden)
-        document.getElementById('sidebar-toggle').addEventListener('click', function() {
-            var sidebar = document.getElementById('sidebar');
-            if (sidebar.classList.contains('collapsed')) {
-                sidebar.classList.remove('collapsed');
-                updateSidebarCollapseBtn(false);
-                localStorage.setItem('deep-wiki-sidebar-collapsed', 'false');
-            } else {
-                sidebar.classList.toggle('hidden');
-            }
-        });
 
-        // Sidebar collapse button (on the sidebar edge)
+        // Sidebar collapse
         document.getElementById('sidebar-collapse').addEventListener('click', function() {
             var sidebar = document.getElementById('sidebar');
             var isCollapsed = sidebar.classList.toggle('collapsed');
@@ -1070,7 +1196,7 @@ function getSpaScript(opts: ScriptOptions): string {
             }
         }
 
-        // Restore sidebar collapsed state from localStorage
+        // Restore sidebar collapsed state
         (function restoreSidebarState() {
             var saved = localStorage.getItem('deep-wiki-sidebar-collapsed');
             if (saved === 'true') {
@@ -1080,12 +1206,11 @@ function getSpaScript(opts: ScriptOptions): string {
         })();
 
         // ================================================================
-        // Sidebar
+        // Sidebar Navigation
         // ================================================================
 
         function initializeSidebar() {
-            document.getElementById('project-name').textContent = moduleGraph.project.name;
-            document.getElementById('project-description').textContent = moduleGraph.project.description;
+            document.getElementById('top-bar-project').textContent = moduleGraph.project.name;
 
             var categories = {};
             moduleGraph.modules.forEach(function(mod) {
@@ -1096,35 +1221,46 @@ function getSpaScript(opts: ScriptOptions): string {
 
             var navContainer = document.getElementById('nav-container');
 
+            // Home + special items
             var homeSection = document.createElement('div');
             homeSection.className = 'nav-section';
             homeSection.innerHTML =
                 '<div class="nav-item active" data-id="__home" onclick="showHome()">' +
-                '<span class="nav-item-name">Home</span></div>' +
+                '<span class="nav-item-name">Overview</span></div>' +
 ${opts.enableGraph ? `                '<div class="nav-item" data-id="__graph" onclick="showGraph()">' +
                 '<span class="nav-item-name">Dependency Graph</span></div>' +` : ''}
                 '';
-
             navContainer.appendChild(homeSection);
 
+            // Category sections
             Object.keys(categories).sort().forEach(function(category) {
                 var section = document.createElement('div');
                 section.className = 'nav-section';
-                section.innerHTML = '<h3>' + escapeHtml(category) + '</h3>';
+
+                var titleEl = document.createElement('div');
+                titleEl.className = 'nav-section-title';
+                titleEl.innerHTML = '<span class="nav-section-arrow">&#x25BC;</span> ' + escapeHtml(category);
+                titleEl.onclick = function() {
+                    section.classList.toggle('collapsed');
+                };
+                section.appendChild(titleEl);
+
+                var itemsEl = document.createElement('div');
+                itemsEl.className = 'nav-section-items';
 
                 categories[category].forEach(function(mod) {
                     var item = document.createElement('div');
                     item.className = 'nav-item';
                     item.setAttribute('data-id', mod.id);
                     item.innerHTML =
-                        '<span class="nav-item-name">' + escapeHtml(mod.name) +
-                        ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
-                        mod.complexity + '</span></span>' +
-                        '<span class="nav-item-path">' + escapeHtml(mod.path) + '</span>';
+                        '<span class="nav-item-name">' + escapeHtml(mod.name) + '</span>' +
+                        '<span class="complexity-badge complexity-' + mod.complexity + '">' +
+                        mod.complexity + '</span>';
                     item.onclick = function() { loadModule(mod.id); };
-                    section.appendChild(item);
+                    itemsEl.appendChild(item);
                 });
 
+                section.appendChild(itemsEl);
                 navContainer.appendChild(section);
             });
 ${opts.enableSearch ? `
@@ -1132,14 +1268,15 @@ ${opts.enableSearch ? `
                 var query = e.target.value.toLowerCase();
                 document.querySelectorAll('.nav-item[data-id]').forEach(function(item) {
                     var id = item.getAttribute('data-id');
-                    if (id === '__home') return;
+                    if (id === '__home' || id === '__graph') return;
                     var text = item.textContent.toLowerCase();
                     item.style.display = text.includes(query) ? '' : 'none';
                 });
                 document.querySelectorAll('.nav-section').forEach(function(section) {
+                    var title = section.querySelector('.nav-section-title');
+                    if (!title) return;
                     var visible = section.querySelectorAll('.nav-item[data-id]:not([style*="display: none"])');
-                    var header = section.querySelector('h3');
-                    if (header) header.style.display = visible.length === 0 ? 'none' : '';
+                    title.style.display = visible.length === 0 ? 'none' : '';
                 });
             });` : ''}
         }
@@ -1156,20 +1293,14 @@ ${opts.enableSearch ? `
         // Content Loading
         // ================================================================
 
-        function restoreContentPadding() {
-            var cb = document.querySelector('.content-body');
-            if (cb) { cb.style.padding = '32px'; cb.style.overflow = ''; }
-        }
-
         function showHome(skipHistory) {
             currentModuleId = null;
             setActive('__home');
-            restoreContentPadding();
-            document.getElementById('breadcrumb').textContent = 'Home';
-            document.getElementById('content-title').textContent = 'Project Overview';
+            document.getElementById('toc-nav').innerHTML = '';
             if (!skipHistory) {
                 history.pushState({ type: 'home' }, '', location.pathname);
             }
+${opts.enableAI ? `            updateAskSubject(moduleGraph.project.name);` : ''}
 
             var stats = {
                 modules: moduleGraph.modules.length,
@@ -1179,6 +1310,7 @@ ${opts.enableSearch ? `
             };
 
             var html = '<div class="home-view">' +
+                '<h1>' + escapeHtml(moduleGraph.project.name) + '</h1>' +
                 '<p style="font-size: 15px; color: var(--content-muted); margin-bottom: 24px;">' +
                 escapeHtml(moduleGraph.project.description) + '</p>' +
                 '<div class="project-stats">' +
@@ -1200,6 +1332,7 @@ ${opts.enableSearch ? `
             html += '</div></div>';
 
             document.getElementById('content').innerHTML = html;
+            document.getElementById('content-scroll').scrollTop = 0;
         }
 
         async function loadModule(moduleId, skipHistory) {
@@ -1208,18 +1341,15 @@ ${opts.enableSearch ? `
 
             currentModuleId = moduleId;
             setActive(moduleId);
-            restoreContentPadding();
-            document.getElementById('breadcrumb').textContent = mod.category + ' / ' + mod.name;
-            document.getElementById('content-title').textContent = mod.name;
             if (!skipHistory) {
                 history.pushState({ type: 'module', id: moduleId }, '', location.pathname + '#module-' + encodeURIComponent(moduleId));
             }
+${opts.enableAI ? `            updateAskSubject(mod.name);` : ''}
 
             // Check cache
             if (markdownCache[moduleId]) {
-                renderMarkdownContent(markdownCache[moduleId]);
-${opts.enableAI ? `                addDeepDiveButton(moduleId);` : ''}
-                document.querySelector('.content-body').scrollTop = 0;
+                renderModulePage(mod, markdownCache[moduleId]);
+                document.getElementById('content-scroll').scrollTop = 0;
                 return;
             }
 
@@ -1231,26 +1361,54 @@ ${opts.enableAI ? `                addDeepDiveButton(moduleId);` : ''}
                 var data = await res.json();
                 if (data.markdown) {
                     markdownCache[moduleId] = data.markdown;
-                    renderMarkdownContent(data.markdown);
+                    renderModulePage(mod, data.markdown);
                 } else {
                     document.getElementById('content').innerHTML =
                         '<div class="markdown-body"><h2>' + escapeHtml(mod.name) + '</h2>' +
                         '<p>' + escapeHtml(mod.purpose) + '</p></div>';
                 }
-${opts.enableAI ? `                addDeepDiveButton(moduleId);` : ''}
             } catch(err) {
                 document.getElementById('content').innerHTML =
                     '<p style="color: red;">Error loading module: ' + err.message + '</p>';
             }
-            document.querySelector('.content-body').scrollTop = 0;
+            document.getElementById('content-scroll').scrollTop = 0;
+        }
+
+        function renderModulePage(mod, markdown) {
+            var html = '';
+
+            // Source files section
+            if (mod.keyFiles && mod.keyFiles.length > 0) {
+                html += '<div class="source-files-section" id="source-files">' +
+                    '<button class="source-files-toggle" onclick="toggleSourceFiles()">' +
+                    '<span class="source-files-arrow">&#x25B6;</span> Relevant source files' +
+                    '</button>' +
+                    '<div class="source-files-list">';
+                mod.keyFiles.forEach(function(f) {
+                    html += '<span class="source-pill"><span class="source-pill-icon">&#9671;</span> ' +
+                        escapeHtml(f) + '</span>';
+                });
+                html += '</div></div>';
+            }
+
+            // Markdown content
+            html += '<div class="markdown-body">' + marked.parse(markdown) + '</div>';
+            document.getElementById('content').innerHTML = html;
+
+            // Post-processing
+            processMarkdownContent();
+            buildToc();
+${opts.enableAI ? `            addDeepDiveButton(mod.id);` : ''}
+        }
+
+        function toggleSourceFiles() {
+            var section = document.getElementById('source-files');
+            if (section) section.classList.toggle('expanded');
         }
 
         async function loadSpecialPage(key, title, skipHistory) {
             currentModuleId = null;
             setActive(key);
-            restoreContentPadding();
-            document.getElementById('breadcrumb').textContent = title;
-            document.getElementById('content-title').textContent = title;
             if (!skipHistory) {
                 history.pushState({ type: 'special', key: key, title: title }, '', location.pathname + '#' + encodeURIComponent(key));
             }
@@ -1258,7 +1416,8 @@ ${opts.enableAI ? `                addDeepDiveButton(moduleId);` : ''}
             var cacheKey = '__page_' + key;
             if (markdownCache[cacheKey]) {
                 renderMarkdownContent(markdownCache[cacheKey]);
-                document.querySelector('.content-body').scrollTop = 0;
+                buildToc();
+                document.getElementById('content-scroll').scrollTop = 0;
                 return;
             }
 
@@ -1269,10 +1428,11 @@ ${opts.enableAI ? `                addDeepDiveButton(moduleId);` : ''}
                 var data = await res.json();
                 markdownCache[cacheKey] = data.markdown;
                 renderMarkdownContent(data.markdown);
+                buildToc();
             } catch(err) {
                 document.getElementById('content').innerHTML = '<p>Content not available.</p>';
             }
-            document.querySelector('.content-body').scrollTop = 0;
+            document.getElementById('content-scroll').scrollTop = 0;
         }
 
         // ================================================================
@@ -1283,8 +1443,13 @@ ${opts.enableAI ? `                addDeepDiveButton(moduleId);` : ''}
             var html = marked.parse(markdown);
             var container = document.getElementById('content');
             container.innerHTML = '<div class="markdown-body">' + html + '</div>';
+            processMarkdownContent();
+        }
 
+        function processMarkdownContent() {
+            var container = document.getElementById('content');
             var body = container.querySelector('.markdown-body');
+            if (!body) return;
 
             body.querySelectorAll('pre code').forEach(function(block) {
                 if (block.classList.contains('language-mermaid')) {
@@ -1346,6 +1511,70 @@ ${opts.enableAI ? `                addDeepDiveButton(moduleId);` : ''}
         }
 
         // ================================================================
+        // Table of Contents
+        // ================================================================
+
+        function buildToc() {
+            var tocNav = document.getElementById('toc-nav');
+            tocNav.innerHTML = '';
+            var body = document.querySelector('#content .markdown-body');
+            if (!body) return;
+
+            var headings = body.querySelectorAll('h2, h3, h4');
+            headings.forEach(function(heading) {
+                if (!heading.id) return;
+                var link = document.createElement('a');
+                link.href = '#' + heading.id;
+                link.textContent = heading.textContent.replace(/#$/, '').trim();
+                var level = heading.tagName.toLowerCase();
+                if (level === 'h3') link.className = 'toc-h3';
+                if (level === 'h4') link.className = 'toc-h4';
+                link.onclick = function(e) {
+                    e.preventDefault();
+                    var target = document.getElementById(heading.id);
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                };
+                tocNav.appendChild(link);
+            });
+
+            // Scroll spy
+            setupScrollSpy();
+        }
+
+        function setupScrollSpy() {
+            var scrollEl = document.getElementById('content-scroll');
+            if (!scrollEl) return;
+            scrollEl.addEventListener('scroll', updateActiveToc);
+        }
+
+        function updateActiveToc() {
+            var tocLinks = document.querySelectorAll('#toc-nav a');
+            if (tocLinks.length === 0) return;
+
+            var scrollEl = document.getElementById('content-scroll');
+            var scrollTop = scrollEl.scrollTop;
+            var activeId = null;
+
+            var headings = document.querySelectorAll('#content .markdown-body h2, #content .markdown-body h3, #content .markdown-body h4');
+            headings.forEach(function(h) {
+                if (h.offsetTop - 80 <= scrollTop) {
+                    activeId = h.id;
+                }
+            });
+
+            tocLinks.forEach(function(link) {
+                var href = link.getAttribute('href');
+                if (href === '#' + activeId) {
+                    link.classList.add('active');
+                } else {
+                    link.classList.remove('active');
+                }
+            });
+        }
+
+        // ================================================================
         // Utility
         // ================================================================
 
@@ -1376,15 +1605,14 @@ ${opts.enableGraph ? `
         function showGraph(skipHistory) {
             currentModuleId = null;
             setActive('__graph');
-            document.getElementById('breadcrumb').textContent = 'Dependency Graph';
-            document.getElementById('content-title').textContent = 'Dependency Graph';
+            document.getElementById('toc-nav').innerHTML = '';
             if (!skipHistory) {
                 history.pushState({ type: 'graph' }, '', location.pathname + '#graph');
             }
 
-            var contentBody = document.querySelector('.content-body');
-            contentBody.style.padding = '0';
-            contentBody.style.overflow = 'hidden';
+            var article = document.getElementById('article');
+            article.style.maxWidth = '100%';
+            article.style.padding = '0';
 
             var container = document.getElementById('content');
             container.innerHTML = '<div class="graph-container" id="graph-container">' +
@@ -1396,6 +1624,10 @@ ${opts.enableGraph ? `
                 '<div class="graph-legend" id="graph-legend"></div>' +
                 '<div class="graph-tooltip" id="graph-tooltip" style="display:none;"></div>' +
                 '</div>';
+
+            // Make graph fill the available space
+            var gc = document.getElementById('graph-container');
+            gc.style.height = (article.parentElement.parentElement.clientHeight - 48) + 'px';
 
             renderGraph();
         }
@@ -1409,14 +1641,12 @@ ${opts.enableGraph ? `
             var width = container.clientWidth || 800;
             var height = container.clientHeight || 600;
 
-            // Gather categories
             var allCategories = [];
             moduleGraph.modules.forEach(function(m) {
                 if (allCategories.indexOf(m.category) === -1) allCategories.push(m.category);
             });
             allCategories.sort();
 
-            // Build legend
             var legendEl = document.getElementById('graph-legend');
             legendEl.innerHTML = '<div class="graph-legend-title">Categories</div>';
             allCategories.forEach(function(cat) {
@@ -1439,7 +1669,6 @@ ${opts.enableGraph ? `
                 legendEl.appendChild(item);
             });
 
-            // Build nodes/links
             var nodes = moduleGraph.modules.map(function(m) {
                 return { id: m.id, name: m.name, category: m.category, complexity: m.complexity, path: m.path, purpose: m.purpose };
             });
@@ -1454,13 +1683,11 @@ ${opts.enableGraph ? `
                 });
             });
 
-            // Create SVG
             var svg = d3.select('#graph-container')
                 .append('svg')
                 .attr('width', width)
                 .attr('height', height);
 
-            // Arrow marker
             svg.append('defs').append('marker')
                 .attr('id', 'arrowhead')
                 .attr('viewBox', '0 -5 10 10')
@@ -1475,14 +1702,12 @@ ${opts.enableGraph ? `
 
             var g = svg.append('g');
 
-            // Links
             var link = g.selectAll('.graph-link')
                 .data(links)
                 .join('line')
                 .attr('class', 'graph-link')
                 .attr('marker-end', 'url(#arrowhead)');
 
-            // Nodes
             var node = g.selectAll('.graph-node')
                 .data(nodes)
                 .join('g')
@@ -1504,13 +1729,15 @@ ${opts.enableGraph ? `
                 .attr('dy', 4)
                 .text(function(d) { return d.name; });
 
-            // Click to navigate
             node.on('click', function(event, d) {
                 event.stopPropagation();
+                // Restore article styles before loading module
+                var article = document.getElementById('article');
+                article.style.maxWidth = '';
+                article.style.padding = '';
                 loadModule(d.id);
             });
 
-            // Tooltip
             var tooltip = document.getElementById('graph-tooltip');
             node.on('mouseover', function(event, d) {
                 tooltip.style.display = 'block';
@@ -1523,11 +1750,8 @@ ${opts.enableGraph ? `
                 tooltip.style.left = (event.pageX + 12) + 'px';
                 tooltip.style.top = (event.pageY - 12) + 'px';
             });
-            node.on('mouseout', function() {
-                tooltip.style.display = 'none';
-            });
+            node.on('mouseout', function() { tooltip.style.display = 'none'; });
 
-            // Force simulation
             var simulation = d3.forceSimulation(nodes)
                 .force('link', d3.forceLink(links).id(function(d) { return d.id; }).distance(100))
                 .force('charge', d3.forceManyBody().strength(-300))
@@ -1538,48 +1762,30 @@ ${opts.enableGraph ? `
                         .attr('y1', function(d) { return d.source.y; })
                         .attr('x2', function(d) { return d.target.x; })
                         .attr('y2', function(d) { return d.target.y; });
-
                     node.attr('transform', function(d) { return 'translate(' + d.x + ',' + d.y + ')'; });
                 });
 
-            // Zoom
             var zoom = d3.zoom()
                 .scaleExtent([0.1, 4])
-                .on('zoom', function(event) {
-                    g.attr('transform', event.transform);
-                });
+                .on('zoom', function(event) { g.attr('transform', event.transform); });
 
             svg.call(zoom);
 
-            // Toolbar buttons
-            document.getElementById('graph-zoom-in').onclick = function() {
-                svg.transition().call(zoom.scaleBy, 1.3);
-            };
-            document.getElementById('graph-zoom-out').onclick = function() {
-                svg.transition().call(zoom.scaleBy, 0.7);
-            };
-            document.getElementById('graph-zoom-reset').onclick = function() {
-                svg.transition().call(zoom.transform, d3.zoomIdentity);
-            };
+            document.getElementById('graph-zoom-in').onclick = function() { svg.transition().call(zoom.scaleBy, 1.3); };
+            document.getElementById('graph-zoom-out').onclick = function() { svg.transition().call(zoom.scaleBy, 0.7); };
+            document.getElementById('graph-zoom-reset').onclick = function() { svg.transition().call(zoom.transform, d3.zoomIdentity); };
 
-            // Store refs for category toggle
             window._graphNode = node;
             window._graphLink = link;
-            window._graphLinks = links;
 
             function dragstarted(event, d) {
                 if (!event.active) simulation.alphaTarget(0.3).restart();
-                d.fx = d.x;
-                d.fy = d.y;
+                d.fx = d.x; d.fy = d.y;
             }
-            function dragged(event, d) {
-                d.fx = event.x;
-                d.fy = event.y;
-            }
+            function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
             function dragended(event, d) {
                 if (!event.active) simulation.alphaTarget(0);
-                d.fx = null;
-                d.fy = null;
+                d.fx = null; d.fy = null;
             }
 
             graphRendered = true;
@@ -1598,189 +1804,94 @@ ${opts.enableGraph ? `
         }` : ''}
 ${opts.enableAI ? `
         // ================================================================
-        // Ask AI Panel
+        // Ask AI
         // ================================================================
 
         var conversationHistory = [];
         var askStreaming = false;
+        var askPanelOpen = false;
 
-        var askExpanded = false;
+        function updateAskSubject(name) {
+            var el = document.getElementById('ask-bar-subject');
+            if (el) el.textContent = name;
+        }
 
-        // Panel toggle
-        document.getElementById('ask-toggle').addEventListener('click', function() {
-            var panel = document.getElementById('ask-panel');
-            var handle = document.getElementById('ask-resize-handle');
-            panel.classList.toggle('hidden');
-            handle.classList.toggle('hidden');
-            if (!panel.classList.contains('hidden')) {
-                document.getElementById('ask-input').focus();
-                // Restore expanded state
-                var savedExpanded = localStorage.getItem('deep-wiki-ask-expanded');
-                if (savedExpanded === 'true') {
-                    setAskExpanded(true);
-                }
-            } else {
-                // When hiding, remove expanded from content
-                document.getElementById('content-area').classList.remove('ask-expanded');
+        // Bottom bar → open panel
+        document.getElementById('ask-input').addEventListener('focus', function() {
+            openAskPanel();
+        });
+        document.getElementById('ask-send').addEventListener('click', function() {
+            var input = document.getElementById('ask-input');
+            var q = input.value.trim();
+            if (q) {
+                openAskPanel();
+                document.getElementById('ask-textarea').value = q;
+                input.value = '';
+                askPanelSend();
             }
         });
-        document.getElementById('ask-close').addEventListener('click', function() {
-            document.getElementById('ask-panel').classList.add('hidden');
-            document.getElementById('ask-resize-handle').classList.add('hidden');
-            document.getElementById('content-area').classList.remove('ask-expanded');
+        document.getElementById('ask-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var q = e.target.value.trim();
+                if (q) {
+                    openAskPanel();
+                    document.getElementById('ask-textarea').value = q;
+                    e.target.value = '';
+                    askPanelSend();
+                }
+            }
         });
+
+        // Panel controls
+        document.getElementById('ask-close').addEventListener('click', closeAskPanel);
         document.getElementById('ask-clear').addEventListener('click', function() {
             conversationHistory = [];
             document.getElementById('ask-messages').innerHTML = '';
         });
-
-        // Expand / Collapse Ask AI panel
-        document.getElementById('ask-expand').addEventListener('click', function() {
-            askExpanded = !askExpanded;
-            setAskExpanded(askExpanded);
-            localStorage.setItem('deep-wiki-ask-expanded', askExpanded ? 'true' : 'false');
-        });
-
-        function setAskExpanded(expanded) {
-            askExpanded = expanded;
-            var panel = document.getElementById('ask-panel');
-            var content = document.getElementById('content-area');
-            var handle = document.getElementById('ask-resize-handle');
-            var sidebar = document.getElementById('sidebar');
-            if (expanded) {
-                panel.classList.add('expanded');
-                content.classList.add('ask-expanded');
-                handle.classList.add('hidden');
-                // Clear custom drag width so flex takes over
-                panel.style.width = '';
-                panel.style.minWidth = '';
-                // Auto-collapse sidebar to maximize ask panel space
-                if (!sidebar.classList.contains('collapsed')) {
-                    sidebar.classList.add('collapsed');
-                    updateSidebarCollapseBtn(true);
-                    // Don't persist this auto-collapse — user can manually restore
-                }
-            } else {
-                panel.classList.remove('expanded');
-                content.classList.remove('ask-expanded');
-                handle.classList.remove('hidden');
-                // Restore saved drag width
-                var saved = localStorage.getItem('deep-wiki-ask-width');
-                if (saved) {
-                    var w = parseInt(saved, 10);
-                    if (w >= 280) {
-                        panel.style.width = w + 'px';
-                        panel.style.minWidth = w + 'px';
-                    }
-                }
-                // Restore sidebar if it was previously not collapsed
-                var sidebarSaved = localStorage.getItem('deep-wiki-sidebar-collapsed');
-                if (sidebarSaved !== 'true' && sidebar.classList.contains('collapsed')) {
-                    sidebar.classList.remove('collapsed');
-                    updateSidebarCollapseBtn(false);
-                }
-            }
-            updateAskExpandBtn(expanded);
-        }
-
-        function updateAskExpandBtn(isExpanded) {
-            var btn = document.getElementById('ask-expand');
-            btn.textContent = isExpanded ? 'Collapse' : 'Expand';
-            btn.title = isExpanded ? 'Collapse panel' : 'Expand panel';
-        }
-
-        // ================================================================
-        // Resize Handle (drag to resize Ask panel)
-        // ================================================================
-
-        var resizeDragging = false;
-        var resizeStartX = 0;
-        var resizeStartWidth = 0;
-
-        document.getElementById('ask-resize-handle').addEventListener('mousedown', function(e) {
-            if (askExpanded) return; // Disable drag resize in expanded mode
-            e.preventDefault();
-            resizeDragging = true;
-            resizeStartX = e.clientX;
-            var panel = document.getElementById('ask-panel');
-            resizeStartWidth = panel.getBoundingClientRect().width;
-            panel.classList.add('resizing');
-            document.getElementById('ask-resize-handle').classList.add('dragging');
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-        });
-
-        document.addEventListener('mousemove', function(e) {
-            if (!resizeDragging) return;
-            var delta = resizeStartX - e.clientX;
-            var newWidth = Math.max(280, Math.min(resizeStartWidth + delta, window.innerWidth - 320));
-            var panel = document.getElementById('ask-panel');
-            panel.style.width = newWidth + 'px';
-            panel.style.minWidth = newWidth + 'px';
-        });
-
-        document.addEventListener('mouseup', function() {
-            if (!resizeDragging) return;
-            resizeDragging = false;
-            var panel = document.getElementById('ask-panel');
-            panel.classList.remove('resizing');
-            document.getElementById('ask-resize-handle').classList.remove('dragging');
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-            // Save the panel width
-            var currentWidth = panel.getBoundingClientRect().width;
-            localStorage.setItem('deep-wiki-ask-width', String(Math.round(currentWidth)));
-        });
-
-        // Restore saved panel width
-        (function restoreAskPanelWidth() {
-            var saved = localStorage.getItem('deep-wiki-ask-width');
-            if (saved) {
-                var w = parseInt(saved, 10);
-                if (w >= 280) {
-                    var panel = document.getElementById('ask-panel');
-                    panel.style.width = w + 'px';
-                    panel.style.minWidth = w + 'px';
-                }
-            }
-        })();
-
-        // Send message
-        document.getElementById('ask-send').addEventListener('click', askSend);
-        document.getElementById('ask-input').addEventListener('keydown', function(e) {
+        document.getElementById('ask-panel-send').addEventListener('click', askPanelSend);
+        document.getElementById('ask-textarea').addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                askSend();
+                askPanelSend();
             }
         });
-
-        // Auto-resize textarea
-        document.getElementById('ask-input').addEventListener('input', function() {
+        document.getElementById('ask-textarea').addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 120) + 'px';
         });
 
-        function askSend() {
+        function openAskPanel() {
+            if (askPanelOpen) return;
+            askPanelOpen = true;
+            document.getElementById('ask-panel').classList.remove('hidden');
+            document.getElementById('ask-bar').style.display = 'none';
+            document.getElementById('ask-textarea').focus();
+        }
+
+        function closeAskPanel() {
+            askPanelOpen = false;
+            document.getElementById('ask-panel').classList.add('hidden');
+            document.getElementById('ask-bar').style.display = '';
+        }
+
+        function askPanelSend() {
             if (askStreaming) return;
-            var input = document.getElementById('ask-input');
+            var input = document.getElementById('ask-textarea');
             var question = input.value.trim();
             if (!question) return;
 
             input.value = '';
             input.style.height = 'auto';
 
-            // Add user message
             appendAskMessage('user', question);
             conversationHistory.push({ role: 'user', content: question });
 
-            // Start streaming
             askStreaming = true;
-            document.getElementById('ask-send').disabled = true;
+            document.getElementById('ask-panel-send').disabled = true;
 
-            // Show typing indicator
             var typingEl = appendAskTyping();
 
-            // SSE via fetch
             fetch('/api/ask', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1804,7 +1915,6 @@ ${opts.enableAI ? `
 
                 function processChunk(result) {
                     if (result.done) {
-                        // Stream closed — process any remaining buffer
                         if (buffer.trim()) {
                             var remaining = buffer.trim();
                             if (remaining.startsWith('data: ')) {
@@ -1812,9 +1922,7 @@ ${opts.enableAI ? `
                                     var data = JSON.parse(remaining.slice(6));
                                     if (data.type === 'chunk') {
                                         fullResponse += data.content;
-                                        if (!responseEl) {
-                                            responseEl = appendAskAssistantStreaming('');
-                                        }
+                                        if (!responseEl) responseEl = appendAskAssistantStreaming('');
                                         updateAskAssistantStreaming(responseEl, fullResponse);
                                     } else if (data.type === 'done') {
                                         fullResponse = data.fullResponse || fullResponse;
@@ -1844,9 +1952,7 @@ ${opts.enableAI ? `
                                     typingEl = null;
                                 }
                                 fullResponse += data.content;
-                                if (!responseEl) {
-                                    responseEl = appendAskAssistantStreaming('');
-                                }
+                                if (!responseEl) responseEl = appendAskAssistantStreaming('');
                                 updateAskAssistantStreaming(responseEl, fullResponse);
                             } else if (data.type === 'done') {
                                 fullResponse = data.fullResponse || fullResponse;
@@ -1865,20 +1971,16 @@ ${opts.enableAI ? `
 
                 return reader.read().then(processChunk);
             }).catch(function(err) {
-                if (typingEl && typingEl.parentNode) {
-                    typingEl.parentNode.removeChild(typingEl);
-                }
+                if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
                 appendAskError(err.message || 'Failed to connect');
                 finishStreaming('', null);
             });
         }
 
         function finishStreaming(fullResponse, typingEl) {
-            if (typingEl && typingEl.parentNode) {
-                typingEl.parentNode.removeChild(typingEl);
-            }
+            if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
             askStreaming = false;
-            document.getElementById('ask-send').disabled = false;
+            document.getElementById('ask-panel-send').disabled = false;
             if (fullResponse) {
                 conversationHistory.push({ role: 'assistant', content: fullResponse });
             }
@@ -1954,47 +2056,7 @@ ${opts.enableAI ? `
             messages.scrollTop = messages.scrollHeight;
         }
 
-        // Keyboard shortcuts
-        document.addEventListener('keydown', function(e) {
-            // Ctrl/Cmd + B: Toggle sidebar
-            if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-                e.preventDefault();
-                var sidebar = document.getElementById('sidebar');
-                var isCollapsed = sidebar.classList.toggle('collapsed');
-                updateSidebarCollapseBtn(isCollapsed);
-                localStorage.setItem('deep-wiki-sidebar-collapsed', isCollapsed ? 'true' : 'false');
-            }
-            // Ctrl/Cmd + I: Toggle Ask AI panel
-            if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
-                e.preventDefault();
-                document.getElementById('ask-toggle').click();
-            }
-            // Ctrl/Cmd + Shift + I: Expand/collapse Ask AI panel
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'I') {
-                e.preventDefault();
-                var panel = document.getElementById('ask-panel');
-                if (!panel.classList.contains('hidden')) {
-                    document.getElementById('ask-expand').click();
-                }
-            }
-            // Escape: Close Ask AI panel
-            if (e.key === 'Escape') {
-                var askInput = document.getElementById('ask-input');
-                if (document.activeElement === askInput) {
-                    askInput.blur();
-                } else {
-                    var panel = document.getElementById('ask-panel');
-                    if (!panel.classList.contains('hidden')) {
-                        document.getElementById('ask-close').click();
-                    }
-                }
-            }
-        });
-
-        // ================================================================
         // Deep Dive (Explore Further)
-        // ================================================================
-
         var deepDiveStreaming = false;
 
         function addDeepDiveButton(moduleId) {
@@ -2003,24 +2065,16 @@ ${opts.enableAI ? `
             var markdownBody = content.querySelector('.markdown-body');
             if (!markdownBody) return;
 
-            // Create button
             var btn = document.createElement('button');
             btn.className = 'deep-dive-btn';
             btn.innerHTML = '&#128269; Explore Further';
-            btn.onclick = function() {
-                toggleDeepDiveSection(moduleId, btn);
-            };
-
-            // Insert at the top of markdown body
+            btn.onclick = function() { toggleDeepDiveSection(moduleId, btn); };
             markdownBody.insertBefore(btn, markdownBody.firstChild);
         }
 
         function toggleDeepDiveSection(moduleId, btn) {
             var existing = document.getElementById('deep-dive-section');
-            if (existing) {
-                existing.parentNode.removeChild(existing);
-                return;
-            }
+            if (existing) { existing.parentNode.removeChild(existing); return; }
 
             var section = document.createElement('div');
             section.id = 'deep-dive-section';
@@ -2035,14 +2089,9 @@ ${opts.enableAI ? `
 
             btn.insertAdjacentElement('afterend', section);
 
-            document.getElementById('deep-dive-submit').onclick = function() {
-                startDeepDive(moduleId);
-            };
+            document.getElementById('deep-dive-submit').onclick = function() { startDeepDive(moduleId); };
             document.getElementById('deep-dive-input').addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    startDeepDive(moduleId);
-                }
+                if (e.key === 'Enter') { e.preventDefault(); startDeepDive(moduleId); }
             });
             document.getElementById('deep-dive-input').focus();
         }
@@ -2069,9 +2118,7 @@ ${opts.enableAI ? `
                 body: JSON.stringify(body),
             }).then(function(response) {
                 if (!response.ok) {
-                    return response.json().then(function(err) {
-                        throw new Error(err.error || 'Request failed');
-                    });
+                    return response.json().then(function(err) { throw new Error(err.error || 'Request failed'); });
                 }
 
                 var reader = response.body.getReader();
@@ -2081,17 +2128,13 @@ ${opts.enableAI ? `
 
                 function processChunk(result) {
                     if (result.done) {
-                        // Stream closed — process any remaining buffer
                         if (buffer.trim()) {
                             var remaining = buffer.trim();
                             if (remaining.startsWith('data: ')) {
                                 try {
                                     var data = JSON.parse(remaining.slice(6));
-                                    if (data.type === 'chunk') {
-                                        fullResponse += data.text;
-                                    } else if (data.type === 'done') {
-                                        fullResponse = data.fullResponse || fullResponse;
-                                    }
+                                    if (data.type === 'chunk') fullResponse += data.text;
+                                    else if (data.type === 'done') fullResponse = data.fullResponse || fullResponse;
                                 } catch(e) {}
                             }
                         }
@@ -2113,8 +2156,7 @@ ${opts.enableAI ? `
                             } else if (data.type === 'chunk') {
                                 fullResponse += data.text;
                                 resultDiv.innerHTML = '<div class="markdown-body">' +
-                                    (typeof marked !== 'undefined' ? marked.parse(fullResponse) : escapeHtml(fullResponse)) +
-                                    '</div>';
+                                    (typeof marked !== 'undefined' ? marked.parse(fullResponse) : escapeHtml(fullResponse)) + '</div>';
                             } else if (data.type === 'done') {
                                 fullResponse = data.fullResponse || fullResponse;
                                 finishDeepDive(fullResponse, resultDiv, submitBtn);
@@ -2142,14 +2184,26 @@ ${opts.enableAI ? `
             if (submitBtn) submitBtn.disabled = false;
             if (fullResponse && resultDiv) {
                 resultDiv.innerHTML = '<div class="markdown-body">' +
-                    (typeof marked !== 'undefined' ? marked.parse(fullResponse) : escapeHtml(fullResponse)) +
-                    '</div>';
-                // Highlight code in result
-                resultDiv.querySelectorAll('pre code').forEach(function(block) {
-                    hljs.highlightElement(block);
-                });
+                    (typeof marked !== 'undefined' ? marked.parse(fullResponse) : escapeHtml(fullResponse)) + '</div>';
+                resultDiv.querySelectorAll('pre code').forEach(function(block) { hljs.highlightElement(block); });
             }
-        }` : ''}
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                e.preventDefault();
+                document.getElementById('sidebar-collapse').click();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+                e.preventDefault();
+                if (askPanelOpen) closeAskPanel();
+                else openAskPanel();
+            }
+            if (e.key === 'Escape') {
+                if (askPanelOpen) closeAskPanel();
+            }
+        });` : ''}
 ${opts.enableWatch ? `
         // ================================================================
         // WebSocket Live Reload
@@ -2165,7 +2219,6 @@ ${opts.enableWatch ? `
 
             ws.onopen = function() {
                 wsReconnectDelay = 1000;
-                // Send periodic pings
                 setInterval(function() {
                     if (ws.readyState === WebSocket.OPEN) {
                         ws.send(JSON.stringify({ type: 'ping' }));
@@ -2181,16 +2234,13 @@ ${opts.enableWatch ? `
             };
 
             ws.onclose = function() {
-                // Reconnect with exponential backoff
                 wsReconnectTimer = setTimeout(function() {
                     wsReconnectDelay = Math.min(wsReconnectDelay * 2, 30000);
                     connectWebSocket();
                 }, wsReconnectDelay);
             };
 
-            ws.onerror = function() {
-                // Will trigger onclose
-            };
+            ws.onerror = function() {};
         }
 
         function handleWsMessage(msg) {
@@ -2203,31 +2253,18 @@ ${opts.enableWatch ? `
             } else if (msg.type === 'reload') {
                 bar.className = 'live-reload-bar visible reloaded';
                 bar.textContent = 'Updated: ' + (msg.modules || []).join(', ');
-
-                // Invalidate cache for affected modules
-                (msg.modules || []).forEach(function(id) {
-                    delete markdownCache[id];
-                });
-
-                // Reload current module if affected
+                (msg.modules || []).forEach(function(id) { delete markdownCache[id]; });
                 if (currentModuleId && (msg.modules || []).indexOf(currentModuleId) !== -1) {
                     loadModule(currentModuleId, true);
                 }
-
-                // Auto-hide after 3 seconds
-                setTimeout(function() {
-                    bar.className = 'live-reload-bar';
-                }, 3000);
+                setTimeout(function() { bar.className = 'live-reload-bar'; }, 3000);
             } else if (msg.type === 'error') {
                 bar.className = 'live-reload-bar visible error';
                 bar.textContent = 'Error: ' + (msg.message || 'Unknown error');
-                setTimeout(function() {
-                    bar.className = 'live-reload-bar';
-                }, 5000);
+                setTimeout(function() { bar.className = 'live-reload-bar'; }, 5000);
             }
         }
 
-        // Start WebSocket connection
         connectWebSocket();` : ''}`;
 
 }

@@ -208,7 +208,7 @@ describe('createServer — AI configuration', () => {
         server = await createServer({ wikiDir, port: 0, host: 'localhost' });
 
         const html = await fetchText(`${server.url}/`);
-        expect(html).not.toContain('id="ask-toggle"');
+        expect(html).not.toContain('id="ask-bar"');
     });
 
     it('should enable AI features when aiEnabled is true', async () => {
@@ -219,7 +219,7 @@ describe('createServer — AI configuration', () => {
         });
 
         const html = await fetchText(`${server.url}/`);
-        expect(html).toContain('id="ask-toggle"');
+        expect(html).toContain('id="ask-bar"');
     });
 });
 
