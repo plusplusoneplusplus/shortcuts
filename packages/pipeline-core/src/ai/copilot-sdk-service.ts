@@ -644,7 +644,7 @@ export class CopilotSDKService {
 
             logger.debug(LogCategory.AI, 'CopilotSDKService: Acquiring session from pool');
             session = await pool.acquire(timeoutMs);
-            logger.debug(LogCategory.AI, `CopilotSDKService: Acquired session from pool: ${session.sessionId}`);
+            logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Acquired session from pool`);
 
             // Send the message with timeout
             const result = await this.sendWithTimeout(session, options.prompt, timeoutMs);
@@ -652,7 +652,7 @@ export class CopilotSDKService {
             const response = result?.data?.content || '';
             const durationMs = Date.now() - startTime;
 
-            logger.debug(LogCategory.AI, `CopilotSDKService: Pooled request completed in ${durationMs}ms`);
+            logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Pooled request completed in ${durationMs}ms`);
 
             if (!response) {
                 return {
@@ -673,7 +673,7 @@ export class CopilotSDKService {
             const errorMessage = error instanceof Error ? error.message : String(error);
             const durationMs = Date.now() - startTime;
 
-            logger.error(LogCategory.AI, `CopilotSDKService: Pooled request failed after ${durationMs}ms`, error instanceof Error ? error : undefined);
+            logger.error(LogCategory.AI, `CopilotSDKService [${session?.sessionId ?? 'no-session'}]: Pooled request failed after ${durationMs}ms`, error instanceof Error ? error : undefined);
 
             // Mark session for destruction on error (don't reuse potentially broken sessions)
             shouldDestroySession = true;
@@ -690,13 +690,13 @@ export class CopilotSDKService {
                 if (shouldDestroySession) {
                     try {
                         await this.sessionPool.destroy(session);
-                        logger.debug(LogCategory.AI, 'CopilotSDKService: Session destroyed after error');
+                        logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session destroyed after error`);
                     } catch (destroyError) {
-                        logger.debug(LogCategory.AI, `CopilotSDKService: Warning: Error destroying session: ${destroyError}`);
+                        logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Warning: Error destroying session: ${destroyError}`);
                     }
                 } else {
                     this.sessionPool.release(session);
-                    logger.debug(LogCategory.AI, 'CopilotSDKService: Session released back to pool');
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session released back to pool`);
                 }
             }
         }
@@ -811,7 +811,7 @@ export class CopilotSDKService {
 
             const durationMs = Date.now() - startTime;
 
-            logger.debug(LogCategory.AI, `CopilotSDKService: Request completed in ${durationMs}ms`);
+            logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Request completed in ${durationMs}ms`);
 
             if (!response) {
                 return {
@@ -831,7 +831,7 @@ export class CopilotSDKService {
             const errorMessage = error instanceof Error ? error.message : String(error);
             const durationMs = Date.now() - startTime;
 
-            logger.error(LogCategory.AI, `CopilotSDKService: Request failed after ${durationMs}ms`, error instanceof Error ? error : undefined);
+            logger.error(LogCategory.AI, `CopilotSDKService [${session?.sessionId ?? 'no-session'}]: Request failed after ${durationMs}ms`, error instanceof Error ? error : undefined);
 
             return {
                 success: false,
@@ -846,9 +846,9 @@ export class CopilotSDKService {
                 this.untrackSession(session.sessionId);
                 try {
                     await session.destroy();
-                    logger.debug(LogCategory.AI, 'CopilotSDKService: Session destroyed');
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session destroyed`);
                 } catch (destroyError) {
-                    logger.debug(LogCategory.AI, `CopilotSDKService: Warning: Error destroying session: ${destroyError}`);
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Warning: Error destroying session: ${destroyError}`);
                 }
             }
         }
@@ -924,19 +924,19 @@ export class CopilotSDKService {
         
         const session = this.activeSessions.get(sessionId);
         if (!session) {
-            logger.debug(LogCategory.AI, `CopilotSDKService: Session ${sessionId} not found for abort`);
+            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Session not found for abort`);
             return false;
         }
 
-        logger.debug(LogCategory.AI, `CopilotSDKService: Aborting session ${sessionId}`);
+        logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Aborting session`);
 
         try {
             await session.destroy();
             this.activeSessions.delete(sessionId);
-            logger.debug(LogCategory.AI, `CopilotSDKService: Session ${sessionId} aborted successfully`);
+            logger.debug(LogCategory.AI, `CopilotSDKService [${sessionId}]: Session aborted successfully`);
             return true;
         } catch (error) {
-            logger.error(LogCategory.AI, `CopilotSDKService: Error aborting session ${sessionId}`, error instanceof Error ? error : undefined);
+            logger.error(LogCategory.AI, `CopilotSDKService [${sessionId}]: Error aborting session`, error instanceof Error ? error : undefined);
             // Still remove from tracking even if destroy failed
             this.activeSessions.delete(sessionId);
             return false;
@@ -1170,10 +1170,16 @@ export class CopilotSDKService {
     ): Promise<string> {
         return new Promise((resolve, reject) => {
             const logger = getLogger();
+            const sid = session.sessionId;
             let response = '';
-            let finalMessage = '';
+            // Accumulate ALL assistant.message content across turns.
+            // With multi-turn MCP tool usage, the AI may produce multiple messages
+            // (e.g., "Let me read the files..." on turn 1, then the actual JSON on turn 2+).
+            // We keep ALL messages so we don't lose the final output.
+            let allMessages: string[] = [];
             let settled = false;
             let turnEndGraceTimer: ReturnType<typeof setTimeout> | null = null;
+            let turnCount = 0;
 
             const cleanup = () => {
                 if (unsubscribe) {
@@ -1203,8 +1209,16 @@ export class CopilotSDKService {
             };
 
             const settleWithResult = () => {
-                const result = finalMessage || response;
-                logger.debug(LogCategory.AI, `CopilotSDKService: Streaming completed (${result.length} chars total)`);
+                // Use the last non-empty message as the primary result.
+                // In multi-turn conversations (with MCP tools), earlier messages are
+                // typically intent statements ("Let me read the files...") and the
+                // last message contains the actual output (JSON analysis, etc.).
+                // Fall back to accumulated delta response if no messages were received.
+                const lastMessage = allMessages.length > 0
+                    ? allMessages[allMessages.length - 1]
+                    : '';
+                const result = lastMessage || response;
+                logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Streaming completed (${result.length} chars, ${turnCount} turns, ${allMessages.length} messages)`);
                 settle(resolve, result);
             };
 
@@ -1221,49 +1235,78 @@ export class CopilotSDKService {
                     // Accumulate streaming chunks
                     const delta = event.data?.deltaContent || '';
                     response += delta;
-                    logger.debug(LogCategory.AI, `CopilotSDKService: Received delta chunk (${delta.length} chars)`);
                     // Invoke the streaming callback if provided
                     if (onStreamingChunk && delta) {
                         try {
                             onStreamingChunk(delta);
                         } catch (cbError) {
-                            logger.debug(LogCategory.AI, `CopilotSDKService: onStreamingChunk callback error: ${cbError}`);
+                            logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: onStreamingChunk callback error: ${cbError}`);
                         }
                     }
                 } else if (eventType === 'assistant.message') {
-                    // Final message - use this as the complete content
-                    finalMessage = event.data?.content || '';
-                    logger.debug(LogCategory.AI, `CopilotSDKService: Received final message (${finalMessage.length} chars)`);
+                    // Accumulate messages across turns.
+                    // Each turn may produce an assistant.message event.
+                    // With MCP tools, the first message(s) may be tool-use intent
+                    // while the final message contains the actual output.
+                    const messageContent = event.data?.content || '';
+                    if (messageContent) {
+                        allMessages.push(messageContent);
+                    }
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Received message #${allMessages.length} (${messageContent.length} chars)`);
                     // If no delta chunks were received but we have a streaming callback,
-                    // emit the final message as a single chunk so SSE consumers get content
-                    if (onStreamingChunk && finalMessage && !response) {
+                    // emit the message as a single chunk so SSE consumers get content
+                    if (onStreamingChunk && messageContent && !response) {
                         try {
-                            onStreamingChunk(finalMessage);
+                            onStreamingChunk(messageContent);
                         } catch (cbError) {
-                            logger.debug(LogCategory.AI, `CopilotSDKService: onStreamingChunk callback error: ${cbError}`);
+                            logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: onStreamingChunk callback error: ${cbError}`);
                         }
                     }
+                } else if (eventType === 'assistant.turn_start') {
+                    // A new turn is starting — cancel any pending turn_end grace timer.
+                    // This is critical for multi-turn MCP tool conversations:
+                    // after the AI uses tools, the SDK fires turn_end then immediately
+                    // starts a new turn (turn_start) to process tool results. If we
+                    // don't cancel the grace timer, we'd settle with just the intent
+                    // message from the first turn instead of waiting for the full response.
+                    if (turnEndGraceTimer) {
+                        clearTimeout(turnEndGraceTimer);
+                        turnEndGraceTimer = null;
+                        logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Cancelled turn_end grace timer — new turn starting`);
+                    }
                 } else if (eventType === 'assistant.turn_end') {
-                    // Turn ended — the assistant finished its response.
-                    // Use a short grace period to allow session.idle or a late
-                    // assistant.message to arrive, then settle with what we have.
-                    logger.debug(LogCategory.AI, 'CopilotSDKService: Turn ended');
+                    // Turn ended — the assistant finished its current turn.
+                    // In multi-turn conversations (MCP tool usage), there can be many turns:
+                    //   Turn 1: AI expresses intent + tool calls → turn_end → tool execution → turn_start
+                    //   Turn 2: AI processes tool results + more tool calls → turn_end → tool execution → turn_start
+                    //   ...
+                    //   Turn N: AI produces final output → turn_end → session.idle
+                    //
+                    // We prefer settling on session.idle which signals the entire conversation
+                    // is done. The turn_end grace period is only a safety net for sessions
+                    // that don't fire session.idle.
+                    turnCount++;
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Turn ${turnCount} ended (${allMessages.length} messages so far)`);
+
+                    // Start a grace timer. If a new turn starts (turn_start), this timer
+                    // will be cancelled. If nothing else happens, we settle after the grace period.
                     if (!settled && !turnEndGraceTimer) {
                         turnEndGraceTimer = setTimeout(() => {
                             turnEndGraceTimer = null;
-                            if (!settled && (finalMessage || response)) {
-                                logger.debug(LogCategory.AI, 'CopilotSDKService: Settling after turn_end grace period');
+                            if (!settled && (allMessages.length > 0 || response)) {
+                                logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Settling after turn_end grace period (turn ${turnCount})`);
                                 settleWithResult();
                             }
-                        }, 500);
+                        }, 2000); // 2 second grace period to allow tool execution + new turn
                     }
                 } else if (eventType === 'session.idle') {
                     // Session finished processing — settle immediately
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Session idle after ${turnCount} turns`);
                     settleWithResult();
                 } else if (eventType === 'session.error') {
                     // Session error
                     const errorMessage = event.data?.message || 'Unknown session error';
-                    logger.error(LogCategory.AI, `CopilotSDKService: Session error during streaming: ${errorMessage}`);
+                    logger.error(LogCategory.AI, `CopilotSDKService [${sid}]: Session error: ${errorMessage}`);
                     settleError(new Error(`Copilot session error: ${errorMessage}`));
                 }
             });

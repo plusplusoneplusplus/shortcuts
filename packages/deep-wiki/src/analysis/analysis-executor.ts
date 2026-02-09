@@ -13,6 +13,8 @@ import {
     createPromptMapJob,
     createPromptMapInput,
     createExecutor,
+    getLogger,
+    LogCategory,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
     AIInvoker,
@@ -169,6 +171,7 @@ export async function runAnalysisExecutor(
     const failedModuleIds: string[] = [];
 
     if (result.output) {
+        const logger = getLogger();
         const output = result.output as PromptMapOutput;
         for (const mapResult of output.results) {
             const moduleId = mapResult.item.moduleId;
@@ -177,12 +180,15 @@ export async function runAnalysisExecutor(
                 try {
                     const analysis = parseAnalysisResponse(mapResult.rawResponse, moduleId);
                     analyses.push(analysis);
-                } catch {
+                } catch (parseErr1) {
                     // Parse failed — try with the output fields
                     try {
                         const analysis = parseOutputAsAnalysis(mapResult.output, moduleId);
                         analyses.push(analysis);
-                    } catch {
+                    } catch (parseErr2) {
+                        logger.debug(LogCategory.MAP_REDUCE, `Analysis parse failed for module "${moduleId}". rawResponse (${mapResult.rawResponse.length} chars): ${mapResult.rawResponse.substring(0, 500)}`);
+                        logger.debug(LogCategory.MAP_REDUCE, `  Parse error 1: ${parseErr1 instanceof Error ? parseErr1.message : String(parseErr1)}`);
+                        logger.debug(LogCategory.MAP_REDUCE, `  Parse error 2: ${parseErr2 instanceof Error ? parseErr2.message : String(parseErr2)}`);
                         failedModuleIds.push(moduleId);
                     }
                 }
@@ -195,6 +201,7 @@ export async function runAnalysisExecutor(
                     failedModuleIds.push(moduleId);
                 }
             } else {
+                logger.debug(LogCategory.MAP_REDUCE, `Analysis failed for module "${moduleId}": success=${mapResult.success}, error=${mapResult.error || 'none'}, rawResponse=${mapResult.rawResponse ? `${mapResult.rawResponse.length} chars: ${mapResult.rawResponse.substring(0, 300)}` : 'none'}`);
                 failedModuleIds.push(moduleId);
             }
         }

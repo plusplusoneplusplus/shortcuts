@@ -262,6 +262,8 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
                     const output = parseAIResponse(result.response, outputFields);
                     return { item, output, success: true, rawResponse: result.response, sessionId: result.sessionId };
                 } catch (parseError) {
+                    const logger = getLogger();
+                    logger.debug(LogCategory.MAP_REDUCE, `PromptMapMapper: Failed to parse AI response for item ${workItem.id}. Response (${result.response.length} chars): ${result.response.substring(0, 500)}`);
                     return {
                         item,
                         output: this.emptyOutput(outputFields),
