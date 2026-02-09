@@ -31,6 +31,7 @@ import type {
     AnalysisCacheMetadata,
 } from '../types';
 import { getRepoHeadHash, getChangedFiles } from './git-utils';
+import { readCacheFile, readCacheFileIf, writeCacheFile, clearCacheFile, clearCacheDir, scanCacheItems } from './cache-utils';
 
 // Re-export git utilities
 export { getRepoHeadHash, getChangedFiles, hasChanges, isGitAvailable, isGitRepo } from './git-utils';
@@ -145,28 +146,14 @@ export function getAnalysesMetadataPath(outputDir: string): string {
  * @returns The cached graph if valid, or null if cache miss
  */
 export async function getCachedGraph(repoPath: string, outputDir: string): Promise<CachedGraph | null> {
-    const cachePath = getGraphCachePath(outputDir);
-
-    // Check if cache file exists
-    if (!fs.existsSync(cachePath)) {
+    const cached = readCacheFileIf<CachedGraph>(
+        getGraphCachePath(outputDir),
+        (d) => !!d.metadata && !!d.graph
+    );
+    if (!cached) {
         return null;
     }
 
-    // Read and parse cached data
-    let cached: CachedGraph;
-    try {
-        const content = fs.readFileSync(cachePath, 'utf-8');
-        cached = JSON.parse(content) as CachedGraph;
-    } catch {
-        return null; // Corrupted cache
-    }
-
-    // Validate cache structure
-    if (!cached.metadata || !cached.graph) {
-        return null;
-    }
-
-    // Validate git hash matches current HEAD
     try {
         const currentHash = await getRepoHeadHash(repoPath);
         if (!currentHash || currentHash !== cached.metadata.gitHash) {
@@ -186,25 +173,10 @@ export async function getCachedGraph(repoPath: string, outputDir: string): Promi
  * @returns The cached graph if it exists and is structurally valid, or null
  */
 export function getCachedGraphAny(outputDir: string): CachedGraph | null {
-    const cachePath = getGraphCachePath(outputDir);
-
-    if (!fs.existsSync(cachePath)) {
-        return null;
-    }
-
-    let cached: CachedGraph;
-    try {
-        const content = fs.readFileSync(cachePath, 'utf-8');
-        cached = JSON.parse(content) as CachedGraph;
-    } catch {
-        return null;
-    }
-
-    if (!cached.metadata || !cached.graph) {
-        return null;
-    }
-
-    return cached;
+    return readCacheFileIf<CachedGraph>(
+        getGraphCachePath(outputDir),
+        (d) => !!d.metadata && !!d.graph
+    );
 }
 
 // ============================================================================
@@ -238,19 +210,7 @@ export async function saveGraph(
         focus,
     };
 
-    const cached: CachedGraph = {
-        metadata,
-        graph,
-    };
-
-    const cacheDir = getCacheDir(outputDir);
-    const cachePath = getGraphCachePath(outputDir);
-
-    // Ensure cache directory exists
-    fs.mkdirSync(cacheDir, { recursive: true });
-
-    // Write cache file
-    fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
+    writeCacheFile<CachedGraph>(getGraphCachePath(outputDir), { metadata, graph });
 }
 
 // ============================================================================
@@ -288,31 +248,14 @@ export async function getCachedConsolidation(
     outputDir: string,
     inputModuleCount: number
 ): Promise<CachedConsolidation | null> {
-    const cachePath = getConsolidatedGraphCachePath(outputDir);
-
-    if (!fs.existsSync(cachePath)) {
+    const cached = readCacheFileIf<CachedConsolidation>(
+        getConsolidatedGraphCachePath(outputDir),
+        (d) => !!d.graph && !!d.gitHash && !!d.inputModuleCount && d.inputModuleCount === inputModuleCount
+    );
+    if (!cached) {
         return null;
     }
 
-    let cached: CachedConsolidation;
-    try {
-        const content = fs.readFileSync(cachePath, 'utf-8');
-        cached = JSON.parse(content) as CachedConsolidation;
-    } catch {
-        return null; // Corrupted cache
-    }
-
-    // Validate structure
-    if (!cached.graph || !cached.gitHash || !cached.inputModuleCount) {
-        return null;
-    }
-
-    // Validate input module count matches
-    if (cached.inputModuleCount !== inputModuleCount) {
-        return null;
-    }
-
-    // Validate git hash matches current HEAD
     try {
         const currentHash = await getRepoHeadHash(repoPath);
         if (!currentHash || currentHash !== cached.gitHash) {
@@ -339,29 +282,10 @@ export function getCachedConsolidationAny(
     outputDir: string,
     inputModuleCount: number
 ): CachedConsolidation | null {
-    const cachePath = getConsolidatedGraphCachePath(outputDir);
-
-    if (!fs.existsSync(cachePath)) {
-        return null;
-    }
-
-    let cached: CachedConsolidation;
-    try {
-        const content = fs.readFileSync(cachePath, 'utf-8');
-        cached = JSON.parse(content) as CachedConsolidation;
-    } catch {
-        return null;
-    }
-
-    if (!cached.graph || !cached.gitHash || !cached.inputModuleCount) {
-        return null;
-    }
-
-    if (cached.inputModuleCount !== inputModuleCount) {
-        return null;
-    }
-
-    return cached;
+    return readCacheFileIf<CachedConsolidation>(
+        getConsolidatedGraphCachePath(outputDir),
+        (d) => !!d.graph && !!d.gitHash && !!d.inputModuleCount && d.inputModuleCount === inputModuleCount
+    );
 }
 
 // ============================================================================
@@ -387,18 +311,12 @@ export async function saveConsolidation(
         return; // Can't determine git hash
     }
 
-    const cached: CachedConsolidation = {
+    writeCacheFile<CachedConsolidation>(getConsolidatedGraphCachePath(outputDir), {
         graph,
         gitHash: currentHash,
         inputModuleCount,
         timestamp: Date.now(),
-    };
-
-    const cacheDir = getCacheDir(outputDir);
-    const cachePath = getConsolidatedGraphCachePath(outputDir);
-
-    fs.mkdirSync(cacheDir, { recursive: true });
-    fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
+    });
 }
 
 // ============================================================================
@@ -412,12 +330,7 @@ export async function saveConsolidation(
  * @returns True if cache was cleared, false if no cache existed
  */
 export function clearConsolidationCache(outputDir: string): boolean {
-    const cachePath = getConsolidatedGraphCachePath(outputDir);
-    if (fs.existsSync(cachePath)) {
-        fs.unlinkSync(cachePath);
-        return true;
-    }
-    return false;
+    return clearCacheFile(getConsolidatedGraphCachePath(outputDir));
 }
 
 // ============================================================================
@@ -432,22 +345,11 @@ export function clearConsolidationCache(outputDir: string): boolean {
  * @returns The cached analysis, or null if not found
  */
 export function getCachedAnalysis(moduleId: string, outputDir: string): ModuleAnalysis | null {
-    const cachePath = getAnalysisCachePath(outputDir, moduleId);
-
-    if (!fs.existsSync(cachePath)) {
-        return null;
-    }
-
-    try {
-        const content = fs.readFileSync(cachePath, 'utf-8');
-        const cached = JSON.parse(content) as CachedAnalysis;
-        if (!cached.analysis || !cached.analysis.moduleId) {
-            return null;
-        }
-        return cached.analysis;
-    } catch {
-        return null; // Corrupted cache entry
-    }
+    const cached = readCacheFileIf<CachedAnalysis>(
+        getAnalysisCachePath(outputDir, moduleId),
+        (d) => !!d.analysis && !!d.analysis.moduleId
+    );
+    return cached?.analysis ?? null;
 }
 
 /**
@@ -457,22 +359,11 @@ export function getCachedAnalysis(moduleId: string, outputDir: string): ModuleAn
  * @returns Array of cached analyses, or null if cache is invalid/missing
  */
 export function getCachedAnalyses(outputDir: string): ModuleAnalysis[] | null {
-    const metadataPath = getAnalysesMetadataPath(outputDir);
-
-    if (!fs.existsSync(metadataPath)) {
-        return null;
-    }
-
-    // Read metadata
-    let metadata: AnalysisCacheMetadata;
-    try {
-        const content = fs.readFileSync(metadataPath, 'utf-8');
-        metadata = JSON.parse(content) as AnalysisCacheMetadata;
-    } catch {
-        return null;
-    }
-
-    if (!metadata.gitHash || !metadata.moduleCount) {
+    const metadata = readCacheFileIf<AnalysisCacheMetadata>(
+        getAnalysesMetadataPath(outputDir),
+        (d) => !!d.gitHash && !!d.moduleCount
+    );
+    if (!metadata) {
         return null;
     }
 
@@ -487,14 +378,12 @@ export function getCachedAnalyses(outputDir: string): ModuleAnalysis[] | null {
                 continue;
             }
 
-            try {
-                const content = fs.readFileSync(path.join(analysesDir, file), 'utf-8');
-                const cached = JSON.parse(content) as CachedAnalysis;
-                if (cached.analysis && cached.analysis.moduleId) {
-                    analyses.push(cached.analysis);
-                }
-            } catch {
-                // Skip corrupted entries
+            const cached = readCacheFileIf<CachedAnalysis>(
+                path.join(analysesDir, file),
+                (d) => !!d.analysis && !!d.analysis.moduleId
+            );
+            if (cached) {
+                analyses.push(cached.analysis);
             }
         }
     } catch {
@@ -508,17 +397,7 @@ export function getCachedAnalyses(outputDir: string): ModuleAnalysis[] | null {
  * Get the analyses cache metadata (for hash checking).
  */
 export function getAnalysesCacheMetadata(outputDir: string): AnalysisCacheMetadata | null {
-    const metadataPath = getAnalysesMetadataPath(outputDir);
-    if (!fs.existsSync(metadataPath)) {
-        return null;
-    }
-
-    try {
-        const content = fs.readFileSync(metadataPath, 'utf-8');
-        return JSON.parse(content) as AnalysisCacheMetadata;
-    } catch {
-        return null;
-    }
+    return readCacheFile<AnalysisCacheMetadata>(getAnalysesMetadataPath(outputDir));
 }
 
 // ============================================================================
@@ -539,18 +418,11 @@ export function saveAnalysis(
     outputDir: string,
     gitHash: string
 ): void {
-    const analysesDir = getAnalysesCacheDir(outputDir);
-    const cachePath = getAnalysisCachePath(outputDir, moduleId);
-
-    fs.mkdirSync(analysesDir, { recursive: true });
-
-    const cached: CachedAnalysis = {
+    writeCacheFile<CachedAnalysis>(getAnalysisCachePath(outputDir, moduleId), {
         analysis,
         gitHash,
         timestamp: Date.now(),
-    };
-
-    fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
+    });
 }
 
 /**
@@ -570,24 +442,18 @@ export async function saveAllAnalyses(
         return; // Can't determine git hash
     }
 
-    const analysesDir = getAnalysesCacheDir(outputDir);
-    fs.mkdirSync(analysesDir, { recursive: true });
-
     // Write individual analysis files
     for (const analysis of analyses) {
         saveAnalysis(analysis.moduleId, analysis, outputDir, currentHash);
     }
 
     // Write metadata
-    const metadata: AnalysisCacheMetadata = {
+    writeCacheFile<AnalysisCacheMetadata>(getAnalysesMetadataPath(outputDir), {
         gitHash: currentHash,
         timestamp: Date.now(),
         version: CACHE_VERSION,
         moduleCount: analyses.length,
-    };
-
-    const metadataPath = getAnalysesMetadataPath(outputDir);
-    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+    });
 }
 
 /**
@@ -608,35 +474,12 @@ export function scanIndividualAnalysesCache(
     outputDir: string,
     currentGitHash: string
 ): { found: ModuleAnalysis[]; missing: string[] } {
-    const found: ModuleAnalysis[] = [];
-    const missing: string[] = [];
-
-    for (const moduleId of moduleIds) {
-        const cachePath = getAnalysisCachePath(outputDir, moduleId);
-        if (!fs.existsSync(cachePath)) {
-            missing.push(moduleId);
-            continue;
-        }
-
-        try {
-            const content = fs.readFileSync(cachePath, 'utf-8');
-            const cached = JSON.parse(content) as CachedAnalysis;
-            if (
-                cached.analysis &&
-                cached.analysis.moduleId &&
-                cached.gitHash === currentGitHash
-            ) {
-                found.push(cached.analysis);
-            } else {
-                // Stale (different git hash) or invalid — needs re-analysis
-                missing.push(moduleId);
-            }
-        } catch {
-            missing.push(moduleId);
-        }
-    }
-
-    return { found, missing };
+    return scanCacheItems<CachedAnalysis, ModuleAnalysis>(
+        moduleIds,
+        (id) => getAnalysisCachePath(outputDir, id),
+        (cached) => !!cached.analysis && !!cached.analysis.moduleId && cached.gitHash === currentGitHash,
+        (cached) => cached.analysis
+    );
 }
 
 /**
@@ -650,30 +493,12 @@ export function scanIndividualAnalysesCacheAny(
     moduleIds: string[],
     outputDir: string
 ): { found: ModuleAnalysis[]; missing: string[] } {
-    const found: ModuleAnalysis[] = [];
-    const missing: string[] = [];
-
-    for (const moduleId of moduleIds) {
-        const cachePath = getAnalysisCachePath(outputDir, moduleId);
-        if (!fs.existsSync(cachePath)) {
-            missing.push(moduleId);
-            continue;
-        }
-
-        try {
-            const content = fs.readFileSync(cachePath, 'utf-8');
-            const cached = JSON.parse(content) as CachedAnalysis;
-            if (cached.analysis && cached.analysis.moduleId) {
-                found.push(cached.analysis);
-            } else {
-                missing.push(moduleId);
-            }
-        } catch {
-            missing.push(moduleId);
-        }
-    }
-
-    return { found, missing };
+    return scanCacheItems<CachedAnalysis, ModuleAnalysis>(
+        moduleIds,
+        (id) => getAnalysisCachePath(outputDir, id),
+        (cached) => !!cached.analysis && !!cached.analysis.moduleId,
+        (cached) => cached.analysis
+    );
 }
 
 // ============================================================================
@@ -687,21 +512,7 @@ export function scanIndividualAnalysesCacheAny(
  * @returns True if cache was cleared, false if no cache existed
  */
 export function clearAnalysesCache(outputDir: string): boolean {
-    const analysesDir = getAnalysesCacheDir(outputDir);
-    if (!fs.existsSync(analysesDir)) {
-        return false;
-    }
-
-    try {
-        const files = fs.readdirSync(analysesDir);
-        for (const file of files) {
-            fs.unlinkSync(path.join(analysesDir, file));
-        }
-        fs.rmdirSync(analysesDir);
-        return true;
-    } catch {
-        return false;
-    }
+    return clearCacheDir(getAnalysesCacheDir(outputDir));
 }
 
 // ============================================================================
@@ -791,19 +602,12 @@ export function getCachedArticle(moduleId: string, outputDir: string, areaId?: s
         : [getArticleCachePath(outputDir, moduleId)];
 
     for (const cachePath of pathsToTry) {
-        if (!fs.existsSync(cachePath)) {
-            continue;
-        }
-
-        try {
-            const content = fs.readFileSync(cachePath, 'utf-8');
-            const cached = JSON.parse(content) as CachedArticle;
-            if (!cached.article || !cached.article.slug) {
-                continue;
-            }
+        const cached = readCacheFileIf<CachedArticle>(
+            cachePath,
+            (d) => !!d.article && !!d.article.slug
+        );
+        if (cached) {
             return cached.article;
-        } catch {
-            continue; // Corrupted cache entry
         }
     }
 
@@ -818,28 +622,18 @@ export function getCachedArticle(moduleId: string, outputDir: string, areaId?: s
  * @returns Array of cached articles, or null if cache is invalid/missing
  */
 export function getCachedArticles(outputDir: string): GeneratedArticle[] | null {
-    const metadataPath = getArticlesMetadataPath(outputDir);
-
-    if (!fs.existsSync(metadataPath)) {
-        return null;
-    }
-
-    // Read metadata
-    let metadata: AnalysisCacheMetadata;
-    try {
-        const content = fs.readFileSync(metadataPath, 'utf-8');
-        metadata = JSON.parse(content) as AnalysisCacheMetadata;
-    } catch {
-        return null;
-    }
-
-    if (!metadata.gitHash || !metadata.moduleCount) {
+    const metadata = readCacheFileIf<AnalysisCacheMetadata>(
+        getArticlesMetadataPath(outputDir),
+        (d) => !!d.gitHash && !!d.moduleCount
+    );
+    if (!metadata) {
         return null;
     }
 
     // Read all article files (flat + area-scoped)
     const articlesDir = getArticlesCacheDir(outputDir);
     const articles: GeneratedArticle[] = [];
+    const articleValidator = (d: CachedArticle) => !!d.article && !!d.article.slug;
 
     try {
         const entries = fs.readdirSync(articlesDir, { withFileTypes: true });
@@ -851,14 +645,9 @@ export function getCachedArticles(outputDir: string): GeneratedArticle[] | null 
 
             if (entry.isFile() && entry.name.endsWith('.json')) {
                 // Flat layout: articles/{module-id}.json
-                try {
-                    const content = fs.readFileSync(path.join(articlesDir, entry.name), 'utf-8');
-                    const cached = JSON.parse(content) as CachedArticle;
-                    if (cached.article && cached.article.slug) {
-                        articles.push(cached.article);
-                    }
-                } catch {
-                    // Skip corrupted entries
+                const cached = readCacheFileIf<CachedArticle>(path.join(articlesDir, entry.name), articleValidator);
+                if (cached) {
+                    articles.push(cached.article);
                 }
             } else if (entry.isDirectory()) {
                 // Area-scoped layout: articles/{area-id}/{module-id}.json
@@ -867,14 +656,9 @@ export function getCachedArticles(outputDir: string): GeneratedArticle[] | null 
                     const areaFiles = fs.readdirSync(areaDir);
                     for (const file of areaFiles) {
                         if (!file.endsWith('.json')) { continue; }
-                        try {
-                            const content = fs.readFileSync(path.join(areaDir, file), 'utf-8');
-                            const cached = JSON.parse(content) as CachedArticle;
-                            if (cached.article && cached.article.slug) {
-                                articles.push(cached.article);
-                            }
-                        } catch {
-                            // Skip corrupted entries
+                        const cached = readCacheFileIf<CachedArticle>(path.join(areaDir, file), articleValidator);
+                        if (cached) {
+                            articles.push(cached.article);
                         }
                     }
                 } catch {
@@ -893,17 +677,7 @@ export function getCachedArticles(outputDir: string): GeneratedArticle[] | null 
  * Get the articles cache metadata (for hash checking).
  */
 export function getArticlesCacheMetadata(outputDir: string): AnalysisCacheMetadata | null {
-    const metadataPath = getArticlesMetadataPath(outputDir);
-    if (!fs.existsSync(metadataPath)) {
-        return null;
-    }
-
-    try {
-        const content = fs.readFileSync(metadataPath, 'utf-8');
-        return JSON.parse(content) as AnalysisCacheMetadata;
-    } catch {
-        return null;
-    }
+    return readCacheFile<AnalysisCacheMetadata>(getArticlesMetadataPath(outputDir));
 }
 
 // ============================================================================
@@ -914,17 +688,7 @@ export function getArticlesCacheMetadata(outputDir: string): AnalysisCacheMetada
  * Get the reduce articles cache metadata (for hash checking).
  */
 export function getReduceCacheMetadata(outputDir: string): AnalysisCacheMetadata | null {
-    const metadataPath = getReduceMetadataPath(outputDir);
-    if (!fs.existsSync(metadataPath)) {
-        return null;
-    }
-
-    try {
-        const content = fs.readFileSync(metadataPath, 'utf-8');
-        return JSON.parse(content) as AnalysisCacheMetadata;
-    } catch {
-        return null;
-    }
+    return readCacheFile<AnalysisCacheMetadata>(getReduceMetadataPath(outputDir));
 }
 
 /**
@@ -972,14 +736,12 @@ export function getCachedReduceArticles(
                 continue;
             }
 
-            try {
-                const content = fs.readFileSync(path.join(articlesDir, file), 'utf-8');
-                const cached = JSON.parse(content) as CachedArticle;
-                if (cached.article && cached.article.slug) {
-                    articles.push(cached.article);
-                }
-            } catch {
-                // Skip corrupted entries
+            const cached = readCacheFileIf<CachedArticle>(
+                path.join(articlesDir, file),
+                (d) => !!d.article && !!d.article.slug
+            );
+            if (cached) {
+                articles.push(cached.article);
             }
         }
     } catch {
@@ -1008,19 +770,11 @@ export function saveArticle(
     outputDir: string,
     gitHash: string
 ): void {
-    const areaId = article.areaId;
-    const cachePath = getArticleCachePath(outputDir, moduleId, areaId);
-
-    // Ensure parent directory exists (handles area subdirectories too)
-    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-
-    const cached: CachedArticle = {
+    writeCacheFile<CachedArticle>(getArticleCachePath(outputDir, moduleId, article.areaId), {
         article,
         gitHash,
         timestamp: Date.now(),
-    };
-
-    fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
+    });
 }
 
 /**
@@ -1043,24 +797,18 @@ export async function saveAllArticles(
     // Only cache module-type articles (not index/architecture/getting-started/area-*)
     const moduleArticles = articles.filter(a => a.type === 'module' && a.moduleId);
 
-    const articlesDir = getArticlesCacheDir(outputDir);
-    fs.mkdirSync(articlesDir, { recursive: true });
-
     // Write individual article files (saveArticle handles area subdirectories)
     for (const article of moduleArticles) {
         saveArticle(article.moduleId!, article, outputDir, currentHash);
     }
 
     // Write metadata
-    const metadata: AnalysisCacheMetadata = {
+    writeCacheFile<AnalysisCacheMetadata>(getArticlesMetadataPath(outputDir), {
         gitHash: currentHash,
         timestamp: Date.now(),
         version: CACHE_VERSION,
         moduleCount: moduleArticles.length,
-    };
-
-    const metadataPath = getArticlesMetadataPath(outputDir);
-    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+    });
 }
 
 // ============================================================================
@@ -1089,30 +837,22 @@ export function saveReduceArticles(
         return;
     }
 
-    const articlesDir = getArticlesCacheDir(outputDir);
-    fs.mkdirSync(articlesDir, { recursive: true });
-
     // Write individual reduce article files
     for (const article of reduceArticles) {
-        const cachePath = getReduceArticleCachePath(outputDir, article.type, article.areaId);
-        const cached: CachedArticle = {
+        writeCacheFile<CachedArticle>(getReduceArticleCachePath(outputDir, article.type, article.areaId), {
             article,
             gitHash,
             timestamp: Date.now(),
-        };
-        fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
+        });
     }
 
     // Write reduce metadata
-    const metadata: AnalysisCacheMetadata = {
+    writeCacheFile<AnalysisCacheMetadata>(getReduceMetadataPath(outputDir), {
         gitHash,
         timestamp: Date.now(),
         version: CACHE_VERSION,
         moduleCount: reduceArticles.length,
-    };
-
-    const metadataPath = getReduceMetadataPath(outputDir);
-    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+    });
 }
 
 /**
@@ -1168,35 +908,12 @@ export function scanIndividualArticlesCache(
     outputDir: string,
     currentGitHash: string
 ): { found: GeneratedArticle[]; missing: string[] } {
-    const found: GeneratedArticle[] = [];
-    const missing: string[] = [];
-
-    for (const moduleId of moduleIds) {
-        const cachePath = findArticleCachePath(outputDir, moduleId);
-        if (!cachePath) {
-            missing.push(moduleId);
-            continue;
-        }
-
-        try {
-            const content = fs.readFileSync(cachePath, 'utf-8');
-            const cached = JSON.parse(content) as CachedArticle;
-            if (
-                cached.article &&
-                cached.article.slug &&
-                cached.gitHash === currentGitHash
-            ) {
-                found.push(cached.article);
-            } else {
-                // Stale (different git hash) or invalid — needs regeneration
-                missing.push(moduleId);
-            }
-        } catch {
-            missing.push(moduleId);
-        }
-    }
-
-    return { found, missing };
+    return scanCacheItems<CachedArticle, GeneratedArticle>(
+        moduleIds,
+        (id) => findArticleCachePath(outputDir, id),
+        (cached) => !!cached.article && !!cached.article.slug && cached.gitHash === currentGitHash,
+        (cached) => cached.article
+    );
 }
 
 /**
@@ -1212,30 +929,12 @@ export function scanIndividualArticlesCacheAny(
     moduleIds: string[],
     outputDir: string
 ): { found: GeneratedArticle[]; missing: string[] } {
-    const found: GeneratedArticle[] = [];
-    const missing: string[] = [];
-
-    for (const moduleId of moduleIds) {
-        const cachePath = findArticleCachePath(outputDir, moduleId);
-        if (!cachePath) {
-            missing.push(moduleId);
-            continue;
-        }
-
-        try {
-            const content = fs.readFileSync(cachePath, 'utf-8');
-            const cached = JSON.parse(content) as CachedArticle;
-            if (cached.article && cached.article.slug) {
-                found.push(cached.article);
-            } else {
-                missing.push(moduleId);
-            }
-        } catch {
-            missing.push(moduleId);
-        }
-    }
-
-    return { found, missing };
+    return scanCacheItems<CachedArticle, GeneratedArticle>(
+        moduleIds,
+        (id) => findArticleCachePath(outputDir, id),
+        (cached) => !!cached.article && !!cached.article.slug,
+        (cached) => cached.article
+    );
 }
 
 // ============================================================================
@@ -1249,17 +948,7 @@ export function scanIndividualArticlesCacheAny(
  * @returns True if cache was cleared, false if no cache existed
  */
 export function clearArticlesCache(outputDir: string): boolean {
-    const articlesDir = getArticlesCacheDir(outputDir);
-    if (!fs.existsSync(articlesDir)) {
-        return false;
-    }
-
-    try {
-        fs.rmSync(articlesDir, { recursive: true, force: true });
-        return true;
-    } catch {
-        return false;
-    }
+    return clearCacheDir(getArticlesCacheDir(outputDir));
 }
 
 // ============================================================================
@@ -1356,12 +1045,7 @@ export async function getModulesNeedingReanalysis(
  * @returns True if cache was cleared, false if no cache existed
  */
 export function clearCache(outputDir: string): boolean {
-    const cachePath = getGraphCachePath(outputDir);
-    if (fs.existsSync(cachePath)) {
-        fs.unlinkSync(cachePath);
-        return true;
-    }
-    return false;
+    return clearCacheFile(getGraphCachePath(outputDir));
 }
 
 /**

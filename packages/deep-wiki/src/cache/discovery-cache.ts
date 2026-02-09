@@ -25,7 +25,6 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import type {
     TopicSeed,
@@ -39,6 +38,7 @@ import type {
     DiscoveryProgressMetadata,
 } from '../types';
 import { normalizeModuleId } from '../schemas';
+import { readCacheFile, readCacheFileIf, writeCacheFile, clearCacheDir, scanCacheItemsMap } from './cache-utils';
 
 // ============================================================================
 // Constants
@@ -109,38 +109,8 @@ function getAreaCachePath(outputDir: string, areaId: string): string {
     return path.join(getAreasCacheDir(outputDir), `${slug}.json`);
 }
 
-// ============================================================================
-// Atomic Write Helper
-// ============================================================================
-
-/**
- * Write to a file atomically (write to temp file, then rename).
- * This prevents partial writes on crash.
- */
-function atomicWriteFileSync(filePath: string, data: string): void {
-    const dir = path.dirname(filePath);
-    fs.mkdirSync(dir, { recursive: true });
-
-    const tempPath = filePath + '.tmp';
-    fs.writeFileSync(tempPath, data, 'utf-8');
-    fs.renameSync(tempPath, filePath);
-}
-
-/**
- * Safely read and parse a JSON cache file.
- * Returns null on any error (missing, corrupted, permission denied).
- */
-function safeReadJSON<T>(filePath: string): T | null {
-    try {
-        if (!fs.existsSync(filePath)) {
-            return null;
-        }
-        const content = fs.readFileSync(filePath, 'utf-8');
-        return JSON.parse(content) as T;
-    } catch {
-        return null; // Graceful degradation
-    }
-}
+// Local helpers (atomicWriteFileSync and safeReadJSON) have been replaced
+// by shared primitives from cache-utils.ts (writeCacheFile and readCacheFile).
 
 // ============================================================================
 // Seeds Cache
@@ -158,13 +128,11 @@ export function saveSeedsCache(
     outputDir: string,
     gitHash: string
 ): void {
-    const filePath = path.join(getDiscoveryCacheDir(outputDir), SEEDS_FILE);
-    const cached: CachedSeeds = {
+    writeCacheFile<CachedSeeds>(path.join(getDiscoveryCacheDir(outputDir), SEEDS_FILE), {
         seeds,
         gitHash,
         timestamp: Date.now(),
-    };
-    atomicWriteFileSync(filePath, JSON.stringify(cached, null, 2));
+    });
 }
 
 /**
@@ -178,12 +146,11 @@ export function getCachedSeeds(
     outputDir: string,
     gitHash: string
 ): TopicSeed[] | null {
-    const filePath = path.join(getDiscoveryCacheDir(outputDir), SEEDS_FILE);
-    const cached = safeReadJSON<CachedSeeds>(filePath);
-    if (!cached || !cached.seeds || cached.gitHash !== gitHash) {
-        return null;
-    }
-    return cached.seeds;
+    const cached = readCacheFileIf<CachedSeeds>(
+        path.join(getDiscoveryCacheDir(outputDir), SEEDS_FILE),
+        (d) => !!d.seeds && d.gitHash === gitHash
+    );
+    return cached?.seeds ?? null;
 }
 
 /**
@@ -195,12 +162,11 @@ export function getCachedSeeds(
 export function getCachedSeedsAny(
     outputDir: string
 ): TopicSeed[] | null {
-    const filePath = path.join(getDiscoveryCacheDir(outputDir), SEEDS_FILE);
-    const cached = safeReadJSON<CachedSeeds>(filePath);
-    if (!cached || !cached.seeds) {
-        return null;
-    }
-    return cached.seeds;
+    const cached = readCacheFileIf<CachedSeeds>(
+        path.join(getDiscoveryCacheDir(outputDir), SEEDS_FILE),
+        (d) => !!d.seeds
+    );
+    return cached?.seeds ?? null;
 }
 
 // ============================================================================
@@ -221,13 +187,11 @@ export function saveProbeResult(
     outputDir: string,
     gitHash: string
 ): void {
-    const filePath = getProbeCachePath(outputDir, topic);
-    const cached: CachedProbeResult = {
+    writeCacheFile<CachedProbeResult>(getProbeCachePath(outputDir, topic), {
         probeResult: result,
         gitHash,
         timestamp: Date.now(),
-    };
-    atomicWriteFileSync(filePath, JSON.stringify(cached, null, 2));
+    });
 }
 
 /**
@@ -243,12 +207,11 @@ export function getCachedProbeResult(
     outputDir: string,
     gitHash: string
 ): TopicProbeResult | null {
-    const filePath = getProbeCachePath(outputDir, topic);
-    const cached = safeReadJSON<CachedProbeResult>(filePath);
-    if (!cached || !cached.probeResult || cached.gitHash !== gitHash) {
-        return null;
-    }
-    return cached.probeResult;
+    const cached = readCacheFileIf<CachedProbeResult>(
+        getProbeCachePath(outputDir, topic),
+        (d) => !!d.probeResult && d.gitHash === gitHash
+    );
+    return cached?.probeResult ?? null;
 }
 
 /**
@@ -264,19 +227,12 @@ export function scanCachedProbes(
     outputDir: string,
     gitHash: string
 ): { found: Map<string, TopicProbeResult>; missing: string[] } {
-    const found = new Map<string, TopicProbeResult>();
-    const missing: string[] = [];
-
-    for (const topic of topics) {
-        const result = getCachedProbeResult(topic, outputDir, gitHash);
-        if (result) {
-            found.set(topic, result);
-        } else {
-            missing.push(topic);
-        }
-    }
-
-    return { found, missing };
+    return scanCacheItemsMap<CachedProbeResult, TopicProbeResult>(
+        topics,
+        (topic) => getProbeCachePath(outputDir, topic),
+        (cached) => !!cached.probeResult && cached.gitHash === gitHash,
+        (cached) => cached.probeResult
+    );
 }
 
 /**
@@ -286,20 +242,12 @@ export function scanCachedProbesAny(
     topics: string[],
     outputDir: string
 ): { found: Map<string, TopicProbeResult>; missing: string[] } {
-    const found = new Map<string, TopicProbeResult>();
-    const missing: string[] = [];
-
-    for (const topic of topics) {
-        const filePath = getProbeCachePath(outputDir, topic);
-        const cached = safeReadJSON<CachedProbeResult>(filePath);
-        if (cached?.probeResult) {
-            found.set(topic, cached.probeResult);
-        } else {
-            missing.push(topic);
-        }
-    }
-
-    return { found, missing };
+    return scanCacheItemsMap<CachedProbeResult, TopicProbeResult>(
+        topics,
+        (topic) => getProbeCachePath(outputDir, topic),
+        (cached) => !!cached.probeResult,
+        (cached) => cached.probeResult
+    );
 }
 
 // ============================================================================
@@ -318,13 +266,11 @@ export function saveStructuralScan(
     outputDir: string,
     gitHash: string
 ): void {
-    const filePath = path.join(getDiscoveryCacheDir(outputDir), STRUCTURAL_SCAN_FILE);
-    const cached: CachedStructuralScan = {
+    writeCacheFile<CachedStructuralScan>(path.join(getDiscoveryCacheDir(outputDir), STRUCTURAL_SCAN_FILE), {
         scanResult: scan,
         gitHash,
         timestamp: Date.now(),
-    };
-    atomicWriteFileSync(filePath, JSON.stringify(cached, null, 2));
+    });
 }
 
 /**
@@ -338,12 +284,11 @@ export function getCachedStructuralScan(
     outputDir: string,
     gitHash: string
 ): StructuralScanResult | null {
-    const filePath = path.join(getDiscoveryCacheDir(outputDir), STRUCTURAL_SCAN_FILE);
-    const cached = safeReadJSON<CachedStructuralScan>(filePath);
-    if (!cached || !cached.scanResult || cached.gitHash !== gitHash) {
-        return null;
-    }
-    return cached.scanResult;
+    const cached = readCacheFileIf<CachedStructuralScan>(
+        path.join(getDiscoveryCacheDir(outputDir), STRUCTURAL_SCAN_FILE),
+        (d) => !!d.scanResult && d.gitHash === gitHash
+    );
+    return cached?.scanResult ?? null;
 }
 
 /**
@@ -352,12 +297,11 @@ export function getCachedStructuralScan(
 export function getCachedStructuralScanAny(
     outputDir: string
 ): StructuralScanResult | null {
-    const filePath = path.join(getDiscoveryCacheDir(outputDir), STRUCTURAL_SCAN_FILE);
-    const cached = safeReadJSON<CachedStructuralScan>(filePath);
-    if (!cached || !cached.scanResult) {
-        return null;
-    }
-    return cached.scanResult;
+    const cached = readCacheFileIf<CachedStructuralScan>(
+        path.join(getDiscoveryCacheDir(outputDir), STRUCTURAL_SCAN_FILE),
+        (d) => !!d.scanResult
+    );
+    return cached?.scanResult ?? null;
 }
 
 // ============================================================================
@@ -378,13 +322,11 @@ export function saveAreaSubGraph(
     outputDir: string,
     gitHash: string
 ): void {
-    const filePath = getAreaCachePath(outputDir, areaId);
-    const cached: CachedAreaGraph = {
+    writeCacheFile<CachedAreaGraph>(getAreaCachePath(outputDir, areaId), {
         graph,
         gitHash,
         timestamp: Date.now(),
-    };
-    atomicWriteFileSync(filePath, JSON.stringify(cached, null, 2));
+    });
 }
 
 /**
@@ -400,12 +342,11 @@ export function getCachedAreaSubGraph(
     outputDir: string,
     gitHash: string
 ): ModuleGraph | null {
-    const filePath = getAreaCachePath(outputDir, areaId);
-    const cached = safeReadJSON<CachedAreaGraph>(filePath);
-    if (!cached || !cached.graph || cached.gitHash !== gitHash) {
-        return null;
-    }
-    return cached.graph;
+    const cached = readCacheFileIf<CachedAreaGraph>(
+        getAreaCachePath(outputDir, areaId),
+        (d) => !!d.graph && d.gitHash === gitHash
+    );
+    return cached?.graph ?? null;
 }
 
 /**
@@ -421,19 +362,12 @@ export function scanCachedAreas(
     outputDir: string,
     gitHash: string
 ): { found: Map<string, ModuleGraph>; missing: string[] } {
-    const found = new Map<string, ModuleGraph>();
-    const missing: string[] = [];
-
-    for (const areaId of areaIds) {
-        const graph = getCachedAreaSubGraph(areaId, outputDir, gitHash);
-        if (graph) {
-            found.set(areaId, graph);
-        } else {
-            missing.push(areaId);
-        }
-    }
-
-    return { found, missing };
+    return scanCacheItemsMap<CachedAreaGraph, ModuleGraph>(
+        areaIds,
+        (areaId) => getAreaCachePath(outputDir, areaId),
+        (cached) => !!cached.graph && cached.gitHash === gitHash,
+        (cached) => cached.graph
+    );
 }
 
 /**
@@ -443,20 +377,12 @@ export function scanCachedAreasAny(
     areaIds: string[],
     outputDir: string
 ): { found: Map<string, ModuleGraph>; missing: string[] } {
-    const found = new Map<string, ModuleGraph>();
-    const missing: string[] = [];
-
-    for (const areaId of areaIds) {
-        const filePath = getAreaCachePath(outputDir, areaId);
-        const cached = safeReadJSON<CachedAreaGraph>(filePath);
-        if (cached?.graph) {
-            found.set(areaId, cached.graph);
-        } else {
-            missing.push(areaId);
-        }
-    }
-
-    return { found, missing };
+    return scanCacheItemsMap<CachedAreaGraph, ModuleGraph>(
+        areaIds,
+        (areaId) => getAreaCachePath(outputDir, areaId),
+        (cached) => !!cached.graph,
+        (cached) => cached.graph
+    );
 }
 
 // ============================================================================
@@ -473,8 +399,7 @@ export function saveDiscoveryMetadata(
     metadata: DiscoveryProgressMetadata,
     outputDir: string
 ): void {
-    const filePath = path.join(getDiscoveryCacheDir(outputDir), METADATA_FILE);
-    atomicWriteFileSync(filePath, JSON.stringify(metadata, null, 2));
+    writeCacheFile(path.join(getDiscoveryCacheDir(outputDir), METADATA_FILE), metadata);
 }
 
 /**
@@ -486,8 +411,7 @@ export function saveDiscoveryMetadata(
 export function getDiscoveryMetadata(
     outputDir: string
 ): DiscoveryProgressMetadata | null {
-    const filePath = path.join(getDiscoveryCacheDir(outputDir), METADATA_FILE);
-    return safeReadJSON<DiscoveryProgressMetadata>(filePath);
+    return readCacheFile<DiscoveryProgressMetadata>(path.join(getDiscoveryCacheDir(outputDir), METADATA_FILE));
 }
 
 // ============================================================================
@@ -501,15 +425,5 @@ export function getDiscoveryMetadata(
  * @returns True if cache was cleared, false if no cache existed
  */
 export function clearDiscoveryCache(outputDir: string): boolean {
-    const discoveryDir = getDiscoveryCacheDir(outputDir);
-    if (!fs.existsSync(discoveryDir)) {
-        return false;
-    }
-
-    try {
-        fs.rmSync(discoveryDir, { recursive: true, force: true });
-        return true;
-    } catch {
-        return false;
-    }
+    return clearCacheDir(getDiscoveryCacheDir(outputDir));
 }
