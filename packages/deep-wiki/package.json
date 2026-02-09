@@ -8,6 +8,7 @@
     "deep-wiki": "./dist/index.js"
   },
   "scripts": {
+    "prebuild": "cd ../pipeline-core && npm run build",
     "build": "tsc",
     "test": "vitest",
     "test:run": "vitest run",
