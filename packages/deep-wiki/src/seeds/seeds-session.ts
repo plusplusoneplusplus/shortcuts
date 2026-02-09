@@ -18,6 +18,7 @@ import type { SeedsCommandOptions, TopicSeed } from '../types';
 import { buildSeedsPrompt } from './prompts';
 import { parseSeedsResponse } from './response-parser';
 import { generateHeuristicSeeds } from './heuristic-fallback';
+import { printInfo, printWarning, gray } from '../logger';
 
 // ============================================================================
 // Constants
@@ -67,6 +68,7 @@ export async function runSeedsSession(
     const service = getCopilotSDKService();
 
     // Check SDK availability
+    printInfo('Checking Copilot SDK availability...');
     const availability = await service.isAvailable();
     if (!availability) {
         throw new SeedsError(
@@ -76,6 +78,7 @@ export async function runSeedsSession(
     }
 
     // Build the prompt
+    printInfo(`Building seeds prompt ${gray(`(max topics: ${options.maxTopics})`)}`);
     const prompt = buildSeedsPrompt(repoPath, options.maxTopics);
 
     // Configure the SDK session
@@ -94,6 +97,7 @@ export async function runSeedsSession(
     }
 
     // Send the message
+    printInfo('Sending seeds prompt to AI — exploring repository structure...');
     const result = await service.sendMessage(sendOptions);
 
     if (!result.success) {
@@ -113,6 +117,7 @@ export async function runSeedsSession(
     }
 
     // Parse the response into TopicSeed array
+    printInfo('Parsing AI response into topic seeds...');
     let seeds: TopicSeed[];
     try {
         seeds = parseSeedsResponse(result.response);

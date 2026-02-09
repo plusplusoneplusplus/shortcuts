@@ -17,6 +17,7 @@ import {
 import type { DiscoveryOptions, ModuleGraph } from '../types';
 import { buildDiscoveryPrompt } from './prompts';
 import { parseModuleGraphResponse } from './response-parser';
+import { printInfo, printWarning, gray } from '../logger';
 
 // ============================================================================
 // Constants
@@ -61,6 +62,7 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Mo
     const service = getCopilotSDKService();
 
     // Check SDK availability
+    printInfo('Checking Copilot SDK availability...');
     const availability = await service.isAvailable();
     if (!availability) {
         throw new DiscoveryError(
@@ -70,16 +72,18 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Mo
     }
 
     // Build the prompt
+    printInfo(`Building discovery prompt ${options.focus ? `with focus: ${options.focus}` : 'for full repository'}...`);
     const prompt = buildDiscoveryPrompt(options.repoPath, options.focus);
 
     // Configure the SDK session
+    const timeoutMs = options.timeout || DEFAULT_DISCOVERY_TIMEOUT_MS;
     const sendOptions: SendMessageOptions = {
         prompt,
         workingDirectory: options.repoPath,
         availableTools: DISCOVERY_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         usePool: false, // Direct session for MCP tool access
-        timeoutMs: options.timeout || DEFAULT_DISCOVERY_TIMEOUT_MS,
+        timeoutMs,
     };
 
     // Set model if specified
@@ -88,13 +92,14 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Mo
     }
 
     // Send the message
+    printInfo(`Sending discovery prompt to AI ${gray(`(timeout: ${timeoutMs / 1000}s, tools: ${DISCOVERY_TOOLS.join(', ')})`)}`);
     const result = await service.sendMessage(sendOptions);
 
     if (!result.success) {
         const errorMsg = result.error || 'Unknown SDK error';
         if (errorMsg.toLowerCase().includes('timeout')) {
             throw new DiscoveryError(
-                `Discovery timed out after ${(options.timeout || DEFAULT_DISCOVERY_TIMEOUT_MS) / 1000}s. ` +
+                `Discovery timed out after ${timeoutMs / 1000}s. ` +
                 'Try increasing --timeout or using --focus to narrow the scope.',
                 'timeout'
             );
@@ -107,10 +112,14 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Mo
     }
 
     // Parse the response into a ModuleGraph
+    printInfo('Parsing AI response into module graph...');
     try {
-        return parseModuleGraphResponse(result.response);
+        const graph = parseModuleGraphResponse(result.response);
+        printInfo(`Parsed ${graph.modules.length} modules across ${graph.categories.length} categories`);
+        return graph;
     } catch (parseError) {
         // On parse failure, retry once with a stricter prompt
+        printWarning(`Failed to parse response: ${(parseError as Error).message}. Retrying with stricter prompt...`);
         const retryPrompt = prompt + '\n\nIMPORTANT: Your previous response was not valid JSON. Please return ONLY a raw JSON object. No markdown, no explanation, just JSON.';
 
         const retryOptions: SendMessageOptions = {
@@ -127,7 +136,9 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Mo
             );
         }
 
-        return parseModuleGraphResponse(retryResult.response);
+        const graph = parseModuleGraphResponse(retryResult.response);
+        printInfo(`Retry succeeded — parsed ${graph.modules.length} modules`);
+        return graph;
     }
 }
 

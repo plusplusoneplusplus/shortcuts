@@ -16,6 +16,7 @@ import {
 import type { TopicProbeResult, ModuleGraph, MergeResult } from '../../types';
 import { buildMergePrompt } from './merge-prompts';
 import { parseMergeResponse } from './merge-response-parser';
+import { printInfo, printWarning, gray } from '../../logger';
 
 // ============================================================================
 // Constants
@@ -110,9 +111,12 @@ export async function mergeProbeResults(
 
     try {
         // Send the message
+        const validProbes = probeResults.filter(r => r && r.foundModules.length > 0).length;
+        printInfo(`  Sending merge prompt ${gray(`(${validProbes} valid probes, ${existingGraph ? existingGraph.modules.length + ' existing modules' : 'no prior graph'})`)}`);
         const result = await service.sendMessage(sendOptions);
 
         if (!result.success || !result.response) {
+            printWarning(`Merge session failed: ${result.error || 'empty response'}`);
             // Return partial result on failure
             return {
                 graph: existingGraph || {

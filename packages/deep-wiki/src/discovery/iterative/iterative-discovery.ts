@@ -10,6 +10,7 @@
 import type { IterativeDiscoveryOptions, ModuleGraph, TopicSeed, TopicProbeResult } from '../../types';
 import { runTopicProbe } from './probe-session';
 import { mergeProbeResults } from './merge-session';
+import { printInfo, printWarning, gray, cyan } from '../../logger';
 
 // ============================================================================
 // Concurrency Control
@@ -109,6 +110,11 @@ export async function runIterativeDiscovery(
     while (round < maxRounds && currentTopics.length > 0) {
         round++;
 
+        printInfo(`Round ${round}/${maxRounds}: Probing ${currentTopics.length} topics ${gray(`(concurrency: ${concurrency})`)}`);
+        if (currentTopics.length <= 10) {
+            printInfo(`  Topics: ${currentTopics.map(t => cyan(t.topic)).join(', ')}`);
+        }
+
         // Run parallel probes (one per topic, limited by concurrency)
         const probeResults = await runParallel(
             currentTopics,
@@ -122,7 +128,13 @@ export async function runIterativeDiscovery(
             }
         );
 
+        // Count successful probes
+        const successfulProbes = probeResults.filter(r => r && r.foundModules.length > 0).length;
+        const totalModulesFound = probeResults.reduce((sum, r) => sum + (r?.foundModules?.length || 0), 0);
+        printInfo(`  Probes completed: ${successfulProbes}/${currentTopics.length} successful, ${totalModulesFound} modules found`);
+
         // Merge results
+        printInfo('  Merging probe results...');
         const mergeResult = await mergeProbeResults(
             options.repoPath,
             probeResults,
@@ -134,18 +146,24 @@ export async function runIterativeDiscovery(
         );
 
         currentGraph = mergeResult.graph;
+        printInfo(`  Merged graph: ${currentGraph.modules.length} modules, coverage: ${(mergeResult.coverage * 100).toFixed(0)}%`);
 
         // Check convergence
         if (mergeResult.converged) {
+            printInfo(`  Converged${mergeResult.reason ? ` — ${mergeResult.reason}` : ''}`);
             break;
         }
 
         // Check coverage threshold
         if (mergeResult.coverage >= coverageThreshold && mergeResult.newTopics.length === 0) {
+            printInfo(`  Coverage threshold reached (${(mergeResult.coverage * 100).toFixed(0)}% >= ${(coverageThreshold * 100).toFixed(0)}%)`);
             break;
         }
 
         // Next round: probe newly discovered topics
+        if (mergeResult.newTopics.length > 0) {
+            printInfo(`  Discovered ${mergeResult.newTopics.length} new topics for next round`);
+        }
         currentTopics = mergeResult.newTopics.map(t => ({
             topic: t.topic,
             description: t.description,

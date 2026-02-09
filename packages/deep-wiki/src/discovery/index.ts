@@ -11,6 +11,7 @@
 import type { DiscoveryOptions, DiscoveryResult } from '../types';
 import { runDiscoverySession } from './discovery-session';
 import { isLargeRepo, discoverLargeRepo } from './large-repo-handler';
+import { printInfo } from '../logger';
 
 // Re-export key types and functions
 export { DiscoveryError } from './discovery-session';
@@ -42,6 +43,7 @@ export async function discoverModuleGraph(options: DiscoveryOptions): Promise<Di
     if (large) {
         graph = await discoverLargeRepo(options);
     } else {
+        printInfo('Standard-size repo — running single-pass discovery');
         graph = await runDiscoverySession(options);
     }
 

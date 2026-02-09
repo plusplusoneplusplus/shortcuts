@@ -25,6 +25,7 @@ import type {
 import { normalizeModuleId } from '../schemas';
 import { buildStructuralScanPrompt, buildFocusedDiscoveryPrompt } from './prompts';
 import { parseStructuralScanResponse, parseModuleGraphResponse } from './response-parser';
+import { printInfo, printWarning, gray, cyan } from '../logger';
 
 // ============================================================================
 // Constants
@@ -70,6 +71,7 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
 export async function estimateFileCount(repoPath: string): Promise<number> {
     const service = getCopilotSDKService();
 
+    printInfo('Estimating repository file count...');
     const result = await service.sendMessage({
         prompt: `Count the approximate number of files in this repository. Run glob("**/*") and count the results. Respond with ONLY a single number, nothing else.`,
         workingDirectory: repoPath,
@@ -80,12 +82,17 @@ export async function estimateFileCount(repoPath: string): Promise<number> {
     });
 
     if (!result.success || !result.response) {
+        printWarning('Could not estimate file count');
         return -1;
     }
 
     // Extract number from response
     const match = result.response.trim().match(/(\d+)/);
-    return match ? parseInt(match[1], 10) : -1;
+    const count = match ? parseInt(match[1], 10) : -1;
+    if (count > 0) {
+        printInfo(`Repository contains ~${count} files ${gray(`(threshold: ${LARGE_REPO_THRESHOLD})`)}`);
+    }
+    return count;
 }
 
 /**
@@ -115,23 +122,31 @@ export async function isLargeRepo(repoPath: string): Promise<boolean> {
  */
 export async function discoverLargeRepo(options: DiscoveryOptions): Promise<ModuleGraph> {
     // Round 1: Structural scan
+    printInfo('Large repo detected — using multi-round discovery');
+    printInfo('Round 1: Running structural scan to identify top-level areas...');
     const scanResult = await performStructuralScan(options);
 
     if (scanResult.areas.length === 0) {
         throw new Error('Structural scan found no top-level areas. The repository may be empty or inaccessible.');
     }
 
+    printInfo(`Structural scan found ${scanResult.areas.length} areas: ${scanResult.areas.map(a => cyan(a.name)).join(', ')}`);
+
     // Round 2: Per-area drill-down (sequential to avoid overloading the SDK)
+    printInfo('Round 2: Per-area drill-down...');
     const subGraphs: ModuleGraph[] = [];
     const projectName = scanResult.projectInfo.name || 'project';
 
-    for (const area of scanResult.areas) {
+    for (let i = 0; i < scanResult.areas.length; i++) {
+        const area = scanResult.areas[i];
+        printInfo(`  Discovering area ${i + 1}/${scanResult.areas.length}: ${cyan(area.name)} ${gray(`(${area.path})`)}`);
         try {
             const subGraph = await discoverArea(options, area, projectName);
+            printInfo(`    Found ${subGraph.modules.length} modules`);
             subGraphs.push(subGraph);
         } catch (error) {
             // Log error but continue with other areas
-            process.stderr.write(`[WARN] Failed to discover area '${area.name}': ${(error as Error).message}\n`);
+            printWarning(`Failed to discover area '${area.name}': ${(error as Error).message}`);
         }
     }
 
@@ -140,7 +155,10 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Modu
     }
 
     // Merge sub-graphs
-    return mergeSubGraphs(subGraphs, scanResult);
+    printInfo(`Merging ${subGraphs.length} area sub-graphs...`);
+    const merged = mergeSubGraphs(subGraphs, scanResult);
+    printInfo(`Merged result: ${merged.modules.length} modules, ${merged.categories.length} categories`);
+    return merged;
 }
 
 // ============================================================================

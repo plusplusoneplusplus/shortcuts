@@ -108,10 +108,12 @@ export async function executeDiscover(
                     model: options.model,
                     verbose: options.verbose,
                 });
-                spinner.update('Running iterative discovery...');
+                spinner.succeed(`Generated ${seeds.length} topic seeds`);
+                spinner.start('Running iterative discovery...');
             } else {
                 // Parse seed file
                 seeds = parseSeedFile(options.seeds);
+                printInfo(`Loaded ${seeds.length} seeds from ${options.seeds}`);
                 spinner.update('Running iterative discovery...');
             }
 

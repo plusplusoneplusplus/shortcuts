@@ -16,6 +16,7 @@ import {
 import type { TopicSeed, TopicProbeResult } from '../../types';
 import { buildProbePrompt } from './probe-prompts';
 import { parseProbeResponse } from './probe-response-parser';
+import { printInfo, printWarning, gray } from '../../logger';
 
 // ============================================================================
 // Constants
@@ -98,10 +99,12 @@ export async function runTopicProbe(
 
     try {
         // Send the message
+        printInfo(`    Probing topic: ${topic.topic} ${gray(`(timeout: ${(options.timeout || DEFAULT_PROBE_TIMEOUT_MS) / 1000}s)`)}`);
         const result = await service.sendMessage(sendOptions);
 
         if (!result.success || !result.response) {
             // Return empty result on failure
+            printWarning(`    Probe failed for "${topic.topic}": ${result.error || 'empty response'}`);
             return {
                 topic: topic.topic,
                 foundModules: [],
@@ -112,9 +115,12 @@ export async function runTopicProbe(
         }
 
         // Parse the response
-        return parseProbeResponse(result.response, topic.topic);
+        const parsed = parseProbeResponse(result.response, topic.topic);
+        printInfo(`    Probe "${topic.topic}" found ${parsed.foundModules.length} modules ${gray(`(confidence: ${parsed.confidence})`)}`);
+        return parsed;
     } catch (error) {
         // Return empty result on error (don't crash the loop)
+        printWarning(`    Probe error for "${topic.topic}": ${(error as Error).message}`);
         return {
             topic: topic.topic,
             foundModules: [],

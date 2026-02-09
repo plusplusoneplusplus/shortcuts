@@ -18,6 +18,19 @@ vi.mock('../../../src/discovery/iterative/merge-session', () => ({
     mergeProbeResults: vi.fn(),
 }));
 
+// Mock logger to suppress output during tests
+vi.mock('../../../src/logger', () => ({
+    printInfo: vi.fn(),
+    printWarning: vi.fn(),
+    printSuccess: vi.fn(),
+    printError: vi.fn(),
+    printHeader: vi.fn(),
+    printKeyValue: vi.fn(),
+    gray: (s: string) => s,
+    cyan: (s: string) => s,
+    bold: (s: string) => s,
+}));
+
 import { runTopicProbe } from '../../../src/discovery/iterative/probe-session';
 import { mergeProbeResults } from '../../../src/discovery/iterative/merge-session';
 
