@@ -13,7 +13,8 @@ import {
     type PermissionRequest,
     type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { TopicProbeResult, ModuleGraph, MergeResult } from '../../types';
+import type { TopicProbeResult, ModuleGraph, ModuleInfo, CategoryInfo, MergeResult } from '../../types';
+import { normalizeModuleId, isValidModuleId } from '../../schemas';
 import { buildMergePrompt } from './merge-prompts';
 import { parseMergeResponse } from './merge-response-parser';
 import { printInfo, printWarning, gray } from '../../logger';
@@ -70,25 +71,8 @@ export async function mergeProbeResults(
     // Check SDK availability
     const availability = await service.isAvailable();
     if (!availability) {
-        // Return partial result on SDK unavailability
-        return {
-            graph: existingGraph || {
-                project: {
-                    name: 'unknown',
-                    description: '',
-                    language: 'unknown',
-                    buildSystem: 'unknown',
-                    entryPoints: [],
-                },
-                modules: [],
-                categories: [],
-                architectureNotes: '',
-            },
-            newTopics: [],
-            converged: true, // Stop iteration if SDK unavailable
-            coverage: 0,
-            reason: 'SDK unavailable',
-        };
+        printWarning('SDK unavailable — using local merge fallback');
+        return buildLocalMergeResult(probeResults, existingGraph, 'SDK unavailable');
     }
 
     // Build the prompt
@@ -116,49 +100,125 @@ export async function mergeProbeResults(
         const result = await service.sendMessage(sendOptions);
 
         if (!result.success || !result.response) {
-            printWarning(`Merge session failed: ${result.error || 'empty response'}`);
-            // Return partial result on failure
-            return {
-                graph: existingGraph || {
-                    project: {
-                        name: 'unknown',
-                        description: '',
-                        language: 'unknown',
-                        buildSystem: 'unknown',
-                        entryPoints: [],
-                    },
-                    modules: [],
-                    categories: [],
-                    architectureNotes: '',
-                },
-                newTopics: [],
-                converged: true, // Stop iteration on failure
-                coverage: 0,
-                reason: 'Merge session failed',
-            };
+            printWarning(`Merge session failed: ${result.error || 'empty response'} — using local merge fallback`);
+            return buildLocalMergeResult(probeResults, existingGraph, 'Merge session failed');
         }
 
         // Parse the response
-        return parseMergeResponse(result.response);
+        const mergeResult = parseMergeResponse(result.response);
+
+        // Guard: if AI merge returned fewer modules than probes found, use local merge
+        const probeModuleCount = probeResults.reduce((sum, r) => sum + (r?.foundModules?.length || 0), 0);
+        if (mergeResult.graph.modules.length === 0 && probeModuleCount > 0) {
+            printWarning(`AI merge returned 0 modules but probes found ${probeModuleCount} — using local merge fallback`);
+            return buildLocalMergeResult(probeResults, existingGraph, 'AI merge returned empty graph');
+        }
+
+        return mergeResult;
     } catch (error) {
-        // Return partial result on error
-        return {
-            graph: existingGraph || {
-                project: {
-                    name: 'unknown',
-                    description: '',
-                    language: 'unknown',
-                    buildSystem: 'unknown',
-                    entryPoints: [],
-                },
-                modules: [],
-                categories: [],
-                architectureNotes: '',
-            },
-            newTopics: [],
-            converged: true, // Stop iteration on error
-            coverage: 0,
-            reason: `Merge session error: ${(error as Error).message}`,
-        };
+        printWarning(`Merge session error: ${(error as Error).message} — using local merge fallback`);
+        return buildLocalMergeResult(probeResults, existingGraph, `Merge session error: ${(error as Error).message}`);
     }
+}
+
+// ============================================================================
+// Local Merge Fallback
+// ============================================================================
+
+/**
+ * Build a MergeResult locally from probe data when the AI merge fails.
+ * Deduplicates modules by ID, infers categories, and collects new topics.
+ */
+function buildLocalMergeResult(
+    probeResults: TopicProbeResult[],
+    existingGraph: ModuleGraph | null,
+    reason: string,
+): MergeResult {
+    const moduleMap = new Map<string, ModuleInfo>();
+    const categorySet = new Set<string>();
+
+    // Incorporate existing graph modules first
+    if (existingGraph) {
+        for (const mod of existingGraph.modules) {
+            moduleMap.set(mod.id, mod);
+            if (mod.category) {
+                categorySet.add(mod.category);
+            }
+        }
+    }
+
+    // Merge probe results into modules
+    for (const probe of probeResults) {
+        if (!probe || !probe.foundModules) { continue; }
+
+        for (const found of probe.foundModules) {
+            let id = found.id;
+            if (!isValidModuleId(id)) {
+                id = normalizeModuleId(id);
+            }
+
+            if (moduleMap.has(id)) { continue; } // Keep first occurrence
+
+            const category = probe.topic || 'general';
+            categorySet.add(category);
+
+            moduleMap.set(id, {
+                id,
+                name: found.name,
+                path: found.path,
+                purpose: found.purpose,
+                keyFiles: found.keyFiles || [],
+                dependencies: [],
+                dependents: [],
+                complexity: 'medium',
+                category,
+            });
+        }
+    }
+
+    const modules = Array.from(moduleMap.values());
+    const categories: CategoryInfo[] = Array.from(categorySet).map(name => ({
+        name,
+        description: '',
+    }));
+
+    // Collect new topics from probes
+    const seenTopics = new Set(probeResults.map(p => p?.topic).filter(Boolean));
+    const newTopics: { topic: string; description: string; hints: string[] }[] = [];
+    for (const probe of probeResults) {
+        if (!probe?.discoveredTopics) { continue; }
+        for (const dt of probe.discoveredTopics) {
+            if (!seenTopics.has(dt.topic)) {
+                seenTopics.add(dt.topic);
+                newTopics.push({
+                    topic: normalizeModuleId(dt.topic),
+                    description: dt.description,
+                    hints: dt.hints || [],
+                });
+            }
+        }
+    }
+
+    const project = existingGraph?.project || {
+        name: 'unknown',
+        description: '',
+        language: 'unknown',
+        buildSystem: 'unknown',
+        entryPoints: [],
+    };
+
+    printInfo(`  Local merge: ${modules.length} modules, ${categories.length} categories`);
+
+    return {
+        graph: {
+            project,
+            modules,
+            categories,
+            architectureNotes: existingGraph?.architectureNotes || '',
+        },
+        newTopics,
+        converged: newTopics.length === 0,
+        coverage: 0,
+        reason: `Local merge fallback: ${reason}`,
+    };
 }
