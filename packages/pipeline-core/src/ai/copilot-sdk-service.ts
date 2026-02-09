@@ -254,6 +254,8 @@ export interface SDKAvailabilityResult {
 interface ICopilotClientOptions {
     /** Working directory for the CLI process */
     cwd?: string;
+    /** Extra arguments to pass to the CLI executable (inserted before SDK-managed args) */
+    cliArgs?: string[];
 }
 
 /**
@@ -1065,6 +1067,8 @@ export class CopilotSDKService {
         if (cwd) {
             options.cwd = cwd;
         }
+        // Bypass the interactive folder trust dialog by allowing all paths
+        options.cliArgs = ['--allow-all-paths'];
 
         const logger = getLogger();
         logger.debug(LogCategory.AI, `CopilotSDKService: Creating CopilotClient with options: ${JSON.stringify(options)}`);
