@@ -18,6 +18,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ModuleGraph, WebsiteOptions, WebsiteTheme } from '../types';
+import { getMermaidZoomStyles, getMermaidZoomScript } from '../rendering/mermaid-zoom';
 
 // ============================================================================
 // Constants
@@ -650,102 +651,7 @@ function getStyles(): string {
         .module-card h4 { margin-bottom: 6px; font-size: 14px; }
         .module-card p { font-size: 12px; color: var(--content-muted); line-height: 1.4; }
 
-        /* Mermaid diagrams */
-        .markdown-body pre.mermaid {
-            background: transparent;
-            border: none;
-            padding: 0;
-            margin: 0;
-            text-align: center;
-        }
-        .markdown-body pre.mermaid svg {
-            max-width: 100%;
-            height: auto;
-        }
-        /* Mermaid container with zoom/pan support */
-        .markdown-body .mermaid-container {
-            position: relative;
-            margin: 24px 0;
-            border: 1px solid var(--content-border);
-            border-radius: 8px;
-            overflow: hidden;
-            background: var(--code-bg);
-        }
-        .mermaid-toolbar {
-            display: flex;
-            align-items: center;
-            padding: 6px 12px;
-            background: var(--code-bg);
-            border-bottom: 1px solid var(--content-border);
-            gap: 4px;
-            user-select: none;
-        }
-        .mermaid-toolbar-label {
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--content-muted);
-            margin-right: auto;
-        }
-        .mermaid-zoom-btn {
-            background: var(--copy-btn-bg);
-            border: 1px solid var(--content-border);
-            cursor: pointer;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 14px;
-            font-weight: 600;
-            line-height: 1.2;
-            transition: background-color 0.15s, border-color 0.15s;
-            color: var(--content-text);
-            min-width: 28px;
-            text-align: center;
-        }
-        .mermaid-zoom-btn:hover {
-            background: var(--copy-btn-hover-bg);
-            border-color: var(--sidebar-active-border);
-        }
-        .mermaid-zoom-btn:active {
-            transform: scale(0.95);
-        }
-        .mermaid-zoom-level {
-            font-size: 11px;
-            font-weight: 500;
-            color: var(--content-muted);
-            min-width: 42px;
-            text-align: center;
-            padding: 0 4px;
-        }
-        .mermaid-zoom-reset {
-            font-size: 12px;
-        }
-        .mermaid-viewport {
-            overflow: hidden;
-            cursor: grab;
-            min-height: 200px;
-            position: relative;
-        }
-        .mermaid-viewport:active {
-            cursor: grabbing;
-        }
-        .mermaid-viewport.mermaid-dragging {
-            cursor: grabbing;
-        }
-        .mermaid-svg-wrapper {
-            transform-origin: 0 0;
-            transition: transform 0.15s ease-out;
-            display: inline-block;
-            padding: 24px;
-        }
-        .mermaid-viewport.mermaid-dragging .mermaid-svg-wrapper {
-            transition: none;
-        }
-        /* Allow mermaid containers to use full available width */
-        .markdown-body .mermaid-container {
-            max-width: 100%;
-            width: 100%;
-        }
+${getMermaidZoomStyles()}
 
         /* Responsive */
         @media (max-width: 768px) {
@@ -1236,10 +1142,10 @@ ${enableSearch ? `
                     pre.classList.add('mermaid');
                     pre.textContent = block.textContent;
                     pre.removeAttribute('style');
-                    // Build zoom/pan container
-                    var container = document.createElement('div');
-                    container.className = 'mermaid-container';
-                    container.innerHTML =
+                    // Build zoom/pan container (shared structure from mermaid-zoom)
+                    var mContainer = document.createElement('div');
+                    mContainer.className = 'mermaid-container';
+                    mContainer.innerHTML =
                         '<div class="mermaid-toolbar">' +
                         '<span class="mermaid-toolbar-label">Diagram</span>' +
                         '<button class="mermaid-zoom-btn mermaid-zoom-out" title="Zoom out">\\u2212</button>' +
@@ -1250,8 +1156,8 @@ ${enableSearch ? `
                         '<div class="mermaid-viewport">' +
                         '<div class="mermaid-svg-wrapper"></div>' +
                         '</div>';
-                    pre.parentNode.insertBefore(container, pre);
-                    container.querySelector('.mermaid-svg-wrapper').appendChild(pre);
+                    pre.parentNode.insertBefore(mContainer, pre);
+                    mContainer.querySelector('.mermaid-svg-wrapper').appendChild(pre);
                 } else {
                     hljs.highlightElement(block);
                     addCopyButton(block.parentElement);
@@ -1376,105 +1282,9 @@ ${enableSearch ? `
         }
 
         // ================================================================
-        // Mermaid Zoom & Pan
+        // Mermaid Zoom & Pan (shared via mermaid-zoom module)
         // ================================================================
-
-        var MERMAID_MIN_ZOOM = 0.25;
-        var MERMAID_MAX_ZOOM = 4;
-        var MERMAID_ZOOM_STEP = 0.25;
-
-        function initMermaidZoom() {
-            document.querySelectorAll('.mermaid-container').forEach(function(container) {
-                var viewport = container.querySelector('.mermaid-viewport');
-                var svgWrapper = container.querySelector('.mermaid-svg-wrapper');
-                if (!viewport || !svgWrapper) return;
-
-                var state = { scale: 1, translateX: 0, translateY: 0, isDragging: false, dragStartX: 0, dragStartY: 0, lastTX: 0, lastTY: 0 };
-
-                function applyTransform() {
-                    svgWrapper.style.transform = 'translate(' + state.translateX + 'px, ' + state.translateY + 'px) scale(' + state.scale + ')';
-                    var display = container.querySelector('.mermaid-zoom-level');
-                    if (display) display.textContent = Math.round(state.scale * 100) + '%';
-                }
-
-                // Zoom in
-                var zoomInBtn = container.querySelector('.mermaid-zoom-in');
-                if (zoomInBtn) {
-                    zoomInBtn.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        state.scale = Math.min(MERMAID_MAX_ZOOM, state.scale + MERMAID_ZOOM_STEP);
-                        applyTransform();
-                    });
-                }
-
-                // Zoom out
-                var zoomOutBtn = container.querySelector('.mermaid-zoom-out');
-                if (zoomOutBtn) {
-                    zoomOutBtn.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        state.scale = Math.max(MERMAID_MIN_ZOOM, state.scale - MERMAID_ZOOM_STEP);
-                        applyTransform();
-                    });
-                }
-
-                // Reset
-                var resetBtn = container.querySelector('.mermaid-zoom-reset');
-                if (resetBtn) {
-                    resetBtn.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        state.scale = 1;
-                        state.translateX = 0;
-                        state.translateY = 0;
-                        applyTransform();
-                    });
-                }
-
-                // Ctrl/Cmd + mouse wheel zoom toward cursor
-                viewport.addEventListener('wheel', function(e) {
-                    if (!e.ctrlKey && !e.metaKey) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    var delta = e.deltaY > 0 ? -MERMAID_ZOOM_STEP : MERMAID_ZOOM_STEP;
-                    var newScale = Math.max(MERMAID_MIN_ZOOM, Math.min(MERMAID_MAX_ZOOM, state.scale + delta));
-                    if (newScale !== state.scale) {
-                        var rect = viewport.getBoundingClientRect();
-                        var mx = e.clientX - rect.left;
-                        var my = e.clientY - rect.top;
-                        var px = (mx - state.translateX) / state.scale;
-                        var py = (my - state.translateY) / state.scale;
-                        state.scale = newScale;
-                        state.translateX = mx - px * state.scale;
-                        state.translateY = my - py * state.scale;
-                        applyTransform();
-                    }
-                }, { passive: false });
-
-                // Mouse drag panning
-                viewport.addEventListener('mousedown', function(e) {
-                    if (e.button !== 0) return;
-                    state.isDragging = true;
-                    state.dragStartX = e.clientX;
-                    state.dragStartY = e.clientY;
-                    state.lastTX = state.translateX;
-                    state.lastTY = state.translateY;
-                    viewport.classList.add('mermaid-dragging');
-                    e.preventDefault();
-                });
-
-                document.addEventListener('mousemove', function(e) {
-                    if (!state.isDragging) return;
-                    state.translateX = state.lastTX + (e.clientX - state.dragStartX);
-                    state.translateY = state.lastTY + (e.clientY - state.dragStartY);
-                    applyTransform();
-                });
-
-                document.addEventListener('mouseup', function() {
-                    if (!state.isDragging) return;
-                    state.isDragging = false;
-                    viewport.classList.remove('mermaid-dragging');
-                });
-            });
-        }
+${getMermaidZoomScript()}
 
         // ================================================================
         // Utility

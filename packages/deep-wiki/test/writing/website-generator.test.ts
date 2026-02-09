@@ -451,7 +451,7 @@ describe('generateHtmlTemplate — mermaid zoom and pan', () => {
 
     it('should build mermaid-container DOM in script', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain("container.className = 'mermaid-container'");
+        expect(html).toContain("mContainer.className = 'mermaid-container'");
     });
 
     // --- Toolbar ---
