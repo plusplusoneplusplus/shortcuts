@@ -309,9 +309,10 @@ describe('Ask Panel UI', () => {
             expect(panelIdx).toBeGreaterThan(contentIdx);
         });
 
-        it('should have border-left for visual separation', () => {
+        it('should have a resize handle for visual separation', () => {
             const html = generateSpaHtml(createOptions());
-            expect(html).toContain('border-left: 1px solid var(--content-border)');
+            expect(html).toContain('id="ask-resize-handle"');
+            expect(html).toContain('.ask-resize-handle');
         });
 
         it('should have fixed width panel', () => {
@@ -424,6 +425,136 @@ describe('Ask Panel UI', () => {
             const closeIdx = html.indexOf('id="ask-close"');
             expect(expandIdx).toBeLessThan(clearIdx);
             expect(expandIdx).toBeLessThan(closeIdx);
+        });
+
+        it('should hide resize handle when expanded', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("handle.classList.add('hidden')");
+        });
+
+        it('should show resize handle when collapsing back', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("handle.classList.remove('hidden')");
+        });
+
+        it('should clear custom width when expanding', () => {
+            const html = generateSpaHtml(createOptions());
+            // Expanding should reset inline width so flex takes over
+            expect(html).toContain("panel.style.width = ''");
+            expect(html).toContain("panel.style.minWidth = ''");
+        });
+    });
+
+    // ========================================================================
+    // Resize Handle (drag to resize)
+    // ========================================================================
+
+    describe('resize handle', () => {
+        it('should include the resize handle element', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('id="ask-resize-handle"');
+            expect(html).toContain('class="ask-resize-handle hidden"');
+        });
+
+        it('should place the resize handle between content and panel', () => {
+            const html = generateSpaHtml(createOptions());
+            const contentIdx = html.indexOf('id="content-area"');
+            const handleIdx = html.indexOf('id="ask-resize-handle"');
+            const panelIdx = html.indexOf('id="ask-panel"');
+            expect(handleIdx).toBeGreaterThan(contentIdx);
+            expect(handleIdx).toBeLessThan(panelIdx);
+        });
+
+        it('should include resize handle CSS', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('.ask-resize-handle');
+            expect(html).toContain('cursor: col-resize');
+        });
+
+        it('should include hover/dragging styles for the handle', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('.ask-resize-handle:hover');
+            expect(html).toContain('.ask-resize-handle.dragging');
+        });
+
+        it('should include a grip indicator on the handle', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('.ask-resize-handle::after');
+        });
+
+        it('should include mousedown event on resize handle', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("document.getElementById('ask-resize-handle').addEventListener('mousedown'");
+        });
+
+        it('should include mousemove handler for dragging', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("document.addEventListener('mousemove'");
+            expect(html).toContain('resizeDragging');
+        });
+
+        it('should include mouseup handler to finish dragging', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("document.addEventListener('mouseup'");
+        });
+
+        it('should persist resized width to localStorage', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("localStorage.setItem('deep-wiki-ask-width'");
+            expect(html).toContain("localStorage.getItem('deep-wiki-ask-width')");
+        });
+
+        it('should restore saved panel width on load', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('restoreAskPanelWidth');
+        });
+
+        it('should enforce minimum panel width of 280px', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('Math.max(280');
+        });
+
+        it('should disable transition during drag', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('.ask-panel.resizing');
+            expect(html).toContain("panel.classList.add('resizing')");
+            expect(html).toContain("panel.classList.remove('resizing')");
+        });
+
+        it('should set col-resize cursor on body during drag', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("document.body.style.cursor = 'col-resize'");
+        });
+
+        it('should disable text selection during drag', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("document.body.style.userSelect = 'none'");
+        });
+
+        it('should skip dragging in expanded mode', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('if (askExpanded) return');
+        });
+
+        it('should show/hide resize handle with panel toggle', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("handle.classList.toggle('hidden')");
+        });
+
+        it('should hide resize handle when panel is closed', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("document.getElementById('ask-resize-handle').classList.add('hidden')");
+        });
+
+        it('should not include resize handle when AI is disabled', () => {
+            const html = generateSpaHtml(createOptions({ enableAI: false }));
+            expect(html).not.toContain('id="ask-resize-handle"');
+            expect(html).not.toContain('.ask-resize-handle');
+        });
+
+        it('should start hidden', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('class="ask-resize-handle hidden"');
         });
     });
 });

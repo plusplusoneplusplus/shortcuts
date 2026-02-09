@@ -108,7 +108,8 @@ ${enableAI ? `                    <button class="ask-toggle-btn" id="ask-toggle"
                 </div>
             </div>
         </div>
-${enableAI ? `        <div class="ask-panel hidden" id="ask-panel">
+${enableAI ? `        <div class="ask-resize-handle hidden" id="ask-resize-handle" title="Drag to resize"></div>
+        <div class="ask-panel hidden" id="ask-panel">
             <div class="ask-panel-header">
                 <h3>Ask AI</h3>
                 <div class="ask-panel-actions">
@@ -737,15 +738,16 @@ function getSpaStyles(enableAI: boolean): string {
         /* Ask Panel (slide-out) */
         .ask-panel {
             width: 380px;
-            min-width: 380px;
+            min-width: 280px;
             background: var(--content-bg);
-            border-left: 1px solid var(--content-border);
+            border-left: none;
             display: flex;
             flex-direction: column;
             transition: width 0.3s, min-width 0.3s, flex 0.3s;
             height: 100%;
         }
         .ask-panel.hidden { display: none; }
+        .ask-panel.resizing { transition: none; }
         .ask-panel.expanded {
             flex: 1;
             width: auto;
@@ -756,6 +758,40 @@ function getSpaStyles(enableAI: boolean): string {
             width: 320px;
             min-width: 240px;
         }
+
+        /* Resize handle between content and Ask panel */
+        .ask-resize-handle {
+            width: 5px;
+            cursor: col-resize;
+            background: var(--content-border);
+            transition: background 0.15s;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 10;
+        }
+        .ask-resize-handle.hidden { display: none; }
+        .ask-resize-handle:hover,
+        .ask-resize-handle.dragging {
+            background: var(--sidebar-active-border);
+        }
+        .ask-resize-handle::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 3px;
+            height: 32px;
+            border-left: 1px solid var(--content-muted);
+            border-right: 1px solid var(--content-muted);
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .ask-resize-handle:hover::after,
+        .ask-resize-handle.dragging::after {
+            opacity: 0.5;
+        }
+
         .ask-panel-header {
             padding: 12px 16px;
             border-bottom: 1px solid var(--content-border);
@@ -1573,7 +1609,9 @@ ${opts.enableAI ? `
         // Panel toggle
         document.getElementById('ask-toggle').addEventListener('click', function() {
             var panel = document.getElementById('ask-panel');
+            var handle = document.getElementById('ask-resize-handle');
             panel.classList.toggle('hidden');
+            handle.classList.toggle('hidden');
             if (!panel.classList.contains('hidden')) {
                 document.getElementById('ask-input').focus();
                 // Restore expanded state
@@ -1588,6 +1626,7 @@ ${opts.enableAI ? `
         });
         document.getElementById('ask-close').addEventListener('click', function() {
             document.getElementById('ask-panel').classList.add('hidden');
+            document.getElementById('ask-resize-handle').classList.add('hidden');
             document.getElementById('content-area').classList.remove('ask-expanded');
         });
         document.getElementById('ask-clear').addEventListener('click', function() {
@@ -1606,12 +1645,27 @@ ${opts.enableAI ? `
             askExpanded = expanded;
             var panel = document.getElementById('ask-panel');
             var content = document.getElementById('content-area');
+            var handle = document.getElementById('ask-resize-handle');
             if (expanded) {
                 panel.classList.add('expanded');
                 content.classList.add('ask-expanded');
+                handle.classList.add('hidden');
+                // Clear custom drag width so flex takes over
+                panel.style.width = '';
+                panel.style.minWidth = '';
             } else {
                 panel.classList.remove('expanded');
                 content.classList.remove('ask-expanded');
+                handle.classList.remove('hidden');
+                // Restore saved drag width
+                var saved = localStorage.getItem('deep-wiki-ask-width');
+                if (saved) {
+                    var w = parseInt(saved, 10);
+                    if (w >= 280) {
+                        panel.style.width = w + 'px';
+                        panel.style.minWidth = w + 'px';
+                    }
+                }
             }
             updateAskExpandBtn(expanded);
         }
@@ -1621,6 +1675,62 @@ ${opts.enableAI ? `
             btn.textContent = isExpanded ? 'Collapse' : 'Expand';
             btn.title = isExpanded ? 'Collapse panel' : 'Expand panel';
         }
+
+        // ================================================================
+        // Resize Handle (drag to resize Ask panel)
+        // ================================================================
+
+        var resizeDragging = false;
+        var resizeStartX = 0;
+        var resizeStartWidth = 0;
+
+        document.getElementById('ask-resize-handle').addEventListener('mousedown', function(e) {
+            if (askExpanded) return; // Disable drag resize in expanded mode
+            e.preventDefault();
+            resizeDragging = true;
+            resizeStartX = e.clientX;
+            var panel = document.getElementById('ask-panel');
+            resizeStartWidth = panel.getBoundingClientRect().width;
+            panel.classList.add('resizing');
+            document.getElementById('ask-resize-handle').classList.add('dragging');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!resizeDragging) return;
+            var delta = resizeStartX - e.clientX;
+            var newWidth = Math.max(280, Math.min(resizeStartWidth + delta, window.innerWidth - 320));
+            var panel = document.getElementById('ask-panel');
+            panel.style.width = newWidth + 'px';
+            panel.style.minWidth = newWidth + 'px';
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!resizeDragging) return;
+            resizeDragging = false;
+            var panel = document.getElementById('ask-panel');
+            panel.classList.remove('resizing');
+            document.getElementById('ask-resize-handle').classList.remove('dragging');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            // Save the panel width
+            var currentWidth = panel.getBoundingClientRect().width;
+            localStorage.setItem('deep-wiki-ask-width', String(Math.round(currentWidth)));
+        });
+
+        // Restore saved panel width
+        (function restoreAskPanelWidth() {
+            var saved = localStorage.getItem('deep-wiki-ask-width');
+            if (saved) {
+                var w = parseInt(saved, 10);
+                if (w >= 280) {
+                    var panel = document.getElementById('ask-panel');
+                    panel.style.width = w + 'px';
+                    panel.style.minWidth = w + 'px';
+                }
+            }
+        })();
 
         // Send message
         document.getElementById('ask-send').addEventListener('click', askSend);
