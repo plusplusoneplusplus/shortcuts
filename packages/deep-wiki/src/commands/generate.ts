@@ -13,7 +13,8 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis, GeneratedArticle } from '../types';
-import { discoverModuleGraph } from '../discovery';
+import { discoverModuleGraph, runIterativeDiscovery } from '../discovery';
+import { generateTopicSeeds, parseSeedFile } from '../seeds';
 import { analyzeModules, parseAnalysisResponse } from '../analysis';
 import {
     generateArticles,
@@ -292,12 +293,53 @@ async function runPhase1(
     spinner.start('Discovering module graph...');
 
     try {
-        const result = await discoverModuleGraph({
-            repoPath,
-            model: options.model,
-            timeout: options.timeout ? options.timeout * 1000 : undefined,
-            focus: options.focus,
-        });
+        let result;
+
+        // Check if iterative discovery is requested
+        if (options.seeds) {
+            // Load or generate seeds
+            let seeds;
+            if (options.seeds === 'auto') {
+                spinner.update('Generating topic seeds...');
+                seeds = await generateTopicSeeds(repoPath, {
+                    maxTopics: 20,
+                    minTopics: 5,
+                    model: options.model,
+                    verbose: options.verbose,
+                });
+                spinner.update('Running iterative discovery...');
+            } else {
+                // Parse seed file
+                seeds = parseSeedFile(options.seeds);
+                spinner.update('Running iterative discovery...');
+            }
+
+            // Run iterative discovery
+            const graph = await runIterativeDiscovery({
+                repoPath,
+                seeds,
+                model: options.model,
+                probeTimeout: options.timeout ? options.timeout * 1000 : undefined,
+                mergeTimeout: options.timeout ? options.timeout * 1000 * 1.5 : undefined, // Merge takes longer
+                concurrency: options.concurrency || 5,
+                maxRounds: 3,
+                coverageThreshold: 0.8,
+                focus: options.focus,
+            });
+
+            result = {
+                graph,
+                duration: 0, // Iterative discovery doesn't track duration yet
+            };
+        } else {
+            // Standard discovery
+            result = await discoverModuleGraph({
+                repoPath,
+                model: options.model,
+                timeout: options.timeout ? options.timeout * 1000 : undefined,
+                focus: options.focus,
+            });
+        }
 
         spinner.succeed(`Discovery complete — ${result.graph.modules.length} modules found`);
 

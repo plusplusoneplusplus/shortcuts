@@ -1,0 +1,16 @@
+/**
+ * Iterative Discovery — Public API
+ *
+ * Exports for the iterative breadth-first discovery mode.
+ * This module implements Phase 1 discovery using topic seeds.
+ *
+ * Cross-platform compatible (Linux/Mac/Windows).
+ */
+
+export { runIterativeDiscovery } from './iterative-discovery';
+export { runTopicProbe } from './probe-session';
+export { mergeProbeResults } from './merge-session';
+export { buildProbePrompt } from './probe-prompts';
+export { buildMergePrompt } from './merge-prompts';
+export { parseProbeResponse } from './probe-response-parser';
+export { parseMergeResponse } from './merge-response-parser';

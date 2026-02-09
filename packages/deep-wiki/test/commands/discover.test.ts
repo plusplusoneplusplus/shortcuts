@@ -14,6 +14,7 @@ import { EXIT_CODES } from '../../src/cli';
 // Mock the discovery module to avoid actual SDK calls
 vi.mock('../../src/discovery', () => ({
     discoverModuleGraph: vi.fn().mockRejectedValue(new Error('SDK not available in test')),
+    runIterativeDiscovery: vi.fn(),
     DiscoveryError: class DiscoveryError extends Error {
         code: string;
         constructor(message: string, code: string) {
@@ -22,6 +23,12 @@ vi.mock('../../src/discovery', () => ({
             this.code = code;
         }
     },
+}));
+
+// Mock the seeds module
+vi.mock('../../src/seeds', () => ({
+    generateTopicSeeds: vi.fn(),
+    parseSeedFile: vi.fn(),
 }));
 
 // Mock the cache module
@@ -409,6 +416,98 @@ describe('Discover Command', () => {
             // Should output the stale cached graph
             const parsed = JSON.parse(stdoutOutput.trim());
             expect(parsed.project.name).toBe('stale-cached');
+        });
+    });
+
+    // ========================================================================
+    // Seeds Option (Iterative Discovery)
+    // ========================================================================
+
+    describe('--seeds option', () => {
+        it('should trigger seed generation then iterative discovery when --seeds auto', async () => {
+            const discovery = await import('../../src/discovery');
+            const seeds = await import('../../src/seeds');
+
+            const mockSeeds = [
+                { topic: 'auth', description: 'Auth', hints: ['auth'] },
+                { topic: 'db', description: 'DB', hints: ['db'] },
+            ];
+
+            vi.mocked(seeds.generateTopicSeeds).mockResolvedValueOnce(mockSeeds);
+
+            const mockGraph = {
+                project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
+                modules: [
+                    { id: 'auth-service', name: 'Auth Service', path: 'src/auth/', purpose: 'Auth', keyFiles: [], dependencies: [], dependents: [], complexity: 'medium', category: 'core' },
+                ],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: 'Iterative discovery',
+            };
+
+            vi.mocked(discovery.runIterativeDiscovery).mockResolvedValueOnce(mockGraph);
+
+            const repoDir = path.join(tmpDir, 'repo');
+            fs.mkdirSync(repoDir);
+            const outputDir = path.join(tmpDir, 'output');
+
+            const { executeDiscover } = await import('../../src/commands/discover');
+            const exitCode = await executeDiscover(repoDir, {
+                output: outputDir,
+                force: true,
+                useCache: false,
+                verbose: false,
+                seeds: 'auto',
+            });
+
+            expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+            expect(vi.mocked(seeds.generateTopicSeeds)).toHaveBeenCalledOnce();
+            expect(vi.mocked(discovery.runIterativeDiscovery)).toHaveBeenCalledOnce();
+            expect(vi.mocked(discovery.discoverModuleGraph)).not.toHaveBeenCalled();
+        });
+
+        it('should parse seed file and run iterative discovery when --seeds with file path', async () => {
+            const discovery = await import('../../src/discovery');
+            const seeds = await import('../../src/seeds');
+
+            const seedFile = path.join(tmpDir, 'seeds.json');
+            fs.writeFileSync(seedFile, JSON.stringify({
+                topics: [
+                    { topic: 'auth', description: 'Auth', hints: ['auth'] },
+                ],
+            }), 'utf-8');
+
+            const mockSeeds = [
+                { topic: 'auth', description: 'Auth', hints: ['auth'] },
+            ];
+
+            vi.mocked(seeds.parseSeedFile).mockReturnValueOnce(mockSeeds);
+
+            const mockGraph = {
+                project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
+                modules: [],
+                categories: [],
+                architectureNotes: '',
+            };
+
+            vi.mocked(discovery.runIterativeDiscovery).mockResolvedValueOnce(mockGraph);
+
+            const repoDir = path.join(tmpDir, 'repo');
+            fs.mkdirSync(repoDir);
+            const outputDir = path.join(tmpDir, 'output');
+
+            const { executeDiscover } = await import('../../src/commands/discover');
+            const exitCode = await executeDiscover(repoDir, {
+                output: outputDir,
+                force: true,
+                useCache: false,
+                verbose: false,
+                seeds: seedFile,
+            });
+
+            expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+            expect(vi.mocked(seeds.parseSeedFile)).toHaveBeenCalledWith(seedFile);
+            expect(vi.mocked(discovery.runIterativeDiscovery)).toHaveBeenCalledOnce();
+            expect(vi.mocked(discovery.discoverModuleGraph)).not.toHaveBeenCalled();
         });
     });
 });

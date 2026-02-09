@@ -68,6 +68,38 @@ vi.mock('../../src/discovery', () => ({
         },
         duration: 1000,
     }),
+    runIterativeDiscovery: vi.fn().mockResolvedValue({
+        project: {
+            name: 'TestProject',
+            description: 'Test',
+            language: 'TypeScript',
+            buildSystem: 'npm',
+            entryPoints: ['src/index.ts'],
+        },
+        modules: [{
+            id: 'test-module',
+            name: 'Test Module',
+            path: 'src/test/',
+            purpose: 'Testing',
+            keyFiles: ['src/test/index.ts'],
+            dependencies: [],
+            dependents: [],
+            complexity: 'medium',
+            category: 'core',
+        }],
+        categories: [{ name: 'core', description: 'Core' }],
+        architectureNotes: 'Iterative discovery',
+    }),
+}));
+
+// Mock seeds
+vi.mock('../../src/seeds', () => ({
+    generateTopicSeeds: vi.fn().mockResolvedValue([
+        { topic: 'auth', description: 'Auth', hints: ['auth'] },
+    ]),
+    parseSeedFile: vi.fn().mockReturnValue([
+        { topic: 'auth', description: 'Auth', hints: ['auth'] },
+    ]),
 }));
 
 // Mock cache
@@ -300,6 +332,47 @@ describe('executeGenerate — --phase option', () => {
 // ============================================================================
 // --force option
 // ============================================================================
+
+describe('executeGenerate — --seeds option', () => {
+    it('should use iterative discovery when --seeds auto is provided', async () => {
+        const discovery = await import('../../src/discovery');
+        const seeds = await import('../../src/seeds');
+
+        const { executeGenerate } = await import('../../src/commands/generate');
+        const exitCode = await executeGenerate(repoDir, {
+            ...defaultOptions(),
+            seeds: 'auto',
+        });
+
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        expect(vi.mocked(seeds.generateTopicSeeds)).toHaveBeenCalledOnce();
+        expect(vi.mocked(discovery.runIterativeDiscovery)).toHaveBeenCalledOnce();
+        expect(vi.mocked(discovery.discoverModuleGraph)).not.toHaveBeenCalled();
+    });
+
+    it('should parse seed file and use iterative discovery when --seeds with file path', async () => {
+        const discovery = await import('../../src/discovery');
+        const seeds = await import('../../src/seeds');
+
+        const seedFile = path.join(tempDir, 'seeds.json');
+        fs.writeFileSync(seedFile, JSON.stringify({
+            topics: [
+                { topic: 'auth', description: 'Auth', hints: ['auth'] },
+            ],
+        }), 'utf-8');
+
+        const { executeGenerate } = await import('../../src/commands/generate');
+        const exitCode = await executeGenerate(repoDir, {
+            ...defaultOptions(),
+            seeds: seedFile,
+        });
+
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        expect(vi.mocked(seeds.parseSeedFile)).toHaveBeenCalledWith(seedFile);
+        expect(vi.mocked(discovery.runIterativeDiscovery)).toHaveBeenCalledOnce();
+        expect(vi.mocked(discovery.discoverModuleGraph)).not.toHaveBeenCalled();
+    });
+});
 
 describe('executeGenerate — --force option', () => {
     it('--force should bypass cache for Phase 1', async () => {

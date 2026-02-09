@@ -17,6 +17,7 @@ export { DiscoveryError } from './discovery-session';
 export { LARGE_REPO_THRESHOLD, mergeSubGraphs } from './large-repo-handler';
 export { parseModuleGraphResponse, parseStructuralScanResponse, normalizePath } from './response-parser';
 export { buildDiscoveryPrompt, buildStructuralScanPrompt, buildFocusedDiscoveryPrompt } from './prompts';
+export { runIterativeDiscovery } from './iterative/iterative-discovery';
 
 /**
  * Discover the module graph for a repository.
