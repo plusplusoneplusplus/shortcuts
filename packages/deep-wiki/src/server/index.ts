@@ -87,7 +87,7 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
         title,
         enableSearch: true,
         enableAI: aiEnabled,
-        enableGraph: false, // Phase B
+        enableGraph: true,
     });
 
     // Create HTTP server

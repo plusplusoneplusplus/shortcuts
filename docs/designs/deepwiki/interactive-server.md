@@ -325,12 +325,12 @@ src/
 
 Serve the wiki over HTTP with data loaded via API calls instead of embedded `<script>`.
 
-- [ ] `deep-wiki serve` command in CLI
-- [ ] HTTP server with static file serving
-- [ ] REST endpoints: `/api/graph`, `/api/modules`, `/api/modules/:id`, `/api/pages/:key`
-- [ ] Modified SPA template that fetches data from API
-- [ ] `--port`, `--host`, `--open` options
-- [ ] `--generate` option to run generation before serving
+- [x] `deep-wiki serve` command in CLI
+- [x] HTTP server with static file serving
+- [x] REST endpoints: `/api/graph`, `/api/modules`, `/api/modules/:id`, `/api/pages/:key`
+- [x] Modified SPA template that fetches data from API
+- [x] `--port`, `--host`, `--open` options
+- [x] `--generate` option to run generation before serving
 
 ### Phase B: Interactive Dependency Graph
 
