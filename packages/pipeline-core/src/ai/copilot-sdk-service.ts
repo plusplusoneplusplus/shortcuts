@@ -21,6 +21,7 @@ import { getLogger, LogCategory } from '../logger';
 // Note: SessionPool is kept for backward compatibility but not used for clarification requests
 import { SessionPool, IPoolableSession, SessionPoolStats } from './session-pool';
 import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
+import { ensureFolderTrusted } from './trusted-folder';
 import { DEFAULT_AI_TIMEOUT_MS } from './timeouts';
 
 /**
@@ -254,8 +255,6 @@ export interface SDKAvailabilityResult {
 interface ICopilotClientOptions {
     /** Working directory for the CLI process */
     cwd?: string;
-    /** Extra arguments to pass to the CLI executable (inserted before SDK-managed args) */
-    cliArgs?: string[];
 }
 
 /**
@@ -1066,9 +1065,14 @@ export class CopilotSDKService {
         const options: ICopilotClientOptions = {};
         if (cwd) {
             options.cwd = cwd;
+            // Pre-register the working directory as trusted to bypass the
+            // interactive folder trust confirmation dialog
+            try {
+                ensureFolderTrusted(cwd);
+            } catch {
+                // Non-fatal: trust dialog will appear if this fails
+            }
         }
-        // Bypass the interactive folder trust dialog by allowing all paths
-        options.cliArgs = ['--allow-all-paths'];
 
         const logger = getLogger();
         logger.debug(LogCategory.AI, `CopilotSDKService: Creating CopilotClient with options: ${JSON.stringify(options)}`);

@@ -138,3 +138,11 @@ export {
     getCachedMcpConfig,
     setHomeDirectoryOverride
 } from './mcp-config-loader';
+
+// Trusted Folder Management
+export {
+    ensureFolderTrusted,
+    isFolderTrusted,
+    getCopilotConfigPath,
+    setTrustedFolderHomeOverride
+} from './trusted-folder';
