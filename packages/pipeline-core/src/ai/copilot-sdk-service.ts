@@ -225,6 +225,32 @@ export interface SendMessageOptions {
      * }
      */
     onPermissionRequest?: PermissionHandler;
+
+    /**
+     * Callback invoked for each streaming chunk as it arrives from the SDK.
+     * When provided, streaming mode is automatically enabled.
+     * 
+     * The callback receives each `assistant.message_delta` chunk in real-time,
+     * enabling true streaming to web UIs via SSE or WebSocket.
+     * 
+     * Callback errors are caught and logged but do not break the streaming flow.
+     * The final return value of `sendMessage()` still contains the full response.
+     * 
+     * Note: Only works with direct sessions (usePool: false), since pool sessions
+     * don't support per-request streaming configuration.
+     * 
+     * @example
+     * ```typescript
+     * const result = await service.sendMessage({
+     *     prompt: 'Analyze this code',
+     *     onStreamingChunk: (chunk) => {
+     *         res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
+     *     },
+     * });
+     * // result.response still contains the full response
+     * ```
+     */
+    onStreamingChunk?: (chunk: string) => void;
 }
 
 /**
@@ -767,11 +793,12 @@ export class CopilotSDKService {
             // Send the message with timeout
             const timeoutMs = options.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
 
-            // Use streaming mode if enabled and supported, OR if timeout > 120s
+            // Use streaming mode if enabled and supported, OR if timeout > 120s,
+            // OR if an onStreamingChunk callback is provided
             // (SDK's sendAndWait has hardcoded 120s timeout for session.idle)
             let response: string;
-            if ((options.streaming || timeoutMs > 120000) && session.on && session.send) {
-                response = await this.sendWithStreaming(session, options.prompt, timeoutMs);
+            if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
+                response = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk);
             } else {
                 const result = await this.sendWithTimeout(session, options.prompt, timeoutMs);
                 response = result?.data?.content || '';
@@ -1121,7 +1148,8 @@ export class CopilotSDKService {
     private async sendWithStreaming(
         session: ICopilotSession,
         prompt: string,
-        timeoutMs: number
+        timeoutMs: number,
+        onStreamingChunk?: (chunk: string) => void
     ): Promise<string> {
         return new Promise((resolve, reject) => {
             const logger = getLogger();
@@ -1166,6 +1194,14 @@ export class CopilotSDKService {
                     const delta = event.data?.deltaContent || '';
                     response += delta;
                     logger.debug(LogCategory.AI, `CopilotSDKService: Received delta chunk (${delta.length} chars)`);
+                    // Invoke the streaming callback if provided
+                    if (onStreamingChunk && delta) {
+                        try {
+                            onStreamingChunk(delta);
+                        } catch (cbError) {
+                            logger.debug(LogCategory.AI, `CopilotSDKService: onStreamingChunk callback error: ${cbError}`);
+                        }
+                    }
                 } else if (eventType === 'assistant.message') {
                     // Final message - use this as the complete content
                     finalMessage = event.data?.content || '';

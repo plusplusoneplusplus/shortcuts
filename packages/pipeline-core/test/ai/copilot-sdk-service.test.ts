@@ -509,6 +509,180 @@ describe('CopilotSDKService - Streaming (sendWithStreaming)', () => {
 });
 
 // ============================================================================
+// Streaming Callback (onStreamingChunk) Tests
+// ============================================================================
+
+describe('CopilotSDKService - onStreamingChunk callback', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    /**
+     * Helper: set up service with streaming mock and onStreamingChunk callback.
+     */
+    function setupStreamingCallWithCallback(
+        onStreamingChunk: (chunk: string) => void,
+        options?: { streaming?: boolean; timeoutMs?: number }
+    ) {
+        const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const resultPromise = service.sendMessage({
+            prompt: 'Test prompt',
+            workingDirectory: '/test',
+            timeoutMs: options?.timeoutMs ?? 5000,
+            streaming: options?.streaming,
+            loadDefaultMcpConfig: false,
+            onStreamingChunk,
+        });
+
+        return { sessions, resultPromise };
+    }
+
+    it('should invoke onStreamingChunk for each delta event', async () => {
+        const chunks: string[] = [];
+        const { sessions, resultPromise } = setupStreamingCallWithCallback(
+            (chunk) => { chunks.push(chunk); }
+        );
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Hello ' } });
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'world' } });
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: '!' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('Hello world!');
+        expect(chunks).toEqual(['Hello ', 'world', '!']);
+    });
+
+    it('should auto-enable streaming mode when onStreamingChunk is provided', async () => {
+        const chunks: string[] = [];
+        const { sessions, resultPromise } = setupStreamingCallWithCallback(
+            (chunk) => { chunks.push(chunk); },
+            { timeoutMs: 5000 } // Short timeout, no explicit streaming: true
+        );
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Verify session.send was called (not sendAndWait) — streaming was auto-enabled
+        expect(sessions[0].session.send).toHaveBeenCalled();
+        expect(sessions[0].session.sendAndWait).not.toHaveBeenCalled();
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Done', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+    });
+
+    it('should not invoke onStreamingChunk for empty delta content', async () => {
+        const chunks: string[] = [];
+        const { sessions, resultPromise } = setupStreamingCallWithCallback(
+            (chunk) => { chunks.push(chunk); }
+        );
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message_delta', data: {} }); // empty deltaContent
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: '' } }); // empty string
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'real content' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        // Only the non-empty chunk should trigger the callback
+        expect(chunks).toEqual(['real content']);
+    });
+
+    it('should not break streaming flow when callback throws an error', async () => {
+        let callCount = 0;
+        const { sessions, resultPromise } = setupStreamingCallWithCallback(
+            (chunk) => {
+                callCount++;
+                if (callCount === 1) {
+                    throw new Error('Callback error!');
+                }
+            }
+        );
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'chunk1' } });
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'chunk2' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        // Full response is still accumulated despite callback error
+        expect(result.response).toBe('chunk1chunk2');
+        // Both chunks were processed (callback was called for both)
+        expect(callCount).toBe(2);
+    });
+
+    it('should still return full response when onStreamingChunk is provided', async () => {
+        const chunks: string[] = [];
+        const { sessions, resultPromise } = setupStreamingCallWithCallback(
+            (chunk) => { chunks.push(chunk); }
+        );
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Part 1. ' } });
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Part 2. ' } });
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Part 3.' } });
+        // Final message supersedes deltas
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Full final message', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        // Return value is the final message (preferred over accumulated deltas)
+        expect(result.response).toBe('Full final message');
+        // But streaming chunks were still emitted for each delta
+        expect(chunks).toEqual(['Part 1. ', 'Part 2. ', 'Part 3.']);
+    });
+});
+
+// ============================================================================
 // Non-streaming (sendAndWait) Path Tests
 // ============================================================================
 

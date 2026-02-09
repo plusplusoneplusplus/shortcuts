@@ -191,10 +191,10 @@ describe('handleAskRequest', () => {
         const output = getOutput();
         const events = parseSSEEvents(output);
 
-        // Should have context, chunk(s), and done events
+        // Should have context and done events
+        // Note: chunk events come from onStreamingChunk callback (only if AI service produces them)
         const types = events.map(e => e.type);
         expect(types).toContain('context');
-        expect(types).toContain('chunk');
         expect(types).toContain('done');
 
         // SSE headers
@@ -228,7 +228,7 @@ describe('handleAskRequest', () => {
         expect(doneEvent!.fullResponse).toBe('This is the AI response about authentication.');
     });
 
-    it('should call sendMessage with a prompt', async () => {
+    it('should call sendMessage with a prompt and onStreamingChunk callback', async () => {
         const req = createMockRequest(JSON.stringify({ question: 'How does auth work?' }));
         const { res } = createMockResponse();
 
@@ -238,6 +238,11 @@ describe('handleAskRequest', () => {
         const prompt = mockSendMessage.mock.calls[0][0];
         expect(prompt).toContain('How does auth work?');
         expect(prompt).toContain('Current Question');
+
+        // Verify onStreamingChunk callback is passed
+        const callOptions = mockSendMessage.mock.calls[0][1];
+        expect(callOptions).toBeDefined();
+        expect(typeof callOptions.onStreamingChunk).toBe('function');
     });
 
     it('should include conversation history in prompt', async () => {
@@ -259,7 +264,7 @@ describe('handleAskRequest', () => {
         expect(prompt).toContain('Tell me more about JWT');
     });
 
-    it('should pass model and workingDirectory options to sendMessage', async () => {
+    it('should pass model, workingDirectory, and onStreamingChunk to sendMessage', async () => {
         const optionsWithModel: AskHandlerOptions = {
             ...options,
             model: 'gpt-4',
@@ -273,7 +278,11 @@ describe('handleAskRequest', () => {
 
         expect(mockSendMessage).toHaveBeenCalledWith(
             expect.any(String),
-            expect.objectContaining({ model: 'gpt-4', workingDirectory: '/test/dir' }),
+            expect.objectContaining({
+                model: 'gpt-4',
+                workingDirectory: '/test/dir',
+                onStreamingChunk: expect.any(Function),
+            }),
         );
     });
 
@@ -303,6 +312,44 @@ describe('handleAskRequest', () => {
         const events = parseSSEEvents(getOutput());
         // Should still work — just with potentially empty or few context modules
         expect(events.some(e => e.type === 'done')).toBe(true);
+    });
+
+    it('should emit SSE chunk events via onStreamingChunk callback', async () => {
+        // Set up sendMessage to invoke onStreamingChunk
+        const streamingSendMessage = vi.fn().mockImplementation(
+            async (prompt: string, opts?: { onStreamingChunk?: (chunk: string) => void }) => {
+                // Simulate streaming by calling onStreamingChunk
+                if (opts?.onStreamingChunk) {
+                    opts.onStreamingChunk('Hello ');
+                    opts.onStreamingChunk('world');
+                    opts.onStreamingChunk('!');
+                }
+                return 'Hello world!';
+            }
+        );
+
+        const streamingOptions: AskHandlerOptions = {
+            contextBuilder,
+            sendMessage: streamingSendMessage,
+        };
+
+        const req = createMockRequest(JSON.stringify({ question: 'test streaming' }));
+        const { res, getOutput } = createMockResponse();
+
+        await handleAskRequest(req, res, streamingOptions);
+
+        const events = parseSSEEvents(getOutput());
+
+        // Should have context, 3 chunk events, and done
+        const chunkEvents = events.filter(e => e.type === 'chunk');
+        expect(chunkEvents.length).toBe(3);
+        expect(chunkEvents[0].content).toBe('Hello ');
+        expect(chunkEvents[1].content).toBe('world');
+        expect(chunkEvents[2].content).toBe('!');
+
+        const doneEvent = events.find(e => e.type === 'done');
+        expect(doneEvent).toBeDefined();
+        expect(doneEvent!.fullResponse).toBe('Hello world!');
     });
 });
 

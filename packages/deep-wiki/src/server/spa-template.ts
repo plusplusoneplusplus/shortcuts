@@ -1646,6 +1646,7 @@ ${opts.enableAI ? `
             var panel = document.getElementById('ask-panel');
             var content = document.getElementById('content-area');
             var handle = document.getElementById('ask-resize-handle');
+            var sidebar = document.getElementById('sidebar');
             if (expanded) {
                 panel.classList.add('expanded');
                 content.classList.add('ask-expanded');
@@ -1653,6 +1654,12 @@ ${opts.enableAI ? `
                 // Clear custom drag width so flex takes over
                 panel.style.width = '';
                 panel.style.minWidth = '';
+                // Auto-collapse sidebar to maximize ask panel space
+                if (!sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.add('collapsed');
+                    updateSidebarCollapseBtn(true);
+                    // Don't persist this auto-collapse — user can manually restore
+                }
             } else {
                 panel.classList.remove('expanded');
                 content.classList.remove('ask-expanded');
@@ -1665,6 +1672,12 @@ ${opts.enableAI ? `
                         panel.style.width = w + 'px';
                         panel.style.minWidth = w + 'px';
                     }
+                }
+                // Restore sidebar if it was previously not collapsed
+                var sidebarSaved = localStorage.getItem('deep-wiki-sidebar-collapsed');
+                if (sidebarSaved !== 'true' && sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.remove('collapsed');
+                    updateSidebarCollapseBtn(false);
                 }
             }
             updateAskExpandBtn(expanded);
@@ -1922,6 +1935,43 @@ ${opts.enableAI ? `
             messages.appendChild(div);
             messages.scrollTop = messages.scrollHeight;
         }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl/Cmd + B: Toggle sidebar
+            if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                e.preventDefault();
+                var sidebar = document.getElementById('sidebar');
+                var isCollapsed = sidebar.classList.toggle('collapsed');
+                updateSidebarCollapseBtn(isCollapsed);
+                localStorage.setItem('deep-wiki-sidebar-collapsed', isCollapsed ? 'true' : 'false');
+            }
+            // Ctrl/Cmd + I: Toggle Ask AI panel
+            if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+                e.preventDefault();
+                document.getElementById('ask-toggle').click();
+            }
+            // Ctrl/Cmd + Shift + I: Expand/collapse Ask AI panel
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'I') {
+                e.preventDefault();
+                var panel = document.getElementById('ask-panel');
+                if (!panel.classList.contains('hidden')) {
+                    document.getElementById('ask-expand').click();
+                }
+            }
+            // Escape: Close Ask AI panel
+            if (e.key === 'Escape') {
+                var askInput = document.getElementById('ask-input');
+                if (document.activeElement === askInput) {
+                    askInput.blur();
+                } else {
+                    var panel = document.getElementById('ask-panel');
+                    if (!panel.classList.contains('hidden')) {
+                        document.getElementById('ask-close').click();
+                    }
+                }
+            }
+        });
 
         // ================================================================
         // Deep Dive (Explore Further)

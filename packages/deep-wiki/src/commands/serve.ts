@@ -210,13 +210,14 @@ async function createAISendFunction(
         throw new Error(availability.error || 'Copilot SDK is not available');
     }
 
-    return async (prompt: string, options?: { model?: string; workingDirectory?: string }): Promise<string> => {
+    return async (prompt: string, options?: { model?: string; workingDirectory?: string; onStreamingChunk?: (chunk: string) => void }): Promise<string> => {
         const result = await service.sendMessage({
             prompt,
             model: options?.model || defaultModel,
             workingDirectory: options?.workingDirectory || defaultWorkingDirectory,
             usePool: false,
             loadDefaultMcpConfig: false,
+            onStreamingChunk: options?.onStreamingChunk,
         });
 
         if (!result.success) {

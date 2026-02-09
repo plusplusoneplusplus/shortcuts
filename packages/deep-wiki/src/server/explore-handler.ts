@@ -89,19 +89,16 @@ export async function handleExploreRequest(
         // 3. Build explore prompt
         const prompt = buildExplorePrompt(mod, existingMarkdown, graph, exploreReq);
 
-        // 4. Call AI
+        // 4. Call AI with native streaming — chunks are sent as SSE events in real-time
         const fullResponse = await options.sendMessage(prompt, {
             model: options.model,
             workingDirectory: options.workingDirectory,
+            onStreamingChunk: (chunk) => {
+                sendSSE(res, { type: 'chunk', text: chunk });
+            },
         });
 
-        // 5. Stream chunks
-        const chunks = chunkText(fullResponse, 150);
-        for (const chunk of chunks) {
-            sendSSE(res, { type: 'chunk', text: chunk });
-        }
-
-        // 6. Done
+        // 5. Done
         sendSSE(res, { type: 'done', fullResponse });
 
     } catch (err) {
@@ -194,15 +191,6 @@ export function buildExplorePrompt(
 // ============================================================================
 // Utilities
 // ============================================================================
-
-function chunkText(text: string, chunkSize: number): string[] {
-    if (!text) return [];
-    const chunks: string[] = [];
-    for (let i = 0; i < text.length; i += chunkSize) {
-        chunks.push(text.slice(i, i + chunkSize));
-    }
-    return chunks;
-}
 
 function readBody(req: IncomingMessage): Promise<string> {
     return new Promise((resolve, reject) => {

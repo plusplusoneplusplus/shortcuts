@@ -557,4 +557,60 @@ describe('Ask Panel UI', () => {
             expect(html).toContain('class="ask-resize-handle hidden"');
         });
     });
+
+    // ========================================================================
+    // Keyboard Shortcuts
+    // ========================================================================
+
+    describe('keyboard shortcuts', () => {
+        it('should include keyboard event listener', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("document.addEventListener('keydown'");
+        });
+
+        it('should include Ctrl/Cmd+B shortcut for sidebar toggle', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("e.key === 'b'");
+            expect(html).toContain('e.ctrlKey || e.metaKey');
+        });
+
+        it('should include Ctrl/Cmd+I shortcut for Ask AI panel toggle', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("e.key === 'i'");
+        });
+
+        it('should include Escape shortcut to close Ask AI panel', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("e.key === 'Escape'");
+        });
+
+        it('should not include keyboard shortcuts when AI is disabled', () => {
+            const html = generateSpaHtml(createOptions({ enableAI: false }));
+            // Ctrl+I shortcut for Ask AI should not be present
+            expect(html).not.toContain("ask-toggle");
+        });
+    });
+
+    // ========================================================================
+    // Auto-collapse sidebar on expand
+    // ========================================================================
+
+    describe('auto-collapse sidebar on expand', () => {
+        it('should auto-collapse sidebar when expanding ask panel', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("sidebar.classList.add('collapsed')");
+            expect(html).toContain('updateSidebarCollapseBtn(true)');
+        });
+
+        it('should restore sidebar when collapsing ask panel', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("sidebar.classList.remove('collapsed')");
+            expect(html).toContain('updateSidebarCollapseBtn(false)');
+        });
+
+        it('should check localStorage for saved sidebar state when collapsing', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("var sidebarSaved = localStorage.getItem('deep-wiki-sidebar-collapsed')");
+        });
+    });
 });

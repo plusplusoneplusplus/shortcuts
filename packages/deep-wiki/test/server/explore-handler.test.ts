@@ -162,8 +162,42 @@ describe('handleExploreRequest', () => {
         const events = parseSSEEvents(getOutput());
         const types = events.map(e => e.type);
         expect(types).toContain('status');
-        expect(types).toContain('chunk');
         expect(types).toContain('done');
+    });
+
+    it('should emit SSE chunk events via onStreamingChunk callback', async () => {
+        // Set up sendMessage to invoke onStreamingChunk
+        const streamingSendMessage = vi.fn().mockImplementation(
+            async (prompt: string, opts?: { onStreamingChunk?: (chunk: string) => void }) => {
+                if (opts?.onStreamingChunk) {
+                    opts.onStreamingChunk('Deep ');
+                    opts.onStreamingChunk('analysis');
+                }
+                return 'Deep analysis';
+            }
+        );
+
+        const streamingOptions: ExploreHandlerOptions = {
+            wikiData,
+            sendMessage: streamingSendMessage,
+        };
+
+        const req = createMockRequest(JSON.stringify({ depth: 'deep' }));
+        const { res, getOutput } = createMockResponse();
+
+        await handleExploreRequest(req, res, 'auth', streamingOptions);
+
+        const events = parseSSEEvents(getOutput());
+
+        // Should have status, 2 chunk events, and done
+        const chunkEvents = events.filter(e => e.type === 'chunk');
+        expect(chunkEvents.length).toBe(2);
+        expect(chunkEvents[0].text).toBe('Deep ');
+        expect(chunkEvents[1].text).toBe('analysis');
+
+        const doneEvent = events.find(e => e.type === 'done');
+        expect(doneEvent).toBeDefined();
+        expect(doneEvent!.fullResponse).toBe('Deep analysis');
     });
 
     it('should include module name in status message', async () => {
@@ -200,7 +234,7 @@ describe('handleExploreRequest', () => {
         expect(prompt).toContain('How does retry work?');
     });
 
-    it('should pass model and workingDirectory options', async () => {
+    it('should pass model, workingDirectory, and onStreamingChunk options', async () => {
         const optWithModel: ExploreHandlerOptions = {
             ...options,
             model: 'gpt-4',
@@ -213,7 +247,11 @@ describe('handleExploreRequest', () => {
 
         expect(mockSendMessage).toHaveBeenCalledWith(
             expect.any(String),
-            expect.objectContaining({ model: 'gpt-4', workingDirectory: '/test' }),
+            expect.objectContaining({
+                model: 'gpt-4',
+                workingDirectory: '/test',
+                onStreamingChunk: expect.any(Function),
+            }),
         );
     });
 

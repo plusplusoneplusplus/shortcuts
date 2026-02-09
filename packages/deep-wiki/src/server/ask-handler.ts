@@ -39,11 +39,15 @@ export interface AskHandlerOptions {
 
 /**
  * Abstraction over the AI SDK's sendMessage for testability.
- * Returns an async iterable of string chunks (streaming) or a single string.
+ * Returns the full response string.
+ * When `onStreamingChunk` is provided, each delta chunk is emitted in real-time
+ * while the function still resolves with the complete response.
  */
 export type AskAIFunction = (prompt: string, options?: {
     model?: string;
     workingDirectory?: string;
+    /** Callback invoked for each streaming chunk as it arrives. */
+    onStreamingChunk?: (chunk: string) => void;
 }) => Promise<string>;
 
 // ============================================================================
@@ -107,19 +111,16 @@ export async function handleAskRequest(
             askReq.conversationHistory,
         );
 
-        // 3. Call AI
+        // 3. Call AI with native streaming — chunks are sent as SSE events in real-time
         const fullResponse = await options.sendMessage(prompt, {
             model: options.model,
             workingDirectory: options.workingDirectory,
+            onStreamingChunk: (chunk) => {
+                sendSSE(res, { type: 'chunk', content: chunk });
+            },
         });
 
-        // 4. Stream the response in chunks (simulated chunking for non-streaming SDK)
-        const chunks = chunkText(fullResponse, 100);
-        for (const chunk of chunks) {
-            sendSSE(res, { type: 'chunk', content: chunk });
-        }
-
-        // 5. Send done event
+        // 4. Send done event
         sendSSE(res, { type: 'done', fullResponse });
 
     } catch (err) {
