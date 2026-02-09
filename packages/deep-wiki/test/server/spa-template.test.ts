@@ -553,8 +553,16 @@ describe('generateSpaHtml — sidebar collapse/expand', () => {
 // Collapsible Nav Sections
 // ============================================================================
 
-describe('generateSpaHtml — collapsible nav sections', () => {
-    it('should include nav-section-title class', () => {
+describe('generateSpaHtml — nav sections', () => {
+    it('should include nav-section CSS class (used for home section)', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.nav-section');
+    });
+
+    it('should include nav-section-title CSS styles', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
@@ -562,7 +570,7 @@ describe('generateSpaHtml — collapsible nav sections', () => {
         expect(html).toContain('.nav-section-title');
     });
 
-    it('should include nav-section-arrow for toggle indicator', () => {
+    it('should include nav-section-arrow CSS', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
@@ -570,20 +578,13 @@ describe('generateSpaHtml — collapsible nav sections', () => {
         expect(html).toContain('nav-section-arrow');
     });
 
-    it('should include collapsed nav-section CSS', () => {
+    it('should use area-style classes for categories (nav-area-group)', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('.nav-section.collapsed .nav-section-items');
-    });
-
-    it('should include section toggle onclick handler', () => {
-        const html = generateSpaHtml({
-            theme: 'auto', title: 'Test', enableSearch: true,
-            enableAI: false, enableGraph: false,
-        });
-        expect(html).toContain("section.classList.toggle('collapsed')");
+        // buildCategorySidebar now uses nav-area-group style like buildAreaSidebar
+        expect(html).toContain("group.className = 'nav-area-group'");
     });
 });
 

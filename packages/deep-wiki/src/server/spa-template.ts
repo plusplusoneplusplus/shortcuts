@@ -1408,6 +1408,7 @@ ${opts.enableSearch ? `
         }
 
         // Build category-based sidebar (fallback for non-area repos)
+        // Uses the same visual style as area-based sidebar (DeepWiki-style)
         function buildCategorySidebar(navContainer) {
             var categories = {};
             moduleGraph.modules.forEach(function(mod) {
@@ -1417,34 +1418,30 @@ ${opts.enableSearch ? `
             });
 
             Object.keys(categories).sort().forEach(function(category) {
-                var section = document.createElement('div');
-                section.className = 'nav-section';
+                var group = document.createElement('div');
+                group.className = 'nav-area-group';
 
-                var titleEl = document.createElement('div');
-                titleEl.className = 'nav-section-title';
-                titleEl.innerHTML = '<span class="nav-section-arrow">&#x25BC;</span> ' + escapeHtml(category);
-                titleEl.onclick = function() {
-                    section.classList.toggle('collapsed');
-                };
-                section.appendChild(titleEl);
+                // Category header (same style as area header)
+                var catItem = document.createElement('div');
+                catItem.className = 'nav-area-item';
+                catItem.innerHTML = '<span class="nav-item-name">' + escapeHtml(category) + '</span>';
+                group.appendChild(catItem);
 
-                var itemsEl = document.createElement('div');
-                itemsEl.className = 'nav-section-items';
+                // Module children (indented)
+                var childrenEl = document.createElement('div');
+                childrenEl.className = 'nav-area-children';
 
                 categories[category].forEach(function(mod) {
                     var item = document.createElement('div');
-                    item.className = 'nav-item';
+                    item.className = 'nav-area-module';
                     item.setAttribute('data-id', mod.id);
-                    item.innerHTML =
-                        '<span class="nav-item-name">' + escapeHtml(mod.name) + '</span>' +
-                        '<span class="complexity-badge complexity-' + mod.complexity + '">' +
-                        mod.complexity + '</span>';
+                    item.innerHTML = '<span class="nav-item-name">' + escapeHtml(mod.name) + '</span>';
                     item.onclick = function() { loadModule(mod.id); };
-                    itemsEl.appendChild(item);
+                    childrenEl.appendChild(item);
                 });
 
-                section.appendChild(itemsEl);
-                navContainer.appendChild(section);
+                group.appendChild(childrenEl);
+                navContainer.appendChild(group);
             });
         }
 

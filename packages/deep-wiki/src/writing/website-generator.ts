@@ -1017,7 +1017,7 @@ ${enableSearch ? `
             }
         }
 
-        // Build category-based sidebar (fallback)
+        // Build category-based sidebar (fallback, uses same visual style as area-based)
         function buildCategorySidebar(navContainer) {
             var categories = {};
             moduleGraph.modules.forEach(function(mod) {
@@ -1027,24 +1027,28 @@ ${enableSearch ? `
             });
 
             Object.keys(categories).sort().forEach(function(category) {
-                var section = document.createElement('div');
-                section.className = 'nav-section';
-                section.innerHTML = '<h3>' + escapeHtml(category) + '</h3>';
+                var group = document.createElement('div');
+                group.className = 'nav-area-group';
+
+                var catItem = document.createElement('div');
+                catItem.className = 'nav-area-item';
+                catItem.innerHTML = escapeHtml(category);
+                group.appendChild(catItem);
+
+                var childrenEl = document.createElement('div');
+                childrenEl.className = 'nav-area-children';
 
                 categories[category].forEach(function(mod) {
                     var item = document.createElement('div');
-                    item.className = 'nav-item';
+                    item.className = 'nav-area-module';
                     item.setAttribute('data-id', mod.id);
-                    item.innerHTML =
-                        '<span class="nav-item-name">' + escapeHtml(mod.name) +
-                        ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
-                        mod.complexity + '</span></span>' +
-                        '<span class="nav-item-path">' + escapeHtml(mod.path) + '</span>';
+                    item.innerHTML = escapeHtml(mod.name);
                     item.onclick = function() { loadModule(mod.id); };
-                    section.appendChild(item);
+                    childrenEl.appendChild(item);
                 });
 
-                navContainer.appendChild(section);
+                group.appendChild(childrenEl);
+                navContainer.appendChild(group);
             });
         }
 
