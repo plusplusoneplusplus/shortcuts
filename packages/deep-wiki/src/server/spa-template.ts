@@ -105,6 +105,20 @@ ${enableAI ? `                    <button class="ask-toggle-btn" id="ask-toggle"
                 </div>
             </div>
         </div>
+${enableAI ? `        <div class="ask-panel hidden" id="ask-panel">
+            <div class="ask-panel-header">
+                <h3>Ask AI</h3>
+                <div class="ask-panel-actions">
+                    <button class="ask-panel-clear" id="ask-clear" title="Clear conversation">Clear</button>
+                    <button class="ask-panel-close" id="ask-close" aria-label="Close Ask panel">&times;</button>
+                </div>
+            </div>
+            <div class="ask-messages" id="ask-messages"></div>
+            <div class="ask-input-area">
+                <textarea class="ask-input" id="ask-input" placeholder="Ask about this codebase..." rows="1"></textarea>
+                <button class="ask-send-btn" id="ask-send">Send</button>
+            </div>
+        </div>` : ''}
     </div>
 
     <script>
@@ -578,7 +592,160 @@ function getSpaStyles(enableAI: boolean): string {
             font-size: 13px;
             font-weight: 500;
         }
-        .ask-toggle-btn:hover { opacity: 0.9; }`;
+        .ask-toggle-btn:hover { opacity: 0.9; }
+
+        /* Ask Panel (slide-out) */
+        .ask-panel {
+            width: 380px;
+            min-width: 380px;
+            background: var(--content-bg);
+            border-left: 1px solid var(--content-border);
+            display: flex;
+            flex-direction: column;
+            transition: margin-right 0.3s;
+            height: 100%;
+        }
+        .ask-panel.hidden { display: none; }
+        .ask-panel-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--content-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .ask-panel-header h3 { font-size: 15px; color: var(--content-text); margin: 0; }
+        .ask-panel-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: var(--content-muted);
+            padding: 0 4px;
+        }
+        .ask-panel-close:hover { color: var(--content-text); }
+        .ask-panel-actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .ask-panel-clear {
+            background: none;
+            border: 1px solid var(--content-border);
+            border-radius: 4px;
+            padding: 2px 8px;
+            cursor: pointer;
+            font-size: 11px;
+            color: var(--content-muted);
+        }
+        .ask-panel-clear:hover { background: var(--code-bg); }
+
+        .ask-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        .ask-message {
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+        .ask-message-user {
+            background: var(--sidebar-active-border);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 12px 12px 4px 12px;
+            max-width: 85%;
+            margin-left: auto;
+            word-wrap: break-word;
+        }
+        .ask-message-assistant {
+            background: var(--code-bg);
+            color: var(--content-text);
+            padding: 10px 14px;
+            border-radius: 12px 12px 12px 4px;
+            max-width: 95%;
+            word-wrap: break-word;
+        }
+        .ask-message-assistant .markdown-body {
+            max-width: 100%;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .ask-message-assistant .markdown-body p { margin-bottom: 8px; }
+        .ask-message-assistant .markdown-body p:last-child { margin-bottom: 0; }
+        .ask-message-context {
+            font-size: 11px;
+            color: var(--content-muted);
+            margin-bottom: 8px;
+            padding: 6px 10px;
+            background: var(--stat-bg);
+            border-radius: 6px;
+            border: 1px solid var(--content-border);
+        }
+        .ask-message-context a {
+            color: var(--link-color);
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .ask-message-context a:hover { text-decoration: underline; }
+        .ask-message-error {
+            color: var(--badge-high-bg);
+            font-size: 12px;
+            padding: 8px 12px;
+            background: var(--code-bg);
+            border-radius: 8px;
+            border: 1px solid var(--badge-high-bg);
+        }
+        .ask-message-typing {
+            display: inline-block;
+            color: var(--content-muted);
+            font-size: 12px;
+        }
+        .ask-message-typing::after {
+            content: '...';
+            animation: typing 1s infinite;
+        }
+        @keyframes typing {
+            0%, 33% { content: '.'; }
+            34%, 66% { content: '..'; }
+            67%, 100% { content: '...'; }
+        }
+
+        .ask-input-area {
+            padding: 12px 16px;
+            border-top: 1px solid var(--content-border);
+            display: flex;
+            gap: 8px;
+        }
+        .ask-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid var(--content-border);
+            border-radius: 8px;
+            font-size: 13px;
+            background: var(--content-bg);
+            color: var(--content-text);
+            outline: none;
+            resize: none;
+            min-height: 38px;
+            max-height: 120px;
+            font-family: inherit;
+        }
+        .ask-input:focus { border-color: var(--sidebar-active-border); }
+        .ask-input::placeholder { color: var(--content-muted); }
+        .ask-send-btn {
+            background: var(--sidebar-active-border);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            align-self: flex-end;
+        }
+        .ask-send-btn:hover { opacity: 0.9; }
+        .ask-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }`;
     }
 
     return styles;
@@ -1191,6 +1358,220 @@ ${opts.enableGraph ? `
                 var tgt = typeof d.target === 'object' ? d.target : { category: '' };
                 return (disabledCategories.has(src.category) || disabledCategories.has(tgt.category)) ? 'none' : null;
             });
+        }` : ''}
+${opts.enableAI ? `
+        // ================================================================
+        // Ask AI Panel
+        // ================================================================
+
+        var conversationHistory = [];
+        var askStreaming = false;
+
+        // Panel toggle
+        document.getElementById('ask-toggle').addEventListener('click', function() {
+            var panel = document.getElementById('ask-panel');
+            panel.classList.toggle('hidden');
+            if (!panel.classList.contains('hidden')) {
+                document.getElementById('ask-input').focus();
+            }
+        });
+        document.getElementById('ask-close').addEventListener('click', function() {
+            document.getElementById('ask-panel').classList.add('hidden');
+        });
+        document.getElementById('ask-clear').addEventListener('click', function() {
+            conversationHistory = [];
+            document.getElementById('ask-messages').innerHTML = '';
+        });
+
+        // Send message
+        document.getElementById('ask-send').addEventListener('click', askSend);
+        document.getElementById('ask-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                askSend();
+            }
+        });
+
+        // Auto-resize textarea
+        document.getElementById('ask-input').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+
+        function askSend() {
+            if (askStreaming) return;
+            var input = document.getElementById('ask-input');
+            var question = input.value.trim();
+            if (!question) return;
+
+            input.value = '';
+            input.style.height = 'auto';
+
+            // Add user message
+            appendAskMessage('user', question);
+            conversationHistory.push({ role: 'user', content: question });
+
+            // Start streaming
+            askStreaming = true;
+            document.getElementById('ask-send').disabled = true;
+
+            // Show typing indicator
+            var typingEl = appendAskTyping();
+
+            // SSE via fetch
+            fetch('/api/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    question: question,
+                    conversationHistory: conversationHistory.slice(0, -1),
+                }),
+            }).then(function(response) {
+                if (!response.ok) {
+                    return response.json().then(function(err) {
+                        throw new Error(err.error || 'Request failed');
+                    });
+                }
+
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                var buffer = '';
+                var fullResponse = '';
+                var contextShown = false;
+                var responseEl = null;
+
+                function processChunk(result) {
+                    if (result.done) {
+                        finishStreaming(fullResponse, typingEl);
+                        return;
+                    }
+
+                    buffer += decoder.decode(result.value, { stream: true });
+                    var lines = buffer.split('\\n');
+                    buffer = lines.pop() || '';
+
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i].trim();
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            var data = JSON.parse(line.slice(6));
+                            if (data.type === 'context' && !contextShown) {
+                                contextShown = true;
+                                appendAskContext(data.moduleIds);
+                            } else if (data.type === 'chunk') {
+                                if (typingEl && typingEl.parentNode) {
+                                    typingEl.parentNode.removeChild(typingEl);
+                                    typingEl = null;
+                                }
+                                fullResponse += data.content;
+                                if (!responseEl) {
+                                    responseEl = appendAskAssistantStreaming('');
+                                }
+                                updateAskAssistantStreaming(responseEl, fullResponse);
+                            } else if (data.type === 'done') {
+                                fullResponse = data.fullResponse || fullResponse;
+                                finishStreaming(fullResponse, typingEl);
+                                return;
+                            } else if (data.type === 'error') {
+                                appendAskError(data.message);
+                                finishStreaming('', typingEl);
+                                return;
+                            }
+                        } catch(e) {}
+                    }
+
+                    return reader.read().then(processChunk);
+                }
+
+                return reader.read().then(processChunk);
+            }).catch(function(err) {
+                if (typingEl && typingEl.parentNode) {
+                    typingEl.parentNode.removeChild(typingEl);
+                }
+                appendAskError(err.message || 'Failed to connect');
+                finishStreaming('', null);
+            });
+        }
+
+        function finishStreaming(fullResponse, typingEl) {
+            if (typingEl && typingEl.parentNode) {
+                typingEl.parentNode.removeChild(typingEl);
+            }
+            askStreaming = false;
+            document.getElementById('ask-send').disabled = false;
+            if (fullResponse) {
+                conversationHistory.push({ role: 'assistant', content: fullResponse });
+            }
+        }
+
+        function appendAskMessage(role, content) {
+            var messages = document.getElementById('ask-messages');
+            var div = document.createElement('div');
+            div.className = 'ask-message';
+            var inner = document.createElement('div');
+            inner.className = 'ask-message-' + role;
+            inner.textContent = content;
+            div.appendChild(inner);
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+            return div;
+        }
+
+        function appendAskAssistantStreaming(content) {
+            var messages = document.getElementById('ask-messages');
+            var div = document.createElement('div');
+            div.className = 'ask-message';
+            var inner = document.createElement('div');
+            inner.className = 'ask-message-assistant';
+            inner.innerHTML = '<div class="markdown-body">' + (typeof marked !== 'undefined' ? marked.parse(content) : escapeHtml(content)) + '</div>';
+            div.appendChild(inner);
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+            return inner;
+        }
+
+        function updateAskAssistantStreaming(el, content) {
+            if (!el) return;
+            el.innerHTML = '<div class="markdown-body">' + (typeof marked !== 'undefined' ? marked.parse(content) : escapeHtml(content)) + '</div>';
+            var messages = document.getElementById('ask-messages');
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function appendAskContext(moduleIds) {
+            if (!moduleIds || moduleIds.length === 0) return;
+            var messages = document.getElementById('ask-messages');
+            var div = document.createElement('div');
+            div.className = 'ask-message-context';
+            var links = moduleIds.map(function(id) {
+                var mod = moduleGraph.modules.find(function(m) { return m.id === id; });
+                var name = mod ? mod.name : id;
+                return '<a onclick="loadModule(\\'' + id.replace(/'/g, "\\\\'") + '\\')">' + escapeHtml(name) + '</a>';
+            });
+            div.innerHTML = 'Context: ' + links.join(', ');
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function appendAskTyping() {
+            var messages = document.getElementById('ask-messages');
+            var div = document.createElement('div');
+            div.className = 'ask-message';
+            var inner = document.createElement('div');
+            inner.className = 'ask-message-typing';
+            inner.textContent = 'Thinking';
+            div.appendChild(inner);
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+            return div;
+        }
+
+        function appendAskError(message) {
+            var messages = document.getElementById('ask-messages');
+            var div = document.createElement('div');
+            div.className = 'ask-message-error';
+            div.textContent = 'Error: ' + message;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
         }` : ''}`;
 
 }

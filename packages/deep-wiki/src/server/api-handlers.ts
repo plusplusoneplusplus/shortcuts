@@ -10,6 +10,9 @@
 import * as http from 'http';
 import type { WikiData } from './wiki-data';
 import { sendJson, send404, send400 } from './router';
+import type { ContextBuilder } from './context-builder';
+import type { AskAIFunction } from './ask-handler';
+import { handleAskRequest } from './ask-handler';
 
 // ============================================================================
 // Types
@@ -19,6 +22,14 @@ export interface ApiHandlerContext {
     wikiData: WikiData;
     aiEnabled: boolean;
     repoPath?: string;
+    /** Context builder for AI Q&A (only when AI is enabled) */
+    contextBuilder?: ContextBuilder;
+    /** AI SDK send function (only when AI is enabled) */
+    aiSendMessage?: AskAIFunction;
+    /** AI model override */
+    aiModel?: string;
+    /** Working directory for AI sessions */
+    aiWorkingDirectory?: string;
 }
 
 // ============================================================================
@@ -65,14 +76,26 @@ export function handleApiRequest(
         return;
     }
 
-    // POST /api/ask — AI Q&A (Phase C, gated by --ai flag)
+    // POST /api/ask — AI Q&A (gated by --ai flag)
     if (method === 'POST' && pathname === '/api/ask') {
         if (!context.aiEnabled) {
             send400(res, 'AI features are not enabled. Start the server with --ai flag.');
             return;
         }
-        // Placeholder for Phase C
-        send400(res, 'AI Q&A is not yet implemented. Coming in Phase C.');
+        if (!context.contextBuilder || !context.aiSendMessage) {
+            send400(res, 'AI service is not configured.');
+            return;
+        }
+        handleAskRequest(req, res, {
+            contextBuilder: context.contextBuilder,
+            sendMessage: context.aiSendMessage,
+            model: context.aiModel,
+            workingDirectory: context.aiWorkingDirectory,
+        }).catch(() => {
+            if (!res.headersSent) {
+                sendJson(res, { error: 'Internal server error' }, 500);
+            }
+        });
         return;
     }
 

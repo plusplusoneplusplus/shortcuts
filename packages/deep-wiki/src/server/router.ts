@@ -14,6 +14,8 @@ import * as path from 'path';
 import * as url from 'url';
 import type { WikiData } from './wiki-data';
 import { handleApiRequest } from './api-handlers';
+import type { ContextBuilder } from './context-builder';
+import type { AskAIFunction } from './ask-handler';
 
 // ============================================================================
 // Constants
@@ -56,6 +58,14 @@ export interface RouterOptions {
     aiEnabled: boolean;
     /** Repo path (needed for AI features) */
     repoPath?: string;
+    /** Context builder for AI Q&A (only when AI is enabled) */
+    contextBuilder?: ContextBuilder;
+    /** AI SDK send function (only when AI is enabled) */
+    aiSendMessage?: AskAIFunction;
+    /** AI model override */
+    aiModel?: string;
+    /** Working directory for AI sessions */
+    aiWorkingDirectory?: string;
 }
 
 /**
@@ -70,7 +80,7 @@ export interface RouterOptions {
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-    const { wikiData, spaHtml, aiEnabled, repoPath } = options;
+    const { wikiData, spaHtml, aiEnabled, repoPath, contextBuilder, aiSendMessage, aiModel, aiWorkingDirectory } = options;
 
     return (req: http.IncomingMessage, res: http.ServerResponse) => {
         const parsedUrl = url.parse(req.url || '/', true);
@@ -95,6 +105,10 @@ export function createRequestHandler(
                 wikiData,
                 aiEnabled,
                 repoPath,
+                contextBuilder,
+                aiSendMessage,
+                aiModel,
+                aiWorkingDirectory,
             });
             return;
         }

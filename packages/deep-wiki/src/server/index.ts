@@ -14,6 +14,8 @@ import * as http from 'http';
 import { WikiData } from './wiki-data';
 import { createRequestHandler } from './router';
 import { generateSpaHtml } from './spa-template';
+import { ContextBuilder } from './context-builder';
+import type { AskAIFunction } from './ask-handler';
 import type { WebsiteTheme } from '../types';
 
 // ============================================================================
@@ -38,6 +40,10 @@ export interface WikiServerOptions {
     theme?: WebsiteTheme;
     /** Override project title */
     title?: string;
+    /** AI SDK send function (required when aiEnabled=true) */
+    aiSendMessage?: AskAIFunction;
+    /** AI model override */
+    aiModel?: string;
 }
 
 /**
@@ -48,6 +54,8 @@ export interface WikiServer {
     server: http.Server;
     /** The wiki data layer */
     wikiData: WikiData;
+    /** The context builder for AI Q&A (only when AI is enabled) */
+    contextBuilder?: ContextBuilder;
     /** The port the server is listening on */
     port: number;
     /** The host the server is bound to */
@@ -81,6 +89,13 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
     // Determine title
     const title = options.title || wikiData.graph.project.name;
 
+    // Build context index for AI Q&A
+    let contextBuilder: ContextBuilder | undefined;
+    if (aiEnabled) {
+        const markdownData = wikiData.getMarkdownData();
+        contextBuilder = new ContextBuilder(wikiData.graph, markdownData);
+    }
+
     // Generate SPA HTML
     const spaHtml = generateSpaHtml({
         theme,
@@ -96,6 +111,10 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
         spaHtml,
         aiEnabled,
         repoPath: options.repoPath,
+        contextBuilder,
+        aiSendMessage: options.aiSendMessage,
+        aiModel: options.aiModel,
+        aiWorkingDirectory: options.repoPath,
     });
 
     const server = http.createServer(handler);
@@ -114,6 +133,7 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
     return {
         server,
         wikiData,
+        contextBuilder,
         port: actualPort,
         host,
         url,
@@ -129,5 +149,8 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
 // Re-export types and modules used by consumers
 export { WikiData } from './wiki-data';
 export { generateSpaHtml } from './spa-template';
+export { ContextBuilder } from './context-builder';
 export type { SpaTemplateOptions } from './spa-template';
 export type { ModuleSummary, ModuleDetail, SpecialPage } from './wiki-data';
+export type { AskAIFunction, AskRequest, ConversationMessage } from './ask-handler';
+export type { RetrievedContext } from './context-builder';

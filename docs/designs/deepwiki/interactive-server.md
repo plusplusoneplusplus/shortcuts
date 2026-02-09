@@ -334,11 +334,11 @@ Serve the wiki over HTTP with data loaded via API calls instead of embedded `<sc
 
 ### Phase B: Interactive Dependency Graph
 
-- [ ] D3.js force-directed graph component (client-side)
-- [ ] "Graph" sidebar nav item
-- [ ] Node click → navigate to module
-- [ ] Category filter toggles
-- [ ] Zoom/pan controls
+- [x] D3.js force-directed graph component (client-side)
+- [x] "Graph" sidebar nav item
+- [x] Node click → navigate to module
+- [x] Category filter toggles
+- [x] Zoom/pan controls
 
 ### Phase C: AI Q&A
 
