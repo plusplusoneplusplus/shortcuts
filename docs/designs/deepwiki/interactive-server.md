@@ -342,11 +342,11 @@ Serve the wiki over HTTP with data loaded via API calls instead of embedded `<sc
 
 ### Phase D: Deep Dive + Watch Mode
 
-- [ ] `POST /api/explore/:id` with SSE streaming
-- [ ] Deep-dive button on module pages
-- [ ] WebSocket server for live reload
-- [ ] File watcher with debounced incremental rebuild
-- [ ] `--watch` flag
+- [x] `POST /api/explore/:id` with SSE streaming
+- [x] Deep-dive button on module pages
+- [x] WebSocket server for live reload
+- [x] File watcher with debounced incremental rebuild
+- [x] `--watch` flag
 
 ## Design Decisions
 
