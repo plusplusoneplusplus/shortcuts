@@ -116,35 +116,35 @@ ${enableSearch ? `            <div class="search-box">
                     </aside>
                 </div>
             </div>
-
-${enableAI ? `            <!-- Bottom Ask AI Bar -->
-            <div class="ask-bar" id="ask-bar">
-                <div class="ask-bar-inner">
-                    <span class="ask-bar-label">Ask AI about <strong id="ask-bar-subject">${escapeHtml(title)}</strong></span>
-                    <div class="ask-bar-input-row">
-                        <input type="text" class="ask-bar-input" id="ask-input" placeholder="Ask about this codebase..." aria-label="Ask AI">
-                        <button class="ask-bar-send" id="ask-send" aria-label="Send question">&#10148;</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Expanded Ask Panel (slide-up overlay) -->
-            <div class="ask-panel hidden" id="ask-panel">
-                <div class="ask-panel-header">
-                    <h3>Ask AI</h3>
-                    <div class="ask-panel-actions">
-                        <button class="ask-panel-clear" id="ask-clear" title="Clear conversation">Clear</button>
-                        <button class="ask-panel-close" id="ask-close" aria-label="Close">&times;</button>
-                    </div>
-                </div>
-                <div class="ask-messages" id="ask-messages"></div>
-                <div class="ask-input-area">
-                    <textarea class="ask-textarea" id="ask-textarea" placeholder="Ask about this codebase..." rows="1"></textarea>
-                    <button class="ask-panel-send" id="ask-panel-send">Send</button>
-                </div>
-            </div>` : ''}
         </main>
     </div>
+
+${enableAI ? `    <!-- Bottom Ask AI Bar (fixed viewport-wide) -->
+    <div class="ask-bar" id="ask-bar">
+        <div class="ask-bar-inner">
+            <span class="ask-bar-label">Ask AI about <strong id="ask-bar-subject">${escapeHtml(title)}</strong></span>
+            <div class="ask-bar-input-row">
+                <input type="text" class="ask-bar-input" id="ask-input" placeholder="Ask about this codebase..." aria-label="Ask AI">
+                <button class="ask-bar-send" id="ask-send" aria-label="Send question">&#10148;</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expanded Ask Panel (fixed viewport-wide overlay) -->
+    <div class="ask-panel hidden" id="ask-panel">
+        <div class="ask-panel-header">
+            <h3>Ask AI</h3>
+            <div class="ask-panel-actions">
+                <button class="ask-panel-clear" id="ask-clear" title="Clear conversation">Clear</button>
+                <button class="ask-panel-close" id="ask-close" aria-label="Close">&times;</button>
+            </div>
+        </div>
+        <div class="ask-messages" id="ask-messages"></div>
+        <div class="ask-input-area">
+            <textarea class="ask-textarea" id="ask-textarea" placeholder="Ask about this codebase..." rows="1"></textarea>
+            <button class="ask-panel-send" id="ask-panel-send">Send</button>
+        </div>
+    </div>` : ''}
 
 ${enableWatch ? `    <div class="live-reload-bar" id="live-reload-bar"></div>` : ''}
 
@@ -921,12 +921,19 @@ ${getMermaidZoomStyles()}
     if (enableAI) {
         styles += `
 
-        /* ========== Ask AI Bar (bottom) ========== */
+        /* ========== Layout adjustment for fixed Ask AI bar ========== */
+        .app-layout { padding-bottom: 72px; }
+
+        /* ========== Ask AI Bar (fixed viewport-wide bottom) ========== */
         .ask-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 200;
             border-top: 1px solid var(--ask-bar-border);
             background: var(--ask-bar-bg);
             padding: 12px 20px;
-            flex-shrink: 0;
         }
         .ask-bar-inner {
             max-width: 720px;
@@ -969,20 +976,20 @@ ${getMermaidZoomStyles()}
         .ask-bar-send:hover { opacity: 0.9; }
         .ask-bar-send:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* ========== Ask Panel (expanded chat) ========== */
+        /* ========== Ask Panel (fixed viewport-wide expanded chat) ========== */
         .ask-panel {
-            position: absolute;
+            position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
-            height: 70%;
+            height: 60vh;
             max-height: 600px;
             background: var(--content-bg);
             border-top: 1px solid var(--content-border);
             display: flex;
             flex-direction: column;
-            z-index: 150;
-            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+            z-index: 250;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
             border-radius: 12px 12px 0 0;
             transition: height 0.3s;
         }
@@ -1113,7 +1120,16 @@ ${getMermaidZoomStyles()}
             align-self: flex-end;
         }
         .ask-panel-send:hover { opacity: 0.9; }
-        .ask-panel-send:disabled { opacity: 0.5; cursor: not-allowed; }`;
+        .ask-panel-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ========== Ask AI Responsive ========== */
+        @media (max-width: 768px) {
+            .ask-bar { padding: 10px 12px; }
+            .ask-bar-inner { max-width: 100%; }
+            .ask-bar-label { font-size: 11px; margin-bottom: 4px; }
+            .ask-panel { height: 70vh; max-height: none; border-radius: 8px 8px 0 0; }
+            .app-layout { padding-bottom: 68px; }
+        }`;
     }
 
     return styles;
