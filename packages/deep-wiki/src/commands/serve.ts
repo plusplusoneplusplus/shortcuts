@@ -9,7 +9,7 @@
  *   --host <addr>        Bind address (default: localhost)
  *   --generate <repo>    Generate wiki before serving
  *   --watch              Watch repo for changes (requires --generate)
- *   --ai                 Enable AI Q&A and deep-dive features
+ *   --no-ai              Disable AI Q&A and deep-dive features (enabled by default)
  *   --model <model>      AI model for Q&A sessions
  *   --open               Open browser on start
  *
@@ -19,6 +19,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { createServer } from '../server';
+import type { AskAIFunction } from '../server';
 import { EXIT_CODES } from '../cli';
 import {
     printSuccess,
@@ -107,13 +108,30 @@ export async function executeServe(
     }
 
     // ================================================================
+    // Initialize AI service if enabled
+    // ================================================================
+    const aiEnabled = options.ai !== false; // Default to true
+    let aiSendMessage: AskAIFunction | undefined;
+
+    if (aiEnabled) {
+        try {
+            aiSendMessage = await createAISendFunction(options.model);
+            printInfo('AI service initialized successfully.');
+        } catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            printWarning(`AI service unavailable: ${errMsg}`);
+            printWarning('Server will start without AI features.');
+        }
+    }
+
+    // ================================================================
     // Start server
     // ================================================================
     printHeader('Deep Wiki — Interactive Server');
     printKeyValue('Wiki Directory', resolvedWikiDir);
     printKeyValue('Port', String(options.port || 3000));
     printKeyValue('Host', options.host || 'localhost');
-    if (options.ai) { printKeyValue('AI Features', 'Enabled'); }
+    printKeyValue('AI Features', aiSendMessage ? 'Enabled' : aiEnabled ? 'Unavailable' : 'Disabled');
     if (options.watch && options.generate) { printKeyValue('Watch Mode', 'Enabled'); }
     process.stderr.write('\n');
 
@@ -122,7 +140,9 @@ export async function executeServe(
             wikiDir: resolvedWikiDir,
             port: options.port || 3000,
             host: options.host || 'localhost',
-            aiEnabled: options.ai || false,
+            aiEnabled: !!aiSendMessage,
+            aiSendMessage,
+            aiModel: options.model,
             repoPath: options.generate ? path.resolve(options.generate) : undefined,
             theme: (options.theme as 'light' | 'dark' | 'auto') || 'auto',
             title: options.title,
@@ -161,6 +181,46 @@ export async function executeServe(
         }
         return EXIT_CODES.EXECUTION_ERROR;
     }
+}
+
+// ============================================================================
+// AI Initialization
+// ============================================================================
+
+/**
+ * Create an AskAIFunction that wraps the Copilot SDK service.
+ *
+ * Uses direct sessions (usePool: false) without MCP tools —
+ * all wiki context is provided in the prompt by the context builder.
+ *
+ * @param defaultModel - Default AI model override
+ * @returns A function matching the AskAIFunction signature
+ */
+async function createAISendFunction(defaultModel?: string): Promise<AskAIFunction> {
+    const { getCopilotSDKService } = await import('@plusplusoneplusplus/pipeline-core');
+    const service = getCopilotSDKService();
+
+    // Verify the service is available before returning the function
+    const availability = await service.isAvailable();
+    if (!availability.available) {
+        throw new Error(availability.error || 'Copilot SDK is not available');
+    }
+
+    return async (prompt: string, options?: { model?: string; workingDirectory?: string }): Promise<string> => {
+        const result = await service.sendMessage({
+            prompt,
+            model: options?.model || defaultModel,
+            workingDirectory: options?.workingDirectory,
+            usePool: false,
+            loadDefaultMcpConfig: false,
+        });
+
+        if (!result.success) {
+            throw new Error(result.error || 'AI request failed');
+        }
+
+        return result.response || '';
+    };
 }
 
 // ============================================================================

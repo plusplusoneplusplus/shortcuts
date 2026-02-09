@@ -155,7 +155,7 @@ export function createProgram(): Command {
         .option('-H, --host <address>', 'Bind address', 'localhost')
         .option('-g, --generate <repo-path>', 'Generate wiki before serving')
         .option('-w, --watch', 'Watch repo for changes (requires --generate)', false)
-        .option('--ai', 'Enable AI Q&A and deep-dive features', false)
+        .option('--no-ai', 'Disable AI Q&A and deep-dive features')
         .option('-m, --model <model>', 'AI model for Q&A sessions')
         .option('--open', 'Open browser automatically', false)
         .option('--theme <theme>', 'Website theme: light, dark, auto', 'auto')
