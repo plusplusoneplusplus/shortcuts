@@ -426,6 +426,32 @@ function getStyles(): string {
         .nav-item-name { display: block; color: var(--sidebar-text); margin-bottom: 2px; }
         .nav-item-path { display: block; font-size: 11px; color: var(--sidebar-muted); }
 
+        /* Area-based sidebar (DeepWiki-style hierarchy) */
+        .nav-area-group { padding: 2px 0; }
+        .nav-area-item {
+            padding: 8px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--sidebar-text);
+            display: block;
+            transition: background 0.15s;
+        }
+        .nav-area-item:hover { background: var(--sidebar-hover); }
+        .nav-area-item.active { background: var(--sidebar-hover); border-left: 3px solid var(--sidebar-active-border); }
+
+        .nav-area-children { padding-left: 8px; }
+        .nav-area-module {
+            padding: 6px 20px 6px 28px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--sidebar-muted);
+            display: block;
+            transition: background 0.15s, color 0.15s;
+        }
+        .nav-area-module:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
+        .nav-area-module.active { background: var(--sidebar-hover); color: var(--sidebar-text); border-left: 3px solid var(--sidebar-active-border); }
+
         .complexity-badge {
             display: inline-block;
             padding: 1px 6px;
@@ -840,14 +866,8 @@ function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): string {
             document.getElementById('project-name').textContent = moduleGraph.project.name;
             document.getElementById('project-description').textContent = moduleGraph.project.description;
 
-            const categories = {};
-            moduleGraph.modules.forEach(function(mod) {
-                var cat = mod.category || 'other';
-                if (!categories[cat]) categories[cat] = [];
-                categories[cat].push(mod);
-            });
-
             var navContainer = document.getElementById('nav-container');
+            var hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0;
 
             // Home link
             var homeSection = document.createElement('div');
@@ -876,7 +896,136 @@ function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): string {
             }
             navContainer.appendChild(homeSection);
 
-            // Module sections by category
+            if (hasAreas) {
+                // DeepWiki-style: areas as top-level, modules indented underneath
+                buildAreaSidebar(navContainer);
+            } else {
+                // Fallback: category-based grouping
+                buildCategorySidebar(navContainer);
+            }
+${enableSearch ? `
+            // Search
+            document.getElementById('search').addEventListener('input', function(e) {
+                var query = e.target.value.toLowerCase();
+                document.querySelectorAll('.nav-area-module[data-id], .nav-item[data-id]').forEach(function(item) {
+                    var id = item.getAttribute('data-id');
+                    if (id === '__home' || id === '__index' || id === '__architecture' || id === '__getting-started') {
+                        return;
+                    }
+                    var text = item.textContent.toLowerCase();
+                    item.style.display = text.includes(query) ? '' : 'none';
+                });
+                // Hide area headers when no children match
+                document.querySelectorAll('.nav-area-group').forEach(function(group) {
+                    var visibleChildren = group.querySelectorAll('.nav-area-module:not([style*="display: none"])');
+                    var areaItem = group.querySelector('.nav-area-item');
+                    if (areaItem) {
+                        areaItem.style.display = visibleChildren.length === 0 ? 'none' : '';
+                    }
+                    var childrenEl = group.querySelector('.nav-area-children');
+                    if (childrenEl) {
+                        childrenEl.style.display = visibleChildren.length === 0 ? 'none' : '';
+                    }
+                });
+                // Show/hide category section headers
+                document.querySelectorAll('.nav-section').forEach(function(section) {
+                    var visibleItems = section.querySelectorAll('.nav-item[data-id]:not([style*="display: none"])');
+                    var header = section.querySelector('h3');
+                    if (header) {
+                        header.style.display = visibleItems.length === 0 ? 'none' : '';
+                    }
+                });
+            });` : ''}
+        }
+
+        // Build area-based sidebar (DeepWiki-style hierarchy)
+        function buildAreaSidebar(navContainer) {
+            var areaModules = {};
+            moduleGraph.areas.forEach(function(area) {
+                areaModules[area.id] = [];
+            });
+
+            moduleGraph.modules.forEach(function(mod) {
+                var areaId = mod.area;
+                if (areaId && areaModules[areaId]) {
+                    areaModules[areaId].push(mod);
+                } else {
+                    var found = false;
+                    moduleGraph.areas.forEach(function(area) {
+                        if (area.modules && area.modules.indexOf(mod.id) !== -1) {
+                            areaModules[area.id].push(mod);
+                            found = true;
+                        }
+                    });
+                    if (!found) {
+                        if (!areaModules['__other']) areaModules['__other'] = [];
+                        areaModules['__other'].push(mod);
+                    }
+                }
+            });
+
+            moduleGraph.areas.forEach(function(area) {
+                var modules = areaModules[area.id] || [];
+                if (modules.length === 0) return;
+
+                var group = document.createElement('div');
+                group.className = 'nav-area-group';
+
+                var areaItem = document.createElement('div');
+                areaItem.className = 'nav-area-item';
+                areaItem.setAttribute('data-area-id', area.id);
+                areaItem.innerHTML = escapeHtml(area.name);
+                group.appendChild(areaItem);
+
+                var childrenEl = document.createElement('div');
+                childrenEl.className = 'nav-area-children';
+
+                modules.forEach(function(mod) {
+                    var item = document.createElement('div');
+                    item.className = 'nav-area-module';
+                    item.setAttribute('data-id', mod.id);
+                    item.innerHTML = escapeHtml(mod.name);
+                    item.onclick = function() { loadModule(mod.id); };
+                    childrenEl.appendChild(item);
+                });
+
+                group.appendChild(childrenEl);
+                navContainer.appendChild(group);
+            });
+
+            var otherModules = areaModules['__other'] || [];
+            if (otherModules.length > 0) {
+                var group = document.createElement('div');
+                group.className = 'nav-area-group';
+                var areaItem = document.createElement('div');
+                areaItem.className = 'nav-area-item';
+                areaItem.innerHTML = 'Other';
+                group.appendChild(areaItem);
+
+                var childrenEl = document.createElement('div');
+                childrenEl.className = 'nav-area-children';
+                otherModules.forEach(function(mod) {
+                    var item = document.createElement('div');
+                    item.className = 'nav-area-module';
+                    item.setAttribute('data-id', mod.id);
+                    item.innerHTML = escapeHtml(mod.name);
+                    item.onclick = function() { loadModule(mod.id); };
+                    childrenEl.appendChild(item);
+                });
+                group.appendChild(childrenEl);
+                navContainer.appendChild(group);
+            }
+        }
+
+        // Build category-based sidebar (fallback)
+        function buildCategorySidebar(navContainer) {
+            var categories = {};
+            moduleGraph.modules.forEach(function(mod) {
+                var cat = mod.category || 'other';
+                if (!categories[cat]) categories[cat] = [];
+                categories[cat].push(mod);
+            });
+
             Object.keys(categories).sort().forEach(function(category) {
                 var section = document.createElement('div');
                 section.className = 'nav-section';
@@ -897,34 +1046,14 @@ function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): string {
 
                 navContainer.appendChild(section);
             });
-${enableSearch ? `
-            // Search
-            document.getElementById('search').addEventListener('input', function(e) {
-                var query = e.target.value.toLowerCase();
-                document.querySelectorAll('.nav-item[data-id]').forEach(function(item) {
-                    var id = item.getAttribute('data-id');
-                    if (id === '__home' || id === '__index' || id === '__architecture' || id === '__getting-started') {
-                        return; // Always show special items
-                    }
-                    var text = item.textContent.toLowerCase();
-                    item.style.display = text.includes(query) ? '' : 'none';
-                });
-                // Show/hide section headers
-                document.querySelectorAll('.nav-section').forEach(function(section) {
-                    var visibleItems = section.querySelectorAll('.nav-item[data-id]:not([style*="display: none"])');
-                    var header = section.querySelector('h3');
-                    if (header) {
-                        header.style.display = visibleItems.length === 0 ? 'none' : '';
-                    }
-                });
-            });` : ''}
         }
 
         function setActive(id) {
-            document.querySelectorAll('.nav-item').forEach(function(el) {
+            document.querySelectorAll('.nav-item, .nav-area-module, .nav-area-item').forEach(function(el) {
                 el.classList.remove('active');
             });
-            var target = document.querySelector('.nav-item[data-id="' + id + '"]');
+            var target = document.querySelector('.nav-item[data-id="' + id + '"]') ||
+                         document.querySelector('.nav-area-module[data-id="' + id + '"]');
             if (target) target.classList.add('active');
         }
 
@@ -966,17 +1095,68 @@ ${enableSearch ? `
                 html += '</ul>';
             }
 
-            html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">All Modules</h3>' +
-                '<div class="module-grid">';
-            moduleGraph.modules.forEach(function(mod) {
-                html += '<div class="module-card" onclick="loadModule(\\'' +
-                    mod.id.replace(/'/g, "\\\\'") + '\\')">' +
-                    '<h4>' + escapeHtml(mod.name) +
-                    ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
-                    mod.complexity + '</span></h4>' +
-                    '<p>' + escapeHtml(mod.purpose) + '</p></div>';
-            });
-            html += '</div></div>';
+            var hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0;
+            if (hasAreas) {
+                moduleGraph.areas.forEach(function(area) {
+                    var areaModules = moduleGraph.modules.filter(function(mod) {
+                        if (mod.area === area.id) return true;
+                        return area.modules && area.modules.indexOf(mod.id) !== -1;
+                    });
+                    if (areaModules.length === 0) return;
+
+                    html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">' + escapeHtml(area.name) + '</h3>';
+                    if (area.description) {
+                        html += '<p style="color: var(--content-muted); margin-bottom: 12px; font-size: 14px;">' +
+                            escapeHtml(area.description) + '</p>';
+                    }
+                    html += '<div class="module-grid">';
+                    areaModules.forEach(function(mod) {
+                        html += '<div class="module-card" onclick="loadModule(\\'' +
+                            mod.id.replace(/'/g, "\\\\'") + '\\')">' +
+                            '<h4>' + escapeHtml(mod.name) +
+                            ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
+                            mod.complexity + '</span></h4>' +
+                            '<p>' + escapeHtml(mod.purpose) + '</p></div>';
+                    });
+                    html += '</div>';
+                });
+
+                var assignedIds = new Set();
+                moduleGraph.areas.forEach(function(area) {
+                    moduleGraph.modules.forEach(function(mod) {
+                        if (mod.area === area.id || (area.modules && area.modules.indexOf(mod.id) !== -1)) {
+                            assignedIds.add(mod.id);
+                        }
+                    });
+                });
+                var unassigned = moduleGraph.modules.filter(function(mod) { return !assignedIds.has(mod.id); });
+                if (unassigned.length > 0) {
+                    html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">Other</h3><div class="module-grid">';
+                    unassigned.forEach(function(mod) {
+                        html += '<div class="module-card" onclick="loadModule(\\'' +
+                            mod.id.replace(/'/g, "\\\\'") + '\\')">' +
+                            '<h4>' + escapeHtml(mod.name) +
+                            ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
+                            mod.complexity + '</span></h4>' +
+                            '<p>' + escapeHtml(mod.purpose) + '</p></div>';
+                    });
+                    html += '</div>';
+                }
+            } else {
+                html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">All Modules</h3>' +
+                    '<div class="module-grid">';
+                moduleGraph.modules.forEach(function(mod) {
+                    html += '<div class="module-card" onclick="loadModule(\\'' +
+                        mod.id.replace(/'/g, "\\\\'") + '\\')">' +
+                        '<h4>' + escapeHtml(mod.name) +
+                        ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
+                        mod.complexity + '</span></h4>' +
+                        '<p>' + escapeHtml(mod.purpose) + '</p></div>';
+                });
+                html += '</div>';
+            }
+
+            html += '</div>';
 
             document.getElementById('content').innerHTML = html;
         }

@@ -429,6 +429,55 @@ function getSpaStyles(enableAI: boolean): string {
         .nav-section.collapsed .nav-section-arrow { transform: rotate(-90deg); }
         .nav-section.collapsed .nav-section-items { display: none; }
 
+        /* Area-based sidebar (DeepWiki-style hierarchy) */
+        .nav-area-item {
+            padding: 8px 14px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--sidebar-text);
+            border-radius: 4px;
+            margin: 1px 6px;
+            display: flex;
+            align-items: center;
+            transition: background 0.1s, color 0.1s;
+        }
+        .nav-area-item:hover { background: var(--sidebar-hover); }
+        .nav-area-item.active {
+            background: var(--sidebar-active-bg);
+            color: var(--sidebar-active-text);
+            font-weight: 600;
+        }
+        .nav-area-item .nav-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .nav-area-children { padding-left: 8px; }
+        .nav-area-module {
+            padding: 5px 14px 5px 20px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--sidebar-muted);
+            border-radius: 4px;
+            margin: 1px 6px;
+            display: flex;
+            align-items: center;
+            transition: background 0.1s, color 0.1s;
+        }
+        .nav-area-module:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
+        .nav-area-module.active {
+            background: var(--sidebar-active-bg);
+            color: var(--sidebar-active-text);
+            font-weight: 500;
+            border-left: 3px solid var(--sidebar-active-border);
+        }
+        .nav-area-module .nav-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* Category timestamp in sidebar (for non-area repos) */
+        .nav-last-indexed {
+            font-size: 12px;
+            color: var(--sidebar-muted);
+            padding: 12px 14px 4px;
+        }
+
         .nav-item {
             padding: 6px 14px 6px 24px;
             cursor: pointer;
@@ -1212,14 +1261,8 @@ function getSpaScript(opts: ScriptOptions): string {
         function initializeSidebar() {
             document.getElementById('top-bar-project').textContent = moduleGraph.project.name;
 
-            var categories = {};
-            moduleGraph.modules.forEach(function(mod) {
-                var cat = mod.category || 'other';
-                if (!categories[cat]) categories[cat] = [];
-                categories[cat].push(mod);
-            });
-
             var navContainer = document.getElementById('nav-container');
+            var hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0;
 
             // Home + special items
             var homeSection = document.createElement('div');
@@ -1232,7 +1275,147 @@ ${opts.enableGraph ? `                '<div class="nav-item" data-id="__graph" o
                 '';
             navContainer.appendChild(homeSection);
 
-            // Category sections
+            if (hasAreas) {
+                // DeepWiki-style: areas as top-level, modules indented underneath
+                buildAreaSidebar(navContainer);
+            } else {
+                // Fallback: category-based grouping
+                buildCategorySidebar(navContainer);
+            }
+${opts.enableSearch ? `
+            document.getElementById('search').addEventListener('input', function(e) {
+                var query = e.target.value.toLowerCase();
+                // Search area-based items
+                document.querySelectorAll('.nav-area-module[data-id], .nav-item[data-id]').forEach(function(item) {
+                    var id = item.getAttribute('data-id');
+                    if (id === '__home' || id === '__graph') return;
+                    var text = item.textContent.toLowerCase();
+                    item.style.display = text.includes(query) ? '' : 'none';
+                });
+                // Hide area headers when no children match
+                document.querySelectorAll('.nav-area-group').forEach(function(group) {
+                    var visibleChildren = group.querySelectorAll('.nav-area-module:not([style*="display: none"])');
+                    var areaItem = group.querySelector('.nav-area-item');
+                    if (areaItem) {
+                        areaItem.style.display = visibleChildren.length === 0 ? 'none' : '';
+                    }
+                    var childrenEl = group.querySelector('.nav-area-children');
+                    if (childrenEl) {
+                        childrenEl.style.display = visibleChildren.length === 0 ? 'none' : '';
+                    }
+                });
+                // Hide category sections when no children match
+                document.querySelectorAll('.nav-section').forEach(function(section) {
+                    var title = section.querySelector('.nav-section-title');
+                    if (!title) return;
+                    var visible = section.querySelectorAll('.nav-item[data-id]:not([style*="display: none"])');
+                    title.style.display = visible.length === 0 ? 'none' : '';
+                });
+            });` : ''}
+        }
+
+        // Build area-based sidebar (DeepWiki-style hierarchy)
+        function buildAreaSidebar(navContainer) {
+            // Build a map of area ID → area info
+            var areaMap = {};
+            moduleGraph.areas.forEach(function(area) {
+                areaMap[area.id] = area;
+            });
+
+            // Build a map of area ID → modules
+            var areaModules = {};
+            moduleGraph.areas.forEach(function(area) {
+                areaModules[area.id] = [];
+            });
+
+            // Assign modules to their areas
+            moduleGraph.modules.forEach(function(mod) {
+                var areaId = mod.area;
+                if (areaId && areaModules[areaId]) {
+                    areaModules[areaId].push(mod);
+                } else {
+                    // Try to find area by module ID listed in area.modules
+                    var found = false;
+                    moduleGraph.areas.forEach(function(area) {
+                        if (area.modules && area.modules.indexOf(mod.id) !== -1) {
+                            areaModules[area.id].push(mod);
+                            found = true;
+                        }
+                    });
+                    if (!found) {
+                        // Put unassigned modules in an "Other" group
+                        if (!areaModules['__other']) areaModules['__other'] = [];
+                        areaModules['__other'].push(mod);
+                    }
+                }
+            });
+
+            // Render each area with its modules
+            moduleGraph.areas.forEach(function(area) {
+                var modules = areaModules[area.id] || [];
+                if (modules.length === 0) return;
+
+                var group = document.createElement('div');
+                group.className = 'nav-area-group';
+
+                // Area header (top-level item)
+                var areaItem = document.createElement('div');
+                areaItem.className = 'nav-area-item';
+                areaItem.setAttribute('data-area-id', area.id);
+                areaItem.innerHTML = '<span class="nav-item-name">' + escapeHtml(area.name) + '</span>';
+                group.appendChild(areaItem);
+
+                // Module children (indented)
+                var childrenEl = document.createElement('div');
+                childrenEl.className = 'nav-area-children';
+
+                modules.forEach(function(mod) {
+                    var item = document.createElement('div');
+                    item.className = 'nav-area-module';
+                    item.setAttribute('data-id', mod.id);
+                    item.innerHTML = '<span class="nav-item-name">' + escapeHtml(mod.name) + '</span>';
+                    item.onclick = function() { loadModule(mod.id); };
+                    childrenEl.appendChild(item);
+                });
+
+                group.appendChild(childrenEl);
+                navContainer.appendChild(group);
+            });
+
+            // Render unassigned modules if any
+            var otherModules = areaModules['__other'] || [];
+            if (otherModules.length > 0) {
+                var group = document.createElement('div');
+                group.className = 'nav-area-group';
+                var areaItem = document.createElement('div');
+                areaItem.className = 'nav-area-item';
+                areaItem.innerHTML = '<span class="nav-item-name">Other</span>';
+                group.appendChild(areaItem);
+
+                var childrenEl = document.createElement('div');
+                childrenEl.className = 'nav-area-children';
+                otherModules.forEach(function(mod) {
+                    var item = document.createElement('div');
+                    item.className = 'nav-area-module';
+                    item.setAttribute('data-id', mod.id);
+                    item.innerHTML = '<span class="nav-item-name">' + escapeHtml(mod.name) + '</span>';
+                    item.onclick = function() { loadModule(mod.id); };
+                    childrenEl.appendChild(item);
+                });
+                group.appendChild(childrenEl);
+                navContainer.appendChild(group);
+            }
+        }
+
+        // Build category-based sidebar (fallback for non-area repos)
+        function buildCategorySidebar(navContainer) {
+            var categories = {};
+            moduleGraph.modules.forEach(function(mod) {
+                var cat = mod.category || 'other';
+                if (!categories[cat]) categories[cat] = [];
+                categories[cat].push(mod);
+            });
+
             Object.keys(categories).sort().forEach(function(category) {
                 var section = document.createElement('div');
                 section.className = 'nav-section';
@@ -1263,29 +1446,14 @@ ${opts.enableGraph ? `                '<div class="nav-item" data-id="__graph" o
                 section.appendChild(itemsEl);
                 navContainer.appendChild(section);
             });
-${opts.enableSearch ? `
-            document.getElementById('search').addEventListener('input', function(e) {
-                var query = e.target.value.toLowerCase();
-                document.querySelectorAll('.nav-item[data-id]').forEach(function(item) {
-                    var id = item.getAttribute('data-id');
-                    if (id === '__home' || id === '__graph') return;
-                    var text = item.textContent.toLowerCase();
-                    item.style.display = text.includes(query) ? '' : 'none';
-                });
-                document.querySelectorAll('.nav-section').forEach(function(section) {
-                    var title = section.querySelector('.nav-section-title');
-                    if (!title) return;
-                    var visible = section.querySelectorAll('.nav-item[data-id]:not([style*="display: none"])');
-                    title.style.display = visible.length === 0 ? 'none' : '';
-                });
-            });` : ''}
         }
 
         function setActive(id) {
-            document.querySelectorAll('.nav-item').forEach(function(el) {
+            document.querySelectorAll('.nav-item, .nav-area-module, .nav-area-item').forEach(function(el) {
                 el.classList.remove('active');
             });
-            var target = document.querySelector('.nav-item[data-id="' + id + '"]');
+            var target = document.querySelector('.nav-item[data-id="' + id + '"]') ||
+                         document.querySelector('.nav-area-module[data-id="' + id + '"]');
             if (target) target.classList.add('active');
         }
 
@@ -1320,16 +1488,69 @@ ${opts.enableAI ? `            updateAskSubject(moduleGraph.project.name);` : ''
                 '<div class="stat-card"><h3>Build System</h3><div class="value small">' + escapeHtml(stats.buildSystem) + '</div></div>' +
                 '</div>';
 
-            html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">All Modules</h3><div class="module-grid">';
-            moduleGraph.modules.forEach(function(mod) {
-                html += '<div class="module-card" onclick="loadModule(\\'' +
-                    mod.id.replace(/'/g, "\\\\'") + '\\')">' +
-                    '<h4>' + escapeHtml(mod.name) +
-                    ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
-                    mod.complexity + '</span></h4>' +
-                    '<p>' + escapeHtml(mod.purpose) + '</p></div>';
-            });
-            html += '</div></div>';
+            var hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0;
+            if (hasAreas) {
+                // Group modules by area for the overview
+                moduleGraph.areas.forEach(function(area) {
+                    var areaModules = moduleGraph.modules.filter(function(mod) {
+                        if (mod.area === area.id) return true;
+                        return area.modules && area.modules.indexOf(mod.id) !== -1;
+                    });
+                    if (areaModules.length === 0) return;
+
+                    html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">' + escapeHtml(area.name) + '</h3>';
+                    if (area.description) {
+                        html += '<p style="color: var(--content-muted); margin-bottom: 12px; font-size: 14px;">' +
+                            escapeHtml(area.description) + '</p>';
+                    }
+                    html += '<div class="module-grid">';
+                    areaModules.forEach(function(mod) {
+                        html += '<div class="module-card" onclick="loadModule(\\'' +
+                            mod.id.replace(/'/g, "\\\\'") + '\\')">' +
+                            '<h4>' + escapeHtml(mod.name) +
+                            ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
+                            mod.complexity + '</span></h4>' +
+                            '<p>' + escapeHtml(mod.purpose) + '</p></div>';
+                    });
+                    html += '</div>';
+                });
+
+                // Show unassigned modules if any
+                var assignedIds = new Set();
+                moduleGraph.areas.forEach(function(area) {
+                    moduleGraph.modules.forEach(function(mod) {
+                        if (mod.area === area.id || (area.modules && area.modules.indexOf(mod.id) !== -1)) {
+                            assignedIds.add(mod.id);
+                        }
+                    });
+                });
+                var unassigned = moduleGraph.modules.filter(function(mod) { return !assignedIds.has(mod.id); });
+                if (unassigned.length > 0) {
+                    html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">Other</h3><div class="module-grid">';
+                    unassigned.forEach(function(mod) {
+                        html += '<div class="module-card" onclick="loadModule(\\'' +
+                            mod.id.replace(/'/g, "\\\\'") + '\\')">' +
+                            '<h4>' + escapeHtml(mod.name) +
+                            ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
+                            mod.complexity + '</span></h4>' +
+                            '<p>' + escapeHtml(mod.purpose) + '</p></div>';
+                    });
+                    html += '</div>';
+                }
+            } else {
+                html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">All Modules</h3><div class="module-grid">';
+                moduleGraph.modules.forEach(function(mod) {
+                    html += '<div class="module-card" onclick="loadModule(\\'' +
+                        mod.id.replace(/'/g, "\\\\'") + '\\')">' +
+                        '<h4>' + escapeHtml(mod.name) +
+                        ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
+                        mod.complexity + '</span></h4>' +
+                        '<p>' + escapeHtml(mod.purpose) + '</p></div>';
+                });
+                html += '</div>';
+            }
+
+            html += '</div>';
 
             document.getElementById('content').innerHTML = html;
             document.getElementById('content-scroll').scrollTop = 0;

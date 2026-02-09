@@ -1413,3 +1413,152 @@ describe('generateHtmlTemplate — browser history management', () => {
         expect(html).toContain('findModuleIdBySlugClient');
     });
 });
+
+// ============================================================================
+// Area-Based Sidebar (DeepWiki-style hierarchy)
+// ============================================================================
+
+describe('generateHtmlTemplate — area-based sidebar', () => {
+    it('should include buildAreaSidebar function', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('function buildAreaSidebar');
+    });
+
+    it('should include buildCategorySidebar function', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('function buildCategorySidebar');
+    });
+
+    it('should detect areas via moduleGraph.areas', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('moduleGraph.areas && moduleGraph.areas.length > 0');
+    });
+
+    it('should include nav-area CSS classes', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.nav-area-item');
+        expect(html).toContain('.nav-area-children');
+        expect(html).toContain('.nav-area-module');
+        expect(html).toContain('.nav-area-group');
+    });
+
+    it('should include area active styles', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.nav-area-item.active');
+        expect(html).toContain('.nav-area-module.active');
+    });
+
+    it('should handle module assignment via mod.area field', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('mod.area');
+    });
+
+    it('should fall back to area.modules list for assignment', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('area.modules');
+    });
+
+    it('should handle unassigned modules in __other group', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("'__other'");
+    });
+
+    it('should include data-area-id attribute on area items', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('data-area-id');
+    });
+
+    it('should set active state on area modules via setActive', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.nav-area-module');
+        expect(html).toContain("'.nav-area-module[data-id=");
+    });
+
+    it('should include area-based sidebar in all themes', () => {
+        const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
+        for (const theme of themes) {
+            const html = generateHtmlTemplate({ theme, title: 'Test', enableSearch: true });
+            expect(html).toContain('buildAreaSidebar');
+            expect(html).toContain('buildCategorySidebar');
+            expect(html).toContain('.nav-area-item');
+        }
+    });
+
+    it('should include area-based search filtering', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.nav-area-module[data-id]');
+        expect(html).toContain('.nav-area-group');
+    });
+
+    it('should group modules by area in showHome overview', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('var hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0');
+    });
+
+    it('should show area description in home overview', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('area.description');
+        expect(html).toContain('area.name');
+    });
+
+    it('should fall back to All Modules when no areas present', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('All Modules');
+    });
+
+    it('should show unassigned modules under Other heading in home', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('assignedIds');
+        expect(html).toContain('unassigned');
+    });
+
+    it('area-based sidebar should also work in generated website', () => {
+        const graph = createTestModuleGraph();
+        const wikiDir = setupWikiDir(graph);
+        generateWebsite(wikiDir);
+
+        const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
+        expect(html).toContain('buildAreaSidebar');
+        expect(html).toContain('buildCategorySidebar');
+        expect(html).toContain('.nav-area-item');
+        expect(html).toContain('.nav-area-module');
+    });
+
+    it('area-based sidebar should work with areas in module graph', () => {
+        const graph = createTestModuleGraph();
+        // Add areas to the test graph
+        graph.areas = [
+            {
+                id: 'core-system',
+                name: 'Core System',
+                path: 'src/core/',
+                description: 'Core system modules',
+                modules: ['auth'],
+            },
+            {
+                id: 'data-layer',
+                name: 'Data Layer',
+                path: 'src/data/',
+                description: 'Data access modules',
+                modules: ['database'],
+            },
+        ];
+        // Assign area to modules
+        graph.modules[0].area = 'core-system'; // auth
+        graph.modules[1].area = 'data-layer'; // database
+
+        const wikiDir = setupWikiDir(graph);
+        generateWebsite(wikiDir);
+
+        const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
+        // Should still include all area infrastructure
+        expect(html).toContain('buildAreaSidebar');
+        expect(html).toContain('.nav-area-item');
+        expect(html).toContain('.nav-area-children');
+    });
+
+    it('area children should have indented padding', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.nav-area-children { padding-left: 8px; }');
+    });
+});

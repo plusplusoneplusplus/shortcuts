@@ -588,6 +588,190 @@ describe('generateSpaHtml — collapsible nav sections', () => {
 });
 
 // ============================================================================
+// Area-Based Sidebar (DeepWiki-style hierarchy)
+// ============================================================================
+
+describe('generateSpaHtml — area-based sidebar', () => {
+    it('should include buildAreaSidebar function for area-based hierarchy', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('function buildAreaSidebar');
+    });
+
+    it('should include buildCategorySidebar function for fallback', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('function buildCategorySidebar');
+    });
+
+    it('should detect areas via moduleGraph.areas', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('moduleGraph.areas && moduleGraph.areas.length > 0');
+    });
+
+    it('should include area-based CSS classes', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.nav-area-item');
+        expect(html).toContain('.nav-area-children');
+        expect(html).toContain('.nav-area-module');
+        expect(html).toContain('.nav-area-group');
+    });
+
+    it('should include nav-area-item active styles', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.nav-area-item.active');
+        expect(html).toContain('.nav-area-module.active');
+    });
+
+    it('should assign modules to areas by mod.area field', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('mod.area');
+    });
+
+    it('should fall back to area.modules list for assignment', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('area.modules');
+    });
+
+    it('should handle unassigned modules in an Other group', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain("'__other'");
+    });
+
+    it('should include data-area-id attribute on area items', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('data-area-id');
+    });
+
+    it('should support area-based search filtering', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        // Should search area-module items as well as regular nav-items
+        expect(html).toContain('.nav-area-module[data-id]');
+    });
+
+    it('should hide area headers when no children match search', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.nav-area-group');
+    });
+
+    it('should use area indentation via nav-area-children padding', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.nav-area-children { padding-left: 8px; }');
+    });
+
+    it('should set active state on area modules via setActive', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        // setActive should also handle .nav-area-module
+        expect(html).toContain('.nav-area-module');
+        expect(html).toContain("'.nav-area-module[data-id=");
+    });
+
+    it('should include area-based sidebar in all themes', () => {
+        const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
+        for (const theme of themes) {
+            const html = generateSpaHtml({
+                theme, title: 'Test', enableSearch: true,
+                enableAI: false, enableGraph: false,
+            });
+            expect(html).toContain('buildAreaSidebar');
+            expect(html).toContain('buildCategorySidebar');
+            expect(html).toContain('.nav-area-item');
+            expect(html).toContain('.nav-area-module');
+        }
+    });
+
+    it('should group modules by area in showHome when areas present', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        // showHome should check for areas and group accordingly
+        expect(html).toContain('var hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0');
+    });
+
+    it('should show area names and descriptions in home overview', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('area.description');
+        expect(html).toContain('area.name');
+    });
+
+    it('should show unassigned modules under Other in home overview', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('assignedIds');
+        expect(html).toContain('unassigned');
+    });
+
+    it('should fall back to All Modules when no areas present', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('All Modules');
+    });
+
+    it('should include area-based active border for sidebar module items', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('--sidebar-active-border');
+    });
+
+    it('should include area module font styling (muted color for child items)', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.nav-area-module');
+        // Modules use muted color by default, highlight on active
+        expect(html).toContain('color: var(--sidebar-muted)');
+    });
+});
+
+// ============================================================================
 // Cross-theme Consistency
 // ============================================================================
 
