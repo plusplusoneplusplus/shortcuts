@@ -531,7 +531,7 @@ function getSpaStyles(enableAI: boolean): string {
         .article {
             flex: 1;
             min-width: 0;
-            padding: 32px 40px;
+            padding: 32px 40px 120px;
         }
 
         /* ========== Source Files Section ========== */
