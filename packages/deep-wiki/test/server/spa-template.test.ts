@@ -307,6 +307,109 @@ describe('generateSpaHtml — responsive', () => {
 });
 
 // ============================================================================
+// Sidebar Collapse/Expand
+// ============================================================================
+
+describe('generateSpaHtml — sidebar collapse/expand', () => {
+    it('should include the sidebar collapse button', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('id="sidebar-collapse"');
+    });
+
+    it('should include collapse button with left arrow', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('aria-label="Collapse sidebar"');
+        expect(html).toContain('&#x25C0;');
+    });
+
+    it('should include sidebar-collapse-btn CSS styles', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.sidebar-collapse-btn');
+    });
+
+    it('should include collapsed sidebar CSS', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.sidebar.collapsed');
+    });
+
+    it('should include collapse button event listener', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain("document.getElementById('sidebar-collapse').addEventListener('click'");
+    });
+
+    it('should include updateSidebarCollapseBtn function', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('function updateSidebarCollapseBtn');
+    });
+
+    it('should persist sidebar state to localStorage', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain("localStorage.setItem('deep-wiki-sidebar-collapsed'");
+        expect(html).toContain("localStorage.getItem('deep-wiki-sidebar-collapsed')");
+    });
+
+    it('should restore sidebar collapsed state on load', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('restoreSidebarState');
+    });
+
+    it('should update button icon when toggling collapse', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        // Right arrow for expand
+        expect(html).toContain('&#x25B6;');
+        // Left arrow for collapse
+        expect(html).toContain('&#x25C0;');
+    });
+
+    it('should hide collapse button on mobile', () => {
+        const html = generateSpaHtml({
+            theme: 'auto', title: 'Test', enableSearch: true,
+            enableAI: false, enableGraph: false,
+        });
+        expect(html).toContain('.sidebar-collapse-btn { display: none; }');
+    });
+
+    it('should include sidebar collapse button in all themes', () => {
+        const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
+        for (const theme of themes) {
+            const html = generateSpaHtml({
+                theme, title: 'Test', enableSearch: true,
+                enableAI: false, enableGraph: false,
+            });
+            expect(html).toContain('id="sidebar-collapse"');
+            expect(html).toContain('.sidebar.collapsed');
+        }
+    });
+});
+
+// ============================================================================
 // Cross-theme Consistency
 // ============================================================================
 

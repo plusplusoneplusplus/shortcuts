@@ -76,6 +76,7 @@ ${getSpaStyles(enableAI)}
 </head>
 <body>
     <div class="sidebar" id="sidebar">
+        <button class="sidebar-collapse-btn" id="sidebar-collapse" aria-label="Collapse sidebar" title="Collapse sidebar">&#x25C0;</button>
         <div class="sidebar-header">
             <h1 id="project-name">${escapeHtml(title)}</h1>
             <p id="project-description"></p>
@@ -111,6 +112,7 @@ ${enableAI ? `        <div class="ask-panel hidden" id="ask-panel">
             <div class="ask-panel-header">
                 <h3>Ask AI</h3>
                 <div class="ask-panel-actions">
+                    <button class="ask-panel-expand" id="ask-expand" title="Expand panel">Expand</button>
                     <button class="ask-panel-clear" id="ask-clear" title="Clear conversation">Clear</button>
                     <button class="ask-panel-close" id="ask-close" aria-label="Close Ask panel">&times;</button>
                 </div>
@@ -225,9 +227,48 @@ function getSpaStyles(enableAI: boolean): string {
             color: var(--sidebar-text);
             overflow-y: auto;
             border-right: 1px solid var(--sidebar-border);
-            transition: margin-left 0.3s;
+            transition: width 0.3s, min-width 0.3s, margin-left 0.3s;
+            position: relative;
         }
         .sidebar.hidden { margin-left: -280px; }
+        .sidebar.collapsed {
+            width: 0;
+            min-width: 0;
+            overflow: hidden;
+            border-right: none;
+        }
+
+        /* Sidebar collapse/expand button */
+        .sidebar-collapse-btn {
+            position: absolute;
+            top: 12px;
+            right: -14px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--sidebar-bg);
+            border: 1px solid var(--sidebar-border);
+            color: var(--sidebar-text);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 101;
+            font-size: 14px;
+            transition: background 0.15s, transform 0.3s;
+            padding: 0;
+            line-height: 1;
+        }
+        .sidebar-collapse-btn:hover { background: var(--sidebar-hover); }
+        .sidebar.collapsed .sidebar-collapse-btn {
+            right: -36px;
+            background: var(--header-bg);
+            border-color: var(--content-border);
+            color: var(--content-muted);
+        }
+        .sidebar.collapsed .sidebar-collapse-btn:hover {
+            background: var(--code-bg);
+        }
 
         .sidebar-header {
             padding: 20px;
@@ -605,6 +646,8 @@ function getSpaStyles(enableAI: boolean): string {
         @media (max-width: 768px) {
             .sidebar { position: fixed; z-index: 100; height: 100vh; }
             .sidebar.hidden { margin-left: -280px; }
+            .sidebar.collapsed { width: 0; min-width: 0; }
+            .sidebar-collapse-btn { display: none; }
             .content-header { padding: 12px 16px; }
             .content-body { padding: 16px; }
         }`;
@@ -699,10 +742,15 @@ function getSpaStyles(enableAI: boolean): string {
             border-left: 1px solid var(--content-border);
             display: flex;
             flex-direction: column;
-            transition: margin-right 0.3s;
+            transition: width 0.3s, min-width 0.3s, flex 0.3s;
             height: 100%;
         }
         .ask-panel.hidden { display: none; }
+        .ask-panel.expanded {
+            flex: 1;
+            width: auto;
+            min-width: 0;
+        }
         .ask-panel-header {
             padding: 12px 16px;
             border-bottom: 1px solid var(--content-border);
@@ -725,6 +773,16 @@ function getSpaStyles(enableAI: boolean): string {
             gap: 6px;
             align-items: center;
         }
+        .ask-panel-expand {
+            background: none;
+            border: 1px solid var(--content-border);
+            border-radius: 4px;
+            padding: 2px 8px;
+            cursor: pointer;
+            font-size: 11px;
+            color: var(--content-muted);
+        }
+        .ask-panel-expand:hover { background: var(--code-bg); }
         .ask-panel-clear {
             background: none;
             border: 1px solid var(--content-border);
@@ -938,9 +996,47 @@ function getSpaScript(opts: ScriptOptions): string {
 
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateThemeStyles);
         document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+        // Sidebar toggle (hamburger button in content header - for mobile/hidden)
         document.getElementById('sidebar-toggle').addEventListener('click', function() {
-            document.getElementById('sidebar').classList.toggle('hidden');
+            var sidebar = document.getElementById('sidebar');
+            if (sidebar.classList.contains('collapsed')) {
+                sidebar.classList.remove('collapsed');
+                updateSidebarCollapseBtn(false);
+                localStorage.setItem('deep-wiki-sidebar-collapsed', 'false');
+            } else {
+                sidebar.classList.toggle('hidden');
+            }
         });
+
+        // Sidebar collapse button (on the sidebar edge)
+        document.getElementById('sidebar-collapse').addEventListener('click', function() {
+            var sidebar = document.getElementById('sidebar');
+            var isCollapsed = sidebar.classList.toggle('collapsed');
+            updateSidebarCollapseBtn(isCollapsed);
+            localStorage.setItem('deep-wiki-sidebar-collapsed', isCollapsed ? 'true' : 'false');
+        });
+
+        function updateSidebarCollapseBtn(isCollapsed) {
+            var btn = document.getElementById('sidebar-collapse');
+            if (isCollapsed) {
+                btn.innerHTML = '&#x25B6;';
+                btn.title = 'Expand sidebar';
+                btn.setAttribute('aria-label', 'Expand sidebar');
+            } else {
+                btn.innerHTML = '&#x25C0;';
+                btn.title = 'Collapse sidebar';
+                btn.setAttribute('aria-label', 'Collapse sidebar');
+            }
+        }
+
+        // Restore sidebar collapsed state from localStorage
+        (function restoreSidebarState() {
+            var saved = localStorage.getItem('deep-wiki-sidebar-collapsed');
+            if (saved === 'true') {
+                document.getElementById('sidebar').classList.add('collapsed');
+                updateSidebarCollapseBtn(true);
+            }
+        })();
 
         // ================================================================
         // Sidebar
@@ -1467,12 +1563,21 @@ ${opts.enableAI ? `
         var conversationHistory = [];
         var askStreaming = false;
 
+        var askExpanded = false;
+
         // Panel toggle
         document.getElementById('ask-toggle').addEventListener('click', function() {
             var panel = document.getElementById('ask-panel');
             panel.classList.toggle('hidden');
             if (!panel.classList.contains('hidden')) {
                 document.getElementById('ask-input').focus();
+                // Restore expanded state
+                var savedExpanded = localStorage.getItem('deep-wiki-ask-expanded');
+                if (savedExpanded === 'true') {
+                    panel.classList.add('expanded');
+                    askExpanded = true;
+                    updateAskExpandBtn(true);
+                }
             }
         });
         document.getElementById('ask-close').addEventListener('click', function() {
@@ -1482,6 +1587,25 @@ ${opts.enableAI ? `
             conversationHistory = [];
             document.getElementById('ask-messages').innerHTML = '';
         });
+
+        // Expand / Collapse Ask AI panel
+        document.getElementById('ask-expand').addEventListener('click', function() {
+            var panel = document.getElementById('ask-panel');
+            askExpanded = !askExpanded;
+            if (askExpanded) {
+                panel.classList.add('expanded');
+            } else {
+                panel.classList.remove('expanded');
+            }
+            updateAskExpandBtn(askExpanded);
+            localStorage.setItem('deep-wiki-ask-expanded', askExpanded ? 'true' : 'false');
+        });
+
+        function updateAskExpandBtn(isExpanded) {
+            var btn = document.getElementById('ask-expand');
+            btn.textContent = isExpanded ? 'Collapse' : 'Expand';
+            btn.title = isExpanded ? 'Collapse panel' : 'Expand panel';
+        }
 
         // Send message
         document.getElementById('ask-send').addEventListener('click', askSend);

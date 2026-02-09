@@ -319,4 +319,89 @@ describe('Ask Panel UI', () => {
             expect(html).toContain('width: 380px');
         });
     });
+
+    // ========================================================================
+    // Ask Panel Expand/Collapse
+    // ========================================================================
+
+    describe('expand/collapse', () => {
+        it('should include the expand button in panel header', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('id="ask-expand"');
+        });
+
+        it('should include the expand button with correct label', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('title="Expand panel"');
+            expect(html).toContain('>Expand</button>');
+        });
+
+        it('should include ask-panel-expand CSS class', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('.ask-panel-expand');
+        });
+
+        it('should include expanded CSS state', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('.ask-panel.expanded');
+        });
+
+        it('should include expand button event listener', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("document.getElementById('ask-expand').addEventListener('click'");
+        });
+
+        it('should include updateAskExpandBtn function', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('function updateAskExpandBtn');
+        });
+
+        it('should persist expanded state to localStorage', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("localStorage.setItem('deep-wiki-ask-expanded'");
+            expect(html).toContain("localStorage.getItem('deep-wiki-ask-expanded')");
+        });
+
+        it('should restore expanded state when panel is opened', () => {
+            const html = generateSpaHtml(createOptions());
+            // When the toggle button is clicked, it checks localStorage for saved state
+            expect(html).toContain("var savedExpanded = localStorage.getItem('deep-wiki-ask-expanded')");
+        });
+
+        it('should toggle between Expand and Collapse text', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("btn.textContent = isExpanded ? 'Collapse' : 'Expand'");
+        });
+
+        it('should include askExpanded state variable', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('var askExpanded = false');
+        });
+
+        it('should add expanded class to panel when expanding', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("panel.classList.add('expanded')");
+        });
+
+        it('should remove expanded class when collapsing', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("panel.classList.remove('expanded')");
+        });
+
+        it('should not include expand button when AI is disabled', () => {
+            const html = generateSpaHtml(createOptions({ enableAI: false }));
+            expect(html).not.toContain('id="ask-expand"');
+            expect(html).not.toContain('.ask-panel-expand');
+            expect(html).not.toContain('function updateAskExpandBtn');
+        });
+
+        it('should place expand button before clear and close buttons', () => {
+            const html = generateSpaHtml(createOptions());
+            const expandIdx = html.indexOf('id="ask-expand"');
+            const clearIdx = html.indexOf('id="ask-clear"');
+            const closeIdx = html.indexOf('id="ask-close"');
+            expect(expandIdx).toBeLessThan(clearIdx);
+            expect(expandIdx).toBeLessThan(closeIdx);
+        });
+    });
 });
