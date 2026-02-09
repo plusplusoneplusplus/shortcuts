@@ -1,10 +1,10 @@
 /**
  * Tests for the Ask AI UI in the SPA template.
  *
- * The new DeepWiki-style UI has:
- *   - Bottom "Ask AI" bar (always visible when AI is enabled)
- *   - Slide-up "Ask Panel" overlay (opens on interaction)
- *   - No side panel or resize handle
+ * The DeepWiki-style UI has a single floating widget that:
+ *   - Shows a compact input bar by default
+ *   - Expands in-place to show chat messages when a question is sent
+ *   - Collapses back to compact bar on close
  */
 
 import { describe, it, expect } from 'vitest';
@@ -27,14 +27,14 @@ function createOptions(overrides?: Partial<SpaTemplateOptions>): SpaTemplateOpti
 }
 
 // ============================================================================
-// Ask Bottom Bar
+// Ask Widget (floating card)
 // ============================================================================
 
-describe('Ask Bottom Bar', () => {
+describe('Ask Widget', () => {
     describe('when AI is enabled', () => {
-        it('should include the ask bar element', () => {
+        it('should include the ask widget element', () => {
             const html = generateSpaHtml(createOptions());
-            expect(html).toContain('id="ask-bar"');
+            expect(html).toContain('id="ask-widget"');
         });
 
         it('should include the ask bar label', () => {
@@ -43,69 +43,25 @@ describe('Ask Bottom Bar', () => {
             expect(html).toContain('id="ask-bar-subject"');
         });
 
-        it('should include the bottom bar input', () => {
+        it('should include the textarea for input', () => {
             const html = generateSpaHtml(createOptions());
-            expect(html).toContain('id="ask-input"');
+            expect(html).toContain('id="ask-textarea"');
             expect(html).toContain('placeholder="Ask about this codebase..."');
         });
 
         it('should include the send button', () => {
             const html = generateSpaHtml(createOptions());
-            expect(html).toContain('id="ask-send"');
+            expect(html).toContain('id="ask-widget-send"');
         });
 
         it('should include the project title in subject', () => {
             const html = generateSpaHtml(createOptions({ title: 'MyProject' }));
             expect(html).toContain('MyProject');
         });
-    });
-
-    describe('when AI is disabled', () => {
-        const opts = createOptions({ enableAI: false });
-
-        it('should not include the ask bar', () => {
-            const html = generateSpaHtml(opts);
-            expect(html).not.toContain('id="ask-bar"');
-        });
-
-        it('should not include ask input', () => {
-            const html = generateSpaHtml(opts);
-            expect(html).not.toContain('id="ask-input"');
-        });
-
-        it('should not include ask send button', () => {
-            const html = generateSpaHtml(opts);
-            expect(html).not.toContain('id="ask-send"');
-        });
-    });
-});
-
-// ============================================================================
-// Ask Panel (expanded chat overlay)
-// ============================================================================
-
-describe('Ask Panel', () => {
-    describe('when AI is enabled', () => {
-        it('should include the ask panel container', () => {
-            const html = generateSpaHtml(createOptions());
-            expect(html).toContain('id="ask-panel"');
-            expect(html).toContain('class="ask-panel hidden"');
-        });
 
         it('should include the messages area', () => {
             const html = generateSpaHtml(createOptions());
             expect(html).toContain('id="ask-messages"');
-            expect(html).toContain('class="ask-messages"');
-        });
-
-        it('should include the textarea for input', () => {
-            const html = generateSpaHtml(createOptions());
-            expect(html).toContain('id="ask-textarea"');
-        });
-
-        it('should include the panel send button', () => {
-            const html = generateSpaHtml(createOptions());
-            expect(html).toContain('id="ask-panel-send"');
         });
 
         it('should include the close button', () => {
@@ -119,24 +75,30 @@ describe('Ask Panel', () => {
             expect(html).toContain('Clear');
         });
 
-        it('should include panel header', () => {
+        it('should include widget header', () => {
             const html = generateSpaHtml(createOptions());
-            expect(html).toContain('class="ask-panel-header"');
-            expect(html).toContain('<h3>Ask AI</h3>');
+            expect(html).toContain('class="ask-widget-header hidden"');
+            expect(html).toContain('Ask AI');
         });
 
-        it('should start hidden', () => {
+        it('should start with header and messages hidden', () => {
             const html = generateSpaHtml(createOptions());
-            expect(html).toContain('class="ask-panel hidden"');
+            expect(html).toContain('class="ask-widget-header hidden"');
+            expect(html).toContain('class="ask-messages hidden"');
         });
     });
 
     describe('when AI is disabled', () => {
         const opts = createOptions({ enableAI: false });
 
-        it('should not include the ask panel', () => {
+        it('should not include the ask widget', () => {
             const html = generateSpaHtml(opts);
-            expect(html).not.toContain('id="ask-panel"');
+            expect(html).not.toContain('id="ask-widget"');
+        });
+
+        it('should not include ask textarea', () => {
+            const html = generateSpaHtml(opts);
+            expect(html).not.toContain('id="ask-textarea"');
         });
 
         it('should not include ask messages area', () => {
@@ -151,20 +113,11 @@ describe('Ask Panel', () => {
 // ============================================================================
 
 describe('Ask AI — CSS styles', () => {
-    it('should include ask bar styles when AI is enabled', () => {
+    it('should include ask widget styles when AI is enabled', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain('.ask-bar');
-        expect(html).toContain('.ask-bar-input');
-        expect(html).toContain('.ask-bar-send');
-    });
-
-    it('should include ask panel styles when AI is enabled', () => {
-        const html = generateSpaHtml(createOptions());
-        expect(html).toContain('.ask-panel');
-        expect(html).toContain('.ask-panel.hidden');
-        expect(html).toContain('.ask-messages');
-        expect(html).toContain('.ask-textarea');
-        expect(html).toContain('.ask-panel-send');
+        expect(html).toContain('.ask-widget');
+        expect(html).toContain('.ask-widget-textarea');
+        expect(html).toContain('.ask-widget-send');
     });
 
     it('should include message styling', () => {
@@ -191,9 +144,8 @@ describe('Ask AI — CSS styles', () => {
 
     it('should not include ask styles when AI is disabled', () => {
         const html = generateSpaHtml(createOptions({ enableAI: false }));
-        expect(html).not.toContain('.ask-panel');
+        expect(html).not.toContain('.ask-widget {');
         expect(html).not.toContain('.ask-messages');
-        expect(html).not.toContain('.ask-bar');
     });
 });
 
@@ -217,17 +169,17 @@ describe('Ask AI — JavaScript functionality', () => {
         expect(html).toContain('var askStreaming = false');
     });
 
-    it('should include openAskPanel function', () => {
+    it('should include expandWidget function', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain('function openAskPanel');
+        expect(html).toContain('function expandWidget');
     });
 
-    it('should include closeAskPanel function', () => {
+    it('should include collapseWidget function', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain('function closeAskPanel');
+        expect(html).toContain('function collapseWidget');
     });
 
-    it('should include close panel event listener', () => {
+    it('should include close widget event listener', () => {
         const html = generateSpaHtml(createOptions());
         expect(html).toContain("document.getElementById('ask-close').addEventListener('click'");
     });
@@ -239,7 +191,7 @@ describe('Ask AI — JavaScript functionality', () => {
 
     it('should include send button event listener', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-panel-send').addEventListener('click', askPanelSend)");
+        expect(html).toContain("document.getElementById('ask-widget-send').addEventListener('click', askPanelSend)");
     });
 
     it('should include Enter key handler on textarea', () => {
@@ -295,12 +247,12 @@ describe('Ask AI — JavaScript functionality', () => {
 
     it('should disable send button during streaming', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-panel-send').disabled = true");
+        expect(html).toContain("document.getElementById('ask-widget-send').disabled = true");
     });
 
     it('should re-enable send button after streaming', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-panel-send').disabled = false");
+        expect(html).toContain("document.getElementById('ask-widget-send').disabled = false");
     });
 
     it('should add assistant response to conversation history', () => {
@@ -340,20 +292,14 @@ describe('Ask AI — JavaScript functionality', () => {
         expect(html).not.toContain('var conversationHistory');
     });
 
-    it('should open panel on bar input focus', () => {
+    it('should expand widget when sending a message', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-input').addEventListener('focus'");
-        expect(html).toContain('openAskPanel()');
+        expect(html).toContain('expandWidget()');
     });
 
-    it('should hide bar when panel opens', () => {
-        const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-bar').style.display = 'none'");
-    });
-
-    it('should show bar when panel closes', () => {
-        const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-bar').style.display = ''");
+    it('should not include keyboard shortcut refs to old functions when AI is disabled', () => {
+        const html = generateSpaHtml(createOptions({ enableAI: false }));
+        expect(html).not.toContain('expandWidget');
     });
 });
 
@@ -397,19 +343,19 @@ describe('Ask AI — keyboard shortcuts', () => {
         expect(html).toContain('e.ctrlKey || e.metaKey');
     });
 
-    it('should include Ctrl/Cmd+I shortcut for Ask AI panel toggle', () => {
+    it('should include Ctrl/Cmd+I shortcut for Ask AI widget toggle', () => {
         const html = generateSpaHtml(createOptions());
         expect(html).toContain("e.key === 'i'");
     });
 
-    it('should include Escape shortcut to close Ask AI panel', () => {
+    it('should include Escape shortcut to collapse Ask AI widget', () => {
         const html = generateSpaHtml(createOptions());
         expect(html).toContain("e.key === 'Escape'");
     });
 
     it('should not include keyboard shortcuts when AI is disabled', () => {
         const html = generateSpaHtml(createOptions({ enableAI: false }));
-        expect(html).not.toContain('openAskPanel');
+        expect(html).not.toContain('expandWidget');
     });
 });
 
@@ -418,17 +364,17 @@ describe('Ask AI — keyboard shortcuts', () => {
 // ============================================================================
 
 describe('Ask AI — layout integration', () => {
-    it('should position panel as slide-up overlay in main-content', () => {
+    it('should position widget after main content', () => {
         const html = generateSpaHtml(createOptions());
-        const panelIdx = html.indexOf('id="ask-panel"');
+        const widgetIdx = html.indexOf('id="ask-widget"');
         const mainIdx = html.indexOf('id="main-content"');
-        expect(panelIdx).toBeGreaterThan(mainIdx);
+        expect(widgetIdx).toBeGreaterThan(mainIdx);
     });
 
-    it('should position ask bar at bottom of main-content', () => {
+    it('should position widget after content-scroll', () => {
         const html = generateSpaHtml(createOptions());
-        const barIdx = html.indexOf('id="ask-bar"');
+        const widgetIdx = html.indexOf('id="ask-widget"');
         const contentIdx = html.indexOf('id="content-scroll"');
-        expect(barIdx).toBeGreaterThan(contentIdx);
+        expect(widgetIdx).toBeGreaterThan(contentIdx);
     });
 });

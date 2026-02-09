@@ -225,118 +225,67 @@ describe('generateSpaHtml — search', () => {
 // ============================================================================
 
 describe('generateSpaHtml — AI features', () => {
-    it('should include Ask AI bottom bar when AI is enabled', () => {
+    it('should include Ask AI widget when AI is enabled', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
-        expect(html).toContain('id="ask-bar"');
+        expect(html).toContain('id="ask-widget"');
         expect(html).toContain('Ask AI about');
     });
 
-    it('should NOT include Ask AI bottom bar when AI is disabled', () => {
+    it('should NOT include Ask AI widget when AI is disabled', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).not.toContain('id="ask-bar"');
+        expect(html).not.toContain('id="ask-widget"');
     });
 
-    it('should include AI bar styling when enabled', () => {
+    it('should include AI widget styling when enabled', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
-        expect(html).toContain('.ask-bar');
+        expect(html).toContain('.ask-widget');
     });
 });
 
 // ============================================================================
-// AI Floating Ask Bar Layout
+// AI Floating Ask Widget Layout
 // ============================================================================
 
-describe('generateSpaHtml — floating ask bar layout', () => {
-    it('should place ask-bar outside of main-content (after app-layout closing div)', () => {
-        const html = generateSpaHtml({
-            theme: 'auto', title: 'Test', enableSearch: true,
-            enableAI: true, enableGraph: false,
-        });
-        // The ask-bar should appear after </main> and </div> (app-layout closing)
-        const mainEnd = html.indexOf('</main>');
-        const askBarPos = html.indexOf('id="ask-bar"');
-        expect(mainEnd).toBeGreaterThan(-1);
-        expect(askBarPos).toBeGreaterThan(-1);
-        expect(askBarPos).toBeGreaterThan(mainEnd);
-    });
-
-    it('should place ask-panel outside of main-content (after app-layout closing div)', () => {
+describe('generateSpaHtml — floating ask widget layout', () => {
+    it('should place ask-widget outside of main-content (after app-layout closing div)', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
         const mainEnd = html.indexOf('</main>');
-        const askPanelPos = html.indexOf('id="ask-panel"');
+        const askWidgetPos = html.indexOf('id="ask-widget"');
         expect(mainEnd).toBeGreaterThan(-1);
-        expect(askPanelPos).toBeGreaterThan(-1);
-        expect(askPanelPos).toBeGreaterThan(mainEnd);
+        expect(askWidgetPos).toBeGreaterThan(-1);
+        expect(askWidgetPos).toBeGreaterThan(mainEnd);
     });
 
-    it('should NOT have ask-bar inside main-content element', () => {
+    it('should NOT have ask-widget inside main-content element', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
-        // Extract the content between <main ...> and </main>
         const mainStart = html.indexOf('<main class="main-content"');
         const mainEnd = html.indexOf('</main>');
         const mainContent = html.slice(mainStart, mainEnd);
-        expect(mainContent).not.toContain('id="ask-bar"');
-        expect(mainContent).not.toContain('id="ask-panel"');
+        expect(mainContent).not.toContain('id="ask-widget"');
     });
 
-    it('should use position: fixed for ask-bar CSS', () => {
+    it('should use position: fixed for ask-widget CSS', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
-        expect(html).toContain('.ask-bar {');
+        expect(html).toContain('.ask-widget {');
         expect(html).toContain('position: fixed');
-        // Verify it anchors to viewport bottom/left/right
-        expect(html).toContain('bottom: 0');
-        expect(html).toContain('left: 0');
-        expect(html).toContain('right: 0');
-    });
-
-    it('should use position: fixed for ask-panel CSS', () => {
-        const html = generateSpaHtml({
-            theme: 'auto', title: 'Test', enableSearch: true,
-            enableAI: true, enableGraph: false,
-        });
-        // ask-panel should be fixed to viewport
-        expect(html).toMatch(/\.ask-panel\s*\{[^}]*position:\s*fixed/);
-    });
-
-    it('should have ask-bar z-index lower than ask-panel z-index', () => {
-        const html = generateSpaHtml({
-            theme: 'auto', title: 'Test', enableSearch: true,
-            enableAI: true, enableGraph: false,
-        });
-        // Extract z-index values from ask-bar and ask-panel
-        const barMatch = html.match(/\.ask-bar\s*\{[^}]*z-index:\s*(\d+)/);
-        const panelMatch = html.match(/\.ask-panel\s*\{[^}]*z-index:\s*(\d+)/);
-        expect(barMatch).not.toBeNull();
-        expect(panelMatch).not.toBeNull();
-        const barZ = parseInt(barMatch![1], 10);
-        const panelZ = parseInt(panelMatch![1], 10);
-        expect(panelZ).toBeGreaterThan(barZ);
-    });
-
-    it('should add padding-bottom to app-layout when AI is enabled', () => {
-        const html = generateSpaHtml({
-            theme: 'auto', title: 'Test', enableSearch: true,
-            enableAI: true, enableGraph: false,
-        });
-        expect(html).toContain('.app-layout { padding-bottom:');
     });
 
     it('should NOT add padding-bottom to app-layout when AI is disabled', () => {
@@ -344,65 +293,48 @@ describe('generateSpaHtml — floating ask bar layout', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).not.toContain('.app-layout { padding-bottom:');
+        expect(html).not.toContain('.ask-widget');
     });
 
-    it('should include responsive adjustments for ask bar on mobile', () => {
+    it('should include responsive adjustments for ask widget on mobile', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
-        // Should have a media query for ask-bar padding on mobile
-        expect(html).toContain('.ask-bar { padding:');
+        expect(html).toContain('.ask-widget { bottom:');
     });
 
-    it('should include responsive adjustments for ask panel on mobile', () => {
+    it('should render ask-widget as direct child of body', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
-        // Panel should get taller on mobile (70vh) with no max-height
-        expect(html).toContain('.ask-panel { height: 70vh');
-    });
-
-    it('should render ask-bar and ask-panel as direct children of body', () => {
-        const html = generateSpaHtml({
-            theme: 'auto', title: 'Test', enableSearch: true,
-            enableAI: true, enableGraph: false,
-        });
-        // Both should be between the closing </div> of app-layout and the <script> tag
         const appLayoutEnd = html.indexOf('</div>', html.indexOf('class="app-layout"'));
         const scriptTag = html.indexOf('<script>');
-        const askBarPos = html.indexOf('id="ask-bar"');
-        const askPanelPos = html.indexOf('id="ask-panel"');
-        expect(askBarPos).toBeGreaterThan(appLayoutEnd);
-        expect(askBarPos).toBeLessThan(scriptTag);
-        expect(askPanelPos).toBeGreaterThan(appLayoutEnd);
-        expect(askPanelPos).toBeLessThan(scriptTag);
+        const askWidgetPos = html.indexOf('id="ask-widget"');
+        expect(askWidgetPos).toBeGreaterThan(appLayoutEnd);
+        expect(askWidgetPos).toBeLessThan(scriptTag);
     });
 
-    it('should include ask-panel hidden class for initial state', () => {
+    it('should start with header and messages hidden', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
-        expect(html).toContain('class="ask-panel hidden"');
+        expect(html).toContain('class="ask-widget-header hidden"');
+        expect(html).toContain('class="ask-messages hidden"');
     });
 
-    it('floating ask bar should work across all themes', () => {
+    it('floating ask widget should work across all themes', () => {
         const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
         for (const theme of themes) {
             const html = generateSpaHtml({
                 theme, title: 'Test', enableSearch: true,
                 enableAI: true, enableGraph: false,
             });
-            // Verify fixed positioning present in all themes
             expect(html).toContain('position: fixed');
-            expect(html).toContain('.app-layout { padding-bottom:');
-            // ask-bar and ask-panel outside main
             const mainEnd = html.indexOf('</main>');
-            expect(html.indexOf('id="ask-bar"')).toBeGreaterThan(mainEnd);
-            expect(html.indexOf('id="ask-panel"')).toBeGreaterThan(mainEnd);
+            expect(html.indexOf('id="ask-widget"')).toBeGreaterThan(mainEnd);
         }
     });
 });

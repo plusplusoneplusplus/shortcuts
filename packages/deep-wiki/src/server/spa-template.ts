@@ -119,30 +119,22 @@ ${enableSearch ? `            <div class="search-box">
         </main>
     </div>
 
-${enableAI ? `    <!-- Bottom Ask AI Bar (fixed viewport-wide) -->
-    <div class="ask-bar" id="ask-bar">
-        <div class="ask-bar-inner">
-            <span class="ask-bar-label">Ask AI about <strong id="ask-bar-subject">${escapeHtml(title)}</strong></span>
-            <div class="ask-bar-input-row">
-                <input type="text" class="ask-bar-input" id="ask-input" placeholder="Ask about this codebase..." aria-label="Ask AI">
-                <button class="ask-bar-send" id="ask-send" aria-label="Send question">&#10148;</button>
+${enableAI ? `    <!-- Floating Ask AI Widget -->
+    <div class="ask-widget" id="ask-widget">
+        <div class="ask-widget-header hidden" id="ask-widget-header">
+            <span class="ask-widget-title">Ask AI</span>
+            <div class="ask-widget-actions">
+                <button class="ask-widget-clear" id="ask-clear" title="Clear conversation">Clear</button>
+                <button class="ask-widget-close" id="ask-close" aria-label="Close">&times;</button>
             </div>
         </div>
-    </div>
-
-    <!-- Expanded Ask Panel (fixed viewport-wide overlay) -->
-    <div class="ask-panel hidden" id="ask-panel">
-        <div class="ask-panel-header">
-            <h3>Ask AI</h3>
-            <div class="ask-panel-actions">
-                <button class="ask-panel-clear" id="ask-clear" title="Clear conversation">Clear</button>
-                <button class="ask-panel-close" id="ask-close" aria-label="Close">&times;</button>
+        <div class="ask-messages hidden" id="ask-messages"></div>
+        <div class="ask-widget-input">
+            <span class="ask-widget-label" id="ask-widget-label">Ask AI about <strong id="ask-bar-subject">${escapeHtml(title)}</strong></span>
+            <div class="ask-widget-input-row">
+                <textarea class="ask-widget-textarea" id="ask-textarea" placeholder="Ask about this codebase..." rows="1"></textarea>
+                <button class="ask-widget-send" id="ask-widget-send" aria-label="Send question">&#10148;</button>
             </div>
-        </div>
-        <div class="ask-messages" id="ask-messages"></div>
-        <div class="ask-input-area">
-            <textarea class="ask-textarea" id="ask-textarea" placeholder="Ask about this codebase..." rows="1"></textarea>
-            <button class="ask-panel-send" id="ask-panel-send">Send</button>
         </div>
     </div>` : ''}
 
@@ -531,7 +523,6 @@ function getSpaStyles(enableAI: boolean): string {
 
         .content-layout {
             display: flex;
-            max-width: 1280px;
             margin: 0 auto;
             padding: 0 20px;
             min-height: 100%;
@@ -541,7 +532,6 @@ function getSpaStyles(enableAI: boolean): string {
             flex: 1;
             min-width: 0;
             padding: 32px 40px;
-            max-width: 820px;
         }
 
         /* ========== Source Files Section ========== */
@@ -909,7 +899,6 @@ ${getMermaidZoomStyles()}
         /* ========== Responsive ========== */
         @media (max-width: 1024px) {
             .toc-sidebar { display: none; }
-            .article { max-width: 100%; }
         }
         @media (max-width: 768px) {
             .sidebar { position: fixed; z-index: 100; height: calc(100vh - 48px); top: 48px; }
@@ -921,90 +910,41 @@ ${getMermaidZoomStyles()}
     if (enableAI) {
         styles += `
 
-        /* ========== Layout adjustment for fixed Ask AI bar ========== */
-        .app-layout { padding-bottom: 72px; }
-
-        /* ========== Ask AI Bar (fixed viewport-wide bottom) ========== */
-        .ask-bar {
+        /* ========== Ask AI Floating Widget ========== */
+        .ask-widget {
             position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
             z-index: 200;
-            border-top: 1px solid var(--ask-bar-border);
             background: var(--ask-bar-bg);
-            padding: 12px 20px;
-        }
-        .ask-bar-inner {
-            max-width: 720px;
-            margin: 0 auto;
-        }
-        .ask-bar-label {
-            display: block;
-            font-size: 12px;
-            color: var(--content-muted);
-            margin-bottom: 6px;
-        }
-        .ask-bar-label strong { color: var(--content-text); }
-        .ask-bar-input-row {
-            display: flex;
-            gap: 8px;
-        }
-        .ask-bar-input {
-            flex: 1;
-            padding: 9px 14px;
-            border: 1px solid var(--content-border);
-            border-radius: 8px;
-            font-size: 14px;
-            background: var(--content-bg);
-            color: var(--content-text);
-            outline: none;
-            font-family: inherit;
-        }
-        .ask-bar-input:focus { border-color: var(--sidebar-active-border); }
-        .ask-bar-input::placeholder { color: var(--content-muted); }
-        .ask-bar-send {
-            background: var(--sidebar-active-border);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 0 14px;
-            cursor: pointer;
-            font-size: 16px;
-            flex-shrink: 0;
-        }
-        .ask-bar-send:hover { opacity: 0.9; }
-        .ask-bar-send:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        /* ========== Ask Panel (fixed viewport-wide expanded chat) ========== */
-        .ask-panel {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 60vh;
-            max-height: 600px;
-            background: var(--content-bg);
-            border-top: 1px solid var(--content-border);
+            border-radius: 16px;
+            border: 1px solid var(--ask-bar-border);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+            width: 720px;
+            max-width: calc(100vw - 40px);
             display: flex;
             flex-direction: column;
-            z-index: 250;
-            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
-            border-radius: 12px 12px 0 0;
-            transition: height 0.3s;
+            max-height: calc(100vh - 100px);
+            transition: box-shadow 0.2s;
         }
-        .ask-panel.hidden { display: none; }
-        .ask-panel-header {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--content-border);
+        .ask-widget.expanded {
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+        }
+
+        /* Widget header (visible when expanded) */
+        .ask-widget-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--content-border);
             flex-shrink: 0;
         }
-        .ask-panel-header h3 { font-size: 15px; color: var(--content-text); margin: 0; }
-        .ask-panel-actions { display: flex; gap: 6px; align-items: center; }
-        .ask-panel-clear {
+        .ask-widget-header.hidden { display: none; }
+        .ask-widget-title { font-size: 13px; font-weight: 600; color: var(--content-text); }
+        .ask-widget-actions { display: flex; gap: 6px; align-items: center; }
+        .ask-widget-clear {
             background: none;
             border: 1px solid var(--content-border);
             border-radius: 4px;
@@ -1013,22 +953,26 @@ ${getMermaidZoomStyles()}
             font-size: 11px;
             color: var(--content-muted);
         }
-        .ask-panel-clear:hover { background: var(--code-bg); }
-        .ask-panel-close {
+        .ask-widget-clear:hover { background: var(--code-bg); }
+        .ask-widget-close {
             background: none;
             border: none;
-            font-size: 20px;
+            font-size: 18px;
             cursor: pointer;
             color: var(--content-muted);
             padding: 0 4px;
+            line-height: 1;
         }
-        .ask-panel-close:hover { color: var(--content-text); }
+        .ask-widget-close:hover { color: var(--content-text); }
 
+        /* Messages area (visible when expanded) */
         .ask-messages {
             flex: 1;
             overflow-y: auto;
             padding: 16px;
+            min-height: 0;
         }
+        .ask-messages.hidden { display: none; }
         .ask-message { margin-bottom: 14px; line-height: 1.5; }
         .ask-message-user {
             background: var(--sidebar-active-border);
@@ -1084,19 +1028,32 @@ ${getMermaidZoomStyles()}
             67%, 100% { content: '...'; }
         }
 
-        .ask-input-area {
+        /* Input area (always visible) */
+        .ask-widget-input {
             padding: 12px 16px;
-            border-top: 1px solid var(--content-border);
-            display: flex;
-            gap: 8px;
             flex-shrink: 0;
         }
-        .ask-textarea {
+        .ask-widget-label {
+            display: block;
+            font-size: 12px;
+            color: var(--content-muted);
+            margin-bottom: 6px;
+        }
+        .ask-widget-label strong { color: var(--content-text); }
+        .ask-widget.expanded .ask-widget-label { display: none; }
+        .ask-widget.expanded .ask-widget-input {
+            border-top: 1px solid var(--content-border);
+        }
+        .ask-widget-input-row {
+            display: flex;
+            gap: 8px;
+        }
+        .ask-widget-textarea {
             flex: 1;
-            padding: 8px 12px;
+            padding: 9px 14px;
             border: 1px solid var(--content-border);
             border-radius: 8px;
-            font-size: 13px;
+            font-size: 14px;
             background: var(--content-bg);
             color: var(--content-text);
             outline: none;
@@ -1104,31 +1061,29 @@ ${getMermaidZoomStyles()}
             min-height: 38px;
             max-height: 120px;
             font-family: inherit;
+            line-height: 1.4;
         }
-        .ask-textarea:focus { border-color: var(--sidebar-active-border); }
-        .ask-textarea::placeholder { color: var(--content-muted); }
-        .ask-panel-send {
+        .ask-widget-textarea:focus { border-color: var(--sidebar-active-border); }
+        .ask-widget-textarea::placeholder { color: var(--content-muted); }
+        .ask-widget-send {
             background: var(--sidebar-active-border);
             color: white;
             border: none;
             border-radius: 8px;
-            padding: 8px 16px;
+            padding: 0 14px;
             cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            white-space: nowrap;
+            font-size: 16px;
+            flex-shrink: 0;
             align-self: flex-end;
+            height: 38px;
         }
-        .ask-panel-send:hover { opacity: 0.9; }
-        .ask-panel-send:disabled { opacity: 0.5; cursor: not-allowed; }
+        .ask-widget-send:hover { opacity: 0.9; }
+        .ask-widget-send:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* ========== Ask AI Responsive ========== */
         @media (max-width: 768px) {
-            .ask-bar { padding: 10px 12px; }
-            .ask-bar-inner { max-width: 100%; }
-            .ask-bar-label { font-size: 11px; margin-bottom: 4px; }
-            .ask-panel { height: 70vh; max-height: none; border-radius: 8px 8px 0 0; }
-            .app-layout { padding-bottom: 68px; }
+            .ask-widget { bottom: 12px; border-radius: 12px; }
+            .ask-widget-label { font-size: 11px; margin-bottom: 4px; }
         }`;
     }
 
@@ -1711,6 +1666,75 @@ ${opts.enableAI ? `            addDeepDiveButton(mod.id);` : ''}
             });
 
             initMermaid();
+
+            // Intercept internal .md links and route through SPA navigation
+            body.addEventListener('click', function(e) {
+                var target = e.target;
+                while (target && target !== body) {
+                    if (target.tagName === 'A') break;
+                    target = target.parentElement;
+                }
+                if (!target || target.tagName !== 'A') return;
+                var href = target.getAttribute('href');
+                if (!href || !href.match(/\\.md(#.*)?$/)) return;
+                // Don't intercept external links
+                if (/^https?:\\/\\//.test(href)) return;
+
+                e.preventDefault();
+                var hashPart = '';
+                var hashIdx = href.indexOf('#');
+                if (hashIdx !== -1) {
+                    hashPart = href.substring(hashIdx + 1);
+                    href = href.substring(0, hashIdx);
+                }
+
+                // Extract slug from the href path
+                // Handle patterns like:
+                //   ./modules/module-id.md
+                //   ./module-id.md
+                //   ../../other-area/modules/module-id.md
+                //   ./areas/area-id/index.md
+                //   ../index.md
+                var slug = href.replace(/^(\\.\\.\\/|\\.\\/)*/g, '')
+                    .replace(/^areas\\/[^/]+\\/modules\\//, '')
+                    .replace(/^areas\\/[^/]+\\//, '')
+                    .replace(/^modules\\//, '')
+                    .replace(/\\.md$/, '');
+
+                // Check special pages
+                var specialPages = {
+                    'index': { key: '__index', title: 'Index' },
+                    'architecture': { key: '__architecture', title: 'Architecture' },
+                    'getting-started': { key: '__getting-started', title: 'Getting Started' }
+                };
+                if (specialPages[slug]) {
+                    loadSpecialPage(specialPages[slug].key, specialPages[slug].title);
+                    return;
+                }
+
+                // Try to find matching module ID
+                var matchedId = findModuleIdBySlugClient(slug);
+                if (matchedId) {
+                    loadModule(matchedId);
+                    if (hashPart) {
+                        setTimeout(function() {
+                            var el = document.getElementById(hashPart);
+                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }, 100);
+                    }
+                }
+            });
+        }
+
+        // Client-side module ID lookup by slug
+        function findModuleIdBySlugClient(slug) {
+            var normalized = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            for (var i = 0; i < moduleGraph.modules.length; i++) {
+                var mod = moduleGraph.modules[i];
+                var modSlug = mod.id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                if (modSlug === normalized) return mod.id;
+            }
+            return null;
         }
 
         function addCopyButton(pre) {
@@ -2058,40 +2082,13 @@ ${opts.enableAI ? `
             if (el) el.textContent = name;
         }
 
-        // Bottom bar → open panel
-        document.getElementById('ask-input').addEventListener('focus', function() {
-            openAskPanel();
-        });
-        document.getElementById('ask-send').addEventListener('click', function() {
-            var input = document.getElementById('ask-input');
-            var q = input.value.trim();
-            if (q) {
-                openAskPanel();
-                document.getElementById('ask-textarea').value = q;
-                input.value = '';
-                askPanelSend();
-            }
-        });
-        document.getElementById('ask-input').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                var q = e.target.value.trim();
-                if (q) {
-                    openAskPanel();
-                    document.getElementById('ask-textarea').value = q;
-                    e.target.value = '';
-                    askPanelSend();
-                }
-            }
-        });
-
-        // Panel controls
-        document.getElementById('ask-close').addEventListener('click', closeAskPanel);
+        // Widget controls
+        document.getElementById('ask-close').addEventListener('click', collapseWidget);
         document.getElementById('ask-clear').addEventListener('click', function() {
             conversationHistory = [];
             document.getElementById('ask-messages').innerHTML = '';
         });
-        document.getElementById('ask-panel-send').addEventListener('click', askPanelSend);
+        document.getElementById('ask-widget-send').addEventListener('click', askPanelSend);
         document.getElementById('ask-textarea').addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -2103,18 +2100,21 @@ ${opts.enableAI ? `
             this.style.height = Math.min(this.scrollHeight, 120) + 'px';
         });
 
-        function openAskPanel() {
+        function expandWidget() {
             if (askPanelOpen) return;
             askPanelOpen = true;
-            document.getElementById('ask-panel').classList.remove('hidden');
-            document.getElementById('ask-bar').style.display = 'none';
-            document.getElementById('ask-textarea').focus();
+            var widget = document.getElementById('ask-widget');
+            widget.classList.add('expanded');
+            document.getElementById('ask-widget-header').classList.remove('hidden');
+            document.getElementById('ask-messages').classList.remove('hidden');
         }
 
-        function closeAskPanel() {
+        function collapseWidget() {
             askPanelOpen = false;
-            document.getElementById('ask-panel').classList.add('hidden');
-            document.getElementById('ask-bar').style.display = '';
+            var widget = document.getElementById('ask-widget');
+            widget.classList.remove('expanded');
+            document.getElementById('ask-widget-header').classList.add('hidden');
+            document.getElementById('ask-messages').classList.add('hidden');
         }
 
         function askPanelSend() {
@@ -2123,6 +2123,8 @@ ${opts.enableAI ? `
             var question = input.value.trim();
             if (!question) return;
 
+            expandWidget();
+
             input.value = '';
             input.style.height = 'auto';
 
@@ -2130,7 +2132,7 @@ ${opts.enableAI ? `
             conversationHistory.push({ role: 'user', content: question });
 
             askStreaming = true;
-            document.getElementById('ask-panel-send').disabled = true;
+            document.getElementById('ask-widget-send').disabled = true;
 
             var typingEl = appendAskTyping();
 
@@ -2222,7 +2224,7 @@ ${opts.enableAI ? `
         function finishStreaming(fullResponse, typingEl) {
             if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
             askStreaming = false;
-            document.getElementById('ask-panel-send').disabled = false;
+            document.getElementById('ask-widget-send').disabled = false;
             if (fullResponse) {
                 conversationHistory.push({ role: 'assistant', content: fullResponse });
             }
@@ -2439,11 +2441,11 @@ ${opts.enableAI ? `
             }
             if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
                 e.preventDefault();
-                if (askPanelOpen) closeAskPanel();
-                else openAskPanel();
+                if (askPanelOpen) collapseWidget();
+                else { expandWidget(); document.getElementById('ask-textarea').focus(); }
             }
             if (e.key === 'Escape') {
-                if (askPanelOpen) closeAskPanel();
+                if (askPanelOpen) collapseWidget();
             }
         });` : ''}
 ${opts.enableWatch ? `
