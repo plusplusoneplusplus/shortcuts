@@ -1,0 +1,193 @@
+/**
+ * Serve Command
+ *
+ * Implements the `deep-wiki serve <wiki-dir>` command.
+ * Starts an HTTP server to host the wiki with interactive features.
+ *
+ * Options:
+ *   --port <n>           Port to listen on (default: 3000)
+ *   --host <addr>        Bind address (default: localhost)
+ *   --generate <repo>    Generate wiki before serving
+ *   --watch              Watch repo for changes (requires --generate)
+ *   --ai                 Enable AI Q&A and deep-dive features
+ *   --model <model>      AI model for Q&A sessions
+ *   --open               Open browser on start
+ *
+ * Cross-platform compatible (Linux/Mac/Windows).
+ */
+
+import * as path from 'path';
+import * as fs from 'fs';
+import { createServer } from '../server';
+import { EXIT_CODES } from '../cli';
+import {
+    printSuccess,
+    printError,
+    printWarning,
+    printInfo,
+    printHeader,
+    printKeyValue,
+    bold,
+} from '../logger';
+import type { ServeCommandOptions } from '../types';
+
+// ============================================================================
+// Execute Serve Command
+// ============================================================================
+
+/**
+ * Execute the serve command.
+ *
+ * @param wikiDir - Path to the wiki output directory
+ * @param options - Command options
+ * @returns Exit code (never returns normally — server runs until SIGINT)
+ */
+export async function executeServe(
+    wikiDir: string,
+    options: ServeCommandOptions
+): Promise<number> {
+    const resolvedWikiDir = path.resolve(wikiDir);
+
+    // ================================================================
+    // Optional: Generate wiki before serving
+    // ================================================================
+    if (options.generate) {
+        const repoPath = path.resolve(options.generate);
+
+        if (!fs.existsSync(repoPath)) {
+            printError(`Repository path does not exist: ${repoPath}`);
+            return EXIT_CODES.CONFIG_ERROR;
+        }
+
+        printHeader('Generating wiki before serving...');
+
+        try {
+            const { executeGenerate } = await import('./generate');
+            const exitCode = await executeGenerate(repoPath, {
+                output: resolvedWikiDir,
+                model: options.model,
+                depth: 'normal',
+                force: false,
+                useCache: true,
+                verbose: false,
+            });
+
+            if (exitCode !== EXIT_CODES.SUCCESS) {
+                printError('Wiki generation failed. Cannot serve.');
+                return exitCode;
+            }
+        } catch (error) {
+            printError(`Wiki generation failed: ${(error as Error).message}`);
+            return EXIT_CODES.EXECUTION_ERROR;
+        }
+    }
+
+    // ================================================================
+    // Validate wiki directory
+    // ================================================================
+    if (!fs.existsSync(resolvedWikiDir)) {
+        printError(`Wiki directory does not exist: ${resolvedWikiDir}`);
+        printInfo('Run `deep-wiki generate <repo-path>` first, or use `--generate <repo-path>`.');
+        return EXIT_CODES.CONFIG_ERROR;
+    }
+
+    const graphPath = path.join(resolvedWikiDir, 'module-graph.json');
+    if (!fs.existsSync(graphPath)) {
+        printError(`module-graph.json not found in ${resolvedWikiDir}`);
+        printInfo('The wiki directory does not contain generated wiki data.');
+        printInfo('Run `deep-wiki generate <repo-path>` first, or use `--generate <repo-path>`.');
+        return EXIT_CODES.CONFIG_ERROR;
+    }
+
+    // ================================================================
+    // Watch mode validation
+    // ================================================================
+    if (options.watch && !options.generate) {
+        printWarning('--watch requires --generate <repo-path>. Ignoring --watch.');
+    }
+
+    // ================================================================
+    // Start server
+    // ================================================================
+    printHeader('Deep Wiki — Interactive Server');
+    printKeyValue('Wiki Directory', resolvedWikiDir);
+    printKeyValue('Port', String(options.port || 3000));
+    printKeyValue('Host', options.host || 'localhost');
+    if (options.ai) { printKeyValue('AI Features', 'Enabled'); }
+    if (options.watch && options.generate) { printKeyValue('Watch Mode', 'Enabled'); }
+    process.stderr.write('\n');
+
+    try {
+        const wiki = await createServer({
+            wikiDir: resolvedWikiDir,
+            port: options.port || 3000,
+            host: options.host || 'localhost',
+            aiEnabled: options.ai || false,
+            repoPath: options.generate ? path.resolve(options.generate) : undefined,
+            theme: (options.theme as 'light' | 'dark' | 'auto') || 'auto',
+            title: options.title,
+        });
+
+        printSuccess(`Server running at ${bold(wiki.url)}`);
+        printInfo('Press Ctrl+C to stop.');
+
+        // Open browser if requested
+        if (options.open) {
+            openBrowser(wiki.url);
+        }
+
+        // Wait for SIGINT/SIGTERM
+        await new Promise<void>((resolve) => {
+            const shutdown = async () => {
+                process.stderr.write('\n');
+                printInfo('Shutting down server...');
+                await wiki.close();
+                printSuccess('Server stopped.');
+                resolve();
+            };
+
+            process.on('SIGINT', () => void shutdown());
+            process.on('SIGTERM', () => void shutdown());
+        });
+
+        return EXIT_CODES.SUCCESS;
+
+    } catch (error) {
+        const errMsg = (error as Error).message;
+        if (errMsg.includes('EADDRINUSE')) {
+            printError(`Port ${options.port || 3000} is already in use. Try a different port with --port.`);
+        } else {
+            printError(`Failed to start server: ${errMsg}`);
+        }
+        return EXIT_CODES.EXECUTION_ERROR;
+    }
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Open the default browser to the given URL.
+ * Cross-platform: uses `open` on macOS, `start` on Windows, `xdg-open` on Linux.
+ */
+function openBrowser(url: string): void {
+    const { exec } = require('child_process') as typeof import('child_process');
+
+    const platform = process.platform;
+    let command: string;
+
+    if (platform === 'darwin') {
+        command = `open "${url}"`;
+    } else if (platform === 'win32') {
+        command = `start "" "${url}"`;
+    } else {
+        command = `xdg-open "${url}"`;
+    }
+
+    exec(command, (error: Error | null) => {
+        if (error) {
+            printWarning(`Could not open browser automatically. Open ${url} manually.`);
+        }
+    });
+}

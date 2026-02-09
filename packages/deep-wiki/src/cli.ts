@@ -143,6 +143,44 @@ export function createProgram(): Command {
             process.exit(exitCode);
         });
 
+    // ========================================================================
+    // deep-wiki serve <wiki-dir>
+    // ========================================================================
+
+    program
+        .command('serve')
+        .description('Start an interactive server to explore the wiki')
+        .argument('<wiki-dir>', 'Path to the wiki output directory')
+        .option('-p, --port <number>', 'Port to listen on', parseInt, 3000)
+        .option('-H, --host <address>', 'Bind address', 'localhost')
+        .option('-g, --generate <repo-path>', 'Generate wiki before serving')
+        .option('-w, --watch', 'Watch repo for changes (requires --generate)', false)
+        .option('--ai', 'Enable AI Q&A and deep-dive features', false)
+        .option('-m, --model <model>', 'AI model for Q&A sessions')
+        .option('--open', 'Open browser automatically', false)
+        .option('--theme <theme>', 'Website theme: light, dark, auto', 'auto')
+        .option('--title <title>', 'Override project name in website title')
+        .option('-v, --verbose', 'Verbose logging', false)
+        .option('--no-color', 'Disable colored output')
+        .action(async (wikiDir: string, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+
+            const { executeServe } = await import('./commands/serve');
+            const exitCode = await executeServe(wikiDir, {
+                port: opts.port as number | undefined,
+                host: opts.host as string | undefined,
+                generate: opts.generate as string | undefined,
+                watch: Boolean(opts.watch),
+                ai: Boolean(opts.ai),
+                model: opts.model as string | undefined,
+                open: Boolean(opts.open),
+                theme: opts.theme as string | undefined,
+                title: opts.title as string | undefined,
+                verbose: Boolean(opts.verbose),
+            });
+            process.exit(exitCode);
+        });
+
     return program;
 }
 
