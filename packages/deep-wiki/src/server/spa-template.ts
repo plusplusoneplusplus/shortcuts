@@ -1804,6 +1804,24 @@ ${opts.enableAI ? `
 
                 function processChunk(result) {
                     if (result.done) {
+                        // Stream closed — process any remaining buffer
+                        if (buffer.trim()) {
+                            var remaining = buffer.trim();
+                            if (remaining.startsWith('data: ')) {
+                                try {
+                                    var data = JSON.parse(remaining.slice(6));
+                                    if (data.type === 'chunk') {
+                                        fullResponse += data.content;
+                                        if (!responseEl) {
+                                            responseEl = appendAskAssistantStreaming('');
+                                        }
+                                        updateAskAssistantStreaming(responseEl, fullResponse);
+                                    } else if (data.type === 'done') {
+                                        fullResponse = data.fullResponse || fullResponse;
+                                    }
+                                } catch(e) {}
+                            }
+                        }
                         finishStreaming(fullResponse, typingEl);
                         return;
                     }
@@ -2063,6 +2081,20 @@ ${opts.enableAI ? `
 
                 function processChunk(result) {
                     if (result.done) {
+                        // Stream closed — process any remaining buffer
+                        if (buffer.trim()) {
+                            var remaining = buffer.trim();
+                            if (remaining.startsWith('data: ')) {
+                                try {
+                                    var data = JSON.parse(remaining.slice(6));
+                                    if (data.type === 'chunk') {
+                                        fullResponse += data.text;
+                                    } else if (data.type === 'done') {
+                                        fullResponse = data.fullResponse || fullResponse;
+                                    }
+                                } catch(e) {}
+                            }
+                        }
                         finishDeepDive(fullResponse, resultDiv, submitBtn);
                         return;
                     }

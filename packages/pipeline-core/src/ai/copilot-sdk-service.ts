@@ -373,6 +373,10 @@ interface ICopilotSession {
  * - "assistant.message" - Final assistant message (data: { messageId, content })
  * - "assistant.message_delta" - Streaming chunk (data: { messageId, deltaContent })
  * - "assistant.turn_end" - Turn ended (data: { turnId })
+ * 
+ * Completion detection order:
+ * 1. `session.idle` settles immediately
+ * 2. `assistant.turn_end` starts a 500ms grace period, then settles if content exists
  */
 interface ISessionEvent {
     type: string;
@@ -381,6 +385,7 @@ interface ISessionEvent {
         deltaContent?: string;
         message?: string;
         stack?: string;
+        turnId?: string;
     };
 }
 
@@ -1137,13 +1142,25 @@ export class CopilotSDKService {
 
     /**
      * Send a message with streaming support.
-     * Accumulates deltaContent chunks until session.idle event.
+     * Accumulates deltaContent chunks until a completion event fires.
      * 
      * The Copilot SDK fires events with `event.type` as a plain string:
      * - "assistant.message_delta" with `data.deltaContent` for streaming chunks
      * - "assistant.message" with `data.content` for the final message
+     * - "assistant.turn_end" with `data.turnId` when the turn is complete
      * - "session.idle" with empty data when the session finishes processing
      * - "session.error" with `data.message` for errors
+     * 
+     * Completion is detected by:
+     * 1. `session.idle` — the most explicit signal that the session is done
+     * 2. `assistant.turn_end` — indicates the assistant's turn ended; used as a
+     *    fallback completion signal because some SDK versions may not fire
+     *    `session.idle` reliably or may delay it significantly.
+     * 
+     * When `assistant.turn_end` fires and we already have content (from deltas
+     * or a final message), we schedule a short grace period to allow a
+     * `session.idle` or `assistant.message` event to arrive. If nothing else
+     * arrives within the grace period, we settle with the content we have.
      */
     private async sendWithStreaming(
         session: ICopilotSession,
@@ -1156,12 +1173,17 @@ export class CopilotSDKService {
             let response = '';
             let finalMessage = '';
             let settled = false;
+            let turnEndGraceTimer: ReturnType<typeof setTimeout> | null = null;
 
             const cleanup = () => {
                 if (unsubscribe) {
                     unsubscribe();
                 }
                 clearTimeout(timeoutId);
+                if (turnEndGraceTimer) {
+                    clearTimeout(turnEndGraceTimer);
+                    turnEndGraceTimer = null;
+                }
             };
 
             const settle = (resolver: (value: string) => void, value: string) => {
@@ -1178,6 +1200,12 @@ export class CopilotSDKService {
                     cleanup();
                     reject(error);
                 }
+            };
+
+            const settleWithResult = () => {
+                const result = finalMessage || response;
+                logger.debug(LogCategory.AI, `CopilotSDKService: Streaming completed (${result.length} chars total)`);
+                settle(resolve, result);
             };
 
             const timeoutId = setTimeout(() => {
@@ -1206,12 +1234,23 @@ export class CopilotSDKService {
                     // Final message - use this as the complete content
                     finalMessage = event.data?.content || '';
                     logger.debug(LogCategory.AI, `CopilotSDKService: Received final message (${finalMessage.length} chars)`);
+                } else if (eventType === 'assistant.turn_end') {
+                    // Turn ended — the assistant finished its response.
+                    // Use a short grace period to allow session.idle or a late
+                    // assistant.message to arrive, then settle with what we have.
+                    logger.debug(LogCategory.AI, 'CopilotSDKService: Turn ended');
+                    if (!settled && !turnEndGraceTimer) {
+                        turnEndGraceTimer = setTimeout(() => {
+                            turnEndGraceTimer = null;
+                            if (!settled && (finalMessage || response)) {
+                                logger.debug(LogCategory.AI, 'CopilotSDKService: Settling after turn_end grace period');
+                                settleWithResult();
+                            }
+                        }, 500);
+                    }
                 } else if (eventType === 'session.idle') {
-                    // Session finished processing
-                    // Prefer final message if available, otherwise use accumulated response
-                    const result = finalMessage || response;
-                    logger.debug(LogCategory.AI, `CopilotSDKService: Streaming completed (${result.length} chars total)`);
-                    settle(resolve, result);
+                    // Session finished processing — settle immediately
+                    settleWithResult();
                 } else if (eventType === 'session.error') {
                     // Session error
                     const errorMessage = event.data?.message || 'Unknown session error';

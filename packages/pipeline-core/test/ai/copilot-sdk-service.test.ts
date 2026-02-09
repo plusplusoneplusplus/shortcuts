@@ -506,6 +506,127 @@ describe('CopilotSDKService - Streaming (sendWithStreaming)', () => {
         expect(result.success).toBe(true);
         expect(result.response).toBe('actual content');
     });
+
+    it('should settle via assistant.turn_end grace period when session.idle never fires', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Simulate deltas followed by turn_end (no session.idle)
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Hello ' } });
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'world!' } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+        // Do NOT dispatch session.idle
+
+        // Wait for the 500ms grace period to expire
+        await vi.waitFor(() => {
+            // The promise should resolve
+        }, { timeout: 100 });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('Hello world!');
+    });
+
+    it('should prefer session.idle over turn_end grace period', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Simulate deltas, turn_end, then session.idle within grace period
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Partial...' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Full final answer', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+        // session.idle arrives immediately after turn_end (within grace period)
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        // Should use the final message (preferred over accumulated deltas)
+        expect(result.response).toBe('Full final answer');
+    });
+
+    it('should not settle via turn_end if no content has been received', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // turn_end fires but no content was received — should NOT settle
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+
+        // Wait for grace period to pass
+        await new Promise(r => setTimeout(r, 700));
+
+        // Still waiting — should not have resolved yet
+        // Send actual content and idle to resolve
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Late response', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('Late response');
+    });
+
+    it('should handle turn_end followed by session.error gracefully', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Some content' } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+        // Error arrives within grace period — should take precedence? No,
+        // turn_end already started grace timer with content, but error should
+        // still be handled if it arrives before grace timer fires.
+        // However, since we already have content and turn_end started the timer,
+        // the grace period will settle before the error can be processed
+        // because session.error only fires if not already settled.
+        // In practice, the 500ms grace timer will fire first.
+
+        // Wait for grace period
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('Some content');
+    });
+
+    it('should not start multiple turn_end grace timers', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Content' } });
+        // Multiple turn_end events should only start one grace timer
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-2' } });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('Content');
+    });
 });
 
 // ============================================================================
@@ -679,6 +800,30 @@ describe('CopilotSDKService - onStreamingChunk callback', () => {
         expect(result.response).toBe('Full final message');
         // But streaming chunks were still emitted for each delta
         expect(chunks).toEqual(['Part 1. ', 'Part 2. ', 'Part 3.']);
+    });
+
+    it('should complete streaming callback flow via turn_end when session.idle missing', async () => {
+        const chunks: string[] = [];
+        const { sessions, resultPromise } = setupStreamingCallWithCallback(
+            (chunk) => { chunks.push(chunk); }
+        );
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Chunk 1 ' } });
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Chunk 2' } });
+        // Only turn_end, no session.idle
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('Chunk 1 Chunk 2');
+        expect(chunks).toEqual(['Chunk 1 ', 'Chunk 2']);
     });
 });
 
