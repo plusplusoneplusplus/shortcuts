@@ -80,8 +80,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds('/nonexistent/path/that/doesnt/exist', {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
             expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
@@ -95,8 +94,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(filePath, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
             expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
@@ -116,8 +114,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
 
@@ -133,15 +130,14 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: outputFile,
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
 
             expect(stderrOutput).toContain('custom-seeds.json');
         });
 
-        it('should print max and min topics in header', async () => {
+        it('should print max topics in header', async () => {
             const repoDir = path.join(tmpDir, 'repo');
             fs.mkdirSync(repoDir);
 
@@ -149,12 +145,10 @@ describe('Seeds Command', () => {
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
                 maxTopics: 30,
-                minTopics: 10,
                 verbose: false,
             });
 
             expect(stderrOutput).toContain('30');
-            expect(stderrOutput).toContain('10');
         });
 
         it('should print model in header when specified', async () => {
@@ -164,8 +158,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 model: 'claude-sonnet',
                 verbose: false,
             });
@@ -192,8 +185,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
 
@@ -213,8 +205,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
 
@@ -234,8 +225,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
 
@@ -256,8 +246,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             const exitCode = await executeSeeds(repoDir, {
                 output: outputFile,
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
 
@@ -279,8 +268,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
 
@@ -295,8 +283,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
 
@@ -311,8 +298,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: path.join(tmpDir, 'seeds.json'),
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: true,
             });
 
@@ -329,8 +315,7 @@ describe('Seeds Command', () => {
             const { executeSeeds } = await import('../../src/commands/seeds');
             await executeSeeds(repoDir, {
                 output: outputFile,
-                maxTopics: 20,
-                minTopics: 5,
+                maxTopics: 50,
                 verbose: false,
             });
 

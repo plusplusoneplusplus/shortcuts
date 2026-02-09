@@ -99,7 +99,6 @@ describe('CLI', () => {
 
             expect(optionNames).toContain('--output');
             expect(optionNames).toContain('--max-topics');
-            expect(optionNames).toContain('--min-topics');
             expect(optionNames).toContain('--model');
             expect(optionNames).toContain('--verbose');
         });
@@ -117,15 +116,7 @@ describe('CLI', () => {
             const cmd = program.commands.find(c => c.name() === 'seeds')!;
             const maxOpt = cmd.options.find(o => o.long === '--max-topics');
             expect(maxOpt).toBeDefined();
-            expect(maxOpt!.defaultValue).toBe(20);
-        });
-
-        it('should have default value for --min-topics', () => {
-            const program = createProgram();
-            const cmd = program.commands.find(c => c.name() === 'seeds')!;
-            const minOpt = cmd.options.find(o => o.long === '--min-topics');
-            expect(minOpt).toBeDefined();
-            expect(minOpt!.defaultValue).toBe(5);
+            expect(maxOpt!.defaultValue).toBe(50);
         });
     });
 

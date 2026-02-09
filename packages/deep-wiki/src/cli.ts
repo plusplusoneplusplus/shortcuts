@@ -46,8 +46,7 @@ export function createProgram(): Command {
         .description('Generate topic seeds for breadth-first discovery')
         .argument('<repo-path>', 'Path to the local git repository')
         .option('-o, --output <path>', 'Output file path', 'seeds.json')
-        .option('--max-topics <n>', 'Maximum number of topics to generate', parseInt, 20)
-        .option('--min-topics <n>', 'Minimum number of topics', parseInt, 5)
+        .option('--max-topics <n>', 'Maximum number of topics to generate', parseInt, 50)
         .option('-m, --model <model>', 'AI model to use')
         .option('-v, --verbose', 'Verbose logging', false)
         .option('--no-color', 'Disable colored output')
@@ -56,8 +55,7 @@ export function createProgram(): Command {
             const { executeSeeds } = await import('./commands/seeds');
             const exitCode = await executeSeeds(repoPath, {
                 output: opts.output as string,
-                maxTopics: (opts.maxTopics as number) || 20,
-                minTopics: (opts.minTopics as number) || 5,
+                maxTopics: (opts.maxTopics as number) || 50,
                 model: opts.model as string | undefined,
                 verbose: Boolean(opts.verbose),
             });

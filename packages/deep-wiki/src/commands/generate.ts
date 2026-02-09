@@ -302,8 +302,7 @@ async function runPhase1(
             if (options.seeds === 'auto') {
                 spinner.update('Generating topic seeds...');
                 seeds = await generateTopicSeeds(repoPath, {
-                    maxTopics: 20,
-                    minTopics: 5,
+                    maxTopics: 50,
                     model: options.model,
                     verbose: options.verbose,
                 });

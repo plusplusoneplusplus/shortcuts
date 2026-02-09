@@ -494,10 +494,8 @@ export interface SeedsOutput {
 export interface SeedsCommandOptions {
     /** Output file path (default: "seeds.json") */
     output: string;
-    /** Maximum number of topics to generate (default: 20) */
+    /** Maximum number of topics to generate (default: 50) */
     maxTopics: number;
-    /** Minimum number of topics (falls back to heuristic if AI under-generates) */
-    minTopics: number;
     /** AI model override */
     model?: string;
     /** Verbose logging */

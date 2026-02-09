@@ -56,13 +56,13 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
  * Falls back to heuristic directory-based generation if AI under-generates.
  *
  * @param repoPath - Absolute path to the repository
- * @param options - Seeds command options (maxTopics, minTopics, model, verbose)
+ * @param options - Seeds command options (maxTopics, model, verbose)
  * @returns Array of TopicSeed objects
  * @throws Error if SDK is unavailable, AI times out, or response is malformed
  */
 export async function runSeedsSession(
     repoPath: string,
-    options: Pick<SeedsCommandOptions, 'maxTopics' | 'minTopics' | 'model' | 'verbose'>
+    options: Pick<SeedsCommandOptions, 'maxTopics' | 'model' | 'verbose'>
 ): Promise<TopicSeed[]> {
     const service = getCopilotSDKService();
 
@@ -76,7 +76,7 @@ export async function runSeedsSession(
     }
 
     // Build the prompt
-    const prompt = buildSeedsPrompt(repoPath, options.minTopics, options.maxTopics);
+    const prompt = buildSeedsPrompt(repoPath, options.maxTopics);
 
     // Configure the SDK session
     const sendOptions: SendMessageOptions = {
@@ -121,17 +121,6 @@ export async function runSeedsSession(
         if (options.verbose) {
             process.stderr.write(
                 `[WARN] Failed to parse AI response: ${(parseError as Error).message}. Falling back to heuristic.\n`
-            );
-        }
-        return generateHeuristicSeeds(repoPath);
-    }
-
-    // Check if AI under-generated (below minTopics)
-    if (seeds.length < options.minTopics) {
-        if (options.verbose) {
-            process.stderr.write(
-                `[WARN] AI generated only ${seeds.length} topics (minimum: ${options.minTopics}). ` +
-                'Falling back to directory-based heuristic.\n'
             );
         }
         return generateHeuristicSeeds(repoPath);

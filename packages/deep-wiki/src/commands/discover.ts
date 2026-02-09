@@ -104,8 +104,7 @@ export async function executeDiscover(
             if (options.seeds === 'auto') {
                 spinner.update('Generating topic seeds...');
                 seeds = await generateTopicSeeds(absoluteRepoPath, {
-                    maxTopics: 20,
-                    minTopics: 5,
+                    maxTopics: 50,
                     model: options.model,
                     verbose: options.verbose,
                 });

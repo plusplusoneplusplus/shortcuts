@@ -66,7 +66,6 @@ export async function executeSeeds(
     printKeyValue('Repository', absoluteRepoPath);
     printKeyValue('Output File', options.output);
     printKeyValue('Max Topics', String(options.maxTopics));
-    printKeyValue('Min Topics', String(options.minTopics));
     if (options.model) {
         printKeyValue('Model', options.model);
     }
@@ -79,7 +78,6 @@ export async function executeSeeds(
     try {
         const seeds = await generateTopicSeeds(absoluteRepoPath, {
             maxTopics: options.maxTopics,
-            minTopics: options.minTopics,
             model: options.model,
             verbose: options.verbose,
         });

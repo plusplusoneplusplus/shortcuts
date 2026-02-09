@@ -15,17 +15,16 @@
  * Build the topic seeds prompt for a repository.
  *
  * @param repoPath - Absolute path to the repository
- * @param minTopics - Minimum number of topics to generate
  * @param maxTopics - Maximum number of topics to generate
  * @returns The rendered prompt string
  */
-export function buildSeedsPrompt(repoPath: string, minTopics: number, maxTopics: number): string {
+export function buildSeedsPrompt(repoPath: string, maxTopics: number): string {
     return `You are a senior software architect analyzing a codebase to identify architectural topics and concerns.
 You have access to grep, glob, and view tools to explore the repository at ${repoPath}.
 
 ## Your Task
 
-Scan the repository and identify ${minTopics}-${maxTopics} distinct architectural topics or concerns. These topics represent major areas of functionality, architectural patterns, or modules that would be useful for breadth-first exploration.
+Scan the repository and identify up to ${maxTopics} distinct architectural topics or concerns. These topics represent major areas of functionality, architectural patterns, or modules that would be useful for breadth-first exploration.
 
 ## Exploration Strategy
 
@@ -62,12 +61,12 @@ Return a **single JSON object** matching this schema exactly. Do NOT wrap it in 
 
 ## Rules
 
-- Generate between ${minTopics} and ${maxTopics} topics
+- Generate up to ${maxTopics} topics
 - Topic IDs must be unique lowercase kebab-case identifiers (e.g., "authentication", "api-gateway", "database-layer")
 - Each topic should represent a distinct architectural concern or module area
 - Hints should be an array of 2-5 search terms that would help locate code related to this topic
 - Focus on high-level architectural concerns, not low-level implementation details
-- If the repository is small, you may generate fewer topics, but aim for at least ${minTopics}
+- If the repository is small, you may generate fewer topics
 - If the repository is large, prioritize the most important or central topics
 - Topics should be useful for guiding breadth-first exploration of the codebase`;
 }
