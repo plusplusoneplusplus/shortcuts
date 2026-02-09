@@ -11,7 +11,16 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { DiscoverCommandOptions } from '../types';
 import { discoverModuleGraph, DiscoveryError, runIterativeDiscovery } from '../discovery';
-import { getCachedGraph, getCachedGraphAny, saveGraph } from '../cache';
+import {
+    getCachedGraph,
+    getCachedGraphAny,
+    saveGraph,
+    getRepoHeadHash,
+    saveSeedsCache,
+    getCachedSeeds,
+    getCachedSeedsAny,
+    clearDiscoveryCache,
+} from '../cache';
 import { generateTopicSeeds, parseSeedFile } from '../seeds';
 import {
     Spinner,
@@ -68,6 +77,19 @@ export async function executeDiscover(
     }
     process.stderr.write('\n');
 
+    // Get git hash for cache operations
+    let currentGitHash: string | null = null;
+    try {
+        currentGitHash = await getRepoHeadHash(absoluteRepoPath);
+    } catch {
+        // Non-fatal: caching won't work but discovery continues
+    }
+
+    // Clear discovery cache if --force
+    if (options.force) {
+        clearDiscoveryCache(options.output);
+    }
+
     // Check cache (unless --force)
     if (!options.force) {
         try {
@@ -102,22 +124,45 @@ export async function executeDiscover(
             // Load or generate seeds
             let seeds;
             if (options.seeds === 'auto') {
-                spinner.update('Generating topic seeds...');
-                seeds = await generateTopicSeeds(absoluteRepoPath, {
-                    maxTopics: 50,
-                    model: options.model,
-                    verbose: options.verbose,
-                });
+                // Check for cached seeds first
+                if (!options.force && currentGitHash) {
+                    const cachedSeeds = options.useCache
+                        ? getCachedSeedsAny(options.output)
+                        : getCachedSeeds(options.output, currentGitHash);
+                    if (cachedSeeds && cachedSeeds.length > 0) {
+                        seeds = cachedSeeds;
+                        printInfo(`Using ${seeds.length} cached seeds`);
+                    }
+                }
+
+                if (!seeds) {
+                    spinner.update('Generating topic seeds...');
+                    seeds = await generateTopicSeeds(absoluteRepoPath, {
+                        maxTopics: 50,
+                        model: options.model,
+                        verbose: options.verbose,
+                    });
+
+                    // Cache the generated seeds
+                    if (currentGitHash) {
+                        try {
+                            saveSeedsCache(seeds, options.output, currentGitHash);
+                        } catch {
+                            // Non-fatal
+                        }
+                    }
+                }
+
                 spinner.succeed(`Generated ${seeds.length} topic seeds`);
                 spinner.start('Running iterative discovery...');
             } else {
-                // Parse seed file
+                // Parse seed file (file-based seeds don't need caching)
                 seeds = parseSeedFile(options.seeds);
                 printInfo(`Loaded ${seeds.length} seeds from ${options.seeds}`);
                 spinner.update('Running iterative discovery...');
             }
 
-            // Run iterative discovery
+            // Run iterative discovery with cache options
             const graph = await runIterativeDiscovery({
                 repoPath: absoluteRepoPath,
                 seeds,
@@ -128,6 +173,9 @@ export async function executeDiscover(
                 maxRounds: 3,
                 coverageThreshold: 0.8,
                 focus: options.focus,
+                outputDir: options.output,
+                gitHash: currentGitHash ?? undefined,
+                useCache: options.useCache,
             });
 
             result = {
@@ -135,12 +183,15 @@ export async function executeDiscover(
                 duration: 0, // Iterative discovery doesn't track duration yet
             };
         } else {
-            // Standard discovery
+            // Standard discovery (pass cache options for large-repo handler)
             result = await discoverModuleGraph({
                 repoPath: absoluteRepoPath,
                 model: options.model,
                 timeout: options.timeout ? options.timeout * 1000 : undefined,
                 focus: options.focus,
+                outputDir: options.output,
+                gitHash: currentGitHash ?? undefined,
+                useCache: options.useCache,
             });
         }
 

@@ -115,6 +115,12 @@ export interface DiscoveryOptions {
     focus?: string;
     /** Maximum parallel sessions for large-repo drill-down */
     concurrency?: number;
+    /** Output directory for cache (when provided, enables incremental caching) */
+    outputDir?: string;
+    /** Current git hash for cache validation (when provided with outputDir) */
+    gitHash?: string;
+    /** Use cached results regardless of git hash (--use-cache mode) */
+    useCache?: boolean;
 }
 
 /**
@@ -580,6 +586,12 @@ export interface IterativeDiscoveryOptions {
     coverageThreshold?: number;
     /** Focus on a specific subtree */
     focus?: string;
+    /** Output directory for cache (when provided, enables incremental caching) */
+    outputDir?: string;
+    /** Current git hash for cache validation (when provided with outputDir) */
+    gitHash?: string;
+    /** Use cached results regardless of git hash (--use-cache mode) */
+    useCache?: boolean;
 }
 
 /**
@@ -692,4 +704,80 @@ export interface CachedArticle {
     gitHash: string;
     /** Timestamp */
     timestamp: number;
+}
+
+// ============================================================================
+// Discovery Cache Types
+// ============================================================================
+
+/**
+ * A cached probe result.
+ */
+export interface CachedProbeResult {
+    /** The probe result */
+    probeResult: TopicProbeResult;
+    /** Git hash when this probe was executed */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
+}
+
+/**
+ * Cached seeds from auto-generation.
+ */
+export interface CachedSeeds {
+    /** The generated seeds */
+    seeds: TopicSeed[];
+    /** Git hash when seeds were generated */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
+}
+
+/**
+ * A cached structural scan result (large repos).
+ */
+export interface CachedStructuralScan {
+    /** The structural scan result */
+    scanResult: StructuralScanResult;
+    /** Git hash when scan was performed */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
+}
+
+/**
+ * A cached area sub-graph (large repos).
+ */
+export interface CachedAreaGraph {
+    /** The area sub-graph */
+    graph: ModuleGraph;
+    /** Git hash when this area was discovered */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
+}
+
+/**
+ * Metadata tracking discovery progress for round resumption.
+ */
+export interface DiscoveryProgressMetadata {
+    /** Git hash at the start of discovery */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
+    /** Discovery mode */
+    mode: 'standard' | 'iterative' | 'large-repo';
+    /** Current round number */
+    currentRound: number;
+    /** Maximum rounds configured */
+    maxRounds: number;
+    /** Topics that have been completed */
+    completedTopics: string[];
+    /** Topics pending execution */
+    pendingTopics: string[];
+    /** Whether convergence was reached */
+    converged: boolean;
+    /** Coverage estimate (0-1) */
+    coverage: number;
 }

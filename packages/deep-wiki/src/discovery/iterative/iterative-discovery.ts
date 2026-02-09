@@ -11,6 +11,13 @@ import type { IterativeDiscoveryOptions, ModuleGraph, TopicSeed, TopicProbeResul
 import { runTopicProbe } from './probe-session';
 import { mergeProbeResults } from './merge-session';
 import { printInfo, printWarning, gray, cyan } from '../../logger';
+import {
+    scanCachedProbes,
+    scanCachedProbesAny,
+    saveProbeResult,
+    saveDiscoveryMetadata,
+    getDiscoveryMetadata,
+} from '../../cache';
 
 // ============================================================================
 // Concurrency Control
@@ -107,6 +114,20 @@ export async function runIterativeDiscovery(
         };
     }
 
+    // Cache configuration
+    const cacheEnabled = !!options.outputDir;
+    const gitHash = options.gitHash;
+    const useCache = options.useCache ?? false;
+
+    // Check for round resumption from metadata
+    if (cacheEnabled) {
+        const metadata = getDiscoveryMetadata(options.outputDir!);
+        if (metadata && metadata.gitHash === gitHash && metadata.currentRound > 0) {
+            round = metadata.currentRound - 1; // Will be incremented at loop start
+            printInfo(`Resuming from round ${metadata.currentRound} (${metadata.completedTopics.length} topics completed)`);
+        }
+    }
+
     while (round < maxRounds && currentTopics.length > 0) {
         round++;
 
@@ -115,29 +136,75 @@ export async function runIterativeDiscovery(
             printInfo(`  Topics: ${currentTopics.map(t => cyan(t.topic)).join(', ')}`);
         }
 
-        // Run parallel probes (one per topic, limited by concurrency)
-        const probeResults = await runParallel(
-            currentTopics,
-            concurrency,
-            async (topic) => {
-                return runTopicProbe(options.repoPath, topic, {
-                    model: options.model,
-                    timeout: options.probeTimeout,
-                    focus: options.focus,
-                });
+        // Check probe cache — skip already-completed probes
+        let cachedProbes = new Map<string, TopicProbeResult>();
+        let topicsToProbe = currentTopics;
+
+        if (cacheEnabled) {
+            const topicNames = currentTopics.map(t => t.topic);
+            const scanResult = (useCache || !gitHash)
+                ? scanCachedProbesAny(topicNames, options.outputDir!)
+                : scanCachedProbes(topicNames, options.outputDir!, gitHash!);
+
+            cachedProbes = scanResult.found;
+            topicsToProbe = currentTopics.filter(t => scanResult.missing.includes(t.topic));
+
+            if (cachedProbes.size > 0) {
+                printInfo(`  Loaded ${cachedProbes.size} probes from cache, ${topicsToProbe.length} remaining`);
             }
-        );
+        }
+
+        // Run parallel probes only for uncached topics
+        let freshProbeResults: TopicProbeResult[] = [];
+        if (topicsToProbe.length > 0) {
+            freshProbeResults = await runParallel(
+                topicsToProbe,
+                concurrency,
+                async (topic) => {
+                    const result = await runTopicProbe(options.repoPath, topic, {
+                        model: options.model,
+                        timeout: options.probeTimeout,
+                        focus: options.focus,
+                    });
+                    // Save probe result to cache immediately after completion
+                    if (cacheEnabled && gitHash && result) {
+                        try {
+                            saveProbeResult(topic.topic, result, options.outputDir!, gitHash);
+                        } catch {
+                            // Non-fatal: cache write failed
+                        }
+                    }
+                    return result;
+                }
+            );
+        }
+
+        // Combine cached + fresh probe results (in original topic order)
+        const allProbeResults: TopicProbeResult[] = currentTopics.map(t => {
+            const cached = cachedProbes.get(t.topic);
+            if (cached) {
+                return cached;
+            }
+            const fresh = freshProbeResults.find(r => r?.topic === t.topic);
+            return fresh ?? {
+                topic: t.topic,
+                foundModules: [],
+                discoveredTopics: [],
+                dependencies: [],
+                confidence: 0,
+            };
+        });
 
         // Count successful probes
-        const successfulProbes = probeResults.filter(r => r && r.foundModules.length > 0).length;
-        const totalModulesFound = probeResults.reduce((sum, r) => sum + (r?.foundModules?.length || 0), 0);
+        const successfulProbes = allProbeResults.filter(r => r && r.foundModules.length > 0).length;
+        const totalModulesFound = allProbeResults.reduce((sum, r) => sum + (r?.foundModules?.length || 0), 0);
         printInfo(`  Probes completed: ${successfulProbes}/${currentTopics.length} successful, ${totalModulesFound} modules found`);
 
         // Merge results
         printInfo('  Merging probe results...');
         const mergeResult = await mergeProbeResults(
             options.repoPath,
-            probeResults,
+            allProbeResults,
             currentGraph,
             {
                 model: options.model,
@@ -147,6 +214,25 @@ export async function runIterativeDiscovery(
 
         currentGraph = mergeResult.graph;
         printInfo(`  Merged graph: ${currentGraph.modules.length} modules, coverage: ${(mergeResult.coverage * 100).toFixed(0)}%`);
+
+        // Save round progress to metadata
+        if (cacheEnabled && gitHash) {
+            try {
+                saveDiscoveryMetadata({
+                    gitHash,
+                    timestamp: Date.now(),
+                    mode: 'iterative',
+                    currentRound: round,
+                    maxRounds,
+                    completedTopics: currentTopics.map(t => t.topic),
+                    pendingTopics: mergeResult.newTopics.map(t => t.topic),
+                    converged: mergeResult.converged,
+                    coverage: mergeResult.coverage,
+                }, options.outputDir!);
+            } catch {
+                // Non-fatal: metadata save failed
+            }
+        }
 
         // Check convergence
         if (mergeResult.converged) {

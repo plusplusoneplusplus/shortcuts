@@ -128,6 +128,34 @@ vi.mock('../../src/cache', () => ({
     // Reduce article cache functions (Phase 3 reduce)
     getCachedReduceArticles: vi.fn().mockReturnValue(null),
     saveReduceArticles: vi.fn(),
+    // Discovery cache functions
+    saveSeedsCache: vi.fn(),
+    getCachedSeeds: vi.fn().mockReturnValue(null),
+    getCachedSeedsAny: vi.fn().mockReturnValue(null),
+    clearDiscoveryCache: vi.fn().mockReturnValue(false),
+    // Probe/area cache functions (used by iterative discovery and large-repo handler)
+    saveProbeResult: vi.fn(),
+    getCachedProbeResult: vi.fn().mockReturnValue(null),
+    scanCachedProbes: vi.fn().mockImplementation(
+        (topics: string[]) => ({ found: new Map(), missing: [...topics] })
+    ),
+    scanCachedProbesAny: vi.fn().mockImplementation(
+        (topics: string[]) => ({ found: new Map(), missing: [...topics] })
+    ),
+    saveStructuralScan: vi.fn(),
+    getCachedStructuralScan: vi.fn().mockReturnValue(null),
+    getCachedStructuralScanAny: vi.fn().mockReturnValue(null),
+    saveAreaSubGraph: vi.fn(),
+    getCachedAreaSubGraph: vi.fn().mockReturnValue(null),
+    scanCachedAreas: vi.fn().mockImplementation(
+        (areaIds: string[]) => ({ found: new Map(), missing: [...areaIds] })
+    ),
+    scanCachedAreasAny: vi.fn().mockImplementation(
+        (areaIds: string[]) => ({ found: new Map(), missing: [...areaIds] })
+    ),
+    saveDiscoveryMetadata: vi.fn(),
+    getDiscoveryMetadata: vi.fn().mockReturnValue(null),
+    getDiscoveryCacheDir: vi.fn().mockReturnValue('/mock/.wiki-cache/discovery'),
 }));
 
 // Mock website generator

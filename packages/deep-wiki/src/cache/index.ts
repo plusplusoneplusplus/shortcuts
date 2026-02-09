@@ -34,6 +34,28 @@ import { getRepoHeadHash, getChangedFiles } from './git-utils';
 // Re-export git utilities
 export { getRepoHeadHash, getChangedFiles, hasChanges, isGitAvailable, isGitRepo } from './git-utils';
 
+// Re-export discovery cache functions
+export {
+    getDiscoveryCacheDir,
+    saveSeedsCache,
+    getCachedSeeds,
+    getCachedSeedsAny,
+    saveProbeResult,
+    getCachedProbeResult,
+    scanCachedProbes,
+    scanCachedProbesAny,
+    saveStructuralScan,
+    getCachedStructuralScan,
+    getCachedStructuralScanAny,
+    saveAreaSubGraph,
+    getCachedAreaSubGraph,
+    scanCachedAreas,
+    scanCachedAreasAny,
+    saveDiscoveryMetadata,
+    getDiscoveryMetadata,
+    clearDiscoveryCache,
+} from './discovery-cache';
+
 // ============================================================================
 // Constants
 // ============================================================================

@@ -26,6 +26,13 @@ import { normalizeModuleId } from '../schemas';
 import { buildStructuralScanPrompt, buildFocusedDiscoveryPrompt } from './prompts';
 import { parseStructuralScanResponse, parseModuleGraphResponse } from './response-parser';
 import { printInfo, printWarning, gray, cyan } from '../logger';
+import {
+    getCachedStructuralScan,
+    getCachedStructuralScanAny,
+    saveStructuralScan,
+    getCachedAreaSubGraph,
+    saveAreaSubGraph,
+} from '../cache';
 
 // ============================================================================
 // Constants
@@ -121,10 +128,38 @@ export async function isLargeRepo(repoPath: string): Promise<boolean> {
  * @returns Merged ModuleGraph
  */
 export async function discoverLargeRepo(options: DiscoveryOptions): Promise<ModuleGraph> {
-    // Round 1: Structural scan
+    const cacheEnabled = !!options.outputDir;
+    const gitHash = options.gitHash;
+    const useCache = options.useCache ?? false;
+
+    // Round 1: Structural scan (check cache first)
     printInfo('Large repo detected — using multi-round discovery');
     printInfo('Round 1: Running structural scan to identify top-level areas...');
-    const scanResult = await performStructuralScan(options);
+
+    let scanResult: StructuralScanResult | null = null;
+
+    if (cacheEnabled) {
+        scanResult = (useCache || !gitHash)
+            ? getCachedStructuralScanAny(options.outputDir!)
+            : getCachedStructuralScan(options.outputDir!, gitHash!);
+
+        if (scanResult) {
+            printInfo(`Using cached structural scan (${scanResult.areas.length} areas)`);
+        }
+    }
+
+    if (!scanResult) {
+        scanResult = await performStructuralScan(options);
+
+        // Save to cache
+        if (cacheEnabled && gitHash) {
+            try {
+                saveStructuralScan(scanResult, options.outputDir!, gitHash);
+            } catch {
+                // Non-fatal: cache write failed
+            }
+        }
+    }
 
     if (scanResult.areas.length === 0) {
         throw new Error('Structural scan found no top-level areas. The repository may be empty or inaccessible.');
@@ -139,11 +174,34 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Modu
 
     for (let i = 0; i < scanResult.areas.length; i++) {
         const area = scanResult.areas[i];
+        const areaSlug = normalizeModuleId(area.path);
+
+        // Check area cache
+        let cachedArea: ModuleGraph | null = null;
+        if (cacheEnabled && gitHash) {
+            cachedArea = getCachedAreaSubGraph(areaSlug, options.outputDir!, gitHash);
+        }
+
+        if (cachedArea) {
+            printInfo(`  Area "${area.name}" loaded from cache (${cachedArea.modules.length} modules)`);
+            subGraphs.push(cachedArea);
+            continue;
+        }
+
         printInfo(`  Discovering area ${i + 1}/${scanResult.areas.length}: ${cyan(area.name)} ${gray(`(${area.path})`)}`);
         try {
             const subGraph = await discoverArea(options, area, projectName);
             printInfo(`    Found ${subGraph.modules.length} modules`);
             subGraphs.push(subGraph);
+
+            // Save area sub-graph to cache
+            if (cacheEnabled && gitHash) {
+                try {
+                    saveAreaSubGraph(areaSlug, subGraph, options.outputDir!, gitHash);
+                } catch {
+                    // Non-fatal: cache write failed
+                }
+            }
         } catch (error) {
             // Log error but continue with other areas
             printWarning(`Failed to discover area '${area.name}': ${(error as Error).message}`);
