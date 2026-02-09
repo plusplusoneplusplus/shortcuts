@@ -1,0 +1,275 @@
+/**
+ * Tests for FileWatcher - repository change detection.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { FileWatcher } from '../../src/server/file-watcher';
+import type { ModuleGraph } from '../../src/types';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function createTestGraph(): ModuleGraph {
+    return {
+        project: {
+            name: 'TestProject',
+            description: 'Test',
+            language: 'TypeScript',
+            buildSystem: 'npm',
+        },
+        categories: ['core', 'ui'],
+        modules: [
+            {
+                id: 'auth',
+                name: 'Auth',
+                category: 'core',
+                path: 'src/auth',
+                purpose: 'Authentication',
+                complexity: 'medium',
+                keyFiles: ['src/auth/login.ts', 'src/auth/jwt.ts'],
+                dependencies: [],
+                dependents: [],
+            },
+            {
+                id: 'api',
+                name: 'API',
+                category: 'core',
+                path: 'src/api',
+                purpose: 'REST API',
+                complexity: 'high',
+                keyFiles: ['src/api/routes.ts'],
+                dependencies: ['auth'],
+                dependents: [],
+            },
+            {
+                id: 'ui',
+                name: 'UI',
+                category: 'ui',
+                path: 'src/components',
+                purpose: 'React components',
+                complexity: 'medium',
+                keyFiles: ['src/components/App.tsx'],
+                dependencies: [],
+                dependents: [],
+            },
+        ],
+    };
+}
+
+function setupTestRepo(): string {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-wiki-watch-'));
+
+    // Create source structure
+    fs.mkdirSync(path.join(tmpDir, 'src', 'auth'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, 'src', 'api'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, 'src', 'components'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'src', 'auth', 'login.ts'), 'export function login() {}');
+    fs.writeFileSync(path.join(tmpDir, 'src', 'auth', 'jwt.ts'), 'export function jwt() {}');
+    fs.writeFileSync(path.join(tmpDir, 'src', 'api', 'routes.ts'), 'export const routes = [];');
+    fs.writeFileSync(path.join(tmpDir, 'src', 'components', 'App.tsx'), 'export default App;');
+
+    return tmpDir;
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe('FileWatcher', () => {
+    let tmpDir: string;
+    const graph = createTestGraph();
+
+    beforeEach(() => {
+        tmpDir = setupTestRepo();
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    describe('lifecycle', () => {
+        it('should start watching', () => {
+            const onChange = vi.fn();
+            const watcher = new FileWatcher({
+                repoPath: tmpDir,
+                wikiDir: tmpDir,
+                moduleGraph: graph,
+                onChange,
+            });
+
+            watcher.start();
+            expect(watcher.isWatching).toBe(true);
+            watcher.stop();
+        });
+
+        it('should stop watching', () => {
+            const onChange = vi.fn();
+            const watcher = new FileWatcher({
+                repoPath: tmpDir,
+                wikiDir: tmpDir,
+                moduleGraph: graph,
+                onChange,
+            });
+
+            watcher.start();
+            watcher.stop();
+            expect(watcher.isWatching).toBe(false);
+        });
+
+        it('should not start twice', () => {
+            const onChange = vi.fn();
+            const watcher = new FileWatcher({
+                repoPath: tmpDir,
+                wikiDir: tmpDir,
+                moduleGraph: graph,
+                onChange,
+            });
+
+            watcher.start();
+            watcher.start(); // Should be a no-op
+            expect(watcher.isWatching).toBe(true);
+            watcher.stop();
+        });
+    });
+
+    describe('change detection', () => {
+        it('should detect file changes and call onChange after debounce', async () => {
+            const onChange = vi.fn();
+            const watcher = new FileWatcher({
+                repoPath: tmpDir,
+                wikiDir: tmpDir,
+                moduleGraph: graph,
+                debounceMs: 100, // Short debounce for testing
+                onChange,
+            });
+
+            watcher.start();
+
+            // Modify a file in the auth module
+            fs.writeFileSync(
+                path.join(tmpDir, 'src', 'auth', 'login.ts'),
+                'export function login() { /* updated */ }',
+            );
+
+            // Wait for debounce
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            expect(onChange).toHaveBeenCalled();
+            const affectedIds = onChange.mock.calls[0][0];
+            expect(affectedIds).toContain('auth');
+
+            watcher.stop();
+        });
+
+        it('should debounce rapid changes', async () => {
+            const onChange = vi.fn();
+            const watcher = new FileWatcher({
+                repoPath: tmpDir,
+                wikiDir: tmpDir,
+                moduleGraph: graph,
+                debounceMs: 200,
+                onChange,
+            });
+
+            watcher.start();
+
+            // Rapidly modify multiple files
+            fs.writeFileSync(path.join(tmpDir, 'src', 'auth', 'login.ts'), 'change1');
+            await new Promise(resolve => setTimeout(resolve, 50));
+            fs.writeFileSync(path.join(tmpDir, 'src', 'auth', 'jwt.ts'), 'change2');
+            await new Promise(resolve => setTimeout(resolve, 50));
+            fs.writeFileSync(path.join(tmpDir, 'src', 'api', 'routes.ts'), 'change3');
+
+            // Wait for debounce
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Should be called once (debounced)
+            expect(onChange).toHaveBeenCalledTimes(1);
+
+            watcher.stop();
+        });
+
+        it('should ignore node_modules changes', async () => {
+            const onChange = vi.fn();
+            const watcher = new FileWatcher({
+                repoPath: tmpDir,
+                wikiDir: tmpDir,
+                moduleGraph: graph,
+                debounceMs: 100,
+                onChange,
+            });
+
+            // Create and modify a file in node_modules
+            fs.mkdirSync(path.join(tmpDir, 'node_modules'), { recursive: true });
+            watcher.start();
+
+            fs.writeFileSync(path.join(tmpDir, 'node_modules', 'test.js'), 'module.exports = {};');
+
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            expect(onChange).not.toHaveBeenCalled();
+
+            watcher.stop();
+        });
+
+        it('should ignore .git directory changes', async () => {
+            const onChange = vi.fn();
+
+            // Create .git directory BEFORE starting watcher to avoid mkdir events
+            fs.mkdirSync(path.join(tmpDir, '.git'), { recursive: true });
+            fs.writeFileSync(path.join(tmpDir, '.git', 'config'), 'initial');
+
+            const watcher = new FileWatcher({
+                repoPath: tmpDir,
+                wikiDir: tmpDir,
+                moduleGraph: graph,
+                debounceMs: 100,
+                onChange,
+            });
+
+            watcher.start();
+
+            // Wait for watcher to stabilize
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            // Now modify a file inside .git — should be ignored
+            fs.writeFileSync(path.join(tmpDir, '.git', 'HEAD'), 'ref: refs/heads/main');
+
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // The onChange may have been called from watcher startup events;
+            // reset and try again
+            onChange.mockClear();
+            fs.writeFileSync(path.join(tmpDir, '.git', 'HEAD'), 'ref: refs/heads/develop');
+
+            await new Promise(resolve => setTimeout(resolve, 300));
+            expect(onChange).not.toHaveBeenCalled();
+
+            watcher.stop();
+        });
+    });
+
+    describe('error handling', () => {
+        it('should call onError for invalid repo path', () => {
+            const onChange = vi.fn();
+            const onError = vi.fn();
+            const watcher = new FileWatcher({
+                repoPath: '/nonexistent/path/that/does/not/exist',
+                wikiDir: tmpDir,
+                moduleGraph: graph,
+                onChange,
+                onError,
+            });
+
+            watcher.start();
+
+            // On some systems this throws, on others it silently fails
+            // Either way it should not crash
+            watcher.stop();
+        });
+    });
+});

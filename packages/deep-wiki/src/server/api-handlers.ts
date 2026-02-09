@@ -13,6 +13,7 @@ import { sendJson, send404, send400 } from './router';
 import type { ContextBuilder } from './context-builder';
 import type { AskAIFunction } from './ask-handler';
 import { handleAskRequest } from './ask-handler';
+import { handleExploreRequest } from './explore-handler';
 
 // ============================================================================
 // Types
@@ -99,15 +100,28 @@ export function handleApiRequest(
         return;
     }
 
-    // POST /api/explore/:id — Deep dive (Phase D, gated by --ai flag)
+    // POST /api/explore/:id — Deep dive (gated by --ai flag)
     const exploreMatch = pathname.match(/^\/api\/explore\/(.+)$/);
     if (method === 'POST' && exploreMatch) {
         if (!context.aiEnabled) {
             send400(res, 'AI features are not enabled. Start the server with --ai flag.');
             return;
         }
-        // Placeholder for Phase D
-        send400(res, 'Deep dive is not yet implemented. Coming in Phase D.');
+        if (!context.aiSendMessage) {
+            send400(res, 'AI service is not configured.');
+            return;
+        }
+        const exploreModuleId = decodeURIComponent(exploreMatch[1]);
+        handleExploreRequest(req, res, exploreModuleId, {
+            wikiData: context.wikiData,
+            sendMessage: context.aiSendMessage,
+            model: context.aiModel,
+            workingDirectory: context.aiWorkingDirectory,
+        }).catch(() => {
+            if (!res.headersSent) {
+                sendJson(res, { error: 'Internal server error' }, 500);
+            }
+        });
         return;
     }
 

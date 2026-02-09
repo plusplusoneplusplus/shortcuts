@@ -18,7 +18,6 @@ The current static site works well for browsing, but lacks the interactive explo
 ## Architecture
 
 ### High-Level Design
-
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  Browser (SPA)                                           │
@@ -74,7 +73,6 @@ WebSocket is implemented via the built-in `ws` upgrade on the `http` server (Nod
 ## CLI Integration
 
 ### New Command: `deep-wiki serve`
-
 ```bash
 # Serve a previously generated wiki
 deep-wiki serve ./wiki --port 3000
@@ -101,9 +99,8 @@ deep-wiki serve <wiki-dir> \
 ```
 
 ### Options
-
 | Option | Description | Default |
-|--------|-------------|---------|
+| --- | --- | --- |
 | `--port <n>` | Port to listen on | `3000` |
 | `--host <addr>` | Bind address | `localhost` |
 | `--generate <repo>` | Generate wiki before serving | — |
@@ -119,7 +116,6 @@ deep-wiki serve <wiki-dir> \
 The marquee feature. A chat panel where users ask questions about the codebase and get answers grounded in the wiki content.
 
 **How it works:**
-
 ```
 User question
      │
@@ -155,7 +151,6 @@ User question
 5. Include module graph summary for architectural context
 
 **API:**
-
 ```
 POST /api/ask
 Content-Type: application/json
@@ -200,7 +195,6 @@ Replace the static Mermaid architecture diagram with a force-directed D3.js grap
 ### 3. On-Demand Deep Dive
 
 When a user wants more detail on a module than the generated article provides, they can trigger an on-demand deep dive that creates a new, more detailed analysis.
-
 ```
 POST /api/explore/:moduleId
 Content-Type: application/json
@@ -241,7 +235,6 @@ When `--watch` is enabled, the server monitors the repository for changes and in
 3. Browser refreshes the current view if it's showing an affected module
 
 **WebSocket messages:**
-
 ```typescript
 // Server → Client
 { type: "reload", modules: string[] }        // Modules were updated
@@ -257,9 +250,8 @@ When `--watch` is enabled, the server monitors the repository for changes and in
 ### SPA Shell
 
 The server serves a modified version of the existing `index.html` template. Key differences:
-
 | Aspect | Static Site | Server Mode |
-|--------|------------|-------------|
+| --- | --- | --- |
 | Data loading | Embedded `<script>` with all data | Fetched via `/api/*` endpoints |
 | Navigation | Hash-based (`#module-auth`) | Hash-based (same, no server routing needed) |
 | Ask panel | Not present | Slide-out panel on the right |
@@ -299,7 +291,6 @@ The server serves a modified version of the existing `index.html` template. Key 
 - Streams AI response below the input
 
 ## File Structure
-
 ```
 src/
 ├── server/
@@ -342,12 +333,12 @@ Serve the wiki over HTTP with data loaded via API calls instead of embedded `<sc
 
 ### Phase C: AI Q&A
 
-- [ ] TF-IDF indexer for module articles (server-side, built on startup)
-- [ ] Context builder (retrieve relevant modules for a question)
-- [ ] `POST /api/ask` with SSE streaming
-- [ ] Ask panel UI (slide-out chat)
-- [ ] Multi-turn conversation support
-- [ ] `--ai` flag gating
+- [x] TF-IDF indexer for module articles (server-side, built on startup)
+- [x] Context builder (retrieve relevant modules for a question)
+- [x] `POST /api/ask` with SSE streaming
+- [x] Ask panel UI (slide-out chat)
+- [x] Multi-turn conversation support
+- [x] `--ai` flag gating
 
 ### Phase D: Deep Dive + Watch Mode
 

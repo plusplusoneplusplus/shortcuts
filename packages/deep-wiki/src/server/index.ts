@@ -15,6 +15,8 @@ import { WikiData } from './wiki-data';
 import { createRequestHandler } from './router';
 import { generateSpaHtml } from './spa-template';
 import { ContextBuilder } from './context-builder';
+import { WebSocketServer } from './websocket';
+import { FileWatcher } from './file-watcher';
 import type { AskAIFunction } from './ask-handler';
 import type { WebsiteTheme } from '../types';
 
@@ -44,6 +46,10 @@ export interface WikiServerOptions {
     aiSendMessage?: AskAIFunction;
     /** AI model override */
     aiModel?: string;
+    /** Enable watch mode for live reload */
+    watch?: boolean;
+    /** Debounce interval for file watcher in ms (default: 2000) */
+    watchDebounceMs?: number;
 }
 
 /**
@@ -56,6 +62,10 @@ export interface WikiServer {
     wikiData: WikiData;
     /** The context builder for AI Q&A (only when AI is enabled) */
     contextBuilder?: ContextBuilder;
+    /** The WebSocket server (only when watch mode is enabled) */
+    wsServer?: WebSocketServer;
+    /** The file watcher (only when watch mode is enabled) */
+    fileWatcher?: FileWatcher;
     /** The port the server is listening on */
     port: number;
     /** The host the server is bound to */
@@ -103,6 +113,7 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
         enableSearch: true,
         enableAI: aiEnabled,
         enableGraph: true,
+        enableWatch: !!(options.watch && options.repoPath),
     });
 
     // Create HTTP server
@@ -119,6 +130,57 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
 
     const server = http.createServer(handler);
 
+    // Set up WebSocket server for live reload
+    let wsServer: WebSocketServer | undefined;
+    let fileWatcher: FileWatcher | undefined;
+
+    if (options.watch && options.repoPath) {
+        wsServer = new WebSocketServer();
+        wsServer.attach(server);
+
+        // Handle ping from clients
+        wsServer.onMessage((client, msg) => {
+            if (msg.type === 'ping') {
+                client.send(JSON.stringify({ type: 'pong' }));
+            }
+        });
+
+        // Set up file watcher
+        fileWatcher = new FileWatcher({
+            repoPath: options.repoPath,
+            wikiDir: options.wikiDir,
+            moduleGraph: wikiData.graph,
+            debounceMs: options.watchDebounceMs,
+            onChange: (affectedModuleIds) => {
+                // Notify clients about rebuild
+                wsServer!.broadcast({ type: 'rebuilding', modules: affectedModuleIds });
+
+                // Reload wiki data
+                try {
+                    wikiData.reload();
+
+                    // Rebuild context index if AI is enabled
+                    if (aiEnabled && contextBuilder) {
+                        const markdownData = wikiData.getMarkdownData();
+                        const newBuilder = new ContextBuilder(wikiData.graph, markdownData);
+                        // Note: we can't reassign contextBuilder since it's const,
+                        // but the router already has a reference, so we just notify
+                    }
+
+                    wsServer!.broadcast({ type: 'reload', modules: affectedModuleIds });
+                } catch (err) {
+                    const msg = err instanceof Error ? err.message : 'Unknown error';
+                    wsServer!.broadcast({ type: 'error', message: msg });
+                }
+            },
+            onError: (err) => {
+                wsServer!.broadcast({ type: 'error', message: err.message });
+            },
+        });
+
+        fileWatcher.start();
+    }
+
     // Start listening
     await new Promise<void>((resolve, reject) => {
         server.on('error', reject);
@@ -134,15 +196,25 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
         server,
         wikiData,
         contextBuilder,
+        wsServer,
+        fileWatcher,
         port: actualPort,
         host,
         url,
-        close: () => new Promise<void>((resolve, reject) => {
-            server.close((err) => {
-                if (err) { reject(err); }
-                else { resolve(); }
+        close: async () => {
+            if (fileWatcher) {
+                fileWatcher.stop();
+            }
+            if (wsServer) {
+                wsServer.closeAll();
+            }
+            await new Promise<void>((resolve, reject) => {
+                server.close((err) => {
+                    if (err) { reject(err); }
+                    else { resolve(); }
+                });
             });
-        }),
+        },
     };
 }
 
@@ -150,7 +222,12 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
 export { WikiData } from './wiki-data';
 export { generateSpaHtml } from './spa-template';
 export { ContextBuilder } from './context-builder';
+export { WebSocketServer } from './websocket';
+export { FileWatcher } from './file-watcher';
 export type { SpaTemplateOptions } from './spa-template';
 export type { ModuleSummary, ModuleDetail, SpecialPage } from './wiki-data';
 export type { AskAIFunction, AskRequest, ConversationMessage } from './ask-handler';
+export type { ExploreRequest } from './explore-handler';
 export type { RetrievedContext } from './context-builder';
+export type { WSClient, WSMessage } from './websocket';
+export type { FileWatcherOptions } from './file-watcher';

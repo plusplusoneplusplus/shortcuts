@@ -29,6 +29,8 @@ export interface SpaTemplateOptions {
     enableAI: boolean;
     /** Enable interactive dependency graph */
     enableGraph: boolean;
+    /** Enable watch mode (WebSocket live reload) */
+    enableWatch?: boolean;
 }
 
 // ============================================================================
@@ -39,7 +41,7 @@ export interface SpaTemplateOptions {
  * Generate the SPA HTML for server mode.
  */
 export function generateSpaHtml(options: SpaTemplateOptions): string {
-    const { theme, title, enableSearch, enableAI, enableGraph } = options;
+    const { theme, title, enableSearch, enableAI, enableGraph, enableWatch = false } = options;
 
     const themeClass = theme === 'auto' ? '' : `class="${theme}-theme"`;
     const themeMetaTag = theme === 'auto'
@@ -121,8 +123,10 @@ ${enableAI ? `        <div class="ask-panel hidden" id="ask-panel">
         </div>` : ''}
     </div>
 
+${enableWatch ? `    <div class="live-reload-bar" id="live-reload-bar"></div>` : ''}
+
     <script>
-${getSpaScript({ enableSearch, enableAI, enableGraph, defaultTheme: theme })}
+${getSpaScript({ enableSearch, enableAI, enableGraph, enableWatch, defaultTheme: theme })}
     </script>
 </body>
 </html>`;
@@ -571,6 +575,33 @@ function getSpaStyles(enableAI: boolean): string {
             line-height: 1.4;
         }
 
+        /* Live Reload Notification */
+        .live-reload-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 8px 16px;
+            font-size: 13px;
+            text-align: center;
+            transition: transform 0.3s;
+            transform: translateY(-100%);
+        }
+        .live-reload-bar.visible { transform: translateY(0); }
+        .live-reload-bar.rebuilding {
+            background: var(--badge-medium-bg);
+            color: white;
+        }
+        .live-reload-bar.reloaded {
+            background: var(--badge-low-bg);
+            color: white;
+        }
+        .live-reload-bar.error {
+            background: var(--badge-high-bg);
+            color: white;
+        }
+
         @media (max-width: 768px) {
             .sidebar { position: fixed; z-index: 100; height: 100vh; }
             .sidebar.hidden { margin-left: -280px; }
@@ -593,6 +624,72 @@ function getSpaStyles(enableAI: boolean): string {
             font-weight: 500;
         }
         .ask-toggle-btn:hover { opacity: 0.9; }
+
+        /* Deep Dive */
+        .deep-dive-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--stat-bg);
+            color: var(--link-color);
+            border: 1px solid var(--content-border);
+            border-radius: 6px;
+            padding: 6px 14px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 16px;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .deep-dive-btn:hover {
+            background: var(--code-bg);
+            border-color: var(--link-color);
+        }
+        .deep-dive-section {
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--stat-bg);
+            border: 1px solid var(--content-border);
+            border-radius: 8px;
+        }
+        .deep-dive-input-area {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .deep-dive-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid var(--content-border);
+            border-radius: 6px;
+            font-size: 13px;
+            background: var(--content-bg);
+            color: var(--content-text);
+            outline: none;
+            font-family: inherit;
+        }
+        .deep-dive-input:focus { border-color: var(--sidebar-active-border); }
+        .deep-dive-input::placeholder { color: var(--content-muted); }
+        .deep-dive-submit {
+            background: var(--sidebar-active-border);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 14px;
+            cursor: pointer;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        .deep-dive-submit:hover { opacity: 0.9; }
+        .deep-dive-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+        .deep-dive-result {
+            margin-top: 12px;
+        }
+        .deep-dive-status {
+            font-size: 12px;
+            color: var(--content-muted);
+            margin-bottom: 8px;
+        }
 
         /* Ask Panel (slide-out) */
         .ask-panel {
@@ -759,6 +856,7 @@ interface ScriptOptions {
     enableSearch: boolean;
     enableAI: boolean;
     enableGraph: boolean;
+    enableWatch: boolean;
     defaultTheme: WebsiteTheme;
 }
 
@@ -983,6 +1081,7 @@ ${opts.enableSearch ? `
             // Check cache
             if (markdownCache[moduleId]) {
                 renderMarkdownContent(markdownCache[moduleId]);
+${opts.enableAI ? `                addDeepDiveButton(moduleId);` : ''}
                 document.querySelector('.content-body').scrollTop = 0;
                 return;
             }
@@ -1001,6 +1100,7 @@ ${opts.enableSearch ? `
                         '<div class="markdown-body"><h2>' + escapeHtml(mod.name) + '</h2>' +
                         '<p>' + escapeHtml(mod.purpose) + '</p></div>';
                 }
+${opts.enableAI ? `                addDeepDiveButton(moduleId);` : ''}
             } catch(err) {
                 document.getElementById('content').innerHTML =
                     '<p style="color: red;">Error loading module: ' + err.message + '</p>';
@@ -1572,7 +1672,232 @@ ${opts.enableAI ? `
             div.textContent = 'Error: ' + message;
             messages.appendChild(div);
             messages.scrollTop = messages.scrollHeight;
-        }` : ''}`;
+        }
+
+        // ================================================================
+        // Deep Dive (Explore Further)
+        // ================================================================
+
+        var deepDiveStreaming = false;
+
+        function addDeepDiveButton(moduleId) {
+            var content = document.getElementById('content');
+            if (!content) return;
+            var markdownBody = content.querySelector('.markdown-body');
+            if (!markdownBody) return;
+
+            // Create button
+            var btn = document.createElement('button');
+            btn.className = 'deep-dive-btn';
+            btn.innerHTML = '&#128269; Explore Further';
+            btn.onclick = function() {
+                toggleDeepDiveSection(moduleId, btn);
+            };
+
+            // Insert at the top of markdown body
+            markdownBody.insertBefore(btn, markdownBody.firstChild);
+        }
+
+        function toggleDeepDiveSection(moduleId, btn) {
+            var existing = document.getElementById('deep-dive-section');
+            if (existing) {
+                existing.parentNode.removeChild(existing);
+                return;
+            }
+
+            var section = document.createElement('div');
+            section.id = 'deep-dive-section';
+            section.className = 'deep-dive-section';
+            section.innerHTML =
+                '<div class="deep-dive-input-area">' +
+                '<input type="text" class="deep-dive-input" id="deep-dive-input" ' +
+                'placeholder="Ask a specific question about this module... (optional)">' +
+                '<button class="deep-dive-submit" id="deep-dive-submit">Explore</button>' +
+                '</div>' +
+                '<div class="deep-dive-result" id="deep-dive-result"></div>';
+
+            btn.insertAdjacentElement('afterend', section);
+
+            document.getElementById('deep-dive-submit').onclick = function() {
+                startDeepDive(moduleId);
+            };
+            document.getElementById('deep-dive-input').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    startDeepDive(moduleId);
+                }
+            });
+            document.getElementById('deep-dive-input').focus();
+        }
+
+        function startDeepDive(moduleId) {
+            if (deepDiveStreaming) return;
+            deepDiveStreaming = true;
+
+            var input = document.getElementById('deep-dive-input');
+            var submitBtn = document.getElementById('deep-dive-submit');
+            var resultDiv = document.getElementById('deep-dive-result');
+            var question = input ? input.value.trim() : '';
+
+            submitBtn.disabled = true;
+            resultDiv.innerHTML = '<div class="deep-dive-status">Analyzing module...</div>';
+
+            var body = {};
+            if (question) body.question = question;
+            body.depth = 'deep';
+
+            fetch('/api/explore/' + encodeURIComponent(moduleId), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            }).then(function(response) {
+                if (!response.ok) {
+                    return response.json().then(function(err) {
+                        throw new Error(err.error || 'Request failed');
+                    });
+                }
+
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                var buffer = '';
+                var fullResponse = '';
+
+                function processChunk(result) {
+                    if (result.done) {
+                        finishDeepDive(fullResponse, resultDiv, submitBtn);
+                        return;
+                    }
+
+                    buffer += decoder.decode(result.value, { stream: true });
+                    var lines = buffer.split('\\n');
+                    buffer = lines.pop() || '';
+
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i].trim();
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            var data = JSON.parse(line.slice(6));
+                            if (data.type === 'status') {
+                                resultDiv.innerHTML = '<div class="deep-dive-status">' + escapeHtml(data.message) + '</div>';
+                            } else if (data.type === 'chunk') {
+                                fullResponse += data.text;
+                                resultDiv.innerHTML = '<div class="markdown-body">' +
+                                    (typeof marked !== 'undefined' ? marked.parse(fullResponse) : escapeHtml(fullResponse)) +
+                                    '</div>';
+                            } else if (data.type === 'done') {
+                                fullResponse = data.fullResponse || fullResponse;
+                                finishDeepDive(fullResponse, resultDiv, submitBtn);
+                                return;
+                            } else if (data.type === 'error') {
+                                resultDiv.innerHTML = '<div class="ask-message-error">Error: ' + escapeHtml(data.message) + '</div>';
+                                finishDeepDive('', resultDiv, submitBtn);
+                                return;
+                            }
+                        } catch(e) {}
+                    }
+
+                    return reader.read().then(processChunk);
+                }
+
+                return reader.read().then(processChunk);
+            }).catch(function(err) {
+                resultDiv.innerHTML = '<div class="ask-message-error">Error: ' + escapeHtml(err.message) + '</div>';
+                finishDeepDive('', resultDiv, submitBtn);
+            });
+        }
+
+        function finishDeepDive(fullResponse, resultDiv, submitBtn) {
+            deepDiveStreaming = false;
+            if (submitBtn) submitBtn.disabled = false;
+            if (fullResponse && resultDiv) {
+                resultDiv.innerHTML = '<div class="markdown-body">' +
+                    (typeof marked !== 'undefined' ? marked.parse(fullResponse) : escapeHtml(fullResponse)) +
+                    '</div>';
+                // Highlight code in result
+                resultDiv.querySelectorAll('pre code').forEach(function(block) {
+                    hljs.highlightElement(block);
+                });
+            }
+        }` : ''}
+${opts.enableWatch ? `
+        // ================================================================
+        // WebSocket Live Reload
+        // ================================================================
+
+        var wsReconnectTimer = null;
+        var wsReconnectDelay = 1000;
+
+        function connectWebSocket() {
+            var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            var wsUrl = protocol + '//' + location.host + '/ws';
+            var ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                wsReconnectDelay = 1000;
+                // Send periodic pings
+                setInterval(function() {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'ping' }));
+                    }
+                }, 30000);
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    var msg = JSON.parse(event.data);
+                    handleWsMessage(msg);
+                } catch(e) {}
+            };
+
+            ws.onclose = function() {
+                // Reconnect with exponential backoff
+                wsReconnectTimer = setTimeout(function() {
+                    wsReconnectDelay = Math.min(wsReconnectDelay * 2, 30000);
+                    connectWebSocket();
+                }, wsReconnectDelay);
+            };
+
+            ws.onerror = function() {
+                // Will trigger onclose
+            };
+        }
+
+        function handleWsMessage(msg) {
+            var bar = document.getElementById('live-reload-bar');
+            if (!bar) return;
+
+            if (msg.type === 'rebuilding') {
+                bar.className = 'live-reload-bar visible rebuilding';
+                bar.textContent = 'Rebuilding: ' + (msg.modules || []).join(', ') + '...';
+            } else if (msg.type === 'reload') {
+                bar.className = 'live-reload-bar visible reloaded';
+                bar.textContent = 'Updated: ' + (msg.modules || []).join(', ');
+
+                // Invalidate cache for affected modules
+                (msg.modules || []).forEach(function(id) {
+                    delete markdownCache[id];
+                });
+
+                // Reload current module if affected
+                if (currentModuleId && (msg.modules || []).indexOf(currentModuleId) !== -1) {
+                    loadModule(currentModuleId, true);
+                }
+
+                // Auto-hide after 3 seconds
+                setTimeout(function() {
+                    bar.className = 'live-reload-bar';
+                }, 3000);
+            } else if (msg.type === 'error') {
+                bar.className = 'live-reload-bar visible error';
+                bar.textContent = 'Error: ' + (msg.message || 'Unknown error');
+                setTimeout(function() {
+                    bar.className = 'live-reload-bar';
+                }, 5000);
+            }
+        }
+
+        // Start WebSocket connection
+        connectWebSocket();` : ''}`;
 
 }
 
