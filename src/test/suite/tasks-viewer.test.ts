@@ -13,7 +13,9 @@ import {
     TaskDocument,
     TaskDocumentGroup,
     TaskDocumentGroupItem,
-    TaskDocumentItem
+    TaskDocumentItem,
+    TaskFolderItem,
+    TaskFolder
 } from '../../shortcuts/tasks-viewer';
 
 suite('Tasks Viewer Tests', () => {
@@ -1615,7 +1617,7 @@ suite('Tasks Viewer Tests', () => {
         });
     });
 
-    suite('TasksDragDropController - File Import', () => {
+    suite('TasksDragDropController - External File Move', () => {
         let dragDropController: TasksDragDropController;
         let refreshCalled: boolean;
         let sourceFile: string;
@@ -1627,12 +1629,12 @@ suite('Tasks Viewer Tests', () => {
             // Ensure tasks folder exists
             taskManager.ensureFoldersExist();
             
-            // Create a source file to import
+            // Create a source file to move
             sourceFile = path.join(tempDir, 'source-task.md');
             fs.writeFileSync(sourceFile, '# Source Task\n\nContent here');
         });
 
-        test('should import single .md file on drop to active group', async () => {
+        test('should move single .md file on drop to active group', async () => {
             const activeGroup = new TaskGroupItem('active', 0);
 
             const dataTransfer = new vscode.DataTransfer();
@@ -1652,22 +1654,25 @@ suite('Tasks Viewer Tests', () => {
 
             (vscode.window as any).showInformationMessage = originalShowInfo;
 
-            // Check file was imported
-            const importedPath = path.join(taskManager.getTasksFolder(), 'source-task.md');
-            assert.ok(fs.existsSync(importedPath), 'File should be imported');
+            // Check file was moved to tasks folder
+            const movedPath = path.join(taskManager.getTasksFolder(), 'source-task.md');
+            assert.ok(fs.existsSync(movedPath), 'File should exist in tasks folder');
             
-            // Check content was copied
-            const content = fs.readFileSync(importedPath, 'utf-8');
+            // Check content was preserved
+            const content = fs.readFileSync(movedPath, 'utf-8');
             assert.ok(content.includes('Source Task'), 'Content should be preserved');
             
-            // Check refresh was called
-            assert.ok(refreshCalled, 'Should call refresh after import');
+            // Check source file was deleted (move semantics)
+            assert.ok(!fs.existsSync(sourceFile), 'Source file should be deleted after move');
             
-            // Check success message
-            assert.ok(infoMessage.includes('imported'), 'Should show success message');
+            // Check refresh was called
+            assert.ok(refreshCalled, 'Should call refresh after move');
+            
+            // Check success message says "moved"
+            assert.ok(infoMessage.includes('moved'), 'Should show moved message');
         });
 
-        test('should import multiple .md files', async () => {
+        test('should move multiple .md files', async () => {
             // Create a second source file
             const sourceFile2 = path.join(tempDir, 'source-task2.md');
             fs.writeFileSync(sourceFile2, '# Source Task 2');
@@ -1692,17 +1697,21 @@ suite('Tasks Viewer Tests', () => {
 
             (vscode.window as any).showInformationMessage = originalShowInfo;
 
-            // Check both files were imported
-            const importedPath1 = path.join(taskManager.getTasksFolder(), 'source-task.md');
-            const importedPath2 = path.join(taskManager.getTasksFolder(), 'source-task2.md');
-            assert.ok(fs.existsSync(importedPath1), 'First file should be imported');
-            assert.ok(fs.existsSync(importedPath2), 'Second file should be imported');
+            // Check both files were moved to tasks folder
+            const movedPath1 = path.join(taskManager.getTasksFolder(), 'source-task.md');
+            const movedPath2 = path.join(taskManager.getTasksFolder(), 'source-task2.md');
+            assert.ok(fs.existsSync(movedPath1), 'First file should be moved');
+            assert.ok(fs.existsSync(movedPath2), 'Second file should be moved');
+            
+            // Check source files were deleted
+            assert.ok(!fs.existsSync(sourceFile), 'First source should be deleted');
+            assert.ok(!fs.existsSync(sourceFile2), 'Second source should be deleted');
             
             // Check message mentions count
             assert.ok(infoMessage.includes('2'), 'Should mention 2 tasks');
         });
 
-        test('should preserve original file after import (copy not move)', async () => {
+        test('should delete source file after move (move semantics)', async () => {
             const activeGroup = new TaskGroupItem('active', 0);
 
             const dataTransfer = new vscode.DataTransfer();
@@ -1718,8 +1727,12 @@ suite('Tasks Viewer Tests', () => {
 
             (vscode.window as any).showInformationMessage = originalShowInfo;
 
-            // Check original file still exists
-            assert.ok(fs.existsSync(sourceFile), 'Original file should still exist');
+            // Check original file is deleted (move, not copy)
+            assert.ok(!fs.existsSync(sourceFile), 'Source file should be deleted after move');
+            
+            // Check target file exists
+            const movedPath = path.join(taskManager.getTasksFolder(), 'source-task.md');
+            assert.ok(fs.existsSync(movedPath), 'File should exist in tasks folder');
         });
 
         test('should filter out non-.md files from mixed drop', async () => {
@@ -1742,11 +1755,130 @@ suite('Tasks Viewer Tests', () => {
 
             (vscode.window as any).showInformationMessage = originalShowInfo;
 
-            // Check only md file was imported
-            const importedMd = path.join(taskManager.getTasksFolder(), 'source-task.md');
-            const importedTxt = path.join(taskManager.getTasksFolder(), 'not-a-task.txt');
-            assert.ok(fs.existsSync(importedMd), 'MD file should be imported');
-            assert.ok(!fs.existsSync(importedTxt), 'TXT file should not be imported');
+            // Check only md file was moved
+            const movedMd = path.join(taskManager.getTasksFolder(), 'source-task.md');
+            const movedTxt = path.join(taskManager.getTasksFolder(), 'not-a-task.txt');
+            assert.ok(fs.existsSync(movedMd), 'MD file should be moved');
+            assert.ok(!fs.existsSync(movedTxt), 'TXT file should not be moved');
+        });
+
+        test('should move external file onto feature folder', async () => {
+            // Create a feature folder
+            const featurePath = await taskManager.createFeature('My Feature');
+
+            // Create a TaskFolderItem for the feature folder
+            const folder: TaskFolder = {
+                name: 'My-Feature',
+                folderPath: featurePath,
+                relativePath: 'My-Feature',
+                isArchived: false,
+                children: [],
+                tasks: [],
+                documentGroups: [],
+                singleDocuments: []
+            };
+            const folderItem = new TaskFolderItem(folder);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const uri = vscode.Uri.file(sourceFile);
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uri.toString()));
+            const token = new vscode.CancellationTokenSource().token;
+
+            // Mock showInformationMessage
+            const originalShowInfo = vscode.window.showInformationMessage;
+            let infoMessage = '';
+            (vscode.window as any).showInformationMessage = (message: string) => {
+                infoMessage = message;
+                return Promise.resolve(undefined);
+            };
+
+            await dragDropController.handleDrop(folderItem, dataTransfer, token);
+
+            (vscode.window as any).showInformationMessage = originalShowInfo;
+
+            // Check file was moved to feature folder
+            const movedPath = path.join(featurePath, 'source-task.md');
+            assert.ok(fs.existsSync(movedPath), 'File should exist in feature folder');
+            
+            // Check source file was deleted
+            assert.ok(!fs.existsSync(sourceFile), 'Source file should be deleted after move');
+            
+            // Check content preserved
+            const content = fs.readFileSync(movedPath, 'utf-8');
+            assert.ok(content.includes('Source Task'), 'Content should be preserved');
+            
+            // Check success message
+            assert.ok(infoMessage.includes('moved'), 'Should show moved message');
+        });
+
+        test('should reject external drop on archived folder', async () => {
+            // Create an archived folder item
+            const archiveFolder = taskManager.getArchiveFolder();
+            if (!fs.existsSync(archiveFolder)) {
+                fs.mkdirSync(archiveFolder, { recursive: true });
+            }
+            const archivedFeature = path.join(archiveFolder, 'Old-Feature');
+            fs.mkdirSync(archivedFeature, { recursive: true });
+
+            const folder: TaskFolder = {
+                name: 'Old-Feature',
+                folderPath: archivedFeature,
+                relativePath: 'Old-Feature',
+                isArchived: true,
+                children: [],
+                tasks: [],
+                documentGroups: [],
+                singleDocuments: []
+            };
+            const folderItem = new TaskFolderItem(folder);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const uri = vscode.Uri.file(sourceFile);
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uri.toString()));
+            const token = new vscode.CancellationTokenSource().token;
+
+            // Mock showInformationMessage
+            const originalShowInfo = vscode.window.showInformationMessage;
+            let infoMessage = '';
+            (vscode.window as any).showInformationMessage = (message: string) => {
+                infoMessage = message;
+                return Promise.resolve(undefined);
+            };
+
+            await dragDropController.handleDrop(folderItem, dataTransfer, token);
+
+            (vscode.window as any).showInformationMessage = originalShowInfo;
+
+            // Source file should still exist (drop was rejected)
+            assert.ok(fs.existsSync(sourceFile), 'Source file should still exist when drop is rejected');
+            
+            // File should NOT appear in the archived folder
+            const notMovedPath = path.join(archivedFeature, 'source-task.md');
+            assert.ok(!fs.existsSync(notMovedPath), 'File should not be in archived folder');
+            
+            // Refresh should not be called
+            assert.ok(!refreshCalled, 'Should not refresh when drop is rejected');
+        });
+
+        test('should reject external drop on archived group', async () => {
+            const archivedGroup = new TaskGroupItem('archived', 0);
+
+            const dataTransfer = new vscode.DataTransfer();
+            const uri = vscode.Uri.file(sourceFile);
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uri.toString()));
+            const token = new vscode.CancellationTokenSource().token;
+
+            // Mock showInformationMessage
+            const originalShowInfo = vscode.window.showInformationMessage;
+            (vscode.window as any).showInformationMessage = () => Promise.resolve(undefined);
+
+            await dragDropController.handleDrop(archivedGroup, dataTransfer, token);
+
+            (vscode.window as any).showInformationMessage = originalShowInfo;
+
+            // Source file should still exist
+            assert.ok(fs.existsSync(sourceFile), 'Source file should still exist');
+            assert.ok(!refreshCalled, 'Should not refresh');
         });
     });
 
@@ -1808,6 +1940,155 @@ suite('Tasks Viewer Tests', () => {
             assert.ok(!fileName.includes('/'), 'Filename should not have slashes');
             assert.ok(!fileName.includes(':'), 'Filename should not have colons');
             assert.ok(fs.existsSync(importedPath), 'File should exist');
+        });
+    });
+
+    suite('TaskManager moveExternalTask', () => {
+        test('should move external file to tasks root (default target)', async () => {
+            taskManager.ensureFoldersExist();
+            const sourceFile = path.join(tempDir, 'external-move.md');
+            fs.writeFileSync(sourceFile, '# External Move Content');
+
+            const movedPath = await taskManager.moveExternalTask(sourceFile);
+
+            const expectedPath = path.join(taskManager.getTasksFolder(), 'external-move.md');
+            assert.strictEqual(movedPath, expectedPath, 'Should return correct path');
+            assert.ok(fs.existsSync(movedPath), 'Moved file should exist');
+            assert.ok(!fs.existsSync(sourceFile), 'Source file should be deleted');
+
+            const content = fs.readFileSync(movedPath, 'utf-8');
+            assert.strictEqual(content, '# External Move Content', 'Content should match');
+        });
+
+        test('should move external file to specified target folder', async () => {
+            taskManager.ensureFoldersExist();
+            const featurePath = await taskManager.createFeature('Move Target');
+            const sourceFile = path.join(tempDir, 'target-move.md');
+            fs.writeFileSync(sourceFile, '# Target Move');
+
+            const movedPath = await taskManager.moveExternalTask(sourceFile, featurePath);
+
+            const expectedPath = path.join(featurePath, 'target-move.md');
+            assert.strictEqual(movedPath, expectedPath, 'Should be in target folder');
+            assert.ok(fs.existsSync(movedPath), 'Moved file should exist');
+            assert.ok(!fs.existsSync(sourceFile), 'Source file should be deleted');
+        });
+
+        test('should move external file with custom name', async () => {
+            taskManager.ensureFoldersExist();
+            const sourceFile = path.join(tempDir, 'original-name.md');
+            fs.writeFileSync(sourceFile, '# Original Name');
+
+            const movedPath = await taskManager.moveExternalTask(sourceFile, undefined, 'renamed-task');
+
+            const expectedPath = path.join(taskManager.getTasksFolder(), 'renamed-task.md');
+            assert.strictEqual(movedPath, expectedPath, 'Should use new name');
+            assert.ok(fs.existsSync(movedPath), 'Moved file should exist');
+            assert.ok(!fs.existsSync(sourceFile), 'Source file should be deleted');
+        });
+
+        test('should throw error on name collision', async () => {
+            taskManager.ensureFoldersExist();
+            await taskManager.createTask('collision-task');
+
+            const sourceFile = path.join(tempDir, 'collision-task.md');
+            fs.writeFileSync(sourceFile, '# Collision');
+
+            await assert.rejects(
+                () => taskManager.moveExternalTask(sourceFile),
+                /already exists/,
+                'Should throw on collision'
+            );
+
+            // Source file should still exist on error
+            assert.ok(fs.existsSync(sourceFile), 'Source should not be deleted on error');
+        });
+
+        test('should throw error when source file does not exist', async () => {
+            taskManager.ensureFoldersExist();
+
+            await assert.rejects(
+                () => taskManager.moveExternalTask('/non/existent/file.md'),
+                /not found/i,
+                'Should throw for missing source'
+            );
+        });
+
+        test('should throw error for non-.md files', async () => {
+            taskManager.ensureFoldersExist();
+            const sourceFile = path.join(tempDir, 'not-markdown.txt');
+            fs.writeFileSync(sourceFile, 'Text content');
+
+            await assert.rejects(
+                () => taskManager.moveExternalTask(sourceFile),
+                /Only markdown/,
+                'Should reject non-md files'
+            );
+
+            // Source file should still exist
+            assert.ok(fs.existsSync(sourceFile), 'Source should not be deleted');
+        });
+
+        test('should sanitize file name when moving with custom name', async () => {
+            taskManager.ensureFoldersExist();
+            const sourceFile = path.join(tempDir, 'sanitize-source.md');
+            fs.writeFileSync(sourceFile, '# Sanitize');
+
+            const movedPath = await taskManager.moveExternalTask(sourceFile, undefined, 'task with spaces/invalid:chars');
+
+            const fileName = path.basename(movedPath);
+            assert.ok(!fileName.includes(' '), 'Filename should not have spaces');
+            assert.ok(!fileName.includes('/'), 'Filename should not have slashes');
+            assert.ok(!fileName.includes(':'), 'Filename should not have colons');
+            assert.ok(fs.existsSync(movedPath), 'File should exist');
+            assert.ok(!fs.existsSync(sourceFile), 'Source should be deleted');
+        });
+
+        test('should create target folder if it does not exist', async () => {
+            taskManager.ensureFoldersExist();
+            const newFolder = path.join(taskManager.getTasksFolder(), 'New-Auto-Created');
+            const sourceFile = path.join(tempDir, 'auto-create-target.md');
+            fs.writeFileSync(sourceFile, '# Auto Create');
+
+            assert.ok(!fs.existsSync(newFolder), 'Target folder should not exist yet');
+
+            const movedPath = await taskManager.moveExternalTask(sourceFile, newFolder);
+
+            assert.ok(fs.existsSync(newFolder), 'Target folder should be created');
+            assert.ok(fs.existsSync(movedPath), 'File should exist in new folder');
+            assert.ok(!fs.existsSync(sourceFile), 'Source should be deleted');
+        });
+    });
+
+    suite('TaskManager taskExistsInFolder', () => {
+        test('should return true for existing task in tasks root', async () => {
+            taskManager.ensureFoldersExist();
+            await taskManager.createTask('my-task');
+
+            assert.ok(taskManager.taskExistsInFolder('my-task'), 'Should find existing task in root');
+        });
+
+        test('should return false for non-existing task', () => {
+            taskManager.ensureFoldersExist();
+
+            assert.ok(!taskManager.taskExistsInFolder('non-existent'), 'Should not find non-existing task');
+        });
+
+        test('should check in specific folder', async () => {
+            taskManager.ensureFoldersExist();
+            const featurePath = await taskManager.createFeature('Exists Feature');
+            const taskFile = path.join(featurePath, 'folder-task.md');
+            fs.writeFileSync(taskFile, '# Folder Task');
+
+            assert.ok(taskManager.taskExistsInFolder('folder-task', featurePath), 'Should find task in feature folder');
+            assert.ok(!taskManager.taskExistsInFolder('folder-task'), 'Should not find task in root');
+        });
+
+        test('should handle sanitization', async () => {
+            taskManager.ensureFoldersExist();
+            await taskManager.createTask('sanitized-name');
+
+            assert.ok(taskManager.taskExistsInFolder('sanitized name'), 'Should sanitize and find task');
         });
     });
 

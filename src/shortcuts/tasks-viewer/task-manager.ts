@@ -1078,6 +1078,55 @@ export class TaskManager implements vscode.Disposable {
     }
 
     /**
+     * Move an external markdown file into the tasks folder (move semantics - source is deleted)
+     * @param sourcePath - Path to the source file
+     * @param targetFolder - Absolute path to the target folder (defaults to tasks root)
+     * @param newName - Optional new name for the task (without .md extension)
+     * @returns The path to the moved file
+     */
+    async moveExternalTask(sourcePath: string, targetFolder?: string, newName?: string): Promise<string> {
+        this.ensureFoldersExist();
+
+        if (!safeExists(sourcePath)) {
+            throw new Error(`Source file not found: ${sourcePath}`);
+        }
+
+        if (!sourcePath.toLowerCase().endsWith('.md')) {
+            throw new Error('Only markdown (.md) files can be moved to tasks');
+        }
+
+        const resolvedTargetFolder = targetFolder || this.getTasksFolder();
+        ensureDirectoryExists(resolvedTargetFolder);
+
+        const sourceFileName = path.basename(sourcePath);
+        const targetName = newName
+            ? this.sanitizeFileName(newName)
+            : path.basename(sourceFileName, '.md');
+
+        let targetPath = path.join(resolvedTargetFolder, `${targetName}.md`);
+
+        if (safeExists(targetPath)) {
+            throw new Error(`Task "${targetName}" already exists`);
+        }
+
+        safeRename(sourcePath, targetPath);
+
+        return targetPath;
+    }
+
+    /**
+     * Check if a task with the given name exists in a specific folder
+     * @param name - Task name (without .md extension)
+     * @param folder - Optional folder path (defaults to tasks root)
+     */
+    taskExistsInFolder(name: string, folder?: string): boolean {
+        const sanitizedName = this.sanitizeFileName(name);
+        const targetFolder = folder || this.getTasksFolder();
+        const filePath = path.join(targetFolder, `${sanitizedName}.md`);
+        return safeExists(filePath);
+    }
+
+    /**
      * Check if a task with the given name exists
      * @param name - Task name (without .md extension)
      */

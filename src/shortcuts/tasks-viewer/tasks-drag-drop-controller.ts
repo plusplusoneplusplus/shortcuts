@@ -118,10 +118,10 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
     }
 
     /**
-     * Handle drop operation - import external .md files or move internal tasks
+     * Handle drop operation - move external .md files or move internal tasks
      * Accepts drops onto:
-     * - Active Tasks group: import external files or move internal tasks to root
-     * - TaskFolderItem (non-archived): move internal tasks into feature folder
+     * - Active Tasks group: move external files to root or move internal tasks to root
+     * - TaskFolderItem (non-archived): move external/internal files into feature folder
      */
     public async handleDrop(
         target: vscode.TreeItem | undefined,
@@ -135,9 +135,17 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
             return;
         }
 
-        // Handle external drop (existing behavior)
-        // Only allow drops on Active Tasks group
-        if (!(target instanceof TaskGroupItem) || target.groupType !== 'active') {
+        // Determine target folder for external drops
+        let targetFolder: string | undefined;
+
+        if (target instanceof TaskGroupItem && target.groupType === 'active') {
+            // Drop on Active Tasks group → tasks root
+            targetFolder = this.taskManager.getTasksFolder();
+        } else if (target instanceof TaskFolderItem && !target.folder.isArchived) {
+            // Drop on non-archived feature folder
+            targetFolder = target.folder.folderPath;
+        } else {
+            // Reject drops on archived folders, archived group, or other targets
             return;
         }
 
@@ -175,7 +183,7 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
             return;
         }
 
-        // Import each file
+        // Move each file (move semantics - source is deleted)
         let successCount = 0;
         let skippedCount = 0;
 
@@ -184,7 +192,7 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
                 break;
             }
 
-            const result = await this.importFileWithCollisionHandling(uri.fsPath);
+            const result = await this.moveFileWithCollisionHandling(uri.fsPath, targetFolder);
             if (result === 'success') {
                 successCount++;
             } else if (result === 'skipped') {
@@ -196,8 +204,8 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
         if (successCount > 0) {
             this.refreshCallback();
             const message = successCount === 1
-                ? '1 task imported successfully.'
-                : `${successCount} tasks imported successfully.`;
+                ? '1 task moved successfully.'
+                : `${successCount} tasks moved successfully.`;
             vscode.window.showInformationMessage(message);
         } else if (skippedCount > 0 && successCount === 0) {
             vscode.window.showInformationMessage('All files were skipped.');
@@ -336,13 +344,16 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
     }
 
     /**
-     * Import a file with collision handling
+     * Move a file into the tasks folder with collision handling
+     * Uses move semantics (source file is deleted after successful move)
+     * @param sourcePath - Path to the source file
+     * @param targetFolder - Absolute path to the target folder
      * @returns 'success', 'skipped', or 'error'
      */
-    private async importFileWithCollisionHandling(sourcePath: string): Promise<'success' | 'skipped' | 'error'> {
+    private async moveFileWithCollisionHandling(sourcePath: string, targetFolder: string): Promise<'success' | 'skipped' | 'error'> {
         try {
-            // Try to import with original name
-            await this.taskManager.importTask(sourcePath);
+            // Try to move with original name
+            await this.taskManager.moveExternalTask(sourcePath, targetFolder);
             return 'success';
         } catch (error) {
             // Check if it's a name collision error
@@ -356,7 +367,7 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
                             return 'Name cannot be empty';
                         }
                         // Check if the new name also conflicts
-                        if (this.taskManager.taskExists(value.trim())) {
+                        if (this.taskManager.taskExistsInFolder(value.trim(), targetFolder)) {
                             return `Task "${value.trim()}" already exists`;
                         }
                         return null;
@@ -369,7 +380,7 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
                 }
 
                 try {
-                    await this.taskManager.importTask(sourcePath, newName.trim());
+                    await this.taskManager.moveExternalTask(sourcePath, targetFolder, newName.trim());
                     return 'success';
                 } catch {
                     return 'error';
