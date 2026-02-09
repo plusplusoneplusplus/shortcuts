@@ -1234,6 +1234,15 @@ export class CopilotSDKService {
                     // Final message - use this as the complete content
                     finalMessage = event.data?.content || '';
                     logger.debug(LogCategory.AI, `CopilotSDKService: Received final message (${finalMessage.length} chars)`);
+                    // If no delta chunks were received but we have a streaming callback,
+                    // emit the final message as a single chunk so SSE consumers get content
+                    if (onStreamingChunk && finalMessage && !response) {
+                        try {
+                            onStreamingChunk(finalMessage);
+                        } catch (cbError) {
+                            logger.debug(LogCategory.AI, `CopilotSDKService: onStreamingChunk callback error: ${cbError}`);
+                        }
+                    }
                 } else if (eventType === 'assistant.turn_end') {
                     // Turn ended — the assistant finished its response.
                     // Use a short grace period to allow session.idle or a late

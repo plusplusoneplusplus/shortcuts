@@ -15,7 +15,8 @@ packages/deep-wiki/
 │   ├── logger.ts             # Colored terminal output, spinners, verbosity control
 │   ├── commands/
 │   │   ├── discover.ts       # `discover` command: Phase 1 only, outputs ModuleGraph JSON
-│   │   └── generate.ts       # `generate` command: Full 3-phase pipeline (Discovery → Analysis → Writing)
+│   │   ├── generate.ts       # `generate` command: Full 3-phase pipeline (Discovery → Analysis → Writing)
+│   │   └── serve.ts          # `serve` command: Interactive server with AI Q&A
 │   ├── discovery/
 │   │   ├── index.ts          # Exports: discoverModuleGraph()
 │   │   ├── discovery-session.ts  # SDK session orchestration for module graph discovery
@@ -34,6 +35,17 @@ packages/deep-wiki/
 │   │   ├── prompts.ts        # Article writing prompt templates
 │   │   ├── reduce-prompts.ts # Reduce/synthesis prompts for overview articles
 │   │   └── website-generator.ts  # Static HTML website generation with themes
+│   ├── server/
+│   │   ├── index.ts          # Server creation, wiki data loading, context builder
+│   │   ├── router.ts         # HTTP request routing (API, static files, SPA fallback)
+│   │   ├── api-handlers.ts   # REST API dispatch (/api/graph, /api/modules, /api/ask, /api/explore)
+│   │   ├── ask-handler.ts    # AI Q&A with SSE streaming (POST /api/ask)
+│   │   ├── explore-handler.ts # Module deep-dive with SSE streaming (POST /api/explore/:id)
+│   │   ├── context-builder.ts # TF-IDF context retrieval for AI question-answering
+│   │   ├── spa-template.ts   # Single-page application HTML/CSS/JS generation
+│   │   ├── wiki-data.ts      # Wiki data loading and querying
+│   │   ├── websocket.ts      # WebSocket server for watch mode live reload
+│   │   └── file-watcher.ts   # File system watcher for watch mode
 │   └── cache/
 │       ├── index.ts          # All cache operations: save/load/invalidate for each phase
 │       └── git-utils.ts      # Git HEAD hash for cache invalidation
@@ -89,6 +101,92 @@ deep-wiki generate ./my-project --output ./wiki --concurrency 3 --depth normal
 ```
 
 Options: `--output`, `--model`, `--concurrency`, `--timeout`, `--focus`, `--depth` (shallow/normal/deep), `--force`, `--use-cache`, `--phase` (start from phase N), `--skip-website`, `--theme` (light/dark/auto), `--title`, `--verbose`, `--no-color`
+
+### `deep-wiki serve <wiki-dir>`
+
+Interactive server mode — serves the generated wiki with AI Q&A and module exploration.
+
+```bash
+deep-wiki serve ./wiki --port 3000 --open
+```
+
+Options: `--port` (default: 3000), `--host` (default: localhost), `--generate <repo-path>`, `--watch`, `--no-ai`, `--model`, `--open`, `--theme`, `--title`, `--verbose`, `--no-color`
+
+## Debugging Serve Mode
+
+### Build and Start the Server
+
+```bash
+# Build pipeline-core and deep-wiki, then link the CLI globally
+cd packages/deep-wiki && npm run build && npm link && cd ../..
+
+# Start the server (assumes wiki was previously generated at ./.wiki)
+deep-wiki serve ./.wiki
+
+# Start on a custom port
+deep-wiki serve ./.wiki --port 4000
+
+# Start without AI features (faster startup, no Copilot SDK needed)
+deep-wiki serve ./.wiki --no-ai
+
+# Generate wiki and serve in one step
+deep-wiki serve ./.wiki --generate ./path/to/repo
+```
+
+### Testing the Ask AI Endpoint
+
+```bash
+# Test the /api/ask endpoint directly with curl
+curl -s -N -X POST http://localhost:3000/api/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What is this project?"}' 
+
+# Expected SSE output:
+# data: {"type":"context","moduleIds":["mod1","mod2",...]}
+# data: {"type":"chunk","content":"...streaming content..."}
+# data: {"type":"done","fullResponse":"...full answer..."}
+```
+
+### Testing the Explore Endpoint
+
+```bash
+# Test deep-dive exploration for a specific module
+curl -s -N -X POST http://localhost:3000/api/explore/module-id \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"How does this module handle errors?","depth":"deep"}'
+```
+
+### Server Architecture
+
+The serve mode uses a custom HTTP server (no Express dependency):
+
+- **`src/commands/serve.ts`** — CLI command handler, AI service initialization
+- **`src/server/index.ts`** — Server creation, wiki data loading, context builder setup
+- **`src/server/router.ts`** — HTTP request routing (API routes, static files, SPA fallback)
+- **`src/server/api-handlers.ts`** — REST API route dispatch (`/api/graph`, `/api/modules`, `/api/ask`, `/api/explore`)
+- **`src/server/ask-handler.ts`** — AI Q&A with SSE streaming (`POST /api/ask`)
+- **`src/server/explore-handler.ts`** — Module deep-dive with SSE streaming (`POST /api/explore/:id`)
+- **`src/server/context-builder.ts`** — TF-IDF based context retrieval for question-answering
+- **`src/server/spa-template.ts`** — Single-page application HTML/CSS/JS generation
+- **`src/server/wiki-data.ts`** — Wiki data loading and querying
+- **`src/server/websocket.ts`** — WebSocket server for watch mode live reload
+- **`src/server/file-watcher.ts`** — File system watcher for watch mode
+
+### SSE Streaming Flow
+
+1. Browser sends `POST /api/ask` with `{question, conversationHistory}`
+2. Server retrieves relevant module context via TF-IDF (`ContextBuilder.retrieve()`)
+3. Server builds AI prompt with context + conversation history
+4. Server calls Copilot SDK with `onStreamingChunk` callback
+5. Each chunk is emitted as an SSE event: `data: {"type":"chunk","content":"..."}`
+6. When complete: `data: {"type":"done","fullResponse":"..."}`
+7. Browser parses SSE events and renders markdown in real-time
+
+### Common Issues
+
+- **Port already in use**: Use `--port <number>` to specify a different port
+- **AI features unavailable**: Ensure `@github/copilot-sdk` is installed and Copilot is authenticated; use `--no-ai` to start without AI
+- **No streaming chunks**: The SDK may send `assistant.message` instead of `assistant.message_delta` events; pipeline-core handles this by emitting the final message as a single chunk
 
 ## Key Types
 

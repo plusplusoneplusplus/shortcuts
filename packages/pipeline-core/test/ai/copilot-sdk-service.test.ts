@@ -825,6 +825,105 @@ describe('CopilotSDKService - onStreamingChunk callback', () => {
         expect(result.response).toBe('Chunk 1 Chunk 2');
         expect(chunks).toEqual(['Chunk 1 ', 'Chunk 2']);
     });
+
+    it('should invoke onStreamingChunk with finalMessage when no deltas were received', async () => {
+        const chunks: string[] = [];
+        const { sessions, resultPromise } = setupStreamingCallWithCallback(
+            (chunk) => { chunks.push(chunk); }
+        );
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // SDK sends only assistant.message (no delta events) — common for short responses
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Complete answer here', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('Complete answer here');
+        // The callback should have been invoked once with the full message
+        expect(chunks).toEqual(['Complete answer here']);
+    });
+
+    it('should NOT invoke onStreamingChunk for finalMessage when deltas were already received', async () => {
+        const chunks: string[] = [];
+        const { sessions, resultPromise } = setupStreamingCallWithCallback(
+            (chunk) => { chunks.push(chunk); }
+        );
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Delta events followed by final message — callback already fired for deltas
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Part 1 ' } });
+        dispatchEvent({ type: 'assistant.message_delta', data: { deltaContent: 'Part 2' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Full final message', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        // Response uses finalMessage (preferred)
+        expect(result.response).toBe('Full final message');
+        // Only delta chunks should be in the callback, NOT the final message
+        expect(chunks).toEqual(['Part 1 ', 'Part 2']);
+    });
+
+    it('should NOT invoke onStreamingChunk for empty finalMessage when no deltas received', async () => {
+        const chunks: string[] = [];
+        const { sessions, resultPromise } = setupStreamingCallWithCallback(
+            (chunk) => { chunks.push(chunk); }
+        );
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Empty final message — nothing to emit
+        dispatchEvent({ type: 'assistant.message', data: { content: '', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        // Empty response is treated as no response
+        expect(chunks).toEqual([]);
+    });
+
+    it('should handle onStreamingChunk callback error for finalMessage gracefully', async () => {
+        let callCount = 0;
+        const { sessions, resultPromise } = setupStreamingCallWithCallback(
+            () => {
+                callCount++;
+                throw new Error('Callback error on finalMessage!');
+            }
+        );
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Only finalMessage, no deltas — callback will throw but should not break
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Response text', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('Response text');
+        expect(callCount).toBe(1);
+    });
 });
 
 // ============================================================================

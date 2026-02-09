@@ -32,12 +32,15 @@ NEVER create document file unless user's explicit ask.
   - `analysis` - Per-module analysis executor, prompts, and response parsing
   - `writing` - Article executor, file writer, website generator, reduce prompts
   - `cache` - Git-hash-based cache invalidation for discovery, analysis, and articles
-  - `commands` - CLI commands (`discover` and `generate`)
+  - `commands` - CLI commands (`discover`, `generate`, and `serve`)
+  - `server` - Interactive HTTP server with AI Q&A, SSE streaming, and TF-IDF context retrieval
 - **CLI Commands:**
   - `deep-wiki discover <repo-path>` - Discover module graph only
   - `deep-wiki generate <repo-path>` - Full pipeline: Discovery → Analysis → Articles → Website
+  - `deep-wiki serve <wiki-dir>` - Interactive server with AI Q&A and module exploration
   - Options: --output, --model, --concurrency, --timeout, --focus, --force, --use-cache, --phase, --depth, --skip-website, --theme, --title, --verbose, --no-color
 - **Large Repo Support:** Multi-round discovery for repos with 3000+ files (structural scan → per-area drill-down → merge)
+- **Debugging Serve Mode:** Build with `cd packages/deep-wiki && npm run build && npm link && cd ../..`, then `deep-wiki serve ./.wiki` to start the server. Test the Ask AI endpoint with `curl -s -N -X POST http://localhost:3000/api/ask -H 'Content-Type: application/json' -d '{"question":"test"}'`. See `packages/deep-wiki/AGENTS.md` for full debugging instructions.
 - **Testing:** Vitest tests across 23 test files
 
 **Tree Data Provider Base Classes** - A refactoring was completed to eliminate code duplication across tree data providers:
@@ -769,7 +772,8 @@ interface ShortcutsConfig {
 - Analysis: executor, prompts, response parsing
 - Writing: article executor, file writer, prompts, website generator, hierarchical structure
 - Cache: discovery cache, analysis cache, article cache, reduce-article cache, git utilities
-- Commands: discover and generate integration tests
+- Commands: discover, generate, and serve integration tests
+- Server: ask-handler, explore-handler, api-handlers, context-builder, SPA template, websocket
 - CLI argument parsing, AI invoker, types
 - 23 test files; run with `npm run test:run` in `packages/deep-wiki/` directory
 
