@@ -6,6 +6,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
 import { getWorkingDirectory } from '../../shortcuts/ai-service/copilot-cli-invoker';
+import { getWorkingDirectory as getWorkingDirectoryFromBarrel } from '../../shortcuts/ai-service';
 
 suite('Copilot Working Directory Tests', () => {
 
@@ -225,6 +226,38 @@ suite('Copilot Working Directory Tests', () => {
                 if (fs.existsSync(srcFileDir)) {
                     fs.rmSync(srcFileDir, { recursive: true, force: true });
                 }
+            }
+        });
+    });
+
+    suite('Barrel Export', () => {
+
+        test('should export getWorkingDirectory from ai-service barrel', () => {
+            // Ensures review-editor-view-provider and diff-review-editor-provider
+            // can import getWorkingDirectory from the barrel module
+            assert.strictEqual(typeof getWorkingDirectoryFromBarrel, 'function',
+                'getWorkingDirectory should be exported as a function from ai-service barrel');
+        });
+
+        test('barrel export should be the same function as direct import', () => {
+            assert.strictEqual(getWorkingDirectoryFromBarrel, getWorkingDirectory,
+                'Barrel export should reference the same function');
+        });
+
+        test('barrel export should return consistent results with direct import', () => {
+            const fs = require('fs');
+            const os = require('os');
+            const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-barrel-test-'));
+            const srcPath = path.join(tempDir, 'src');
+            fs.mkdirSync(srcPath, { recursive: true });
+
+            try {
+                const directResult = getWorkingDirectory(tempDir);
+                const barrelResult = getWorkingDirectoryFromBarrel(tempDir);
+                assert.strictEqual(barrelResult, directResult,
+                    'Barrel export should return the same result as direct import');
+            } finally {
+                fs.rmSync(tempDir, { recursive: true, force: true });
             }
         });
     });

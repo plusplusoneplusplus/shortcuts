@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { IAIProcessManager, getAICommandRegistry, getInteractiveSessionManager } from '../ai-service';
+import { IAIProcessManager, getAICommandRegistry, getInteractiveSessionManager, getWorkingDirectory } from '../ai-service';
 import { getExtensionLogger, LogCategory } from '../shared';
 import { getPredefinedCommentRegistry } from '../shared/predefined-comment-registry';
 import { getPromptFiles } from '../shared/prompt-files-utils';
@@ -917,11 +917,7 @@ export class DiffReviewEditorProvider implements vscode.Disposable {
         // Get the interactive session manager and start a session
         const sessionManager = getInteractiveSessionManager();
         
-        // Determine the working directory (prefer src if it exists)
-        const srcPath = path.join(workspaceRoot, 'src');
-        const workingDirectory = fs.existsSync(srcPath) && fs.statSync(srcPath).isDirectory() 
-            ? srcPath 
-            : workspaceRoot;
+        const workingDirectory = getWorkingDirectory(workspaceRoot);
         
         const sessionId = await sessionManager.startSession({
             workingDirectory,

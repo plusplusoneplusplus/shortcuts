@@ -79,6 +79,7 @@ export {
     getAIModelSetting,
     getAIToolSetting,
     getPromptTemplate,
+    getWorkingDirectory,
     invokeCopilotCLI,
     invokeCopilotCLITerminal,
     parseCopilotOutput

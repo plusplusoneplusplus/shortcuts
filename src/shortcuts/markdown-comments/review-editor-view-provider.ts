@@ -15,6 +15,7 @@ import {
     getFollowPromptDefaultModel, 
     getFollowPromptRememberSelection, 
     getInteractiveSessionManager,
+    getWorkingDirectory,
     IAIProcessManager,
     FollowPromptExecutionOptions,
     FollowPromptProcessMetadata,
@@ -893,9 +894,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         // Get the interactive session manager and start a session
         const sessionManager = getInteractiveSessionManager();
         
-        // Determine the working directory (prefer src if it exists)
-        const srcPath = path.join(workspaceRoot, 'src');
-        const workingDirectory = await this.directoryExists(srcPath) ? srcPath : workspaceRoot;
+        const workingDirectory = getWorkingDirectory(workspaceRoot);
         
         const sessionId = await sessionManager.startSession({
             workingDirectory,
@@ -944,9 +943,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
             ? `AI: ${context.skillName}`
             : `AI: ${context.instructionType}`;
 
-        // Determine working directory
-        const srcPath = path.join(workspaceRoot, 'src');
-        const workingDirectory = await this.directoryExists(srcPath) ? srcPath : workspaceRoot;
+        const workingDirectory = getWorkingDirectory(workspaceRoot);
 
         // Queue the task
         const result = queueService.queueTask({
@@ -1366,9 +1363,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
         // Get the interactive session manager and start a session
         const sessionManager = getInteractiveSessionManager();
 
-        // Determine the working directory (prefer src if it exists)
-        const srcPath = path.join(workspaceRoot, 'src');
-        const workingDirectory = await this.directoryExists(srcPath) ? srcPath : workspaceRoot;
+        const workingDirectory = getWorkingDirectory(workspaceRoot);
 
         const sessionId = await sessionManager.startSession({
             workingDirectory,
@@ -1430,8 +1425,7 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
         // Determine working directory (prefer src if it exists)
         const workspaceRoot = getWorkspaceRoot() || '';
-        const srcPath = path.join(workspaceRoot, 'src');
-        const workingDirectory = await this.directoryExists(srcPath) ? srcPath : workspaceRoot;
+        const workingDirectory = getWorkingDirectory(workspaceRoot);
 
         try {
             // Send to Copilot SDK
