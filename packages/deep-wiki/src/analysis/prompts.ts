@@ -119,6 +119,7 @@ IMPORTANT:
 - The "moduleId" field MUST be exactly "{{moduleId}}"
 - All file paths should be relative to the repository root
 - The "suggestedDiagram" field should contain valid Mermaid syntax
+- The "sourceFiles" field should list ALL files you read or examined during analysis
 - If you cannot determine a field, use an empty string or empty array as appropriate
 - Return ONLY the JSON object, no additional text before or after`;
 }
@@ -140,5 +141,6 @@ export function getAnalysisOutputFields(): string[] {
         'codeExamples',
         'dependencies',
         'suggestedDiagram',
+        'sourceFiles',
     ];
 }

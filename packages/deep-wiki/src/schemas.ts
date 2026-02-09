@@ -120,7 +120,8 @@ export const MODULE_ANALYSIS_SCHEMA = `{
       }
     ]
   },
-  "suggestedDiagram": "string — Mermaid diagram code (e.g., graph TD; A-->B)"
+  "suggestedDiagram": "string — Mermaid diagram code (e.g., graph TD; A-->B)",
+  "sourceFiles": ["string — all file paths examined during analysis, relative to repo root"]
 }`;
 
 /**

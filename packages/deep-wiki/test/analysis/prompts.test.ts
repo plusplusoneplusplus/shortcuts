@@ -130,10 +130,11 @@ describe('Analysis Prompts', () => {
             expect(fields).toContain('codeExamples');
             expect(fields).toContain('dependencies');
             expect(fields).toContain('suggestedDiagram');
+            expect(fields).toContain('sourceFiles');
         });
 
-        it('should return 11 fields', () => {
-            expect(getAnalysisOutputFields()).toHaveLength(11);
+        it('should return 12 fields', () => {
+            expect(getAnalysisOutputFields()).toHaveLength(12);
         });
     });
 });

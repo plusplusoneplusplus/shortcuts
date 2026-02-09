@@ -306,6 +306,8 @@ export interface ModuleAnalysis {
     };
     /** Suggested Mermaid diagram for the module */
     suggestedDiagram: string;
+    /** All source files examined during analysis (repo-relative paths) */
+    sourceFiles?: string[];
 }
 
 /**
