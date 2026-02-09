@@ -115,7 +115,7 @@ export async function executeServe(
 
     if (aiEnabled) {
         try {
-            aiSendMessage = await createAISendFunction(options.model);
+            aiSendMessage = await createAISendFunction(options.model, resolvedWikiDir);
             printInfo('AI service initialized successfully.');
         } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
@@ -143,7 +143,7 @@ export async function executeServe(
             aiEnabled: !!aiSendMessage,
             aiSendMessage,
             aiModel: options.model,
-            repoPath: options.generate ? path.resolve(options.generate) : undefined,
+            repoPath: options.generate ? path.resolve(options.generate) : resolvedWikiDir,
             theme: (options.theme as 'light' | 'dark' | 'auto') || 'auto',
             title: options.title,
         });
@@ -194,9 +194,13 @@ export async function executeServe(
  * all wiki context is provided in the prompt by the context builder.
  *
  * @param defaultModel - Default AI model override
+ * @param defaultWorkingDirectory - Default working directory for SDK sessions (typically the wiki directory)
  * @returns A function matching the AskAIFunction signature
  */
-async function createAISendFunction(defaultModel?: string): Promise<AskAIFunction> {
+async function createAISendFunction(
+    defaultModel?: string,
+    defaultWorkingDirectory?: string,
+): Promise<AskAIFunction> {
     const { getCopilotSDKService } = await import('@plusplusoneplusplus/pipeline-core');
     const service = getCopilotSDKService();
 
@@ -210,7 +214,7 @@ async function createAISendFunction(defaultModel?: string): Promise<AskAIFunctio
         const result = await service.sendMessage({
             prompt,
             model: options?.model || defaultModel,
-            workingDirectory: options?.workingDirectory,
+            workingDirectory: options?.workingDirectory || defaultWorkingDirectory,
             usePool: false,
             loadDefaultMcpConfig: false,
         });
