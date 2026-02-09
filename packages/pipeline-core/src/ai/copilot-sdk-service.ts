@@ -329,20 +329,32 @@ interface ICopilotSession {
      */
     sendAndWait(options: { prompt: string }, timeout?: number): Promise<{ data?: { content?: string } }>;
     destroy(): Promise<void>;
-    /** Event handler for streaming responses */
-    on?(handler: (event: ISessionEvent) => void): void;
+    /** Event handler for streaming responses. Returns an unsubscribe function. */
+    on?(handler: (event: ISessionEvent) => void): (() => void);
     /** Send a message without waiting (for streaming) */
     send?(options: { prompt: string }): Promise<void>;
 }
 
 /**
  * Interface for session events (streaming)
+ * 
+ * The Copilot SDK fires events with `type` as a plain string (e.g., "session.idle"),
+ * not as an object with a `.value` property.
+ * 
+ * Known event types:
+ * - "session.idle" - Session finished processing (data: {})
+ * - "session.error" - Session error (data: { message, stack? })
+ * - "assistant.message" - Final assistant message (data: { messageId, content })
+ * - "assistant.message_delta" - Streaming chunk (data: { messageId, deltaContent })
+ * - "assistant.turn_end" - Turn ended (data: { turnId })
  */
 interface ISessionEvent {
-    type: { value: string };
+    type: string;
     data?: {
         content?: string;
-        delta_content?: string;
+        deltaContent?: string;
+        message?: string;
+        stack?: string;
     };
 }
 
@@ -1098,7 +1110,13 @@ export class CopilotSDKService {
 
     /**
      * Send a message with streaming support.
-     * Accumulates delta_content chunks until session.idle event.
+     * Accumulates deltaContent chunks until session.idle event.
+     * 
+     * The Copilot SDK fires events with `event.type` as a plain string:
+     * - "assistant.message_delta" with `data.deltaContent` for streaming chunks
+     * - "assistant.message" with `data.content` for the final message
+     * - "session.idle" with empty data when the session finishes processing
+     * - "session.error" with `data.message` for errors
      */
     private async sendWithStreaming(
         session: ICopilotSession,
@@ -1109,18 +1127,43 @@ export class CopilotSDKService {
             const logger = getLogger();
             let response = '';
             let finalMessage = '';
+            let settled = false;
+
+            const cleanup = () => {
+                if (unsubscribe) {
+                    unsubscribe();
+                }
+                clearTimeout(timeoutId);
+            };
+
+            const settle = (resolver: (value: string) => void, value: string) => {
+                if (!settled) {
+                    settled = true;
+                    cleanup();
+                    resolver(value);
+                }
+            };
+
+            const settleError = (error: Error) => {
+                if (!settled) {
+                    settled = true;
+                    cleanup();
+                    reject(error);
+                }
+            };
 
             const timeoutId = setTimeout(() => {
-                reject(new Error(`Request timed out after ${timeoutMs}ms`));
+                settleError(new Error(`Request timed out after ${timeoutMs}ms`));
             }, timeoutMs);
 
             // Set up event handler for streaming
-            session.on!((event: ISessionEvent) => {
-                const eventType = event.type?.value;
+            // SDK's session.on() returns an unsubscribe function
+            const unsubscribe = session.on!((event: ISessionEvent) => {
+                const eventType = event.type;
 
                 if (eventType === 'assistant.message_delta') {
                     // Accumulate streaming chunks
-                    const delta = event.data?.delta_content || '';
+                    const delta = event.data?.deltaContent || '';
                     response += delta;
                     logger.debug(LogCategory.AI, `CopilotSDKService: Received delta chunk (${delta.length} chars)`);
                 } else if (eventType === 'assistant.message') {
@@ -1129,18 +1172,21 @@ export class CopilotSDKService {
                     logger.debug(LogCategory.AI, `CopilotSDKService: Received final message (${finalMessage.length} chars)`);
                 } else if (eventType === 'session.idle') {
                     // Session finished processing
-                    clearTimeout(timeoutId);
                     // Prefer final message if available, otherwise use accumulated response
                     const result = finalMessage || response;
                     logger.debug(LogCategory.AI, `CopilotSDKService: Streaming completed (${result.length} chars total)`);
-                    resolve(result);
+                    settle(resolve, result);
+                } else if (eventType === 'session.error') {
+                    // Session error
+                    const errorMessage = event.data?.message || 'Unknown session error';
+                    logger.error(LogCategory.AI, `CopilotSDKService: Session error during streaming: ${errorMessage}`);
+                    settleError(new Error(`Copilot session error: ${errorMessage}`));
                 }
             });
 
             // Send the message (without waiting)
             session.send!({ prompt }).catch(error => {
-                clearTimeout(timeoutId);
-                reject(error);
+                settleError(error instanceof Error ? error : new Error(String(error)));
             });
         });
     }
