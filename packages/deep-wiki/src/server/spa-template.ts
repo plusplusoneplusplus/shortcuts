@@ -532,7 +532,7 @@ function getSpaStyles(enableAI: boolean): string {
             display: flex;
             max-width: 1280px;
             margin: 0 auto;
-            padding: 0;
+            padding: 0 20px;
             min-height: 100%;
         }
 
