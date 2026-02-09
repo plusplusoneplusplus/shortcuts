@@ -195,6 +195,11 @@ describe('FileWatcher', () => {
 
         it('should ignore node_modules changes', async () => {
             const onChange = vi.fn();
+
+            // Create node_modules BEFORE starting watcher
+            fs.mkdirSync(path.join(tmpDir, 'node_modules'), { recursive: true });
+            fs.writeFileSync(path.join(tmpDir, 'node_modules', 'initial.js'), 'module.exports = {};');
+
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
                 wikiDir: tmpDir,
@@ -203,10 +208,13 @@ describe('FileWatcher', () => {
                 onChange,
             });
 
-            // Create and modify a file in node_modules
-            fs.mkdirSync(path.join(tmpDir, 'node_modules'), { recursive: true });
             watcher.start();
 
+            // Wait for watcher to stabilize after startup events
+            await new Promise(resolve => setTimeout(resolve, 300));
+            onChange.mockClear();
+
+            // Modify file in node_modules — should be ignored
             fs.writeFileSync(path.join(tmpDir, 'node_modules', 'test.js'), 'module.exports = {};');
 
             await new Promise(resolve => setTimeout(resolve, 300));
