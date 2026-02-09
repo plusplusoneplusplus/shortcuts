@@ -191,6 +191,8 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
  * Uses direct sessions without tools for semantic clustering.
  */
 export interface ConsolidationInvokerOptions {
+    /** Working directory for SDK session (typically the output directory) */
+    workingDirectory: string;
     /** AI model to use */
     model?: string;
     /** Timeout for clustering session in milliseconds (default: 120000 = 2 min) */
@@ -218,6 +220,7 @@ export function createConsolidationInvoker(options: ConsolidationInvokerOptions)
                 prompt,
                 model,
                 timeoutMs,
+                workingDirectory: options.workingDirectory,
                 usePool: false,
                 loadDefaultMcpConfig: false,
             };

@@ -457,8 +457,11 @@ async function runPhase15(
     spinner.start('Consolidating modules...');
 
     try {
-        // Create AI invoker for semantic clustering
+        // Create AI invoker for semantic clustering (uses output dir as cwd)
+        const outputDir = path.resolve(options.output);
+        fs.mkdirSync(outputDir, { recursive: true });
         const aiInvoker = createConsolidationInvoker({
+            workingDirectory: outputDir,
             model: options.model,
             timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
         });
