@@ -388,6 +388,28 @@ describe('Ask Panel UI', () => {
             expect(html).toContain("panel.classList.remove('expanded')");
         });
 
+        it('should shrink content area when panel is expanded', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('.content.ask-expanded');
+            expect(html).toContain("content.classList.add('ask-expanded')");
+        });
+
+        it('should restore content area when panel is collapsed', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain("content.classList.remove('ask-expanded')");
+        });
+
+        it('should remove ask-expanded from content when panel is closed', () => {
+            const html = generateSpaHtml(createOptions());
+            // Both close button and toggle-off should clean up
+            expect(html).toContain("document.getElementById('content-area').classList.remove('ask-expanded')");
+        });
+
+        it('should include setAskExpanded helper function', () => {
+            const html = generateSpaHtml(createOptions());
+            expect(html).toContain('function setAskExpanded');
+        });
+
         it('should not include expand button when AI is disabled', () => {
             const html = generateSpaHtml(createOptions({ enableAI: false }));
             expect(html).not.toContain('id="ask-expand"');

@@ -751,6 +751,11 @@ function getSpaStyles(enableAI: boolean): string {
             width: auto;
             min-width: 0;
         }
+        .content.ask-expanded {
+            flex: 0 0 auto;
+            width: 320px;
+            min-width: 240px;
+        }
         .ask-panel-header {
             padding: 12px 16px;
             border-bottom: 1px solid var(--content-border);
@@ -1574,14 +1579,16 @@ ${opts.enableAI ? `
                 // Restore expanded state
                 var savedExpanded = localStorage.getItem('deep-wiki-ask-expanded');
                 if (savedExpanded === 'true') {
-                    panel.classList.add('expanded');
-                    askExpanded = true;
-                    updateAskExpandBtn(true);
+                    setAskExpanded(true);
                 }
+            } else {
+                // When hiding, remove expanded from content
+                document.getElementById('content-area').classList.remove('ask-expanded');
             }
         });
         document.getElementById('ask-close').addEventListener('click', function() {
             document.getElementById('ask-panel').classList.add('hidden');
+            document.getElementById('content-area').classList.remove('ask-expanded');
         });
         document.getElementById('ask-clear').addEventListener('click', function() {
             conversationHistory = [];
@@ -1590,16 +1597,24 @@ ${opts.enableAI ? `
 
         // Expand / Collapse Ask AI panel
         document.getElementById('ask-expand').addEventListener('click', function() {
-            var panel = document.getElementById('ask-panel');
             askExpanded = !askExpanded;
-            if (askExpanded) {
-                panel.classList.add('expanded');
-            } else {
-                panel.classList.remove('expanded');
-            }
-            updateAskExpandBtn(askExpanded);
+            setAskExpanded(askExpanded);
             localStorage.setItem('deep-wiki-ask-expanded', askExpanded ? 'true' : 'false');
         });
+
+        function setAskExpanded(expanded) {
+            askExpanded = expanded;
+            var panel = document.getElementById('ask-panel');
+            var content = document.getElementById('content-area');
+            if (expanded) {
+                panel.classList.add('expanded');
+                content.classList.add('ask-expanded');
+            } else {
+                panel.classList.remove('expanded');
+                content.classList.remove('ask-expanded');
+            }
+            updateAskExpandBtn(expanded);
+        }
 
         function updateAskExpandBtn(isExpanded) {
             var btn = document.getElementById('ask-expand');
