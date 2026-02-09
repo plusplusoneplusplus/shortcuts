@@ -133,6 +133,11 @@ vi.mock('../../src/cache', () => ({
     getCachedSeeds: vi.fn().mockReturnValue(null),
     getCachedSeedsAny: vi.fn().mockReturnValue(null),
     clearDiscoveryCache: vi.fn().mockReturnValue(false),
+    // Consolidation cache functions (Phase 1.5)
+    getCachedConsolidation: vi.fn().mockResolvedValue(null),
+    getCachedConsolidationAny: vi.fn().mockReturnValue(null),
+    saveConsolidation: vi.fn().mockResolvedValue(undefined),
+    clearConsolidationCache: vi.fn().mockReturnValue(false),
     // Probe/area cache functions (used by iterative discovery and large-repo handler)
     saveProbeResult: vi.fn(),
     getCachedProbeResult: vi.fn().mockReturnValue(null),

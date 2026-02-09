@@ -707,6 +707,28 @@ export interface CachedArticle {
 }
 
 // ============================================================================
+// Consolidation Cache Types
+// ============================================================================
+
+/**
+ * A cached consolidation result (Phase 1.5).
+ *
+ * Keyed by git hash and the number of input modules (pre-consolidation count),
+ * so the cache is invalidated when either the repo changes or the discovery
+ * graph produces a different module set.
+ */
+export interface CachedConsolidation {
+    /** The consolidated module graph */
+    graph: ModuleGraph;
+    /** Git hash when the consolidation was performed */
+    gitHash: string;
+    /** Number of input modules before consolidation */
+    inputModuleCount: number;
+    /** Timestamp */
+    timestamp: number;
+}
+
+// ============================================================================
 // Discovery Cache Types
 // ============================================================================
 

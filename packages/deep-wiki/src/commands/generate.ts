@@ -31,6 +31,10 @@ import {
     getCachedGraph,
     getCachedGraphAny,
     saveGraph,
+    getCachedConsolidation,
+    getCachedConsolidationAny,
+    saveConsolidation,
+    clearConsolidationCache,
     getCachedAnalyses,
     saveAllAnalyses,
     getModulesNeedingReanalysis,
@@ -178,7 +182,7 @@ export async function executeGenerate(
         let consolidationDuration = 0;
 
         if (!options.noCluster && graph.modules.length > 0) {
-            const phase15Result = await runPhase15(graph, options);
+            const phase15Result = await runPhase15(absoluteRepoPath, graph, options);
             graph = phase15Result.graph;
             consolidationDuration = phase15Result.duration;
         }
@@ -444,6 +448,7 @@ interface Phase15Result {
 }
 
 async function runPhase15(
+    repoPath: string,
     graph: ModuleGraph,
     options: GenerateCommandOptions
 ): Promise<Phase15Result> {
@@ -453,12 +458,28 @@ async function runPhase15(
     printHeader('Phase 1.5: Module Consolidation');
     printInfo(`Input: ${graph.modules.length} modules`);
 
+    const outputDir = path.resolve(options.output);
+    const inputModuleCount = graph.modules.length;
+
+    // Check consolidation cache (skip when --force)
+    if (!options.force) {
+        const cached = options.useCache
+            ? getCachedConsolidationAny(outputDir, inputModuleCount)
+            : await getCachedConsolidation(repoPath, outputDir, inputModuleCount);
+
+        if (cached) {
+            printSuccess(
+                `Using cached consolidation (${inputModuleCount} → ${cached.graph.modules.length} modules)`
+            );
+            return { graph: cached.graph, duration: Date.now() - startTime };
+        }
+    }
+
     const spinner = new Spinner();
     spinner.start('Consolidating modules...');
 
     try {
         // Create AI invoker for semantic clustering (uses output dir as cwd)
-        const outputDir = path.resolve(options.output);
         fs.mkdirSync(outputDir, { recursive: true });
         const aiInvoker = createConsolidationInvoker({
             workingDirectory: outputDir,
@@ -474,6 +495,9 @@ async function runPhase15(
         spinner.succeed(
             `Consolidation complete: ${result.originalCount} → ${result.afterRuleBasedCount} (rule-based) → ${result.finalCount} modules`
         );
+
+        // Save consolidation result to cache
+        await saveConsolidation(repoPath, result.graph, outputDir, inputModuleCount);
 
         return { graph: result.graph, duration: Date.now() - startTime };
     } catch (error) {

@@ -26,6 +26,7 @@ import type {
     CachedGraph,
     CachedAnalysis,
     CachedArticle,
+    CachedConsolidation,
     CacheMetadata,
     AnalysisCacheMetadata,
 } from '../types';
@@ -71,6 +72,9 @@ const ANALYSES_DIR = 'analyses';
 
 /** Subdirectory for per-module article cache */
 const ARTICLES_DIR = 'articles';
+
+/** Name of the cached consolidated graph file */
+const CONSOLIDATED_GRAPH_FILE = 'consolidated-graph.json';
 
 /** Metadata file for the analyses cache */
 const ANALYSES_METADATA_FILE = '_metadata.json';
@@ -247,6 +251,173 @@ export async function saveGraph(
 
     // Write cache file
     fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
+}
+
+// ============================================================================
+// Consolidation Cache Paths
+// ============================================================================
+
+/**
+ * Get the path to the cached consolidated graph file.
+ *
+ * @param outputDir - Output directory
+ * @returns Absolute path to the consolidated graph cache file
+ */
+export function getConsolidatedGraphCachePath(outputDir: string): string {
+    return path.join(getCacheDir(outputDir), CONSOLIDATED_GRAPH_FILE);
+}
+
+// ============================================================================
+// Consolidation Cache Read
+// ============================================================================
+
+/**
+ * Get a cached consolidated graph if it exists and is still valid.
+ *
+ * The cache is valid when:
+ * - The git hash matches current HEAD
+ * - The input module count matches (discovery produced the same graph)
+ *
+ * @param repoPath - Path to the git repository
+ * @param outputDir - Output directory containing the cache
+ * @param inputModuleCount - Number of modules in the pre-consolidation graph
+ * @returns The cached consolidated graph if valid, or null if cache miss
+ */
+export async function getCachedConsolidation(
+    repoPath: string,
+    outputDir: string,
+    inputModuleCount: number
+): Promise<CachedConsolidation | null> {
+    const cachePath = getConsolidatedGraphCachePath(outputDir);
+
+    if (!fs.existsSync(cachePath)) {
+        return null;
+    }
+
+    let cached: CachedConsolidation;
+    try {
+        const content = fs.readFileSync(cachePath, 'utf-8');
+        cached = JSON.parse(content) as CachedConsolidation;
+    } catch {
+        return null; // Corrupted cache
+    }
+
+    // Validate structure
+    if (!cached.graph || !cached.gitHash || !cached.inputModuleCount) {
+        return null;
+    }
+
+    // Validate input module count matches
+    if (cached.inputModuleCount !== inputModuleCount) {
+        return null;
+    }
+
+    // Validate git hash matches current HEAD
+    try {
+        const currentHash = await getRepoHeadHash(repoPath);
+        if (!currentHash || currentHash !== cached.gitHash) {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+
+    return cached;
+}
+
+/**
+ * Get a cached consolidated graph regardless of git hash (--use-cache mode).
+ *
+ * Still validates the input module count so we don't reuse a consolidation
+ * from a different discovery result.
+ *
+ * @param outputDir - Output directory containing the cache
+ * @param inputModuleCount - Number of modules in the pre-consolidation graph
+ * @returns The cached consolidated graph if structurally valid, or null
+ */
+export function getCachedConsolidationAny(
+    outputDir: string,
+    inputModuleCount: number
+): CachedConsolidation | null {
+    const cachePath = getConsolidatedGraphCachePath(outputDir);
+
+    if (!fs.existsSync(cachePath)) {
+        return null;
+    }
+
+    let cached: CachedConsolidation;
+    try {
+        const content = fs.readFileSync(cachePath, 'utf-8');
+        cached = JSON.parse(content) as CachedConsolidation;
+    } catch {
+        return null;
+    }
+
+    if (!cached.graph || !cached.gitHash || !cached.inputModuleCount) {
+        return null;
+    }
+
+    if (cached.inputModuleCount !== inputModuleCount) {
+        return null;
+    }
+
+    return cached;
+}
+
+// ============================================================================
+// Consolidation Cache Write
+// ============================================================================
+
+/**
+ * Save a consolidated graph to the cache.
+ *
+ * @param repoPath - Path to the git repository
+ * @param graph - The consolidated module graph
+ * @param outputDir - Output directory for the cache
+ * @param inputModuleCount - Number of modules before consolidation
+ */
+export async function saveConsolidation(
+    repoPath: string,
+    graph: ModuleGraph,
+    outputDir: string,
+    inputModuleCount: number
+): Promise<void> {
+    const currentHash = await getRepoHeadHash(repoPath);
+    if (!currentHash) {
+        return; // Can't determine git hash
+    }
+
+    const cached: CachedConsolidation = {
+        graph,
+        gitHash: currentHash,
+        inputModuleCount,
+        timestamp: Date.now(),
+    };
+
+    const cacheDir = getCacheDir(outputDir);
+    const cachePath = getConsolidatedGraphCachePath(outputDir);
+
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
+}
+
+// ============================================================================
+// Consolidation Cache Invalidation
+// ============================================================================
+
+/**
+ * Clear the consolidated graph cache.
+ *
+ * @param outputDir - Output directory
+ * @returns True if cache was cleared, false if no cache existed
+ */
+export function clearConsolidationCache(outputDir: string): boolean {
+    const cachePath = getConsolidatedGraphCachePath(outputDir);
+    if (fs.existsSync(cachePath)) {
+        fs.unlinkSync(cachePath);
+        return true;
+    }
+    return false;
 }
 
 // ============================================================================
