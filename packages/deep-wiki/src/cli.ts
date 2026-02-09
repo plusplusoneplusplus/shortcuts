@@ -116,6 +116,7 @@ export function createProgram(): Command {
         .option('--use-cache', 'Use existing cache regardless of git hash', false)
         .option('--phase <number>', 'Start from phase N (uses cached prior phases)', (v: string) => parseInt(v, 10))
         .option('--skip-website', 'Skip website generation (Phase 4)', false)
+        .option('--no-cluster', 'Skip module consolidation (keep original granularity)')
         .option('--theme <theme>', 'Website theme: light, dark, auto', 'auto')
         .option('--title <title>', 'Override project name in website title')
         .option('-v, --verbose', 'Verbose logging', false)
@@ -136,6 +137,7 @@ export function createProgram(): Command {
                 useCache: Boolean(opts.useCache),
                 phase: opts.phase as number | undefined,
                 skipWebsite: Boolean(opts.skipWebsite),
+                noCluster: opts.cluster === false,
                 theme: (opts.theme as 'light' | 'dark' | 'auto') || undefined,
                 title: opts.title as string | undefined,
                 verbose: Boolean(opts.verbose),

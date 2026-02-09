@@ -14,6 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis, GeneratedArticle } from '../types';
 import { discoverModuleGraph, runIterativeDiscovery } from '../discovery';
+import { consolidateModules } from '../consolidation';
 import { generateTopicSeeds, parseSeedFile } from '../seeds';
 import { analyzeModules, parseAnalysisResponse } from '../analysis';
 import {
@@ -23,7 +24,7 @@ import {
     buildReducePromptTemplate,
     generateStaticIndexPages,
 } from '../writing';
-import { checkAIAvailability, createAnalysisInvoker, createWritingInvoker } from '../ai-invoker';
+import { checkAIAvailability, createAnalysisInvoker, createWritingInvoker, createConsolidationInvoker } from '../ai-invoker';
 import { extractJSON, type AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 import { normalizeModuleId } from '../schemas';
 import {
@@ -172,6 +173,21 @@ export async function executeGenerate(
         }
 
         // ================================================================
+        // Phase 1.5: Module Consolidation
+        // ================================================================
+        let consolidationDuration = 0;
+
+        if (!options.noCluster && graph.modules.length > 0) {
+            const phase15Result = await runPhase15(graph, options);
+            graph = phase15Result.graph;
+            consolidationDuration = phase15Result.duration;
+        }
+
+        if (isCancelled()) {
+            return EXIT_CODES.CANCELLED;
+        }
+
+        // ================================================================
         // Phase 2: Deep Analysis
         // ================================================================
         let analyses: ModuleAnalysis[];
@@ -240,6 +256,7 @@ export async function executeGenerate(
             printKeyValue('Website', 'Generated');
         }
         if (phase1Duration > 0) { printKeyValue('Phase 1 Duration', formatDuration(phase1Duration)); }
+        if (consolidationDuration > 0) { printKeyValue('Phase 1.5 Duration', formatDuration(consolidationDuration)); }
         if (phase2Duration > 0) { printKeyValue('Phase 2 Duration', formatDuration(phase2Duration)); }
         printKeyValue('Phase 3 Duration', formatDuration(phase3Result.duration));
         if (phase4Duration > 0) { printKeyValue('Phase 4 Duration', formatDuration(phase4Duration)); }
@@ -414,6 +431,54 @@ async function runPhase1(
         spinner.fail('Discovery failed');
         printError((error as Error).message);
         return { duration: Date.now() - startTime, exitCode: EXIT_CODES.EXECUTION_ERROR };
+    }
+}
+
+// ============================================================================
+// Phase 1.5: Module Consolidation
+// ============================================================================
+
+interface Phase15Result {
+    graph: ModuleGraph;
+    duration: number;
+}
+
+async function runPhase15(
+    graph: ModuleGraph,
+    options: GenerateCommandOptions
+): Promise<Phase15Result> {
+    const startTime = Date.now();
+
+    process.stderr.write('\n');
+    printHeader('Phase 1.5: Module Consolidation');
+    printInfo(`Input: ${graph.modules.length} modules`);
+
+    const spinner = new Spinner();
+    spinner.start('Consolidating modules...');
+
+    try {
+        // Create AI invoker for semantic clustering
+        const aiInvoker = createConsolidationInvoker({
+            model: options.model,
+            timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
+        });
+
+        const result = await consolidateModules(graph, aiInvoker, {
+            model: options.model,
+            timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
+        });
+
+        spinner.succeed(
+            `Consolidation complete: ${result.originalCount} → ${result.afterRuleBasedCount} (rule-based) → ${result.finalCount} modules`
+        );
+
+        return { graph: result.graph, duration: Date.now() - startTime };
+    } catch (error) {
+        spinner.warn('Consolidation failed — using original modules');
+        if (options.verbose) {
+            printWarning((error as Error).message);
+        }
+        return { graph, duration: Date.now() - startTime };
     }
 }
 

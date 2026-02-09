@@ -56,6 +56,8 @@ export interface ModuleInfo {
     area?: string;
     /** Optional line ranges for monolithic files — [[start, end], ...] */
     lineRanges?: [number, number][];
+    /** IDs of original modules merged into this one (set by consolidation phase) */
+    mergedFrom?: string[];
 }
 
 /**
@@ -464,11 +466,9 @@ export interface GenerateCommandOptions {
     title?: string;
     /** Path to seeds file for breadth-first discovery, or "auto" to generate */
     seeds?: string;
+    /** Skip module consolidation (Phase 1.5) — keep original module granularity */
+    noCluster?: boolean;
 }
-
-// ============================================================================
-// Phase 0: Topic Seed Types
-// ============================================================================
 
 /**
  * A single topic seed — an architectural concern/module identified during Phase 0.
@@ -780,4 +780,52 @@ export interface DiscoveryProgressMetadata {
     converged: boolean;
     /** Coverage estimate (0-1) */
     coverage: number;
+}
+
+// ============================================================================
+// Phase 1.5: Module Consolidation Types
+// ============================================================================
+
+/**
+ * Options for the consolidation phase (Phase 1.5).
+ */
+export interface ConsolidationOptions {
+    /** Maximum number of modules to target after consolidation (default: 50) */
+    targetModuleCount?: number;
+    /** AI model to use for semantic clustering */
+    model?: string;
+    /** Timeout for AI clustering session in milliseconds (default: 120000 = 2 min) */
+    timeoutMs?: number;
+    /** Skip AI clustering, only do rule-based consolidation */
+    skipAI?: boolean;
+}
+
+/**
+ * Result of the consolidation phase.
+ */
+export interface ConsolidationResult {
+    /** The consolidated module graph */
+    graph: ModuleGraph;
+    /** Number of modules before consolidation */
+    originalCount: number;
+    /** Number of modules after rule-based pass */
+    afterRuleBasedCount: number;
+    /** Number of modules after AI clustering (same as afterRuleBasedCount if AI skipped) */
+    finalCount: number;
+    /** Duration in milliseconds */
+    duration: number;
+}
+
+/**
+ * A cluster group produced by AI-assisted clustering.
+ */
+export interface ClusterGroup {
+    /** Suggested ID for the merged module */
+    id: string;
+    /** Human-readable name for the cluster */
+    name: string;
+    /** IDs of modules to merge into this cluster */
+    memberIds: string[];
+    /** Combined purpose description */
+    purpose: string;
 }

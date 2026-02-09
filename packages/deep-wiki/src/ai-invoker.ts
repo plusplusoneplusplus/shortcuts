@@ -181,3 +181,60 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
         }
     };
 }
+
+// ============================================================================
+// Consolidation Invoker (Phase 1.5)
+// ============================================================================
+
+/**
+ * Options for creating a consolidation invoker (Phase 1.5).
+ * Uses direct sessions without tools for semantic clustering.
+ */
+export interface ConsolidationInvokerOptions {
+    /** AI model to use */
+    model?: string;
+    /** Timeout for clustering session in milliseconds (default: 120000 = 2 min) */
+    timeoutMs?: number;
+}
+
+/** Default timeout for consolidation clustering (2 minutes) */
+const DEFAULT_CONSOLIDATION_TIMEOUT_MS = 120_000;
+
+/**
+ * Create an AIInvoker for Phase 1.5 (Module Consolidation).
+ *
+ * Uses direct sessions (usePool: false) without tools.
+ * The AI only needs to analyze the module list and return clusters.
+ */
+export function createConsolidationInvoker(options: ConsolidationInvokerOptions): AIInvoker {
+    const service = getCopilotSDKService();
+
+    return async (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
+        try {
+            const model = invokerOptions?.model || options.model;
+            const timeoutMs = invokerOptions?.timeoutMs || options.timeoutMs || DEFAULT_CONSOLIDATION_TIMEOUT_MS;
+
+            const sendOptions: SendMessageOptions = {
+                prompt,
+                model,
+                timeoutMs,
+                usePool: false,
+                loadDefaultMcpConfig: false,
+            };
+
+            const result = await service.sendMessage(sendOptions);
+
+            return {
+                success: result.success,
+                response: result.response || '',
+                error: result.error,
+            };
+        } catch (error) {
+            return {
+                success: false,
+                response: '',
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    };
+}
