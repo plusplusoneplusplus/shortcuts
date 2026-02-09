@@ -181,6 +181,8 @@ export interface DiscoverCommandOptions {
     useCache: boolean;
     /** Verbose logging */
     verbose: boolean;
+    /** Path to seeds file for breadth-first discovery, or "auto" to generate */
+    seeds?: string;
 }
 
 // ============================================================================
@@ -450,6 +452,54 @@ export interface GenerateCommandOptions {
     theme?: WebsiteTheme;
     /** Override website title */
     title?: string;
+    /** Path to seeds file for breadth-first discovery, or "auto" to generate */
+    seeds?: string;
+}
+
+// ============================================================================
+// Phase 0: Topic Seed Types
+// ============================================================================
+
+/**
+ * A single topic seed — an architectural concern/module identified during Phase 0.
+ */
+export interface TopicSeed {
+    /** Short kebab-case identifier (e.g., "authentication", "api-gateway") */
+    topic: string;
+    /** 1-2 sentence description of the topic */
+    description: string;
+    /** Comma-separated or array of search terms to find related code */
+    hints: string[];
+}
+
+/**
+ * Output of Phase 0 — the seeds file structure.
+ */
+export interface SeedsOutput {
+    /** Deep-wiki version that generated these seeds */
+    version: string;
+    /** Timestamp when seeds were generated */
+    timestamp: number;
+    /** Repository path used for generation */
+    repoPath: string;
+    /** The discovered topic seeds */
+    topics: TopicSeed[];
+}
+
+/**
+ * Options for the `deep-wiki seeds` command.
+ */
+export interface SeedsCommandOptions {
+    /** Output file path (default: "seeds.json") */
+    output: string;
+    /** Maximum number of topics to generate (default: 20) */
+    maxTopics: number;
+    /** Minimum number of topics (falls back to heuristic if AI under-generates) */
+    minTopics: number;
+    /** AI model override */
+    model?: string;
+    /** Verbose logging */
+    verbose: boolean;
 }
 
 // ============================================================================

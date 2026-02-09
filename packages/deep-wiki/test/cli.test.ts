@@ -71,6 +71,62 @@ describe('CLI', () => {
             const cmd = program.commands.find(c => c.name() === 'generate');
             expect(cmd).toBeDefined();
         });
+
+        it('should have seeds command', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'seeds');
+            expect(cmd).toBeDefined();
+        });
+    });
+
+    // ========================================================================
+    // Seeds Command Options
+    // ========================================================================
+
+    describe('seeds command', () => {
+        it('should accept a repo-path argument', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'seeds')!;
+            expect(cmd).toBeDefined();
+            const args = (cmd as any).registeredArguments || (cmd as any)._args;
+            expect(args?.length).toBeGreaterThan(0);
+        });
+
+        it('should have expected options', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'seeds')!;
+            const optionNames = cmd.options.map(o => o.long || o.short);
+
+            expect(optionNames).toContain('--output');
+            expect(optionNames).toContain('--max-topics');
+            expect(optionNames).toContain('--min-topics');
+            expect(optionNames).toContain('--model');
+            expect(optionNames).toContain('--verbose');
+        });
+
+        it('should have default value for --output', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'seeds')!;
+            const outputOpt = cmd.options.find(o => o.long === '--output');
+            expect(outputOpt).toBeDefined();
+            expect(outputOpt!.defaultValue).toBe('seeds.json');
+        });
+
+        it('should have default value for --max-topics', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'seeds')!;
+            const maxOpt = cmd.options.find(o => o.long === '--max-topics');
+            expect(maxOpt).toBeDefined();
+            expect(maxOpt!.defaultValue).toBe(20);
+        });
+
+        it('should have default value for --min-topics', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'seeds')!;
+            const minOpt = cmd.options.find(o => o.long === '--min-topics');
+            expect(minOpt).toBeDefined();
+            expect(minOpt!.defaultValue).toBe(5);
+        });
     });
 
     // ========================================================================
@@ -99,6 +155,7 @@ describe('CLI', () => {
             expect(optionNames).toContain('--force');
             expect(optionNames).toContain('--use-cache');
             expect(optionNames).toContain('--verbose');
+            expect(optionNames).toContain('--seeds');
         });
 
         it('should have default value for output', () => {
@@ -138,6 +195,7 @@ describe('CLI', () => {
             expect(optionNames).toContain('--use-cache');
             expect(optionNames).toContain('--phase');
             expect(optionNames).toContain('--verbose');
+            expect(optionNames).toContain('--seeds');
             // Website generation options (Phase 4)
             expect(optionNames).toContain('--skip-website');
             expect(optionNames).toContain('--theme');

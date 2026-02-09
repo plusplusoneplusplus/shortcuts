@@ -38,6 +38,33 @@ export function createProgram(): Command {
         .version('1.0.0');
 
     // ========================================================================
+    // deep-wiki seeds <repo-path>
+    // ========================================================================
+
+    program
+        .command('seeds')
+        .description('Generate topic seeds for breadth-first discovery')
+        .argument('<repo-path>', 'Path to the local git repository')
+        .option('-o, --output <path>', 'Output file path', 'seeds.json')
+        .option('--max-topics <n>', 'Maximum number of topics to generate', parseInt, 20)
+        .option('--min-topics <n>', 'Minimum number of topics', parseInt, 5)
+        .option('-m, --model <model>', 'AI model to use')
+        .option('-v, --verbose', 'Verbose logging', false)
+        .option('--no-color', 'Disable colored output')
+        .action(async (repoPath: string, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const { executeSeeds } = await import('./commands/seeds');
+            const exitCode = await executeSeeds(repoPath, {
+                output: opts.output as string,
+                maxTopics: (opts.maxTopics as number) || 20,
+                minTopics: (opts.minTopics as number) || 5,
+                model: opts.model as string | undefined,
+                verbose: Boolean(opts.verbose),
+            });
+            process.exit(exitCode);
+        });
+
+    // ========================================================================
     // deep-wiki discover <repo-path>
     // ========================================================================
 
@@ -49,6 +76,7 @@ export function createProgram(): Command {
         .option('-m, --model <model>', 'AI model to use')
         .option('-t, --timeout <seconds>', 'Timeout in seconds for discovery', parseInt)
         .option('--focus <path>', 'Focus discovery on a specific subtree')
+        .option('--seeds <path>', 'Path to seeds file for breadth-first discovery, or "auto" to generate')
         .option('--force', 'Ignore cache, regenerate discovery', false)
         .option('--use-cache', 'Use existing cache regardless of git hash', false)
         .option('-v, --verbose', 'Verbose logging', false)
@@ -63,6 +91,7 @@ export function createProgram(): Command {
                 model: opts.model as string | undefined,
                 timeout: opts.timeout as number | undefined,
                 focus: opts.focus as string | undefined,
+                seeds: opts.seeds as string | undefined,
                 force: Boolean(opts.force),
                 useCache: Boolean(opts.useCache),
                 verbose: Boolean(opts.verbose),
@@ -83,6 +112,7 @@ export function createProgram(): Command {
         .option('-c, --concurrency <number>', 'Number of parallel AI sessions', parseInt)
         .option('-t, --timeout <seconds>', 'Timeout in seconds per phase', parseInt)
         .option('--focus <path>', 'Focus on a specific subtree')
+        .option('--seeds <path>', 'Path to seeds file for breadth-first discovery, or "auto" to generate')
         .option('--depth <level>', 'Article detail level: shallow, normal, deep', 'normal')
         .option('--force', 'Ignore cache, regenerate everything', false)
         .option('--use-cache', 'Use existing cache regardless of git hash', false)
@@ -102,6 +132,7 @@ export function createProgram(): Command {
                 concurrency: opts.concurrency as number | undefined,
                 timeout: opts.timeout as number | undefined,
                 focus: opts.focus as string | undefined,
+                seeds: opts.seeds as string | undefined,
                 depth: (opts.depth as 'shallow' | 'normal' | 'deep') || 'normal',
                 force: Boolean(opts.force),
                 useCache: Boolean(opts.useCache),
