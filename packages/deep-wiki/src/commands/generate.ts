@@ -14,6 +14,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis, GeneratedArticle } from '../types';
+import { resolvePhaseModel, resolvePhaseTimeout, resolvePhaseConcurrency, resolvePhaseDepth } from '../config-loader';
 import { discoverModuleGraph, runIterativeDiscovery } from '../discovery';
 import { consolidateModules } from '../consolidation';
 import { generateTopicSeeds, parseSeedFile } from '../seeds';
@@ -125,6 +126,32 @@ export async function executeGenerate(
     if (options.force) { printKeyValue('Force', 'yes (ignoring all caches)'); }
     if (options.useCache) { printKeyValue('Use Cache', 'yes (ignoring git hash)'); }
     if (options.strict === false) { printKeyValue('Strict', 'no (partial failures allowed)'); }
+    if (options.config) { printKeyValue('Config', options.config); }
+
+    // Print per-phase overrides if configured
+    if (options.phases) {
+        const phaseNames: Array<{ key: import('../types').PhaseName; label: string }> = [
+            { key: 'discovery', label: 'Phase 1 (Discovery)' },
+            { key: 'consolidation', label: 'Phase 2 (Consolidation)' },
+            { key: 'analysis', label: 'Phase 3 (Analysis)' },
+            { key: 'writing', label: 'Phase 4 (Writing)' },
+        ];
+        for (const { key, label } of phaseNames) {
+            const phaseConfig = options.phases[key];
+            if (phaseConfig) {
+                const parts: string[] = [];
+                if (phaseConfig.model) { parts.push(`model=${phaseConfig.model}`); }
+                if (phaseConfig.timeout) { parts.push(`timeout=${phaseConfig.timeout}s`); }
+                if (phaseConfig.concurrency) { parts.push(`concurrency=${phaseConfig.concurrency}`); }
+                if (phaseConfig.depth) { parts.push(`depth=${phaseConfig.depth}`); }
+                if (phaseConfig.skipAI) { parts.push('skipAI'); }
+                if (parts.length > 0) {
+                    printKeyValue(label, parts.join(', '));
+                }
+            }
+        }
+    }
+
     process.stderr.write('\n');
 
     // Check AI availability
@@ -371,6 +398,11 @@ async function runPhase1(
     try {
         let result;
 
+        // Resolve per-phase settings for discovery
+        const discoveryModel = resolvePhaseModel(options, 'discovery');
+        const discoveryTimeout = resolvePhaseTimeout(options, 'discovery');
+        const discoveryConcurrency = resolvePhaseConcurrency(options, 'discovery');
+
         // Check if iterative discovery is requested
         if (options.seeds) {
             // Load or generate seeds
@@ -391,7 +423,7 @@ async function runPhase1(
                     spinner.update('Generating topic seeds...');
                     seeds = await generateTopicSeeds(repoPath, {
                         maxTopics: 50,
-                        model: options.model,
+                        model: discoveryModel,
                         verbose: options.verbose,
                     });
 
@@ -418,10 +450,10 @@ async function runPhase1(
             const graph = await runIterativeDiscovery({
                 repoPath,
                 seeds,
-                model: options.model,
-                probeTimeout: options.timeout ? options.timeout * 1000 : undefined,
-                mergeTimeout: options.timeout ? options.timeout * 1000 * 1.5 : undefined, // Merge takes longer
-                concurrency: options.concurrency || 5,
+                model: discoveryModel,
+                probeTimeout: discoveryTimeout ? discoveryTimeout * 1000 : undefined,
+                mergeTimeout: discoveryTimeout ? discoveryTimeout * 1000 * 1.5 : undefined, // Merge takes longer
+                concurrency: discoveryConcurrency || 5,
                 maxRounds: 3,
                 coverageThreshold: 0.8,
                 focus: options.focus,
@@ -438,8 +470,8 @@ async function runPhase1(
             // Standard discovery (pass cache options for large-repo handler)
             result = await discoverModuleGraph({
                 repoPath,
-                model: options.model,
-                timeout: options.timeout ? options.timeout * 1000 : undefined,
+                model: discoveryModel,
+                timeout: discoveryTimeout ? discoveryTimeout * 1000 : undefined,
                 focus: options.focus,
                 outputDir: options.output,
                 gitHash: currentGitHash ?? undefined,
@@ -519,12 +551,17 @@ async function runPhase2Consolidation(
     spinner.start('Consolidating modules...');
 
     try {
+        // Resolve per-phase settings for consolidation
+        const consolidationModel = resolvePhaseModel(options, 'consolidation');
+        const consolidationTimeout = resolvePhaseTimeout(options, 'consolidation');
+        const consolidationSkipAI = options.phases?.consolidation?.skipAI;
+
         // Create AI invoker for semantic clustering (uses output dir as cwd)
         fs.mkdirSync(outputDir, { recursive: true });
         const baseInvoker = createConsolidationInvoker({
             workingDirectory: outputDir,
-            model: options.model,
-            timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
+            model: consolidationModel,
+            timeoutMs: consolidationTimeout ? consolidationTimeout * 1000 : undefined,
         });
 
         // Wrap invoker to capture token usage
@@ -535,8 +572,9 @@ async function runPhase2Consolidation(
         };
 
         const result = await consolidateModules(graph, aiInvoker, {
-            model: options.model,
-            timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
+            model: consolidationModel,
+            timeoutMs: consolidationTimeout ? consolidationTimeout * 1000 : undefined,
+            skipAI: consolidationSkipAI,
         });
 
         spinner.succeed(
@@ -581,7 +619,12 @@ async function runPhase3Analysis(
     process.stderr.write('\n');
     printHeader('Phase 3: Deep Analysis');
 
-    const concurrency = options.concurrency || 5;
+    // Resolve per-phase settings for analysis
+    const analysisModel = resolvePhaseModel(options, 'analysis');
+    const analysisTimeout = resolvePhaseTimeout(options, 'analysis');
+    const analysisConcurrency = resolvePhaseConcurrency(options, 'analysis') || 5;
+    const analysisDepth = resolvePhaseDepth(options, 'analysis');
+    const concurrency = analysisConcurrency;
 
     // Determine which modules need analysis
     let modulesToAnalyze = graph.modules;
@@ -675,8 +718,8 @@ async function runPhase3Analysis(
     // Create analysis invoker (MCP-enabled, direct sessions)
     const baseAnalysisInvoker = createAnalysisInvoker({
         repoPath,
-        model: options.model,
-        timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
+        model: analysisModel,
+        timeoutMs: analysisTimeout ? analysisTimeout * 1000 : undefined,
     });
 
     // Wrap invoker to capture token usage
@@ -707,10 +750,10 @@ async function runPhase3Analysis(
         const result = await analyzeModules(
             {
                 graph: subGraph,
-                model: options.model,
-                timeout: options.timeout ? options.timeout * 1000 : undefined,
+                model: analysisModel,
+                timeout: analysisTimeout ? analysisTimeout * 1000 : undefined,
                 concurrency,
-                depth: options.depth,
+                depth: analysisDepth,
                 repoPath,
             },
             analysisInvoker,
@@ -818,7 +861,12 @@ async function runPhase4Writing(
     process.stderr.write('\n');
     printHeader('Phase 4: Article Generation');
 
-    const concurrency = options.concurrency ? Math.min(options.concurrency * 2, 20) : 5;
+    // Resolve per-phase settings for writing
+    const writingModel = resolvePhaseModel(options, 'writing');
+    const writingTimeout = resolvePhaseTimeout(options, 'writing');
+    const writingConcurrency = resolvePhaseConcurrency(options, 'writing');
+    const writingDepth = resolvePhaseDepth(options, 'writing');
+    const concurrency = writingConcurrency ? Math.min(writingConcurrency * 2, 20) : 5;
 
     // Get git hash once upfront for per-article incremental saves (subfolder-scoped)
     let gitHash: string | null = null;
@@ -885,8 +933,8 @@ async function runPhase4Writing(
 
     // Create writing invoker (session pool, no tools)
     const baseWritingInvoker = createWritingInvoker({
-        model: options.model,
-        timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
+        model: writingModel,
+        timeoutMs: writingTimeout ? writingTimeout * 1000 : undefined,
     });
 
     // Wrap invoker to capture token usage
@@ -909,10 +957,10 @@ async function runPhase4Writing(
                 {
                     graph,
                     analyses: analysesToGenerate,
-                    model: options.model,
+                    model: writingModel,
                     concurrency,
-                    timeout: options.timeout ? options.timeout * 1000 : undefined,
-                    depth: options.depth,
+                    timeout: writingTimeout ? writingTimeout * 1000 : undefined,
+                    depth: writingDepth,
                 },
                 writingInvoker,
                 (progress) => {
@@ -1021,8 +1069,8 @@ async function runPhase4Writing(
                     graph,
                     analyses,
                     writingInvoker,
-                    options.model,
-                    options.timeout ? options.timeout * 1000 : undefined,
+                    writingModel,
+                    writingTimeout ? writingTimeout * 1000 : undefined,
                 );
                 reduceArticles.push(...reduceOnly);
 
@@ -1048,8 +1096,8 @@ async function runPhase4Writing(
                 graph,
                 analyses,
                 writingInvoker,
-                options.model,
-                options.timeout ? options.timeout * 1000 : undefined,
+                writingModel,
+                writingTimeout ? writingTimeout * 1000 : undefined,
             );
             reduceArticles.push(...reduceOnly);
 

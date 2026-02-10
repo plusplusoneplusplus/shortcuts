@@ -191,6 +191,8 @@ describe('CLI', () => {
             expect(optionNames).toContain('--skip-website');
             expect(optionNames).toContain('--theme');
             expect(optionNames).toContain('--title');
+            // Config file support
+            expect(optionNames).toContain('--config');
         });
 
         it('should have default values for depth', () => {

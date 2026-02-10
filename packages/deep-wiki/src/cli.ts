@@ -8,7 +8,8 @@
  */
 
 import { Command } from 'commander';
-import { setColorEnabled, setVerbosity } from './logger';
+import { setColorEnabled, setVerbosity, printInfo } from './logger';
+import { loadConfig, mergeConfigWithCLI, discoverConfigFile } from './config-loader';
 
 // ============================================================================
 // Exit Codes
@@ -120,13 +121,14 @@ export function createProgram(): Command {
         .option('--no-strict', 'Allow partial failures (default: strict, any failure aborts)')
         .option('--theme <theme>', 'Website theme: light, dark, auto', 'auto')
         .option('--title <title>', 'Override project name in website title')
+        .option('--config <path>', 'Path to YAML configuration file (deep-wiki.config.yaml)')
         .option('-v, --verbose', 'Verbose logging', false)
         .option('--no-color', 'Disable colored output')
-        .action(async (repoPath: string, opts: Record<string, unknown>) => {
+        .action(async (repoPath: string, opts: Record<string, unknown>, cmd: Command) => {
             applyGlobalOptions(opts);
 
-            const { executeGenerate } = await import('./commands/generate');
-            const exitCode = await executeGenerate(repoPath, {
+            // Build base CLI options
+            let cliOptions: import('./types').GenerateCommandOptions = {
                 output: opts.output as string,
                 model: opts.model as string | undefined,
                 concurrency: opts.concurrency as number | undefined,
@@ -143,7 +145,35 @@ export function createProgram(): Command {
                 theme: (opts.theme as 'light' | 'dark' | 'auto') || undefined,
                 title: opts.title as string | undefined,
                 verbose: Boolean(opts.verbose),
-            });
+                config: opts.config as string | undefined,
+            };
+
+            // Load config file if --config is specified, or auto-discover
+            const configPath = cliOptions.config || discoverConfigFile(repoPath);
+            if (configPath) {
+                try {
+                    const config = loadConfig(configPath);
+                    // Determine which CLI flags were explicitly set (not defaults)
+                    const explicitFields = getExplicitFields(cmd, opts);
+                    cliOptions = mergeConfigWithCLI(config, cliOptions, explicitFields);
+                    if (cliOptions.verbose) {
+                        printInfo(`Loaded config from ${configPath}`);
+                    }
+                } catch (e) {
+                    // If --config was explicitly passed, this is a fatal error
+                    if (opts.config) {
+                        process.stderr.write(`Error: ${(e as Error).message}\n`);
+                        process.exit(EXIT_CODES.CONFIG_ERROR);
+                    }
+                    // Auto-discovered config with errors — warn and continue
+                    if (cliOptions.verbose) {
+                        process.stderr.write(`Warning: Ignoring config file: ${(e as Error).message}\n`);
+                    }
+                }
+            }
+
+            const { executeGenerate } = await import('./commands/generate');
+            const exitCode = await executeGenerate(repoPath, cliOptions);
             process.exit(exitCode);
         });
 
@@ -210,4 +240,29 @@ function applyGlobalOptions(opts: Record<string, unknown>): void {
     if (opts.verbose) {
         setVerbosity('verbose');
     }
+}
+
+/**
+ * Determine which CLI option fields were explicitly set by the user (not defaults).
+ * Uses Commander's internal state to distinguish user-provided values from defaults.
+ *
+ * @param cmd - The Commander Command instance
+ * @param opts - The parsed options object
+ * @returns Set of field names that were explicitly provided
+ */
+function getExplicitFields(cmd: Command, opts: Record<string, unknown>): Set<string> {
+    const explicit = new Set<string>();
+
+    // Commander tracks which options were explicitly set via setOptionValueWithSource
+    // We can check the source: 'cli' means user passed it, 'default' means it's a default
+    for (const option of cmd.options) {
+        const key = option.attributeName();
+        const source = cmd.getOptionValueSource(key);
+        if (source === 'cli') {
+            // Map Commander's attribute names to our field names
+            explicit.add(key);
+        }
+    }
+
+    return explicit;
 }

@@ -169,6 +169,47 @@ export interface DeepWikiConfig {
     phase: number;
 }
 
+/**
+ * Schema for the `deep-wiki.config.yaml` configuration file.
+ * All fields are optional — unset fields use CLI flags or defaults.
+ */
+export interface DeepWikiConfigFile {
+    /** Repository path (can be overridden by CLI positional argument) */
+    repoPath?: string;
+    /** Output directory */
+    output?: string;
+    /** Global default AI model */
+    model?: string;
+    /** Number of parallel AI sessions */
+    concurrency?: number;
+    /** Timeout in seconds */
+    timeout?: number;
+    /** Article detail level */
+    depth?: 'shallow' | 'normal' | 'deep';
+    /** Use cache regardless of git hash */
+    useCache?: boolean;
+    /** Ignore cache, regenerate everything */
+    force?: boolean;
+    /** Focus on a specific subtree */
+    focus?: string;
+    /** Path to seeds file, or "auto" to generate */
+    seeds?: string;
+    /** Skip module consolidation */
+    noCluster?: boolean;
+    /** Strict mode: fail on any module failure */
+    strict?: boolean;
+    /** Skip website generation */
+    skipWebsite?: boolean;
+    /** Website theme */
+    theme?: 'light' | 'dark' | 'auto';
+    /** Override project name in website title */
+    title?: string;
+    /** Start from phase N */
+    phase?: number;
+    /** Per-phase configuration overrides */
+    phases?: PhasesConfig;
+}
+
 // ============================================================================
 // Discovery Command Options
 // ============================================================================
@@ -429,6 +470,37 @@ export interface WebsiteOptions {
 }
 
 // ============================================================================
+// Per-Phase Configuration
+// ============================================================================
+
+/**
+ * Phase names used as keys in per-phase configuration.
+ */
+export type PhaseName = 'discovery' | 'consolidation' | 'analysis' | 'writing';
+
+/**
+ * Per-phase configuration overrides.
+ * All fields are optional — unset fields fall back to the global config or defaults.
+ */
+export interface PhaseConfig {
+    /** AI model override for this phase */
+    model?: string;
+    /** Timeout in seconds for this phase */
+    timeout?: number;
+    /** Number of parallel AI sessions for this phase */
+    concurrency?: number;
+    /** Article detail level for this phase (only applies to analysis/writing) */
+    depth?: 'shallow' | 'normal' | 'deep';
+    /** Skip AI clustering (only applies to consolidation) */
+    skipAI?: boolean;
+}
+
+/**
+ * Map of phase-specific configuration overrides.
+ */
+export type PhasesConfig = Partial<Record<PhaseName, PhaseConfig>>;
+
+// ============================================================================
 // Generate Command Options
 // ============================================================================
 
@@ -468,6 +540,10 @@ export interface GenerateCommandOptions {
     noCluster?: boolean;
     /** Strict mode: fail the pipeline if any module fails after retries (default: true) */
     strict?: boolean;
+    /** Path to YAML configuration file */
+    config?: string;
+    /** Per-phase configuration overrides */
+    phases?: PhasesConfig;
 }
 
 /**
