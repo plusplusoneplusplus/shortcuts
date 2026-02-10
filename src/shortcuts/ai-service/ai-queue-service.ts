@@ -225,8 +225,13 @@ class AITaskExecutor implements TaskExecutor {
             throw new Error(result.error || 'SDK execution failed');
         }
 
+        // For tool-heavy sessions (e.g., impl skill), the AI may complete all
+        // work via tool execution without producing a text summary. Provide a
+        // fallback result so the AI Processes detail panel shows something useful.
+        const responseText = result.response || '(Task completed via tool execution — no text response produced)';
+
         return {
-            response: result.response,
+            response: responseText,
             sessionId: result.sessionId,
         };
     }

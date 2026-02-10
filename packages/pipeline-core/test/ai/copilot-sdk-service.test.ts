@@ -689,8 +689,9 @@ describe('CopilotSDKService - Multi-turn MCP tool conversations', () => {
 
         const result = await resultPromise;
         expect(result.success).toBe(true);
-        // Should return the LAST message (the JSON output), not the first intent message
-        expect(result.response).toBe('{"moduleId": "test", "overview": "A comprehensive analysis..."}');
+        // All messages are joined to preserve the full conversation narrative
+        expect(result.response).toContain("I'll read the key files.");
+        expect(result.response).toContain('{"moduleId": "test", "overview": "A comprehensive analysis..."}');
     });
 
     it('should cancel turn_end grace timer when new turn starts', async () => {
@@ -721,8 +722,9 @@ describe('CopilotSDKService - Multi-turn MCP tool conversations', () => {
 
         const result = await resultPromise;
         expect(result.success).toBe(true);
-        // Should return the last message, not the first intent
-        expect(result.response).toBe('Here is the full JSON analysis.');
+        // Both messages are joined (grace timer was correctly cancelled for turn 2)
+        expect(result.response).toContain('Let me read the files.');
+        expect(result.response).toContain('Here is the full JSON analysis.');
     });
 
     it('should handle many turns with MCP tools (realistic deep analysis)', async () => {
@@ -772,13 +774,14 @@ describe('CopilotSDKService - Multi-turn MCP tool conversations', () => {
 
         const result = await resultPromise;
         expect(result.success).toBe(true);
-        // Should return the JSON from the last turn
-        const parsed = JSON.parse(result.response!);
-        expect(parsed.moduleId).toBe('test');
-        expect(parsed.overview).toBe('Comprehensive module analysis');
+        // All messages are joined — response contains the full conversation narrative
+        expect(result.response).toContain("I'll read the key files.");
+        expect(result.response).toContain('Reading more files...');
+        expect(result.response).toContain('Searching for patterns...');
+        expect(result.response).toContain(jsonOutput);
     });
 
-    it('should use last message not first in multi-turn conversation', async () => {
+    it('should join all messages in multi-turn conversation', async () => {
         const { sessions, resultPromise } = setupStreamingCall();
 
         await vi.waitFor(() => {
@@ -801,11 +804,11 @@ describe('CopilotSDKService - Multi-turn MCP tool conversations', () => {
 
         const result = await resultPromise;
         expect(result.success).toBe(true);
-        // Must use the LAST message (the actual output)
-        expect(result.response).toBe('The actual JSON output with lots of data');
+        // All messages are joined with double newlines to preserve full narrative
+        expect(result.response).toBe('Intent message (short)\n\nMore investigation...\n\nThe actual JSON output with lots of data');
     });
 
-    it('should skip empty messages when choosing last message', async () => {
+    it('should skip empty messages when joining all messages', async () => {
         const { sessions, resultPromise } = setupStreamingCall();
 
         await vi.waitFor(() => {
@@ -829,8 +832,8 @@ describe('CopilotSDKService - Multi-turn MCP tool conversations', () => {
 
         const result = await resultPromise;
         expect(result.success).toBe(true);
-        // Empty messages should be skipped; last non-empty message is used
-        expect(result.response).toBe('Final analysis JSON');
+        // Empty messages are filtered out when joining; only non-empty messages remain
+        expect(result.response).toBe('Real content here\n\nFinal analysis JSON');
     });
 
     it('should settle via grace timer if session.idle never fires after last turn', async () => {
@@ -853,7 +856,8 @@ describe('CopilotSDKService - Multi-turn MCP tool conversations', () => {
 
         const result = await resultPromise;
         expect(result.success).toBe(true);
-        expect(result.response).toBe('Final output');
+        // Both messages joined
+        expect(result.response).toBe('Intent\n\nFinal output');
     });
 
     it('should handle single-turn conversation normally (no MCP tools)', async () => {
@@ -1525,5 +1529,233 @@ describe('CopilotSDKService - Token Usage Tracking', () => {
         const usage = result.tokenUsage!;
         expect(usage.totalTokens).toBe(usage.inputTokens + usage.outputTokens);
         expect(usage.totalTokens).toBe(1801);
+    });
+});
+
+// ============================================================================
+// Empty Response with Activity (Tool-Based Execution) Tests
+// ============================================================================
+
+describe('CopilotSDKService - Empty response with tool activity', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    /**
+     * Helper: set up the service with a streaming mock and call sendMessage.
+     */
+    function setupStreamingCall(options?: { streaming?: boolean; timeoutMs?: number }) {
+        const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const resultPromise = service.sendMessage({
+            prompt: 'Test prompt',
+            workingDirectory: '/test',
+            streaming: options?.streaming,
+            timeoutMs: options?.timeoutMs ?? 200000,
+            loadDefaultMcpConfig: false,
+        });
+
+        return { sessions, resultPromise };
+    }
+
+    it('should treat empty response as success when turns occurred (tool-based execution)', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Simulate tool-heavy session: turns happen but no text messages
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-1' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-1', toolName: 'edit' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-1', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-2' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-2', toolName: 'shell' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-2', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-2' } });
+
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        // Empty text response but turns occurred — should be success, not failure
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('');
+    });
+
+    it('should still fail when no turns and no response (truly empty session)', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Session goes idle with zero turns and no content
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('No response received');
+    });
+
+    it('should include turnCount in StreamingResult', async () => {
+        // Test sendWithStreaming directly to verify turnCount is returned
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // 3 turns with messages
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-1' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Turn 1', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-2' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Turn 2', messageId: 'msg-2' } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-2' } });
+
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-3' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Turn 3', messageId: 'msg-3' } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-3' } });
+
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        // All 3 messages joined
+        expect(result.response).toBe('Turn 1\n\nTurn 2\n\nTurn 3');
+    });
+
+    it('should succeed with empty text when single tool-only turn occurs', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Single turn with tool execution but no text message
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-1' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-1', toolName: 'write' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-1', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('');
+    });
+
+    it('should succeed with partial text when some turns have messages and some do not', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Turn 1: has a message
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-1' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: "I'll make the changes now.", messageId: 'msg-1' } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+
+        // Turn 2: tool-only, no message
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-2' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-1', toolName: 'edit' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-1', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-2' } });
+
+        // Turn 3: tool-only, no message
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-3' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-2', toolName: 'shell' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-2', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-3' } });
+
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        // Only the non-empty message from turn 1
+        expect(result.response).toBe("I'll make the changes now.");
+    });
+
+    it('should handle realistic impl skill scenario: many tool turns, no final summary', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Realistic impl skill: AI reads files, makes changes, runs tests
+        // Turn 1: Read instruction file
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-1' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: "I'll follow the instructions in the skill file.", messageId: 'msg-1' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-1', toolName: 'view' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-1', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-1' } });
+
+        // Turn 2: Read plan file
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-2' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-2', toolName: 'view' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-2', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-2' } });
+
+        // Turn 3: Read source files
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-3' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-3', toolName: 'view' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-4', toolName: 'grep' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-3', success: true } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-4', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-3' } });
+
+        // Turn 4: Make code changes
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-4' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-5', toolName: 'edit' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-5', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-4' } });
+
+        // Turn 5: Run tests
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-5' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-6', toolName: 'shell' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-6', success: true } });
+        dispatchEvent({ type: 'assistant.turn_end', data: { turnId: 'turn-5' } });
+
+        // Session ends — no final text summary
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        // Should succeed despite only having one text message from turn 1
+        expect(result.success).toBe(true);
+        expect(result.response).toContain("I'll follow the instructions in the skill file.");
     });
 });

@@ -300,6 +300,11 @@ export interface SDKInvocationResult extends AIInvocationResult {
 interface StreamingResult {
     response: string;
     tokenUsage?: TokenUsage;
+    /** Number of assistant turns completed during the session.
+     *  A value > 0 with an empty response indicates the AI performed
+     *  work via tool execution (file edits, shell commands) without
+     *  producing a text summary. */
+    turnCount: number;
 }
 
 /**
@@ -854,10 +859,12 @@ export class CopilotSDKService {
             // (SDK's sendAndWait has hardcoded 120s timeout for session.idle)
             let response: string;
             let tokenUsage: TokenUsage | undefined;
+            let turnCount = 0;
             if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
                 const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk);
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
+                turnCount = streamingResult.turnCount;
             } else {
                 const result = await this.sendWithTimeout(session, options.prompt, timeoutMs);
                 response = result?.data?.content || '';
@@ -868,6 +875,19 @@ export class CopilotSDKService {
             logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Request completed in ${durationMs}ms`);
 
             if (!response) {
+                // For tool-heavy sessions (e.g., impl skill), the AI may complete
+                // all work via tool execution (file edits, shell commands) without
+                // producing a text summary. If turns occurred, the work was done
+                // successfully — treat empty text as success, not failure.
+                if (turnCount > 0) {
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Empty text response but ${turnCount} turns completed — treating as success (tool-based execution)`);
+                    return {
+                        success: true,
+                        response: '',
+                        sessionId: session.sessionId,
+                        tokenUsage,
+                    };
+                }
                 return {
                     success: false,
                     error: 'No response received from Copilot SDK',
@@ -1294,17 +1314,17 @@ export class CopilotSDKService {
             };
 
             const settleWithResult = () => {
-                // Use the last non-empty message as the primary result.
-                // In multi-turn conversations (with MCP tools), earlier messages are
-                // typically intent statements ("Let me read the files...") and the
-                // last message contains the actual output (JSON analysis, etc.).
-                // Fall back to accumulated delta response if no messages were received.
-                const lastMessage = allMessages.length > 0
-                    ? allMessages[allMessages.length - 1]
+                // Join ALL non-empty messages across turns to preserve the full
+                // conversation narrative. For tool-heavy sessions (e.g., impl skill),
+                // intermediate messages like "I'll read the files...", "Making changes
+                // to X...", "All tests pass" provide valuable context for the final
+                // report. Fall back to accumulated delta response if no messages exist.
+                const joinedMessages = allMessages.length > 0
+                    ? allMessages.filter(m => m.trim()).join('\n\n')
                     : '';
-                const result = lastMessage || response;
+                const result = joinedMessages || response;
                 logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Streaming completed (${result.length} chars, ${turnCount} turns, ${allMessages.length} messages)`);
-                settle(resolve, { response: result, tokenUsage: buildTokenUsage() });
+                settle(resolve, { response: result, tokenUsage: buildTokenUsage(), turnCount });
             };
 
             const timeoutId = setTimeout(() => {
