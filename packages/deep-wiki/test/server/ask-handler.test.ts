@@ -2,11 +2,12 @@
  * Tests for Ask Handler - AI Q&A endpoint with SSE streaming.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { IncomingMessage, ServerResponse } from 'http';
 import { Socket } from 'net';
 import { handleAskRequest, buildAskPrompt, chunkText, sendSSE } from '../../src/server/ask-handler';
 import { ContextBuilder } from '../../src/server/context-builder';
+import { ConversationSessionManager } from '../../src/server/conversation-session-manager';
 import type { ModuleGraph } from '../../src/types';
 import type { AskHandlerOptions } from '../../src/server/ask-handler';
 
@@ -461,5 +462,158 @@ describe('sendSSE', () => {
         sendSSE(mockRes, { type: 'context', moduleIds: ['a', 'b'] });
 
         expect(written).toBe('data: {"type":"context","moduleIds":["a","b"]}\n\n');
+    });
+});
+
+// ============================================================================
+// Session-based conversation tests
+// ============================================================================
+
+describe('handleAskRequest with sessionManager', () => {
+    let contextBuilder: ContextBuilder;
+    let mockSendMessage: ReturnType<typeof vi.fn>;
+    let sessionManager: ConversationSessionManager;
+
+    beforeEach(() => {
+        contextBuilder = createContextBuilder();
+        mockSendMessage = vi.fn().mockResolvedValue('Session-based AI response.');
+        sessionManager = new ConversationSessionManager({
+            sendMessage: mockSendMessage,
+            cleanupIntervalMs: 60000,
+        });
+    });
+
+    afterEach(() => {
+        sessionManager.destroyAll();
+    });
+
+    it('should create a new session and return sessionId in done event', async () => {
+        const options: AskHandlerOptions = {
+            contextBuilder,
+            sendMessage: mockSendMessage,
+            sessionManager,
+        };
+
+        const req = createMockRequest(JSON.stringify({ question: 'How does auth work?' }));
+        const { res, getOutput } = createMockResponse();
+
+        await handleAskRequest(req, res, options);
+
+        const events = parseSSEEvents(getOutput());
+        const doneEvent = events.find(e => e.type === 'done');
+        expect(doneEvent).toBeDefined();
+        expect(doneEvent!.sessionId).toBeDefined();
+        expect(typeof doneEvent!.sessionId).toBe('string');
+        expect(doneEvent!.fullResponse).toBe('Session-based AI response.');
+    });
+
+    it('should reuse existing session when sessionId is provided', async () => {
+        const options: AskHandlerOptions = {
+            contextBuilder,
+            sendMessage: mockSendMessage,
+            sessionManager,
+        };
+
+        // First question
+        const req1 = createMockRequest(JSON.stringify({ question: 'First question' }));
+        const { res: res1, getOutput: getOutput1 } = createMockResponse();
+        await handleAskRequest(req1, res1, options);
+
+        const events1 = parseSSEEvents(getOutput1());
+        const sessionId = (events1.find(e => e.type === 'done') as any)?.sessionId;
+        expect(sessionId).toBeDefined();
+
+        // Second question with sessionId
+        mockSendMessage.mockResolvedValue('Follow-up response.');
+        const req2 = createMockRequest(JSON.stringify({
+            question: 'Follow-up question',
+            sessionId,
+        }));
+        const { res: res2, getOutput: getOutput2 } = createMockResponse();
+        await handleAskRequest(req2, res2, options);
+
+        const events2 = parseSSEEvents(getOutput2());
+        const doneEvent2 = events2.find(e => e.type === 'done');
+        expect(doneEvent2!.sessionId).toBe(sessionId);
+        expect(doneEvent2!.fullResponse).toBe('Follow-up response.');
+
+        // Verify session turn count increased
+        const session = sessionManager.get(sessionId);
+        expect(session!.turnCount).toBe(2);
+    });
+
+    it('should not include conversation history in prompt for session mode', async () => {
+        const options: AskHandlerOptions = {
+            contextBuilder,
+            sendMessage: mockSendMessage,
+            sessionManager,
+        };
+
+        const req = createMockRequest(JSON.stringify({
+            question: 'Follow-up question',
+            conversationHistory: [
+                { role: 'user', content: 'Previous question' },
+                { role: 'assistant', content: 'Previous answer' },
+            ],
+        }));
+        const { res } = createMockResponse();
+        await handleAskRequest(req, res, options);
+
+        // Session mode: history should NOT be embedded in prompt
+        const prompt = mockSendMessage.mock.calls[0][0];
+        expect(prompt).not.toContain('Conversation History');
+        expect(prompt).not.toContain('Previous question');
+        expect(prompt).toContain('Follow-up question');
+    });
+
+    it('should fall back to new session when sessionId is invalid', async () => {
+        const options: AskHandlerOptions = {
+            contextBuilder,
+            sendMessage: mockSendMessage,
+            sessionManager,
+        };
+
+        const req = createMockRequest(JSON.stringify({
+            question: 'Test question',
+            sessionId: 'invalid-session-id',
+        }));
+        const { res, getOutput } = createMockResponse();
+        await handleAskRequest(req, res, options);
+
+        const events = parseSSEEvents(getOutput());
+        const doneEvent = events.find(e => e.type === 'done');
+        expect(doneEvent).toBeDefined();
+        expect(doneEvent!.sessionId).toBeDefined();
+        // Should get a NEW session ID, not the invalid one
+        expect(doneEvent!.sessionId).not.toBe('invalid-session-id');
+    });
+
+    it('should fall back to stateless mode when no sessionManager', async () => {
+        const options: AskHandlerOptions = {
+            contextBuilder,
+            sendMessage: mockSendMessage,
+            // No sessionManager
+        };
+
+        const req = createMockRequest(JSON.stringify({
+            question: 'Test',
+            conversationHistory: [
+                { role: 'user', content: 'Q1' },
+                { role: 'assistant', content: 'A1' },
+            ],
+        }));
+        const { res, getOutput } = createMockResponse();
+        await handleAskRequest(req, res, options);
+
+        // Should use legacy mode with conversation history in prompt
+        const prompt = mockSendMessage.mock.calls[0][0];
+        expect(prompt).toContain('Conversation History');
+        expect(prompt).toContain('Q1');
+        expect(prompt).toContain('A1');
+
+        // No sessionId in response
+        const events = parseSSEEvents(getOutput());
+        const doneEvent = events.find(e => e.type === 'done');
+        expect(doneEvent!.sessionId).toBeUndefined();
     });
 });

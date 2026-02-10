@@ -14,6 +14,7 @@ import type { ContextBuilder } from './context-builder';
 import type { AskAIFunction } from './ask-handler';
 import { handleAskRequest } from './ask-handler';
 import { handleExploreRequest } from './explore-handler';
+import type { ConversationSessionManager } from './conversation-session-manager';
 
 // ============================================================================
 // Types
@@ -31,6 +32,8 @@ export interface ApiHandlerContext {
     aiModel?: string;
     /** Working directory for AI sessions */
     aiWorkingDirectory?: string;
+    /** Session manager for multi-turn conversations */
+    sessionManager?: ConversationSessionManager;
 }
 
 // ============================================================================
@@ -92,11 +95,25 @@ export function handleApiRequest(
             sendMessage: context.aiSendMessage,
             model: context.aiModel,
             workingDirectory: context.aiWorkingDirectory,
+            sessionManager: context.sessionManager,
         }).catch(() => {
             if (!res.headersSent) {
                 sendJson(res, { error: 'Internal server error' }, 500);
             }
         });
+        return;
+    }
+
+    // DELETE /api/ask/session/:id — Destroy a conversation session
+    const sessionDeleteMatch = pathname.match(/^\/api\/ask\/session\/(.+)$/);
+    if (method === 'DELETE' && sessionDeleteMatch) {
+        if (!context.sessionManager) {
+            send400(res, 'Session management is not enabled.');
+            return;
+        }
+        const sessionId = decodeURIComponent(sessionDeleteMatch[1]);
+        const destroyed = context.sessionManager.destroy(sessionId);
+        sendJson(res, { destroyed, sessionId });
         return;
     }
 

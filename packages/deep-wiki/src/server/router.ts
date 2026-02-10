@@ -16,6 +16,7 @@ import type { WikiData } from './wiki-data';
 import { handleApiRequest } from './api-handlers';
 import type { ContextBuilder } from './context-builder';
 import type { AskAIFunction } from './ask-handler';
+import type { ConversationSessionManager } from './conversation-session-manager';
 
 // ============================================================================
 // Constants
@@ -66,6 +67,8 @@ export interface RouterOptions {
     aiModel?: string;
     /** Working directory for AI sessions */
     aiWorkingDirectory?: string;
+    /** Session manager for multi-turn conversations */
+    sessionManager?: ConversationSessionManager;
 }
 
 /**
@@ -80,7 +83,7 @@ export interface RouterOptions {
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-    const { wikiData, spaHtml, aiEnabled, repoPath, contextBuilder, aiSendMessage, aiModel, aiWorkingDirectory } = options;
+    const { wikiData, spaHtml, aiEnabled, repoPath, contextBuilder, aiSendMessage, aiModel, aiWorkingDirectory, sessionManager } = options;
 
     return (req: http.IncomingMessage, res: http.ServerResponse) => {
         const parsedUrl = url.parse(req.url || '/', true);
@@ -89,7 +92,7 @@ export function createRequestHandler(
 
         // CORS headers for API requests
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
         // Handle CORS preflight
@@ -109,6 +112,7 @@ export function createRequestHandler(
                 aiSendMessage,
                 aiModel,
                 aiWorkingDirectory,
+                sessionManager,
             });
             return;
         }

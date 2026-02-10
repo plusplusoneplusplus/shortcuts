@@ -164,6 +164,11 @@ describe('Ask AI — JavaScript functionality', () => {
         expect(html).toContain('var conversationHistory = []');
     });
 
+    it('should include current session ID variable', () => {
+        const html = generateSpaHtml(createOptions());
+        expect(html).toContain('var currentSessionId = null');
+    });
+
     it('should include ask streaming flag', () => {
         const html = generateSpaHtml(createOptions());
         expect(html).toContain('var askStreaming = false');
@@ -215,6 +220,11 @@ describe('Ask AI — JavaScript functionality', () => {
         const html = generateSpaHtml(createOptions());
         expect(html).toContain('conversationHistory');
         expect(html).toContain('JSON.stringify');
+    });
+
+    it('should send sessionId in follow-up requests', () => {
+        const html = generateSpaHtml(createOptions());
+        expect(html).toContain('requestBody.sessionId = currentSessionId');
     });
 
     it('should process SSE events', () => {
@@ -269,6 +279,23 @@ describe('Ask AI — JavaScript functionality', () => {
         const html = generateSpaHtml(createOptions());
         expect(html).toContain("conversationHistory = []");
         expect(html).toContain("document.getElementById('ask-messages').innerHTML = ''");
+    });
+
+    it('should reset currentSessionId on clear', () => {
+        const html = generateSpaHtml(createOptions());
+        expect(html).toContain("currentSessionId = null");
+    });
+
+    it('should destroy server session on clear via DELETE', () => {
+        const html = generateSpaHtml(createOptions());
+        expect(html).toContain("fetch('/api/ask/session/'");
+        expect(html).toContain("method: 'DELETE'");
+    });
+
+    it('should store sessionId from done event', () => {
+        const html = generateSpaHtml(createOptions());
+        expect(html).toContain('data.sessionId');
+        expect(html).toContain('currentSessionId = data.sessionId');
     });
 
     it('should render markdown in assistant responses', () => {

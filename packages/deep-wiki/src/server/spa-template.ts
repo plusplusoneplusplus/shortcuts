@@ -2076,6 +2076,7 @@ ${opts.enableAI ? `
         var conversationHistory = [];
         var askStreaming = false;
         var askPanelOpen = false;
+        var currentSessionId = null;
 
         function updateAskSubject(name) {
             var el = document.getElementById('ask-bar-subject');
@@ -2085,6 +2086,10 @@ ${opts.enableAI ? `
         // Widget controls
         document.getElementById('ask-close').addEventListener('click', collapseWidget);
         document.getElementById('ask-clear').addEventListener('click', function() {
+            if (currentSessionId) {
+                fetch('/api/ask/session/' + encodeURIComponent(currentSessionId), { method: 'DELETE' }).catch(function() {});
+                currentSessionId = null;
+            }
             conversationHistory = [];
             document.getElementById('ask-messages').innerHTML = '';
         });
@@ -2136,13 +2141,17 @@ ${opts.enableAI ? `
 
             var typingEl = appendAskTyping();
 
+            var requestBody = { question: question };
+            if (currentSessionId) {
+                requestBody.sessionId = currentSessionId;
+            } else {
+                requestBody.conversationHistory = conversationHistory.slice(0, -1);
+            }
+
             fetch('/api/ask', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    question: question,
-                    conversationHistory: conversationHistory.slice(0, -1),
-                }),
+                body: JSON.stringify(requestBody),
             }).then(function(response) {
                 if (!response.ok) {
                     return response.json().then(function(err) {
@@ -2170,6 +2179,7 @@ ${opts.enableAI ? `
                                         updateAskAssistantStreaming(responseEl, fullResponse);
                                     } else if (data.type === 'done') {
                                         fullResponse = data.fullResponse || fullResponse;
+                                        if (data.sessionId) currentSessionId = data.sessionId;
                                     }
                                 } catch(e) {}
                             }
@@ -2200,6 +2210,7 @@ ${opts.enableAI ? `
                                 updateAskAssistantStreaming(responseEl, fullResponse);
                             } else if (data.type === 'done') {
                                 fullResponse = data.fullResponse || fullResponse;
+                                if (data.sessionId) currentSessionId = data.sessionId;
                                 finishStreaming(fullResponse, typingEl);
                                 return;
                             } else if (data.type === 'error') {

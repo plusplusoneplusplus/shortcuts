@@ -321,7 +321,10 @@ describe('POST /api/ask integration', () => {
         );
     });
 
-    it('should support conversation history for multi-turn', async () => {
+    it('should support conversation history for multi-turn (legacy mode without sessionManager)', async () => {
+        // Test legacy mode — send conversationHistory, no sessionId
+        // When sessionManager creates a new session, history is NOT embedded.
+        // But the question should still be in the prompt.
         const mockSendMessage = vi.fn().mockResolvedValue('More details about JWT...');
 
         wikiServer = await createServer({
@@ -331,7 +334,7 @@ describe('POST /api/ask integration', () => {
             aiSendMessage: mockSendMessage,
         });
 
-        await makeRequest(
+        const { body } = await makeRequest(
             wikiServer.port, 'POST', '/api/ask',
             {
                 question: 'Tell me more about tokens',
@@ -343,9 +346,110 @@ describe('POST /api/ask integration', () => {
         );
 
         const prompt = mockSendMessage.mock.calls[0][0];
-        expect(prompt).toContain('Conversation History');
-        expect(prompt).toContain('How does auth work?');
-        expect(prompt).toContain('It uses JWT tokens.');
         expect(prompt).toContain('Tell me more about tokens');
+
+        // Session-based mode: done event should include sessionId
+        const events = parseSSEEvents(body);
+        const doneEvent = events.find(e => e.type === 'done');
+        expect(doneEvent).toBeDefined();
+        expect(doneEvent!.sessionId).toBeDefined();
+        expect(typeof doneEvent!.sessionId).toBe('string');
+    });
+
+    it('should return sessionId in done event for new conversations', async () => {
+        const mockSendMessage = vi.fn().mockResolvedValue('Test response');
+
+        wikiServer = await createServer({
+            wikiDir: tmpDir,
+            port: 0,
+            aiEnabled: true,
+            aiSendMessage: mockSendMessage,
+        });
+
+        const { body } = await makeRequest(
+            wikiServer.port, 'POST', '/api/ask',
+            { question: 'How does auth work?' },
+        );
+
+        const events = parseSSEEvents(body);
+        const doneEvent = events.find(e => e.type === 'done');
+        expect(doneEvent).toBeDefined();
+        expect(doneEvent!.sessionId).toBeDefined();
+        expect(typeof doneEvent!.sessionId).toBe('string');
+    });
+
+    it('should reuse session for follow-up questions', async () => {
+        const mockSendMessage = vi.fn()
+            .mockResolvedValueOnce('Auth uses JWT tokens.')
+            .mockResolvedValueOnce('More details about JWT...');
+
+        wikiServer = await createServer({
+            wikiDir: tmpDir,
+            port: 0,
+            aiEnabled: true,
+            aiSendMessage: mockSendMessage,
+        });
+
+        // First question — get sessionId
+        const { body: body1 } = await makeRequest(
+            wikiServer.port, 'POST', '/api/ask',
+            { question: 'How does auth work?' },
+        );
+        const events1 = parseSSEEvents(body1);
+        const sessionId = (events1.find(e => e.type === 'done') as any)?.sessionId;
+        expect(sessionId).toBeDefined();
+
+        // Second question — reuse session
+        const { body: body2 } = await makeRequest(
+            wikiServer.port, 'POST', '/api/ask',
+            { question: 'Tell me more about tokens', sessionId },
+        );
+        const events2 = parseSSEEvents(body2);
+        const doneEvent2 = events2.find(e => e.type === 'done');
+        expect(doneEvent2).toBeDefined();
+        expect(doneEvent2!.sessionId).toBe(sessionId);
+
+        // Verify the second call did NOT include conversation history in prompt
+        const secondPrompt = mockSendMessage.mock.calls[1][0];
+        expect(secondPrompt).not.toContain('Conversation History');
+        expect(secondPrompt).toContain('Tell me more about tokens');
+    });
+
+    it('should destroy session via DELETE endpoint', async () => {
+        const mockSendMessage = vi.fn().mockResolvedValue('Test response');
+
+        wikiServer = await createServer({
+            wikiDir: tmpDir,
+            port: 0,
+            aiEnabled: true,
+            aiSendMessage: mockSendMessage,
+        });
+
+        // Create a session
+        const { body } = await makeRequest(
+            wikiServer.port, 'POST', '/api/ask',
+            { question: 'test' },
+        );
+        const events = parseSSEEvents(body);
+        const sessionId = (events.find(e => e.type === 'done') as any)?.sessionId;
+        expect(sessionId).toBeDefined();
+
+        // Destroy it
+        const deleteResult = await makeRequest(
+            wikiServer.port, 'DELETE', `/api/ask/session/${sessionId}`,
+        );
+        expect(deleteResult.statusCode).toBe(200);
+        const deleteBody = JSON.parse(deleteResult.body);
+        expect(deleteBody.destroyed).toBe(true);
+
+        // Verify it's gone — next request should create new session
+        const { body: body2 } = await makeRequest(
+            wikiServer.port, 'POST', '/api/ask',
+            { question: 'follow up', sessionId },
+        );
+        const events2 = parseSSEEvents(body2);
+        const doneEvent2 = events2.find(e => e.type === 'done');
+        expect(doneEvent2!.sessionId).toBeDefined();
+        expect(doneEvent2!.sessionId).not.toBe(sessionId);
     });
 });

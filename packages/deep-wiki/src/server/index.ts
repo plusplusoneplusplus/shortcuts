@@ -18,6 +18,7 @@ import { ContextBuilder } from './context-builder';
 import { WebSocketServer } from './websocket';
 import { FileWatcher } from './file-watcher';
 import type { AskAIFunction } from './ask-handler';
+import { ConversationSessionManager } from './conversation-session-manager';
 import type { WebsiteTheme } from '../types';
 
 // ============================================================================
@@ -62,6 +63,8 @@ export interface WikiServer {
     wikiData: WikiData;
     /** The context builder for AI Q&A (only when AI is enabled) */
     contextBuilder?: ContextBuilder;
+    /** The conversation session manager (only when AI is enabled) */
+    sessionManager?: ConversationSessionManager;
     /** The WebSocket server (only when watch mode is enabled) */
     wsServer?: WebSocketServer;
     /** The file watcher (only when watch mode is enabled) */
@@ -101,9 +104,16 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
 
     // Build context index for AI Q&A
     let contextBuilder: ContextBuilder | undefined;
+    let sessionManager: ConversationSessionManager | undefined;
     if (aiEnabled) {
         const markdownData = wikiData.getMarkdownData();
         contextBuilder = new ContextBuilder(wikiData.graph, markdownData);
+
+        if (options.aiSendMessage) {
+            sessionManager = new ConversationSessionManager({
+                sendMessage: options.aiSendMessage,
+            });
+        }
     }
 
     // Generate SPA HTML
@@ -126,6 +136,7 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
         aiSendMessage: options.aiSendMessage,
         aiModel: options.aiModel,
         aiWorkingDirectory: options.repoPath,
+        sessionManager,
     });
 
     const server = http.createServer(handler);
@@ -196,12 +207,16 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
         server,
         wikiData,
         contextBuilder,
+        sessionManager,
         wsServer,
         fileWatcher,
         port: actualPort,
         host,
         url,
         close: async () => {
+            if (sessionManager) {
+                sessionManager.destroyAll();
+            }
             if (fileWatcher) {
                 fileWatcher.stop();
             }
@@ -226,6 +241,8 @@ export { WebSocketServer } from './websocket';
 export { FileWatcher } from './file-watcher';
 export type { SpaTemplateOptions } from './spa-template';
 export type { ModuleSummary, ModuleDetail, SpecialPage } from './wiki-data';
+export { ConversationSessionManager } from './conversation-session-manager';
+export type { ConversationSession, ConversationSessionManagerOptions, SessionSendResult } from './conversation-session-manager';
 export type { AskAIFunction, AskRequest, ConversationMessage } from './ask-handler';
 export type { ExploreRequest } from './explore-handler';
 export type { RetrievedContext } from './context-builder';
