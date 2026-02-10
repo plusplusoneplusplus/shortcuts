@@ -10,6 +10,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import type { TokenUsage } from '@plusplusoneplusplus/pipeline-core';
+
 // ============================================================================
 // Phase 1: Discovery Types
 // ============================================================================
@@ -134,11 +136,7 @@ export interface DiscoveryResult {
     /** Total duration in milliseconds */
     duration: number;
     /** Token usage information (if available from SDK) */
-    tokenUsage?: {
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-    };
+    tokenUsage?: TokenUsage;
 }
 
 // ============================================================================
@@ -345,11 +343,7 @@ export interface AnalysisResult {
     /** Total duration in milliseconds */
     duration: number;
     /** Token usage information (if available) */
-    tokenUsage?: {
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-    };
+    tokenUsage?: TokenUsage;
 }
 
 // ============================================================================

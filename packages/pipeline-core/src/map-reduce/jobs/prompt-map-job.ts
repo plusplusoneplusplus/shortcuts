@@ -82,6 +82,8 @@ export interface PromptMapResult {
     rawResponse?: string;
     /** SDK session ID for session resume functionality */
     sessionId?: string;
+    /** Token usage from the AI call (if available) */
+    tokenUsage?: import('../ai/copilot-sdk-service').TokenUsage;
 }
 
 /**
@@ -253,14 +255,15 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
                         rawText: result.response,
                         success: true,
                         rawResponse: result.response,
-                        sessionId: result.sessionId
+                        sessionId: result.sessionId,
+                        tokenUsage: result.tokenUsage,
                     };
                 }
 
                 // Structured mode - parse JSON response
                 try {
                     const output = parseAIResponse(result.response, outputFields);
-                    return { item, output, success: true, rawResponse: result.response, sessionId: result.sessionId };
+                    return { item, output, success: true, rawResponse: result.response, sessionId: result.sessionId, tokenUsage: result.tokenUsage };
                 } catch (parseError) {
                     const logger = getLogger();
                     logger.debug(LogCategory.MAP_REDUCE, `PromptMapMapper: Failed to parse AI response for item ${workItem.id}. Response (${result.response.length} chars): ${result.response.substring(0, 500)}`);
@@ -270,7 +273,8 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
                         success: false,
                         error: `Failed to parse AI response: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
                         rawResponse: result.response,
-                        sessionId: result.sessionId
+                        sessionId: result.sessionId,
+                        tokenUsage: result.tokenUsage,
                     };
                 }
             }
@@ -281,7 +285,8 @@ class PromptMapMapper implements Mapper<PromptWorkItemData, PromptMapResult> {
                 success: false,
                 error: result.error || 'AI invocation failed',
                 rawResponse: result.response,
-                sessionId: result.sessionId
+                sessionId: result.sessionId,
+                tokenUsage: result.tokenUsage,
             };
         } catch (error) {
             return {

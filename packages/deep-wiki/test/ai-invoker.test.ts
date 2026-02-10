@@ -313,4 +313,91 @@ describe('AI Invoker Factory', () => {
             expect(result.error).toBe('Pool exhausted');
         });
     });
+
+    // ========================================================================
+    // Token Usage Pass-through
+    // ========================================================================
+
+    describe('tokenUsage pass-through', () => {
+        const mockTokenUsage = {
+            inputTokens: 1000,
+            outputTokens: 500,
+            cacheReadTokens: 200,
+            cacheWriteTokens: 100,
+            totalTokens: 1500,
+            cost: 0.05,
+            turnCount: 3,
+        };
+
+        it('should pass tokenUsage from analysis invoker', async () => {
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: 'result',
+                tokenUsage: mockTokenUsage,
+            });
+
+            const invoker = createAnalysisInvoker({ repoPath: '/repo' });
+            const result = await invoker('test');
+
+            expect(result.tokenUsage).toBeDefined();
+            expect(result.tokenUsage!.inputTokens).toBe(1000);
+            expect(result.tokenUsage!.outputTokens).toBe(500);
+            expect(result.tokenUsage!.totalTokens).toBe(1500);
+            expect(result.tokenUsage!.cost).toBe(0.05);
+            expect(result.tokenUsage!.turnCount).toBe(3);
+        });
+
+        it('should pass tokenUsage from writing invoker', async () => {
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: '# Article',
+                tokenUsage: mockTokenUsage,
+            });
+
+            const invoker = createWritingInvoker({});
+            const result = await invoker('test');
+
+            expect(result.tokenUsage).toBeDefined();
+            expect(result.tokenUsage!.inputTokens).toBe(1000);
+            expect(result.tokenUsage!.totalTokens).toBe(1500);
+        });
+
+        it('should pass tokenUsage from consolidation invoker', async () => {
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: '{"clusters": []}',
+                tokenUsage: mockTokenUsage,
+            });
+
+            const { createConsolidationInvoker } = await import('../src/ai-invoker');
+            const invoker = createConsolidationInvoker({ workingDirectory: '/tmp' });
+            const result = await invoker('test');
+
+            expect(result.tokenUsage).toBeDefined();
+            expect(result.tokenUsage!.inputTokens).toBe(1000);
+        });
+
+        it('should return undefined tokenUsage when SDK does not provide it', async () => {
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: 'result',
+                // no tokenUsage
+            });
+
+            const invoker = createAnalysisInvoker({ repoPath: '/repo' });
+            const result = await invoker('test');
+
+            expect(result.tokenUsage).toBeUndefined();
+        });
+
+        it('should not include tokenUsage on error/exception', async () => {
+            mockSendMessage.mockRejectedValue(new Error('timeout'));
+
+            const invoker = createAnalysisInvoker({ repoPath: '/repo' });
+            const result = await invoker('test');
+
+            expect(result.success).toBe(false);
+            expect(result.tokenUsage).toBeUndefined();
+        });
+    });
 });

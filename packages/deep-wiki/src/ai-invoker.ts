@@ -127,6 +127,7 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
                 success: result.success,
                 response: result.response || '',
                 error: result.error,
+                tokenUsage: result.tokenUsage,
             };
         } catch (error) {
             return {
@@ -171,6 +172,7 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
                 success: result.success,
                 response: result.response || '',
                 error: result.error,
+                tokenUsage: result.tokenUsage,
             };
         } catch (error) {
             return {
@@ -231,6 +233,7 @@ export function createConsolidationInvoker(options: ConsolidationInvokerOptions)
                 success: result.success,
                 response: result.response || '',
                 error: result.error,
+                tokenUsage: result.tokenUsage,
             };
         } catch (error) {
             return {

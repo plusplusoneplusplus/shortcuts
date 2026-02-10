@@ -13,6 +13,7 @@ import {
     type SendMessageOptions,
     type PermissionRequest,
     type PermissionRequestResult,
+    type TokenUsage,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { DiscoveryOptions, ModuleGraph } from '../types';
 import { buildDiscoveryPrompt } from './prompts';
@@ -45,6 +46,20 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
 }
 
 // ============================================================================
+// Types
+// ============================================================================
+
+/**
+ * Result from a discovery session, including token usage.
+ */
+export interface DiscoverySessionResult {
+    /** The parsed module graph */
+    graph: ModuleGraph;
+    /** Aggregated token usage across all SDK calls (initial + retry) */
+    tokenUsage?: TokenUsage;
+}
+
+// ============================================================================
 // Discovery Session
 // ============================================================================
 
@@ -58,7 +73,7 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
  * @returns The parsed ModuleGraph
  * @throws Error if SDK is unavailable, AI times out, or response is malformed
  */
-export async function runDiscoverySession(options: DiscoveryOptions): Promise<ModuleGraph> {
+export async function runDiscoverySession(options: DiscoveryOptions): Promise<DiscoverySessionResult> {
     const service = getCopilotSDKService();
 
     // Check SDK availability
@@ -116,7 +131,7 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Mo
     try {
         const graph = parseModuleGraphResponse(result.response);
         printInfo(`Parsed ${graph.modules.length} modules across ${graph.categories.length} categories`);
-        return graph;
+        return { graph, tokenUsage: result.tokenUsage };
     } catch (parseError) {
         // On parse failure, retry once with a stricter prompt
         printWarning(`Failed to parse response: ${(parseError as Error).message}. Retrying with stricter prompt...`);
@@ -138,8 +153,32 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Mo
 
         const graph = parseModuleGraphResponse(retryResult.response);
         printInfo(`Retry succeeded — parsed ${graph.modules.length} modules`);
-        return graph;
+        // Merge tokenUsage from both attempts
+        const mergedUsage = mergeTokenUsage(result.tokenUsage, retryResult.tokenUsage);
+        return { graph, tokenUsage: mergedUsage };
     }
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Merge two TokenUsage objects by summing their fields.
+ */
+function mergeTokenUsage(a?: TokenUsage, b?: TokenUsage): TokenUsage | undefined {
+    if (!a && !b) { return undefined; }
+    if (!a) { return b; }
+    if (!b) { return a; }
+    return {
+        inputTokens: a.inputTokens + b.inputTokens,
+        outputTokens: a.outputTokens + b.outputTokens,
+        cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+        cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
+        totalTokens: a.totalTokens + b.totalTokens,
+        cost: (a.cost ?? 0) + (b.cost ?? 0) || undefined,
+        turnCount: a.turnCount + b.turnCount,
+    };
 }
 
 // ============================================================================

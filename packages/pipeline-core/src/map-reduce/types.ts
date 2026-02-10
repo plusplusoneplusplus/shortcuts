@@ -317,6 +317,8 @@ export interface AIInvokerResult {
     error?: string;
     /** SDK session ID if the request was made via SDK (for session resume) */
     sessionId?: string;
+    /** Token usage data from the SDK (if available) */
+    tokenUsage?: import('../ai/copilot-sdk-service').TokenUsage;
 }
 
 /**

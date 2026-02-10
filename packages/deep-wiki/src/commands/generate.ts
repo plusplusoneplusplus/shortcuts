@@ -27,6 +27,8 @@ import {
 import { checkAIAvailability, createAnalysisInvoker, createWritingInvoker, createConsolidationInvoker } from '../ai-invoker';
 import { extractJSON, type AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 import { normalizeModuleId } from '../schemas';
+import { UsageTracker } from '../usage-tracker';
+import type { TrackedPhase } from '../usage-tracker';
 import {
     getCachedGraph,
     getCachedGraphAny,
@@ -147,6 +149,9 @@ export async function executeGenerate(
     process.on('SIGINT', sigintHandler);
 
     try {
+        // Token usage tracker
+        const usageTracker = new UsageTracker();
+
         // ================================================================
         // Phase 1: Discovery
         // ================================================================
@@ -160,6 +165,9 @@ export async function executeGenerate(
             }
             graph = phase1Result.graph!;
             phase1Duration = phase1Result.duration;
+            if (phase1Result.tokenUsage) {
+                usageTracker.addUsage('discovery', phase1Result.tokenUsage);
+            }
         } else {
             // Load from cache
             const cached = options.useCache
@@ -171,6 +179,7 @@ export async function executeGenerate(
             }
             graph = cached.graph;
             printSuccess(`Loaded cached module graph (${graph.modules.length} modules)`);
+            usageTracker.markCached('discovery');
         }
 
         if (isCancelled()) {
@@ -183,7 +192,7 @@ export async function executeGenerate(
         let consolidationDuration = 0;
 
         if (!options.noCluster && graph.modules.length > 0) {
-            const phase15Result = await runPhase15(absoluteRepoPath, graph, options);
+            const phase15Result = await runPhase15(absoluteRepoPath, graph, options, usageTracker);
             graph = phase15Result.graph;
             consolidationDuration = phase15Result.duration;
         }
@@ -200,7 +209,7 @@ export async function executeGenerate(
 
         if (startPhase <= 2) {
             const phase2Result = await runPhase2(
-                absoluteRepoPath, graph, options, isCancelled
+                absoluteRepoPath, graph, options, isCancelled, usageTracker
             );
             if (phase2Result.exitCode !== undefined) {
                 return phase2Result.exitCode;
@@ -216,6 +225,7 @@ export async function executeGenerate(
             }
             analyses = cached;
             printSuccess(`Loaded ${analyses.length} cached module analyses`);
+            usageTracker.markCached('analysis');
         }
 
         if (isCancelled()) {
@@ -226,7 +236,7 @@ export async function executeGenerate(
         // Phase 3: Article Generation
         // ================================================================
         const phase3Result = await runPhase3(
-            absoluteRepoPath, graph, analyses, options, isCancelled
+            absoluteRepoPath, graph, analyses, options, isCancelled, usageTracker
         );
         if (phase3Result.exitCode !== undefined) {
             return phase3Result.exitCode;
@@ -266,6 +276,27 @@ export async function executeGenerate(
         printKeyValue('Phase 3 Duration', formatDuration(phase3Result.duration));
         if (phase4Duration > 0) { printKeyValue('Phase 4 Duration', formatDuration(phase4Duration)); }
         printKeyValue('Total Duration', formatDuration(totalDuration));
+
+        // Token usage summary
+        if (usageTracker.hasUsage()) {
+            process.stderr.write('\n');
+            printTokenUsageSummary(usageTracker);
+
+            // Save JSON report
+            try {
+                const cacheDir = path.join(path.resolve(options.output), '.wiki-cache');
+                fs.mkdirSync(cacheDir, { recursive: true });
+                const report = usageTracker.toReport(options.model);
+                fs.writeFileSync(
+                    path.join(cacheDir, 'usage-report.json'),
+                    JSON.stringify(report, null, 2),
+                    'utf-8'
+                );
+            } catch {
+                // Non-fatal
+            }
+        }
+
         process.stderr.write('\n');
         printSuccess(`Wiki generated at ${bold(path.resolve(options.output))}`);
         if (websiteGenerated) {
@@ -287,6 +318,7 @@ interface Phase1Result {
     graph?: ModuleGraph;
     duration: number;
     exitCode?: number;
+    tokenUsage?: import('@plusplusoneplusplus/pipeline-core').TokenUsage;
 }
 
 async function runPhase1(
@@ -431,7 +463,7 @@ async function runPhase1(
             // Non-fatal
         }
 
-        return { graph: result.graph, duration: Date.now() - startTime };
+        return { graph: result.graph, duration: Date.now() - startTime, tokenUsage: result.tokenUsage };
     } catch (error) {
         spinner.fail('Discovery failed');
         printError((error as Error).message);
@@ -451,7 +483,8 @@ interface Phase15Result {
 async function runPhase15(
     repoPath: string,
     graph: ModuleGraph,
-    options: GenerateCommandOptions
+    options: GenerateCommandOptions,
+    usageTracker?: UsageTracker
 ): Promise<Phase15Result> {
     const startTime = Date.now();
 
@@ -472,6 +505,7 @@ async function runPhase15(
             printSuccess(
                 `Using cached consolidation (${inputModuleCount} → ${cached.graph.modules.length} modules)`
             );
+            usageTracker?.markCached('consolidation');
             return { graph: cached.graph, duration: Date.now() - startTime };
         }
     }
@@ -482,11 +516,18 @@ async function runPhase15(
     try {
         // Create AI invoker for semantic clustering (uses output dir as cwd)
         fs.mkdirSync(outputDir, { recursive: true });
-        const aiInvoker = createConsolidationInvoker({
+        const baseInvoker = createConsolidationInvoker({
             workingDirectory: outputDir,
             model: options.model,
             timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
         });
+
+        // Wrap invoker to capture token usage
+        const aiInvoker: AIInvoker = async (prompt, opts) => {
+            const result = await baseInvoker(prompt, opts);
+            usageTracker?.addUsage('consolidation', result.tokenUsage);
+            return result;
+        };
 
         const result = await consolidateModules(graph, aiInvoker, {
             model: options.model,
@@ -524,7 +565,8 @@ async function runPhase2(
     repoPath: string,
     graph: ModuleGraph,
     options: GenerateCommandOptions,
-    isCancelled: () => boolean
+    isCancelled: () => boolean,
+    usageTracker?: UsageTracker
 ): Promise<Phase2Result> {
     const startTime = Date.now();
 
@@ -569,6 +611,7 @@ async function runPhase2(
                 const allCached = getCachedAnalyses(options.output);
                 if (allCached && allCached.length > 0) {
                     printSuccess(`All ${allCached.length} module analyses are up-to-date (cached)`);
+                    usageTracker?.markCached('analysis');
                     return { analyses: allCached, duration: Date.now() - startTime };
                 }
             } else {
@@ -617,15 +660,23 @@ async function runPhase2(
 
     if (modulesToAnalyze.length === 0 && cachedAnalyses.length > 0) {
         printSuccess(`All analyses loaded from cache (${cachedAnalyses.length} modules)`);
+        usageTracker?.markCached('analysis');
         return { analyses: cachedAnalyses, duration: Date.now() - startTime };
     }
 
     // Create analysis invoker (MCP-enabled, direct sessions)
-    const analysisInvoker = createAnalysisInvoker({
+    const baseAnalysisInvoker = createAnalysisInvoker({
         repoPath,
         model: options.model,
         timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
     });
+
+    // Wrap invoker to capture token usage
+    const analysisInvoker: AIInvoker = async (prompt, opts) => {
+        const result = await baseAnalysisInvoker(prompt, opts);
+        usageTracker?.addUsage('analysis', result.tokenUsage);
+        return result;
+    };
 
     // Get git hash once upfront for per-module incremental saves
     let gitHash: string | null = null;
@@ -746,7 +797,8 @@ async function runPhase3(
     graph: ModuleGraph,
     analyses: ModuleAnalysis[],
     options: GenerateCommandOptions,
-    isCancelled: () => boolean
+    isCancelled: () => boolean,
+    usageTracker?: UsageTracker
 ): Promise<Phase3Result> {
     const startTime = Date.now();
 
@@ -797,10 +849,17 @@ async function runPhase3(
     }
 
     // Create writing invoker (session pool, no tools)
-    const writingInvoker = createWritingInvoker({
+    const baseWritingInvoker = createWritingInvoker({
         model: options.model,
         timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
     });
+
+    // Wrap invoker to capture token usage
+    const writingInvoker: AIInvoker = async (prompt, opts) => {
+        const result = await baseWritingInvoker(prompt, opts);
+        usageTracker?.addUsage('writing', result.tokenUsage);
+        return result;
+    };
 
     const spinner = new Spinner();
 
@@ -1143,4 +1202,43 @@ function formatDuration(ms: number): string {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}m ${remainingSeconds}s`;
+}
+
+/**
+ * Print a token usage summary table to stderr.
+ */
+function printTokenUsageSummary(tracker: UsageTracker): void {
+    const fmt = UsageTracker.formatTokens;
+
+    const phases: Array<{ label: string; phase: TrackedPhase }> = [
+        { label: 'Phase 1 (Discovery)', phase: 'discovery' },
+        { label: 'Phase 1.5 (Consolidation)', phase: 'consolidation' },
+        { label: 'Phase 2 (Analysis)', phase: 'analysis' },
+        { label: 'Phase 3 (Writing)', phase: 'writing' },
+    ];
+
+    printInfo('── Token Usage ──────────────────────────────────────────');
+
+    for (const { label, phase } of phases) {
+        const u = tracker.getPhaseUsage(phase);
+        if (u.cached && u.calls === 0) {
+            printKeyValue(label, gray('cached'));
+        } else if (u.calls > 0) {
+            printKeyValue(
+                label,
+                `${fmt(u.inputTokens)} in / ${fmt(u.outputTokens)} out / ${fmt(u.totalTokens)} total`
+            );
+        }
+    }
+
+    const total = tracker.getTotal();
+    printInfo('─────────────────────────────────────────────────────────');
+    printKeyValue(
+        'Total Tokens',
+        `${fmt(total.inputTokens)} in / ${fmt(total.outputTokens)} out / ${fmt(total.totalTokens)} total`
+    );
+    if (total.cost != null) {
+        printKeyValue('Total Cost', UsageTracker.formatCost(total.cost));
+    }
+    printKeyValue('AI Calls', String(total.calls));
 }
