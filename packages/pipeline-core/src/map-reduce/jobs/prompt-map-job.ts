@@ -83,7 +83,7 @@ export interface PromptMapResult {
     /** SDK session ID for session resume functionality */
     sessionId?: string;
     /** Token usage from the AI call (if available) */
-    tokenUsage?: import('../ai/copilot-sdk-service').TokenUsage;
+    tokenUsage?: import('../../ai/copilot-sdk-service').TokenUsage;
 }
 
 /**
