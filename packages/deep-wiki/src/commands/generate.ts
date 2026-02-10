@@ -56,6 +56,7 @@ import {
     getCachedSeeds,
     getCachedSeedsAny,
     clearDiscoveryCache,
+    restampArticles,
 } from '../cache';
 import {
     Spinner,
@@ -207,6 +208,8 @@ export async function executeGenerate(
         let analyses: ModuleAnalysis[];
         let phase2Duration = 0;
 
+        let reanalyzedModuleIds: string[] | undefined;
+
         if (startPhase <= 2) {
             const phase2Result = await runPhase2(
                 absoluteRepoPath, graph, options, isCancelled, usageTracker
@@ -216,6 +219,7 @@ export async function executeGenerate(
             }
             analyses = phase2Result.analyses!;
             phase2Duration = phase2Result.duration;
+            reanalyzedModuleIds = phase2Result.reanalyzedModuleIds;
         } else {
             // Load from cache
             const cached = getCachedAnalyses(options.output);
@@ -236,7 +240,7 @@ export async function executeGenerate(
         // Phase 3: Article Generation
         // ================================================================
         const phase3Result = await runPhase3(
-            absoluteRepoPath, graph, analyses, options, isCancelled, usageTracker
+            absoluteRepoPath, graph, analyses, options, isCancelled, usageTracker, reanalyzedModuleIds
         );
         if (phase3Result.exitCode !== undefined) {
             return phase3Result.exitCode;
@@ -559,6 +563,9 @@ interface Phase2Result {
     analyses?: ModuleAnalysis[];
     duration: number;
     exitCode?: number;
+    /** Module IDs that were re-analyzed (not loaded from cache) in this run.
+     *  Empty array means all modules were cached; undefined means unknown. */
+    reanalyzedModuleIds?: string[];
 }
 
 async function runPhase2(
@@ -612,7 +619,7 @@ async function runPhase2(
                 if (allCached && allCached.length > 0) {
                     printSuccess(`All ${allCached.length} module analyses are up-to-date (cached)`);
                     usageTracker?.markCached('analysis');
-                    return { analyses: allCached, duration: Date.now() - startTime };
+                    return { analyses: allCached, duration: Date.now() - startTime, reanalyzedModuleIds: [] };
                 }
             } else {
                 // Partial rebuild
@@ -661,7 +668,7 @@ async function runPhase2(
     if (modulesToAnalyze.length === 0 && cachedAnalyses.length > 0) {
         printSuccess(`All analyses loaded from cache (${cachedAnalyses.length} modules)`);
         usageTracker?.markCached('analysis');
-        return { analyses: cachedAnalyses, duration: Date.now() - startTime };
+        return { analyses: cachedAnalyses, duration: Date.now() - startTime, reanalyzedModuleIds: [] };
     }
 
     // Create analysis invoker (MCP-enabled, direct sessions)
@@ -774,7 +781,11 @@ async function runPhase2(
             }
         }
 
-        return { analyses: allAnalyses, duration: Date.now() - startTime };
+        return {
+            analyses: allAnalyses,
+            duration: Date.now() - startTime,
+            reanalyzedModuleIds: modulesToAnalyze.map(m => m.id),
+        };
     } catch (error) {
         spinner.fail('Analysis failed');
         printError((error as Error).message);
@@ -798,7 +809,8 @@ async function runPhase3(
     analyses: ModuleAnalysis[],
     options: GenerateCommandOptions,
     isCancelled: () => boolean,
-    usageTracker?: UsageTracker
+    usageTracker?: UsageTracker,
+    reanalyzedModuleIds?: string[]
 ): Promise<Phase3Result> {
     const startTime = Date.now();
 
@@ -820,11 +832,33 @@ async function runPhase3(
     let cachedArticles: GeneratedArticle[] = [];
 
     if (!options.force) {
-        // Scan for individually cached articles (handles crash recovery too)
         const moduleIds = analyses
             .map(a => a.moduleId)
             .filter(id => !!id);
 
+        // Re-stamp unchanged module articles with the new git hash BEFORE scanning.
+        // This is the key to Phase 3 incremental invalidation: modules that were NOT
+        // re-analyzed in Phase 2 get their cached articles re-stamped so they pass
+        // the git hash validation in scanIndividualArticlesCache().
+        //
+        // Skip re-stamping when:
+        // - No git hash available
+        // - reanalyzedModuleIds is undefined (Phase 2 was skipped)
+        // - reanalyzedModuleIds is empty (nothing changed, articles already valid)
+        // - --use-cache mode (articles are loaded regardless of hash)
+        if (gitHash && reanalyzedModuleIds !== undefined && reanalyzedModuleIds.length > 0 && !options.useCache) {
+            const unchangedModuleIds = moduleIds.filter(
+                id => !reanalyzedModuleIds.includes(id)
+            );
+            if (unchangedModuleIds.length > 0) {
+                const restamped = restampArticles(unchangedModuleIds, options.output, gitHash);
+                if (restamped > 0 && options.verbose) {
+                    printInfo(`Re-stamped ${restamped} unchanged module articles with current git hash`);
+                }
+            }
+        }
+
+        // Scan for individually cached articles (handles crash recovery too)
         const { found, missing } = options.useCache
             ? scanIndividualArticlesCacheAny(moduleIds, options.output)
             : gitHash
@@ -954,7 +988,16 @@ async function runPhase3(
         // If we had cached articles but skipped generation, we still need the reduce phase
         // (index/architecture/getting-started) which depends on ALL module articles.
         // Try to load reduce articles from cache first — skip reduce phase if cached.
-        if (analysesToGenerate.length === 0 && cachedArticles.length > 0) {
+        //
+        // Reduce skip criteria:
+        // - Skip reduce ONLY when NO modules were re-analyzed (truly nothing changed)
+        // - When reanalyzedModuleIds is undefined (Phase 2 was skipped via --phase 3),
+        //   fall back to old behavior: skip reduce when all articles are cached
+        const nothingChanged = reanalyzedModuleIds !== undefined
+            ? reanalyzedModuleIds.length === 0
+            : analysesToGenerate.length === 0;
+
+        if (nothingChanged && cachedArticles.length > 0) {
             // Try loading cached reduce articles
             let cachedReduceArticles: GeneratedArticle[] | null = null;
             if (!options.force) {
@@ -995,6 +1038,32 @@ async function runPhase3(
 
                 spinner.succeed('Generated index and overview pages');
             }
+        } else if (analysesToGenerate.length === 0 && cachedArticles.length > 0 && !nothingChanged) {
+            // Modules were re-analyzed but all articles were re-stamped/cached.
+            // We still need to regenerate reduce articles because module content changed.
+            spinner.start('Regenerating index and overview pages (module content changed)...');
+
+            const reduceOnly = await generateReduceOnlyArticles(
+                graph,
+                analyses,
+                writingInvoker,
+                options.model,
+                options.timeout ? options.timeout * 1000 : undefined,
+            );
+            reduceArticles.push(...reduceOnly);
+
+            // Cache the newly generated reduce articles
+            if (gitHash && reduceOnly.length > 0) {
+                try {
+                    saveReduceArticles(reduceOnly, options.output, gitHash);
+                } catch {
+                    if (options.verbose) {
+                        printWarning('Failed to cache reduce articles (non-fatal)');
+                    }
+                }
+            }
+
+            spinner.succeed('Regenerated index and overview pages');
         }
 
         // Cache reduce articles from the map+reduce pass (when articles were freshly generated)

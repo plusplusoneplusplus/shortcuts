@@ -165,6 +165,7 @@ vi.mock('../../src/cache', () => ({
     scanIndividualArticlesCacheAny: vi.fn().mockImplementation(
         (moduleIds: string[]) => ({ found: [], missing: [...moduleIds] })
     ),
+    restampArticles: vi.fn().mockReturnValue(0),
     // Reduce article cache functions (Phase 3 reduce)
     getCachedReduceArticles: vi.fn().mockReturnValue(null),
     saveReduceArticles: vi.fn(),
@@ -250,6 +251,8 @@ import {
     getRepoHeadHash,
     saveAnalysis,
     saveReduceArticles,
+    restampArticles,
+    getCachedReduceArticles,
 } from '../../src/cache';
 import { discoverModuleGraph } from '../../src/discovery';
 import { generateWebsite } from '../../src/writing/website-generator';
@@ -1257,5 +1260,316 @@ describe('executeGenerate — strict mode', () => {
         expect(printError).toHaveBeenCalledWith(
             expect.stringContaining('--no-strict')
         );
+    });
+});
+
+// ============================================================================
+// Phase 3 Incremental Invalidation (restampArticles)
+// ============================================================================
+
+describe('executeGenerate — Phase 3 incremental invalidation', () => {
+    // Helper: set up a 5-module discovery graph
+    function setupFiveModuleGraph() {
+        const modules = ['auth', 'db', 'api', 'ui', 'config'].map(id => ({
+            id,
+            name: `${id} Module`,
+            path: `src/${id}/`,
+            purpose: `Testing ${id}`,
+            keyFiles: [`src/${id}/index.ts`],
+            dependencies: [],
+            dependents: [],
+            complexity: 'medium' as const,
+            category: 'core',
+        }));
+
+        vi.mocked(discoverModuleGraph).mockResolvedValue({
+            graph: {
+                project: {
+                    name: 'TestProject',
+                    description: 'Test',
+                    language: 'TypeScript',
+                    buildSystem: 'npm',
+                    entryPoints: ['src/index.ts'],
+                },
+                modules,
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: 'Test notes',
+            },
+            duration: 1000,
+        });
+
+        return modules;
+    }
+
+    function setupFiveModuleAnalyses() {
+        return ['auth', 'db', 'api', 'ui', 'config'].map(id => ({
+            moduleId: id,
+            overview: `Overview of ${id}`,
+            keyConcepts: [],
+            publicAPI: [],
+            internalArchitecture: '',
+            dataFlow: '',
+            patterns: [],
+            errorHandling: '',
+            codeExamples: [],
+            dependencies: { internal: [], external: [] },
+            suggestedDiagram: '',
+        }));
+    }
+
+    function setupFiveModuleArticles(moduleIds?: string[]) {
+        return (moduleIds || ['auth', 'db', 'api', 'ui', 'config']).map(id => ({
+            type: 'module' as const,
+            slug: id,
+            title: `${id} Module`,
+            content: `# ${id}\n\nArticle content.`,
+            moduleId: id,
+        }));
+    }
+
+    beforeEach(() => {
+        vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+        vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
+        vi.mocked(scanIndividualAnalysesCache).mockReturnValue({ found: [], missing: [] });
+        vi.mocked(scanIndividualAnalysesCacheAny).mockReturnValue({ found: [], missing: [] });
+        vi.mocked(scanIndividualArticlesCache).mockImplementation(
+            (moduleIds: string[]) => ({ found: [] as any[], missing: [...moduleIds] })
+        );
+        vi.mocked(restampArticles).mockReturnValue(0);
+        vi.mocked(generateWebsite).mockReturnValue(['/mock/index.html']);
+    });
+
+    it('should call restampArticles for unchanged modules when Phase 2 provides reanalyzedModuleIds', async () => {
+        setupFiveModuleGraph();
+        const allAnalyses = setupFiveModuleAnalyses();
+
+        // Phase 2: only 'auth' was re-analyzed, others are cached
+        vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(['auth']);
+
+        // Set up cached analyses for unchanged modules
+        for (const id of ['db', 'api', 'ui', 'config']) {
+            vi.mocked(scanIndividualAnalysesCache).mockReturnValue({
+                found: [],
+                missing: [],
+            });
+        }
+
+        // Phase 2: simulate partial rebuild
+        const cachedAnalyses = allAnalyses.filter(a => a.moduleId !== 'auth');
+        const authAnalysis = allAnalyses.find(a => a.moduleId === 'auth')!;
+
+        // getModulesNeedingReanalysis returns ['auth']
+        // getCachedAnalysis returns analyses for unchanged modules
+        const { getCachedAnalysis } = await import('../../src/cache');
+        for (const a of cachedAnalyses) {
+            vi.mocked(getCachedAnalysis).mockReturnValueOnce(a);
+        }
+
+        // Phase 2 analysis: only auth analyzed
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: [authAnalysis],
+            duration: 1000,
+        });
+
+        // Phase 3: simulate that after re-stamping, all but 'auth' are found
+        vi.mocked(restampArticles).mockReturnValue(4);
+        vi.mocked(scanIndividualArticlesCache).mockImplementation(
+            (moduleIds: string[]) => {
+                // After re-stamping, only 'auth' should be missing
+                const found = setupFiveModuleArticles(['db', 'api', 'ui', 'config']);
+                const missing = moduleIds.filter(id => id === 'auth');
+                return { found, missing };
+            }
+        );
+
+        // Phase 3 article generation for only auth
+        vi.mocked(generateArticles).mockResolvedValue({
+            articles: [{
+                type: 'module',
+                slug: 'auth',
+                title: 'auth Module',
+                content: '# auth\n\nFresh article.',
+                moduleId: 'auth',
+            }],
+            duration: 500,
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ noCluster: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // restampArticles should have been called with unchanged module IDs
+        expect(restampArticles).toHaveBeenCalledWith(
+            expect.arrayContaining(['db', 'api', 'ui', 'config']),
+            expect.any(String),
+            expect.any(String)
+        );
+
+        // restampArticles should NOT include 'auth' (it was re-analyzed)
+        const restampCall = vi.mocked(restampArticles).mock.calls[0];
+        expect(restampCall[0]).not.toContain('auth');
+    });
+
+    it('should not call restampArticles when --force is used', async () => {
+        setupFiveModuleGraph();
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: setupFiveModuleAnalyses(),
+            duration: 1000,
+        });
+        vi.mocked(generateArticles).mockResolvedValue({
+            articles: setupFiveModuleArticles(),
+            duration: 1000,
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ force: true, noCluster: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // restampArticles should NOT be called when --force is used
+        expect(restampArticles).not.toHaveBeenCalled();
+    });
+
+    it('should not call restampArticles when --use-cache is used', async () => {
+        vi.mocked(getCachedGraphAny).mockReturnValue({
+            metadata: { gitHash: 'old-hash', timestamp: Date.now(), version: '1.0.0' },
+            graph: {
+                project: { name: 'T', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
+                modules: [{ id: 'test-module', name: 'T', path: 'src/', purpose: 'T', keyFiles: [], dependencies: [], dependents: [], complexity: 'low' as const, category: 'core' }],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: '',
+            },
+        });
+
+        vi.mocked(scanIndividualAnalysesCacheAny).mockReturnValue({
+            found: setupFiveModuleAnalyses().slice(0, 1),
+            missing: [],
+        });
+
+        vi.mocked(scanIndividualArticlesCacheAny).mockReturnValue({
+            found: setupFiveModuleArticles().slice(0, 1),
+            missing: [],
+        });
+
+        vi.mocked(getCachedReduceArticles).mockReturnValue([
+            { type: 'index', slug: 'index', title: 'Index', content: '# Index' },
+        ]);
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ useCache: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // restampArticles should NOT be called when --use-cache is used
+        expect(restampArticles).not.toHaveBeenCalled();
+    });
+
+    it('should not call restampArticles when reanalyzedModuleIds is undefined (phase 3 only)', async () => {
+        // --phase 3: Phase 2 was skipped, so reanalyzedModuleIds is undefined
+        vi.mocked(getCachedGraph).mockResolvedValue({
+            metadata: { gitHash: 'abc', timestamp: Date.now(), version: '1.0.0' },
+            graph: {
+                project: { name: 'T', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
+                modules: [{ id: 'test-module', name: 'T', path: 'src/', purpose: 'T', keyFiles: [], dependencies: [], dependents: [], complexity: 'low' as const, category: 'core' }],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: '',
+            },
+        });
+
+        vi.mocked(getCachedAnalyses).mockReturnValue([{
+            moduleId: 'test-module',
+            overview: 'Test',
+            keyConcepts: [],
+            publicAPI: [],
+            internalArchitecture: '',
+            dataFlow: '',
+            patterns: [],
+            errorHandling: '',
+            codeExamples: [],
+            dependencies: { internal: [], external: [] },
+            suggestedDiagram: '',
+        }]);
+
+        // All articles cached
+        vi.mocked(scanIndividualArticlesCache).mockReturnValue({
+            found: [{ type: 'module', slug: 'test-module', title: 'T', content: '# T', moduleId: 'test-module' }],
+            missing: [],
+        });
+
+        vi.mocked(getCachedReduceArticles).mockReturnValue([
+            { type: 'index', slug: 'index', title: 'Index', content: '# Index' },
+        ]);
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // When --phase 3 is used, Phase 2 is skipped so reanalyzedModuleIds is undefined.
+        // restampArticles should NOT be called.
+        expect(restampArticles).not.toHaveBeenCalled();
+    });
+
+    it('should re-run reduce when modules were re-analyzed even if all articles are cached', async () => {
+        setupFiveModuleGraph();
+        const allAnalyses = setupFiveModuleAnalyses();
+
+        // Phase 2: only 'auth' was re-analyzed
+        vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(['auth']);
+        const { getCachedAnalysis } = await import('../../src/cache');
+        for (const a of allAnalyses.filter(x => x.moduleId !== 'auth')) {
+            vi.mocked(getCachedAnalysis).mockReturnValueOnce(a);
+        }
+
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: [allAnalyses.find(a => a.moduleId === 'auth')!],
+            duration: 1000,
+        });
+
+        // Phase 3: re-stamp makes all articles cached, auth article also found somehow
+        vi.mocked(restampArticles).mockReturnValue(4);
+        vi.mocked(scanIndividualArticlesCache).mockReturnValue({
+            found: setupFiveModuleArticles(),
+            missing: [],
+        });
+
+        // Set up writing invoker for reduce
+        const writingFn = vi.fn().mockResolvedValue({
+            success: true,
+            response: "```json\n{\n  \"index\": \"# Index\\nHello\",\n  \"architecture\": \"# Arch\\nHello\",\n  \"gettingStarted\": \"# GS\\nHello\"\n}\n```",
+        });
+        vi.mocked(createWritingInvoker).mockReturnValue(writingFn);
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ noCluster: true, skipWebsite: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Reduce should have been called (module content changed)
+        expect(writingFn).toHaveBeenCalled();
+    });
+
+    it('should skip reduce when no modules were re-analyzed and reduce cache exists', async () => {
+        // All modules cached, nothing re-analyzed
+        setupFiveModuleGraph();
+
+        // Phase 2: all cached (nothing re-analyzed)
+        vi.mocked(getModulesNeedingReanalysis).mockResolvedValue([]);
+        vi.mocked(getCachedAnalyses).mockReturnValue(setupFiveModuleAnalyses());
+
+        // Phase 3: all articles cached
+        vi.mocked(scanIndividualArticlesCache).mockReturnValue({
+            found: setupFiveModuleArticles(),
+            missing: [],
+        });
+
+        // Reduce articles also cached
+        vi.mocked(getCachedReduceArticles).mockReturnValue([
+            { type: 'index', slug: 'index', title: 'Index', content: '# Index' },
+            { type: 'architecture', slug: 'architecture', title: 'Architecture', content: '# Arch' },
+        ]);
+
+        const writingFn = vi.fn();
+        vi.mocked(createWritingInvoker).mockReturnValue(writingFn);
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ noCluster: true, skipWebsite: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Writing invoker should NOT have been called (everything from cache)
+        expect(writingFn).not.toHaveBeenCalled();
+
+        // restampArticles should NOT have been called (nothing re-analyzed, reanalyzedModuleIds is [])
+        expect(restampArticles).not.toHaveBeenCalled();
     });
 });

@@ -31,6 +31,7 @@ import {
     getArticlesCacheDir,
     getArticlesMetadataPath,
     scanIndividualArticlesCache,
+    restampArticles,
 } from '../../src/cache';
 import { getRepoHeadHash } from '../../src/cache/git-utils';
 
@@ -627,5 +628,181 @@ describe('edge cases', () => {
         const result = scanIndividualArticlesCache(moduleIds, outputDir, hash);
         expect(result.found).toHaveLength(20);
         expect(result.missing).toHaveLength(0);
+    });
+});
+
+// ============================================================================
+// restampArticles
+// ============================================================================
+
+describe('restampArticles', () => {
+    it('should update git hash without changing article content', () => {
+        const oldHash = 'old_hash_abc';
+        const newHash = 'new_hash_xyz';
+        const article = createTestArticle('auth');
+
+        saveArticle('auth', article, outputDir, oldHash);
+
+        // Before re-stamp: article has old hash (fails new hash validation)
+        const beforeScan = scanIndividualArticlesCache(['auth'], outputDir, newHash);
+        expect(beforeScan.found).toHaveLength(0);
+        expect(beforeScan.missing).toEqual(['auth']);
+
+        // Re-stamp
+        const count = restampArticles(['auth'], outputDir, newHash);
+        expect(count).toBe(1);
+
+        // After re-stamp: article passes new hash validation
+        const afterScan = scanIndividualArticlesCache(['auth'], outputDir, newHash);
+        expect(afterScan.found).toHaveLength(1);
+        expect(afterScan.found[0].moduleId).toBe('auth');
+        expect(afterScan.found[0].content).toBe(article.content);
+        expect(afterScan.found[0].title).toBe(article.title);
+        expect(afterScan.missing).toHaveLength(0);
+    });
+
+    it('should re-stamp multiple articles', () => {
+        const oldHash = 'old_hash';
+        const newHash = 'new_hash';
+
+        saveArticle('auth', createTestArticle('auth'), outputDir, oldHash);
+        saveArticle('db', createTestArticle('db'), outputDir, oldHash);
+        saveArticle('api', createTestArticle('api'), outputDir, oldHash);
+
+        const count = restampArticles(['auth', 'db', 'api'], outputDir, newHash);
+        expect(count).toBe(3);
+
+        const scan = scanIndividualArticlesCache(['auth', 'db', 'api'], outputDir, newHash);
+        expect(scan.found).toHaveLength(3);
+        expect(scan.missing).toHaveLength(0);
+    });
+
+    it('should skip non-existent articles (no-op, they will be regenerated)', () => {
+        const count = restampArticles(['nonexistent'], outputDir, 'new_hash');
+        expect(count).toBe(0);
+    });
+
+    it('should handle mix of existing and non-existent articles', () => {
+        const oldHash = 'old_hash';
+        const newHash = 'new_hash';
+
+        saveArticle('auth', createTestArticle('auth'), outputDir, oldHash);
+        // 'missing-module' is not saved
+
+        const count = restampArticles(['auth', 'missing-module'], outputDir, newHash);
+        expect(count).toBe(1); // Only auth was re-stamped
+
+        const scan = scanIndividualArticlesCache(['auth', 'missing-module'], outputDir, newHash);
+        expect(scan.found).toHaveLength(1);
+        expect(scan.found[0].moduleId).toBe('auth');
+        expect(scan.missing).toEqual(['missing-module']);
+    });
+
+    it('should not re-stamp articles that already have the correct hash', () => {
+        const hash = 'current_hash';
+        const article = createTestArticle('auth');
+
+        saveArticle('auth', article, outputDir, hash);
+
+        // Re-stamp with same hash (should be a no-op internally but still count as success)
+        const count = restampArticles(['auth'], outputDir, hash);
+        expect(count).toBe(1);
+
+        // Article should still be valid
+        const scan = scanIndividualArticlesCache(['auth'], outputDir, hash);
+        expect(scan.found).toHaveLength(1);
+    });
+
+    it('should handle corrupted cache files gracefully', () => {
+        const articlesDir = getArticlesCacheDir(outputDir);
+        fs.mkdirSync(articlesDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(articlesDir, 'corrupted.json'),
+            'not valid json!!!',
+            'utf-8'
+        );
+
+        const count = restampArticles(['corrupted'], outputDir, 'new_hash');
+        expect(count).toBe(0); // Corrupted file skipped
+    });
+
+    it('should handle empty module list', () => {
+        const count = restampArticles([], outputDir, 'new_hash');
+        expect(count).toBe(0);
+    });
+
+    it('should preserve full article content through re-stamp', () => {
+        const oldHash = 'old_hash';
+        const newHash = 'new_hash';
+        const article: GeneratedArticle = {
+            type: 'module',
+            slug: 'complex-module',
+            title: 'Complex Module',
+            content: '# Complex\n\n## Overview\n\nRich **markdown** with `code`.\n\n```ts\nconst x = 42;\n```',
+            moduleId: 'complex-module',
+            areaId: undefined,
+        };
+
+        saveArticle('complex-module', article, outputDir, oldHash);
+        restampArticles(['complex-module'], outputDir, newHash);
+
+        const scan = scanIndividualArticlesCache(['complex-module'], outputDir, newHash);
+        expect(scan.found).toHaveLength(1);
+        expect(scan.found[0]).toEqual(article);
+    });
+
+    it('should work with area-scoped articles', () => {
+        const oldHash = 'old_hash';
+        const newHash = 'new_hash';
+        const article: GeneratedArticle = {
+            type: 'module',
+            slug: 'auth-service',
+            title: 'Auth Service',
+            content: '# Auth Service\n\nContent.',
+            moduleId: 'auth-service',
+            areaId: 'backend',
+        };
+
+        // Save under area subdirectory
+        saveArticle('auth-service', article, outputDir, oldHash);
+
+        // Re-stamp
+        const count = restampArticles(['auth-service'], outputDir, newHash);
+        expect(count).toBe(1);
+
+        // Verify article is found with new hash
+        const scan = scanIndividualArticlesCache(['auth-service'], outputDir, newHash);
+        expect(scan.found).toHaveLength(1);
+        expect(scan.found[0].moduleId).toBe('auth-service');
+        expect(scan.found[0].areaId).toBe('backend');
+    });
+
+    it('should enable incremental Phase 3: re-stamp unchanged, only regenerate changed', () => {
+        const oldHash = 'old_commit_hash';
+        const newHash = 'new_commit_hash';
+
+        // Simulate 5 modules with articles cached under old hash
+        const moduleIds = ['auth', 'db', 'api', 'ui', 'config'];
+        for (const id of moduleIds) {
+            saveArticle(id, createTestArticle(id), outputDir, oldHash);
+        }
+
+        // Module 'auth' was re-analyzed (changed) — don't re-stamp it
+        const unchangedIds = ['db', 'api', 'ui', 'config'];
+        const changedIds = ['auth'];
+
+        // Re-stamp unchanged modules
+        const count = restampArticles(unchangedIds, outputDir, newHash);
+        expect(count).toBe(4);
+
+        // Scan with new hash
+        const scan = scanIndividualArticlesCache(moduleIds, outputDir, newHash);
+
+        // 4 unchanged modules should be found (re-stamped)
+        expect(scan.found).toHaveLength(4);
+        expect(scan.found.map(a => a.moduleId).sort()).toEqual(['api', 'config', 'db', 'ui']);
+
+        // 1 changed module should be missing (needs regeneration)
+        expect(scan.missing).toEqual(['auth']);
     });
 });

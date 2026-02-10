@@ -938,6 +938,59 @@ export function scanIndividualArticlesCacheAny(
 }
 
 // ============================================================================
+// Article Cache Re-stamping
+// ============================================================================
+
+/**
+ * Re-stamp cached articles for unchanged modules with a new git hash.
+ *
+ * This is the key operation for Phase 3 incremental invalidation:
+ * after Phase 2 identifies which modules changed, unchanged module articles
+ * are re-stamped (their gitHash updated) so they pass validation on the
+ * current run. Only I/O — no AI calls needed.
+ *
+ * @param moduleIds - Module IDs whose articles should be re-stamped
+ * @param outputDir - Output directory (cache lives here)
+ * @param newGitHash - The current git hash to stamp onto the articles
+ * @returns Number of articles successfully re-stamped
+ */
+export function restampArticles(
+    moduleIds: string[],
+    outputDir: string,
+    newGitHash: string
+): number {
+    let restamped = 0;
+
+    for (const moduleId of moduleIds) {
+        const cachePath = findArticleCachePath(outputDir, moduleId);
+        if (!cachePath) {
+            continue; // No cached article for this module — it will be regenerated
+        }
+
+        const cached = readCacheFile<CachedArticle>(cachePath);
+        if (!cached || !cached.article || !cached.article.slug) {
+            continue; // Corrupted or invalid — skip, will be regenerated
+        }
+
+        // Already has the correct hash — no need to re-write
+        if (cached.gitHash === newGitHash) {
+            restamped++;
+            continue;
+        }
+
+        // Re-stamp: write back with updated git hash (same article content)
+        writeCacheFile<CachedArticle>(cachePath, {
+            article: cached.article,
+            gitHash: newGitHash,
+            timestamp: Date.now(),
+        });
+        restamped++;
+    }
+
+    return restamped;
+}
+
+// ============================================================================
 // Article Cache Invalidation
 // ============================================================================
 
