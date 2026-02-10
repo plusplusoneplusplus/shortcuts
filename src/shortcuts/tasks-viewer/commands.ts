@@ -513,7 +513,7 @@ export class TasksCommands {
      * @param item The task item to copy the path from
      * @param absolute Whether to copy absolute or relative path
      */
-    private async copyPath(item: TaskItem | TaskDocumentItem | TaskDocumentGroupItem, absolute: boolean): Promise<void> {
+    private async copyPath(item: TaskItem | TaskDocumentItem | TaskDocumentGroupItem | TaskFolderItem, absolute: boolean): Promise<void> {
         try {
             // Get selected items from tree view for multi-selection support
             const selectedItems = this.tasksTreeView?.selection || [item];
@@ -531,6 +531,8 @@ export class TasksCommands {
                     for (const doc of selectedItem.documents) {
                         paths.push(...this.getPathsFromItem(doc.filePath, absolute));
                     }
+                } else if (selectedItem instanceof TaskFolderItem) {
+                    paths.push(...this.getPathsFromItem(selectedItem.folder.folderPath, absolute));
                 }
             }
 

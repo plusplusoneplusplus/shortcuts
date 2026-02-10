@@ -2472,6 +2472,16 @@
           "group": "copy@2"
         },
         {
+          "command": "tasksViewer.copyRelativePath",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "group": "copy@1"
+        },
+        {
+          "command": "tasksViewer.copyFullPath",
+          "when": "view == tasksView && viewItem =~ /^taskFolder/",
+          "group": "copy@2"
+        },
+        {
           "command": "tasksViewer.markFolderAsReviewed",
           "when": "view == tasksView && viewItem =~ /^taskFolder/ && viewItem !~ /_archived/",
           "group": "review@1"

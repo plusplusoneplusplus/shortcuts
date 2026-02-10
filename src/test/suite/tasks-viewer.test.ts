@@ -2692,4 +2692,94 @@ suite('Tasks Viewer Tests', () => {
             assert.ok(hasSingle, 'Should have single task item');
         });
     });
+
+    suite('TaskFolderItem Copy Path Support', () => {
+        test('should have folderPath available for copy path on active folder', () => {
+            const folderPath = path.join(tempDir, '.vscode', 'tasks', 'my-feature');
+            const folder: TaskFolder = {
+                name: 'my-feature',
+                folderPath: folderPath,
+                relativePath: 'my-feature',
+                isArchived: false,
+                children: [],
+                tasks: [],
+                documentGroups: [],
+                singleDocuments: []
+            };
+            const folderItem = new TaskFolderItem(folder);
+
+            assert.strictEqual(folderItem.folder.folderPath, folderPath);
+            assert.strictEqual(folderItem.contextValue, 'taskFolder');
+        });
+
+        test('should have folderPath available for copy path on archived folder', () => {
+            const folderPath = path.join(tempDir, '.vscode', 'tasks', 'archive', 'old-feature');
+            const folder: TaskFolder = {
+                name: 'old-feature',
+                folderPath: folderPath,
+                relativePath: 'old-feature',
+                isArchived: true,
+                children: [],
+                tasks: [],
+                documentGroups: [],
+                singleDocuments: []
+            };
+            const folderItem = new TaskFolderItem(folder);
+
+            assert.strictEqual(folderItem.folder.folderPath, folderPath);
+            assert.strictEqual(folderItem.contextValue, 'taskFolder_archived');
+        });
+
+        test('contextValue should match /^taskFolder/ pattern for all folder variants', () => {
+            const contextPattern = /^taskFolder/;
+
+            const activeFolderItem = new TaskFolderItem({
+                name: 'active', folderPath: '/tmp/active', relativePath: 'active',
+                isArchived: false, children: [], tasks: [], documentGroups: [], singleDocuments: []
+            });
+            assert.ok(contextPattern.test(activeFolderItem.contextValue),
+                `Active folder contextValue "${activeFolderItem.contextValue}" should match /^taskFolder/`);
+
+            const archivedFolderItem = new TaskFolderItem({
+                name: 'archived', folderPath: '/tmp/archived', relativePath: 'archived',
+                isArchived: true, children: [], tasks: [], documentGroups: [], singleDocuments: []
+            });
+            assert.ok(contextPattern.test(archivedFolderItem.contextValue),
+                `Archived folder contextValue "${archivedFolderItem.contextValue}" should match /^taskFolder/`);
+
+            const hasRelatedItem = new TaskFolderItem({
+                name: 'related', folderPath: '/tmp/related', relativePath: 'related',
+                isArchived: false, children: [], tasks: [], documentGroups: [], singleDocuments: [],
+                relatedItems: { description: 'test', items: [{ type: 'file', name: 'file.ts', path: '/tmp/file.ts', category: 'source', relevance: 100, reason: 'test' }] }
+            });
+            assert.ok(contextPattern.test(hasRelatedItem.contextValue),
+                `Folder with related items contextValue "${hasRelatedItem.contextValue}" should match /^taskFolder/`);
+
+            const archivedHasRelatedItem = new TaskFolderItem({
+                name: 'both', folderPath: '/tmp/both', relativePath: 'both',
+                isArchived: true, children: [], tasks: [], documentGroups: [], singleDocuments: [],
+                relatedItems: { description: 'test', items: [{ type: 'file', name: 'file.ts', path: '/tmp/file.ts', category: 'source', relevance: 100, reason: 'test' }] }
+            });
+            assert.ok(contextPattern.test(archivedHasRelatedItem.contextValue),
+                `Archived folder with related contextValue "${archivedHasRelatedItem.contextValue}" should match /^taskFolder/`);
+        });
+
+        test('should have folderPath for nested folders', () => {
+            const nestedPath = path.join(tempDir, '.vscode', 'tasks', 'feature', 'sub1', 'sub2');
+            const folder: TaskFolder = {
+                name: 'sub2',
+                folderPath: nestedPath,
+                relativePath: path.join('feature', 'sub1', 'sub2'),
+                isArchived: false,
+                children: [],
+                tasks: [],
+                documentGroups: [],
+                singleDocuments: []
+            };
+            const folderItem = new TaskFolderItem(folder);
+
+            assert.strictEqual(folderItem.folder.folderPath, nestedPath);
+            assert.ok(folderItem.folder.relativePath.includes('sub2'));
+        });
+    });
 });
