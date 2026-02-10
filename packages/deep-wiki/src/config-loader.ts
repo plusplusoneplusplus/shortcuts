@@ -222,6 +222,46 @@ const VALID_DEPTHS = new Set(['shallow', 'normal', 'deep']);
 const VALID_THEMES = new Set(['light', 'dark', 'auto']);
 const VALID_PHASE_NAMES = new Set<string>(['discovery', 'consolidation', 'analysis', 'writing']);
 
+function fieldLabel(field: string, prefix?: string): string {
+    return prefix ? `${prefix}${field}` : `"${field}"`;
+}
+
+function assignString(raw: Record<string, unknown>, field: string, target: Record<string, unknown>, prefix?: string): void {
+    if (raw[field] !== undefined) {
+        if (typeof raw[field] !== 'string') {
+            throw new Error(`Config error: ${fieldLabel(field, prefix)} must be a string`);
+        }
+        target[field] = raw[field];
+    }
+}
+
+function assignBoolean(raw: Record<string, unknown>, field: string, target: Record<string, unknown>, prefix?: string): void {
+    if (raw[field] !== undefined) {
+        if (typeof raw[field] !== 'boolean') {
+            throw new Error(`Config error: ${fieldLabel(field, prefix)} must be a boolean`);
+        }
+        target[field] = raw[field];
+    }
+}
+
+function assignPositiveNumber(raw: Record<string, unknown>, field: string, target: Record<string, unknown>, prefix?: string): void {
+    if (raw[field] !== undefined) {
+        if (typeof raw[field] !== 'number' || !Number.isFinite(raw[field] as number) || (raw[field] as number) < 1) {
+            throw new Error(`Config error: ${fieldLabel(field, prefix)} must be a positive number`);
+        }
+        target[field] = raw[field];
+    }
+}
+
+function assignEnum(raw: Record<string, unknown>, field: string, target: Record<string, unknown>, validValues: Set<string>, prefix?: string): void {
+    if (raw[field] !== undefined) {
+        if (typeof raw[field] !== 'string' || !validValues.has(raw[field] as string)) {
+            throw new Error(`Config error: ${fieldLabel(field, prefix)} must be one of: ${[...validValues].join(', ')}`);
+        }
+        target[field] = raw[field];
+    }
+}
+
 /**
  * Validate a raw parsed config object and return a typed DeepWikiConfigFile.
  *
@@ -233,63 +273,18 @@ export function validateConfig(raw: Record<string, unknown>): DeepWikiConfigFile
     const config: DeepWikiConfigFile = {};
 
     // String fields
-    if (raw.repoPath !== undefined) {
-        if (typeof raw.repoPath !== 'string') {
-            throw new Error('Config error: "repoPath" must be a string');
-        }
-        config.repoPath = raw.repoPath;
-    }
-
-    if (raw.output !== undefined) {
-        if (typeof raw.output !== 'string') {
-            throw new Error('Config error: "output" must be a string');
-        }
-        config.output = raw.output;
-    }
-
-    if (raw.model !== undefined) {
-        if (typeof raw.model !== 'string') {
-            throw new Error('Config error: "model" must be a string');
-        }
-        config.model = raw.model;
-    }
-
-    if (raw.focus !== undefined) {
-        if (typeof raw.focus !== 'string') {
-            throw new Error('Config error: "focus" must be a string');
-        }
-        config.focus = raw.focus;
-    }
-
-    if (raw.seeds !== undefined) {
-        if (typeof raw.seeds !== 'string') {
-            throw new Error('Config error: "seeds" must be a string');
-        }
-        config.seeds = raw.seeds;
-    }
-
-    if (raw.title !== undefined) {
-        if (typeof raw.title !== 'string') {
-            throw new Error('Config error: "title" must be a string');
-        }
-        config.title = raw.title;
-    }
+    assignString(raw, 'repoPath', config);
+    assignString(raw, 'output', config);
+    assignString(raw, 'model', config);
+    assignString(raw, 'focus', config);
+    assignString(raw, 'seeds', config);
+    assignString(raw, 'title', config);
 
     // Number fields
-    if (raw.concurrency !== undefined) {
-        if (typeof raw.concurrency !== 'number' || !Number.isFinite(raw.concurrency) || raw.concurrency < 1) {
-            throw new Error('Config error: "concurrency" must be a positive number');
-        }
-        config.concurrency = raw.concurrency;
-    }
+    assignPositiveNumber(raw, 'concurrency', config);
+    assignPositiveNumber(raw, 'timeout', config);
 
-    if (raw.timeout !== undefined) {
-        if (typeof raw.timeout !== 'number' || !Number.isFinite(raw.timeout) || raw.timeout < 1) {
-            throw new Error('Config error: "timeout" must be a positive number');
-        }
-        config.timeout = raw.timeout;
-    }
-
+    // Phase (custom: integer check + range 1-4)
     if (raw.phase !== undefined) {
         if (typeof raw.phase !== 'number' || !Number.isInteger(raw.phase) || raw.phase < 1 || raw.phase > 4) {
             throw new Error('Config error: "phase" must be an integer between 1 and 4');
@@ -298,55 +293,15 @@ export function validateConfig(raw: Record<string, unknown>): DeepWikiConfigFile
     }
 
     // Boolean fields
-    if (raw.useCache !== undefined) {
-        if (typeof raw.useCache !== 'boolean') {
-            throw new Error('Config error: "useCache" must be a boolean');
-        }
-        config.useCache = raw.useCache;
-    }
-
-    if (raw.force !== undefined) {
-        if (typeof raw.force !== 'boolean') {
-            throw new Error('Config error: "force" must be a boolean');
-        }
-        config.force = raw.force;
-    }
-
-    if (raw.noCluster !== undefined) {
-        if (typeof raw.noCluster !== 'boolean') {
-            throw new Error('Config error: "noCluster" must be a boolean');
-        }
-        config.noCluster = raw.noCluster;
-    }
-
-    if (raw.strict !== undefined) {
-        if (typeof raw.strict !== 'boolean') {
-            throw new Error('Config error: "strict" must be a boolean');
-        }
-        config.strict = raw.strict;
-    }
-
-    if (raw.skipWebsite !== undefined) {
-        if (typeof raw.skipWebsite !== 'boolean') {
-            throw new Error('Config error: "skipWebsite" must be a boolean');
-        }
-        config.skipWebsite = raw.skipWebsite;
-    }
+    assignBoolean(raw, 'useCache', config);
+    assignBoolean(raw, 'force', config);
+    assignBoolean(raw, 'noCluster', config);
+    assignBoolean(raw, 'strict', config);
+    assignBoolean(raw, 'skipWebsite', config);
 
     // Enum fields
-    if (raw.depth !== undefined) {
-        if (typeof raw.depth !== 'string' || !VALID_DEPTHS.has(raw.depth)) {
-            throw new Error(`Config error: "depth" must be one of: ${[...VALID_DEPTHS].join(', ')}`);
-        }
-        config.depth = raw.depth as 'shallow' | 'normal' | 'deep';
-    }
-
-    if (raw.theme !== undefined) {
-        if (typeof raw.theme !== 'string' || !VALID_THEMES.has(raw.theme)) {
-            throw new Error(`Config error: "theme" must be one of: ${[...VALID_THEMES].join(', ')}`);
-        }
-        config.theme = raw.theme as 'light' | 'dark' | 'auto';
-    }
+    assignEnum(raw, 'depth', config, VALID_DEPTHS);
+    assignEnum(raw, 'theme', config, VALID_THEMES);
 
     // Phases map
     if (raw.phases !== undefined) {
@@ -366,41 +321,13 @@ export function validateConfig(raw: Record<string, unknown>): DeepWikiConfigFile
 
             const phaseRaw = value as Record<string, unknown>;
             const phaseConfig: Record<string, unknown> = {};
+            const phasePrefix = `phases.${key}.`;
 
-            if (phaseRaw.model !== undefined) {
-                if (typeof phaseRaw.model !== 'string') {
-                    throw new Error(`Config error: phases.${key}.model must be a string`);
-                }
-                phaseConfig.model = phaseRaw.model;
-            }
-
-            if (phaseRaw.timeout !== undefined) {
-                if (typeof phaseRaw.timeout !== 'number' || !Number.isFinite(phaseRaw.timeout) || phaseRaw.timeout < 1) {
-                    throw new Error(`Config error: phases.${key}.timeout must be a positive number`);
-                }
-                phaseConfig.timeout = phaseRaw.timeout;
-            }
-
-            if (phaseRaw.concurrency !== undefined) {
-                if (typeof phaseRaw.concurrency !== 'number' || !Number.isFinite(phaseRaw.concurrency) || phaseRaw.concurrency < 1) {
-                    throw new Error(`Config error: phases.${key}.concurrency must be a positive number`);
-                }
-                phaseConfig.concurrency = phaseRaw.concurrency;
-            }
-
-            if (phaseRaw.depth !== undefined) {
-                if (typeof phaseRaw.depth !== 'string' || !VALID_DEPTHS.has(phaseRaw.depth)) {
-                    throw new Error(`Config error: phases.${key}.depth must be one of: ${[...VALID_DEPTHS].join(', ')}`);
-                }
-                phaseConfig.depth = phaseRaw.depth;
-            }
-
-            if (phaseRaw.skipAI !== undefined) {
-                if (typeof phaseRaw.skipAI !== 'boolean') {
-                    throw new Error(`Config error: phases.${key}.skipAI must be a boolean`);
-                }
-                phaseConfig.skipAI = phaseRaw.skipAI;
-            }
+            assignString(phaseRaw, 'model', phaseConfig, phasePrefix);
+            assignPositiveNumber(phaseRaw, 'timeout', phaseConfig, phasePrefix);
+            assignPositiveNumber(phaseRaw, 'concurrency', phaseConfig, phasePrefix);
+            assignEnum(phaseRaw, 'depth', phaseConfig, VALID_DEPTHS, phasePrefix);
+            assignBoolean(phaseRaw, 'skipAI', phaseConfig, phasePrefix);
 
             phases[key as PhaseName] = phaseConfig;
         }
