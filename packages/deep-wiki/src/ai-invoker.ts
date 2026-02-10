@@ -2,8 +2,8 @@
  * AI Invoker Factory
  *
  * Creates AIInvoker instances for different phases of deep-wiki generation.
- * Phase 2 (Analysis) uses direct sessions with MCP tools for code investigation.
- * Phase 3 (Writing) uses direct sessions without tools for article generation.
+ * Phase 3 (Analysis) uses direct sessions with MCP tools for code investigation.
+ * Phase 4 (Writing) uses direct sessions without tools for article generation.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -23,7 +23,7 @@ import type {
 // ============================================================================
 
 /**
- * Options for creating an analysis invoker (Phase 2).
+ * Options for creating an analysis invoker (Phase 3).
  * Uses direct sessions with MCP tools for code investigation.
  */
 export interface AnalysisInvokerOptions {
@@ -36,7 +36,7 @@ export interface AnalysisInvokerOptions {
 }
 
 /**
- * Options for creating a writing invoker (Phase 3).
+ * Options for creating a writing invoker (Phase 4).
  * Uses direct sessions without tools for article generation.
  */
 export interface WritingInvokerOptions {
@@ -91,11 +91,11 @@ export async function checkAIAvailability(): Promise<AIAvailabilityResult> {
 }
 
 // ============================================================================
-// Analysis Invoker (Phase 2)
+// Analysis Invoker (Phase 3)
 // ============================================================================
 
 /**
- * Create an AIInvoker for Phase 2 (Deep Analysis).
+ * Create an AIInvoker for Phase 3 (Deep Analysis).
  *
  * Uses direct sessions (usePool: false) with read-only MCP tools
  * (view, grep, glob) so the AI can investigate source code.
@@ -140,11 +140,11 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
 }
 
 // ============================================================================
-// Writing Invoker (Phase 3)
+// Writing Invoker (Phase 4)
 // ============================================================================
 
 /**
- * Create an AIInvoker for Phase 3 (Article Writing).
+ * Create an AIInvoker for Phase 4 (Article Writing).
  *
  * Uses direct sessions (usePool: false) without tools for
  * article generation. No MCP tools are needed since all context
@@ -185,11 +185,11 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
 }
 
 // ============================================================================
-// Consolidation Invoker (Phase 1.5)
+// Consolidation Invoker (Phase 2)
 // ============================================================================
 
 /**
- * Options for creating a consolidation invoker (Phase 1.5).
+ * Options for creating a consolidation invoker (Phase 2).
  * Uses direct sessions without tools for semantic clustering.
  */
 export interface ConsolidationInvokerOptions {
@@ -205,7 +205,7 @@ export interface ConsolidationInvokerOptions {
 const DEFAULT_CONSOLIDATION_TIMEOUT_MS = 120_000;
 
 /**
- * Create an AIInvoker for Phase 1.5 (Module Consolidation).
+ * Create an AIInvoker for Phase 2 (Module Consolidation).
  *
  * Uses direct sessions (usePool: false) without tools.
  * The AI only needs to analyze the module list and return clusters.

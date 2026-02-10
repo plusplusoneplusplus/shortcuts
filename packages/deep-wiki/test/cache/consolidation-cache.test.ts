@@ -1,5 +1,5 @@
 /**
- * Consolidation Cache Tests (Phase 1.5)
+ * Consolidation Cache Tests (Phase 2)
  *
  * Tests for saving/loading consolidated module graph cache,
  * git hash validation, input module count validation,

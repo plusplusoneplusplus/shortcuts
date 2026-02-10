@@ -1,6 +1,6 @@
 # Deep Wiki Generator - Developer Reference
 
-CLI tool that auto-generates comprehensive wikis for any codebase using a three-phase AI pipeline.
+CLI tool that auto-generates comprehensive wikis for any codebase using a five-phase AI pipeline.
 
 ## Package Structure
 
@@ -15,7 +15,7 @@ packages/deep-wiki/
 │   ├── logger.ts             # Colored terminal output, spinners, verbosity control
 │   ├── commands/
 │   │   ├── discover.ts       # `discover` command: Phase 1 only, outputs ModuleGraph JSON
-│   │   ├── generate.ts       # `generate` command: Full 3-phase pipeline (Discovery → Analysis → Writing)
+│   │   ├── generate.ts       # `generate` command: Full 5-phase pipeline (Discovery → Consolidation → Analysis → Writing → Website)
 │   │   └── serve.ts          # `serve` command: Interactive server with AI Q&A
 │   ├── discovery/
 │   │   ├── index.ts          # Exports: discoverModuleGraph()
@@ -23,6 +23,11 @@ packages/deep-wiki/
 │   │   ├── prompts.ts        # Discovery prompt templates
 │   │   ├── response-parser.ts    # Parse AI response into ModuleGraph
 │   │   └── large-repo-handler.ts # Multi-round discovery for 3000+ file repos
+│   ├── consolidation/
+│   │   ├── index.ts          # Exports: consolidateModules()
+│   │   ├── consolidator.ts   # Hybrid consolidation orchestration (rule-based + AI clustering)
+│   │   ├── rule-based-consolidator.ts  # Directory-based module merging
+│   │   └── ai-consolidator.ts         # AI-assisted semantic clustering
 │   ├── analysis/
 │   │   ├── index.ts          # Exports: analyzeModules(), parseAnalysisResponse()
 │   │   ├── analysis-executor.ts  # Per-module AI analysis with concurrency control
@@ -55,7 +60,7 @@ packages/deep-wiki/
 └── vitest.config.ts
 ```
 
-## Three-Phase Pipeline
+## Five-Phase Pipeline
 
 ### Phase 1: Discovery
 
@@ -64,7 +69,11 @@ Produces a `ModuleGraph` JSON describing the project's structure:
 - Large repo support: multi-round discovery for 3000+ files (structural scan → per-area drill-down → merge)
 - Output: `ModuleGraph` with `ProjectInfo`, `ModuleInfo[]`, `CategoryInfo[]`, optional `AreaInfo[]`
 
-### Phase 2: Analysis
+### Phase 2: Consolidation
+
+Consolidates and refines the module graph from Phase 1 before analysis.
+
+### Phase 3: Analysis
 
 Per-module deep analysis using AI with MCP tools:
 - Each module is analyzed independently with concurrency control
@@ -72,12 +81,16 @@ Per-module deep analysis using AI with MCP tools:
 - Produces `ModuleAnalysis[]` with API surface, patterns, integration points
 - Incremental: only re-analyzes modules whose files changed (git hash-based caching)
 
-### Phase 3: Writing
+### Phase 4: Writing
 
-Generates wiki articles and optional static website:
+Generates wiki articles from analysis results:
 - Per-module article generation from analysis results
 - Reduce/synthesis step for overview and cross-cutting articles
 - File writer outputs markdown articles organized by area/category
+
+### Phase 5: Website
+
+Creates optional static HTML website:
 - Website generator creates static HTML with navigation, themes (light/dark/auto)
 
 ## CLI Commands
@@ -94,13 +107,13 @@ Options: `--output`, `--model`, `--timeout`, `--focus`, `--force`, `--use-cache`
 
 ### `deep-wiki generate <repo-path>`
 
-Full three-phase pipeline.
+Full five-phase pipeline.
 
 ```bash
 deep-wiki generate ./my-project --output ./wiki --concurrency 3 --depth normal
 ```
 
-Options: `--output`, `--model`, `--concurrency`, `--timeout`, `--focus`, `--depth` (shallow/normal/deep), `--force`, `--use-cache`, `--phase` (start from phase N), `--skip-website`, `--theme` (light/dark/auto), `--title`, `--verbose`, `--no-color`
+Options: `--output`, `--model`, `--concurrency`, `--timeout`, `--focus`, `--depth` (shallow/normal/deep), `--force`, `--use-cache`, `--phase` (start from phase N: 1, 2, 3, or 4), `--skip-website`, `--theme` (light/dark/auto), `--title`, `--verbose`, `--no-color`
 
 ### `deep-wiki serve <wiki-dir>`
 
@@ -199,7 +212,7 @@ interface ModuleGraph {
     areas?: AreaInfo[];
 }
 
-// Phase 2 output
+// Phase 3 output
 interface ModuleAnalysis {
     moduleId: string;
     summary: string;
@@ -209,7 +222,7 @@ interface ModuleAnalysis {
     gotchas: string[];
 }
 
-// Phase 3 output
+// Phase 4 output
 interface GeneratedArticle {
     moduleId: string;
     title: string;
@@ -221,7 +234,7 @@ interface GeneratedArticle {
 ## Caching
 
 - Git HEAD hash-based invalidation: cache is invalidated when the commit hash changes
-- Per-phase caching: discovery graph, analysis results, and articles are cached independently
+- Per-phase caching: discovery graph, consolidation, analysis results, and articles are cached independently
 - Incremental re-analysis: only modules with changed files are re-analyzed
 - `--force` flag bypasses all caches; `--use-cache` uses existing cache regardless of git hash
 - `--phase N` skips earlier phases using cached results

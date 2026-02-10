@@ -2,10 +2,12 @@
  * Deep Wiki Generator — Core Types
  *
  * All shared interfaces for the deep-wiki CLI.
- * These types define the data model for the three-phase pipeline:
- *   Phase 1: Discovery → ModuleGraph
- *   Phase 2: Analysis  → (future)
- *   Phase 3: Writing   → (future)
+ * These types define the data model for the five-phase pipeline:
+ *   Phase 1: Discovery      → ModuleGraph
+ *   Phase 2: Consolidation  → Reduced ModuleGraph
+ *   Phase 3: Analysis       → ModuleAnalysis[]
+ *   Phase 4: Writing        → Wiki articles on disk
+ *   Phase 5: Website        → Static HTML site
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -163,7 +165,7 @@ export interface DeepWikiConfig {
     force: boolean;
     /** Always use existing cache regardless of git hash */
     useCache: boolean;
-    /** Start from phase N (1, 2, or 3) */
+    /** Start from phase N (1, 2, 3, or 4) */
     phase: number;
 }
 
@@ -222,7 +224,7 @@ export interface StructuralScanResult {
 }
 
 // ============================================================================
-// Phase 2: Analysis Types
+// Phase 3: Analysis Types
 // ============================================================================
 
 /**
@@ -284,7 +286,7 @@ export interface ExternalDependency {
 }
 
 /**
- * Deep analysis result for a single module — output of Phase 2 per-module AI session.
+ * Deep analysis result for a single module — output of Phase 3 per-module AI session.
  */
 export interface ModuleAnalysis {
     /** Module ID (matches ModuleInfo.id) */
@@ -317,7 +319,7 @@ export interface ModuleAnalysis {
 }
 
 /**
- * Options for the analysis phase (Phase 2).
+ * Options for the analysis phase (Phase 3).
  */
 export interface AnalysisOptions {
     /** The discovered module graph */
@@ -335,7 +337,7 @@ export interface AnalysisOptions {
 }
 
 /**
- * Result of the analysis phase (Phase 2).
+ * Result of the analysis phase (Phase 3).
  */
 export interface AnalysisResult {
     /** Per-module analysis results */
@@ -347,7 +349,7 @@ export interface AnalysisResult {
 }
 
 // ============================================================================
-// Phase 3: Writing Types
+// Phase 4: Writing Types
 // ============================================================================
 
 /**
@@ -374,7 +376,7 @@ export interface GeneratedArticle {
 }
 
 /**
- * Options for the writing phase (Phase 3).
+ * Options for the writing phase (Phase 4).
  */
 export interface WritingOptions {
     /** The discovered module graph */
@@ -392,7 +394,7 @@ export interface WritingOptions {
 }
 
 /**
- * Output of the writing phase (Phase 3).
+ * Output of the writing phase (Phase 4).
  */
 export interface WikiOutput {
     /** All generated articles */
@@ -404,7 +406,7 @@ export interface WikiOutput {
 }
 
 // ============================================================================
-// Phase 4: Website Generation Types
+// Phase 5: Website Generation Types
 // ============================================================================
 
 /**
@@ -450,11 +452,11 @@ export interface GenerateCommandOptions {
     force: boolean;
     /** Always use existing cache regardless of git hash */
     useCache: boolean;
-    /** Start from phase N (1, 2, or 3) */
+    /** Start from phase N (1, 2, 3, or 4) */
     phase?: number;
     /** Verbose logging */
     verbose: boolean;
-    /** Skip website generation (Phase 4) */
+    /** Skip website generation (Phase 5) */
     skipWebsite?: boolean;
     /** Website theme */
     theme?: WebsiteTheme;
@@ -462,7 +464,7 @@ export interface GenerateCommandOptions {
     title?: string;
     /** Path to seeds file for breadth-first discovery, or "auto" to generate */
     seeds?: string;
-    /** Skip module consolidation (Phase 1.5) — keep original module granularity */
+    /** Skip module consolidation (Phase 2) — keep original module granularity */
     noCluster?: boolean;
     /** Strict mode: fail the pipeline if any module fails after retries (default: true) */
     strict?: boolean;
@@ -709,7 +711,7 @@ export interface CachedArticle {
 // ============================================================================
 
 /**
- * A cached consolidation result (Phase 1.5).
+ * A cached consolidation result (Phase 2).
  *
  * Keyed by git hash and the number of input modules (pre-consolidation count),
  * so the cache is invalidated when either the repo changes or the discovery
@@ -803,11 +805,11 @@ export interface DiscoveryProgressMetadata {
 }
 
 // ============================================================================
-// Phase 1.5: Module Consolidation Types
+// Phase 2: Module Consolidation Types
 // ============================================================================
 
 /**
- * Options for the consolidation phase (Phase 1.5).
+ * Options for the consolidation phase (Phase 2).
  */
 export interface ConsolidationOptions {
     /** Maximum number of modules to target after consolidation (default: 50) */

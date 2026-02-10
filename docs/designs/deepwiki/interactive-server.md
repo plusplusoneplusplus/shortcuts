@@ -2,7 +2,7 @@
 
 ## Overview
 
-Extend Phase 4 of deep-wiki from a static HTML generator to an optional Node.js server that hosts the wiki with interactive exploration capabilities — similar to the real [DeepWiki](https://deepwiki.com/).
+Extend Phase 5 of deep-wiki from a static HTML generator to an optional Node.js server that hosts the wiki with interactive exploration capabilities — similar to the real [DeepWiki](https://deepwiki.com/).
 
 The static HTML generation remains the default. The server is an additive mode activated via `deep-wiki serve`.
 
@@ -229,8 +229,8 @@ When `--watch` is enabled, the server monitors the repository for changes and in
 1. `fs.watch` (recursive) on the repo path
 2. On file change, debounce 2 seconds, then:
    a. Determine which modules are affected (using `cache/git-utils.ts` change detection)
-   b. Re-run Phase 2 (analysis) for affected modules only
-   c. Re-run Phase 3 (writing) for affected modules
+   b. Re-run Phase 3 (analysis) for affected modules only
+   c. Re-run Phase 4 (writing) for affected modules
    d. Notify browser via WebSocket: `{ type: "reload", modules: ["auth", "config"] }`
 3. Browser refreshes the current view if it's showing an affected module
 

@@ -187,7 +187,7 @@ describe('CLI', () => {
             expect(optionNames).toContain('--phase');
             expect(optionNames).toContain('--verbose');
             expect(optionNames).toContain('--seeds');
-            // Website generation options (Phase 4)
+            // Website generation options (Phase 5)
             expect(optionNames).toContain('--skip-website');
             expect(optionNames).toContain('--theme');
             expect(optionNames).toContain('--title');

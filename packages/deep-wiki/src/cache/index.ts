@@ -8,7 +8,7 @@
  * Cache structure:
  *   .wiki-cache/
  *   ├── module-graph.json           # Phase 1 (discovery)
- *   └── analyses/                   # Phase 2 (analysis)
+ *   └── analyses/                   # Phase 3 (analysis)
  *       ├── _metadata.json          # git hash + timestamp
  *       ├── auth.json               # per-module analysis
  *       ├── database.json
@@ -944,8 +944,8 @@ export function scanIndividualArticlesCacheAny(
 /**
  * Re-stamp cached articles for unchanged modules with a new git hash.
  *
- * This is the key operation for Phase 3 incremental invalidation:
- * after Phase 2 identifies which modules changed, unchanged module articles
+ * This is the key operation for Phase 4 incremental invalidation:
+ * after Phase 3 identifies which modules changed, unchanged module articles
  * are re-stamped (their gitHash updated) so they pass validation on the
  * current run. Only I/O — no AI calls needed.
  *

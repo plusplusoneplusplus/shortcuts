@@ -1,7 +1,7 @@
 /**
  * Reduce Prompt Templates
  *
- * Prompt templates for the reduce phase of Phase 3 (Article Generation).
+ * Prompt templates for the reduce phase of Phase 4 (Article Generation).
  * The AI reducer receives module summaries and generates:
  * - index.md: Categorized table of contents with module summaries
  * - architecture.md: High-level architecture with Mermaid diagrams

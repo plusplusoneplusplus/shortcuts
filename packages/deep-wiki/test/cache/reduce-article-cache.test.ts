@@ -1,7 +1,7 @@
 /**
  * Reduce Article Cache Tests
  *
- * Tests for Phase 3 reduce-phase article caching:
+ * Tests for Phase 4 reduce-phase article caching:
  * - Save/load reduce articles (index, architecture, getting-started)
  * - Area-scoped reduce articles (area-index, area-architecture)
  * - Reduce metadata read/write
@@ -712,7 +712,7 @@ describe('edge cases', () => {
 
 describe('real-world scenarios', () => {
     it('scenario: first run saves both module and reduce articles', async () => {
-        // Phase 3 first run: generate all articles
+        // Phase 4 first run: generate all articles
         const moduleArticles = [
             createModuleArticle('auth'),
             createModuleArticle('database'),

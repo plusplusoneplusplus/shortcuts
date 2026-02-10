@@ -1,7 +1,7 @@
 /**
  * Analysis Module — Public API
  *
- * Phase 2 (Deep Analysis) entry point. Converts ModuleGraph modules
+ * Phase 3 (Deep Analysis) entry point. Converts ModuleGraph modules
  * into PromptItems and runs parallel AI sessions with MCP tools
  * to produce detailed ModuleAnalysis results.
  *

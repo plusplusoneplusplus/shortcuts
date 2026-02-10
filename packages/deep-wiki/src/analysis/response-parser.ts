@@ -1,7 +1,7 @@
 /**
  * Analysis Response Parser
  *
- * Parses AI responses from Phase 2 analysis into structured ModuleAnalysis objects.
+ * Parses AI responses from Phase 3 analysis into structured ModuleAnalysis objects.
  * Handles JSON extraction from markdown code blocks, field validation, default filling,
  * and Mermaid diagram validation.
  *

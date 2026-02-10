@@ -1,7 +1,7 @@
 /**
  * Article Writing Prompt Templates
  *
- * Prompt templates for Phase 3 (Article Generation). Each module's analysis
+ * Prompt templates for Phase 4 (Article Generation). Each module's analysis
  * is converted into a markdown article. Templates include cross-link
  * information and Mermaid diagram integration.
  *

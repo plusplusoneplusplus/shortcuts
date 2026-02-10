@@ -1,7 +1,7 @@
 /**
  * Article Cache Tests
  *
- * Tests for Phase 3 per-module article caching:
+ * Tests for Phase 4 per-module article caching:
  * save/load single article, save/load all, scan for crash recovery,
  * clear cache, corrupted cache handling, git hash validation,
  * --force flag behavior, and reduce always re-runs.
@@ -777,7 +777,7 @@ describe('restampArticles', () => {
         expect(scan.found[0].areaId).toBe('backend');
     });
 
-    it('should enable incremental Phase 3: re-stamp unchanged, only regenerate changed', () => {
+    it('should enable incremental Phase 4: re-stamp unchanged, only regenerate changed', () => {
         const oldHash = 'old_commit_hash';
         const newHash = 'new_commit_hash';
 

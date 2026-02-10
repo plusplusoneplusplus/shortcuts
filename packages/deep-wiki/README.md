@@ -20,7 +20,7 @@ npm run build
 ### Generate Full Wiki
 
 ```bash
-# Basic — runs all 3 phases (discover → analyze → write)
+# Basic — runs all 5 phases (discover → consolidate → analyze → write → website)
 deep-wiki generate /path/to/repo --output ./wiki
 
 # With options
@@ -33,11 +33,11 @@ deep-wiki generate /path/to/repo \
   --timeout 300 \
   --verbose
 
-# Resume from Phase 2 (reuse cached discovery)
-deep-wiki generate /path/to/repo --output ./wiki --phase 2
-
-# Resume from Phase 3 (reuse cached discovery + analysis)
+# Resume from Phase 3 (reuse cached discovery + consolidation)
 deep-wiki generate /path/to/repo --output ./wiki --phase 3
+
+# Resume from Phase 4 (reuse cached discovery + consolidation + analysis)
+deep-wiki generate /path/to/repo --output ./wiki --phase 4
 
 # Force full regeneration (ignore all caches)
 deep-wiki generate /path/to/repo --output ./wiki --force
@@ -59,7 +59,7 @@ deep-wiki discover /path/to/repo --output ./wiki --verbose
 | `-t, --timeout <seconds>` | Timeout per phase | 300 (5 min) |
 | `--depth <level>` | Article detail: `shallow`, `normal`, `deep` | `normal` |
 | `--focus <path>` | Focus on a specific subtree | Full repo |
-| `--phase <n>` | Resume from phase N (1, 2, or 3) | `1` |
+| `--phase <n>` | Resume from phase N (1, 2, 3, or 4) | `1` |
 | `--force` | Ignore all caches, regenerate everything | `false` |
 | `-v, --verbose` | Verbose logging | `false` |
 | `--no-color` | Disable colored output | Colors on |
@@ -106,7 +106,7 @@ wiki/
 
 The hierarchical layout activates automatically when Phase 1 discovers top-level areas (repos with 3000+ files). No additional CLI flags needed.
 
-## Three-Phase Pipeline
+## Five-Phase Pipeline
 
 ### Phase 1: Discovery (~1-3 min)
 
@@ -117,7 +117,11 @@ A single AI session with MCP tools scans the repo and produces a `ModuleGraph` J
 
 Large repos (3000+ files) use multi-round discovery automatically.
 
-### Phase 2: Deep Analysis (~2-10 min)
+### Phase 2: Consolidation
+
+Consolidates and refines the module graph from Phase 1 before analysis.
+
+### Phase 3: Deep Analysis (~2-10 min)
 
 Parallel AI sessions (each with read-only MCP tools) analyze every module:
 - Public API, internal architecture, data flow
@@ -130,15 +134,19 @@ Three depth levels control investigation thoroughness:
 - **normal** — 7-step investigation (default)
 - **deep** — 10-step exhaustive analysis with performance and edge cases
 
-### Phase 3: Article Generation (~2-5 min)
+### Phase 4: Article Generation (~2-5 min)
 
 Parallel AI sessions (session pool, no tools needed) write markdown articles:
 - **Map phase** — one article per module with cross-links between modules
 - **Reduce phase** — AI generates index, architecture, and getting-started pages
 
-For large repos with areas, Phase 3 uses a 2-tier reduce:
+For large repos with areas, Phase 4 uses a 2-tier reduce:
 1. **Per-area reduce** — generates area index + area architecture (10-30 modules per area)
 2. **Project-level reduce** — receives area summaries → generates project index + architecture + getting-started
+
+### Phase 5: Website
+
+Creates optional static HTML website with navigation, themes (light/dark/auto). Use `--skip-website` to omit.
 
 ## Incremental Rebuilds
 
@@ -147,7 +155,7 @@ Subsequent runs are faster thanks to per-module caching:
 1. Git diff detects changed files since last analysis
 2. Changed files are mapped to affected modules
 3. Only affected modules are re-analyzed (unchanged modules load from cache)
-4. Phase 3 always re-runs (cheap, cross-links may need updating)
+4. Phase 4 always re-runs (cheap, cross-links may need updating)
 
 Cache is stored in `<output>/.wiki-cache/`. Use `--force` to bypass. Article cache supports area-scoped storage: `articles/{area-id}/{module-id}.json`.
 
@@ -161,7 +169,7 @@ npm run test:run
 npm test
 ```
 
-451 tests across 21 test files covering all three phases: types, schemas, AI invoker, prompt generation, response parsing, map-reduce orchestration, file writing, caching (with incremental rebuild), CLI parsing, command integration, hierarchical output, area tagging, and area-scoped article caching.
+451 tests across 21 test files covering all phases: types, schemas, AI invoker, prompt generation, response parsing, map-reduce orchestration, file writing, caching (with incremental rebuild), CLI parsing, command integration, hierarchical output, area tagging, and area-scoped article caching.
 
 ## Architecture
 
@@ -169,19 +177,24 @@ npm test
 src/
 ├── index.ts                # CLI entry point
 ├── cli.ts                  # Commander program (discover + generate)
-├── types.ts                # All shared types (Phase 1+2+3)
+├── types.ts                # All shared types (Phase 1+3+4)
 ├── schemas.ts              # JSON schemas + validation helpers
 ├── logger.ts               # Colored CLI output + spinner
 ├── ai-invoker.ts           # Analysis + writing invoker factories
 ├── commands/
 │   ├── discover.ts         # deep-wiki discover <repo>
-│   └── generate.ts         # deep-wiki generate <repo> (3-phase orchestration)
+│   └── generate.ts         # deep-wiki generate <repo> (5-phase orchestration)
 ├── discovery/
 │   ├── index.ts            # discoverModuleGraph()
 │   ├── prompts.ts          # Discovery prompt templates
 │   ├── discovery-session.ts    # SDK session orchestration
 │   ├── response-parser.ts     # JSON extraction + validation
 │   └── large-repo-handler.ts  # Multi-round for big repos
+├── consolidation/
+│   ├── index.ts            # consolidateModules()
+│   ├── consolidator.ts     # Hybrid orchestration
+│   ├── rule-based-consolidator.ts
+│   └── ai-consolidator.ts
 ├── analysis/
 │   ├── index.ts            # analyzeModules()
 │   ├── prompts.ts          # Analysis prompt templates (3 depths)
@@ -194,7 +207,7 @@ src/
 │   ├── article-executor.ts # MapReduceExecutor orchestration
 │   └── file-writer.ts      # Write markdown to disk (flat + hierarchical layouts)
 └── cache/
-    ├── index.ts            # Cache manager (graph + analyses + area-scoped articles)
+    ├── index.ts            # Cache manager (graph + consolidation + analyses + area-scoped articles)
     └── git-utils.ts        # Git hash + change detection
 ```
 

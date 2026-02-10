@@ -1,8 +1,8 @@
 /**
  * Generate Command Tests
  *
- * Tests for the full four-phase generate command orchestration:
- * Phase 1→2→3→4 flow, --phase skipping, --force bypass, --skip-website, and error handling.
+ * Tests for the full five-phase generate command orchestration:
+ * Phase 1→2→3→4→5 flow, --phase skipping, --force bypass, --skip-website, and error handling.
  *
  * Uses extensive mocking since the actual AI calls are integration-tested separately.
  */
@@ -156,7 +156,7 @@ vi.mock('../../src/cache', () => ({
     getRepoHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
     scanIndividualAnalysesCache: vi.fn().mockReturnValue({ found: [], missing: [] }),
     scanIndividualAnalysesCacheAny: vi.fn().mockReturnValue({ found: [], missing: [] }),
-    // Article cache functions (Phase 3)
+    // Article cache functions (Phase 4)
     saveArticle: vi.fn(),
     saveAllArticles: vi.fn().mockResolvedValue(undefined),
     scanIndividualArticlesCache: vi.fn().mockImplementation(
@@ -166,7 +166,7 @@ vi.mock('../../src/cache', () => ({
         (moduleIds: string[]) => ({ found: [], missing: [...moduleIds] })
     ),
     restampArticles: vi.fn().mockReturnValue(0),
-    // Reduce article cache functions (Phase 3 reduce)
+    // Reduce article cache functions (Phase 4 reduce)
     getCachedReduceArticles: vi.fn().mockReturnValue(null),
     saveReduceArticles: vi.fn(),
     // Discovery cache functions
@@ -174,7 +174,7 @@ vi.mock('../../src/cache', () => ({
     getCachedSeeds: vi.fn().mockReturnValue(null),
     getCachedSeedsAny: vi.fn().mockReturnValue(null),
     clearDiscoveryCache: vi.fn().mockReturnValue(false),
-    // Consolidation cache functions (Phase 1.5)
+    // Consolidation cache functions (Phase 2)
     getCachedConsolidation: vi.fn().mockResolvedValue(null),
     getCachedConsolidationAny: vi.fn().mockReturnValue(null),
     saveConsolidation: vi.fn().mockResolvedValue(undefined),
@@ -343,7 +343,7 @@ describe('executeGenerate — validation', () => {
     });
 
     it('should fail for invalid --phase value', async () => {
-        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 5 }));
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 6 }));
         expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
     });
 
@@ -363,7 +363,7 @@ describe('executeGenerate — validation', () => {
 // ============================================================================
 
 describe('executeGenerate — full pipeline', () => {
-    it('should run all three phases and return SUCCESS', async () => {
+    it('should run all phases and return SUCCESS', async () => {
         const exitCode = await executeGenerate(repoDir, defaultOptions());
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
     });
@@ -379,7 +379,7 @@ describe('executeGenerate — full pipeline', () => {
 // ============================================================================
 
 describe('executeGenerate — --phase option', () => {
-    it('--phase 2 should skip discovery and use cached graph', async () => {
+    it('--phase 3 should skip discovery and consolidation and use cached graph', async () => {
         // Set up cached graph
         vi.mocked(getCachedGraph).mockResolvedValue({
             metadata: {
@@ -411,19 +411,19 @@ describe('executeGenerate — --phase option', () => {
             },
         });
 
-        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 2 }));
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3 }));
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
         expect(discoverModuleGraph).not.toHaveBeenCalled();
     });
 
-    it('--phase 2 should error when no cached graph exists', async () => {
+    it('--phase 3 should error when no cached graph exists', async () => {
         vi.mocked(getCachedGraph).mockResolvedValue(null);
 
-        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 2 }));
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3 }));
         expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
     });
 
-    it('--phase 3 should error when no cached analyses exist', async () => {
+    it('--phase 4 should error when no cached analyses exist', async () => {
         // Set up cached graph but no analyses
         vi.mocked(getCachedGraph).mockResolvedValue({
             metadata: { gitHash: 'abc', timestamp: Date.now(), version: '1.0.0' },
@@ -436,7 +436,7 @@ describe('executeGenerate — --phase option', () => {
         });
         vi.mocked(getCachedAnalyses).mockReturnValue(null);
 
-        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3 }));
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 4 }));
         expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
     });
 });
@@ -668,7 +668,7 @@ describe('executeGenerate — --use-cache option', () => {
         expect(discoverModuleGraph).not.toHaveBeenCalled();
     });
 
-    it('--use-cache should use scanIndividualAnalysesCacheAny for Phase 2', async () => {
+    it('--use-cache should use scanIndividualAnalysesCacheAny for Phase 3', async () => {
         vi.mocked(scanIndividualAnalysesCacheAny).mockReturnValue({
             found: [{
                 moduleId: 'test-module',
@@ -695,7 +695,7 @@ describe('executeGenerate — --use-cache option', () => {
         expect(scanIndividualAnalysesCache).not.toHaveBeenCalled();
     });
 
-    it('--use-cache should use scanIndividualArticlesCacheAny for Phase 3', async () => {
+    it('--use-cache should use scanIndividualArticlesCacheAny for Phase 4', async () => {
         vi.mocked(scanIndividualArticlesCacheAny).mockReturnValue({
             found: [{
                 type: 'module',
@@ -768,7 +768,7 @@ describe('executeGenerate — --use-cache option', () => {
         });
         vi.mocked(createWritingInvoker).mockReturnValue(writingFn);
 
-        const options = defaultOptions({ useCache: true, phase: 3, skipWebsite: true });
+        const options = defaultOptions({ useCache: true, phase: 4, skipWebsite: true });
         const exitCode = await executeGenerate(repoDir, options);
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
 
@@ -788,10 +788,10 @@ describe('executeGenerate — --use-cache option', () => {
 });
 
 // ============================================================================
-// Phase 4: Website Generation
+// Phase 5: Website Generation
 // ============================================================================
 
-describe('executeGenerate — Phase 4: Website Generation', () => {
+describe('executeGenerate — Phase 5: Website Generation', () => {
     it('should call generateWebsite by default', async () => {
         const exitCode = await executeGenerate(repoDir, defaultOptions());
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
@@ -978,9 +978,9 @@ describe('executeGenerate — strict mode', () => {
         });
     }
 
-    // ---- Phase 2: Analysis strict mode ----
+    // ---- Phase 3: Analysis strict mode ----
 
-    it('strict mode (default) should fail Phase 2 when a module analysis fails', async () => {
+    it('strict mode (default) should fail Phase 3 when a module analysis fails', async () => {
         setupTwoModuleGraph();
 
         // analyzeModules returns only 1 of 2 modules (module-b failed)
@@ -1001,7 +1001,7 @@ describe('executeGenerate — strict mode', () => {
             duration: 1000,
         });
 
-        // noCluster: true prevents Phase 1.5 from merging modules under same parent dir
+        // noCluster: true prevents Phase 2 from merging modules under same parent dir
         const exitCode = await executeGenerate(repoDir, defaultOptions({ noCluster: true }));
         expect(exitCode).toBe(EXIT_CODES.EXECUTION_ERROR);
         expect(printError).toHaveBeenCalledWith(
@@ -1029,7 +1029,7 @@ describe('executeGenerate — strict mode', () => {
         );
     });
 
-    it('--no-strict should allow Phase 2 to continue with partial analysis results', async () => {
+    it('--no-strict should allow Phase 3 to continue with partial analysis results', async () => {
         setupTwoModuleGraph();
 
         // analyzeModules returns only 1 of 2 modules (module-b failed)
@@ -1107,9 +1107,9 @@ describe('executeGenerate — strict mode', () => {
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
     });
 
-    // ---- Phase 3: Article generation strict mode ----
+    // ---- Phase 4: Article generation strict mode ----
 
-    it('strict mode (default) should fail Phase 3 when article generation fails for a module', async () => {
+    it('strict mode (default) should fail Phase 4 when article generation fails for a module', async () => {
         setupTwoModuleGraph();
 
         // Both analyses succeed
@@ -1164,7 +1164,7 @@ describe('executeGenerate — strict mode', () => {
         );
     });
 
-    it('--no-strict should allow Phase 3 to continue with partial article results', async () => {
+    it('--no-strict should allow Phase 4 to continue with partial article results', async () => {
         setupTwoModuleGraph();
 
         // Both analyses succeed
@@ -1217,7 +1217,7 @@ describe('executeGenerate — strict mode', () => {
         );
     });
 
-    it('strict mode should not fail Phase 3 when no failedModuleIds', async () => {
+    it('strict mode should not fail Phase 4 when no failedModuleIds', async () => {
         // Default mocks: single module, all succeed, no failedModuleIds
         const exitCode = await executeGenerate(repoDir, defaultOptions());
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
@@ -1264,10 +1264,10 @@ describe('executeGenerate — strict mode', () => {
 });
 
 // ============================================================================
-// Phase 3 Incremental Invalidation (restampArticles)
+// Phase 4 Incremental Invalidation (restampArticles)
 // ============================================================================
 
-describe('executeGenerate — Phase 3 incremental invalidation', () => {
+describe('executeGenerate — Phase 4 incremental invalidation', () => {
     // Helper: set up a 5-module discovery graph
     function setupFiveModuleGraph() {
         const modules = ['auth', 'db', 'api', 'ui', 'config'].map(id => ({
@@ -1339,11 +1339,11 @@ describe('executeGenerate — Phase 3 incremental invalidation', () => {
         vi.mocked(generateWebsite).mockReturnValue(['/mock/index.html']);
     });
 
-    it('should call restampArticles for unchanged modules when Phase 2 provides reanalyzedModuleIds', async () => {
+    it('should call restampArticles for unchanged modules when Phase 3 provides reanalyzedModuleIds', async () => {
         setupFiveModuleGraph();
         const allAnalyses = setupFiveModuleAnalyses();
 
-        // Phase 2: only 'auth' was re-analyzed, others are cached
+        // Phase 3: only 'auth' was re-analyzed, others are cached
         vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(['auth']);
 
         // Set up cached analyses for unchanged modules
@@ -1354,7 +1354,7 @@ describe('executeGenerate — Phase 3 incremental invalidation', () => {
             });
         }
 
-        // Phase 2: simulate partial rebuild
+        // Phase 3: simulate partial rebuild
         const cachedAnalyses = allAnalyses.filter(a => a.moduleId !== 'auth');
         const authAnalysis = allAnalyses.find(a => a.moduleId === 'auth')!;
 
@@ -1365,13 +1365,13 @@ describe('executeGenerate — Phase 3 incremental invalidation', () => {
             vi.mocked(getCachedAnalysis).mockReturnValueOnce(a);
         }
 
-        // Phase 2 analysis: only auth analyzed
+        // Phase 3 analysis: only auth analyzed
         vi.mocked(analyzeModules).mockResolvedValue({
             analyses: [authAnalysis],
             duration: 1000,
         });
 
-        // Phase 3: simulate that after re-stamping, all but 'auth' are found
+        // Phase 4: simulate that after re-stamping, all but 'auth' are found
         vi.mocked(restampArticles).mockReturnValue(4);
         vi.mocked(scanIndividualArticlesCache).mockImplementation(
             (moduleIds: string[]) => {
@@ -1382,7 +1382,7 @@ describe('executeGenerate — Phase 3 incremental invalidation', () => {
             }
         );
 
-        // Phase 3 article generation for only auth
+        // Phase 4 article generation for only auth
         vi.mocked(generateArticles).mockResolvedValue({
             articles: [{
                 type: 'module',
@@ -1459,8 +1459,8 @@ describe('executeGenerate — Phase 3 incremental invalidation', () => {
         expect(restampArticles).not.toHaveBeenCalled();
     });
 
-    it('should not call restampArticles when reanalyzedModuleIds is undefined (phase 3 only)', async () => {
-        // --phase 3: Phase 2 was skipped, so reanalyzedModuleIds is undefined
+    it('should not call restampArticles when reanalyzedModuleIds is undefined (phase 4 only)', async () => {
+        // --phase 4: Phase 3 was skipped, so reanalyzedModuleIds is undefined
         vi.mocked(getCachedGraph).mockResolvedValue({
             metadata: { gitHash: 'abc', timestamp: Date.now(), version: '1.0.0' },
             graph: {
@@ -1495,10 +1495,10 @@ describe('executeGenerate — Phase 3 incremental invalidation', () => {
             { type: 'index', slug: 'index', title: 'Index', content: '# Index' },
         ]);
 
-        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3 }));
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 4 }));
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
 
-        // When --phase 3 is used, Phase 2 is skipped so reanalyzedModuleIds is undefined.
+        // When --phase 4 is used, Phase 3 is skipped so reanalyzedModuleIds is undefined.
         // restampArticles should NOT be called.
         expect(restampArticles).not.toHaveBeenCalled();
     });
@@ -1507,7 +1507,7 @@ describe('executeGenerate — Phase 3 incremental invalidation', () => {
         setupFiveModuleGraph();
         const allAnalyses = setupFiveModuleAnalyses();
 
-        // Phase 2: only 'auth' was re-analyzed
+        // Phase 3: only 'auth' was re-analyzed
         vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(['auth']);
         const { getCachedAnalysis } = await import('../../src/cache');
         for (const a of allAnalyses.filter(x => x.moduleId !== 'auth')) {
@@ -1519,7 +1519,7 @@ describe('executeGenerate — Phase 3 incremental invalidation', () => {
             duration: 1000,
         });
 
-        // Phase 3: re-stamp makes all articles cached, auth article also found somehow
+        // Phase 4: re-stamp makes all articles cached, auth article also found somehow
         vi.mocked(restampArticles).mockReturnValue(4);
         vi.mocked(scanIndividualArticlesCache).mockReturnValue({
             found: setupFiveModuleArticles(),
@@ -1544,11 +1544,11 @@ describe('executeGenerate — Phase 3 incremental invalidation', () => {
         // All modules cached, nothing re-analyzed
         setupFiveModuleGraph();
 
-        // Phase 2: all cached (nothing re-analyzed)
+        // Phase 3: all cached (nothing re-analyzed)
         vi.mocked(getModulesNeedingReanalysis).mockResolvedValue([]);
         vi.mocked(getCachedAnalyses).mockReturnValue(setupFiveModuleAnalyses());
 
-        // Phase 3: all articles cached
+        // Phase 4: all articles cached
         vi.mocked(scanIndividualArticlesCache).mockReturnValue({
             found: setupFiveModuleArticles(),
             missing: [],

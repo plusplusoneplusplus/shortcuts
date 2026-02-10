@@ -6,7 +6,7 @@ A standalone CLI tool that auto-generates a comprehensive, browsable wiki for an
 
 **Output:** Markdown files in a folder, ready for conversion to a static site (e.g., via MkDocs, Docusaurus, or similar).
 
-**Status:** All three phases are implemented and functional. 451 tests passing across 21 test files.
+**Status:** All five phases are implemented and functional. 451 tests passing across 21 test files.
 
 ## Goals
 
@@ -18,38 +18,40 @@ A standalone CLI tool that auto-generates a comprehensive, browsable wiki for an
 
 ## Architecture
 
-### Three-Phase Pipeline
+### Five-Phase Pipeline
 
-The generator uses three sequential phases. Each phase builds on the output of the previous one.
+The generator uses five sequential phases. Each phase builds on the output of the previous one.
 
 ```
-Phase 1: DISCOVER          Phase 2: ANALYZE           Phase 3: WRITE
-─────────────────          ──────────────────         ──────────────
+Phase 1: DISCOVER    Phase 2: CONSOLIDATE    Phase 3: ANALYZE    Phase 4: WRITE    Phase 5: WEBSITE
+─────────────────    ───────────────────     ─────────────────    ──────────────    ─────────────────
 
-Repo (local clone)         Module list + graph        Wiki articles
-       │                          │                          │
-       ▼                          ▼                          ▼
-┌──────────────┐           ┌──────────────┐           ┌──────────────┐
-│  AI + Tools  │           │  Map-Reduce  │           │  Map-Reduce  │
-│  (1 session) │──────▶    │  (parallel)  │──────▶    │  (parallel)  │──▶ Markdown
-│              │           │              │           │              │    files
-│  grep, glob, │  Module   │  1 session   │  Deep     │  1 session   │
-│  view        │  Graph    │  per module  │  Analysis │  per topic   │
-└──────────────┘           └──────────────┘           └──────────────┘
+Repo (local clone)   Merged module graph     Module list + graph  Wiki articles     Static HTML
+       │                          │                          │                          │
+       ▼                          ▼                          ▼                          ▼
+┌──────────────┐           ┌──────────────┐           ┌──────────────┐           ┌──────────────┐
+│  AI + Tools  │           │  Consolidate │           │  Map-Reduce  │           │  Map-Reduce  │
+│  (1 session) │──────▶    │  (merge)     │──────▶    │  (parallel)  │──────▶    │  (parallel)  │──▶ Markdown
+│              │           │              │           │              │           │              │
+│  grep, glob, │  Module   │  Merged      │  1 session│  Deep        │  1 session│  per topic   │
+│  view        │  Graph    │  Graph       │  per mod  │  Analysis    │  per topic│              │
+└──────────────┘           └──────────────┘           └──────────────┘           └──────────────┘
 
-   Not parallel               Parallel (N)              Parallel (N)
-   ~1-3 minutes               ~2-10 minutes              ~2-5 minutes
+   Not parallel               (large repos)              Parallel (N)              Parallel (N)
+   ~1-3 minutes               ~seconds                   ~2-10 minutes             ~2-5 minutes
 ```
 
-### Why Three Phases
+### Why Five Phases
 
 | Phase | Purpose | Why separate |
 |-------|---------|--------------|
 | Discovery | Build holistic understanding of repo structure | Cannot be parallelized — needs global view |
+| Consolidation | Merge sub-graphs from multi-round discovery | Large repos only, merges per-area discovery |
 | Analysis | Deep-dive into each module's internals | Parallelizable, structured output for reuse |
 | Writing | Generate polished prose articles | Parallelizable, can be re-run with different styles without re-analyzing |
+| Website | Static HTML from markdown | Optional, separate from article generation |
 
-Separating analysis from writing also enables **caching**: re-run Phase 3 with a different audience or style without repeating the expensive Phase 2.
+Separating analysis from writing also enables **caching**: re-run Phase 4 with a different audience or style without repeating the expensive Phase 3.
 
 ## Phase 1: Discovery
 
@@ -120,6 +122,15 @@ The AI doesn't read every file. It uses tools strategically:
 
 For very large repos (5000+ files), Phase 1 may do **multi-round discovery**: first pass identifies top-level structure, second pass explores each top-level area.
 
+## Phase 2: Consolidation
+
+**Status:** Implemented (large repos only)
+**Input:** Multiple sub-graphs from Phase 1 multi-round discovery
+**Output:** Single merged `ModuleGraph` with areas
+**Parallelism:** None — synchronous merge
+
+For large repos (3000+ files), Phase 1 produces multiple sub-graphs (one per top-level area). Phase 2 merges them into a single graph, assigns area tags to modules, and deduplicates. Skipped for small repos where Phase 1 returns a single graph.
+
 ### SDK Usage
 
 ```typescript
@@ -134,14 +145,14 @@ const result = await sdkService.sendMessage({
 });
 ```
 
-## Phase 2: Deep Analysis
+## Phase 3: Deep Analysis
 
 **Status:** Implemented
-**Input:** Module graph from Phase 1
+**Input:** Module graph from Phase 1 (+ Phase 2 consolidation for large repos)
 **Output:** Structured `ModuleAnalysis` per module (JSON)
 **Parallelism:** Configurable (default 5) concurrent direct sessions via `MapReduceExecutor`
 
-For each module in the graph, a direct AI session is created with read-only MCP tool access (`view`, `grep`, `glob`). The session pool is **not** used for Phase 2 — MCP tools require direct sessions (`usePool: false`). Each session:
+For each module in the graph, a direct AI session is created with read-only MCP tool access (`view`, `grep`, `glob`). The session pool is **not** used for Phase 3 — MCP tools require direct sessions (`usePool: false`). Each session:
 
 1. Reads the module's key files
 2. Analyzes public API, exports, types
@@ -248,10 +259,10 @@ service.sendMessage({
 });
 ```
 
-## Phase 3: Article Generation
+## Phase 4: Article Generation
 
 **Status:** Implemented
-**Input:** Module graph (Phase 1) + deep analyses (Phase 2)
+**Input:** Module graph (Phase 1 + Phase 2) + deep analyses (Phase 3)
 **Output:** Markdown files on disk
 **Parallelism:** Configurable (default 10) concurrent sessions via session pool (`usePool: true`)
 
@@ -353,13 +364,13 @@ wiki/
 │   ├── database.md             # Database layer
 │   ├── api.md                  # API endpoints
 │   └── ...
-└── .wiki-cache/                # Cached Phase 1+2+3 results for incremental rebuilds
+└── .wiki-cache/                # Cached Phase 1–5 results for incremental rebuilds
     ├── module-graph.json       # Phase 1 cache (with metadata)
-    ├── analyses/               # Phase 2 per-module cache
+    ├── analyses/               # Phase 3 per-module cache
     │   ├── _metadata.json      # { gitHash, timestamp, version, moduleCount }
     │   ├── auth.json           # { analysis: ModuleAnalysis, gitHash, timestamp }
     │   └── ...
-    └── articles/               # Phase 3 per-module article cache
+    └── articles/               # Phase 4 per-module article cache
         ├── auth.json
         └── ...
 ```
@@ -412,20 +423,20 @@ After the initial generation, subsequent runs are faster:
 
 1. **Detect changes** — `git diff --name-only <cached-hash> HEAD` to find changed files
 2. **Map to modules** — for each module, check if any changed file falls under `module.path` or matches `module.keyFiles`
-3. **Re-run Phase 2** — only for affected modules; unchanged modules loaded from per-module cache
-4. **Re-run Phase 3** — always re-runs (cheap to regenerate, cross-links may need updating)
+3. **Re-run Phase 3** — only for affected modules; unchanged modules loaded from per-module cache
+4. **Re-run Phase 4** — always re-runs (cheap to regenerate, cross-links may need updating)
 
 ### Cache Structure
 
 ```
 .wiki-cache/
 ├── module-graph.json           # Phase 1 (git hash validated)
-├── analyses/                   # Phase 2 (per-module, git hash tracked)
+├── analyses/                   # Phase 3 (per-module, git hash tracked)
 │   ├── _metadata.json          # { gitHash, timestamp, version, moduleCount }
 │   ├── auth.json               # { analysis: ModuleAnalysis, gitHash, timestamp }
 │   ├── database.json
 │   └── ...
-└── articles/                   # Phase 3 (per-module article cache)
+└── articles/                   # Phase 4 (per-module article cache)
     ├── auth.json               # Flat layout articles
     ├── database.json
     ├── packages-core/          # Area-scoped articles (hierarchical layout)
@@ -453,14 +464,14 @@ Article cache lookup checks both area-scoped paths (`articles/{area-id}/{module-
 ### Cache Invalidation
 
 - **Phase 1 cache** — invalidated when git HEAD hash changes
-- **Phase 2 cache** — incremental per-module invalidation based on file paths
+- **Phase 3 cache** — incremental per-module invalidation based on file paths
 - **`--force`** — bypasses all caches, regenerates everything
 - **Corrupted cache** — silently skipped (cleared entries, re-analyze)
 
 ## CLI Interface
 
 ```bash
-# Full wiki generation (all 3 phases)
+# Full wiki generation (all 5 phases)
 deep-wiki generate /path/to/repo --output ./wiki
 
 # With options
@@ -471,15 +482,15 @@ deep-wiki generate /path/to/repo \
   --focus "src/" \             # Focus discovery on a specific subtree
   --depth normal \             # Article detail level: shallow, normal, deep
   --force \                    # Ignore all caches, regenerate everything
-  --phase 2 \                 # Resume from phase N (uses cached prior phases)
+  --phase 3 \                 # Resume from phase N (uses cached prior phases)
   --timeout 300 \              # Timeout in seconds per phase
   --verbose                    # Verbose logging
 
-# Resume from Phase 2 (use cached discovery)
-deep-wiki generate /path/to/repo --output ./wiki --phase 2
-
-# Resume from Phase 3 (use cached discovery + analysis)
+# Resume from Phase 3 (use cached discovery + consolidation)
 deep-wiki generate /path/to/repo --output ./wiki --phase 3
+
+# Resume from Phase 4 (use cached discovery + consolidation + analysis)
+deep-wiki generate /path/to/repo --output ./wiki --phase 4
 
 # Force full regeneration
 deep-wiki generate /path/to/repo --output ./wiki --force
@@ -493,13 +504,13 @@ deep-wiki discover /path/to/repo --output ./wiki --verbose
 | Component | Usage |
 |-----------|-------|
 | `CopilotSDKService` | All AI interactions (via `getCopilotSDKService()`) |
-| `sendMessage()` with MCP tools | Phase 1 discovery, Phase 2 analysis (`usePool: false`) |
-| `sendMessage()` via session pool | Phase 3 writing (`usePool: true`) |
-| `MapReduceExecutor` / `createExecutor()` | Phase 2 (analysis) and Phase 3 (writing) |
+| `sendMessage()` with MCP tools | Phase 1 discovery, Phase 3 analysis (`usePool: false`) |
+| `sendMessage()` via session pool | Phase 4 writing (`usePool: true`) |
+| `MapReduceExecutor` / `createExecutor()` | Phase 3 (analysis) and Phase 4 (writing) |
 | `createPromptMapJob()` | Job factory for both phases |
 | `PromptMapSplitter` | One module/analysis = one `PromptItem` work item |
 | `PromptMapMapper` | Template substitution + AI invocation per item |
-| `PromptMapReducer` with `outputFormat: 'ai'` | Phase 3 AI reduce for index pages |
+| `PromptMapReducer` with `outputFormat: 'ai'` | Phase 4 AI reduce for index pages |
 | `ConcurrencyLimiter` | Configurable parallel session count |
 | `isCancelled()` | Graceful SIGINT cancellation across all phases |
 | `JobProgress` callbacks | Per-phase spinner/progress reporting |
@@ -510,12 +521,12 @@ The `MapReduceExecutor` calls `AIInvoker(prompt, options?)` for each work item. 
 
 | Phase | Invoker | Session Type | Tools | Default Timeout |
 |-------|---------|-------------|-------|-----------------|
-| Phase 2 | `createAnalysisInvoker()` | Direct (`usePool: false`) | view, grep, glob | 180s |
-| Phase 3 | `createWritingInvoker()` | Pool (`usePool: true`) | None | 120s |
+| Phase 3 | `createAnalysisInvoker()` | Direct (`usePool: false`) | view, grep, glob | 180s |
+| Phase 4 | `createWritingInvoker()` | Pool (`usePool: true`) | None | 120s |
 
 ## Implementation Details
 
-All three phases are fully implemented in `packages/deep-wiki/`. 451 tests across 21 test files.
+All five phases are fully implemented in `packages/deep-wiki/`. 451 tests across 21 test files.
 
 ### Package Structure
 
@@ -527,13 +538,13 @@ packages/deep-wiki/
 ├── src/
 │   ├── index.ts                         # Shebang + CLI entry
 │   ├── cli.ts                           # Commander program (discover + generate)
-│   ├── types.ts                         # All shared types (Phase 1+2+3)
+│   ├── types.ts                         # All shared types (Phase 1–5)
 │   ├── schemas.ts                       # JSON schemas + validation helpers
 │   ├── logger.ts                        # CLI logger (spinner, colors)
 │   ├── ai-invoker.ts                    # Analysis + writing invoker factories
 │   ├── commands/
 │   │   ├── discover.ts                  # deep-wiki discover <repo>
-│   │   └── generate.ts                  # deep-wiki generate <repo> (3-phase)
+│   │   └── generate.ts                  # deep-wiki generate <repo> (5-phase)
 │   ├── discovery/
 │   │   ├── index.ts                     # discoverModuleGraph()
 │   │   ├── prompts.ts                   # Discovery prompt templates
@@ -593,14 +604,14 @@ packages/deep-wiki/
 5. **Module IDs normalized to kebab-case** — invalid IDs auto-corrected with warnings
 6. **Dependencies validated against module set** — references to non-existent modules are stripped with warnings
 
-**Phase 2 (Analysis):**
+**Phase 3 (Analysis):**
 7. **Direct sessions for MCP tools** — `usePool: false` required for tool access; session pool cannot provide MCP tools
 8. **Default MCP config disabled** — `loadDefaultMcpConfig: false` prevents user's custom MCP servers from interfering
 9. **Analysis response parser is separate from discovery** — handles `ModuleAnalysis` schema with Mermaid validation, code example normalization
 10. **Per-module cache** — each module's analysis stored as individual JSON file for granular incremental invalidation
 11. **Incremental rebuild via git diff** — `git diff --name-only <cached-hash> HEAD` maps changed files to affected modules
 
-**Phase 3 (Writing):**
+**Phase 4 (Writing):**
 12. **Text mode for article map** — `outputFields: []` means AI returns raw markdown, not structured JSON
 13. **AI reduce for index pages** — `outputFormat: 'ai'` with `aiReduceOutput: ['index', 'architecture', 'gettingStarted']`
 14. **Simplified graph in prompts** — only id/name/path/category sent to article writer (not full analysis) for token efficiency
@@ -611,9 +622,9 @@ packages/deep-wiki/
 19. **Automatic layout detection** — `runArticleExecutor()` dispatches to `runHierarchicalArticleExecutor()` or `runFlatArticleExecutor()` based on presence of `graph.areas`
 
 **Generate Command:**
-20. **Three-phase orchestration** — Phase 1→2→3 with `--phase N` to resume from cached prior phases
+20. **Five-phase orchestration** — Phase 1→2→3→4→5 with `--phase N` to resume from cached prior phases
 21. **SIGINT graceful cancellation** — `isCancelled()` propagated to MapReduceExecutor; second SIGINT force-exits
-22. **Phase 3 always re-runs** — article cross-links may need updating even when analyses are cached
+22. **Phase 4 always re-runs** — article cross-links may need updating even when analyses are cached
 23. **Area-scoped article caching** — `onItemComplete` passes `areaId` so articles are cached under `articles/{area-id}/{module-id}.json`
 
 ### Error Handling
@@ -621,15 +632,15 @@ packages/deep-wiki/
 | Error | Phase | Handling |
 |-------|-------|----------|
 | SDK unavailable | Any | Exit 3, print setup instructions |
-| Module analysis timeout | 2 | Mark failed, continue others, warn in summary |
-| Analysis parse failure | 2 | Try fallback parsing from structured output, then mark failed |
-| All analyses failed | 2 | Exit 1, suggest checking SDK or reducing scope |
-| Article generation timeout | 3 | Mark failed, continue others |
-| Reduce failure | 3 | Fallback: generate static TOC without AI |
-| Area reduce failure | 3 | Fallback: static area index/architecture via `generateStaticAreaPages()` |
-| Hierarchical reduce failure | 3 | Fallback: static project index/architecture via `generateStaticHierarchicalIndexPages()` |
-| Disk write failure | 3 | Exit 1, print path and error |
-| Partial cache corruption | 2 | Skip corrupted entries, re-analyze |
+| Module analysis timeout | 3 | Mark failed, continue others, warn in summary |
+| Analysis parse failure | 3 | Try fallback parsing from structured output, then mark failed |
+| All analyses failed | 3 | Exit 1, suggest checking SDK or reducing scope |
+| Article generation timeout | 4 | Mark failed, continue others |
+| Reduce failure | 4 | Fallback: generate static TOC without AI |
+| Area reduce failure | 4 | Fallback: static area index/architecture via `generateStaticAreaPages()` |
+| Hierarchical reduce failure | 4 | Fallback: static project index/architecture via `generateStaticHierarchicalIndexPages()` |
+| Disk write failure | 4 | Exit 1, print path and error |
+| Partial cache corruption | 3 | Skip corrupted entries, re-analyze |
 | Missing cache + --phase N | Any | Exit 2, explain which phase needs to run first |
 
 ## Open Questions
@@ -640,7 +651,7 @@ packages/deep-wiki/
 4. **Static site integration** — bundle a default MkDocs/Docusaurus config, or just output raw markdown? *(Current: raw markdown only)*
 5. **Interactive Q&A** — after generation, allow follow-up questions against the wiki as context?
 6. **Cost control** — should there be a `--budget` flag to limit total API calls?
-7. **Phase 3 incremental** — ~~currently Phase 3 always re-runs~~ Phase 3 now caches per-module articles (including area-scoped) and reuses them on incremental rebuilds; index/architecture pages are always regenerated
+7. **Phase 4 incremental** — ~~currently Phase 4 always re-runs~~ Phase 4 now caches per-module articles (including area-scoped) and reuses them on incremental rebuilds; index/architecture pages are always regenerated
 8. **Token usage tracking** — `AnalysisResult.tokenUsage` and `DiscoveryResult.tokenUsage` are typed but not yet populated by the SDK
 9. **Custom writing templates** — allow users to provide their own article prompt templates (e.g., for different audiences or styles)
 10. **Multi-model support** — use different models for different phases (e.g., larger model for discovery, faster model for writing)

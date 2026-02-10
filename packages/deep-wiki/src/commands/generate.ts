@@ -2,10 +2,11 @@
  * Generate Command
  *
  * Implements the `deep-wiki generate <repo-path>` command.
- * Full three-phase wiki generation:
- *   Phase 1: Discovery → ModuleGraph
- *   Phase 2: Analysis  → ModuleAnalysis[] (incremental with cache)
- *   Phase 3: Writing   → Wiki articles on disk
+ * Full pipeline wiki generation:
+ *   Phase 1: Discovery      → ModuleGraph
+ *   Phase 2: Consolidation  → Reduced ModuleGraph
+ *   Phase 3: Analysis       → ModuleAnalysis[] (incremental with cache)
+ *   Phase 4: Writing        → Wiki articles on disk
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -79,7 +80,7 @@ import { EXIT_CODES } from '../cli';
 // ============================================================================
 
 /**
- * Execute the generate command — full three-phase wiki generation.
+ * Execute the generate command — full pipeline wiki generation.
  *
  * @param repoPath - Path to the local git repository
  * @param options - Command options
@@ -107,13 +108,13 @@ export async function executeGenerate(
 
     // Validate phase option
     const startPhase = options.phase || 1;
-    if (startPhase < 1 || startPhase > 3) {
-        printError(`Invalid --phase value: ${startPhase}. Must be 1, 2, or 3.`);
+    if (startPhase < 1 || startPhase > 4) {
+        printError(`Invalid --phase value: ${startPhase}. Must be 1, 2, 3, or 4.`);
         return EXIT_CODES.CONFIG_ERROR;
     }
 
     // Print header
-    printHeader('Deep Wiki — Full Generation');
+    printHeader('Deep Wiki \u2014 Full Generation');
     printKeyValue('Repository', absoluteRepoPath);
     printKeyValue('Output', path.resolve(options.output));
     printKeyValue('Depth', options.depth);
@@ -175,7 +176,7 @@ export async function executeGenerate(
                 ? getCachedGraphAny(options.output)
                 : await getCachedGraph(absoluteRepoPath, options.output);
             if (!cached) {
-                printError(`No cached module graph found. Run with --phase 1 (or without --phase) first.`);
+                printError(`No cached module graph found. Run without --phase (or --phase 1) first.`);
                 return EXIT_CODES.CONFIG_ERROR;
             }
             graph = cached.graph;
@@ -188,14 +189,14 @@ export async function executeGenerate(
         }
 
         // ================================================================
-        // Phase 1.5: Module Consolidation
+        // Phase 2: Consolidation
         // ================================================================
-        let consolidationDuration = 0;
+        let phase2Duration = 0;
 
-        if (!options.noCluster && graph.modules.length > 0) {
-            const phase15Result = await runPhase15(absoluteRepoPath, graph, options, usageTracker);
-            graph = phase15Result.graph;
-            consolidationDuration = phase15Result.duration;
+        if (!options.noCluster && graph.modules.length > 0 && startPhase <= 2) {
+            const phase2Result = await runPhase2Consolidation(absoluteRepoPath, graph, options, usageTracker);
+            graph = phase2Result.graph;
+            phase2Duration = phase2Result.duration;
         }
 
         if (isCancelled()) {
@@ -203,28 +204,28 @@ export async function executeGenerate(
         }
 
         // ================================================================
-        // Phase 2: Deep Analysis
+        // Phase 3: Deep Analysis
         // ================================================================
         let analyses: ModuleAnalysis[];
-        let phase2Duration = 0;
+        let phase3Duration = 0;
 
         let reanalyzedModuleIds: string[] | undefined;
 
-        if (startPhase <= 2) {
-            const phase2Result = await runPhase2(
+        if (startPhase <= 3) {
+            const phase3Result = await runPhase3Analysis(
                 absoluteRepoPath, graph, options, isCancelled, usageTracker
             );
-            if (phase2Result.exitCode !== undefined) {
-                return phase2Result.exitCode;
+            if (phase3Result.exitCode !== undefined) {
+                return phase3Result.exitCode;
             }
-            analyses = phase2Result.analyses!;
-            phase2Duration = phase2Result.duration;
-            reanalyzedModuleIds = phase2Result.reanalyzedModuleIds;
+            analyses = phase3Result.analyses!;
+            phase3Duration = phase3Result.duration;
+            reanalyzedModuleIds = phase3Result.reanalyzedModuleIds;
         } else {
             // Load from cache
             const cached = getCachedAnalyses(options.output);
             if (!cached || cached.length === 0) {
-                printError(`No cached analyses found. Run with --phase 2 (or without --phase) first.`);
+                printError(`No cached analyses found. Run with --phase 3 (or without --phase) first.`);
                 return EXIT_CODES.CONFIG_ERROR;
             }
             analyses = cached;
@@ -237,25 +238,25 @@ export async function executeGenerate(
         }
 
         // ================================================================
-        // Phase 3: Article Generation
+        // Phase 4: Article Generation
         // ================================================================
-        const phase3Result = await runPhase3(
+        const phase4Result = await runPhase4Writing(
             absoluteRepoPath, graph, analyses, options, isCancelled, usageTracker, reanalyzedModuleIds
         );
-        if (phase3Result.exitCode !== undefined) {
-            return phase3Result.exitCode;
+        if (phase4Result.exitCode !== undefined) {
+            return phase4Result.exitCode;
         }
 
         // ================================================================
-        // Phase 4: Website Generation
+        // Phase 5: Website Generation
         // ================================================================
         let websiteGenerated = false;
-        let phase4Duration = 0;
+        let phase5Duration = 0;
 
         if (!options.skipWebsite) {
-            const phase4Result = runPhase4(options);
-            websiteGenerated = phase4Result.success;
-            phase4Duration = phase4Result.duration;
+            const phase5Result = runPhase5Website(options);
+            websiteGenerated = phase5Result.success;
+            phase5Duration = phase5Result.duration;
         }
 
         // ================================================================
@@ -270,15 +271,15 @@ export async function executeGenerate(
             printKeyValue('Layout', 'Hierarchical (3-level)');
         }
         printKeyValue('Modules Analyzed', String(analyses.length));
-        printKeyValue('Articles Written', String(phase3Result.articlesWritten));
+        printKeyValue('Articles Written', String(phase4Result.articlesWritten));
         if (websiteGenerated) {
             printKeyValue('Website', 'Generated');
         }
         if (phase1Duration > 0) { printKeyValue('Phase 1 Duration', formatDuration(phase1Duration)); }
-        if (consolidationDuration > 0) { printKeyValue('Phase 1.5 Duration', formatDuration(consolidationDuration)); }
         if (phase2Duration > 0) { printKeyValue('Phase 2 Duration', formatDuration(phase2Duration)); }
-        printKeyValue('Phase 3 Duration', formatDuration(phase3Result.duration));
-        if (phase4Duration > 0) { printKeyValue('Phase 4 Duration', formatDuration(phase4Duration)); }
+        if (phase3Duration > 0) { printKeyValue('Phase 3 Duration', formatDuration(phase3Duration)); }
+        printKeyValue('Phase 4 Duration', formatDuration(phase4Result.duration));
+        if (phase5Duration > 0) { printKeyValue('Phase 5 Duration', formatDuration(phase5Duration)); }
         printKeyValue('Total Duration', formatDuration(totalDuration));
 
         // Token usage summary
@@ -476,24 +477,24 @@ async function runPhase1(
 }
 
 // ============================================================================
-// Phase 1.5: Module Consolidation
+// Phase 2: Module Consolidation
 // ============================================================================
 
-interface Phase15Result {
+interface Phase2ConsolidationResult {
     graph: ModuleGraph;
     duration: number;
 }
 
-async function runPhase15(
+async function runPhase2Consolidation(
     repoPath: string,
     graph: ModuleGraph,
     options: GenerateCommandOptions,
     usageTracker?: UsageTracker
-): Promise<Phase15Result> {
+): Promise<Phase2ConsolidationResult> {
     const startTime = Date.now();
 
     process.stderr.write('\n');
-    printHeader('Phase 1.5: Module Consolidation');
+    printHeader('Phase 2: Consolidation');
     printInfo(`Input: ${graph.modules.length} modules`);
 
     const outputDir = path.resolve(options.output);
@@ -556,10 +557,10 @@ async function runPhase15(
 }
 
 // ============================================================================
-// Phase 2: Deep Analysis
+// Phase 3: Deep Analysis
 // ============================================================================
 
-interface Phase2Result {
+interface Phase3AnalysisResult {
     analyses?: ModuleAnalysis[];
     duration: number;
     exitCode?: number;
@@ -568,17 +569,17 @@ interface Phase2Result {
     reanalyzedModuleIds?: string[];
 }
 
-async function runPhase2(
+async function runPhase3Analysis(
     repoPath: string,
     graph: ModuleGraph,
     options: GenerateCommandOptions,
     isCancelled: () => boolean,
     usageTracker?: UsageTracker
-): Promise<Phase2Result> {
+): Promise<Phase3AnalysisResult> {
     const startTime = Date.now();
 
     process.stderr.write('\n');
-    printHeader('Phase 2: Deep Analysis');
+    printHeader('Phase 3: Deep Analysis');
 
     const concurrency = options.concurrency || 5;
 
@@ -794,16 +795,16 @@ async function runPhase2(
 }
 
 // ============================================================================
-// Phase 3: Article Generation
+// Phase 4: Article Generation
 // ============================================================================
 
-interface Phase3Result {
+interface Phase4WritingResult {
     articlesWritten: number;
     duration: number;
     exitCode?: number;
 }
 
-async function runPhase3(
+async function runPhase4Writing(
     repoPath: string,
     graph: ModuleGraph,
     analyses: ModuleAnalysis[],
@@ -811,11 +812,11 @@ async function runPhase3(
     isCancelled: () => boolean,
     usageTracker?: UsageTracker,
     reanalyzedModuleIds?: string[]
-): Promise<Phase3Result> {
+): Promise<Phase4WritingResult> {
     const startTime = Date.now();
 
     process.stderr.write('\n');
-    printHeader('Phase 3: Article Generation');
+    printHeader('Phase 4: Article Generation');
 
     const concurrency = options.concurrency ? Math.min(options.concurrency * 2, 20) : 5;
 
@@ -837,13 +838,13 @@ async function runPhase3(
             .filter(id => !!id);
 
         // Re-stamp unchanged module articles with the new git hash BEFORE scanning.
-        // This is the key to Phase 3 incremental invalidation: modules that were NOT
-        // re-analyzed in Phase 2 get their cached articles re-stamped so they pass
+        // This is the key to Phase 4 incremental invalidation: modules that were NOT
+        // re-analyzed in Phase 3 get their cached articles re-stamped so they pass
         // the git hash validation in scanIndividualArticlesCache().
         //
         // Skip re-stamping when:
         // - No git hash available
-        // - reanalyzedModuleIds is undefined (Phase 2 was skipped)
+        // - reanalyzedModuleIds is undefined (Phase 3 was skipped)
         // - reanalyzedModuleIds is empty (nothing changed, articles already valid)
         // - --use-cache mode (articles are loaded regardless of hash)
         if (gitHash && reanalyzedModuleIds !== undefined && reanalyzedModuleIds.length > 0 && !options.useCache) {
@@ -991,7 +992,7 @@ async function runPhase3(
         //
         // Reduce skip criteria:
         // - Skip reduce ONLY when NO modules were re-analyzed (truly nothing changed)
-        // - When reanalyzedModuleIds is undefined (Phase 2 was skipped via --phase 3),
+        // - When reanalyzedModuleIds is undefined (Phase 3 was skipped via --phase 4),
         //   fall back to old behavior: skip reduce when all articles are cached
         const nothingChanged = reanalyzedModuleIds !== undefined
             ? reanalyzedModuleIds.length === 0
@@ -1126,19 +1127,19 @@ async function runPhase3(
 }
 
 // ============================================================================
-// Phase 4: Website Generation
+// Phase 5: Website Generation
 // ============================================================================
 
-interface Phase4Result {
+interface Phase5WebsiteResult {
     success: boolean;
     duration: number;
 }
 
-function runPhase4(options: GenerateCommandOptions): Phase4Result {
+function runPhase5Website(options: GenerateCommandOptions): Phase5WebsiteResult {
     const startTime = Date.now();
 
     process.stderr.write('\n');
-    printHeader('Phase 4: Website Generation');
+    printHeader('Phase 5: Website Generation');
 
     const spinner = new Spinner();
     spinner.start('Generating website...');
@@ -1281,9 +1282,9 @@ function printTokenUsageSummary(tracker: UsageTracker): void {
 
     const phases: Array<{ label: string; phase: TrackedPhase }> = [
         { label: 'Phase 1 (Discovery)', phase: 'discovery' },
-        { label: 'Phase 1.5 (Consolidation)', phase: 'consolidation' },
-        { label: 'Phase 2 (Analysis)', phase: 'analysis' },
-        { label: 'Phase 3 (Writing)', phase: 'writing' },
+        { label: 'Phase 2 (Consolidation)', phase: 'consolidation' },
+        { label: 'Phase 3 (Analysis)', phase: 'analysis' },
+        { label: 'Phase 4 (Writing)', phase: 'writing' },
     ];
 
     printInfo('── Token Usage ──────────────────────────────────────────');

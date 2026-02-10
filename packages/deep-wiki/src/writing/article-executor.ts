@@ -1,7 +1,7 @@
 /**
  * Article Executor
  *
- * Orchestrates Phase 3 (Article Generation) using the MapReduceExecutor
+ * Orchestrates Phase 4 (Article Generation) using the MapReduceExecutor
  * from pipeline-core. Runs two stages:
  * 1. Map: Generate per-module markdown articles (text mode, no structured output)
  * 2. Reduce: AI generates index, architecture, and getting-started pages
@@ -48,9 +48,9 @@ import type { AreaInfo } from '../types';
 export interface ArticleExecutorOptions {
     /** AI invoker for writing (session pool, no tools) */
     aiInvoker: AIInvoker;
-    /** Module graph from Phase 1 */
+    /** Module graph from Phase 1 (Discovery) */
     graph: ModuleGraph;
-    /** Per-module analyses from Phase 2 */
+    /** Per-module analyses from Phase 3 (Analysis) */
     analyses: ModuleAnalysis[];
     /** Article depth */
     depth: 'shallow' | 'normal' | 'deep';

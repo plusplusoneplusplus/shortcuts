@@ -1,7 +1,7 @@
 /**
  * Writing Module — Public API
  *
- * Phase 3 (Article Generation) entry point. Converts ModuleAnalysis results
+ * Phase 4 (Article Generation) entry point. Converts ModuleAnalysis results
  * into markdown wiki articles and generates index/architecture overview pages.
  *
  * Cross-platform compatible (Linux/Mac/Windows).

@@ -1,7 +1,7 @@
 /**
  * Analysis Executor
  *
- * Orchestrates Phase 2 (Deep Analysis) using the MapReduceExecutor
+ * Orchestrates Phase 3 (Deep Analysis) using the MapReduceExecutor
  * from pipeline-core. Converts ModuleInfo items into PromptItems,
  * runs parallel AI sessions with MCP tools, and parses results
  * into ModuleAnalysis objects.
@@ -38,7 +38,7 @@ import { parseAnalysisResponse } from './response-parser';
 export interface AnalysisExecutorOptions {
     /** AI invoker configured for analysis (with MCP tools) */
     aiInvoker: AIInvoker;
-    /** Module graph from Phase 1 */
+    /** Module graph from Phase 1 (Discovery) */
     graph: ModuleGraph;
     /** Analysis depth */
     depth: 'shallow' | 'normal' | 'deep';

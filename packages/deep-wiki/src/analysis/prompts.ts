@@ -1,7 +1,7 @@
 /**
  * Analysis Prompt Templates
  *
- * Prompt templates for Phase 2 (Deep Analysis). Each module is analyzed
+ * Prompt templates for Phase 3 (Deep Analysis). Each module is analyzed
  * by an AI session with MCP tool access. Three depth variants control
  * the level of investigation detail.
  *

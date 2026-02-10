@@ -70,7 +70,7 @@ export const STRUCTURAL_SCAN_SCHEMA = `{
 }`;
 
 // ============================================================================
-// Module Analysis Schema (Phase 2 output)
+// Module Analysis Schema (Phase 3 output)
 // ============================================================================
 
 /**
@@ -125,7 +125,7 @@ export const MODULE_ANALYSIS_SCHEMA = `{
 }`;
 
 /**
- * JSON schema string for the reduce output (Phase 3 index/architecture generation).
+ * JSON schema string for the reduce output (Phase 4 index/architecture generation).
  */
 export const REDUCE_OUTPUT_SCHEMA = `{
   "index": "string — full markdown content for index.md (categorized TOC, project overview, module summaries)",

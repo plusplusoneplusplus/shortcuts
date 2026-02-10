@@ -115,7 +115,7 @@ export function createProgram(): Command {
         .option('--force', 'Ignore cache, regenerate everything', false)
         .option('--use-cache', 'Use existing cache regardless of git hash', false)
         .option('--phase <number>', 'Start from phase N (uses cached prior phases)', (v: string) => parseInt(v, 10))
-        .option('--skip-website', 'Skip website generation (Phase 4)', false)
+        .option('--skip-website', 'Skip website generation (Phase 5)', false)
         .option('--no-cluster', 'Skip module consolidation (keep original granularity)')
         .option('--no-strict', 'Allow partial failures (default: strict, any failure aborts)')
         .option('--theme <theme>', 'Website theme: light, dark, auto', 'auto')

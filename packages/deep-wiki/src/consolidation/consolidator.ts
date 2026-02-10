@@ -1,7 +1,7 @@
 /**
  * Module Consolidation Orchestrator
  *
- * Public API for Phase 1.5 — combines rule-based directory consolidation
+ * Public API for Phase 2 — combines rule-based directory consolidation
  * with AI-assisted semantic clustering to reduce module count.
  *
  * Pipeline: Rule-based → AI clustering (optional)
@@ -31,7 +31,7 @@ const DEFAULT_TARGET_MODULE_COUNT = 50;
  * 1. Rule-based pass: merge modules by directory proximity
  * 2. AI-assisted pass: semantic clustering to target count (optional)
  *
- * @param graph - The original module graph from Phase 1
+ * @param graph - The original module graph from Phase 1 (Discovery)
  * @param aiInvoker - AI invoker for semantic clustering (null to skip AI)
  * @param options - Consolidation options
  * @returns Consolidation result with new graph and stats

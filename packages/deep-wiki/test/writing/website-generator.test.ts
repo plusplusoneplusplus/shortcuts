@@ -1104,7 +1104,7 @@ describe('generateWebsite — hierarchical layout', () => {
 });
 
 // ============================================================================
-// CLI integration (generate command Phase 4)
+// CLI integration (generate command Phase 5)
 // ============================================================================
 
 describe('generateWebsite — options combinations', () => {

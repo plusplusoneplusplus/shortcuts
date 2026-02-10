@@ -23,10 +23,12 @@ NEVER create document file unless user's explicit ask.
 
 - **New Package:** `deep-wiki` in `packages/deep-wiki/`
 - **Pure Node.js:** No VS Code dependencies, uses `pipeline-core` for AI SDK
-- **Three-Phase Pipeline:**
+- **Five-Phase Pipeline:**
   - **Phase 1 (Discovery):** AI session with MCP tools to produce a `ModuleGraph` JSON
-  - **Phase 2 (Analysis):** Per-module deep analysis producing `ModuleAnalysis[]` with incremental caching
-  - **Phase 3 (Writing):** Article generation, reduce/synthesis, and static website output
+  - **Phase 2 (Consolidation):** Merge and consolidate discovery output for large repos
+  - **Phase 3 (Analysis):** Per-module deep analysis producing `ModuleAnalysis[]` with incremental caching
+  - **Phase 4 (Writing):** Article generation, reduce/synthesis
+  - **Phase 5 (Website):** Static website output
 - **Modules:**
   - `discovery` - SDK session orchestration, prompt templates, response parsing, large repo handler
   - `analysis` - Per-module analysis executor, prompts, and response parsing
@@ -647,11 +649,6 @@ The extension provides a separate "Global Notes" view for quick-access notes not
 - `shortcuts.deleteGlobalNote` - Delete note
 
 ## Shortcut Groups Configuration
-
-> **Deprecated:** The Logical Groups panel (`shortcutsView`) is hidden by default and will be removed in a future version. Users can re-enable it via `workspaceShortcuts.logicalGroups.enabled`.
-
-**Settings:**
-- `workspaceShortcuts.logicalGroups.enabled` - Enable the Logical Groups panel (default: `false`, deprecated)
 
 The extension uses YAML configuration files stored at `.vscode/shortcuts.yaml` with this structure:
 
