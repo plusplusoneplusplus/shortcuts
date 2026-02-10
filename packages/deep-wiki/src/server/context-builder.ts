@@ -48,6 +48,9 @@ export interface RetrievedContext {
 // Stop Words
 // ============================================================================
 
+/** Boost factor applied when a module name matches a query term */
+const NAME_MATCH_BOOST = 1.5;
+
 const STOP_WORDS = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
     'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
@@ -104,7 +107,7 @@ export class ContextBuilder {
             const nameLower = doc.name.toLowerCase();
             for (const term of queryTerms) {
                 if (nameLower.includes(term)) {
-                    score *= 1.5;
+                    score *= NAME_MATCH_BOOST;
                 }
             }
 

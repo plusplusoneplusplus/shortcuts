@@ -16,6 +16,7 @@
 import * as path from 'path';
 import type { ModuleInfo, ModuleGraph, CategoryInfo } from '../types';
 import { normalizeModuleId } from '../schemas';
+import { resolveMaxComplexity } from './constants';
 
 // ============================================================================
 // Types
@@ -250,13 +251,7 @@ function deduplicateStrings(arr: string[]): string[] {
 }
 
 function pickHighestComplexity(modules: ModuleInfo[]): 'low' | 'medium' | 'high' {
-    const levels: Record<string, number> = { low: 0, medium: 1, high: 2 };
-    let max = 0;
-    for (const m of modules) {
-        const level = levels[m.complexity] ?? 0;
-        if (level > max) { max = level; }
-    }
-    return max === 2 ? 'high' : max === 1 ? 'medium' : 'low';
+    return resolveMaxComplexity(modules);
 }
 
 function pickMostCommonCategory(modules: ModuleInfo[]): string {

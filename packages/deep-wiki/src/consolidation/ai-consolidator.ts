@@ -16,6 +16,7 @@ import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
 import type { ModuleInfo, ModuleGraph, CategoryInfo } from '../types';
 import type { ClusterGroup } from './types';
 import { normalizeModuleId } from '../schemas';
+import { resolveMaxComplexity } from './constants';
 
 // ============================================================================
 // Constants
@@ -300,13 +301,7 @@ function mergeClusterMembers(cluster: ClusterGroup, members: ModuleInfo[]): Modu
     );
 
     // Pick highest complexity
-    const complexityLevels: Record<string, number> = { low: 0, medium: 1, high: 2 };
-    let maxComplexity = 0;
-    for (const m of members) {
-        const level = complexityLevels[m.complexity] ?? 0;
-        if (level > maxComplexity) { maxComplexity = level; }
-    }
-    const complexity = maxComplexity === 2 ? 'high' : maxComplexity === 1 ? 'medium' : 'low' as const;
+    const complexity = resolveMaxComplexity(members);
 
     // Pick most common category
     const catCounts = new Map<string, number>();

@@ -34,6 +34,9 @@ export interface FileWatcherOptions {
     onError?: (error: Error) => void;
 }
 
+/** Default debounce interval in milliseconds */
+const DEFAULT_DEBOUNCE_MS = 2000;
+
 // ============================================================================
 // FileWatcher
 // ============================================================================
@@ -55,7 +58,7 @@ export class FileWatcher {
     start(): void {
         if (this._isWatching) return;
 
-        const { repoPath, debounceMs = 2000 } = this.options;
+        const { repoPath, debounceMs = DEFAULT_DEBOUNCE_MS } = this.options;
 
         try {
             this.watcher = fs.watch(repoPath, { recursive: true }, (eventType, filename) => {
