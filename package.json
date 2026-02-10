@@ -3160,6 +3160,604 @@
           "when": "view == shortcutsView",
           "group": "shortcuts@1"
         }
+      ],
+      "commandPalette": [
+        {
+          "command": "tasksViewer.create",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.createFeature",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.createSubfolder",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.rename",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.renameFolder",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.renameDocumentGroup",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.renameDocument",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.delete",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.deleteFolder",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.archive",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.unarchive",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.archiveDocument",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.unarchiveDocument",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.archiveDocumentGroup",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.unarchiveDocumentGroup",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.copyRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.copyFullPath",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.discoverRelated",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.rediscoverRelated",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.clearRelated",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.editRelated",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.removeRelatedItem",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.viewRelatedCommit",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.copyCommitHash",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.createWithAI",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.createFromFeature",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.markAsReviewed",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.markAsUnreviewed",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.markGroupAsReviewed",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.markGroupAsUnreviewed",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.markFolderAsReviewed",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.markAsFuture",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.markAsPending",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.markAsInProgress",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.markAsDone",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.cancel",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.remove",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.viewDetails",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.viewCodeReviewDetails",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.viewCodeReviewGroupDetails",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.viewPipelineExecutionDetails",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.viewRawResponse",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.viewDiscoveryResults",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.resumeSession",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.copyDetails",
+          "when": "false"
+        },
+        {
+          "command": "clarificationProcesses.copySessionId",
+          "when": "false"
+        },
+        {
+          "command": "interactiveSessions.end",
+          "when": "false"
+        },
+        {
+          "command": "interactiveSessions.rename",
+          "when": "false"
+        },
+        {
+          "command": "interactiveSessions.remove",
+          "when": "false"
+        },
+        {
+          "command": "interactiveSessions.clearEnded",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.queue.cancelTask",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.queue.moveToTop",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.queue.moveUp",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.queue.moveDown",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.queue.clearQueue",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.queue.pauseQueue",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.queue.resumeQueue",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.createFileInLogicalGroup",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.createFolderInLogicalGroup",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.createNote",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.createNestedLogicalGroup",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.addToLogicalGroup",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.addFilesToLogicalGroup",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.addFoldersToLogicalGroup",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.renameLogicalGroup",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.deleteLogicalGroup",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.removeFromLogicalGroup",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.createFileInFolder",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.createFolderInFolder",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.copyRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.copyAbsolutePath",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.revealInExplorer",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.openInTerminal",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.executeCommandItem",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.executeTaskItem",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.editNote",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.renameNote",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.deleteNote",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.openCommit",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.openCommitFileDiff",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.editGlobalNote",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.renameGlobalNote",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.deleteGlobalNote",
+          "when": "false"
+        },
+        {
+          "command": "gitView.copyCommitHash",
+          "when": "false"
+        },
+        {
+          "command": "gitView.clearLookedUpCommit",
+          "when": "false"
+        },
+        {
+          "command": "gitView.clearAllLookedUpCommits",
+          "when": "false"
+        },
+        {
+          "command": "gitView.switchBranch",
+          "when": "false"
+        },
+        {
+          "command": "gitView.createBranch",
+          "when": "false"
+        },
+        {
+          "command": "gitView.renameBranch",
+          "when": "false"
+        },
+        {
+          "command": "gitView.mergeBranch",
+          "when": "false"
+        },
+        {
+          "command": "gitView.deleteBranch",
+          "when": "false"
+        },
+        {
+          "command": "gitView.push",
+          "when": "false"
+        },
+        {
+          "command": "gitView.pull",
+          "when": "false"
+        },
+        {
+          "command": "gitView.pullRebase",
+          "when": "false"
+        },
+        {
+          "command": "gitView.fetch",
+          "when": "false"
+        },
+        {
+          "command": "gitView.stageFile",
+          "when": "false"
+        },
+        {
+          "command": "gitView.unstageFile",
+          "when": "false"
+        },
+        {
+          "command": "gitView.discardChanges",
+          "when": "false"
+        },
+        {
+          "command": "gitView.deleteUntrackedFile",
+          "when": "false"
+        },
+        {
+          "command": "gitView.stageAll",
+          "when": "false"
+        },
+        {
+          "command": "gitView.unstageAll",
+          "when": "false"
+        },
+        {
+          "command": "gitView.openCurrentFile",
+          "when": "false"
+        },
+        {
+          "command": "gitView.copyRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "gitView.copyAbsolutePath",
+          "when": "false"
+        },
+        {
+          "command": "gitView.copyRangeRef",
+          "when": "false"
+        },
+        {
+          "command": "gitView.refreshCommitRange",
+          "when": "false"
+        },
+        {
+          "command": "gitView.copyRangeSummary",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.openWithReview",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.openFileWithReview",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.copyPromptCategory",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.resolveAllCategory",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.showPromptCategory",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.deleteAllCategory",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.copyPromptFile",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.resolveAllFile",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.showPromptFile",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.deleteAllFile",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.resolveComment",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.reopenComment",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.editComment",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.deleteComment",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.goToComment",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.cleanupObsolete",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.resolveAll",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.deleteAll",
+          "when": "false"
+        },
+        {
+          "command": "pipelinesViewer.execute",
+          "when": "false"
+        },
+        {
+          "command": "pipelinesViewer.preview",
+          "when": "false"
+        },
+        {
+          "command": "pipelinesViewer.open",
+          "when": "false"
+        },
+        {
+          "command": "pipelinesViewer.validate",
+          "when": "false"
+        },
+        {
+          "command": "pipelinesViewer.rename",
+          "when": "false"
+        },
+        {
+          "command": "pipelinesViewer.delete",
+          "when": "false"
+        },
+        {
+          "command": "pipelinesViewer.copyToWorkspace",
+          "when": "false"
+        },
+        {
+          "command": "pipelinesViewer.viewBundled",
+          "when": "false"
+        },
+        {
+          "command": "markdownComments.resolveComment",
+          "when": "false"
+        },
+        {
+          "command": "markdownComments.reopenComment",
+          "when": "false"
+        },
+        {
+          "command": "markdownComments.deleteComment",
+          "when": "false"
+        },
+        {
+          "command": "markdownComments.resolveAll",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.reviewCommitAgainstRules",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.reviewCommitAgainstRulesSelect",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.reviewRangeAgainstRules",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.reviewPendingAgainstRules",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.reviewPendingAgainstRulesSelect",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.reviewStagedAgainstRules",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.reviewStagedAgainstRulesSelect",
+          "when": "false"
+        },
+        {
+          "command": "gitView.openCommitFileWithMarkdownPreview",
+          "when": "false"
+        },
+        {
+          "command": "gitView.openWithMarkdownReview",
+          "when": "false"
+        },
+        {
+          "command": "shortcuts.discovery.startForGroup",
+          "when": "false"
+        },
+        {
+          "command": "gitDiffComments.copyPromptComment",
+          "when": "false"
+        },
+        {
+          "command": "markdownComments.openWithReviewEditor",
+          "when": "false"
+        }
       ]
     },
     "customEditors": [
