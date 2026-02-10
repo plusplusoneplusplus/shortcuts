@@ -23,6 +23,7 @@ import type {
     TopLevelArea,
 } from '../types';
 import { normalizeModuleId } from '../schemas';
+import { getErrorMessage } from '../utils/error-utils';
 import { buildStructuralScanPrompt, buildFocusedDiscoveryPrompt } from './prompts';
 import { parseStructuralScanResponse, parseModuleGraphResponse } from './response-parser';
 import { printInfo, printWarning, gray, cyan } from '../logger';
@@ -204,7 +205,7 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Modu
             }
         } catch (error) {
             // Log error but continue with other areas
-            printWarning(`Failed to discover area '${area.name}': ${(error as Error).message}`);
+            printWarning(`Failed to discover area '${area.name}': ${getErrorMessage(error)}`);
         }
     }
 

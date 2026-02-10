@@ -28,6 +28,7 @@ import {
     printInfo,
     printHeader,
 } from '../../logger';
+import { getErrorMessage } from '../../utils/error-utils';
 import { EXIT_CODES } from '../../cli';
 
 // ============================================================================
@@ -272,7 +273,7 @@ export async function runPhase3Analysis(
         };
     } catch (error) {
         spinner.fail('Analysis failed');
-        printError((error as Error).message);
+        printError(getErrorMessage(error));
         return { duration: Date.now() - startTime, exitCode: EXIT_CODES.EXECUTION_ERROR };
     }
 }

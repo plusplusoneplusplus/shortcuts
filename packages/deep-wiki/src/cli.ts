@@ -8,6 +8,7 @@
  */
 
 import { Command } from 'commander';
+import { getErrorMessage } from './utils/error-utils';
 import { setColorEnabled, setVerbosity, printInfo } from './logger';
 import { loadConfig, mergeConfigWithCLI, discoverConfigFile } from './config-loader';
 
@@ -162,12 +163,12 @@ export function createProgram(): Command {
                 } catch (e) {
                     // If --config was explicitly passed, this is a fatal error
                     if (opts.config) {
-                        process.stderr.write(`Error: ${(e as Error).message}\n`);
+                        process.stderr.write(`Error: ${getErrorMessage(e)}\n`);
                         process.exit(EXIT_CODES.CONFIG_ERROR);
                     }
                     // Auto-discovered config with errors — warn and continue
                     if (cliOptions.verbose) {
-                        process.stderr.write(`Warning: Ignoring config file: ${(e as Error).message}\n`);
+                        process.stderr.write(`Warning: Ignoring config file: ${getErrorMessage(e)}\n`);
                     }
                 }
             }

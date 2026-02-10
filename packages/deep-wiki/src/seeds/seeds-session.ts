@@ -19,6 +19,7 @@ import { buildSeedsPrompt } from './prompts';
 import { parseSeedsResponse } from './response-parser';
 import { generateHeuristicSeeds } from './heuristic-fallback';
 import { printInfo, printWarning, gray } from '../logger';
+import { getErrorMessage } from '../utils/error-utils';
 
 // ============================================================================
 // Constants
@@ -125,7 +126,7 @@ export async function runSeedsSession(
         // On parse failure, fall back to heuristic
         if (options.verbose) {
             process.stderr.write(
-                `[WARN] Failed to parse AI response: ${(parseError as Error).message}. Falling back to heuristic.\n`
+                `[WARN] Failed to parse AI response: ${getErrorMessage(parseError)}. Falling back to heuristic.\n`
             );
         }
         return generateHeuristicSeeds(repoPath);

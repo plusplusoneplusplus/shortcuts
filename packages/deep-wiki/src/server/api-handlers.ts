@@ -13,6 +13,7 @@ import { sendJson, send404, send400 } from './router';
 import type { ContextBuilder } from './context-builder';
 import type { AskAIFunction } from './ask-handler';
 import { handleAskRequest } from './ask-handler';
+import { getErrorMessage } from '../utils/error-utils';
 import { handleExploreRequest } from './explore-handler';
 import type { ConversationSessionManager } from './conversation-session-manager';
 
@@ -157,7 +158,7 @@ function handleGetGraph(res: http.ServerResponse, wikiData: WikiData): void {
     try {
         sendJson(res, wikiData.graph);
     } catch (error) {
-        sendJson(res, { error: (error as Error).message }, 500);
+        sendJson(res, { error: getErrorMessage(error) }, 500);
     }
 }
 
@@ -169,7 +170,7 @@ function handleGetModules(res: http.ServerResponse, wikiData: WikiData): void {
         const summaries = wikiData.getModuleSummaries();
         sendJson(res, summaries);
     } catch (error) {
-        sendJson(res, { error: (error as Error).message }, 500);
+        sendJson(res, { error: getErrorMessage(error) }, 500);
     }
 }
 
@@ -189,7 +190,7 @@ function handleGetModuleById(
         }
         sendJson(res, detail);
     } catch (error) {
-        sendJson(res, { error: (error as Error).message }, 500);
+        sendJson(res, { error: getErrorMessage(error) }, 500);
     }
 }
 
@@ -209,6 +210,6 @@ function handleGetPage(
         }
         sendJson(res, page);
     } catch (error) {
-        sendJson(res, { error: (error as Error).message }, 500);
+        sendJson(res, { error: getErrorMessage(error) }, 500);
     }
 }

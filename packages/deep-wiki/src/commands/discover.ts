@@ -36,6 +36,7 @@ import {
     gray,
 } from '../logger';
 import { EXIT_CODES } from '../cli';
+import { getErrorMessage } from '../utils/error-utils';
 
 // ============================================================================
 // Execute Discover Command
@@ -241,7 +242,7 @@ export async function executeDiscover(
             process.stderr.write('\n');
             printSuccess(`Module graph written to ${bold(outputFile)}`);
         } catch (writeError) {
-            printWarning(`Could not write to file: ${(writeError as Error).message}`);
+            printWarning(`Could not write to file: ${getErrorMessage(writeError)}`);
             printInfo('Outputting to stdout instead');
         }
 
@@ -273,7 +274,7 @@ export async function executeDiscover(
             }
         }
 
-        printError((error as Error).message);
+        printError(getErrorMessage(error));
         if (options.verbose && error instanceof Error && error.stack) {
             process.stderr.write(`${gray(error.stack)}\n`);
         }

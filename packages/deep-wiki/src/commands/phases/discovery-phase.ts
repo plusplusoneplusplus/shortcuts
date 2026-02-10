@@ -30,6 +30,7 @@ import {
     printHeader,
 } from '../../logger';
 import { EXIT_CODES } from '../../cli';
+import { getErrorMessage } from '../../utils/error-utils';
 
 // ============================================================================
 // Types
@@ -196,7 +197,7 @@ export async function runPhase1(
         return { graph: result.graph, duration: Date.now() - startTime, tokenUsage: result.tokenUsage };
     } catch (error) {
         spinner.fail('Discovery failed');
-        printError((error as Error).message);
+        printError(getErrorMessage(error));
         return { duration: Date.now() - startTime, exitCode: EXIT_CODES.EXECUTION_ERROR };
     }
 }

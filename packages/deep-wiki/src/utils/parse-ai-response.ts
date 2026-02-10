@@ -8,6 +8,7 @@
  */
 
 import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
+import { getErrorMessage } from './error-utils';
 
 export interface ParseOptions {
     /** Context string for error messages (e.g., 'discovery', 'probe') */
@@ -42,13 +43,13 @@ export function parseAIJsonResponse(response: string | undefined | null, options
                 try {
                     parsed = JSON.parse(fixed);
                 } catch {
-                    throw new Error(`Invalid JSON in ${context} response: ${(parseError as Error).message}`);
+                    throw new Error(`Invalid JSON in ${context} response: ${getErrorMessage(parseError)}`);
                 }
             } else {
-                throw new Error(`Invalid JSON in ${context} response: ${(parseError as Error).message}`);
+                throw new Error(`Invalid JSON in ${context} response: ${getErrorMessage(parseError)}`);
             }
         } else {
-            throw new Error(`Invalid JSON in ${context} response: ${(parseError as Error).message}`);
+            throw new Error(`Invalid JSON in ${context} response: ${getErrorMessage(parseError)}`);
         }
     }
 

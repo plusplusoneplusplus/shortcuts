@@ -24,6 +24,7 @@ import {
     printInfo,
     printHeader,
 } from '../../logger';
+import { getErrorMessage } from '../../utils/error-utils';
 
 // ============================================================================
 // Types
@@ -109,7 +110,7 @@ export async function runPhase2Consolidation(
     } catch (error) {
         spinner.warn('Consolidation failed — using original modules');
         if (options.verbose) {
-            printWarning((error as Error).message);
+            printWarning(getErrorMessage(error));
         }
         return { graph, duration: Date.now() - startTime };
     }

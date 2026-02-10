@@ -11,6 +11,7 @@ import type { MergeResult, ModuleGraph, TopicSeed } from '../../types';
 import { parseModuleGraphResponse } from '../response-parser';
 import { normalizeModuleId } from '../../schemas';
 import { parseAIJsonResponse } from '../../utils/parse-ai-response';
+import { getErrorMessage } from '../../utils/error-utils';
 
 // ============================================================================
 // Merge Response Parsing
@@ -36,7 +37,7 @@ export function parseMergeResponse(response: string): MergeResult {
     try {
         graph = parseModuleGraphResponse(JSON.stringify(obj.graph));
     } catch (parseError) {
-        throw new Error(`Invalid graph in merge response: ${(parseError as Error).message}`);
+        throw new Error(`Invalid graph in merge response: ${getErrorMessage(parseError)}`);
     }
 
     // Parse newTopics (optional, defaults to empty array)

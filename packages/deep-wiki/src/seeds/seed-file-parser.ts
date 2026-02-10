@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { TopicSeed, SeedsOutput } from '../types';
 import { normalizeModuleId } from '../schemas';
+import { getErrorMessage } from '../utils/error-utils';
 
 // ============================================================================
 // Seed File Parsing
@@ -70,7 +71,7 @@ function parseJsonSeedFile(content: string, filePath: string): TopicSeed[] {
     try {
         parsed = JSON.parse(content);
     } catch (error) {
-        throw new Error(`Invalid JSON in seed file ${filePath}: ${(error as Error).message}`);
+        throw new Error(`Invalid JSON in seed file ${filePath}: ${getErrorMessage(error)}`);
     }
 
     if (typeof parsed !== 'object' || parsed === null) {

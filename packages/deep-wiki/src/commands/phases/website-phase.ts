@@ -12,6 +12,7 @@ import {
     printWarning,
     printHeader,
 } from '../../logger';
+import { getErrorMessage } from '../../utils/error-utils';
 
 // ============================================================================
 // Types
@@ -46,7 +47,7 @@ export function runPhase5Website(options: GenerateCommandOptions): Phase5Website
         return { success: true, duration: Date.now() - startTime };
     } catch (error) {
         spinner.fail('Website generation failed');
-        printWarning(`Website generation failed: ${(error as Error).message}`);
+        printWarning(`Website generation failed: ${getErrorMessage(error)}`);
         printWarning('Wiki markdown files were still written successfully.');
         return { success: false, duration: Date.now() - startTime };
     }

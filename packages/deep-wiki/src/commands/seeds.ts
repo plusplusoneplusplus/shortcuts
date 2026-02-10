@@ -24,6 +24,7 @@ import {
     gray,
 } from '../logger';
 import { EXIT_CODES } from '../cli';
+import { getErrorMessage } from '../utils/error-utils';
 
 // ============================================================================
 // Constants
@@ -124,7 +125,7 @@ export async function executeSeeds(
             process.stderr.write('\n');
             printSuccess(`Seeds written to ${bold(outputPath)}`);
         } catch (writeError) {
-            printWarning(`Could not write to file: ${(writeError as Error).message}`);
+            printWarning(`Could not write to file: ${getErrorMessage(writeError)}`);
             printInfo('Outputting to stdout instead');
             // Fall back to stdout
             process.stdout.write(JSON.stringify(output, null, 2) + '\n');
@@ -155,7 +156,7 @@ export async function executeSeeds(
             }
         }
 
-        printError((error as Error).message);
+        printError(getErrorMessage(error));
         if (options.verbose && error instanceof Error && error.stack) {
             process.stderr.write(`${gray(error.stack)}\n`);
         }

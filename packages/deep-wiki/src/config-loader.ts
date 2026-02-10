@@ -16,6 +16,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
+import { getErrorMessage } from './utils/error-utils';
 import type {
     DeepWikiConfigFile,
     GenerateCommandOptions,
@@ -48,7 +49,7 @@ export function loadConfig(configPath: string): DeepWikiConfigFile {
     try {
         parsed = yaml.load(content);
     } catch (e) {
-        throw new Error(`Invalid YAML in config file: ${(e as Error).message}`);
+        throw new Error(`Invalid YAML in config file: ${getErrorMessage(e)}`);
     }
 
     if (parsed === null || parsed === undefined || typeof parsed !== 'object') {

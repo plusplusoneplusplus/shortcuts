@@ -39,6 +39,7 @@ import {
     gray,
 } from '../../logger';
 import { EXIT_CODES } from '../../cli';
+import { getErrorMessage } from '../../utils/error-utils';
 
 // ============================================================================
 // Types
@@ -349,7 +350,7 @@ export async function runPhase4Writing(
                 }
             }
         } catch (writeError) {
-            printError(`Failed to write files: ${(writeError as Error).message}`);
+            printError(`Failed to write files: ${getErrorMessage(writeError)}`);
             return {
                 articlesWritten: 0,
                 duration: Date.now() - startTime,
@@ -372,7 +373,7 @@ export async function runPhase4Writing(
         };
     } catch (error) {
         spinner.fail('Article generation failed');
-        printError((error as Error).message);
+        printError(getErrorMessage(error));
         return {
             articlesWritten: 0,
             duration: Date.now() - startTime,

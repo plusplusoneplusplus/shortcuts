@@ -19,6 +19,7 @@ import type { DiscoveryOptions, ModuleGraph } from '../types';
 import { buildDiscoveryPrompt } from './prompts';
 import { parseModuleGraphResponse } from './response-parser';
 import { printInfo, printWarning, gray } from '../logger';
+import { getErrorMessage } from '../utils/error-utils';
 
 // ============================================================================
 // Constants
@@ -134,7 +135,7 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
         return { graph, tokenUsage: result.tokenUsage };
     } catch (parseError) {
         // On parse failure, retry once with a stricter prompt
-        printWarning(`Failed to parse response: ${(parseError as Error).message}. Retrying with stricter prompt...`);
+        printWarning(`Failed to parse response: ${getErrorMessage(parseError)}. Retrying with stricter prompt...`);
         const retryPrompt = prompt + '\n\nIMPORTANT: Your previous response was not valid JSON. Please return ONLY a raw JSON object. No markdown, no explanation, just JSON.';
 
         const retryOptions: SendMessageOptions = {
@@ -146,7 +147,7 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
 
         if (!retryResult.success || !retryResult.response) {
             throw new DiscoveryError(
-                `Failed to parse AI response: ${(parseError as Error).message}`,
+                `Failed to parse AI response: ${getErrorMessage(parseError)}`,
                 'parse-error'
             );
         }

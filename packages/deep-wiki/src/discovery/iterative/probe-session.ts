@@ -17,6 +17,7 @@ import type { TopicSeed, TopicProbeResult } from '../../types';
 import { buildProbePrompt } from './probe-prompts';
 import { parseProbeResponse } from './probe-response-parser';
 import { printInfo, printWarning, gray } from '../../logger';
+import { getErrorMessage } from '../../utils/error-utils';
 
 // ============================================================================
 // Constants
@@ -120,7 +121,7 @@ export async function runTopicProbe(
         return parsed;
     } catch (error) {
         // Return empty result on error (don't crash the loop)
-        printWarning(`    Probe error for "${topic.topic}": ${(error as Error).message}`);
+        printWarning(`    Probe error for "${topic.topic}": ${getErrorMessage(error)}`);
         return {
             topic: topic.topic,
             foundModules: [],

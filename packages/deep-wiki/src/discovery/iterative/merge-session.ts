@@ -18,6 +18,7 @@ import { normalizeModuleId, isValidModuleId } from '../../schemas';
 import { buildMergePrompt } from './merge-prompts';
 import { parseMergeResponse } from './merge-response-parser';
 import { printInfo, printWarning, gray } from '../../logger';
+import { getErrorMessage } from '../../utils/error-utils';
 
 // ============================================================================
 // Constants
@@ -116,8 +117,8 @@ export async function mergeProbeResults(
 
         return mergeResult;
     } catch (error) {
-        printWarning(`Merge session error: ${(error as Error).message} — using local merge fallback`);
-        return buildLocalMergeResult(probeResults, existingGraph, `Merge session error: ${(error as Error).message}`);
+        printWarning(`Merge session error: ${getErrorMessage(error)} — using local merge fallback`);
+        return buildLocalMergeResult(probeResults, existingGraph, `Merge session error: ${getErrorMessage(error)}`);
     }
 }
 

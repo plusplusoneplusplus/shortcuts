@@ -31,6 +31,7 @@ import {
     bold,
 } from '../logger';
 import type { ServeCommandOptions } from '../types';
+import { getErrorMessage } from '../utils/error-utils';
 
 // ============================================================================
 // Execute Serve Command
@@ -78,7 +79,7 @@ export async function executeServe(
                 return exitCode;
             }
         } catch (error) {
-            printError(`Wiki generation failed: ${(error as Error).message}`);
+            printError(`Wiki generation failed: ${getErrorMessage(error)}`);
             return EXIT_CODES.EXECUTION_ERROR;
         }
     }
@@ -173,7 +174,7 @@ export async function executeServe(
         return EXIT_CODES.SUCCESS;
 
     } catch (error) {
-        const errMsg = (error as Error).message;
+        const errMsg = getErrorMessage(error);
         if (errMsg.includes('EADDRINUSE')) {
             printError(`Port ${options.port || 3000} is already in use. Try a different port with --port.`);
         } else {
