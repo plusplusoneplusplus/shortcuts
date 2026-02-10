@@ -62,5 +62,6 @@ export async function generateArticles(
     return {
         articles: result.articles,
         duration: Date.now() - startTime,
+        failedModuleIds: result.failedModuleIds.length > 0 ? result.failedModuleIds : undefined,
     };
 }

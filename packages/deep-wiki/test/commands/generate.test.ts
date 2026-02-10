@@ -92,6 +92,46 @@ vi.mock('../../src/discovery', () => ({
     }),
 }));
 
+// Mock analysis module
+vi.mock('../../src/analysis', () => ({
+    analyzeModules: vi.fn().mockResolvedValue({
+        analyses: [{
+            moduleId: 'test-module',
+            overview: 'Test overview',
+            keyConcepts: [],
+            publicAPI: [],
+            internalArchitecture: '',
+            dataFlow: '',
+            patterns: [],
+            errorHandling: '',
+            codeExamples: [],
+            dependencies: { internal: [], external: [] },
+            suggestedDiagram: '',
+        }],
+        duration: 1000,
+    }),
+    parseAnalysisResponse: vi.fn(),
+}));
+
+// Mock writing module — keep writeWikiOutput and buildReducePromptTemplate as real implementations
+// so existing tests that depend on file writes continue to work.
+vi.mock('../../src/writing', async (importOriginal) => {
+    const actual = await importOriginal() as Record<string, unknown>;
+    return {
+        ...actual,
+        generateArticles: vi.fn().mockResolvedValue({
+            articles: [{
+                type: 'module',
+                slug: 'test-module',
+                title: 'Test Module',
+                content: '# Test Module\n\nContent here.',
+                moduleId: 'test-module',
+            }],
+            duration: 1000,
+        }),
+    };
+});
+
 // Mock seeds
 vi.mock('../../src/seeds', () => ({
     generateTopicSeeds: vi.fn().mockResolvedValue([
@@ -163,10 +203,14 @@ vi.mock('../../src/cache', () => ({
     getDiscoveryCacheDir: vi.fn().mockReturnValue('/mock/.wiki-cache/discovery'),
 }));
 
-// Mock website generator
-vi.mock('../../src/writing/website-generator', () => ({
-    generateWebsite: vi.fn().mockReturnValue(['/mock/index.html', '/mock/embedded-data.js']),
-}));
+// Mock website generator — keep real exports, only mock generateWebsite
+vi.mock('../../src/writing/website-generator', async (importOriginal) => {
+    const actual = await importOriginal() as Record<string, unknown>;
+    return {
+        ...actual,
+        generateWebsite: vi.fn().mockReturnValue(['/mock/index.html', '/mock/embedded-data.js']),
+    };
+});
 
 // Suppress logger output during tests
 vi.mock('../../src/logger', () => ({
@@ -209,6 +253,8 @@ import {
 } from '../../src/cache';
 import { discoverModuleGraph } from '../../src/discovery';
 import { generateWebsite } from '../../src/writing/website-generator';
+import { analyzeModules } from '../../src/analysis';
+import { generateArticles, writeWikiOutput } from '../../src/writing';
 import { printError, printInfo, printSuccess, printWarning, printKeyValue } from '../../src/logger';
 
 // ============================================================================
@@ -224,10 +270,40 @@ beforeEach(() => {
     fs.mkdirSync(repoDir, { recursive: true });
     vi.clearAllMocks();
 
-    // Re-set default mocks
+    // Re-set default mocks (vi.clearAllMocks only clears history, not implementations)
     vi.mocked(checkAIAvailability).mockResolvedValue({ available: true });
     vi.mocked(getCachedGraph).mockResolvedValue(null);
     vi.mocked(getCachedAnalyses).mockReturnValue(null);
+
+    // Re-set analysis mock (default: all succeed)
+    vi.mocked(analyzeModules).mockResolvedValue({
+        analyses: [{
+            moduleId: 'test-module',
+            overview: 'Test overview',
+            keyConcepts: [],
+            publicAPI: [],
+            internalArchitecture: '',
+            dataFlow: '',
+            patterns: [],
+            errorHandling: '',
+            codeExamples: [],
+            dependencies: { internal: [], external: [] },
+            suggestedDiagram: '',
+        }],
+        duration: 1000,
+    });
+
+    // Re-set writing mock (default: all succeed, no failed modules)
+    vi.mocked(generateArticles).mockResolvedValue({
+        articles: [{
+            type: 'module',
+            slug: 'test-module',
+            title: 'Test Module',
+            content: '# Test Module\n\nContent here.',
+            moduleId: 'test-module',
+        }],
+        duration: 1000,
+    });
 });
 
 afterEach(() => {
@@ -780,6 +856,406 @@ describe('executeGenerate — Phase 4: Website Generation', () => {
         await executeGenerate(repoDir, defaultOptions());
         expect(printSuccess).toHaveBeenCalledWith(
             expect.stringContaining('index.html')
+        );
+    });
+});
+
+// ============================================================================
+// Strict Mode (--no-strict)
+// ============================================================================
+
+describe('executeGenerate — strict mode', () => {
+    // Reset mocks that may have been modified by earlier test groups or prior tests in this block
+    beforeEach(() => {
+        // Reset discovery to default single-module graph
+        vi.mocked(discoverModuleGraph).mockResolvedValue({
+            graph: {
+                project: {
+                    name: 'TestProject',
+                    description: 'Test',
+                    language: 'TypeScript',
+                    buildSystem: 'npm',
+                    entryPoints: ['src/index.ts'],
+                },
+                modules: [{
+                    id: 'test-module',
+                    name: 'Test Module',
+                    path: 'src/test/',
+                    purpose: 'Testing',
+                    keyFiles: ['src/test/index.ts'],
+                    dependencies: [],
+                    dependents: [],
+                    complexity: 'medium' as const,
+                    category: 'core',
+                }],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: 'Test notes',
+            },
+            duration: 1000,
+        });
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: [{
+                moduleId: 'test-module',
+                overview: 'Test overview',
+                keyConcepts: [],
+                publicAPI: [],
+                internalArchitecture: '',
+                dataFlow: '',
+                patterns: [],
+                errorHandling: '',
+                codeExamples: [],
+                dependencies: { internal: [], external: [] },
+                suggestedDiagram: '',
+            }],
+            duration: 1000,
+        });
+        vi.mocked(generateArticles).mockResolvedValue({
+            articles: [{
+                type: 'module',
+                slug: 'test-module',
+                title: 'Test Module',
+                content: '# Test Module\n\nContent here.',
+                moduleId: 'test-module',
+            }],
+            duration: 1000,
+        });
+        vi.mocked(getCachedGraphAny).mockReturnValue(null);
+        vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
+        vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+        vi.mocked(scanIndividualAnalysesCache).mockReturnValue({ found: [], missing: [] });
+        vi.mocked(scanIndividualAnalysesCacheAny).mockReturnValue({ found: [], missing: [] });
+        vi.mocked(scanIndividualArticlesCache).mockImplementation(
+            (moduleIds: string[]) => ({ found: [] as any[], missing: [...moduleIds] })
+        );
+        vi.mocked(scanIndividualArticlesCacheAny).mockImplementation(
+            (moduleIds: string[]) => ({ found: [] as any[], missing: [...moduleIds] })
+        );
+        vi.mocked(generateWebsite).mockReturnValue(['/mock/index.html', '/mock/embedded-data.js']);
+    });
+
+    // Helper: set up a 2-module discovery graph
+    function setupTwoModuleGraph() {
+        vi.mocked(discoverModuleGraph).mockResolvedValue({
+            graph: {
+                project: {
+                    name: 'TestProject',
+                    description: 'Test',
+                    language: 'TypeScript',
+                    buildSystem: 'npm',
+                    entryPoints: ['src/index.ts'],
+                },
+                modules: [
+                    {
+                        id: 'module-a',
+                        name: 'Module A',
+                        path: 'src/a/',
+                        purpose: 'Testing A',
+                        keyFiles: ['src/a/index.ts'],
+                        dependencies: [],
+                        dependents: [],
+                        complexity: 'medium' as const,
+                        category: 'core',
+                    },
+                    {
+                        id: 'module-b',
+                        name: 'Module B',
+                        path: 'src/b/',
+                        purpose: 'Testing B',
+                        keyFiles: ['src/b/index.ts'],
+                        dependencies: [],
+                        dependents: [],
+                        complexity: 'medium' as const,
+                        category: 'core',
+                    },
+                ],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: 'Test notes',
+            },
+            duration: 1000,
+        });
+    }
+
+    // ---- Phase 2: Analysis strict mode ----
+
+    it('strict mode (default) should fail Phase 2 when a module analysis fails', async () => {
+        setupTwoModuleGraph();
+
+        // analyzeModules returns only 1 of 2 modules (module-b failed)
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: [{
+                moduleId: 'module-a',
+                overview: 'Overview A',
+                keyConcepts: [],
+                publicAPI: [],
+                internalArchitecture: '',
+                dataFlow: '',
+                patterns: [],
+                errorHandling: '',
+                codeExamples: [],
+                dependencies: { internal: [], external: [] },
+                suggestedDiagram: '',
+            }],
+            duration: 1000,
+        });
+
+        // noCluster: true prevents Phase 1.5 from merging modules under same parent dir
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ noCluster: true }));
+        expect(exitCode).toBe(EXIT_CODES.EXECUTION_ERROR);
+        expect(printError).toHaveBeenCalledWith(
+            expect.stringContaining('Strict mode')
+        );
+        expect(printError).toHaveBeenCalledWith(
+            expect.stringContaining('module-b')
+        );
+    });
+
+    it('strict mode should list all failed module IDs in the error message', async () => {
+        setupTwoModuleGraph();
+
+        // Both modules fail (empty analyses)
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: [],
+            duration: 1000,
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ noCluster: true }));
+        expect(exitCode).toBe(EXIT_CODES.EXECUTION_ERROR);
+        // When ALL fail, the existing "All module analyses failed" check fires first
+        expect(printError).toHaveBeenCalledWith(
+            expect.stringContaining('No modules could be analyzed')
+        );
+    });
+
+    it('--no-strict should allow Phase 2 to continue with partial analysis results', async () => {
+        setupTwoModuleGraph();
+
+        // analyzeModules returns only 1 of 2 modules (module-b failed)
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: [{
+                moduleId: 'module-a',
+                overview: 'Overview A',
+                keyConcepts: [],
+                publicAPI: [],
+                internalArchitecture: '',
+                dataFlow: '',
+                patterns: [],
+                errorHandling: '',
+                codeExamples: [],
+                dependencies: { internal: [], external: [] },
+                suggestedDiagram: '',
+            }],
+            duration: 1000,
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ strict: false, noCluster: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        // Should NOT have printed strict mode error
+        expect(printError).not.toHaveBeenCalledWith(
+            expect.stringContaining('Strict mode')
+        );
+    });
+
+    it('strict mode should not fail when all analyses succeed', async () => {
+        setupTwoModuleGraph();
+
+        // Both modules succeed
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: [
+                {
+                    moduleId: 'module-a',
+                    overview: 'Overview A',
+                    keyConcepts: [],
+                    publicAPI: [],
+                    internalArchitecture: '',
+                    dataFlow: '',
+                    patterns: [],
+                    errorHandling: '',
+                    codeExamples: [],
+                    dependencies: { internal: [], external: [] },
+                    suggestedDiagram: '',
+                },
+                {
+                    moduleId: 'module-b',
+                    overview: 'Overview B',
+                    keyConcepts: [],
+                    publicAPI: [],
+                    internalArchitecture: '',
+                    dataFlow: '',
+                    patterns: [],
+                    errorHandling: '',
+                    codeExamples: [],
+                    dependencies: { internal: [], external: [] },
+                    suggestedDiagram: '',
+                },
+            ],
+            duration: 1000,
+        });
+
+        // Also set up articles for both modules
+        vi.mocked(generateArticles).mockResolvedValue({
+            articles: [
+                { type: 'module', slug: 'module-a', title: 'Module A', content: '# A', moduleId: 'module-a' },
+                { type: 'module', slug: 'module-b', title: 'Module B', content: '# B', moduleId: 'module-b' },
+            ],
+            duration: 1000,
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ noCluster: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+    });
+
+    // ---- Phase 3: Article generation strict mode ----
+
+    it('strict mode (default) should fail Phase 3 when article generation fails for a module', async () => {
+        setupTwoModuleGraph();
+
+        // Both analyses succeed
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: [
+                {
+                    moduleId: 'module-a',
+                    overview: 'Overview A',
+                    keyConcepts: [],
+                    publicAPI: [],
+                    internalArchitecture: '',
+                    dataFlow: '',
+                    patterns: [],
+                    errorHandling: '',
+                    codeExamples: [],
+                    dependencies: { internal: [], external: [] },
+                    suggestedDiagram: '',
+                },
+                {
+                    moduleId: 'module-b',
+                    overview: 'Overview B',
+                    keyConcepts: [],
+                    publicAPI: [],
+                    internalArchitecture: '',
+                    dataFlow: '',
+                    patterns: [],
+                    errorHandling: '',
+                    codeExamples: [],
+                    dependencies: { internal: [], external: [] },
+                    suggestedDiagram: '',
+                },
+            ],
+            duration: 1000,
+        });
+
+        // Article generation: module-a succeeds, module-b fails
+        vi.mocked(generateArticles).mockResolvedValue({
+            articles: [
+                { type: 'module', slug: 'module-a', title: 'Module A', content: '# A', moduleId: 'module-a' },
+            ],
+            duration: 1000,
+            failedModuleIds: ['module-b'],
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ noCluster: true }));
+        expect(exitCode).toBe(EXIT_CODES.EXECUTION_ERROR);
+        expect(printError).toHaveBeenCalledWith(
+            expect.stringContaining('Strict mode')
+        );
+        expect(printError).toHaveBeenCalledWith(
+            expect.stringContaining('module-b')
+        );
+    });
+
+    it('--no-strict should allow Phase 3 to continue with partial article results', async () => {
+        setupTwoModuleGraph();
+
+        // Both analyses succeed
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: [
+                {
+                    moduleId: 'module-a',
+                    overview: 'Overview A',
+                    keyConcepts: [],
+                    publicAPI: [],
+                    internalArchitecture: '',
+                    dataFlow: '',
+                    patterns: [],
+                    errorHandling: '',
+                    codeExamples: [],
+                    dependencies: { internal: [], external: [] },
+                    suggestedDiagram: '',
+                },
+                {
+                    moduleId: 'module-b',
+                    overview: 'Overview B',
+                    keyConcepts: [],
+                    publicAPI: [],
+                    internalArchitecture: '',
+                    dataFlow: '',
+                    patterns: [],
+                    errorHandling: '',
+                    codeExamples: [],
+                    dependencies: { internal: [], external: [] },
+                    suggestedDiagram: '',
+                },
+            ],
+            duration: 1000,
+        });
+
+        // Article generation: module-a succeeds, module-b fails
+        vi.mocked(generateArticles).mockResolvedValue({
+            articles: [
+                { type: 'module', slug: 'module-a', title: 'Module A', content: '# A', moduleId: 'module-a' },
+            ],
+            duration: 1000,
+            failedModuleIds: ['module-b'],
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ strict: false, noCluster: true }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        // Should NOT have printed strict mode error
+        expect(printError).not.toHaveBeenCalledWith(
+            expect.stringContaining('Strict mode')
+        );
+    });
+
+    it('strict mode should not fail Phase 3 when no failedModuleIds', async () => {
+        // Default mocks: single module, all succeed, no failedModuleIds
+        const exitCode = await executeGenerate(repoDir, defaultOptions());
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+    });
+
+    it('should print strict mode setting in header when --no-strict is used', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ strict: false }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        expect(printKeyValue).toHaveBeenCalledWith('Strict', 'no (partial failures allowed)');
+    });
+
+    it('should not print strict mode setting in header when strict is default (true)', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions());
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        expect(printKeyValue).not.toHaveBeenCalledWith('Strict', expect.anything());
+    });
+
+    it('strict mode error message should suggest --no-strict', async () => {
+        setupTwoModuleGraph();
+
+        // One module fails analysis
+        vi.mocked(analyzeModules).mockResolvedValue({
+            analyses: [{
+                moduleId: 'module-a',
+                overview: 'Overview A',
+                keyConcepts: [],
+                publicAPI: [],
+                internalArchitecture: '',
+                dataFlow: '',
+                patterns: [],
+                errorHandling: '',
+                codeExamples: [],
+                dependencies: { internal: [], external: [] },
+                suggestedDiagram: '',
+            }],
+            duration: 1000,
+        });
+
+        await executeGenerate(repoDir, defaultOptions({ noCluster: true }));
+        expect(printError).toHaveBeenCalledWith(
+            expect.stringContaining('--no-strict')
         );
     });
 });

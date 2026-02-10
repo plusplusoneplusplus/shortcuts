@@ -120,6 +120,7 @@ export async function executeGenerate(
     if (startPhase > 1) { printKeyValue('Starting Phase', String(startPhase)); }
     if (options.force) { printKeyValue('Force', 'yes (ignoring all caches)'); }
     if (options.useCache) { printKeyValue('Use Cache', 'yes (ignoring git hash)'); }
+    if (options.strict === false) { printKeyValue('Strict', 'no (partial failures allowed)'); }
     process.stderr.write('\n');
 
     // Check AI availability
@@ -695,6 +696,20 @@ async function runPhase2(
         const failedCount = modulesToAnalyze.length - result.analyses.length;
         if (failedCount > 0) {
             spinner.warn(`Analysis complete — ${result.analyses.length} succeeded, ${failedCount} failed`);
+
+            // Strict mode: fail the phase if any module failed after retries
+            if (options.strict !== false) {
+                // Determine which modules failed
+                const succeededIds = new Set(result.analyses.map(a => a.moduleId));
+                const failedModuleIds = modulesToAnalyze
+                    .filter(m => !succeededIds.has(m.id))
+                    .map(m => m.id);
+                printError(
+                    `Strict mode: ${failedCount} module(s) failed analysis: ${failedModuleIds.join(', ')}. ` +
+                    `Use --no-strict to continue with partial results.`
+                );
+                return { duration: Date.now() - startTime, exitCode: EXIT_CODES.EXECUTION_ERROR };
+            }
         } else {
             spinner.succeed(`Analysis complete — ${result.analyses.length} modules analyzed`);
         }
@@ -846,7 +861,28 @@ async function runPhase3(
             // Separate module articles from reduce-generated articles
             freshArticles = wikiOutput.articles;
 
-            spinner.succeed(`Generated ${freshArticles.length} articles`);
+            // Check for failed articles
+            const failedArticleModuleIds = wikiOutput.failedModuleIds || [];
+            if (failedArticleModuleIds.length > 0) {
+                spinner.warn(
+                    `Article generation: ${freshArticles.length} succeeded, ${failedArticleModuleIds.length} failed`
+                );
+
+                // Strict mode: fail the phase if any article failed
+                if (options.strict !== false) {
+                    printError(
+                        `Strict mode: ${failedArticleModuleIds.length} module(s) failed article generation: ` +
+                        `${failedArticleModuleIds.join(', ')}. Use --no-strict to continue with partial results.`
+                    );
+                    return {
+                        articlesWritten: 0,
+                        duration: Date.now() - startTime,
+                        exitCode: EXIT_CODES.EXECUTION_ERROR,
+                    };
+                }
+            } else {
+                spinner.succeed(`Generated ${freshArticles.length} articles`);
+            }
         }
 
         // Merge cached + fresh module articles

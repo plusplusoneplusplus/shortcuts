@@ -117,6 +117,7 @@ export function createProgram(): Command {
         .option('--phase <number>', 'Start from phase N (uses cached prior phases)', (v: string) => parseInt(v, 10))
         .option('--skip-website', 'Skip website generation (Phase 4)', false)
         .option('--no-cluster', 'Skip module consolidation (keep original granularity)')
+        .option('--no-strict', 'Allow partial failures (default: strict, any failure aborts)')
         .option('--theme <theme>', 'Website theme: light, dark, auto', 'auto')
         .option('--title <title>', 'Override project name in website title')
         .option('-v, --verbose', 'Verbose logging', false)
@@ -138,6 +139,7 @@ export function createProgram(): Command {
                 phase: opts.phase as number | undefined,
                 skipWebsite: Boolean(opts.skipWebsite),
                 noCluster: opts.cluster === false,
+                strict: opts.strict !== false,
                 theme: (opts.theme as 'light' | 'dark' | 'auto') || undefined,
                 title: opts.title as string | undefined,
                 verbose: Boolean(opts.verbose),

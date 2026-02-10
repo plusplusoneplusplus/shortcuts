@@ -405,6 +405,8 @@ export interface WikiOutput {
     articles: GeneratedArticle[];
     /** Total duration in milliseconds */
     duration: number;
+    /** Module IDs that failed article generation (empty when all succeed) */
+    failedModuleIds?: string[];
 }
 
 // ============================================================================
@@ -468,6 +470,8 @@ export interface GenerateCommandOptions {
     seeds?: string;
     /** Skip module consolidation (Phase 1.5) — keep original module granularity */
     noCluster?: boolean;
+    /** Strict mode: fail the pipeline if any module fails after retries (default: true) */
+    strict?: boolean;
 }
 
 /**
