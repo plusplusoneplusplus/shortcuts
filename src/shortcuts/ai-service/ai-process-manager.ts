@@ -678,10 +678,10 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
      * - Status is 'completed'
      * - Has a `fullPrompt` (the original prompt)
      * - Has a `result` (the AI response)
+     * - Has a `sdkSessionId` (required for `--resume`)
      * 
-     * Note: sdkSessionId and backend are no longer required. Instead of resuming
-     * an SDK session, we create a new interactive session pre-filled with the
-     * original prompt and previous result as context.
+     * Note: Resume uses `copilot --resume=<session-id>` and does not fall back
+     * to context-based prompt reconstruction.
      * 
      * @param id Process ID
      * @returns True if the process can be resumed
@@ -695,7 +695,8 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
         return !!(
             process.status === 'completed' &&
             process.fullPrompt &&
-            process.result
+            process.result &&
+            process.sdkSessionId
         );
     }
 
@@ -757,12 +758,12 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
 
     /**
      * Resume a completed process by launching a new interactive session
-     * pre-filled with the original prompt and previous result as context.
+     * with `--resume=<sdkSessionId>`.
      * 
      * @param id The process ID to resume
      * @returns Object with success status and optional sessionId or error message
      */
-    async resumeProcess(id: string, startSessionFn: (options: { workingDirectory: string; tool: 'copilot'; initialPrompt: string }) => Promise<string | undefined>): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+    async resumeProcess(id: string, startSessionFn: (options: { workingDirectory: string; tool: 'copilot'; resumeSessionId: string }) => Promise<string | undefined>): Promise<{ success: boolean; sessionId?: string; error?: string }> {
         // Validate the process is resumable
         if (!this.isProcessResumable(id)) {
             const process = this.processes.get(id);
@@ -778,26 +779,22 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             if (!process.result) {
                 return { success: false, error: 'Cannot resume: process data is incomplete (missing result)' };
             }
+            if (!process.sdkSessionId) {
+                return { success: false, error: 'Cannot resume: process has no session ID' };
+            }
             return { success: false, error: 'This process cannot be resumed' };
         }
 
         const process = this.processes.get(id)!;
 
-        // Build the context prompt
-        const contextPrompt = this.buildResumePrompt(
-            process.fullPrompt,
-            process.result!,
-            process.structuredResult
-        );
-
         // Determine working directory
         const workingDirectory = process.workingDirectory || '';
 
-        // Launch the interactive session with the context prompt
+        // Launch the interactive session in resume mode
         const sessionId = await startSessionFn({
             workingDirectory,
             tool: 'copilot',
-            initialPrompt: contextPrompt
+            resumeSessionId: process.sdkSessionId!
         });
 
         if (sessionId) {

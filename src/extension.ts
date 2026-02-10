@@ -2328,8 +2328,7 @@ export async function activate(context: vscode.ExtensionContext) {
         );
 
         // Command to resume a completed AI session in interactive mode
-        // Uses the no-reuse approach: creates a new interactive session pre-filled
-        // with the original prompt and previous result as context.
+        // Uses Copilot CLI --resume=<session-id> to continue the original session.
         const resumeSessionCommand = vscode.commands.registerCommand(
             'clarificationProcesses.resumeSession',
             async (item: { process?: { id: string } }) => {
@@ -2340,20 +2339,20 @@ export async function activate(context: vscode.ExtensionContext) {
 
                 const processId = item.process.id;
 
-                // Use resumeProcess() which validates, builds context prompt, and launches session
+                // Use resumeProcess() which validates resumability and launches session with --resume
                 const result = await aiProcessManager.resumeProcess(
                     processId,
                     async (options) => {
                         return interactiveSessionManager.startSession({
                             workingDirectory: options.workingDirectory || workspaceRoot,
                             tool: options.tool,
-                            initialPrompt: options.initialPrompt
+                            resumeSessionId: options.resumeSessionId
                         });
                     }
                 );
 
                 if (result.success) {
-                    vscode.window.showInformationMessage('Session continued in external terminal with original context.');
+                    vscode.window.showInformationMessage('Session resumed in external terminal.');
                 } else {
                     vscode.window.showErrorMessage(`Cannot resume: ${result.error}`);
                 }

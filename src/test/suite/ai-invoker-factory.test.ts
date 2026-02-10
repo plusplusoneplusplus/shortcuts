@@ -588,7 +588,7 @@ suite('AI Invoker Factory Tests', () => {
             assert.strictEqual(isResumable, false, 'Should not be resumable while running');
         });
 
-        test('isProcessResumable should return true without session ID (no-reuse approach)', () => {
+        test('isProcessResumable should return false without session ID', () => {
             const processId = mockProcessManager.registerTypedProcess('test prompt', {
                 type: 'generic',
                 metadata: { type: 'generic', feature: 'Test' }
@@ -600,9 +600,9 @@ suite('AI Invoker Factory Tests', () => {
             // Complete the process
             mockProcessManager.completeProcess(processId, 'Response');
 
-            // Check resumability — sdkSessionId no longer required
+            // Check resumability — sdkSessionId is required
             const isResumable = mockProcessManager.isProcessResumable(processId);
-            assert.strictEqual(isResumable, true, 'Should be resumable without session ID (no-reuse approach)');
+            assert.strictEqual(isResumable, false, 'Should not be resumable without session ID');
         });
 
         test('getSessionMetadata should include sdkSessionId when attached', () => {

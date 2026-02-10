@@ -476,7 +476,8 @@ export class MockAIProcessManager implements IAIProcessManager, vscode.Disposabl
         return !!(
             process.status === 'completed' &&
             process.fullPrompt &&
-            process.result
+            process.result &&
+            process.sdkSessionId
         );
     }
 

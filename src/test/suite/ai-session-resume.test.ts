@@ -1,9 +1,7 @@
 /**
  * AI Session Resume Tests
  *
- * Tests for the AI session resume functionality (Phase 2 & 3: No-Reuse Approach).
- * Instead of resuming SDK sessions, creates new interactive sessions pre-filled
- * with the original prompt and previous result as context.
+ * Tests for AI session resume functionality using Copilot CLI --resume.
  */
 
 import * as assert from 'assert';
@@ -111,21 +109,25 @@ suite('AI Session Resume', () => {
         });
 
         // ========================================================================
-        // Updated resumability tests (Phase 2: No-Reuse Approach)
-        // Resumability no longer requires sdkSessionId or copilot-sdk backend.
-        // A process is resumable when: completed + has fullPrompt + has result.
+        // Resumability tests
+        // A process is resumable when: completed + has fullPrompt + has result + has sdkSessionId.
         // ========================================================================
 
-        test('should identify resumable processes correctly (completed + prompt + result)', () => {
+        test('should identify resumable processes correctly (completed + prompt + result + sdkSessionId)', () => {
             const processId = processManager.registerProcess('Test prompt');
 
-            // Initially not resumable (running, no result)
+            // Initially not resumable (running, no result, no session id)
             assert.strictEqual(processManager.isProcessResumable(processId), false);
 
             // Complete the process with a result
             processManager.completeProcess(processId, 'AI response result');
 
-            // Now resumable (completed + has fullPrompt + has result)
+            // Still not resumable without sdkSessionId
+            assert.strictEqual(processManager.isProcessResumable(processId), false);
+
+            processManager.attachSdkSessionId(processId, 'session-abc');
+
+            // Now resumable
             assert.strictEqual(processManager.isProcessResumable(processId), true);
         });
 
@@ -146,14 +148,14 @@ suite('AI Session Resume', () => {
             assert.strictEqual(processManager.isProcessResumable(processId), true);
         });
 
-        test('should identify CLI backend processes as resumable (no longer requires SDK)', () => {
+        test('should identify CLI backend processes as resumable when sdkSessionId exists', () => {
             const processId = processManager.registerProcess('Test prompt');
 
             processManager.attachSdkSessionId(processId, 'session-def');
             processManager.attachSessionMetadata(processId, 'copilot-cli', '/workspace');
             processManager.completeProcess(processId, 'Result');
 
-            // Now resumable regardless of backend (no-reuse approach)
+            // Resumable regardless of backend as long as sdkSessionId exists
             assert.strictEqual(processManager.isProcessResumable(processId), true);
         });
 
@@ -167,14 +169,12 @@ suite('AI Session Resume', () => {
             assert.strictEqual(processManager.isProcessResumable(processId), false);
         });
 
-        test('should identify processes without session ID as resumable (no longer requires sdkSessionId)', () => {
+        test('should not identify completed processes without session ID as resumable', () => {
             const processId = processManager.registerProcess('Test prompt');
 
-            // No session metadata at all — but has fullPrompt and result
             processManager.completeProcess(processId, 'Result');
 
-            // Resumable because it has completed + fullPrompt + result
-            assert.strictEqual(processManager.isProcessResumable(processId), true);
+            assert.strictEqual(processManager.isProcessResumable(processId), false);
         });
 
         test('should not identify completed processes without result as resumable', () => {
@@ -195,17 +195,10 @@ suite('AI Session Resume', () => {
 
         test('should not identify cancelled processes as resumable', () => {
             const processId = processManager.registerProcess('Test prompt');
-            processManager.completeProcess(processId, 'Result');
+            processManager.attachSdkSessionId(processId, 'session-cancelled');
+            processManager.cancelProcess(processId);
 
-            // Verify it was resumable first
-            assert.strictEqual(processManager.isProcessResumable(processId), true);
-
-            // Now cancel it - use the process manager's cancellation
-            const process = processManager.getProcess(processId);
-            if (process) {
-                // We need to directly set status since there's no cancelProcess method
-                // that works on completed processes. Instead test with a freshly cancelled one.
-            }
+            assert.strictEqual(processManager.isProcessResumable(processId), false);
         });
 
         test('should return false for non-existent process ID', () => {
@@ -418,7 +411,7 @@ suite('AI Session Resume', () => {
     });
 
     // ========================================================================
-    // Phase 2: resumeProcess() Tests
+    // resumeProcess() Tests
     // ========================================================================
 
     suite('resumeProcess', () => {
@@ -432,11 +425,12 @@ suite('AI Session Resume', () => {
             processManager.dispose();
         });
 
-        test('should successfully resume a completed process', async () => {
+        test('should successfully resume a completed process with sdkSessionId', async () => {
             const processId = processManager.registerProcess('Explain auth');
+            processManager.attachSdkSessionId(processId, 'sdk-session-1');
             processManager.completeProcess(processId, 'Auth uses JWT tokens');
 
-            let capturedOptions: { workingDirectory: string; tool: string; initialPrompt: string } | undefined;
+            let capturedOptions: { workingDirectory: string; tool: string; resumeSessionId: string } | undefined;
 
             const result = await processManager.resumeProcess(processId, async (options) => {
                 capturedOptions = options;
@@ -446,13 +440,13 @@ suite('AI Session Resume', () => {
             assert.strictEqual(result.success, true);
             assert.strictEqual(result.sessionId, 'mock-session-id');
             assert.ok(capturedOptions, 'startSessionFn should have been called');
-            assert.ok(capturedOptions!.initialPrompt.includes('Explain auth'));
-            assert.ok(capturedOptions!.initialPrompt.includes('Auth uses JWT tokens'));
-            assert.ok(capturedOptions!.initialPrompt.includes('Continue the conversation'));
+            assert.strictEqual(capturedOptions!.tool, 'copilot');
+            assert.strictEqual(capturedOptions!.resumeSessionId, 'sdk-session-1');
         });
 
         test('should pass working directory from process metadata', async () => {
             const processId = processManager.registerProcess('Test prompt');
+            processManager.attachSdkSessionId(processId, 'sdk-session-workdir');
             processManager.attachSessionMetadata(processId, 'copilot-sdk', '/my/workspace');
             processManager.completeProcess(processId, 'Result');
 
@@ -466,6 +460,21 @@ suite('AI Session Resume', () => {
             assert.strictEqual(capturedOptions!.workingDirectory, '/my/workspace');
         });
 
+        test('should pass empty working directory when not set', async () => {
+            const processId = processManager.registerProcess('Test prompt');
+            processManager.attachSdkSessionId(processId, 'sdk-session-no-workdir');
+            processManager.completeProcess(processId, 'Result');
+
+            let capturedWorkDir = '';
+
+            await processManager.resumeProcess(processId, async (options) => {
+                capturedWorkDir = options.workingDirectory;
+                return 'session-id';
+            });
+
+            assert.strictEqual(capturedWorkDir, '');
+        });
+
         test('should return error for non-existent process', async () => {
             const result = await processManager.resumeProcess('non-existent', async () => 'sid');
 
@@ -475,6 +484,7 @@ suite('AI Session Resume', () => {
 
         test('should return error for running process', async () => {
             const processId = processManager.registerProcess('Running prompt');
+            processManager.attachSdkSessionId(processId, 'sdk-running');
 
             const result = await processManager.resumeProcess(processId, async () => 'sid');
 
@@ -484,6 +494,7 @@ suite('AI Session Resume', () => {
 
         test('should return error for failed process', async () => {
             const processId = processManager.registerProcess('Failed prompt');
+            processManager.attachSdkSessionId(processId, 'sdk-failed');
             processManager.failProcess(processId, 'AI timeout');
 
             const result = await processManager.resumeProcess(processId, async () => 'sid');
@@ -494,7 +505,8 @@ suite('AI Session Resume', () => {
 
         test('should return error for completed process without result', async () => {
             const processId = processManager.registerProcess('Test prompt');
-            processManager.completeProcess(processId, ''); // Empty result
+            processManager.attachSdkSessionId(processId, 'sdk-empty-result');
+            processManager.completeProcess(processId, '');
 
             const result = await processManager.resumeProcess(processId, async () => 'sid');
 
@@ -502,66 +514,27 @@ suite('AI Session Resume', () => {
             assert.ok(result.error?.includes('incomplete'));
         });
 
-        test('should return error when terminal launch fails', async () => {
+        test('should return error for completed process without sdkSessionId', async () => {
             const processId = processManager.registerProcess('Test prompt');
             processManager.completeProcess(processId, 'Some result');
 
+            const result = await processManager.resumeProcess(processId, async () => 'sid');
+
+            assert.strictEqual(result.success, false);
+            assert.ok(result.error?.includes('session ID'));
+        });
+
+        test('should return error when terminal launch fails', async () => {
+            const processId = processManager.registerProcess('Test prompt');
+            processManager.attachSdkSessionId(processId, 'sdk-terminal-fail');
+            processManager.completeProcess(processId, 'Some result');
+
             const result = await processManager.resumeProcess(processId, async () => {
-                return undefined; // Simulate terminal launch failure
+                return undefined;
             });
 
             assert.strictEqual(result.success, false);
             assert.ok(result.error?.includes('Could not open terminal'));
-        });
-
-        test('should include structured result in context prompt', async () => {
-            const processId = processManager.registerProcess('Analyze code');
-            // Complete with result text
-            processManager.completeProcess(processId, 'Found 3 issues');
-
-            // Attach structured result using the proper API method
-            processManager.updateProcessStructuredResult(processId, '{"issues": 3}');
-
-            let capturedPrompt = '';
-
-            await processManager.resumeProcess(processId, async (options) => {
-                capturedPrompt = options.initialPrompt;
-                return 'session-id';
-            });
-
-            assert.ok(capturedPrompt.includes('Found 3 issues'));
-            assert.ok(capturedPrompt.includes('Structured result (JSON):'));
-            assert.ok(capturedPrompt.includes('"issues": 3'));
-        });
-
-        test('should use copilot as the tool type', async () => {
-            const processId = processManager.registerProcess('Test prompt');
-            processManager.completeProcess(processId, 'Result');
-
-            let capturedTool = '';
-
-            await processManager.resumeProcess(processId, async (options) => {
-                capturedTool = options.tool;
-                return 'session-id';
-            });
-
-            assert.strictEqual(capturedTool, 'copilot');
-        });
-
-        test('should handle process with no working directory', async () => {
-            const processId = processManager.registerProcess('Test prompt');
-            // No working directory attached
-            processManager.completeProcess(processId, 'Result');
-
-            let capturedWorkDir = '';
-
-            await processManager.resumeProcess(processId, async (options) => {
-                capturedWorkDir = options.workingDirectory;
-                return 'session-id';
-            });
-
-            // Should pass empty string (the caller can provide fallback)
-            assert.strictEqual(capturedWorkDir, '');
         });
     });
 
@@ -643,11 +616,11 @@ suite('AI Session Resume', () => {
     });
 
     // ========================================================================
-    // AIProcessItem Context Value Tests (Updated for No-Reuse Approach)
+    // AIProcessItem Context Value Tests
     // ========================================================================
 
     suite('AIProcessItem Context Value', () => {
-        test('should set resumable context value for completed process with prompt and result', () => {
+        test('should set non-resumable context value for completed process without sdkSessionId', () => {
             const process: AIProcess = {
                 id: 'test-1',
                 type: 'clarification',
@@ -657,12 +630,11 @@ suite('AI Session Resume', () => {
                 startTime: new Date(),
                 endTime: new Date(),
                 result: 'Test result'
-                // No sdkSessionId or backend needed for resumability
             };
 
             const item = new AIProcessItem(process);
 
-            assert.strictEqual(item.contextValue, 'clarificationProcess_completed_resumable');
+            assert.strictEqual(item.contextValue, 'clarificationProcess_completed');
         });
 
         test('should set resumable context value even with SDK session metadata', () => {
@@ -776,11 +748,11 @@ suite('AI Session Resume', () => {
     });
 
     // ========================================================================
-    // Tooltip Content Tests (Updated for No-Reuse Approach)
+    // Tooltip Content Tests
     // ========================================================================
 
     suite('Tooltip Content', () => {
-        test('should include continuation hint for resumable processes', () => {
+        test('should include resume hint for resumable processes', () => {
             const process: AIProcess = {
                 id: 'test-1',
                 type: 'clarification',
@@ -789,7 +761,8 @@ suite('AI Session Resume', () => {
                 status: 'completed',
                 startTime: new Date(),
                 endTime: new Date(),
-                result: 'Test result'
+                result: 'Test result',
+                sdkSessionId: 'session-tooltip-1'
             };
 
             const item = new AIProcessItem(process);
@@ -797,8 +770,8 @@ suite('AI Session Resume', () => {
 
             assert.ok(tooltip instanceof Object);
             const tooltipValue = (tooltip as { value: string }).value;
-            assert.ok(tooltipValue.includes('This session can be continued with original context'),
-                'Tooltip should mention continuation with original context');
+            assert.ok(tooltipValue.includes('This session can be resumed in Copilot'),
+                'Tooltip should mention Copilot resume support');
         });
 
         test('should not include continuation hint for non-resumable processes', () => {
@@ -823,7 +796,6 @@ suite('AI Session Resume', () => {
         });
 
         test('should not include old SDK resume hint text', () => {
-            // Ensure the old tooltip text is completely removed
             const process: AIProcess = {
                 id: 'test-old-text',
                 type: 'clarification',
@@ -840,18 +812,17 @@ suite('AI Session Resume', () => {
             const item = new AIProcessItem(process);
             const tooltipValue = (item.tooltip as { value: string }).value;
 
-            // Should NOT contain the old text
-            assert.ok(!tooltipValue.includes('This session can be resumed'),
-                'Old "can be resumed" text should be replaced with new "continued with original context" text');
+            assert.ok(!tooltipValue.includes('This session can be continued with original context'),
+                'Old context-based hint text should be removed');
         });
     });
 
     // ========================================================================
-    // Pipeline Item Session Resume (Updated for No-Reuse Approach)
+    // Pipeline Item Session Resume
     // ========================================================================
 
     suite('Pipeline Item Session Resume', () => {
-        test('should set resumable context value for completed pipeline items with result', () => {
+        test('should set non-resumable context value for completed pipeline items without sdkSessionId', () => {
             const process: AIProcess = {
                 id: 'pipeline-item-1',
                 type: 'pipeline-item',
@@ -861,12 +832,11 @@ suite('AI Session Resume', () => {
                 startTime: new Date(),
                 endTime: new Date(),
                 result: '{"severity": "high"}'
-                // No session metadata needed
             };
 
             const item = new AIProcessItem(process);
 
-            assert.strictEqual(item.contextValue, 'pipelineItemProcess_completed_resumable');
+            assert.strictEqual(item.contextValue, 'pipelineItemProcess_completed');
         });
 
         test('should set resumable context value for resumable pipeline item children', () => {
@@ -879,6 +849,7 @@ suite('AI Session Resume', () => {
                 startTime: new Date(),
                 endTime: new Date(),
                 result: '{"severity": "low"}',
+                sdkSessionId: 'pipeline-session-2',
                 parentProcessId: 'pipeline-group-1'
             };
 
@@ -957,7 +928,7 @@ suite('AI Session Resume', () => {
             assert.strictEqual(item.contextValue, 'pipelineItemProcess_failed');
         });
 
-        test('should include continuation hint in tooltip for resumable pipeline items', () => {
+        test('should include resume hint in tooltip for resumable pipeline items', () => {
             const process: AIProcess = {
                 id: 'pipeline-item-tooltip',
                 type: 'pipeline-item',
@@ -966,7 +937,8 @@ suite('AI Session Resume', () => {
                 status: 'completed',
                 startTime: new Date(),
                 endTime: new Date(),
-                result: '{"severity": "high"}'
+                result: '{"severity": "high"}',
+                sdkSessionId: 'pipeline-tooltip-session'
             };
 
             const item = new AIProcessItem(process);
@@ -974,8 +946,8 @@ suite('AI Session Resume', () => {
 
             assert.ok(tooltip instanceof Object);
             const tooltipValue = (tooltip as { value: string }).value;
-            assert.ok(tooltipValue.includes('This session can be continued with original context'),
-                'Pipeline item tooltip should include continuation hint');
+            assert.ok(tooltipValue.includes('This session can be resumed in Copilot'),
+                'Pipeline item tooltip should include resume hint');
         });
 
         test('should not include continuation hint in tooltip for non-resumable pipeline items', () => {
@@ -1014,7 +986,8 @@ suite('AI Session Resume', () => {
                 status: 'completed',
                 startTime: new Date(),
                 endTime: new Date(),
-                result: 'Review complete: 3 issues found'
+                result: 'Review complete: 3 issues found',
+                sdkSessionId: 'cr-group-session-1'
             };
 
             const item = new AIProcessItem(process);
@@ -1054,7 +1027,8 @@ suite('AI Session Resume', () => {
                 status: 'completed',
                 startTime: new Date(),
                 endTime: new Date(),
-                result: 'Found 5 related files'
+                result: 'Found 5 related files',
+                sdkSessionId: 'discovery-session-1'
             };
 
             const item = new AIProcessItem(process);

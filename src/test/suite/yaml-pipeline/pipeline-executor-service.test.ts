@@ -1199,7 +1199,7 @@ input:
                 assert.strictEqual(processManager.isProcessResumable(processId), true);
             });
 
-            test('attachSessionMetadata without sessionId is still resumable (no-reuse approach)', () => {
+            test('attachSessionMetadata without sessionId is not resumable', () => {
                 const parentGroupId = processManager.registerProcessGroup(
                     'Pipeline: Test',
                     {
@@ -1221,8 +1221,8 @@ input:
                 // Complete the process
                 tracker.updateProcess(processId, 'completed', 'Success');
 
-                // Resumable: completed + fullPrompt + result (sessionId no longer required)
-                assert.strictEqual(processManager.isProcessResumable(processId), true);
+                // Not resumable without sdk session ID
+                assert.strictEqual(processManager.isProcessResumable(processId), false);
             });
 
             test('session metadata persists through getProcesses', () => {

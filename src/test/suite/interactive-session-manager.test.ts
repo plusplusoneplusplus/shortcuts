@@ -309,6 +309,36 @@ suite('InteractiveSessionManager - Session Options', () => {
 
         manager.dispose();
     });
+
+    test('should pass resumeSessionId to external terminal launcher', async () => {
+        const launcher = createSuccessfulLauncher();
+        let capturedLaunchOptions: Record<string, unknown> | undefined;
+
+        (launcher as unknown as { launch: (options: Record<string, unknown>) => Promise<ExternalTerminalLaunchResult> }).launch =
+            async (options: Record<string, unknown>) => {
+                capturedLaunchOptions = options;
+                return {
+                    success: true,
+                    terminalType: 'terminal.app',
+                    pid: 12345
+                };
+            };
+
+        const manager = new InteractiveSessionManager(launcher);
+
+        const sessionId = await manager.startSession({
+            workingDirectory: '/test',
+            tool: 'copilot',
+            resumeSessionId: 'sdk-session-42'
+        });
+
+        assert.ok(sessionId);
+        assert.ok(capturedLaunchOptions, 'launcher options should be captured');
+        assert.strictEqual(capturedLaunchOptions?.resumeSessionId, 'sdk-session-42');
+        assert.strictEqual(capturedLaunchOptions?.initialPrompt, undefined);
+
+        manager.dispose();
+    });
 });
 
 // ============================================================================

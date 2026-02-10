@@ -28,6 +28,8 @@ export interface StartSessionOptions {
     tool?: InteractiveToolType;
     /** Initial prompt to send to the CLI */
     initialPrompt?: string;
+    /** Session ID to resume via CLI --resume */
+    resumeSessionId?: string;
     /** Preferred terminal type (auto-detected if not specified) */
     preferredTerminal?: TerminalType;
 }
@@ -71,6 +73,7 @@ export class InteractiveSessionManager implements vscode.Disposable {
             workingDirectory,
             tool = 'copilot',
             initialPrompt,
+            resumeSessionId,
             preferredTerminal
         } = options;
 
@@ -95,6 +98,7 @@ export class InteractiveSessionManager implements vscode.Disposable {
             workingDirectory,
             tool,
             initialPrompt,
+            resumeSessionId,
             preferredTerminal
         };
 
