@@ -32,6 +32,7 @@ import {
     getPredefinedComments as getSharedPredefinedComments,
     SerializedPredefinedComment
 } from '../../shared/webview';
+import { buildFullDocumentAskAIContext, extractDocumentContext } from '../ask-ai-context-utils';
 
 // DOM element references
 let editorWrapper: HTMLElement;
@@ -808,6 +809,7 @@ function setupAIActionDropdown(): void {
     const resolveCommentsItem = document.getElementById('resolveCommentsItem');
     const executeWorkPlanItem = document.getElementById('executeWorkPlanItem');
     const updateDocumentItem = document.getElementById('updateDocumentItem');
+    const askAIInteractiveItem = document.getElementById('askAIInteractiveItem');
     const sendToNewChatBtn = document.getElementById('sendToNewChatBtn');
     const sendToExistingChatBtn = document.getElementById('sendToExistingChatBtn');
     const sendToCLIInteractiveBtn = document.getElementById('sendToCLIInteractiveBtn');
@@ -849,6 +851,26 @@ function setupAIActionDropdown(): void {
             hideAIActionMenu();
             // Request the extension to show the update document dialog
             requestUpdateDocument();
+        });
+    }
+
+    // Handle Ask AI Interactively menu item click (full document context)
+    if (askAIInteractiveItem) {
+        askAIInteractiveItem.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!state.settings.askAIEnabled) {
+                return;
+            }
+
+            hideAIActionMenu();
+
+            const instructionType = getDefaultInteractiveCommandId();
+            const context = buildFullDocumentAskAIContext(
+                state.currentContent,
+                instructionType,
+                'interactive'
+            );
+            requestAskAIInteractive(context);
         });
     }
 
@@ -920,6 +942,8 @@ function setupAIActionDropdown(): void {
             hideAIActionMenu();
         }
     });
+
+    updateAIActionMenuAvailability();
 }
 
 /**
@@ -953,6 +977,28 @@ function hideAIActionMenu(): void {
     if (executeWorkPlanItem) {
         executeWorkPlanItem.classList.remove('submenu-open');
     }
+}
+
+/**
+ * Update Ask AI toolbar item enabled/disabled state from settings.
+ */
+export function updateAIActionMenuAvailability(): void {
+    const askAIInteractiveItem = document.getElementById('askAIInteractiveItem');
+    if (!askAIInteractiveItem) return;
+
+    const askAIEnabled = state.settings.askAIEnabled === true;
+    askAIInteractiveItem.classList.toggle('ai-action-disabled', !askAIEnabled);
+    askAIInteractiveItem.setAttribute('aria-disabled', askAIEnabled ? 'false' : 'true');
+    askAIInteractiveItem.title = askAIEnabled
+        ? 'Start an interactive AI session for this document'
+        : 'Enable workspaceShortcuts.aiService.enabled to use Ask AI Interactively';
+}
+
+function getDefaultInteractiveCommandId(): string {
+    const menuConfig = getAIMenuConfig(state.settings.aiMenuConfig);
+    const defaultCommand = menuConfig.interactiveCommands.find(command => !command.isCustomInput)
+        ?? menuConfig.interactiveCommands[0];
+    return defaultCommand?.id ?? 'clarify';
 }
 
 /**
@@ -1334,7 +1380,12 @@ function handleAskAIFromContextMenu(
     }
 
     // Extract document context for the AI
-    const baseContext = extractDocumentContext(saved.startLine, saved.endLine, saved.selectedText);
+    const baseContext = extractDocumentContext(
+        state.currentContent,
+        saved.startLine,
+        saved.endLine,
+        saved.selectedText
+    );
 
     // Add command ID (as instructionType for backward compatibility), mode, and optional fields
     const context = {
@@ -1357,71 +1408,6 @@ function handleAskAIFromContextMenu(
 
     // Clear saved selection
     state.setSavedSelectionForContextMenu(null);
-}
-
-/**
- * Extract document context for AI clarification
- * Gathers headings, surrounding content, and selection info
- * 
- * @param startLine - Selection start line (1-based)
- * @param endLine - Selection end line (1-based)
- * @param selectedText - The selected text
- * @returns Context object for AI clarification
- */
-function extractDocumentContext(startLine: number, endLine: number, selectedText: string): {
-    selectedText: string;
-    startLine: number;
-    endLine: number;
-    surroundingLines: string;
-    nearestHeading: string | null;
-    allHeadings: string[];
-} {
-    const content = state.currentContent;
-    const lines = content.split('\n');
-
-    // Extract all markdown headings from the document
-    const allHeadings: string[] = [];
-    let nearestHeading: string | null = null;
-    let nearestHeadingLine = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        // Match markdown headings (# Heading, ## Heading, etc.)
-        const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-        if (headingMatch) {
-            const headingText = headingMatch[2].trim();
-            allHeadings.push(headingText);
-
-            // Track nearest heading above selection
-            if (i + 1 <= startLine && i + 1 > nearestHeadingLine) {
-                nearestHeading = headingText;
-                nearestHeadingLine = i + 1;
-            }
-        }
-    }
-
-    // Extract surrounding lines (5 lines before and after the selection)
-    const contextRadius = 5;
-    const contextStartLine = Math.max(0, startLine - 1 - contextRadius);
-    const contextEndLine = Math.min(lines.length, endLine + contextRadius);
-
-    const surroundingLines: string[] = [];
-    for (let i = contextStartLine; i < contextEndLine; i++) {
-        // Skip the selected lines themselves to avoid duplication
-        if (i >= startLine - 1 && i < endLine) {
-            continue;
-        }
-        surroundingLines.push(lines[i]);
-    }
-
-    return {
-        selectedText,
-        startLine,
-        endLine,
-        surroundingLines: surroundingLines.join('\n'),
-        nearestHeading,
-        allHeadings
-    };
 }
 
 // Custom instruction dialog event listeners are handled by the shared CustomInstructionDialog class

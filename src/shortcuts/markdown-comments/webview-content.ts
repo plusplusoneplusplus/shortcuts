@@ -173,6 +173,10 @@ export function getWebviewContent(
                         <span class="ai-action-icon">📝</span>
                         <span class="ai-action-label">Update Document</span>
                     </div>
+                    <div class="ai-action-menu-item" id="askAIInteractiveItem">
+                        <span class="ai-action-icon">🤖</span>
+                        <span class="ai-action-label">Ask AI Interactively</span>
+                    </div>
                     <div class="ai-action-menu-item" id="refreshPlanItem">
                         <span class="ai-action-icon">🔄</span>
                         <span class="ai-action-label">Refresh Plan</span>

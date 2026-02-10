@@ -238,6 +238,16 @@ body.source-mode .toolbar-review-only {
     background: var(--vscode-list-hoverBackground);
 }
 
+.ai-action-menu-item.ai-action-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.ai-action-menu-item.ai-action-disabled:hover {
+    background: transparent;
+}
+
 .ai-action-menu-item:first-child {
     border-radius: 5px 5px 0 0;
 }

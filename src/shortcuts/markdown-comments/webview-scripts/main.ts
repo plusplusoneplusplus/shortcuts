@@ -6,7 +6,7 @@
  * with the VS Code extension.
  */
 
-import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu, updateActionItemsSubmenu, updateExecuteWorkPlanSubmenu, updatePromptFileSubmenu, updateSkillSubmenu } from './dom-handlers';
+import { initDomHandlers, rebuildAISubmenu, rebuildPredefinedSubmenu, updateAIActionMenuAvailability, updateActionItemsSubmenu, updateExecuteWorkPlanSubmenu, updatePromptFileSubmenu, updateSkillSubmenu } from './dom-handlers';
 import { initFollowPromptDialog, showFollowPromptDialog } from './follow-prompt-dialog';
 import { initRefreshPlanDialog, showRefreshPlanDialog } from './refresh-plan-dialog';
 import { initUpdateDocumentDialog, showUpdateDocumentDialog } from './update-document-dialog';
@@ -108,6 +108,7 @@ function handleMessage(message: ExtensionMessage): void {
                 if (message.settings.predefinedComments) {
                     rebuildPredefinedSubmenu();
                 }
+                updateAIActionMenuAvailability();
                 // Restore collapsed sections if provided
                 if (message.settings.collapsedSections) {
                     state.setCollapsedSectionsFromArray(message.settings.collapsedSections);

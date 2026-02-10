@@ -26,6 +26,7 @@ import { getPromptFiles } from '../shared/prompt-files-utils';
 import { getSkills } from '../shared/skill-files-utils';
 import { getWorkspaceRoot, getWorkspaceRootUri } from '../shared/workspace-utils';
 import { handleAIClarification } from './ai-clarification-handler';
+import { normalizeAskAIContextForDocument } from './ask-ai-context-utils';
 import { CodeBlockTheme } from './code-block-themes';
 import { CommentsManager } from './comments-manager';
 import { computeLineChanges } from './line-change-tracker';
@@ -640,7 +641,11 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
 
             case 'askAIInteractive':
                 if (message.context) {
-                    await this.handleAskAIInteractive(message.context, relativePath);
+                    const normalizedContext = normalizeAskAIContextForDocument(
+                        message.context,
+                        document.getText()
+                    );
+                    await this.handleAskAIInteractive(normalizedContext, relativePath);
                 }
                 break;
 
