@@ -41,6 +41,7 @@ import {
     generateStaticHierarchicalIndexPages,
     generateStaticIndexPages,
     analysisToPromptItem,
+    groupAnalysesByArea,
 } from '../../src/writing/article-executor';
 
 // ============================================================================
@@ -801,5 +802,76 @@ describe('integration — hierarchical file layout', () => {
         const filePath = path.join(outputDir, 'areas', 'packages-core', 'modules', 'core-auth.md');
         const content = fs.readFileSync(filePath, 'utf-8');
         expect(content).toBe('# Core Auth\n\nAuthentication module in the core area.');
+    });
+});
+
+// ============================================================================
+// groupAnalysesByArea
+// ============================================================================
+
+describe('groupAnalysesByArea', () => {
+    it('should map modules to their areas correctly', () => {
+        const graph = createLargeGraph();
+        const analyses = [
+            createTestAnalysis('core-auth'),
+            createTestAnalysis('core-database'),
+            createTestAnalysis('api-routes'),
+        ];
+
+        const result = groupAnalysesByArea(analyses, graph.areas!);
+
+        expect(result.moduleAreaMap.get('core-auth')).toBe('packages-core');
+        expect(result.moduleAreaMap.get('core-database')).toBe('packages-core');
+        expect(result.moduleAreaMap.get('api-routes')).toBe('packages-api');
+    });
+
+    it('should group analyses by area', () => {
+        const graph = createLargeGraph();
+        const analyses = [
+            createTestAnalysis('core-auth'),
+            createTestAnalysis('core-database'),
+            createTestAnalysis('api-routes'),
+            createTestAnalysis('api-middleware'),
+        ];
+
+        const result = groupAnalysesByArea(analyses, graph.areas!);
+
+        expect(result.analysesByArea.get('packages-core')!.length).toBe(2);
+        expect(result.analysesByArea.get('packages-api')!.length).toBe(2);
+        expect(result.unassignedAnalyses.length).toBe(0);
+    });
+
+    it('should collect unassigned modules', () => {
+        const graph = createLargeGraph();
+        const analyses = [
+            createTestAnalysis('core-auth'),
+            createTestAnalysis('unknown-module'),
+        ];
+
+        const result = groupAnalysesByArea(analyses, graph.areas!);
+
+        expect(result.analysesByArea.get('packages-core')!.length).toBe(1);
+        expect(result.unassignedAnalyses.length).toBe(1);
+        expect(result.unassignedAnalyses[0].moduleId).toBe('unknown-module');
+    });
+
+    it('should handle empty analyses', () => {
+        const graph = createLargeGraph();
+
+        const result = groupAnalysesByArea([], graph.areas!);
+
+        expect(result.moduleAreaMap.size).toBe(4); // all area modules still mapped
+        expect(result.analysesByArea.size).toBe(0);
+        expect(result.unassignedAnalyses.length).toBe(0);
+    });
+
+    it('should handle empty areas', () => {
+        const analyses = [createTestAnalysis('core-auth')];
+
+        const result = groupAnalysesByArea(analyses, []);
+
+        expect(result.moduleAreaMap.size).toBe(0);
+        expect(result.analysesByArea.size).toBe(0);
+        expect(result.unassignedAnalyses.length).toBe(1);
     });
 });

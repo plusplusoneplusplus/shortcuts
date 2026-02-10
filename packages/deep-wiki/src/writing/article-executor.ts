@@ -318,39 +318,33 @@ async function runFlatArticleExecutor(
 // Hierarchical Article Executor (Large Repos with Areas)
 // ============================================================================
 
+/** Result of grouping analyses by area. */
+export interface AreaGrouping {
+    moduleAreaMap: Map<string, string>;
+    analysesByArea: Map<string, ModuleAnalysis[]>;
+    unassignedAnalyses: ModuleAnalysis[];
+}
+
+/** Result of the module map phase. */
+interface ModuleMapResult {
+    articles: GeneratedArticle[];
+    failedIds: Set<string>;
+}
+
+/** Result of a single area reduce phase. */
+interface AreaReduceResult {
+    articles: GeneratedArticle[];
+    areaSummary: { areaId: string; name: string; description: string; summary: string; moduleCount: number };
+}
+
 /**
- * Hierarchical article executor for large repos with areas.
- * Runs a 2-tier reduce:
- *   1. Map: Generate per-module articles (grouped by area)
- *   2. Per-area reduce: Generate area index + area architecture
- *   3. Project-level reduce: Generate project index + architecture + getting-started
+ * Group analyses by their area assignment.
+ * Builds module→area mapping and buckets analyses accordingly.
  */
-async function runHierarchicalArticleExecutor(
-    options: ArticleExecutorOptions
-): Promise<ArticleExecutorResult> {
-    const startTime = Date.now();
-    const {
-        aiInvoker,
-        graph,
-        analyses,
-        depth,
-        concurrency = 5,
-        timeoutMs,
-        model,
-        onProgress,
-        isCancelled,
-        onItemComplete,
-    } = options;
-
-    if (analyses.length === 0) {
-        return { articles: [], failedModuleIds: [], duration: 0 };
-    }
-
-    const areas = graph.areas!;
-    const allArticles: GeneratedArticle[] = [];
-    const allFailedModuleIds: string[] = [];
-
-    // Build module-to-area mapping
+export function groupAnalysesByArea(
+    analyses: ModuleAnalysis[],
+    areas: AreaInfo[]
+): AreaGrouping {
     const moduleAreaMap = new Map<string, string>();
     for (const area of areas) {
         for (const moduleId of area.modules) {
@@ -358,7 +352,6 @@ async function runHierarchicalArticleExecutor(
         }
     }
 
-    // Group analyses by area
     const analysesByArea = new Map<string, ModuleAnalysis[]>();
     const unassignedAnalyses: ModuleAnalysis[] = [];
     for (const analysis of analyses) {
@@ -373,25 +366,33 @@ async function runHierarchicalArticleExecutor(
         }
     }
 
-    // ================================================================
-    // Step 1: Generate per-module articles (all areas in one map phase)
-    // ================================================================
+    return { moduleAreaMap, analysesByArea, unassignedAnalyses };
+}
 
-    // Build area-aware prompt template
-    const promptTemplatesByArea = new Map<string, string>();
-    for (const area of areas) {
-        promptTemplatesByArea.set(area.id, buildModuleArticlePromptTemplate(depth, area.id));
-    }
-    // Default template for unassigned modules
-    const defaultPromptTemplate = buildModuleArticlePromptTemplate(depth);
+/**
+ * Run the unified map phase across all modules, tagging results with their area.
+ */
+async function runModuleMapPhase(
+    options: ArticleExecutorOptions,
+    analyses: ModuleAnalysis[],
+    graph: ModuleGraph,
+    moduleAreaMap: Map<string, string>
+): Promise<ModuleMapResult> {
+    const {
+        aiInvoker,
+        depth,
+        concurrency = 5,
+        timeoutMs,
+        model,
+        onProgress,
+        isCancelled,
+        onItemComplete,
+    } = options;
 
-    // Convert all analyses to PromptItems (with area context embedded)
     const allItems: PromptItem[] = analyses.map(a => analysisToPromptItem(a, graph));
-
-    // Use a single map phase for all modules with the flat prompt (area-aware linking is per-module)
+    const defaultPromptTemplate = buildModuleArticlePromptTemplate(depth);
     const input = createPromptMapInput(allItems, defaultPromptTemplate, []);
 
-    // For the map phase, use list reduce (we handle area/project reduce separately)
     const job = createPromptMapJob({
         aiInvoker,
         outputFormat: 'list',
@@ -414,7 +415,9 @@ async function runHierarchicalArticleExecutor(
 
     const mapResult = await executor.execute(job, input);
 
-    // Process map results into articles tagged with area
+    const articles: GeneratedArticle[] = [];
+    const failedIds = new Set<string>();
+
     if (mapResult.output) {
         const output = mapResult.output as PromptMapOutput;
         for (const result of output.results) {
@@ -425,7 +428,7 @@ async function runHierarchicalArticleExecutor(
 
             if (result.success && (result.rawText || result.rawResponse)) {
                 const content = result.rawText || result.rawResponse || '';
-                allArticles.push({
+                articles.push({
                     type: 'module',
                     slug: normalizeModuleId(moduleId),
                     title: moduleName,
@@ -434,133 +437,144 @@ async function runHierarchicalArticleExecutor(
                     areaId,
                 });
             } else {
-                allFailedModuleIds.push(moduleId);
+                failedIds.add(moduleId);
             }
         }
     }
 
-    // ================================================================
-    // Step 2: Per-area reduce (area index + area architecture)
-    // ================================================================
+    return { articles, failedIds };
+}
 
-    const areaSummaries: Array<{ areaId: string; name: string; description: string; summary: string; moduleCount: number }> = [];
+/**
+ * Run reduce for a single area: generates area index and architecture articles.
+ * Falls back to static pages on failure.
+ */
+async function runAreaReducePhase(
+    area: AreaInfo,
+    areaAnalyses: ModuleAnalysis[],
+    graph: ModuleGraph,
+    options: ArticleExecutorOptions
+): Promise<AreaReduceResult> {
+    const { aiInvoker, timeoutMs, model, isCancelled } = options;
 
-    for (const area of areas) {
-        const areaAnalyses = analysesByArea.get(area.id) || [];
-        if (areaAnalyses.length === 0) { continue; }
-
-        // Build module summary items for this area
-        const areaModuleSummaries = areaAnalyses.map(a => {
-            const mod = graph.modules.find(m => m.id === a.moduleId);
-            return buildModuleSummaryForReduce(
-                a.moduleId,
-                mod?.name || a.moduleId,
-                mod?.category || 'uncategorized',
-                a.overview
-            );
-        });
-
-        // Run area-level reduce as a standalone AI call
-        const areaReducePrompt = buildAreaReducePromptTemplate();
-        const areaReduceInput = createPromptMapInput(
-            areaModuleSummaries.map((summary, i) => ({
-                summary,
-                moduleId: areaAnalyses[i].moduleId,
-            })),
-            '{{summary}}', // Simple passthrough — items are pre-formatted summaries
-            []
+    const areaModuleSummaries = areaAnalyses.map(a => {
+        const mod = graph.modules.find(m => m.id === a.moduleId);
+        return buildModuleSummaryForReduce(
+            a.moduleId,
+            mod?.name || a.moduleId,
+            mod?.category || 'uncategorized',
+            a.overview
         );
+    });
 
-        const areaReduceJob = createPromptMapJob({
-            aiInvoker,
-            outputFormat: 'ai',
-            model,
-            maxConcurrency: 1,
-            aiReducePrompt: areaReducePrompt,
-            aiReduceOutput: getAreaReduceOutputFields(),
-            aiReduceModel: model,
-            aiReduceParameters: {
-                areaName: area.name,
-                areaDescription: area.description,
-                areaPath: area.path,
-                projectName: graph.project.name,
-            },
-        });
+    const areaReduceInput = createPromptMapInput(
+        areaModuleSummaries.map((summary, i) => ({
+            summary,
+            moduleId: areaAnalyses[i].moduleId,
+        })),
+        '{{summary}}',
+        []
+    );
 
-        const areaReduceExecutor = createExecutor({
-            aiInvoker,
-            maxConcurrency: 1,
-            reduceMode: 'deterministic',
-            showProgress: false,
-            retryOnFailure: false,
-            timeoutMs,
-            jobName: `Area Reduce: ${area.name}`,
-            isCancelled,
-        });
+    const areaReduceJob = createPromptMapJob({
+        aiInvoker,
+        outputFormat: 'ai',
+        model,
+        maxConcurrency: 1,
+        aiReducePrompt: buildAreaReducePromptTemplate(),
+        aiReduceOutput: getAreaReduceOutputFields(),
+        aiReduceModel: model,
+        aiReduceParameters: {
+            areaName: area.name,
+            areaDescription: area.description,
+            areaPath: area.path,
+            projectName: graph.project.name,
+        },
+    });
 
-        try {
-            const areaResult = await areaReduceExecutor.execute(areaReduceJob, areaReduceInput);
-            const areaOutput = areaResult.output as PromptMapOutput | undefined;
-            const formattedOutput = areaOutput?.formattedOutput;
+    const areaReduceExecutor = createExecutor({
+        aiInvoker,
+        maxConcurrency: 1,
+        reduceMode: 'deterministic',
+        showProgress: false,
+        retryOnFailure: false,
+        timeoutMs,
+        jobName: `Area Reduce: ${area.name}`,
+        isCancelled,
+    });
 
-            if (formattedOutput) {
-                const parsed = JSON.parse(formattedOutput) as Record<string, string>;
+    const fallbackSummary = {
+        areaId: area.id,
+        name: area.name,
+        description: area.description,
+        summary: area.description,
+        moduleCount: areaAnalyses.length,
+    };
 
-                if (parsed.index) {
-                    allArticles.push({
-                        type: 'area-index',
-                        slug: 'index',
-                        title: `${area.name} — Overview`,
-                        content: parsed.index,
-                        areaId: area.id,
-                    });
-                    // Save area summary for project-level reduce
-                    areaSummaries.push({
-                        areaId: area.id,
-                        name: area.name,
-                        description: area.description,
-                        summary: parsed.index.substring(0, 1000),
-                        moduleCount: areaAnalyses.length,
-                    });
-                }
+    try {
+        const areaResult = await areaReduceExecutor.execute(areaReduceJob, areaReduceInput);
+        const areaOutput = areaResult.output as PromptMapOutput | undefined;
+        const formattedOutput = areaOutput?.formattedOutput;
 
-                if (parsed.architecture) {
-                    allArticles.push({
-                        type: 'area-architecture',
-                        slug: 'architecture',
-                        title: `${area.name} — Architecture`,
-                        content: parsed.architecture,
-                        areaId: area.id,
-                    });
-                }
-            } else {
-                // Static fallback for area
-                allArticles.push(...generateStaticAreaPages(area, areaAnalyses, graph));
-                areaSummaries.push({
+        if (formattedOutput) {
+            const parsed = JSON.parse(formattedOutput) as Record<string, string>;
+            const articles: GeneratedArticle[] = [];
+
+            let areaSummary = fallbackSummary;
+            if (parsed.index) {
+                articles.push({
+                    type: 'area-index',
+                    slug: 'index',
+                    title: `${area.name} — Overview`,
+                    content: parsed.index,
+                    areaId: area.id,
+                });
+                areaSummary = {
                     areaId: area.id,
                     name: area.name,
                     description: area.description,
-                    summary: area.description,
+                    summary: parsed.index.substring(0, 1000),
                     moduleCount: areaAnalyses.length,
+                };
+            }
+
+            if (parsed.architecture) {
+                articles.push({
+                    type: 'area-architecture',
+                    slug: 'architecture',
+                    title: `${area.name} — Architecture`,
+                    content: parsed.architecture,
+                    areaId: area.id,
                 });
             }
-        } catch {
-            // Area reduce failed — static fallback
-            const areaAnalysesForFallback = analysesByArea.get(area.id) || [];
-            allArticles.push(...generateStaticAreaPages(area, areaAnalysesForFallback, graph));
-            areaSummaries.push({
-                areaId: area.id,
-                name: area.name,
-                description: area.description,
-                summary: area.description,
-                moduleCount: areaAnalysesForFallback.length,
-            });
-        }
-    }
 
-    // ================================================================
-    // Step 3: Project-level reduce (project index + architecture + getting-started)
-    // ================================================================
+            return { articles, areaSummary };
+        } else {
+            return {
+                articles: generateStaticAreaPages(area, areaAnalyses, graph),
+                areaSummary: fallbackSummary,
+            };
+        }
+    } catch {
+        return {
+            articles: generateStaticAreaPages(area, areaAnalyses, graph),
+            areaSummary: fallbackSummary,
+        };
+    }
+}
+
+/**
+ * Run project-level reduce across all area summaries.
+ * Generates top-level index, architecture, and getting-started articles.
+ * Falls back to static pages on failure.
+ */
+async function runProjectReducePhase(
+    areaSummaries: Array<{ areaId: string; name: string; description: string; summary: string; moduleCount: number }>,
+    areas: AreaInfo[],
+    graph: ModuleGraph,
+    options: ArticleExecutorOptions
+): Promise<GeneratedArticle[]> {
+    const { aiInvoker, timeoutMs, model, isCancelled } = options;
 
     const projectReduceItems = areaSummaries.map(s => ({
         areaId: s.areaId,
@@ -574,13 +588,12 @@ async function runHierarchicalArticleExecutor(
         []
     );
 
-    const projectReducePrompt = buildHierarchicalReducePromptTemplate();
     const projectReduceJob = createPromptMapJob({
         aiInvoker,
         outputFormat: 'ai',
         model,
         maxConcurrency: 1,
-        aiReducePrompt: projectReducePrompt,
+        aiReducePrompt: buildHierarchicalReducePromptTemplate(),
         aiReduceOutput: getReduceOutputFields(),
         aiReduceModel: model,
         aiReduceParameters: {
@@ -609,9 +622,10 @@ async function runHierarchicalArticleExecutor(
 
         if (formattedOutput) {
             const parsed = JSON.parse(formattedOutput) as Record<string, string>;
+            const articles: GeneratedArticle[] = [];
 
             if (parsed.index) {
-                allArticles.push({
+                articles.push({
                     type: 'index',
                     slug: 'index',
                     title: `${graph.project.name} Wiki`,
@@ -620,7 +634,7 @@ async function runHierarchicalArticleExecutor(
             }
 
             if (parsed.architecture) {
-                allArticles.push({
+                articles.push({
                     type: 'architecture',
                     slug: 'architecture',
                     title: 'Architecture Overview',
@@ -629,23 +643,66 @@ async function runHierarchicalArticleExecutor(
             }
 
             if (parsed.gettingStarted) {
-                allArticles.push({
+                articles.push({
                     type: 'getting-started',
                     slug: 'getting-started',
                     title: 'Getting Started',
                     content: parsed.gettingStarted,
                 });
             }
+
+            return articles;
         } else {
-            allArticles.push(...generateStaticHierarchicalIndexPages(graph, areas, areaSummaries));
+            return generateStaticHierarchicalIndexPages(graph, areas, areaSummaries);
         }
     } catch {
-        allArticles.push(...generateStaticHierarchicalIndexPages(graph, areas, areaSummaries));
+        return generateStaticHierarchicalIndexPages(graph, areas, areaSummaries);
+    }
+}
+
+/**
+ * Hierarchical article executor for large repos with areas.
+ * Orchestrates a 3-step pipeline:
+ *   1. Map: Generate per-module articles (grouped by area)
+ *   2. Per-area reduce: Generate area index + area architecture
+ *   3. Project-level reduce: Generate project index + architecture + getting-started
+ */
+async function runHierarchicalArticleExecutor(
+    options: ArticleExecutorOptions
+): Promise<ArticleExecutorResult> {
+    const startTime = Date.now();
+    const { graph, analyses } = options;
+
+    if (analyses.length === 0) {
+        return { articles: [], failedModuleIds: [], duration: 0 };
     }
 
+    const areas = graph.areas!;
+
+    // Step 1: Group analyses by area
+    const { moduleAreaMap, analysesByArea } = groupAnalysesByArea(analyses, areas);
+
+    // Step 2: Generate per-module articles
+    const mapResult = await runModuleMapPhase(options, analyses, graph, moduleAreaMap);
+
+    // Step 3: Per-area reduce
+    const areaSummaries: Array<{ areaId: string; name: string; description: string; summary: string; moduleCount: number }> = [];
+    for (const area of areas) {
+        const areaAnalyses = analysesByArea.get(area.id) || [];
+        if (areaAnalyses.length === 0) { continue; }
+
+        const result = await runAreaReducePhase(area, areaAnalyses, graph, options);
+        mapResult.articles.push(...result.articles);
+        areaSummaries.push(result.areaSummary);
+    }
+
+    // Step 4: Project-level reduce
+    const projectArticles = await runProjectReducePhase(areaSummaries, areas, graph, options);
+    mapResult.articles.push(...projectArticles);
+
     return {
-        articles: allArticles,
-        failedModuleIds: allFailedModuleIds,
+        articles: mapResult.articles,
+        failedModuleIds: [...mapResult.failedIds],
         duration: Date.now() - startTime,
     };
 }
