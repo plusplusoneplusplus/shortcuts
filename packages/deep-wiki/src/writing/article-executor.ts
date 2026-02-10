@@ -161,33 +161,17 @@ async function runFlatArticleExecutor(
 
     // Build the article prompt template (text mode — no output fields)
     const promptTemplate = buildModuleArticlePromptTemplate(depth);
-    const outputFields: string[] = []; // Text mode: empty output fields
-
-    // Build reduce prompt for index/architecture/getting-started
-    const reducePrompt = buildReducePromptTemplate();
-    const reduceOutputFields = getReduceOutputFields();
-
-    // Build reduce parameters from project info
-    const reduceParameters: Record<string, string> = {
-        projectName: graph.project.name,
-        projectDescription: graph.project.description || 'No description available',
-        buildSystem: graph.project.buildSystem || 'Unknown',
-        language: graph.project.language || 'Unknown',
-    };
 
     // Create prompt map input
-    const input = createPromptMapInput(items, promptTemplate, outputFields);
+    const input = createPromptMapInput(items, promptTemplate, []);
 
-    // Create the job with AI reduce
+    // Map phase only — reduce is done separately with module summaries
+    // to avoid exceeding token limits (full articles can be very large)
     const job = createPromptMapJob({
         aiInvoker,
-        outputFormat: 'ai',
+        outputFormat: 'list',
         model,
         maxConcurrency: concurrency,
-        aiReducePrompt: reducePrompt,
-        aiReduceOutput: reduceOutputFields,
-        aiReduceModel: model,
-        aiReduceParameters: reduceParameters,
     });
 
     // Create the executor
@@ -204,14 +188,13 @@ async function runFlatArticleExecutor(
         onItemComplete,
     });
 
-    // Execute map-reduce
+    // Execute map phase
     const result = await executor.execute(job, input);
 
-    // Collect articles
+    // Collect module articles from map results
     const articles: GeneratedArticle[] = [];
     const failedModuleIds: string[] = [];
 
-    // Process map results (per-module articles)
     if (result.output) {
         const output = result.output as PromptMapOutput;
         for (const mapResult of output.results) {
@@ -232,47 +215,96 @@ async function runFlatArticleExecutor(
                 failedModuleIds.push(moduleId);
             }
         }
+    }
 
-        // Process reduce result (index pages)
-        const formattedOutput = output.formattedOutput;
+    // Separate reduce phase: use compact module summaries (not full articles)
+    // to stay within model token limits
+    const moduleSummaries = analyses.map(a => {
+        const mod = graph.modules.find(m => m.id === a.moduleId);
+        return buildModuleSummaryForReduce(
+            a.moduleId,
+            mod?.name || a.moduleId,
+            mod?.category || 'uncategorized',
+            a.overview
+        );
+    });
+
+    const reduceInput = createPromptMapInput(
+        moduleSummaries.map((summary, i) => ({
+            summary,
+            moduleId: analyses[i].moduleId,
+        })),
+        '{{summary}}',
+        []
+    );
+
+    const reduceJob = createPromptMapJob({
+        aiInvoker,
+        outputFormat: 'ai',
+        model,
+        maxConcurrency: 1,
+        aiReducePrompt: buildReducePromptTemplate(),
+        aiReduceOutput: getReduceOutputFields(),
+        aiReduceModel: model,
+        aiReduceParameters: {
+            projectName: graph.project.name,
+            projectDescription: graph.project.description || 'No description available',
+            buildSystem: graph.project.buildSystem || 'Unknown',
+            language: graph.project.language || 'Unknown',
+        },
+    });
+
+    const reduceExecutor = createExecutor({
+        aiInvoker,
+        maxConcurrency: 1,
+        reduceMode: 'deterministic',
+        showProgress: false,
+        retryOnFailure: false,
+        timeoutMs,
+        jobName: 'Index Generation',
+        onProgress,
+        isCancelled,
+    });
+
+    try {
+        const reduceResult = await reduceExecutor.execute(reduceJob, reduceInput);
+        const reduceOutput = reduceResult.output as PromptMapOutput | undefined;
+        const formattedOutput = reduceOutput?.formattedOutput;
+
         if (formattedOutput) {
-            try {
-                const reduceResult = JSON.parse(formattedOutput) as Record<string, string>;
+            const parsed = JSON.parse(formattedOutput) as Record<string, string>;
 
-                if (reduceResult.index) {
-                    articles.push({
-                        type: 'index',
-                        slug: 'index',
-                        title: `${graph.project.name} Wiki`,
-                        content: reduceResult.index,
-                    });
-                }
+            if (parsed.index) {
+                articles.push({
+                    type: 'index',
+                    slug: 'index',
+                    title: `${graph.project.name} Wiki`,
+                    content: parsed.index,
+                });
+            }
 
-                if (reduceResult.architecture) {
-                    articles.push({
-                        type: 'architecture',
-                        slug: 'architecture',
-                        title: 'Architecture Overview',
-                        content: reduceResult.architecture,
-                    });
-                }
+            if (parsed.architecture) {
+                articles.push({
+                    type: 'architecture',
+                    slug: 'architecture',
+                    title: 'Architecture Overview',
+                    content: parsed.architecture,
+                });
+            }
 
-                if (reduceResult.gettingStarted) {
-                    articles.push({
-                        type: 'getting-started',
-                        slug: 'getting-started',
-                        title: 'Getting Started',
-                        content: reduceResult.gettingStarted,
-                    });
-                }
-            } catch {
-                // Reduce failed — generate static fallback
-                articles.push(...generateStaticIndexPages(graph, analyses));
+            if (parsed.gettingStarted) {
+                articles.push({
+                    type: 'getting-started',
+                    slug: 'getting-started',
+                    title: 'Getting Started',
+                    content: parsed.gettingStarted,
+                });
             }
         } else {
-            // No reduce output — generate static fallback
             articles.push(...generateStaticIndexPages(graph, analyses));
         }
+    } catch {
+        articles.push(...generateStaticIndexPages(graph, analyses));
     }
 
     return {
