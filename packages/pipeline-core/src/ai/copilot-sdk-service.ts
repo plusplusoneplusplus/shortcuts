@@ -254,6 +254,35 @@ export interface SendMessageOptions {
 }
 
 /**
+ * Aggregated token usage data from SDK events.
+ *
+ * Accumulated from `assistant.usage` events (per-turn) and
+ * `session.usage_info` events (session-level quota info).
+ */
+export interface TokenUsage {
+    /** Total input tokens consumed across all turns */
+    inputTokens: number;
+    /** Total output tokens generated across all turns */
+    outputTokens: number;
+    /** Total cache-read tokens across all turns */
+    cacheReadTokens: number;
+    /** Total cache-write tokens across all turns */
+    cacheWriteTokens: number;
+    /** Sum of inputTokens + outputTokens */
+    totalTokens: number;
+    /** Cumulative cost across all turns (if reported by the SDK) */
+    cost?: number;
+    /** Cumulative duration in ms across all turns (if reported by the SDK) */
+    duration?: number;
+    /** Number of assistant.usage events received (one per turn) */
+    turnCount: number;
+    /** Session-level token limit (last seen from session.usage_info) */
+    tokenLimit?: number;
+    /** Session-level current token count (last seen from session.usage_info) */
+    currentTokens?: number;
+}
+
+/**
  * Result from SDK invocation, extends AIInvocationResult with SDK-specific fields
  */
 export interface SDKInvocationResult extends AIInvocationResult {
@@ -261,6 +290,16 @@ export interface SDKInvocationResult extends AIInvocationResult {
     sessionId?: string;
     /** Raw SDK response data */
     rawResponse?: unknown;
+    /** Aggregated token usage data (undefined when no usage events were received) */
+    tokenUsage?: TokenUsage;
+}
+
+/**
+ * Internal result from sendWithStreaming, including token usage.
+ */
+interface StreamingResult {
+    response: string;
+    tokenUsage?: TokenUsage;
 }
 
 /**
@@ -373,6 +412,8 @@ interface ICopilotSession {
  * - "assistant.message" - Final assistant message (data: { messageId, content })
  * - "assistant.message_delta" - Streaming chunk (data: { messageId, deltaContent })
  * - "assistant.turn_end" - Turn ended (data: { turnId })
+ * - "assistant.usage" - Per-turn token usage (data: { inputTokens, outputTokens, ... })
+ * - "session.usage_info" - Session-level quota info (data: { tokenLimit, currentTokens })
  * 
  * Completion detection order:
  * 1. `session.idle` settles immediately
@@ -386,6 +427,16 @@ interface ISessionEvent {
         message?: string;
         stack?: string;
         turnId?: string;
+        // Token usage fields (from assistant.usage)
+        inputTokens?: number;
+        outputTokens?: number;
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+        cost?: number;
+        duration?: number;
+        // Session quota fields (from session.usage_info)
+        tokenLimit?: number;
+        currentTokens?: number;
     };
 }
 
@@ -802,8 +853,11 @@ export class CopilotSDKService {
             // OR if an onStreamingChunk callback is provided
             // (SDK's sendAndWait has hardcoded 120s timeout for session.idle)
             let response: string;
+            let tokenUsage: TokenUsage | undefined;
             if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
-                response = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk);
+                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk);
+                response = streamingResult.response;
+                tokenUsage = streamingResult.tokenUsage;
             } else {
                 const result = await this.sendWithTimeout(session, options.prompt, timeoutMs);
                 response = result?.data?.content || '';
@@ -817,14 +871,16 @@ export class CopilotSDKService {
                 return {
                     success: false,
                     error: 'No response received from Copilot SDK',
-                    sessionId: session.sessionId
+                    sessionId: session.sessionId,
+                    tokenUsage,
                 };
             }
 
             return {
                 success: true,
                 response,
-                sessionId: session.sessionId
+                sessionId: session.sessionId,
+                tokenUsage,
             };
 
         } catch (error) {
@@ -1167,7 +1223,7 @@ export class CopilotSDKService {
         prompt: string,
         timeoutMs: number,
         onStreamingChunk?: (chunk: string) => void
-    ): Promise<string> {
+    ): Promise<StreamingResult> {
         return new Promise((resolve, reject) => {
             const logger = getLogger();
             const sid = session.sessionId;
@@ -1181,6 +1237,17 @@ export class CopilotSDKService {
             let turnEndGraceTimer: ReturnType<typeof setTimeout> | null = null;
             let turnCount = 0;
 
+            // Token usage accumulator
+            let usageInputTokens = 0;
+            let usageOutputTokens = 0;
+            let usageCacheReadTokens = 0;
+            let usageCacheWriteTokens = 0;
+            let usageCost: number | undefined;
+            let usageDuration: number | undefined;
+            let usageTurnCount = 0;
+            let usageTokenLimit: number | undefined;
+            let usageCurrentTokens: number | undefined;
+
             const cleanup = () => {
                 if (unsubscribe) {
                     unsubscribe();
@@ -1192,7 +1259,7 @@ export class CopilotSDKService {
                 }
             };
 
-            const settle = (resolver: (value: string) => void, value: string) => {
+            const settle = (resolver: (value: StreamingResult) => void, value: StreamingResult) => {
                 if (!settled) {
                     settled = true;
                     cleanup();
@@ -1208,6 +1275,24 @@ export class CopilotSDKService {
                 }
             };
 
+            const buildTokenUsage = (): TokenUsage | undefined => {
+                if (usageTurnCount === 0) {
+                    return undefined;
+                }
+                return {
+                    inputTokens: usageInputTokens,
+                    outputTokens: usageOutputTokens,
+                    cacheReadTokens: usageCacheReadTokens,
+                    cacheWriteTokens: usageCacheWriteTokens,
+                    totalTokens: usageInputTokens + usageOutputTokens,
+                    cost: usageCost,
+                    duration: usageDuration,
+                    turnCount: usageTurnCount,
+                    tokenLimit: usageTokenLimit,
+                    currentTokens: usageCurrentTokens,
+                };
+            };
+
             const settleWithResult = () => {
                 // Use the last non-empty message as the primary result.
                 // In multi-turn conversations (with MCP tools), earlier messages are
@@ -1219,7 +1304,7 @@ export class CopilotSDKService {
                     : '';
                 const result = lastMessage || response;
                 logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Streaming completed (${result.length} chars, ${turnCount} turns, ${allMessages.length} messages)`);
-                settle(resolve, result);
+                settle(resolve, { response: result, tokenUsage: buildTokenUsage() });
             };
 
             const timeoutId = setTimeout(() => {
@@ -1308,6 +1393,29 @@ export class CopilotSDKService {
                     const errorMessage = event.data?.message || 'Unknown session error';
                     logger.error(LogCategory.AI, `CopilotSDKService [${sid}]: Session error: ${errorMessage}`);
                     settleError(new Error(`Copilot session error: ${errorMessage}`));
+                } else if (eventType === 'assistant.usage') {
+                    // Per-turn token usage — accumulate across turns
+                    usageTurnCount++;
+                    usageInputTokens += event.data?.inputTokens ?? 0;
+                    usageOutputTokens += event.data?.outputTokens ?? 0;
+                    usageCacheReadTokens += event.data?.cacheReadTokens ?? 0;
+                    usageCacheWriteTokens += event.data?.cacheWriteTokens ?? 0;
+                    if (event.data?.cost != null) {
+                        usageCost = (usageCost ?? 0) + event.data.cost;
+                    }
+                    if (event.data?.duration != null) {
+                        usageDuration = (usageDuration ?? 0) + event.data.duration;
+                    }
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Usage turn ${usageTurnCount}: in=${event.data?.inputTokens ?? 0} out=${event.data?.outputTokens ?? 0}`);
+                } else if (eventType === 'session.usage_info') {
+                    // Session-level quota info — store last-seen values
+                    if (event.data?.tokenLimit != null) {
+                        usageTokenLimit = event.data.tokenLimit;
+                    }
+                    if (event.data?.currentTokens != null) {
+                        usageCurrentTokens = event.data.currentTokens;
+                    }
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Session usage info: limit=${usageTokenLimit} current=${usageCurrentTokens}`);
                 }
             });
 

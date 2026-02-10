@@ -104,6 +104,7 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
+    TokenUsage,
     MCPServerConfigBase,
     MCPLocalServerConfig,
     MCPRemoteServerConfig,

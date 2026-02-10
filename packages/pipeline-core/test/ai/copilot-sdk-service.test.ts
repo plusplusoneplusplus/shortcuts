@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CopilotSDKService, resetCopilotSDKService } from '../../src/ai/copilot-sdk-service';
+import { CopilotSDKService, resetCopilotSDKService, TokenUsage } from '../../src/ai/copilot-sdk-service';
 import { setLogger, nullLogger } from '../../src/logger';
 import * as trustedFolder from '../../src/ai/trusted-folder';
 
@@ -1263,5 +1263,267 @@ describe('CopilotSDKService - Non-streaming (sendAndWait)', () => {
         expect(result.success).toBe(true);
         expect(result.response).toBe('Basic response');
         expect(mockSession.sendAndWait).toHaveBeenCalled();
+    });
+});
+
+// ============================================================================
+// Token Usage Tracking Tests
+// ============================================================================
+
+describe('CopilotSDKService - Token Usage Tracking', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    /**
+     * Helper: set up the service with a streaming mock and call sendMessage.
+     */
+    function setupStreamingCall() {
+        const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const resultPromise = service.sendMessage({
+            prompt: 'Test prompt',
+            workingDirectory: '/test',
+            timeoutMs: 200000,
+            loadDefaultMcpConfig: false,
+        });
+
+        return { sessions, resultPromise };
+    }
+
+    it('should capture assistant.usage event and attach tokenUsage to result', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Hello', messageId: 'msg-1' } });
+        dispatchEvent({
+            type: 'assistant.usage',
+            data: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 5, cost: 0.001, duration: 250 }
+        });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage).toBeDefined();
+        const usage = result.tokenUsage!;
+        expect(usage.inputTokens).toBe(100);
+        expect(usage.outputTokens).toBe(50);
+        expect(usage.cacheReadTokens).toBe(10);
+        expect(usage.cacheWriteTokens).toBe(5);
+        expect(usage.totalTokens).toBe(150);
+        expect(usage.cost).toBe(0.001);
+        expect(usage.duration).toBe(250);
+        expect(usage.turnCount).toBe(1);
+    });
+
+    it('should accumulate token usage across multiple turns', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        // Turn 1
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Thinking...', messageId: 'msg-1' } });
+        dispatchEvent({
+            type: 'assistant.usage',
+            data: { inputTokens: 100, outputTokens: 30, cacheReadTokens: 0, cacheWriteTokens: 0, cost: 0.001, duration: 200 }
+        });
+
+        // Turn 2
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Final answer', messageId: 'msg-2' } });
+        dispatchEvent({
+            type: 'assistant.usage',
+            data: { inputTokens: 200, outputTokens: 80, cacheReadTokens: 50, cacheWriteTokens: 10, cost: 0.003, duration: 400 }
+        });
+
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        const usage = result.tokenUsage!;
+        expect(usage.inputTokens).toBe(300);
+        expect(usage.outputTokens).toBe(110);
+        expect(usage.cacheReadTokens).toBe(50);
+        expect(usage.cacheWriteTokens).toBe(10);
+        expect(usage.totalTokens).toBe(410);
+        expect(usage.cost).toBe(0.004);
+        expect(usage.duration).toBe(600);
+        expect(usage.turnCount).toBe(2);
+    });
+
+    it('should capture session.usage_info event (last-seen values)', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Response', messageId: 'msg-1' } });
+        dispatchEvent({
+            type: 'assistant.usage',
+            data: { inputTokens: 50, outputTokens: 25, cacheReadTokens: 0, cacheWriteTokens: 0 }
+        });
+        // First usage_info
+        dispatchEvent({ type: 'session.usage_info', data: { tokenLimit: 10000, currentTokens: 75 } });
+        // Second usage_info (should overwrite first)
+        dispatchEvent({ type: 'session.usage_info', data: { tokenLimit: 10000, currentTokens: 150 } });
+
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        const usage = result.tokenUsage!;
+        expect(usage.tokenLimit).toBe(10000);
+        expect(usage.currentTokens).toBe(150);
+    });
+
+    it('should return undefined tokenUsage when no usage events fire', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'No usage events', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage).toBeUndefined();
+    });
+
+    it('should handle assistant.usage with missing optional fields', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Response', messageId: 'msg-1' } });
+        dispatchEvent({
+            type: 'assistant.usage',
+            data: { inputTokens: 100, outputTokens: 50 }
+        });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        const usage = result.tokenUsage!;
+        expect(usage.inputTokens).toBe(100);
+        expect(usage.outputTokens).toBe(50);
+        expect(usage.cacheReadTokens).toBe(0);
+        expect(usage.cacheWriteTokens).toBe(0);
+        expect(usage.totalTokens).toBe(150);
+        expect(usage.cost).toBeUndefined();
+        expect(usage.duration).toBeUndefined();
+        expect(usage.turnCount).toBe(1);
+    });
+
+    it('should not include tokenUsage for non-streaming (sendAndWait) path', async () => {
+        const mockSession = {
+            sessionId: 'non-streaming-session',
+            sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'Basic response' } }),
+            destroy: vi.fn().mockResolvedValue(undefined),
+        };
+
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+
+        class MockCopilotClient {
+            constructor() {
+                Object.assign(this, mockClient);
+            }
+        }
+
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const result = await service.sendMessage({
+            prompt: 'Test',
+            workingDirectory: '/test',
+            timeoutMs: 200000,
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage).toBeUndefined();
+    });
+
+    it('should still include tokenUsage when response is empty', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({
+            type: 'assistant.usage',
+            data: { inputTokens: 50, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+        });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        expect(result.success).toBe(false);
+        expect(result.tokenUsage).toBeDefined();
+        expect(result.tokenUsage!.inputTokens).toBe(50);
+        expect(result.tokenUsage!.turnCount).toBe(1);
+    });
+
+    it('should compute totalTokens as inputTokens + outputTokens', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'Test', messageId: 'msg-1' } });
+        dispatchEvent({
+            type: 'assistant.usage',
+            data: { inputTokens: 1234, outputTokens: 567 }
+        });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        const result = await resultPromise;
+        const usage = result.tokenUsage!;
+        expect(usage.totalTokens).toBe(usage.inputTokens + usage.outputTokens);
+        expect(usage.totalTokens).toBe(1801);
     });
 });
