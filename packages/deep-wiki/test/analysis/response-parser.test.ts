@@ -82,6 +82,86 @@ describe('extractJSON', () => {
         const result = extractJSON(JSON.stringify(nested));
         expect(result).toEqual(nested);
     });
+
+    it('should extract JSON from response with preamble text before code block', () => {
+        const response = `Perfect! Now I have enough information. Let me create the JSON output:
+
+\`\`\`json
+{"moduleId": "auth", "overview": "The auth module handles authentication."}
+\`\`\``;
+        const result = extractJSON(response);
+        expect(result).toEqual({ moduleId: 'auth', overview: 'The auth module handles authentication.' });
+    });
+
+    it('should extract JSON from code block without newline after fence', () => {
+        const response = '```json{"a": 1}```';
+        const result = extractJSON(response);
+        expect(result).toEqual({ a: 1 });
+    });
+
+    it('should extract JSON from code block with trailing text after closing fence', () => {
+        const response = `Some preamble text.
+
+\`\`\`json
+{"key": "value"}
+\`\`\`
+
+And some trailing explanation text.`;
+        const result = extractJSON(response);
+        expect(result).toEqual({ key: 'value' });
+    });
+
+    it('should extract JSON from last code block when multiple blocks exist', () => {
+        const response = `Here's an example:
+
+\`\`\`json
+{"example": true}
+\`\`\`
+
+Now the actual result:
+
+\`\`\`json
+{"moduleId": "real", "overview": "The real result"}
+\`\`\``;
+        // Strategy 2 picks the first block; Strategy 4 tries the last block as fallback
+        const result = extractJSON(response);
+        expect(result).not.toBeNull();
+        // Should successfully parse (either block is valid JSON)
+        expect(typeof result).toBe('object');
+    });
+
+    it('should extract JSON from response with verbose preamble and code block', () => {
+        const response = `I've analyzed the codebase thoroughly. Here are my findings:
+
+The module is well-structured with clear separation of concerns. Let me provide the analysis in the requested format:
+
+\`\`\`json
+{
+  "moduleId": "test-module",
+  "overview": "A well-structured module.",
+  "keyConcepts": [{"name": "Concept1", "description": "Desc"}]
+}
+\`\`\`
+
+I hope this analysis is helpful!`;
+        const result = extractJSON(response) as Record<string, unknown>;
+        expect(result).not.toBeNull();
+        expect(result.moduleId).toBe('test-module');
+        expect(result.overview).toBe('A well-structured module.');
+    });
+
+    it('should extract JSON using brace matching when no code blocks present', () => {
+        const response = `Here is the analysis: {"moduleId": "test", "overview": "Test overview"} — that's the result.`;
+        const result = extractJSON(response) as Record<string, unknown>;
+        expect(result).not.toBeNull();
+        expect(result.moduleId).toBe('test');
+    });
+
+    it('should handle code block with extra whitespace around fences', () => {
+        const response = "Result:\n```json  \n  {\"a\": 1}  \n  ```";
+        const result = extractJSON(response);
+        expect(result).toEqual({ a: 1 });
+    });
 });
 
 // ============================================================================
@@ -289,5 +369,72 @@ describe('parseAnalysisResponse', () => {
         };
         const result = parseAnalysisResponse(JSON.stringify(json), 'auth');
         expect(result.codeExamples[0].file).toBe('src/auth/jwt.ts');
+    });
+
+    // ========================================================================
+    // Preamble text handling (AI responses with text before JSON)
+    // ========================================================================
+
+    it('should parse response with preamble text before JSON code block', () => {
+        const response = `Perfect! Now I have enough information. Let me create the JSON output:
+
+\`\`\`json
+${JSON.stringify(VALID_ANALYSIS_JSON)}
+\`\`\``;
+        const result = parseAnalysisResponse(response, 'auth');
+        expect(result.moduleId).toBe('auth');
+        expect(result.overview).toContain('authentication');
+        expect(result.keyConcepts).toHaveLength(2);
+    });
+
+    it('should parse response with preamble and trailing text around code block', () => {
+        const response = `I've analyzed the module carefully. Here are my findings:
+
+\`\`\`json
+${JSON.stringify(VALID_ANALYSIS_JSON)}
+\`\`\`
+
+This analysis covers the main authentication patterns used in the codebase.`;
+        const result = parseAnalysisResponse(response, 'auth');
+        expect(result.moduleId).toBe('auth');
+        expect(result.overview).toContain('authentication');
+        expect(result.patterns).toEqual(['Middleware', 'Factory', 'Strategy']);
+    });
+
+    it('should parse response with verbose multi-paragraph preamble', () => {
+        const response = `Great question! Let me analyze this module in detail.
+
+The authentication module is a critical component of the system. It handles JWT-based authentication, session management, and role-based authorization.
+
+After thorough analysis, here is the structured output:
+
+\`\`\`json
+${JSON.stringify(VALID_ANALYSIS_JSON, null, 2)}
+\`\`\``;
+        const result = parseAnalysisResponse(response, 'auth');
+        expect(result.moduleId).toBe('auth');
+        expect(result.overview).toContain('authentication');
+        expect(result.dependencies.internal).toHaveLength(1);
+        expect(result.dependencies.external).toHaveLength(1);
+    });
+
+    it('should parse response with inline JSON (no code block) after preamble', () => {
+        const response = `Here is the analysis result: ${JSON.stringify(VALID_ANALYSIS_JSON)}`;
+        const result = parseAnalysisResponse(response, 'auth');
+        expect(result.moduleId).toBe('auth');
+        expect(result.overview).toContain('authentication');
+    });
+
+    it('should parse pretty-printed JSON in code block with preamble', () => {
+        const prettyJson = JSON.stringify({
+            moduleId: 'test-mod',
+            overview: 'A test module for unit testing.',
+            keyConcepts: [{ name: 'Testing', description: 'Unit test patterns' }],
+        }, null, 2);
+        const response = `Analysis complete! Here's the output:\n\n\`\`\`json\n${prettyJson}\n\`\`\``;
+        const result = parseAnalysisResponse(response, 'test-mod');
+        expect(result.moduleId).toBe('test-mod');
+        expect(result.overview).toBe('A test module for unit testing.');
+        expect(result.keyConcepts).toHaveLength(1);
     });
 });

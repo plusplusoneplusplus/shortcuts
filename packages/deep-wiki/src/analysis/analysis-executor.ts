@@ -200,6 +200,24 @@ export async function runAnalysisExecutor(
                 } catch {
                     failedModuleIds.push(moduleId);
                 }
+            } else if (!mapResult.success && mapResult.rawResponse) {
+                // Map-reduce reported failure (e.g. pipeline-core JSON parse failed),
+                // but raw response is available — try deep-wiki's more tolerant parser
+                try {
+                    const analysis = parseAnalysisResponse(mapResult.rawResponse, moduleId);
+                    analyses.push(analysis);
+                    logger.debug(LogCategory.MAP_REDUCE, `Analysis recovered for module "${moduleId}" from rawResponse (pipeline-core parse had failed: ${mapResult.error})`);
+                } catch (recoveryErr) {
+                    // Recovery also failed — try output fields as last resort
+                    try {
+                        const analysis = parseOutputAsAnalysis(mapResult.output, moduleId);
+                        analyses.push(analysis);
+                    } catch {
+                        logger.debug(LogCategory.MAP_REDUCE, `Analysis failed for module "${moduleId}": success=${mapResult.success}, error=${mapResult.error || 'none'}, rawResponse=${mapResult.rawResponse.length} chars: ${mapResult.rawResponse.substring(0, 300)}`);
+                        logger.debug(LogCategory.MAP_REDUCE, `  Recovery parse error: ${recoveryErr instanceof Error ? recoveryErr.message : String(recoveryErr)}`);
+                        failedModuleIds.push(moduleId);
+                    }
+                }
             } else {
                 logger.debug(LogCategory.MAP_REDUCE, `Analysis failed for module "${moduleId}": success=${mapResult.success}, error=${mapResult.error || 'none'}, rawResponse=${mapResult.rawResponse ? `${mapResult.rawResponse.length} chars: ${mapResult.rawResponse.substring(0, 300)}` : 'none'}`);
                 failedModuleIds.push(moduleId);

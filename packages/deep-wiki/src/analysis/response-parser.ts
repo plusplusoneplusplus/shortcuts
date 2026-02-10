@@ -44,27 +44,48 @@ export function extractJSON(response: string): unknown | null {
         // Continue to next strategy
     }
 
-    // Strategy 2: Extract from ```json ... ``` code block
-    const jsonBlockMatch = trimmed.match(/```json\s*\n([\s\S]*?)\n\s*```/);
+    // Strategy 2: Extract from ```json ... ``` code block (flexible whitespace)
+    // Handles preamble text before the code block and optional newlines
+    const jsonBlockMatch = trimmed.match(/```json\s*([\s\S]*?)\s*```/);
     if (jsonBlockMatch) {
-        try {
-            return JSON.parse(jsonBlockMatch[1].trim());
-        } catch {
-            // Continue to next strategy
+        const content = jsonBlockMatch[1].trim();
+        if (content) {
+            try {
+                return JSON.parse(content);
+            } catch {
+                // Continue to next strategy
+            }
         }
     }
 
-    // Strategy 3: Extract from ``` ... ``` code block
-    const codeBlockMatch = trimmed.match(/```\s*\n([\s\S]*?)\n\s*```/);
+    // Strategy 3: Extract from ``` ... ``` code block (flexible whitespace)
+    const codeBlockMatch = trimmed.match(/```\s*([\s\S]*?)\s*```/);
     if (codeBlockMatch) {
-        try {
-            return JSON.parse(codeBlockMatch[1].trim());
-        } catch {
-            // Continue to next strategy
+        const content = codeBlockMatch[1].trim();
+        if (content) {
+            try {
+                return JSON.parse(content);
+            } catch {
+                // Continue to next strategy
+            }
         }
     }
 
-    // Strategy 4: Find the first { ... } block (greedy)
+    // Strategy 4: Find the last ```json block (for multi-block responses)
+    // AI sometimes includes earlier code blocks with non-JSON content
+    const allJsonBlocks = [...trimmed.matchAll(/```json\s*([\s\S]*?)\s*```/g)];
+    for (let i = allJsonBlocks.length - 1; i >= 0; i--) {
+        const content = allJsonBlocks[i][1].trim();
+        if (content) {
+            try {
+                return JSON.parse(content);
+            } catch {
+                continue;
+            }
+        }
+    }
+
+    // Strategy 5: Find the first { ... } block (greedy)
     const firstBrace = trimmed.indexOf('{');
     const lastBrace = trimmed.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace > firstBrace) {
