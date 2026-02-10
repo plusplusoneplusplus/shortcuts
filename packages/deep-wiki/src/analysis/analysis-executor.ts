@@ -139,10 +139,10 @@ export async function runAnalysisExecutor(
     const outputFields = getAnalysisOutputFields();
 
     // Run initial analysis round
-    const { analyses, failedModuleIds } = await executeAnalysisRound(
+    const { analyses, failedModuleIds } = await executeAnalysisRound({
         modules, graph, aiInvoker, promptTemplate, outputFields,
-        concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete
-    );
+        concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete,
+    });
 
     // Retry failed modules (up to retryAttempts rounds)
     if (failedModuleIds.length > 0 && retryAttempts > 0) {
@@ -157,10 +157,10 @@ export async function runAnalysisExecutor(
             // Get the modules that failed
             const retryModules = modules.filter(m => remainingFailed.includes(m.id));
 
-            const retryResult = await executeAnalysisRound(
-                retryModules, graph, aiInvoker, promptTemplate, outputFields,
-                concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete
-            );
+            const retryResult = await executeAnalysisRound({
+                modules: retryModules, graph, aiInvoker, promptTemplate, outputFields,
+                concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete,
+            });
 
             // Add newly succeeded analyses
             analyses.push(...retryResult.analyses);
@@ -182,22 +182,30 @@ export async function runAnalysisExecutor(
 }
 
 /**
+ * Options for a single analysis round.
+ */
+interface AnalysisRoundOptions {
+    modules: ModuleInfo[];
+    graph: ModuleGraph;
+    aiInvoker: AIInvoker;
+    promptTemplate: string;
+    outputFields: string[];
+    concurrency: number;
+    timeoutMs?: number;
+    model?: string;
+    onProgress?: (progress: JobProgress) => void;
+    isCancelled?: () => boolean;
+    onItemComplete?: ItemCompleteCallback;
+}
+
+/**
  * Execute a single round of analysis for the given modules.
  * Returns successfully parsed analyses and the IDs of modules that failed.
  */
 async function executeAnalysisRound(
-    modules: ModuleInfo[],
-    graph: ModuleGraph,
-    aiInvoker: AIInvoker,
-    promptTemplate: string,
-    outputFields: string[],
-    concurrency: number,
-    timeoutMs: number | undefined,
-    model: string | undefined,
-    onProgress: ((progress: JobProgress) => void) | undefined,
-    isCancelled: (() => boolean) | undefined,
-    onItemComplete: ItemCompleteCallback | undefined,
+    options: AnalysisRoundOptions
 ): Promise<{ analyses: ModuleAnalysis[]; failedModuleIds: string[] }> {
+    const { modules, graph, aiInvoker, promptTemplate, outputFields, concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete } = options;
     // Convert modules to PromptItems
     const items: PromptItem[] = modules.map(m => moduleToPromptItem(m, graph));
 
