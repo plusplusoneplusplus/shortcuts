@@ -648,6 +648,11 @@ The extension provides a separate "Global Notes" view for quick-access notes not
 
 ## Shortcut Groups Configuration
 
+> **Deprecated:** The Logical Groups panel (`shortcutsView`) is hidden by default and will be removed in a future version. Users can re-enable it via `workspaceShortcuts.logicalGroups.enabled`.
+
+**Settings:**
+- `workspaceShortcuts.logicalGroups.enabled` - Enable the Logical Groups panel (default: `false`, deprecated)
+
 The extension uses YAML configuration files stored at `.vscode/shortcuts.yaml` with this structure:
 
 ```yaml

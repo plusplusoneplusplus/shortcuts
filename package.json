@@ -82,7 +82,7 @@
         {
           "id": "shortcutsView",
           "name": "Groups",
-          "when": "true"
+          "when": "config.workspaceShortcuts.logicalGroups.enabled"
         },
         {
           "id": "markdownCommentsView",
@@ -701,6 +701,12 @@
             "type": "string"
           },
           "description": "Glob patterns for files/folders to exclude from discovery."
+        },
+        "workspaceShortcuts.logicalGroups.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**Deprecated:** This panel will be removed in a future version. Enable the Logical Groups panel in the Shortcuts sidebar.",
+          "markdownDeprecationMessage": "The Logical Groups panel is deprecated and hidden by default. It will be removed in a future version."
         },
         "workspaceShortcuts.globalNotes.enabled": {
           "type": "boolean",
