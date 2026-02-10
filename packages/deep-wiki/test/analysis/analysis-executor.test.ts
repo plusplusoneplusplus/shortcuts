@@ -279,6 +279,151 @@ describe('runAnalysisExecutor', () => {
         expect(completedItems).toHaveLength(2);
     });
 
+    it('should retry failed modules and succeed on second attempt', async () => {
+        const graph = createTestGraph([{ id: 'flaky', name: 'Flaky Module' }]);
+
+        let callCount = 0;
+        const mockInvoker: AIInvoker = vi.fn().mockImplementation(async () => {
+            callCount++;
+            if (callCount === 1) {
+                // First attempt: AI-level failure (no response at all)
+                return { success: false, error: 'Transient AI error' };
+            }
+            // Retry succeeds with valid response
+            return { success: true, response: VALID_ANALYSIS_RESPONSE };
+        });
+
+        const result = await runAnalysisExecutor({
+            aiInvoker: mockInvoker,
+            graph,
+            depth: 'normal',
+            concurrency: 1,
+            retryAttempts: 1,
+        });
+
+        // The invoker should have been called twice (initial + 1 retry round)
+        expect(mockInvoker).toHaveBeenCalledTimes(2);
+        // Should succeed on retry
+        expect(result.analyses).toHaveLength(1);
+        expect(result.failedModuleIds).toHaveLength(0);
+    });
+
+    it('should fail after exhausting retry attempts', async () => {
+        const graph = createTestGraph([{ id: 'broken', name: 'Broken Module' }]);
+
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'Persistent AI error',
+        });
+
+        const result = await runAnalysisExecutor({
+            aiInvoker: mockInvoker,
+            graph,
+            depth: 'normal',
+            concurrency: 1,
+            retryAttempts: 1,
+        });
+
+        // Should have been called twice (initial + 1 retry round)
+        expect(mockInvoker).toHaveBeenCalledTimes(2);
+        // Should record the module as failed
+        expect(result.failedModuleIds).toContain('broken');
+    });
+
+    it('should use default retryAttempts of 1 when not specified', async () => {
+        const graph = createTestGraph([{ id: 'test-retry' }]);
+
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'Always fails',
+        });
+
+        await runAnalysisExecutor({
+            aiInvoker: mockInvoker,
+            graph,
+            depth: 'normal',
+            concurrency: 1,
+        });
+
+        // Default retryAttempts=1 means 2 total calls (initial + 1 retry round)
+        expect(mockInvoker).toHaveBeenCalledTimes(2);
+    });
+
+    it('should respect custom retryAttempts value', async () => {
+        const graph = createTestGraph([{ id: 'test-retry-custom' }]);
+
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'Always fails',
+        });
+
+        await runAnalysisExecutor({
+            aiInvoker: mockInvoker,
+            graph,
+            depth: 'normal',
+            concurrency: 1,
+            retryAttempts: 2,
+        });
+
+        // retryAttempts=2 means 3 total calls (initial + 2 retry rounds)
+        expect(mockInvoker).toHaveBeenCalledTimes(3);
+    });
+
+    it('should only retry failed modules, not successful ones', async () => {
+        const graph = createTestGraph([
+            { id: 'good', name: 'Good Module' },
+            { id: 'bad', name: 'Bad Module' },
+        ]);
+
+        let callCount = 0;
+        const mockInvoker: AIInvoker = vi.fn().mockImplementation(async () => {
+            callCount++;
+            // First two calls: good succeeds, bad fails
+            if (callCount === 1) {
+                return { success: true, response: VALID_ANALYSIS_RESPONSE };
+            }
+            if (callCount === 2) {
+                return { success: false, error: 'AI error for bad' };
+            }
+            // Third call (retry for bad): succeeds
+            return { success: true, response: VALID_ANALYSIS_RESPONSE };
+        });
+
+        const result = await runAnalysisExecutor({
+            aiInvoker: mockInvoker,
+            graph,
+            depth: 'normal',
+            concurrency: 1,
+            retryAttempts: 1,
+        });
+
+        // 2 initial calls + 1 retry for the failed module
+        expect(mockInvoker).toHaveBeenCalledTimes(3);
+        // Both should eventually succeed
+        expect(result.failedModuleIds).toHaveLength(0);
+    });
+
+    it('should not retry when retryAttempts is 0', async () => {
+        const graph = createTestGraph([{ id: 'no-retry' }]);
+
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: false,
+            error: 'AI error',
+        });
+
+        const result = await runAnalysisExecutor({
+            aiInvoker: mockInvoker,
+            graph,
+            depth: 'normal',
+            concurrency: 1,
+            retryAttempts: 0,
+        });
+
+        // Only called once — no retry
+        expect(mockInvoker).toHaveBeenCalledTimes(1);
+        expect(result.failedModuleIds).toContain('no-retry');
+    });
+
     it('should call onItemComplete for every module regardless of AI result', async () => {
         const graph = createTestGraph([
             { id: 'good' },
@@ -302,6 +447,7 @@ describe('runAnalysisExecutor', () => {
             graph,
             depth: 'normal',
             concurrency: 1,
+            retryAttempts: 0, // Disable retry so we only get 2 callbacks
             onItemComplete: (item) => {
                 callbackItems.push(item.id);
             },

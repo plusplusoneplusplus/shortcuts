@@ -46,6 +46,8 @@ export interface AnalysisExecutorOptions {
     concurrency?: number;
     /** Timeout per module in milliseconds */
     timeoutMs?: number;
+    /** Number of retry attempts for failed map operations (default: 1) */
+    retryAttempts?: number;
     /** AI model to use */
     model?: string;
     /** Progress callback */
@@ -120,6 +122,7 @@ export async function runAnalysisExecutor(
         depth,
         concurrency = 5,
         timeoutMs,
+        retryAttempts = 1,
         model,
         onProgress,
         isCancelled,
@@ -131,12 +134,72 @@ export async function runAnalysisExecutor(
         return { analyses: [], failedModuleIds: [], duration: 0 };
     }
 
-    // Convert modules to PromptItems
-    const items: PromptItem[] = modules.map(m => moduleToPromptItem(m, graph));
-
-    // Build the prompt template
+    // Build the prompt template and output fields (shared across all rounds)
     const promptTemplate = buildAnalysisPromptTemplate(depth);
     const outputFields = getAnalysisOutputFields();
+
+    // Run initial analysis round
+    const { analyses, failedModuleIds } = await executeAnalysisRound(
+        modules, graph, aiInvoker, promptTemplate, outputFields,
+        concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete
+    );
+
+    // Retry failed modules (up to retryAttempts rounds)
+    if (failedModuleIds.length > 0 && retryAttempts > 0) {
+        const logger = getLogger();
+        let remainingFailed = [...failedModuleIds];
+
+        for (let attempt = 0; attempt < retryAttempts && remainingFailed.length > 0; attempt++) {
+            if (isCancelled?.()) break;
+
+            logger.debug(LogCategory.MAP_REDUCE, `Retrying ${remainingFailed.length} failed module(s) (attempt ${attempt + 1}/${retryAttempts})`);
+
+            // Get the modules that failed
+            const retryModules = modules.filter(m => remainingFailed.includes(m.id));
+
+            const retryResult = await executeAnalysisRound(
+                retryModules, graph, aiInvoker, promptTemplate, outputFields,
+                concurrency, timeoutMs, model, onProgress, isCancelled, onItemComplete
+            );
+
+            // Add newly succeeded analyses
+            analyses.push(...retryResult.analyses);
+
+            // Update remaining failures
+            remainingFailed = retryResult.failedModuleIds;
+        }
+
+        // Replace failedModuleIds with the final set of failures
+        failedModuleIds.length = 0;
+        failedModuleIds.push(...remainingFailed);
+    }
+
+    return {
+        analyses,
+        failedModuleIds,
+        duration: Date.now() - startTime,
+    };
+}
+
+/**
+ * Execute a single round of analysis for the given modules.
+ * Returns successfully parsed analyses and the IDs of modules that failed.
+ */
+async function executeAnalysisRound(
+    modules: ModuleInfo[],
+    graph: ModuleGraph,
+    aiInvoker: AIInvoker,
+    promptTemplate: string,
+    outputFields: string[],
+    concurrency: number,
+    timeoutMs: number | undefined,
+    model: string | undefined,
+    onProgress: ((progress: JobProgress) => void) | undefined,
+    isCancelled: (() => boolean) | undefined,
+    onItemComplete: ItemCompleteCallback | undefined,
+): Promise<{ analyses: ModuleAnalysis[]; failedModuleIds: string[] }> {
+    // Convert modules to PromptItems
+    const items: PromptItem[] = modules.map(m => moduleToPromptItem(m, graph));
 
     // Create prompt map input
     const input = createPromptMapInput(items, promptTemplate, outputFields);
@@ -149,7 +212,7 @@ export async function runAnalysisExecutor(
         maxConcurrency: concurrency,
     });
 
-    // Create the executor
+    // Create the executor (no executor-level retry — we handle retry at the analysis level)
     const executor = createExecutor({
         aiInvoker,
         maxConcurrency: concurrency,
@@ -230,11 +293,7 @@ export async function runAnalysisExecutor(
         }
     }
 
-    return {
-        analyses,
-        failedModuleIds,
-        duration: Date.now() - startTime,
-    };
+    return { analyses, failedModuleIds };
 }
 
 // ============================================================================
