@@ -73,6 +73,49 @@ describe('buildDiscoveryPrompt', () => {
         const prompt = buildDiscoveryPrompt('/repo');
         expect(prompt).toContain('raw JSON only');
     });
+
+    // Feature-focus prompt quality tests
+    it('should prioritize documentation reading before file structure scanning', () => {
+        const prompt = buildDiscoveryPrompt('/repo');
+        const docIndex = prompt.indexOf('Documentation first');
+        const fileStructIndex = prompt.indexOf('File structure');
+        expect(docIndex).toBeLessThan(fileStructIndex);
+    });
+
+    it('should include module naming guidance with good and bad examples', () => {
+        const prompt = buildDiscoveryPrompt('/repo');
+        expect(prompt).toContain('Module Naming Guidance');
+        expect(prompt).toContain('Good module IDs');
+        expect(prompt).toContain('Bad module IDs');
+    });
+
+    it('should include anti-pattern examples for path-mirror module IDs', () => {
+        const prompt = buildDiscoveryPrompt('/repo');
+        expect(prompt).toContain('src-shortcuts-code-review');
+        expect(prompt).toContain('packages-deep-wiki-src-cache');
+    });
+
+    it('should include positive examples of feature-focused module IDs', () => {
+        const prompt = buildDiscoveryPrompt('/repo');
+        expect(prompt).toContain('inline-code-review');
+        expect(prompt).toContain('ai-pipeline-engine');
+    });
+
+    it('should instruct not to derive module IDs from file paths', () => {
+        const prompt = buildDiscoveryPrompt('/repo');
+        expect(prompt).toContain('Do NOT derive module IDs from file paths');
+    });
+
+    it('should instruct to group related files into feature-level modules', () => {
+        const prompt = buildDiscoveryPrompt('/repo');
+        expect(prompt).toContain('Group related files into feature-level modules');
+    });
+
+    it('should describe modules as features and capabilities in task description', () => {
+        const prompt = buildDiscoveryPrompt('/repo');
+        expect(prompt).toContain('feature-oriented module graph');
+        expect(prompt).toContain('features, capabilities, and architectural concerns');
+    });
 });
 
 describe('buildStructuralScanPrompt', () => {
@@ -102,6 +145,30 @@ describe('buildStructuralScanPrompt', () => {
     it('should instruct raw JSON output', () => {
         const prompt = buildStructuralScanPrompt('/repo');
         expect(prompt).toContain('raw JSON only');
+    });
+
+    // Feature-focus prompt quality tests
+    it('should prioritize README reading before directory listing', () => {
+        const prompt = buildStructuralScanPrompt('/repo');
+        const readmeIndex = prompt.indexOf('README.md');
+        const globIndex = prompt.indexOf('glob("*")');
+        expect(readmeIndex).toBeLessThan(globIndex);
+    });
+
+    it('should include area naming guidance for functionality focus', () => {
+        const prompt = buildStructuralScanPrompt('/repo');
+        expect(prompt).toContain('Area Naming Guidance');
+        expect(prompt).toContain('FUNCTIONALITY');
+    });
+
+    it('should instruct area descriptions to explain what the area DOES', () => {
+        const prompt = buildStructuralScanPrompt('/repo');
+        expect(prompt).toContain('what the area DOES');
+    });
+
+    it('should focus on understanding what each area DOES', () => {
+        const prompt = buildStructuralScanPrompt('/repo');
+        expect(prompt).toContain('what each area DOES');
     });
 });
 
@@ -140,5 +207,33 @@ describe('buildFocusedDiscoveryPrompt', () => {
         const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
         expect(prompt).toContain('"project"');
         expect(prompt).toContain('"modules"');
+    });
+
+    // Feature-focus prompt quality tests
+    it('should include module naming guidance with good and bad examples', () => {
+        const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
+        expect(prompt).toContain('Module Naming Guidance');
+        expect(prompt).toContain('Good');
+        expect(prompt).toContain('Bad');
+    });
+
+    it('should instruct not to derive module IDs from file paths', () => {
+        const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
+        expect(prompt).toContain('Do NOT derive module IDs from file paths');
+    });
+
+    it('should instruct to group related files into feature-level modules', () => {
+        const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
+        expect(prompt).toContain('Group related files into feature-level modules');
+    });
+
+    it('should focus on features, capabilities, and behavioral patterns', () => {
+        const prompt = buildFocusedDiscoveryPrompt('/repo', 'src/', 'Source', 'proj');
+        expect(prompt).toContain('features, capabilities, and behavioral patterns');
+    });
+
+    it('should instruct to read docs within the area first', () => {
+        const prompt = buildFocusedDiscoveryPrompt('/repo', 'packages/core', 'Core', 'proj');
+        expect(prompt).toContain('Read any README, docs, or config files');
     });
 });

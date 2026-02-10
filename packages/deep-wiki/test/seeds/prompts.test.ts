@@ -51,5 +51,48 @@ describe('Seeds Prompts', () => {
             const prompt = buildSeedsPrompt('/path/to/repo', 30);
             expect(prompt).toContain('up to 30');
         });
+
+        // Feature-focus prompt quality tests
+        it('should prioritize documentation reading before directory scanning', () => {
+            const prompt = buildSeedsPrompt('/path/to/repo', 50);
+            const docIndex = prompt.indexOf('Documentation first');
+            const dirIndex = prompt.indexOf('Directory structure');
+            expect(docIndex).toBeLessThan(dirIndex);
+        });
+
+        it('should include anti-pattern guidance against file-name-derived topics', () => {
+            const prompt = buildSeedsPrompt('/path/to/repo', 50);
+            expect(prompt).toContain('Anti-Patterns');
+            expect(prompt).toContain('Do NOT name topics after individual files');
+            expect(prompt).toContain('Do NOT name topics after directory paths');
+        });
+
+        it('should include good vs bad naming examples', () => {
+            const prompt = buildSeedsPrompt('/path/to/repo', 50);
+            expect(prompt).toContain('Good topic names');
+            expect(prompt).toContain('Bad topic names');
+            // Good examples
+            expect(prompt).toContain('inline-code-review');
+            expect(prompt).toContain('ai-powered-analysis');
+            // Bad examples
+            expect(prompt).toContain('extension-entry-point');
+            expect(prompt).toContain('types-and-interfaces');
+        });
+
+        it('should emphasize feature-level focus in task description', () => {
+            const prompt = buildSeedsPrompt('/path/to/repo', 50);
+            expect(prompt).toContain('feature-level topics');
+            expect(prompt).toContain('user-facing capability');
+        });
+
+        it('should instruct against generic code artifact topics', () => {
+            const prompt = buildSeedsPrompt('/path/to/repo', 50);
+            expect(prompt).toContain('Do NOT create topics for generic code artifacts');
+        });
+
+        it('should include feature-focused schema description for topic field', () => {
+            const prompt = buildSeedsPrompt('/path/to/repo', 50);
+            expect(prompt).toContain('describing the FEATURE');
+        });
     });
 });

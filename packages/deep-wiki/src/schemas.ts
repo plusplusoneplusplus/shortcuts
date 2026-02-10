@@ -25,10 +25,10 @@ export const MODULE_GRAPH_SCHEMA = `{
   },
   "modules": [
     {
-      "id": "string — unique lowercase kebab-case identifier",
-      "name": "string — human-readable module name",
+      "id": "string — unique kebab-case identifier describing the FEATURE (e.g., 'auth-engine', 'pipeline-executor'), NOT the file/directory path (avoid 'src-auth', 'packages-core-src')",
+      "name": "string — human-readable name describing what this module DOES for users/system (e.g., 'Authentication Engine', 'Pipeline Executor'), NOT the file name",
       "path": "string — path relative to repo root (e.g., src/auth/)",
-      "purpose": "string — one-sentence purpose description",
+      "purpose": "string — what this module does for users or the system (feature-focused, not 'contains files in src/auth')",
       "keyFiles": ["string — key file paths relative to repo root"],
       "dependencies": ["string — IDs of modules this depends on"],
       "dependents": ["string — IDs of modules that depend on this"],
@@ -56,9 +56,9 @@ export const STRUCTURAL_SCAN_SCHEMA = `{
   "fileCount": "number — estimated total number of files",
   "areas": [
     {
-      "name": "string — area name (e.g., packages/core)",
+      "name": "string — descriptive area name focusing on FUNCTIONALITY (e.g., 'AI Pipeline Engine' not just 'packages/core')",
       "path": "string — path relative to repo root",
-      "description": "string — brief description of what this area contains"
+      "description": "string — what this area DOES, not just what directory it is"
     }
   ],
   "projectInfo": {

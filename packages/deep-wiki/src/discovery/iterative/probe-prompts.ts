@@ -20,19 +20,19 @@ const TOPIC_PROBE_RESULT_SCHEMA = `{
   "topic": "string — the topic that was probed",
   "foundModules": [
     {
-      "id": "string — suggested module ID (kebab-case)",
-      "name": "string — human-readable module name",
+      "id": "string — suggested module ID (kebab-case) describing the FEATURE, not the file path",
+      "name": "string — human-readable name describing what this module DOES",
       "path": "string — path relative to repo root",
-      "purpose": "string — purpose description",
+      "purpose": "string — what this module does for users or the system",
       "keyFiles": ["string — key file paths relative to repo root"],
-      "evidence": "string — evidence of why this belongs to the topic",
+      "evidence": "string — behavioral evidence: what functions/APIs/data flows prove this belongs to the topic",
       "lineRanges": [[number, number]] — optional line ranges for monolithic files
     }
   ],
   "discoveredTopics": [
     {
-      "topic": "string — topic name (kebab-case)",
-      "description": "string — description",
+      "topic": "string — topic name (kebab-case) describing the FEATURE concern",
+      "description": "string — what this feature/concern does",
       "hints": ["string — search hints"],
       "source": "string — where it was discovered (e.g., file path)"
     }
@@ -79,7 +79,7 @@ ${focusSection}
 1. Use \`grep\` to search for hint keywords across the codebase
 2. Use \`view\` to read files that match your searches
 3. For large files, sample sections rather than reading the entire file
-4. Identify modules/files belonging to this topic
+4. Identify feature-level modules belonging to this topic (group related files together)
 5. Note any ADJACENT topics you discover (related but distinct concerns)
 6. Return JSON matching the TopicProbeResult schema
 
@@ -87,9 +87,17 @@ ${focusSection}
 
 - Start with broad grep searches using the hints
 - Read key files that match (entry points, config files, main implementation files)
+- Focus on BEHAVIORAL evidence: what functions are called, what APIs are exposed, what data flows through the code
 - For monolithic files, identify specific line ranges that belong to this topic
-- Look for patterns: imports, exports, function names, class names, directory structure
+- Look for patterns: imports, exports, function names, class names, API surfaces, event handlers
 - If you find related but distinct topics, add them to discoveredTopics
+
+## Module Naming Guidance
+
+Module IDs should describe WHAT the code does, not echo file/directory names.
+
+**Good**: "session-pool-manager", "yaml-pipeline-executor", "comment-anchoring"
+**Bad**: "src-ai-service", "pipeline-core-index", "comment-anchor" (just the file name)
 
 ## Output Format
 
@@ -99,11 +107,12 @@ ${TOPIC_PROBE_RESULT_SCHEMA}
 
 ## Rules
 
-- Module IDs must be unique lowercase kebab-case identifiers
+- Module IDs must be unique lowercase kebab-case identifiers describing the FEATURE
+- Do NOT derive module IDs from file paths — describe what the module DOES
 - All paths must be relative to the repo root (no absolute paths)
 - Confidence should reflect how certain you are that you found all relevant code (0.0 = uncertain, 1.0 = very confident)
 - discoveredTopics should only include NEW topics not already in the seed list
 - dependencies should reference other topic IDs, not module IDs
 - For large monolithic files, use lineRanges to specify which sections belong to this topic
-- evidence should explain why each module belongs to this topic (file names, function names, patterns found)`;
+- evidence should cite behavioral proof: function calls, API surfaces, data flows — not just "found in file X"`;
 }

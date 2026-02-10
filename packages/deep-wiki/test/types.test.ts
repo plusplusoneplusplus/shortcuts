@@ -153,6 +153,29 @@ describe('Types and Schemas', () => {
             expect(STRUCTURAL_SCAN_SCHEMA).toContain('areas');
             expect(STRUCTURAL_SCAN_SCHEMA).toContain('projectInfo');
         });
+
+        // Feature-focus schema hint tests
+        it('should include feature-focused guidance in MODULE_GRAPH_SCHEMA id field', () => {
+            expect(MODULE_GRAPH_SCHEMA).toContain('describing the FEATURE');
+            expect(MODULE_GRAPH_SCHEMA).toContain('NOT the file/directory path');
+        });
+
+        it('should include feature-focused guidance in MODULE_GRAPH_SCHEMA name field', () => {
+            expect(MODULE_GRAPH_SCHEMA).toContain('what this module DOES for users/system');
+            expect(MODULE_GRAPH_SCHEMA).toContain('NOT the file name');
+        });
+
+        it('should include feature-focused guidance in MODULE_GRAPH_SCHEMA purpose field', () => {
+            expect(MODULE_GRAPH_SCHEMA).toContain('what this module does for users or the system');
+        });
+
+        it('should include feature-focused guidance in STRUCTURAL_SCAN_SCHEMA area name', () => {
+            expect(STRUCTURAL_SCAN_SCHEMA).toContain('FUNCTIONALITY');
+        });
+
+        it('should include feature-focused guidance in STRUCTURAL_SCAN_SCHEMA area description', () => {
+            expect(STRUCTURAL_SCAN_SCHEMA).toContain('what this area DOES');
+        });
     });
 
     // ========================================================================
