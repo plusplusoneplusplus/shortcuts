@@ -15,6 +15,8 @@ import type { ModuleGraph, CachedConsolidation } from '../../src/types';
 // Mock git-utils before importing cache
 vi.mock('../../src/cache/git-utils', () => ({
     getRepoHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    getFolderHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    getGitRoot: vi.fn().mockResolvedValue('/mock/git/root'),
     getChangedFiles: vi.fn().mockResolvedValue([]),
     hasChanges: vi.fn().mockResolvedValue(false),
     isGitAvailable: vi.fn().mockResolvedValue(true),
@@ -29,7 +31,7 @@ import {
     saveConsolidation,
     clearConsolidationCache,
 } from '../../src/cache';
-import { getRepoHeadHash } from '../../src/cache/git-utils';
+import { getRepoHeadHash, getFolderHeadHash } from '../../src/cache/git-utils';
 
 // ============================================================================
 // Test Helpers
@@ -80,6 +82,7 @@ beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-wiki-consolidation-cache-test-'));
     outputDir = path.join(tempDir, 'output');
     vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+    vi.mocked(getFolderHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
 });
 
 afterEach(() => {
@@ -200,8 +203,8 @@ describe('getCachedConsolidation', () => {
         expect(result!.inputModuleCount).toBe(10);
     });
 
-    it('should return null when getRepoHeadHash fails', async () => {
-        vi.mocked(getRepoHeadHash).mockRejectedValueOnce(new Error('git not available'));
+    it('should return null when getFolderHeadHash fails', async () => {
+        vi.mocked(getFolderHeadHash).mockRejectedValueOnce(new Error('git not available'));
 
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
@@ -214,8 +217,8 @@ describe('getCachedConsolidation', () => {
         expect(result).toBeNull();
     });
 
-    it('should return null when getRepoHeadHash returns null', async () => {
-        vi.mocked(getRepoHeadHash).mockResolvedValueOnce(null as unknown as string);
+    it('should return null when getFolderHeadHash returns null', async () => {
+        vi.mocked(getFolderHeadHash).mockResolvedValueOnce(null as unknown as string);
 
         writeConsolidationCache(outputDir, {
             graph: createTestGraph(5),
@@ -335,7 +338,7 @@ describe('saveConsolidation', () => {
     });
 
     it('should not write cache when git hash is unavailable', async () => {
-        vi.mocked(getRepoHeadHash).mockResolvedValueOnce(null as unknown as string);
+        vi.mocked(getFolderHeadHash).mockResolvedValueOnce(null as unknown as string);
 
         const graph = createTestGraph(5);
         await saveConsolidation('/some/repo', graph, outputDir, 10);

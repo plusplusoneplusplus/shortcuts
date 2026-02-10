@@ -15,7 +15,7 @@ import {
     getCachedGraph,
     getCachedGraphAny,
     saveGraph,
-    getRepoHeadHash,
+    getFolderHeadHash,
     saveSeedsCache,
     getCachedSeeds,
     getCachedSeedsAny,
@@ -77,10 +77,10 @@ export async function executeDiscover(
     }
     process.stderr.write('\n');
 
-    // Get git hash for cache operations
+    // Get git hash for cache operations (subfolder-scoped when applicable)
     let currentGitHash: string | null = null;
     try {
-        currentGitHash = await getRepoHeadHash(absoluteRepoPath);
+        currentGitHash = await getFolderHeadHash(absoluteRepoPath);
     } catch {
         // Non-fatal: caching won't work but discovery continues
     }

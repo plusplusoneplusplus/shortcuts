@@ -37,6 +37,8 @@ vi.mock('../../src/cache', () => ({
     getCachedGraphAny: vi.fn().mockReturnValue(null),
     saveGraph: vi.fn().mockResolvedValue(undefined),
     getRepoHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    getFolderHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    getGitRoot: vi.fn().mockResolvedValue('/mock/git/root'),
     saveSeedsCache: vi.fn(),
     getCachedSeeds: vi.fn().mockReturnValue(null),
     getCachedSeedsAny: vi.fn().mockReturnValue(null),

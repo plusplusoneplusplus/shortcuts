@@ -154,6 +154,8 @@ vi.mock('../../src/cache', () => ({
     getAnalysesCacheMetadata: vi.fn().mockReturnValue(null),
     saveAnalysis: vi.fn(),
     getRepoHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    getFolderHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    getGitRoot: vi.fn().mockResolvedValue('/mock/git/root'),
     scanIndividualAnalysesCache: vi.fn().mockReturnValue({ found: [], missing: [] }),
     scanIndividualAnalysesCacheAny: vi.fn().mockReturnValue({ found: [], missing: [] }),
     // Article cache functions (Phase 4)
@@ -249,6 +251,7 @@ import {
     scanIndividualArticlesCache,
     scanIndividualArticlesCacheAny,
     getRepoHeadHash,
+    getFolderHeadHash,
     saveAnalysis,
     saveReduceArticles,
     restampArticles,
@@ -513,7 +516,7 @@ describe('executeGenerate — incremental per-module caching', () => {
     it('should attempt partial cache recovery when no metadata exists', async () => {
         // getModulesNeedingReanalysis returns null (no metadata)
         vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
-        vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+        vi.mocked(getFolderHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
 
         // Simulate partial cache with 1 recovered module
         vi.mocked(scanIndividualAnalysesCache).mockReturnValue({
@@ -552,7 +555,7 @@ describe('executeGenerate — incremental per-module caching', () => {
 
     it('should skip partial cache scan when git hash unavailable', async () => {
         vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
-        vi.mocked(getRepoHeadHash).mockResolvedValue(null);
+        vi.mocked(getFolderHeadHash).mockResolvedValue(null);
 
         const exitCode = await executeGenerate(repoDir, defaultOptions());
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
@@ -563,7 +566,7 @@ describe('executeGenerate — incremental per-module caching', () => {
 
     it('should log recovery info when partial cache is found', async () => {
         vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
-        vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+        vi.mocked(getFolderHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
 
         vi.mocked(scanIndividualAnalysesCache).mockReturnValue({
             found: [{
@@ -924,7 +927,7 @@ describe('executeGenerate — strict mode', () => {
         });
         vi.mocked(getCachedGraphAny).mockReturnValue(null);
         vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
-        vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+        vi.mocked(getFolderHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
         vi.mocked(scanIndividualAnalysesCache).mockReturnValue({ found: [], missing: [] });
         vi.mocked(scanIndividualAnalysesCacheAny).mockReturnValue({ found: [], missing: [] });
         vi.mocked(scanIndividualArticlesCache).mockImplementation(
@@ -1328,7 +1331,7 @@ describe('executeGenerate — Phase 4 incremental invalidation', () => {
     }
 
     beforeEach(() => {
-        vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+        vi.mocked(getFolderHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
         vi.mocked(getModulesNeedingReanalysis).mockResolvedValue(null);
         vi.mocked(scanIndividualAnalysesCache).mockReturnValue({ found: [], missing: [] });
         vi.mocked(scanIndividualAnalysesCacheAny).mockReturnValue({ found: [], missing: [] });

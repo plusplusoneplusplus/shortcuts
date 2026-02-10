@@ -30,11 +30,11 @@ import type {
     CacheMetadata,
     AnalysisCacheMetadata,
 } from '../types';
-import { getRepoHeadHash, getChangedFiles } from './git-utils';
+import { getFolderHeadHash, getChangedFiles } from './git-utils';
 import { readCacheFile, readCacheFileIf, writeCacheFile, clearCacheFile, clearCacheDir, scanCacheItems } from './cache-utils';
 
 // Re-export git utilities
-export { getRepoHeadHash, getChangedFiles, hasChanges, isGitAvailable, isGitRepo } from './git-utils';
+export { getRepoHeadHash, getFolderHeadHash, getGitRoot, getChangedFiles, hasChanges, isGitAvailable, isGitRepo } from './git-utils';
 
 // Re-export discovery cache functions
 export {
@@ -155,7 +155,7 @@ export async function getCachedGraph(repoPath: string, outputDir: string): Promi
     }
 
     try {
-        const currentHash = await getRepoHeadHash(repoPath);
+        const currentHash = await getFolderHeadHash(repoPath);
         if (!currentHash || currentHash !== cached.metadata.gitHash) {
             return null;
         }
@@ -197,7 +197,7 @@ export async function saveGraph(
     outputDir: string,
     focus?: string
 ): Promise<void> {
-    const currentHash = await getRepoHeadHash(repoPath);
+    const currentHash = await getFolderHeadHash(repoPath);
     if (!currentHash) {
         // Can't determine git hash — skip caching
         return;
@@ -257,7 +257,7 @@ export async function getCachedConsolidation(
     }
 
     try {
-        const currentHash = await getRepoHeadHash(repoPath);
+        const currentHash = await getFolderHeadHash(repoPath);
         if (!currentHash || currentHash !== cached.gitHash) {
             return null;
         }
@@ -306,7 +306,7 @@ export async function saveConsolidation(
     outputDir: string,
     inputModuleCount: number
 ): Promise<void> {
-    const currentHash = await getRepoHeadHash(repoPath);
+    const currentHash = await getFolderHeadHash(repoPath);
     if (!currentHash) {
         return; // Can't determine git hash
     }
@@ -437,7 +437,7 @@ export async function saveAllAnalyses(
     outputDir: string,
     repoPath: string
 ): Promise<void> {
-    const currentHash = await getRepoHeadHash(repoPath);
+    const currentHash = await getFolderHeadHash(repoPath);
     if (!currentHash) {
         return; // Can't determine git hash
     }
@@ -789,7 +789,7 @@ export async function saveAllArticles(
     outputDir: string,
     repoPath: string
 ): Promise<void> {
-    const currentHash = await getRepoHeadHash(repoPath);
+    const currentHash = await getFolderHeadHash(repoPath);
     if (!currentHash) {
         return; // Can't determine git hash
     }
@@ -1033,8 +1033,8 @@ export async function getModulesNeedingReanalysis(
         return null;
     }
 
-    // Get current git hash
-    const currentHash = await getRepoHeadHash(repoPath);
+    // Get current git hash (subfolder-scoped if repoPath is a subfolder)
+    const currentHash = await getFolderHeadHash(repoPath);
     if (!currentHash) {
         // Can't determine hash — full rebuild
         return null;
@@ -1045,8 +1045,8 @@ export async function getModulesNeedingReanalysis(
         return [];
     }
 
-    // Get changed files
-    const changedFiles = await getChangedFiles(repoPath, metadata.gitHash);
+    // Get changed files, scoped to repoPath so paths align with module paths in the graph
+    const changedFiles = await getChangedFiles(repoPath, metadata.gitHash, repoPath);
     if (changedFiles === null) {
         // Can't determine changes — full rebuild
         return null;

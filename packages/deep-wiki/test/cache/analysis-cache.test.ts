@@ -15,6 +15,8 @@ import type { ModuleAnalysis, ModuleGraph } from '../../src/types';
 // Mock git-utils before importing cache
 vi.mock('../../src/cache/git-utils', () => ({
     getRepoHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    getFolderHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    getGitRoot: vi.fn().mockResolvedValue('/mock/git/root'),
     getChangedFiles: vi.fn().mockResolvedValue([]),
     hasChanges: vi.fn().mockResolvedValue(false),
     isGitAvailable: vi.fn().mockResolvedValue(true),
@@ -32,7 +34,7 @@ import {
     getAnalysesMetadataPath,
     scanIndividualAnalysesCache,
 } from '../../src/cache';
-import { getChangedFiles, getRepoHeadHash } from '../../src/cache/git-utils';
+import { getChangedFiles, getRepoHeadHash, getFolderHeadHash } from '../../src/cache/git-utils';
 
 // ============================================================================
 // Test Helpers
@@ -88,6 +90,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     // Reset default mock
     vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+    vi.mocked(getFolderHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
     vi.mocked(getChangedFiles).mockResolvedValue([]);
 });
 
@@ -204,7 +207,7 @@ describe('bulk analysis cache', () => {
     });
 
     it('should skip git hash check if hash unavailable', async () => {
-        vi.mocked(getRepoHeadHash).mockResolvedValue(null);
+        vi.mocked(getFolderHeadHash).mockResolvedValue(null);
         const analyses = [createTestAnalysis('auth')];
         await saveAllAnalyses(analyses, outputDir, '/repo');
 
@@ -266,8 +269,8 @@ describe('getModulesNeedingReanalysis', () => {
         const analyses = [createTestAnalysis('auth'), createTestAnalysis('db')];
         await saveAllAnalyses(analyses, outputDir, '/repo');
 
-        // Same git hash
-        vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+        // Same git hash (getFolderHeadHash is what getModulesNeedingReanalysis calls)
+        vi.mocked(getFolderHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
         vi.mocked(getChangedFiles).mockResolvedValue([]);
 
         const graph = createTestGraph(['auth', 'db']);
@@ -280,7 +283,7 @@ describe('getModulesNeedingReanalysis', () => {
         await saveAllAnalyses(analyses, outputDir, '/repo');
 
         // Different git hash + changed files
-        vi.mocked(getRepoHeadHash).mockResolvedValue('new_hash_new_hash_new_hash_new_hash_new1');
+        vi.mocked(getFolderHeadHash).mockResolvedValue('new_hash_new_hash_new_hash_new_hash_new1');
         vi.mocked(getChangedFiles).mockResolvedValue(['src/auth/jwt.ts']);
 
         const graph = createTestGraph(['auth', 'db']);
@@ -295,7 +298,7 @@ describe('getModulesNeedingReanalysis', () => {
         const analyses = [createTestAnalysis('auth')];
         await saveAllAnalyses(analyses, outputDir, '/repo');
 
-        vi.mocked(getRepoHeadHash).mockResolvedValue('new_hash_new_hash_new_hash_new_hash_new1');
+        vi.mocked(getFolderHeadHash).mockResolvedValue('new_hash_new_hash_new_hash_new_hash_new1');
         vi.mocked(getChangedFiles).mockResolvedValue(['src/auth/index.ts']);
 
         const graph = createTestGraph(['auth']);
@@ -308,7 +311,7 @@ describe('getModulesNeedingReanalysis', () => {
         const analyses = [createTestAnalysis('auth')];
         await saveAllAnalyses(analyses, outputDir, '/repo');
 
-        vi.mocked(getRepoHeadHash).mockResolvedValue(null);
+        vi.mocked(getFolderHeadHash).mockResolvedValue(null);
 
         const graph = createTestGraph(['auth']);
         const result = await getModulesNeedingReanalysis(graph, outputDir, '/repo');
@@ -319,7 +322,7 @@ describe('getModulesNeedingReanalysis', () => {
         const analyses = [createTestAnalysis('auth')];
         await saveAllAnalyses(analyses, outputDir, '/repo');
 
-        vi.mocked(getRepoHeadHash).mockResolvedValue('new_hash_new_hash_new_hash_new_hash_new1');
+        vi.mocked(getFolderHeadHash).mockResolvedValue('new_hash_new_hash_new_hash_new_hash_new1');
         vi.mocked(getChangedFiles).mockResolvedValue(null);
 
         const graph = createTestGraph(['auth']);
@@ -331,7 +334,7 @@ describe('getModulesNeedingReanalysis', () => {
         const analyses = [createTestAnalysis('auth')];
         await saveAllAnalyses(analyses, outputDir, '/repo');
 
-        vi.mocked(getRepoHeadHash).mockResolvedValue('new_hash_new_hash_new_hash_new_hash_new1');
+        vi.mocked(getFolderHeadHash).mockResolvedValue('new_hash_new_hash_new_hash_new_hash_new1');
         vi.mocked(getChangedFiles).mockResolvedValue(['src\\auth\\jwt.ts']);
 
         const graph = createTestGraph(['auth']);

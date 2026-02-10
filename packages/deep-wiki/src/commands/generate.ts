@@ -44,7 +44,7 @@ import {
     getCachedAnalysis,
     getAnalysesCacheMetadata,
     saveAnalysis,
-    getRepoHeadHash,
+    getFolderHeadHash,
     scanIndividualAnalysesCache,
     scanIndividualAnalysesCacheAny,
     saveArticle,
@@ -336,10 +336,10 @@ async function runPhase1(
     process.stderr.write('\n');
     printHeader('Phase 1: Discovery');
 
-    // Get git hash for cache operations
+    // Get git hash for cache operations (subfolder-scoped when applicable)
     let currentGitHash: string | null = null;
     try {
-        currentGitHash = await getRepoHeadHash(repoPath);
+        currentGitHash = await getFolderHeadHash(repoPath);
     } catch {
         // Non-fatal
     }
@@ -647,7 +647,7 @@ async function runPhase3Analysis(
         } else {
             // No metadata (full rebuild indicated) — but check for partial cache
             // from a previous interrupted run that saved modules incrementally.
-            const currentHash = await getRepoHeadHash(repoPath);
+            const currentHash = await getFolderHeadHash(repoPath);
             if (currentHash) {
                 const allModuleIds = graph.modules.map(m => m.id);
                 const { found, missing } = scanIndividualAnalysesCache(
@@ -686,10 +686,10 @@ async function runPhase3Analysis(
         return result;
     };
 
-    // Get git hash once upfront for per-module incremental saves
+    // Get git hash once upfront for per-module incremental saves (subfolder-scoped)
     let gitHash: string | null = null;
     try {
-        gitHash = await getRepoHeadHash(repoPath);
+        gitHash = await getFolderHeadHash(repoPath);
     } catch {
         // Non-fatal: incremental saves won't work but analysis continues
     }
@@ -820,10 +820,10 @@ async function runPhase4Writing(
 
     const concurrency = options.concurrency ? Math.min(options.concurrency * 2, 20) : 5;
 
-    // Get git hash once upfront for per-article incremental saves
+    // Get git hash once upfront for per-article incremental saves (subfolder-scoped)
     let gitHash: string | null = null;
     try {
-        gitHash = await getRepoHeadHash(repoPath);
+        gitHash = await getFolderHeadHash(repoPath);
     } catch {
         // Non-fatal: incremental saves won't work but generation continues
     }

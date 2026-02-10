@@ -18,6 +18,8 @@ import type { GeneratedArticle } from '../../src/types';
 // Mock git-utils before importing cache
 vi.mock('../../src/cache/git-utils', () => ({
     getRepoHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    getFolderHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
+    getGitRoot: vi.fn().mockResolvedValue('/mock/git/root'),
     getChangedFiles: vi.fn().mockResolvedValue([]),
     hasChanges: vi.fn().mockResolvedValue(false),
     isGitAvailable: vi.fn().mockResolvedValue(true),
@@ -35,7 +37,7 @@ import {
     scanIndividualArticlesCache,
     scanIndividualArticlesCacheAny,
 } from '../../src/cache';
-import { getRepoHeadHash } from '../../src/cache/git-utils';
+import { getRepoHeadHash, getFolderHeadHash } from '../../src/cache/git-utils';
 
 // ============================================================================
 // Test Helpers
@@ -60,6 +62,7 @@ beforeEach(() => {
     outputDir = path.join(tempDir, 'output');
     vi.clearAllMocks();
     vi.mocked(getRepoHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
+    vi.mocked(getFolderHeadHash).mockResolvedValue('abc123def456abc123def456abc123def456abc1');
 });
 
 afterEach(() => {
