@@ -8,8 +8,10 @@
 import * as path from 'path';
 import type {
     ModuleGraph,
-    CachedConsolidation,
 } from '../types';
+import type {
+    CachedConsolidation,
+} from './types';
 import { getFolderHeadHash } from './git-utils';
 import { readCacheFileIf, writeCacheFile, clearCacheFile } from './cache-utils';
 import { getCacheDir, CONSOLIDATED_GRAPH_FILE } from './cache-constants';

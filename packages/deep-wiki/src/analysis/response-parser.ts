@@ -10,12 +10,14 @@
 
 import type {
     ModuleAnalysis,
+} from '../types';
+import type {
     KeyConcept,
     PublicAPIEntry,
     CodeExample,
     InternalDependency,
     ExternalDependency,
-} from '../types';
+} from './types';
 import { isValidMermaidDiagram } from '../schemas';
 
 // ============================================================================

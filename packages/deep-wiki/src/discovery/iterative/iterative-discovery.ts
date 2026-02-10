@@ -7,7 +7,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { IterativeDiscoveryOptions, ModuleGraph, TopicSeed, TopicProbeResult } from '../../types';
+import type { ModuleGraph, TopicSeed } from '../../types';
+import type { IterativeDiscoveryOptions, TopicProbeResult } from './types';
 import { runTopicProbe } from './probe-session';
 import { mergeProbeResults } from './merge-session';
 import { printInfo, printWarning, gray, cyan } from '../../logger';

@@ -28,15 +28,19 @@
 import * as path from 'path';
 import type {
     TopicSeed,
-    TopicProbeResult,
     StructuralScanResult,
     ModuleGraph,
+} from '../types';
+import type {
+    TopicProbeResult,
+} from '../discovery/iterative/types';
+import type {
     CachedProbeResult,
     CachedSeeds,
     CachedStructuralScan,
     CachedAreaGraph,
     DiscoveryProgressMetadata,
-} from '../types';
+} from './types';
 import { normalizeModuleId } from '../schemas';
 import { readCacheFile, readCacheFileIf, writeCacheFile, clearCacheDir, scanCacheItemsMap } from './cache-utils';
 

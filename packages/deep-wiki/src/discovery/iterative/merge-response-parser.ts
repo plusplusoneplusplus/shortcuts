@@ -7,7 +7,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { MergeResult, ModuleGraph, TopicSeed } from '../../types';
+import type { ModuleGraph, TopicSeed } from '../../types';
+import type { MergeResult } from './types';
 import { parseModuleGraphResponse } from '../response-parser';
 import { normalizeModuleId } from '../../schemas';
 import { parseAIJsonResponse } from '../../utils/parse-ai-response';

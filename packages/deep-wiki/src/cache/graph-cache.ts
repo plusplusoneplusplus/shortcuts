@@ -8,9 +8,11 @@
 import * as path from 'path';
 import type {
     ModuleGraph,
+} from '../types';
+import type {
     CachedGraph,
     CacheMetadata,
-} from '../types';
+} from './types';
 import { getFolderHeadHash } from './git-utils';
 import { readCacheFileIf, writeCacheFile } from './cache-utils';
 import { getCacheDir, CACHE_VERSION, GRAPH_CACHE_FILE } from './cache-constants';

@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TopicProbeResult, ProbeFoundModule, DiscoveredTopic } from '../../types';
+import type { TopicProbeResult, ProbeFoundModule, DiscoveredTopic } from './types';
 import { normalizeModuleId } from '../../schemas';
 import { parseAIJsonResponse } from '../../utils/parse-ai-response';
 

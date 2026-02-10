@@ -10,9 +10,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type {
     ModuleAnalysis,
+} from '../types';
+import type {
     CachedAnalysis,
     AnalysisCacheMetadata,
-} from '../types';
+} from './types';
 import { getFolderHeadHash } from './git-utils';
 import { readCacheFile, readCacheFileIf, writeCacheFile, clearCacheDir, scanCacheItems } from './cache-utils';
 import { getCacheDir, CACHE_VERSION, ANALYSES_DIR, ANALYSES_METADATA_FILE } from './cache-constants';

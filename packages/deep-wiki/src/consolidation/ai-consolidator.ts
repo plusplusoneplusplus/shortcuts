@@ -13,7 +13,8 @@
 
 import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
-import type { ModuleInfo, ModuleGraph, CategoryInfo, ClusterGroup } from '../types';
+import type { ModuleInfo, ModuleGraph, CategoryInfo } from '../types';
+import type { ClusterGroup } from './types';
 import { normalizeModuleId } from '../schemas';
 
 // ============================================================================

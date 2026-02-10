@@ -13,7 +13,8 @@ import {
     type PermissionRequest,
     type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { TopicProbeResult, ModuleGraph, ModuleInfo, CategoryInfo, MergeResult } from '../../types';
+import type { ModuleGraph, ModuleInfo, CategoryInfo } from '../../types';
+import type { TopicProbeResult, MergeResult } from './types';
 import { normalizeModuleId, isValidModuleId } from '../../schemas';
 import { buildMergePrompt } from './merge-prompts';
 import { parseMergeResponse } from './merge-response-parser';

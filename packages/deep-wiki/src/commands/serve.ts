@@ -30,7 +30,7 @@ import {
     printKeyValue,
     bold,
 } from '../logger';
-import type { ServeCommandOptions } from '../types';
+import type { ServeCommandOptions } from '../server/types';
 import { getErrorMessage } from '../utils/error-utils';
 
 // ============================================================================

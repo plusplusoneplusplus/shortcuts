@@ -7,7 +7,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { TopicProbeResult, ModuleGraph } from '../../types';
+import type { ModuleGraph } from '../../types';
+import type { TopicProbeResult } from './types';
 import { MODULE_GRAPH_SCHEMA } from '../../schemas';
 
 // ============================================================================

@@ -10,7 +10,8 @@
  */
 
 import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
-import type { ModuleGraph, ConsolidationOptions, ConsolidationResult } from '../types';
+import type { ModuleGraph } from '../types';
+import type { ConsolidationOptions, ConsolidationResult } from './types';
 import { consolidateByDirectory } from './rule-based-consolidator';
 import { clusterWithAI } from './ai-consolidator';
 

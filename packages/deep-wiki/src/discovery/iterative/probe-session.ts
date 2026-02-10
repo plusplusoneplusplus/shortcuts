@@ -13,7 +13,8 @@ import {
     type PermissionRequest,
     type PermissionRequestResult,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { TopicSeed, TopicProbeResult } from '../../types';
+import type { TopicSeed } from '../../types';
+import type { TopicProbeResult } from './types';
 import { buildProbePrompt } from './probe-prompts';
 import { parseProbeResponse } from './probe-response-parser';
 import { printInfo, printWarning, gray } from '../../logger';

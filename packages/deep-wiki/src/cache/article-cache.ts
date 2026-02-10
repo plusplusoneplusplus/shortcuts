@@ -10,9 +10,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type {
     GeneratedArticle,
+} from '../types';
+import type {
     CachedArticle,
     AnalysisCacheMetadata,
-} from '../types';
+} from './types';
 import { getFolderHeadHash } from './git-utils';
 import { readCacheFile, readCacheFileIf, writeCacheFile, clearCacheDir, scanCacheItems } from './cache-utils';
 import { getCacheDir, CACHE_VERSION, ARTICLES_DIR, ANALYSES_METADATA_FILE, REDUCE_METADATA_FILE, REDUCE_ARTICLE_PREFIX } from './cache-constants';
