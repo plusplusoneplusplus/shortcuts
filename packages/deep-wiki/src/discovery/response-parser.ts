@@ -18,6 +18,7 @@ import {
     isValidModuleId,
     normalizeModuleId,
 } from '../schemas';
+import { parseAIJsonResponse, attemptJsonRepair } from '../utils/parse-ai-response';
 
 // ============================================================================
 // Module Graph Parsing
@@ -39,40 +40,10 @@ import {
  * @throws Error if response cannot be parsed into a valid graph
  */
 export function parseModuleGraphResponse(response: string): ModuleGraph {
-    if (!response || typeof response !== 'string') {
-        throw new Error('Empty or invalid response from AI');
-    }
-
-    // Step 1: Extract JSON from response
-    const jsonStr = extractJSON(response);
-    if (!jsonStr) {
-        throw new Error('No JSON found in AI response. The AI may not have returned structured output.');
-    }
-
-    // Step 2: Parse JSON
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(jsonStr);
-    } catch (parseError) {
-        // Try to fix common issues
-        const fixed = attemptJsonRepair(jsonStr);
-        if (fixed) {
-            try {
-                parsed = JSON.parse(fixed);
-            } catch {
-                throw new Error(`Invalid JSON in AI response: ${(parseError as Error).message}`);
-            }
-        } else {
-            throw new Error(`Invalid JSON in AI response: ${(parseError as Error).message}`);
-        }
-    }
-
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        throw new Error('AI response is not a JSON object');
-    }
+    const parsed = parseAIJsonResponse(response, { context: 'discovery', repair: true });
 
     // Step 3: Validate and normalize
-    return validateAndNormalizeGraph(parsed as Record<string, unknown>);
+    return validateAndNormalizeGraph(parsed);
 }
 
 // ============================================================================
@@ -391,25 +362,4 @@ export function normalizePath(p: string): string {
         .replace(/\\/g, '/')
         .replace(/^\.\//, '')
         .replace(/\/+/g, '/');
-}
-
-/**
- * Attempt to repair common JSON formatting issues.
- */
-function attemptJsonRepair(jsonStr: string): string | null {
-    try {
-        let fixed = jsonStr;
-        // Replace single quotes with double quotes
-        fixed = fixed.replace(/'/g, '"');
-        // Quote unquoted keys
-        fixed = fixed.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
-        // Remove trailing commas
-        fixed = fixed.replace(/,(\s*[}\]])/g, '$1');
-        // Fix missing commas between properties
-        fixed = fixed.replace(/"\s*\n\s*"/g, '",\n"');
-        JSON.parse(fixed);
-        return fixed;
-    } catch {
-        return null;
-    }
 }

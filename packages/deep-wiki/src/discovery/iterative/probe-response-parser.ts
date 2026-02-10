@@ -7,9 +7,9 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
 import type { TopicProbeResult, ProbeFoundModule, DiscoveredTopic } from '../../types';
 import { normalizeModuleId } from '../../schemas';
+import { parseAIJsonResponse } from '../../utils/parse-ai-response';
 
 // ============================================================================
 // Probe Response Parsing
@@ -24,29 +24,7 @@ import { normalizeModuleId } from '../../schemas';
  * @throws Error if response cannot be parsed
  */
 export function parseProbeResponse(response: string, topic: string): TopicProbeResult {
-    if (!response || typeof response !== 'string') {
-        throw new Error('Empty or invalid response from AI');
-    }
-
-    // Extract JSON from response
-    const jsonStr = extractJSON(response);
-    if (!jsonStr) {
-        throw new Error('No JSON found in AI response');
-    }
-
-    // Parse JSON
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(jsonStr);
-    } catch (parseError) {
-        throw new Error(`Invalid JSON in probe response: ${(parseError as Error).message}`);
-    }
-
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        throw new Error('Probe response is not a JSON object');
-    }
-
-    const obj = parsed as Record<string, unknown>;
+    const obj = parseAIJsonResponse(response, { context: 'probe' });
 
     // Validate required fields
     if (typeof obj.topic !== 'string') {

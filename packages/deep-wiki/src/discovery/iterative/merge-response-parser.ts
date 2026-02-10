@@ -7,10 +7,10 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
 import type { MergeResult, ModuleGraph, TopicSeed } from '../../types';
 import { parseModuleGraphResponse } from '../response-parser';
 import { normalizeModuleId } from '../../schemas';
+import { parseAIJsonResponse } from '../../utils/parse-ai-response';
 
 // ============================================================================
 // Merge Response Parsing
@@ -24,29 +24,7 @@ import { normalizeModuleId } from '../../schemas';
  * @throws Error if response cannot be parsed
  */
 export function parseMergeResponse(response: string): MergeResult {
-    if (!response || typeof response !== 'string') {
-        throw new Error('Empty or invalid response from AI');
-    }
-
-    // Extract JSON from response
-    const jsonStr = extractJSON(response);
-    if (!jsonStr) {
-        throw new Error('No JSON found in AI response');
-    }
-
-    // Parse JSON
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(jsonStr);
-    } catch (parseError) {
-        throw new Error(`Invalid JSON in merge response: ${(parseError as Error).message}`);
-    }
-
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        throw new Error('Merge response is not a JSON object');
-    }
-
-    const obj = parsed as Record<string, unknown>;
+    const obj = parseAIJsonResponse(response, { context: 'merge' });
 
     // Validate required fields
     if (typeof obj.graph !== 'object' || obj.graph === null) {

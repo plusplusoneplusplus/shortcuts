@@ -8,9 +8,9 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { extractJSON } from '@plusplusoneplusplus/pipeline-core';
 import type { TopicSeed } from '../types';
 import { normalizeModuleId } from '../schemas';
+import { parseAIJsonResponse } from '../utils/parse-ai-response';
 
 // ============================================================================
 // Response Parsing
@@ -32,40 +32,7 @@ import { normalizeModuleId } from '../schemas';
  * @throws Error if response cannot be parsed into valid seeds
  */
 export function parseSeedsResponse(response: string): TopicSeed[] {
-    if (!response || typeof response !== 'string') {
-        throw new Error('Empty or invalid response from AI');
-    }
-
-    // Step 1: Extract JSON from response
-    const jsonStr = extractJSON(response);
-    if (!jsonStr) {
-        throw new Error('No JSON found in AI response. The AI may not have returned structured output.');
-    }
-
-    // Step 2: Parse JSON
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(jsonStr);
-    } catch (parseError) {
-        // Try to fix common issues
-        const fixed = attemptJsonRepair(jsonStr);
-        if (fixed) {
-            try {
-                parsed = JSON.parse(fixed);
-            } catch {
-                throw new Error(`Invalid JSON in AI response: ${(parseError as Error).message}`);
-            }
-        } else {
-            throw new Error(`Invalid JSON in AI response: ${(parseError as Error).message}`);
-        }
-    }
-
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        throw new Error('AI response is not a JSON object');
-    }
-
-    // Step 3: Extract and validate topics array
-    const obj = parsed as Record<string, unknown>;
+    const obj = parseAIJsonResponse(response, { context: 'seeds', repair: true });
     if (!('topics' in obj)) {
         throw new Error("Missing 'topics' field in AI response");
     }
@@ -163,27 +130,4 @@ function parseTopicsArray(raw: unknown): TopicSeed[] {
     return deduplicated;
 }
 
-// ============================================================================
-// Utility Helpers
-// ============================================================================
 
-/**
- * Attempt to repair common JSON formatting issues.
- */
-function attemptJsonRepair(jsonStr: string): string | null {
-    try {
-        let fixed = jsonStr;
-        // Replace single quotes with double quotes
-        fixed = fixed.replace(/'/g, '"');
-        // Quote unquoted keys
-        fixed = fixed.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
-        // Remove trailing commas
-        fixed = fixed.replace(/,(\s*[}\]])/g, '$1');
-        // Fix missing commas between properties
-        fixed = fixed.replace(/"\s*\n\s*"/g, '",\n"');
-        JSON.parse(fixed);
-        return fixed;
-    } catch {
-        return null;
-    }
-}
