@@ -210,14 +210,23 @@ describe('FileWatcher', () => {
 
             watcher.start();
 
-            // Wait for watcher to stabilize after startup events
-            await new Promise(resolve => setTimeout(resolve, 300));
-            onChange.mockClear();
+            // Wait for watcher to stabilize — macOS FSEvents can deliver
+            // directory-creation events from setupTestRepo() with significant
+            // delay, so we need a generous stabilization window.
+            await new Promise(resolve => setTimeout(resolve, 600));
 
-            // Modify file in node_modules — should be ignored
+            // Keep clearing until no more stale events arrive (drain loop)
+            let prevCallCount: number;
+            do {
+                prevCallCount = onChange.mock.calls.length;
+                onChange.mockClear();
+                await new Promise(resolve => setTimeout(resolve, 250));
+            } while (onChange.mock.calls.length > 0);
+
+            // Now modify file in node_modules — should be ignored
             fs.writeFileSync(path.join(tmpDir, 'node_modules', 'test.js'), 'module.exports = {};');
 
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 400));
 
             expect(onChange).not.toHaveBeenCalled();
 
@@ -241,20 +250,23 @@ describe('FileWatcher', () => {
 
             watcher.start();
 
-            // Wait for watcher to stabilize
-            await new Promise(resolve => setTimeout(resolve, 200));
+            // Wait for watcher to stabilize — macOS FSEvents can deliver
+            // stale events with significant delay
+            await new Promise(resolve => setTimeout(resolve, 600));
+
+            // Drain any stale events from setupTestRepo() file creation
+            let prevCallCount: number;
+            do {
+                prevCallCount = onChange.mock.calls.length;
+                onChange.mockClear();
+                await new Promise(resolve => setTimeout(resolve, 250));
+            } while (onChange.mock.calls.length > 0);
 
             // Now modify a file inside .git — should be ignored
             fs.writeFileSync(path.join(tmpDir, '.git', 'HEAD'), 'ref: refs/heads/main');
 
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 400));
 
-            // The onChange may have been called from watcher startup events;
-            // reset and try again
-            onChange.mockClear();
-            fs.writeFileSync(path.join(tmpDir, '.git', 'HEAD'), 'ref: refs/heads/develop');
-
-            await new Promise(resolve => setTimeout(resolve, 300));
             expect(onChange).not.toHaveBeenCalled();
 
             watcher.stop();
