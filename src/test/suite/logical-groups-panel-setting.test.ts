@@ -80,7 +80,7 @@ suite('Logical Groups Panel Setting Tests', () => {
     test('shortcutsView when clause should use the enabled setting', () => {
         const packageJsonPath = path.join(__dirname, '..', '..', '..', 'package.json');
         const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-        const views = packageJson.contributes.views['shortcuts-container'];
+        const views = packageJson.contributes.views.shortcuts;
         const shortcutsView = views.find((v: any) => v.id === 'shortcutsView');
 
         assert.ok(shortcutsView, 'shortcutsView should exist');
@@ -99,8 +99,8 @@ suite('Logical Groups Panel Setting Tests', () => {
             'shortcuts.refresh command should be registered'
         );
         assert.ok(
-            commands.includes('shortcuts.addGroup'),
-            'shortcuts.addGroup command should be registered'
+            commands.includes('shortcuts.createLogicalGroup'),
+            'shortcuts.createLogicalGroup command should be registered'
         );
     });
 });

@@ -93,9 +93,16 @@ function extractViewFromWhen(when: string): string | null {
 }
 
 /**
- * Get the expected view for a command based on its prefix
+ * Get the expected view for a command based on its prefix.
+ *
+ * Commands listed in GLOBAL_COMMANDS are intentionally scoped to multiple
+ * views (or globally), so they are excluded from strict view assertions.
  */
 function getExpectedView(command: string): string | null {
+    if (GLOBAL_COMMANDS.has(command)) {
+        return null;
+    }
+
     for (const [prefix, view] of Object.entries(COMMAND_VIEW_MAP)) {
         if (command.startsWith(prefix)) {
             return view;

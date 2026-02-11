@@ -3184,6 +3184,14 @@
           "when": "false"
         },
         {
+          "command": "tasksViewer.refresh",
+          "when": "false"
+        },
+        {
+          "command": "tasksViewer.openFolder",
+          "when": "false"
+        },
+        {
           "command": "tasksViewer.createFeature",
           "when": "false"
         },
