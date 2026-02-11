@@ -49,3 +49,6 @@ export { ContextMenuManager } from './context-menu-manager';
 
 // Custom instruction dialog
 export { CustomInstructionDialog } from './custom-instruction-dialog';
+
+// Shared dialog styles for webview-based modal dialogs
+export { getSharedDialogCSS } from './dialog-styles';
