@@ -113,8 +113,8 @@ describe('Bundle Configuration', () => {
             expect(pkg.license).toBe('MIT');
         });
 
-        it('should have files array limited to dist', () => {
-            expect(pkg.files).toEqual(['dist']);
+        it('should have files array limited to bundle output only', () => {
+            expect(pkg.files).toEqual(['dist/index.js', 'dist/index.js.map']);
         });
 
         it('should have publishConfig with public access', () => {

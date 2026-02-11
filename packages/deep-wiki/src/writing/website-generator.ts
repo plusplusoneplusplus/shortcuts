@@ -20,7 +20,7 @@ import * as path from 'path';
 import type { WebsiteOptions, WebsiteTheme } from '../types';
 import { getStyles } from './website-styles';
 import { getScript } from './website-client-script';
-import { escapeHtml } from './website-data';
+import { escapeHtml, readModuleGraph, readMarkdownFiles, generateEmbeddedData } from './website-data';
 
 // Re-export for backward compatibility
 export { readModuleGraph, readMarkdownFiles, generateEmbeddedData, stableStringify } from './website-data';
