@@ -4,10 +4,17 @@
  * Command handlers for the AI task queue system.
  */
 
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { getAIQueueService } from './ai-queue-service';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
+import { QueueJobDialogService } from './queue-job-dialog-service';
 import { QueuedTaskItem } from './queued-task-tree-item';
+import { getSkills } from '../shared/skill-files-utils';
+import { getWorkspaceRoot } from '../shared/workspace-utils';
+import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 
 /**
  * Extract task ID from argument (can be string, QueuedTaskItem, or undefined)
@@ -223,5 +230,89 @@ export function registerQueueCommands(context: vscode.ExtensionContext): void {
         if (queueService.moveDown(taskId)) {
             logger.info(LogCategory.AI, `Moved task down: ${taskId}`);
         }
+    });
+
+    // Add job via dialog
+    safeRegister('shortcuts.queue.addJob', async () => {
+        const queueService = getAIQueueService();
+        if (!queueService) {
+            vscode.window.showWarningMessage('Queue service not initialized');
+            return;
+        }
+
+        if (!queueService.isEnabled()) {
+            vscode.window.showWarningMessage(
+                'Queue feature is disabled. Enable it in settings: workspaceShortcuts.queue.enabled'
+            );
+            return;
+        }
+
+        const dialogService = new QueueJobDialogService(context.extensionUri, context);
+        const dialogResult = await dialogService.showDialog();
+
+        if (dialogResult.cancelled || !dialogResult.options) {
+            return;
+        }
+
+        const options = dialogResult.options;
+        const workspaceRoot = getWorkspaceRoot();
+
+        let promptFilePath: string;
+        let displayName: string;
+        let skillName: string | undefined;
+        let additionalContext: string | undefined;
+
+        if (options.mode === 'prompt') {
+            // Write freeform prompt to a temp .prompt.md file
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-job-'));
+            promptFilePath = path.join(tmpDir, 'prompt.prompt.md');
+            fs.writeFileSync(promptFilePath, options.prompt!, 'utf-8');
+            displayName = 'Queue Job: Prompt';
+        } else {
+            // Skill mode: resolve the skill's prompt file path
+            const skills = await getSkills(workspaceRoot || undefined);
+            const skill = skills.find(s => s.name === options.skillName);
+
+            if (!skill) {
+                vscode.window.showErrorMessage(`Skill not found: ${options.skillName}`);
+                return;
+            }
+
+            // Find the prompt file (prompt.md or SKILL.md)
+            promptFilePath = path.join(skill.absolutePath, 'prompt.md');
+            if (!fs.existsSync(promptFilePath)) {
+                promptFilePath = path.join(skill.absolutePath, 'SKILL.md');
+                if (!fs.existsSync(promptFilePath)) {
+                    vscode.window.showErrorMessage(`No prompt file found for skill: ${options.skillName}`);
+                    return;
+                }
+            }
+
+            skillName = options.skillName;
+            additionalContext = options.additionalContext;
+            displayName = `Queue Job: Skill (${options.skillName})`;
+        }
+
+        const result = queueService.queueTask({
+            type: 'follow-prompt',
+            payload: {
+                promptFilePath,
+                skillName,
+                additionalContext,
+                workingDirectory: options.workingDirectory || workspaceRoot || undefined,
+                model: options.model,
+            },
+            priority: options.priority,
+            displayName,
+            config: {
+                model: options.model,
+                timeoutMs: DEFAULT_AI_TIMEOUT_MS,
+            },
+        });
+
+        logger.info(LogCategory.AI, `Queued job: ${displayName} at position #${result.position}`);
+        vscode.window.showInformationMessage(
+            `Queued AI job (#${result.position}): ${displayName}`
+        );
     });
 }

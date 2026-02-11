@@ -1285,6 +1285,12 @@
         "icon": "$(chevron-down)"
       },
       {
+        "command": "shortcuts.queue.addJob",
+        "title": "Queue AI Job",
+        "category": "AI Queue",
+        "icon": "$(add)"
+      },
+      {
         "command": "interactiveSessions.start",
         "title": "Start Interactive Session",
         "category": "AI Processes",
@@ -2074,6 +2080,11 @@
           "command": "markdownComments.refresh",
           "when": "view == markdownCommentsView",
           "group": "navigation"
+        },
+        {
+          "command": "shortcuts.queue.addJob",
+          "when": "view == clarificationProcessesView && config.workspaceShortcuts.aiService.enabled",
+          "group": "navigation@0"
         },
         {
           "command": "interactiveSessions.start",
