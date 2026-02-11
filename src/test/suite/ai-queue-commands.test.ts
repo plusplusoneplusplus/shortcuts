@@ -16,7 +16,6 @@ import {
     QueueJobDialogResult,
     QueueJobOptions,
     QueueJobMode,
-    QueueJobPriority,
 } from '../../shortcuts/ai-service/queue-job-dialog';
 
 suite('AI Queue Commands (ai-queue-commands.ts)', () => {
@@ -41,7 +40,6 @@ suite('AI Queue Commands (ai-queue-commands.ts)', () => {
                     mode: 'prompt' as QueueJobMode,
                     prompt: 'hello world',
                     model: 'gpt-4',
-                    priority: 'normal' as QueueJobPriority,
                 },
             };
             assert.strictEqual(result.cancelled, false);
@@ -58,7 +56,6 @@ suite('AI Queue Commands (ai-queue-commands.ts)', () => {
                     skillName: 'impl',
                     additionalContext: 'extra context',
                     model: 'gpt-4',
-                    priority: 'high' as QueueJobPriority,
                 },
             };
             assert.strictEqual(result.cancelled, false);
@@ -68,17 +65,13 @@ suite('AI Queue Commands (ai-queue-commands.ts)', () => {
             assert.strictEqual(result.options!.additionalContext, 'extra context');
         });
 
-        test('QueueJobOptions should support all priority levels', () => {
-            const priorities: QueueJobPriority[] = ['high', 'normal', 'low'];
-            for (const priority of priorities) {
-                const options: QueueJobOptions = {
-                    mode: 'prompt',
-                    prompt: 'test',
-                    model: 'gpt-4',
-                    priority,
-                };
-                assert.strictEqual(options.priority, priority);
-            }
+        test('QueueJobOptions should not have priority field', () => {
+            const options: QueueJobOptions = {
+                mode: 'prompt',
+                prompt: 'test',
+                model: 'gpt-4',
+            };
+            assert.strictEqual((options as any).priority, undefined, 'Should not have priority');
         });
 
         test('QueueJobOptions should support optional workingDirectory', () => {
@@ -86,7 +79,6 @@ suite('AI Queue Commands (ai-queue-commands.ts)', () => {
                 mode: 'prompt',
                 prompt: 'test',
                 model: 'gpt-4',
-                priority: 'normal',
                 workingDirectory: '/some/path',
             };
             assert.strictEqual(withDir.workingDirectory, '/some/path');
@@ -95,7 +87,6 @@ suite('AI Queue Commands (ai-queue-commands.ts)', () => {
                 mode: 'prompt',
                 prompt: 'test',
                 model: 'gpt-4',
-                priority: 'normal',
             };
             assert.strictEqual(withoutDir.workingDirectory, undefined);
         });

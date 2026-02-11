@@ -302,7 +302,6 @@ export function registerQueueCommands(context: vscode.ExtensionContext): void {
                 workingDirectory: options.workingDirectory || workspaceRoot || undefined,
                 model: options.model,
             },
-            priority: options.priority,
             displayName,
             config: {
                 model: options.model,

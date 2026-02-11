@@ -111,7 +111,6 @@ export class QueueJobDialogService {
                     const result: QueueJobOptions = {
                         mode: message.mode,
                         model: message.model,
-                        priority: message.priority,
                         workingDirectory: message.workingDirectory || undefined,
                     };
 

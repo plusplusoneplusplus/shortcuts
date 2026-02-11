@@ -19,9 +19,6 @@ export { QueueJobDialogService } from './queue-job-dialog-service';
 /** Mode of queue job creation */
 export type QueueJobMode = 'prompt' | 'skill';
 
-/** Priority for queued jobs */
-export type QueueJobPriority = 'high' | 'normal' | 'low';
-
 /** Result from the queue job dialog */
 export interface QueueJobDialogResult {
     /** Whether the user cancelled the dialog */
@@ -42,8 +39,6 @@ export interface QueueJobOptions {
     additionalContext?: string;
     /** AI model to use */
     model: string;
-    /** Job priority */
-    priority: QueueJobPriority;
     /** Working directory for execution */
     workingDirectory?: string;
 }
@@ -153,33 +148,6 @@ export function getQueueJobDialogHtml(
             </div>
             
             <div class="form-group">
-                <label>Priority</label>
-                <div class="radio-options">
-                    <label class="radio-option" id="priorityHigh">
-                        <input type="radio" name="priority" value="high" />
-                        <div class="radio-option-content">
-                            <div class="radio-option-title">🔴 High</div>
-                            <div class="radio-option-desc">Execute before normal and low priority tasks</div>
-                        </div>
-                    </label>
-                    <label class="radio-option selected" id="priorityNormal">
-                        <input type="radio" name="priority" value="normal" checked />
-                        <div class="radio-option-content">
-                            <div class="radio-option-title">🟡 Normal</div>
-                            <div class="radio-option-desc">Standard execution order</div>
-                        </div>
-                    </label>
-                    <label class="radio-option" id="priorityLow">
-                        <input type="radio" name="priority" value="low" />
-                        <div class="radio-option-content">
-                            <div class="radio-option-title">🟢 Low</div>
-                            <div class="radio-option-desc">Execute after higher priority tasks</div>
-                        </div>
-                    </label>
-                </div>
-            </div>
-            
-            <div class="form-group">
                 <label for="workingDir">Working Directory <span class="optional">(Optional)</span></label>
                 <input type="text" id="workingDir" placeholder="${WebviewSetupHelper.escapeHtml(workspaceRoot) || 'Workspace root'}" />
                 <div class="hint">Working directory for AI execution (defaults to workspace root)</div>
@@ -227,9 +195,6 @@ export function getQueueJobDialogHtml(
             // DOM elements - Shared
             const aiModelSelect = document.getElementById('aiModel');
             const workingDirInput = document.getElementById('workingDir');
-            const priorityHigh = document.getElementById('priorityHigh');
-            const priorityNormal = document.getElementById('priorityNormal');
-            const priorityLow = document.getElementById('priorityLow');
             
             // DOM elements - Buttons
             const submitBtn = document.getElementById('submitBtn');
@@ -255,17 +220,6 @@ export function getQueueJobDialogHtml(
                     option.selected = true;
                 }
                 aiModelSelect.appendChild(option);
-            });
-            
-            // Priority radio selection
-            var priorityOptions = [priorityHigh, priorityNormal, priorityLow];
-            priorityOptions.forEach(function(opt) {
-                if (!opt) return;
-                opt.addEventListener('click', function() {
-                    priorityOptions.forEach(function(o) { if (o) o.classList.remove('selected'); });
-                    opt.classList.add('selected');
-                    opt.querySelector('input').checked = true;
-                });
             });
             
             // Tab switching
@@ -345,7 +299,6 @@ export function getQueueJobDialogHtml(
                         mode: 'prompt',
                         prompt: prompt,
                         model: aiModelSelect.value,
-                        priority: document.querySelector('input[name="priority"]:checked').value,
                         workingDirectory: workingDirInput.value.trim()
                     });
                 } else {
@@ -361,7 +314,6 @@ export function getQueueJobDialogHtml(
                         skillName: skillSelect ? skillSelect.value : '',
                         additionalContext: skillContextInput ? skillContextInput.value.trim() : '',
                         model: aiModelSelect.value,
-                        priority: document.querySelector('input[name="priority"]:checked').value,
                         workingDirectory: workingDirInput.value.trim()
                     });
                 }

@@ -13,7 +13,6 @@ import {
     QueueJobDialogResult,
     QueueJobOptions,
     QueueJobMode,
-    QueueJobPriority,
     getQueueJobDialogHtml
 } from '../../shortcuts/ai-service/queue-job-dialog';
 import { getLastUsedAIModel, saveLastUsedAIModel, getFollowPromptDefaultModel } from '../../shortcuts/ai-service/ai-config-helpers';
@@ -141,13 +140,11 @@ suite('Queue Job Dialog Service Tests', () => {
                 mode: 'prompt',
                 prompt: 'Analyze the codebase',
                 model: DEFAULT_MODEL_ID,
-                priority: 'normal'
             };
 
             assert.strictEqual(options.mode, 'prompt');
             assert.strictEqual(options.prompt, 'Analyze the codebase');
             assert.strictEqual(options.model, DEFAULT_MODEL_ID);
-            assert.strictEqual(options.priority, 'normal');
             assert.strictEqual(options.skillName, undefined);
         });
 
@@ -156,24 +153,10 @@ suite('Queue Job Dialog Service Tests', () => {
                 mode: 'prompt',
                 prompt: 'Test prompt',
                 model: DEFAULT_MODEL_ID,
-                priority: 'high',
                 workingDirectory: '/path/to/dir'
             };
 
             assert.strictEqual(options.workingDirectory, '/path/to/dir');
-        });
-
-        test('should support all priority levels', () => {
-            const priorities: QueueJobPriority[] = ['high', 'normal', 'low'];
-            for (const priority of priorities) {
-                const options: QueueJobOptions = {
-                    mode: 'prompt',
-                    prompt: 'Test',
-                    model: DEFAULT_MODEL_ID,
-                    priority
-                };
-                assert.strictEqual(options.priority, priority);
-            }
         });
     });
 
@@ -183,7 +166,6 @@ suite('Queue Job Dialog Service Tests', () => {
                 mode: 'skill',
                 skillName: 'go-deep',
                 model: DEFAULT_MODEL_ID,
-                priority: 'normal'
             };
 
             assert.strictEqual(options.mode, 'skill');
@@ -197,7 +179,6 @@ suite('Queue Job Dialog Service Tests', () => {
                 skillName: 'impl',
                 additionalContext: 'Focus on the authentication module',
                 model: DEFAULT_MODEL_ID,
-                priority: 'normal'
             };
 
             assert.strictEqual(options.additionalContext, 'Focus on the authentication module');
@@ -208,7 +189,6 @@ suite('Queue Job Dialog Service Tests', () => {
                 mode: 'skill',
                 skillName: 'impl',
                 model: DEFAULT_MODEL_ID,
-                priority: 'low'
             };
 
             assert.strictEqual(options.additionalContext, undefined);
@@ -233,7 +213,6 @@ suite('Queue Job Dialog Service Tests', () => {
                     mode: 'prompt',
                     prompt: 'Analyze code',
                     model: DEFAULT_MODEL_ID,
-                    priority: 'normal'
                 }
             };
 
@@ -251,7 +230,6 @@ suite('Queue Job Dialog Service Tests', () => {
                     skillName: 'go-deep',
                     additionalContext: 'Extra info',
                     model: DEFAULT_MODEL_ID,
-                    priority: 'high'
                 }
             };
 
@@ -269,7 +247,6 @@ suite('Queue Job Dialog Service Tests', () => {
                     mode: 'prompt',
                     prompt: 'Test',
                     model: DEFAULT_MODEL_ID,
-                    priority: 'normal',
                     workingDirectory: '/workspace/src'
                 }
             };
@@ -302,18 +279,6 @@ suite('Queue Job Dialog Service Tests', () => {
         test('should support skill mode', () => {
             const mode: QueueJobMode = 'skill';
             assert.strictEqual(mode, 'skill');
-        });
-    });
-
-    suite('QueueJobPriority type', () => {
-        test('should support all three priority levels', () => {
-            const high: QueueJobPriority = 'high';
-            const normal: QueueJobPriority = 'normal';
-            const low: QueueJobPriority = 'low';
-
-            assert.strictEqual(high, 'high');
-            assert.strictEqual(normal, 'normal');
-            assert.strictEqual(low, 'low');
         });
     });
 
@@ -612,31 +577,12 @@ suite('Queue Job Dialog Service Tests', () => {
             assert.ok(html.includes('AI Model'), 'Should have AI Model label');
         });
 
-        test('should have priority radio group (shared)', () => {
+        test('should not have priority radio group', () => {
             const html = generateHtml();
-            assert.ok(html.includes('name="priority"'), 'Should have priority radio inputs');
-            assert.ok(html.includes('value="high"'), 'Should have high priority option');
-            assert.ok(html.includes('value="normal"'), 'Should have normal priority option');
-            assert.ok(html.includes('value="low"'), 'Should have low priority option');
-        });
-
-        test('should have normal priority checked by default', () => {
-            const html = generateHtml();
-            // The normal priority radio should be checked and its label selected
-            assert.ok(html.includes('id="priorityNormal"'), 'Should have priorityNormal element');
-            // Check the pattern: value="normal" checked
-            const normalRadioIndex = html.indexOf('value="normal"');
-            assert.ok(normalRadioIndex > -1, 'Should find normal radio');
-            const afterNormal = html.substring(normalRadioIndex, normalRadioIndex + 40);
-            assert.ok(afterNormal.includes('checked'), 'Normal priority should be checked');
-        });
-
-        test('should have priority labels with descriptions', () => {
-            const html = generateHtml();
-            assert.ok(html.includes('High'), 'Should have High priority label');
-            assert.ok(html.includes('Normal'), 'Should have Normal priority label');
-            assert.ok(html.includes('Low'), 'Should have Low priority label');
-            assert.ok(html.includes('radio-option-desc'), 'Should have priority descriptions');
+            assert.ok(!html.includes('name="priority"'), 'Should not have priority radio inputs');
+            assert.ok(!html.includes('id="priorityHigh"'), 'Should not have priorityHigh element');
+            assert.ok(!html.includes('id="priorityNormal"'), 'Should not have priorityNormal element');
+            assert.ok(!html.includes('id="priorityLow"'), 'Should not have priorityLow element');
         });
 
         test('should have working directory input (shared)', () => {
@@ -963,10 +909,10 @@ suite('Queue Job Dialog Service Tests', () => {
             assert.ok(html.includes('switchMode'), 'Should have switchMode function');
         });
 
-        test('should include priority selection logic', () => {
+        test('should not include priority selection logic', () => {
             const html = generateHtml();
-            assert.ok(html.includes('priorityOptions'), 'Should have priority options array');
-            assert.ok(html.includes("'selected'"), 'Should toggle selected class on priority');
+            assert.ok(!html.includes('priorityOptions'), 'Should not have priority options array');
+            assert.ok(!html.includes('priorityHigh'), 'Should not have priorityHigh reference');
         });
 
         test('should include focus management', () => {
@@ -1178,7 +1124,7 @@ suite('Queue Job Dialog Service Tests', () => {
         test('should have form-group wrappers for all fields', () => {
             const html = generateHtml();
             const formGroupCount = (html.match(/class="form-group"/g) || []).length;
-            assert.ok(formGroupCount >= 5, `Should have at least 5 form groups, found ${formGroupCount}`);
+            assert.ok(formGroupCount >= 4, `Should have at least 4 form groups, found ${formGroupCount}`);
         });
     });
 });

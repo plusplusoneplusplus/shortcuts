@@ -15,7 +15,6 @@ import {
     QueueJobDialogResult,
     QueueJobOptions,
     QueueJobMode,
-    QueueJobPriority,
     getQueueJobDialogHtml
 } from '../../shortcuts/ai-service/queue-job-dialog';
 import { getLastUsedAIModel, saveLastUsedAIModel } from '../../shortcuts/ai-service/ai-config-helpers';
@@ -157,7 +156,6 @@ suite('Queue Job Dialog Service (queue-job-dialog-service.ts)', () => {
                 mode: 'prompt',
                 prompt: 'Analyze codebase',
                 model: DEFAULT_MODEL_ID,
-                priority: 'normal'
             };
             assert.strictEqual(options.mode, 'prompt');
             assert.strictEqual(options.prompt, 'Analyze codebase');
@@ -171,7 +169,6 @@ suite('Queue Job Dialog Service (queue-job-dialog-service.ts)', () => {
                 skillName: 'impl',
                 additionalContext: 'Focus on auth module',
                 model: DEFAULT_MODEL_ID,
-                priority: 'high'
             };
             assert.strictEqual(options.mode, 'skill');
             assert.strictEqual(options.skillName, 'impl');
@@ -184,23 +181,18 @@ suite('Queue Job Dialog Service (queue-job-dialog-service.ts)', () => {
                 mode: 'prompt',
                 prompt: 'Test',
                 model: DEFAULT_MODEL_ID,
-                priority: 'normal',
                 workingDirectory: '/workspace/src'
             };
             assert.strictEqual(options.workingDirectory, '/workspace/src');
         });
 
-        test('supports all priority levels', () => {
-            const priorities: QueueJobPriority[] = ['high', 'normal', 'low'];
-            for (const priority of priorities) {
-                const options: QueueJobOptions = {
-                    mode: 'prompt',
-                    prompt: 'Test',
-                    model: DEFAULT_MODEL_ID,
-                    priority
-                };
-                assert.strictEqual(options.priority, priority);
-            }
+        test('should not have priority field', () => {
+            const options: QueueJobOptions = {
+                mode: 'prompt',
+                prompt: 'Test',
+                model: DEFAULT_MODEL_ID,
+            };
+            assert.strictEqual((options as any).priority, undefined, 'QueueJobOptions should not have priority');
         });
     });
 
@@ -218,7 +210,6 @@ suite('Queue Job Dialog Service (queue-job-dialog-service.ts)', () => {
                     mode: 'prompt',
                     prompt: 'Do analysis',
                     model: DEFAULT_MODEL_ID,
-                    priority: 'normal'
                 }
             };
             assert.strictEqual(result.cancelled, false);
@@ -234,7 +225,6 @@ suite('Queue Job Dialog Service (queue-job-dialog-service.ts)', () => {
                     skillName: 'go-deep',
                     additionalContext: 'Extra info',
                     model: DEFAULT_MODEL_ID,
-                    priority: 'high'
                 }
             };
             assert.strictEqual(result.cancelled, false);

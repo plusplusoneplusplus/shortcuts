@@ -35,7 +35,6 @@ import {
     QueueJobDialogResult,
     QueueJobOptions,
     QueueJobMode,
-    QueueJobPriority,
 } from '../../shortcuts/ai-service/queue-job-dialog';
 import { QueueJobDialogService } from '../../shortcuts/ai-service/queue-job-dialog-service';
 import { QueuedTask, TaskPriority } from '@plusplusoneplusplus/pipeline-core';
@@ -796,7 +795,6 @@ suite('Queue AI Job – E2E Integration Tests', () => {
                     mode: 'prompt',
                     prompt: 'Test prompt',
                     model: 'gpt-4',
-                    priority: 'normal',
                 },
             };
 
@@ -814,7 +812,6 @@ suite('Queue AI Job – E2E Integration Tests', () => {
                     skillName: 'impl',
                     additionalContext: 'extra',
                     model: 'gpt-4',
-                    priority: 'high',
                 },
             };
 
