@@ -25,8 +25,8 @@ import { getErrorMessage } from '../../utils/error-utils';
 // Constants
 // ============================================================================
 
-/** Default timeout for merge session: 3 minutes */
-const DEFAULT_MERGE_TIMEOUT_MS = 180_000;
+/** Default timeout for merge session: 30 minutes */
+const DEFAULT_MERGE_TIMEOUT_MS = 1_800_000;
 
 /** Available tools for merge (read-only file exploration) */
 const MERGE_TOOLS = ['view', 'grep', 'glob'];

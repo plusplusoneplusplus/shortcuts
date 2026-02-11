@@ -42,11 +42,11 @@ import {
 /** File count threshold for triggering multi-round discovery */
 export const LARGE_REPO_THRESHOLD = 3000;
 
-/** Default timeout for structural scan (shorter than full discovery) */
-const STRUCTURAL_SCAN_TIMEOUT_MS = 120_000; // 2 minutes
+/** Default timeout for structural scan */
+const STRUCTURAL_SCAN_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 /** Default timeout per area drill-down */
-const PER_AREA_TIMEOUT_MS = 180_000; // 3 minutes
+const PER_AREA_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 /** Available tools for discovery (read-only file exploration) */
 const DISCOVERY_TOOLS = ['view', 'grep', 'glob'];
@@ -86,7 +86,7 @@ export async function estimateFileCount(repoPath: string): Promise<number> {
         availableTools: ['glob'],
         onPermissionRequest: readOnlyPermissions,
         usePool: false,
-        timeoutMs: 30_000,
+        timeoutMs: 1_800_000,
     });
 
     if (!result.success || !result.response) {

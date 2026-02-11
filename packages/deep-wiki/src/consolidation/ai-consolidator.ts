@@ -25,8 +25,8 @@ import { resolveMaxComplexity } from './constants';
 /** Default target module count */
 const DEFAULT_TARGET_COUNT = 50;
 
-/** Default timeout for AI clustering session */
-const DEFAULT_CLUSTERING_TIMEOUT_MS = 120_000;
+/** Default timeout for AI clustering session: 30 minutes */
+const DEFAULT_CLUSTERING_TIMEOUT_MS = 1_800_000;
 
 // ============================================================================
 // Public API

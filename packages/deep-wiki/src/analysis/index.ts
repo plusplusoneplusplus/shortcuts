@@ -46,7 +46,7 @@ export async function analyzeModules(
         graph: options.graph,
         depth: options.depth || 'normal',
         concurrency: options.concurrency || 5,
-        timeoutMs: options.timeout || 180_000,
+        timeoutMs: options.timeout || 1_800_000,
         model: options.model,
         onProgress,
         isCancelled,

@@ -530,6 +530,8 @@ export interface SeedsCommandOptions {
     maxTopics: number;
     /** AI model override */
     model?: string;
+    /** Timeout in seconds for seeds session */
+    timeout?: number;
     /** Verbose logging */
     verbose: boolean;
 }

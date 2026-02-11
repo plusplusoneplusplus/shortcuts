@@ -100,6 +100,7 @@ describe('CLI', () => {
             expect(optionNames).toContain('--output');
             expect(optionNames).toContain('--max-topics');
             expect(optionNames).toContain('--model');
+            expect(optionNames).toContain('--timeout');
             expect(optionNames).toContain('--verbose');
         });
 
@@ -317,6 +318,20 @@ describe('CLI', () => {
             program.parse(['node', 'deep-wiki', 'seeds', '.', '--max-topics', '100']);
             expect(capturedOpts.maxTopics).toBe(100);
             expect(Number.isNaN(capturedOpts.maxTopics)).toBe(false);
+        });
+
+        it('should parse --timeout correctly in seeds command', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'seeds')!;
+
+            let capturedOpts: Record<string, unknown> = {};
+            cmd.action((_repoPath: string, opts: Record<string, unknown>) => {
+                capturedOpts = opts;
+            });
+
+            program.parse(['node', 'deep-wiki', 'seeds', '.', '--timeout', '600']);
+            expect(capturedOpts.timeout).toBe(600);
+            expect(Number.isNaN(capturedOpts.timeout)).toBe(false);
         });
 
         it('should parse --timeout correctly in discover command', () => {

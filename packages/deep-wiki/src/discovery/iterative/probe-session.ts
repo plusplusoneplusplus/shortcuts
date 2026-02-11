@@ -24,8 +24,8 @@ import { getErrorMessage } from '../../utils/error-utils';
 // Constants
 // ============================================================================
 
-/** Default timeout for probe session: 2 minutes */
-const DEFAULT_PROBE_TIMEOUT_MS = 120_000;
+/** Default timeout for probe session: 30 minutes */
+const DEFAULT_PROBE_TIMEOUT_MS = 1_800_000;
 
 /** Available tools for probe (read-only file exploration) */
 const PROBE_TOOLS = ['view', 'grep', 'glob'];

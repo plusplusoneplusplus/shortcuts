@@ -58,11 +58,11 @@ export interface AIAvailabilityResult {
 // Constants
 // ============================================================================
 
-/** Default timeout for analysis per module (3 minutes) */
-const DEFAULT_ANALYSIS_TIMEOUT_MS = 180_000;
+/** Default timeout for analysis per module (30 minutes) */
+const DEFAULT_ANALYSIS_TIMEOUT_MS = 1_800_000;
 
-/** Default timeout for writing per article (2 minutes) */
-const DEFAULT_WRITING_TIMEOUT_MS = 120_000;
+/** Default timeout for writing per article (30 minutes) */
+const DEFAULT_WRITING_TIMEOUT_MS = 1_800_000;
 
 /** MCP tools available during analysis */
 const ANALYSIS_TOOLS = ['view', 'grep', 'glob'];
@@ -201,8 +201,8 @@ export interface ConsolidationInvokerOptions {
     timeoutMs?: number;
 }
 
-/** Default timeout for consolidation clustering (2 minutes) */
-const DEFAULT_CONSOLIDATION_TIMEOUT_MS = 120_000;
+/** Default timeout for consolidation clustering (30 minutes) */
+const DEFAULT_CONSOLIDATION_TIMEOUT_MS = 1_800_000;
 
 /**
  * Create an AIInvoker for Phase 2 (Module Consolidation).

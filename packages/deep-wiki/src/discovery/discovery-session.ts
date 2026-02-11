@@ -25,8 +25,8 @@ import { getErrorMessage } from '../utils/error-utils';
 // Constants
 // ============================================================================
 
-/** Default timeout for discovery session: 5 minutes */
-const DEFAULT_DISCOVERY_TIMEOUT_MS = 300_000;
+/** Default timeout for discovery session: 30 minutes */
+const DEFAULT_DISCOVERY_TIMEOUT_MS = 1_800_000;
 
 /** Available tools for discovery (read-only file exploration) */
 const DISCOVERY_TOOLS = ['view', 'grep', 'glob'];

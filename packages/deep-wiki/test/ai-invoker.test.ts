@@ -144,14 +144,14 @@ describe('AI Invoker Factory', () => {
             expect(callArgs.model).toBe('claude-sonnet');
         });
 
-        it('should use default timeout of 180s', async () => {
+        it('should use default timeout of 30min', async () => {
             mockSendMessage.mockResolvedValue({ success: true, response: 'ok' });
 
             const invoker = createAnalysisInvoker({ repoPath: '/repo' });
             await invoker('test');
 
             const callArgs = mockSendMessage.mock.calls[0][0];
-            expect(callArgs.timeoutMs).toBe(180_000);
+            expect(callArgs.timeoutMs).toBe(1_800_000);
         });
 
         it('should use custom timeout', async () => {
@@ -260,14 +260,14 @@ describe('AI Invoker Factory', () => {
             expect(callArgs.loadDefaultMcpConfig).toBe(false);
         });
 
-        it('should use default timeout of 120s', async () => {
+        it('should use default timeout of 30min', async () => {
             mockSendMessage.mockResolvedValue({ success: true, response: 'ok' });
 
             const invoker = createWritingInvoker({});
             await invoker('test');
 
             const callArgs = mockSendMessage.mock.calls[0][0];
-            expect(callArgs.timeoutMs).toBe(120_000);
+            expect(callArgs.timeoutMs).toBe(1_800_000);
         });
 
         it('should pass model through', async () => {

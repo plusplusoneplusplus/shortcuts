@@ -25,8 +25,8 @@ import { getErrorMessage } from '../utils/error-utils';
 // Constants
 // ============================================================================
 
-/** Default timeout for seeds session: 2 minutes */
-const DEFAULT_SEEDS_TIMEOUT_MS = 120_000;
+/** Default timeout for seeds session: 30 minutes */
+const DEFAULT_SEEDS_TIMEOUT_MS = 1_800_000;
 
 /** Available tools for seeds (read-only file exploration) */
 const SEEDS_TOOLS = ['view', 'grep', 'glob'];
@@ -64,7 +64,7 @@ function readOnlyPermissions(request: PermissionRequest): PermissionRequestResul
  */
 export async function runSeedsSession(
     repoPath: string,
-    options: Pick<SeedsCommandOptions, 'maxTopics' | 'model' | 'verbose'>
+    options: Pick<SeedsCommandOptions, 'maxTopics' | 'model' | 'timeout' | 'verbose'>
 ): Promise<TopicSeed[]> {
     const service = getCopilotSDKService();
 
@@ -83,13 +83,14 @@ export async function runSeedsSession(
     const prompt = buildSeedsPrompt(repoPath, options.maxTopics);
 
     // Configure the SDK session
+    const timeoutMs = options.timeout ? options.timeout * 1000 : DEFAULT_SEEDS_TIMEOUT_MS;
     const sendOptions: SendMessageOptions = {
         prompt,
         workingDirectory: repoPath,
         availableTools: SEEDS_TOOLS,
         onPermissionRequest: readOnlyPermissions,
         usePool: false, // Direct session for MCP tool access
-        timeoutMs: DEFAULT_SEEDS_TIMEOUT_MS,
+        timeoutMs,
     };
 
     // Set model if specified
@@ -105,7 +106,7 @@ export async function runSeedsSession(
         const errorMsg = result.error || 'Unknown SDK error';
         if (errorMsg.toLowerCase().includes('timeout')) {
             throw new SeedsError(
-                `Seeds generation timed out after ${DEFAULT_SEEDS_TIMEOUT_MS / 1000}s. ` +
+                `Seeds generation timed out after ${timeoutMs / 1000}s. ` +
                 'Falling back to directory-based heuristic.',
                 'timeout'
             );

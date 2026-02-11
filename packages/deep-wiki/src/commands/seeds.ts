@@ -70,6 +70,9 @@ export async function executeSeeds(
     if (options.model) {
         printKeyValue('Model', options.model);
     }
+    if (options.timeout) {
+        printKeyValue('Timeout', `${options.timeout}s`);
+    }
     process.stderr.write('\n');
 
     // Run seed generation
@@ -80,6 +83,7 @@ export async function executeSeeds(
         const seeds = await generateTopicSeeds(absoluteRepoPath, {
             maxTopics: options.maxTopics,
             model: options.model,
+            timeout: options.timeout,
             verbose: options.verbose,
         });
 

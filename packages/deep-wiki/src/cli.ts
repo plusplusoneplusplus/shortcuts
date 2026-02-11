@@ -50,6 +50,7 @@ export function createProgram(): Command {
         .option('-o, --output <path>', 'Output file path', 'seeds.json')
         .option('--max-topics <n>', 'Maximum number of topics to generate', (v: string) => parseInt(v, 10), 50)
         .option('-m, --model <model>', 'AI model to use')
+        .option('-t, --timeout <seconds>', 'Timeout in seconds for seeds session', (v: string) => parseInt(v, 10))
         .option('-v, --verbose', 'Verbose logging', false)
         .option('--no-color', 'Disable colored output')
         .action(async (repoPath: string, opts: Record<string, unknown>) => {
@@ -59,6 +60,7 @@ export function createProgram(): Command {
                 output: opts.output as string,
                 maxTopics: (opts.maxTopics as number) || 50,
                 model: opts.model as string | undefined,
+                timeout: opts.timeout as number | undefined,
                 verbose: Boolean(opts.verbose),
             });
             process.exit(exitCode);
