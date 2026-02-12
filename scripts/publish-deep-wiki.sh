@@ -30,6 +30,9 @@ npm run build:bundle
 echo "Running tests..."
 npm run test:run
 
+echo "Bumping patch version..."
+npm version patch --no-git-tag-version
+
 echo "Publishing deep-wiki..."
 npm publish $DRY_RUN
 
