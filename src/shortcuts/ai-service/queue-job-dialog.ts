@@ -155,6 +155,9 @@ export function getQueueJobDialogHtml(
         </div>
         
         <div class="dialog-footer">
+            <button class="btn btn-secondary" id="loadTemplateBtn" title="Load from a saved template">$(bookmark) Load from Saved</button>
+            <span style="flex: 1;"></span>
+            <button class="btn btn-secondary" id="saveTemplateBtn" title="Save current configuration as a reusable template">$(bookmark) Save as Template</button>
             <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
             <button class="btn btn-primary" id="submitBtn">Queue Job</button>
         </div>
@@ -200,6 +203,8 @@ export function getQueueJobDialogHtml(
             const submitBtn = document.getElementById('submitBtn');
             const cancelBtn = document.getElementById('cancelBtn');
             const closeBtn = document.getElementById('closeBtn');
+            const saveTemplateBtn = document.getElementById('saveTemplateBtn');
+            const loadTemplateBtn = document.getElementById('loadTemplateBtn');
             
             // Populate skill dropdown
             if (hasSkills && skillSelect) {
@@ -336,6 +341,57 @@ export function getQueueJobDialogHtml(
                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                     e.preventDefault();
                     submitBtn.click();
+                }
+            });
+            
+            // Save as Template
+            if (saveTemplateBtn) {
+                saveTemplateBtn.addEventListener('click', function() {
+                    if (currentMode === 'prompt') {
+                        var prompt = jobPromptInput.value.trim();
+                        if (!prompt) {
+                            updateValidation();
+                            jobPromptInput.focus();
+                            return;
+                        }
+                        vscode.postMessage({
+                            type: 'saveAsTemplate',
+                            mode: 'prompt',
+                            prompt: prompt,
+                            model: aiModelSelect.value,
+                            workingDirectory: workingDirInput.value.trim()
+                        });
+                    } else {
+                        if (skillSelect && !skillSelect.value) {
+                            updateValidation();
+                            skillSelect.focus();
+                            return;
+                        }
+                        vscode.postMessage({
+                            type: 'saveAsTemplate',
+                            mode: 'skill',
+                            skillName: skillSelect ? skillSelect.value : '',
+                            prompt: skillContextInput ? skillContextInput.value.trim() : '',
+                            model: aiModelSelect.value,
+                            workingDirectory: workingDirInput.value.trim()
+                        });
+                    }
+                });
+            }
+            
+            // Load from Saved Templates
+            if (loadTemplateBtn) {
+                loadTemplateBtn.addEventListener('click', function() {
+                    vscode.postMessage({ type: 'loadTemplate' });
+                });
+            }
+            
+            // Handle messages from extension
+            window.addEventListener('message', function(event) {
+                var message = event.data;
+                if (message && message.type === 'templateSaved') {
+                    // Could show a brief notification in the webview
+                    // For now, the extension handles the notification
                 }
             });
             

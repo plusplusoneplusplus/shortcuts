@@ -466,6 +466,26 @@
             }
           }
         },
+        "workspaceShortcuts.aiService.templates.showInAddJob": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show saved templates in the Add Job dialog. When enabled, the dialog includes a **Load from Saved** button to quickly reuse saved job configurations."
+        },
+        "workspaceShortcuts.aiService.templates.sortBy": {
+          "type": "string",
+          "enum": [
+            "lastUsed",
+            "name",
+            "useCount"
+          ],
+          "enumDescriptions": [
+            "Sort by most recently used (default)",
+            "Sort alphabetically by name",
+            "Sort by most frequently used"
+          ],
+          "default": "lastUsed",
+          "markdownDescription": "Sort order for saved templates in quick-pick lists."
+        },
         "workspaceShortcuts.interactiveSessions.defaultTool": {
           "type": "string",
           "enum": [
@@ -1289,6 +1309,24 @@
         "title": "Queue AI Job",
         "category": "AI Queue",
         "icon": "$(add)"
+      },
+      {
+        "command": "shortcuts.templates.saveFromProcess",
+        "title": "Save as Template",
+        "category": "AI Queue",
+        "icon": "$(bookmark)"
+      },
+      {
+        "command": "shortcuts.templates.queueFromTemplate",
+        "title": "Queue Job from Template",
+        "category": "AI Queue",
+        "icon": "$(bookmark)"
+      },
+      {
+        "command": "shortcuts.templates.manage",
+        "title": "Manage AI Job Templates",
+        "category": "AI Queue",
+        "icon": "$(list-unordered)"
       },
       {
         "command": "interactiveSessions.start",
@@ -2682,6 +2720,11 @@
           "command": "clarificationProcesses.remove",
           "when": "view == clarificationProcessesView && viewItem =~ /^discoveryProcess_(completed|failed|cancelled)$/",
           "group": "process@3"
+        },
+        {
+          "command": "shortcuts.templates.saveFromProcess",
+          "when": "view == clarificationProcessesView && viewItem =~ /Process_(completed|failed|cancelled)/",
+          "group": "template@1"
         },
         {
           "command": "clarificationProcesses.copyDetails",

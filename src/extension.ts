@@ -12,7 +12,9 @@ import {
     createQueueStatusBarItem,
     getWindowFocusService,
     initializeAIQueueService,
-    registerQueueCommands
+    registerQueueCommands,
+    getJobTemplateManager,
+    registerTemplateCommands
 } from './shortcuts/ai-service';
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
@@ -2035,6 +2037,11 @@ export async function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push(aiQueueService);
         registerQueueCommands(context);
         context.subscriptions.push(createQueueStatusBarItem(aiQueueService));
+
+        // Initialize Job Template Manager and register template commands
+        const templateManager = getJobTemplateManager();
+        templateManager.initialize(context);
+        registerTemplateCommands(context);
 
         // Register command to test Copilot SDK (now that aiProcessManager is available)
         const testCopilotSDKCommand = vscode.commands.registerCommand(

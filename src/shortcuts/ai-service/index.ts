@@ -197,3 +197,33 @@ export { registerQueueCommands } from './ai-queue-commands';
 
 // Export AI Queue Status Bar
 export { AIQueueStatusBarItem, createQueueStatusBarItem } from './ai-queue-status-bar';
+
+// Export Job Template types
+export {
+    JobTemplate,
+    JobTemplateScope,
+    JobTemplateType,
+    JobTemplateSortBy,
+    SerializedJobTemplate,
+    CreateTemplateOptions,
+    extractTemplateVariables,
+    hasTemplateVariables,
+    substituteTemplateVariables,
+    validateTemplateName
+} from './job-template-types';
+
+// Export Job Template Manager
+export {
+    JobTemplateManager,
+    getJobTemplateManager,
+    resetJobTemplateManager
+} from './job-template-manager';
+
+// Export Job Template Commands
+export {
+    registerTemplateCommands,
+    saveTemplateInteractive,
+    queueFromTemplate,
+    showTemplatePicker,
+    manageTemplates
+} from './job-template-commands';

@@ -18,6 +18,9 @@ import {
     QueueJobOptions,
     getQueueJobDialogHtml
 } from './queue-job-dialog';
+import { getJobTemplateManager } from './job-template-manager';
+import { saveTemplateInteractive, queueFromTemplate, showTemplatePicker } from './job-template-commands';
+import { JobTemplate } from './job-template-types';
 
 /**
  * Service for showing the Queue Job dialog as a webview panel
@@ -141,7 +144,66 @@ export class QueueJobDialogService {
                 }
                 this.currentPanel?.dispose();
                 break;
+
+            case 'saveAsTemplate':
+                this.handleSaveAsTemplate(message);
+                break;
+
+            case 'loadTemplate':
+                this.handleLoadTemplate();
+                break;
         }
+    }
+
+    /**
+     * Handle "Save as Template" from the webview dialog.
+     */
+    private async handleSaveAsTemplate(message: { [key: string]: any }): Promise<void> {
+        const template = await saveTemplateInteractive({
+            prompt: message.prompt || '',
+            type: message.mode === 'skill' ? 'skill' : 'freeform',
+            model: message.model,
+            workingDirectory: message.workingDirectory || undefined,
+            skillName: message.skillName,
+        });
+
+        if (template) {
+            // Notify webview that save succeeded
+            this.currentPanel?.webview.postMessage({
+                type: 'templateSaved',
+                name: template.name,
+            });
+        }
+    }
+
+    /**
+     * Handle "Load from Saved" from the webview dialog.
+     * Shows the template picker. If a template is selected,
+     * queues the job directly and closes the dialog.
+     */
+    private async handleLoadTemplate(): Promise<void> {
+        const templateManager = getJobTemplateManager();
+        const templates = templateManager.getAllTemplates();
+
+        if (templates.length === 0) {
+            vscode.window.showInformationMessage('No saved templates yet.');
+            return;
+        }
+
+        const selected = await showTemplatePicker(templates);
+        if (!selected) {
+            return;
+        }
+
+        // Close the dialog and queue from template
+        if (this.pendingResolve) {
+            this.pendingResolve({ cancelled: true, options: null });
+            this.pendingResolve = undefined;
+        }
+        this.currentPanel?.dispose();
+
+        // Queue from the selected template
+        await queueFromTemplate(selected, this.context);
     }
 
     /**
