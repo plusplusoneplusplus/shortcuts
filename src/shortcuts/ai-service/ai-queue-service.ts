@@ -163,6 +163,19 @@ class AITaskExecutor implements TaskExecutor {
                 result = { status: 'completed', taskId: task.id };
             }
 
+            // Attach SDK session ID and metadata for resume functionality
+            const resultObj = result as Record<string, unknown> | undefined;
+            if (resultObj?.sessionId && typeof resultObj.sessionId === 'string') {
+                this.processManager.attachSdkSessionId(processId, resultObj.sessionId);
+                // Determine working directory from payload
+                const workingDir = isFollowPromptPayload(task.payload)
+                    ? (task.payload as FollowPromptPayload).workingDirectory
+                    : isAIClarificationPayload(task.payload)
+                        ? (task.payload as AIClarificationPayload).workingDirectory
+                        : undefined;
+                this.processManager.attachSessionMetadata(processId, 'copilot-sdk', workingDir);
+            }
+
             // Mark process as completed
             this.processManager.completeProcess(processId, JSON.stringify(result));
 
