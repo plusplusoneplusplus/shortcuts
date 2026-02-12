@@ -270,7 +270,8 @@ function assignEnum(raw: Record<string, unknown>, field: string, target: Record<
  * @throws If the config contains invalid values
  */
 export function validateConfig(raw: Record<string, unknown>): DeepWikiConfigFile {
-    const config: DeepWikiConfigFile = {};
+    // Use a plain record for building the config, then cast to the typed interface at the end.
+    const config: Record<string, unknown> = {};
 
     // String fields
     assignString(raw, 'repoPath', config);
@@ -335,5 +336,5 @@ export function validateConfig(raw: Record<string, unknown>): DeepWikiConfigFile
         config.phases = phases;
     }
 
-    return config;
+    return config as DeepWikiConfigFile;
 }

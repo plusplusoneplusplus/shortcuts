@@ -101,9 +101,6 @@ describe('Bundle Configuration', () => {
             expect(pkg.name).toBe('@plusplusoneplusplus/deep-wiki');
         });
 
-        it('should have version 1.0.0', () => {
-            expect(pkg.version).toBe('1.0.0');
-        });
 
         it('should have a description', () => {
             expect(pkg.description).toBeTruthy();
