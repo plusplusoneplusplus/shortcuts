@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-02-12
+
+### Added
+- Queue AI Job command with tree view button
+- Ask AI context utilities and interactive menu
+- Copy Path context menu for task folders
+
+### Fixed
+- AI session resume reliability
+- Cross-view context menu contamination between tree views
+
+### Changed
+- Logical Groups panel hidden by default
+
 ## [3.2.15] - 2026-01-30
 
 ### Added
