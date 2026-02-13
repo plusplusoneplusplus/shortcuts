@@ -65,6 +65,17 @@ export async function runPhase2Consolidation(
                 `Using cached consolidation (${inputModuleCount} → ${cached.graph.modules.length} modules)`
             );
             usageTracker?.markCached('consolidation');
+
+            // Ensure module-graph.json reflects the consolidated graph, even from cache.
+            // Phase 1 may have overwritten it with the pre-consolidation graph.
+            const graphOutputFile = path.join(outputDir, 'module-graph.json');
+            try {
+                fs.mkdirSync(outputDir, { recursive: true });
+                fs.writeFileSync(graphOutputFile, JSON.stringify(cached.graph, null, 2), 'utf-8');
+            } catch {
+                // Non-fatal
+            }
+
             return { graph: cached.graph, duration: Date.now() - startTime };
         }
     }
@@ -105,6 +116,20 @@ export async function runPhase2Consolidation(
 
         // Save consolidation result to cache
         await saveConsolidation(repoPath, result.graph, outputDir, inputModuleCount);
+
+        // Update module-graph.json with the consolidated graph.
+        // Phase 5 (Website) reads this file to build the embedded data, so it must
+        // reflect the post-consolidation module IDs used in Phases 3–4.
+        const graphOutputFile = path.join(outputDir, 'module-graph.json');
+        try {
+            fs.mkdirSync(outputDir, { recursive: true });
+            fs.writeFileSync(graphOutputFile, JSON.stringify(result.graph, null, 2), 'utf-8');
+        } catch {
+            // Non-fatal: website may show stale graph but generation continues
+            if (options.verbose) {
+                printWarning('Failed to update module-graph.json after consolidation');
+            }
+        }
 
         return { graph: result.graph, duration: Date.now() - startTime };
     } catch (error) {

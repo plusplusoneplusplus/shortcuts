@@ -248,6 +248,21 @@ export async function executeGenerate(
         let phase5Duration = 0;
 
         if (!options.skipWebsite) {
+            // Ensure module-graph.json reflects the current in-memory graph before
+            // Phase 5 reads it. This is critical when Phase 2 (Consolidation)
+            // changed module IDs — without this, the website would use the stale
+            // Phase 1 graph and fail to match MARKDOWN_DATA keys to module IDs,
+            // resulting in module pages showing only brief metadata instead of
+            // the full generated articles.
+            const outputDir = path.resolve(options.output);
+            const graphOutputFile = path.join(outputDir, 'module-graph.json');
+            try {
+                fs.mkdirSync(outputDir, { recursive: true });
+                fs.writeFileSync(graphOutputFile, JSON.stringify(graph, null, 2), 'utf-8');
+            } catch {
+                // Non-fatal: Phase 5 will still try to read whatever is on disk
+            }
+
             const phase5Result = runPhase5Website(options);
             websiteGenerated = phase5Result.success;
             phase5Duration = phase5Result.duration;
