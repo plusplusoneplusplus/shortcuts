@@ -145,6 +145,7 @@ export function mergeConfigWithCLI(
         theme: resolve('theme', cliOptions.theme, config.theme as WebsiteTheme | undefined),
         title: resolve('title', cliOptions.title, config.title),
         seeds: resolve('seeds', cliOptions.seeds, config.seeds),
+        largeRepoThreshold: resolve('largeRepoThreshold', cliOptions.largeRepoThreshold, config.largeRepoThreshold),
         noCluster: resolve('noCluster', cliOptions.noCluster, config.noCluster),
         strict: resolve('strict', cliOptions.strict, config.strict),
         config: cliOptions.config,
@@ -285,6 +286,7 @@ export function validateConfig(raw: Record<string, unknown>): DeepWikiConfigFile
     // Number fields
     assignPositiveNumber(raw, 'concurrency', config);
     assignPositiveNumber(raw, 'timeout', config);
+    assignPositiveNumber(raw, 'largeRepoThreshold', config);
 
     // Phase (custom: integer check + range 1-4)
     if (raw.phase !== undefined) {

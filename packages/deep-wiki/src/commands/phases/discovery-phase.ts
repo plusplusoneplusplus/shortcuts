@@ -170,6 +170,7 @@ export async function runPhase1(
                 outputDir: options.output,
                 gitHash: currentGitHash ?? undefined,
                 useCache: options.useCache,
+                largeRepoThreshold: options.largeRepoThreshold,
             });
         }
 

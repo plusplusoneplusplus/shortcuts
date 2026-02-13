@@ -101,6 +101,7 @@ export function createProgram(): Command {
         .option('-t, --timeout <seconds>', 'Timeout in seconds for discovery', (v: string) => parseInt(v, 10))
         .option('--focus <path>', 'Focus discovery on a specific subtree')
         .option('--seeds <path>', 'Path to seeds file for breadth-first discovery, or "auto" to generate')
+        .option('--large-repo-threshold <number>', 'File count threshold for multi-round discovery (default: 3000)', (v: string) => parseInt(v, 10))
         .option('--force', 'Ignore cache, regenerate discovery', false)
         .option('--use-cache', 'Use existing cache regardless of git hash', false)
         .option('-v, --verbose', 'Verbose logging', false)
@@ -116,6 +117,7 @@ export function createProgram(): Command {
                 timeout: opts.timeout as number | undefined,
                 focus: opts.focus as string | undefined,
                 seeds: opts.seeds as string | undefined,
+                largeRepoThreshold: opts.largeRepoThreshold as number | undefined,
                 force: Boolean(opts.force),
                 useCache: Boolean(opts.useCache),
                 verbose: Boolean(opts.verbose),
@@ -137,6 +139,7 @@ export function createProgram(): Command {
         .option('-t, --timeout <seconds>', 'Timeout in seconds per phase', (v: string) => parseInt(v, 10))
         .option('--focus <path>', 'Focus on a specific subtree')
         .option('--seeds <path>', 'Path to seeds file for breadth-first discovery, or "auto" to generate')
+        .option('--large-repo-threshold <number>', 'File count threshold for multi-round discovery (default: 3000)', (v: string) => parseInt(v, 10))
         .option('--depth <level>', 'Article detail level: shallow, normal, deep', 'normal')
         .option('--force', 'Ignore cache, regenerate everything', false)
         .option('--use-cache', 'Use existing cache regardless of git hash', false)
@@ -161,6 +164,7 @@ export function createProgram(): Command {
                 timeout: opts.timeout as number | undefined,
                 focus: opts.focus as string | undefined,
                 seeds: opts.seeds as string | undefined,
+                largeRepoThreshold: opts.largeRepoThreshold as number | undefined,
                 depth: (opts.depth as 'shallow' | 'normal' | 'deep') || 'normal',
                 force: Boolean(opts.force),
                 useCache: Boolean(opts.useCache),

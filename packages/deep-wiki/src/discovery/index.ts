@@ -39,7 +39,7 @@ export async function discoverModuleGraph(options: DiscoveryOptions): Promise<Di
     let graph;
 
     // Check if the repo is large enough for multi-round discovery
-    const large = await isLargeRepo(options.repoPath);
+    const large = await isLargeRepo(options.repoPath, options.largeRepoThreshold);
 
     if (large) {
         graph = await discoverLargeRepo(options);

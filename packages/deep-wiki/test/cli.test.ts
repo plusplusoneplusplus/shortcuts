@@ -148,6 +148,7 @@ describe('CLI', () => {
             expect(optionNames).toContain('--use-cache');
             expect(optionNames).toContain('--verbose');
             expect(optionNames).toContain('--seeds');
+            expect(optionNames).toContain('--large-repo-threshold');
         });
 
         it('should have default value for output', () => {
@@ -188,6 +189,7 @@ describe('CLI', () => {
             expect(optionNames).toContain('--phase');
             expect(optionNames).toContain('--verbose');
             expect(optionNames).toContain('--seeds');
+            expect(optionNames).toContain('--large-repo-threshold');
             // Website generation options (Phase 5)
             expect(optionNames).toContain('--skip-website');
             expect(optionNames).toContain('--theme');
@@ -384,6 +386,36 @@ describe('CLI', () => {
             expect(capturedOpts.endPhase).toBe(3);
             expect(typeof capturedOpts.endPhase).toBe('number');
             expect(Number.isNaN(capturedOpts.endPhase)).toBe(false);
+        });
+
+        it('should parse --large-repo-threshold correctly in discover command', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'discover')!;
+
+            let capturedOpts: Record<string, unknown> = {};
+            cmd.action((_repoPath: string, opts: Record<string, unknown>) => {
+                capturedOpts = opts;
+            });
+
+            program.parse(['node', 'deep-wiki', 'discover', '.', '--large-repo-threshold', '5000']);
+            expect(capturedOpts.largeRepoThreshold).toBe(5000);
+            expect(typeof capturedOpts.largeRepoThreshold).toBe('number');
+            expect(Number.isNaN(capturedOpts.largeRepoThreshold)).toBe(false);
+        });
+
+        it('should parse --large-repo-threshold correctly in generate command', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'generate')!;
+
+            let capturedOpts: Record<string, unknown> = {};
+            cmd.action((_repoPath: string, opts: Record<string, unknown>) => {
+                capturedOpts = opts;
+            });
+
+            program.parse(['node', 'deep-wiki', 'generate', '.', '--large-repo-threshold', '1000']);
+            expect(capturedOpts.largeRepoThreshold).toBe(1000);
+            expect(typeof capturedOpts.largeRepoThreshold).toBe('number');
+            expect(Number.isNaN(capturedOpts.largeRepoThreshold)).toBe(false);
         });
 
         it('should parse --phase and --end-phase together correctly', () => {

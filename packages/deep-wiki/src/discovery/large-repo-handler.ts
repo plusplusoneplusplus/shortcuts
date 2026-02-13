@@ -107,11 +107,12 @@ export async function estimateFileCount(repoPath: string): Promise<number> {
  * Check if a repository is large enough to require multi-round discovery.
  *
  * @param repoPath - Path to the repository
+ * @param threshold - Custom file count threshold (defaults to LARGE_REPO_THRESHOLD)
  * @returns True if the repo has more files than the threshold
  */
-export async function isLargeRepo(repoPath: string): Promise<boolean> {
+export async function isLargeRepo(repoPath: string, threshold?: number): Promise<boolean> {
     const count = await estimateFileCount(repoPath);
-    return count > LARGE_REPO_THRESHOLD;
+    return count > (threshold ?? LARGE_REPO_THRESHOLD);
 }
 
 // ============================================================================

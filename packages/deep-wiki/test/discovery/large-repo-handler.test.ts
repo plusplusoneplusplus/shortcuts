@@ -22,6 +22,10 @@ describe('Large Repo Handler', () => {
         it('should be a positive number', () => {
             expect(LARGE_REPO_THRESHOLD).toBeGreaterThan(0);
         });
+
+        it('should be exported for use as default when no custom threshold is provided', () => {
+            expect(typeof LARGE_REPO_THRESHOLD).toBe('number');
+        });
     });
 
     // ========================================================================

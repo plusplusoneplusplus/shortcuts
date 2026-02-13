@@ -193,6 +193,7 @@ export async function executeDiscover(
                 outputDir: options.output,
                 gitHash: currentGitHash ?? undefined,
                 useCache: options.useCache,
+                largeRepoThreshold: options.largeRepoThreshold,
             });
         }
 

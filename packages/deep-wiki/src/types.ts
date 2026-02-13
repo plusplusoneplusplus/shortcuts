@@ -127,6 +127,8 @@ export interface DiscoveryOptions {
     gitHash?: string;
     /** Use cached results regardless of git hash (--use-cache mode) */
     useCache?: boolean;
+    /** File count threshold for triggering multi-round discovery (default: 3000) */
+    largeRepoThreshold?: number;
 }
 
 /**
@@ -194,6 +196,8 @@ export interface DeepWikiConfigFile {
     focus?: string;
     /** Path to seeds file, or "auto" to generate */
     seeds?: string;
+    /** File count threshold for triggering multi-round discovery (default: 3000) */
+    largeRepoThreshold?: number;
     /** Skip module consolidation */
     noCluster?: boolean;
     /** Strict mode: fail on any module failure */
@@ -236,6 +240,8 @@ export interface DiscoverCommandOptions {
     verbose: boolean;
     /** Path to seeds file for breadth-first discovery, or "auto" to generate */
     seeds?: string;
+    /** File count threshold for triggering multi-round discovery (default: 3000) */
+    largeRepoThreshold?: number;
 }
 
 // ============================================================================
@@ -492,6 +498,8 @@ export interface GenerateCommandOptions {
     noCluster?: boolean;
     /** Strict mode: fail the pipeline if any module fails after retries (default: true) */
     strict?: boolean;
+    /** File count threshold for triggering multi-round discovery (default: 3000) */
+    largeRepoThreshold?: number;
     /** Path to YAML configuration file */
     config?: string;
     /** Per-phase configuration overrides */

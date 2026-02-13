@@ -106,6 +106,14 @@ phase: 2
         expect(config.phase).toBe(2);
     });
 
+    it('should load largeRepoThreshold from config file', () => {
+        const configPath = writeConfigFile('config.yaml', `
+largeRepoThreshold: 5000
+`);
+        const config = loadConfig(configPath);
+        expect(config.largeRepoThreshold).toBe(5000);
+    });
+
     it('should load config with per-phase overrides', () => {
         const configPath = writeConfigFile('config.yaml', `
 model: gpt-4
@@ -250,6 +258,14 @@ describe('validateConfig', () => {
         expect(() => validateConfig({ concurrency: NaN })).toThrow('"concurrency" must be a positive number');
         expect(() => validateConfig({ timeout: 'fast' })).toThrow('"timeout" must be a positive number');
         expect(() => validateConfig({ timeout: 0 })).toThrow('"timeout" must be a positive number');
+        expect(() => validateConfig({ largeRepoThreshold: 'big' })).toThrow('"largeRepoThreshold" must be a positive number');
+        expect(() => validateConfig({ largeRepoThreshold: 0 })).toThrow('"largeRepoThreshold" must be a positive number');
+        expect(() => validateConfig({ largeRepoThreshold: -1 })).toThrow('"largeRepoThreshold" must be a positive number');
+    });
+
+    it('should accept valid largeRepoThreshold', () => {
+        const config = validateConfig({ largeRepoThreshold: 5000 });
+        expect(config.largeRepoThreshold).toBe(5000);
     });
 
     it('should validate phase number', () => {
@@ -477,6 +493,23 @@ describe('mergeConfigWithCLI', () => {
         expect(merged.useCache).toBe(true);
         expect(merged.strict).toBe(false);
         expect(merged.noCluster).toBe(true);
+    });
+
+    it('should merge largeRepoThreshold from config when CLI does not set it', () => {
+        const config = { largeRepoThreshold: 5000 };
+        const cli = makeDefaultCLI();
+
+        const merged = mergeConfigWithCLI(config, cli);
+        expect(merged.largeRepoThreshold).toBe(5000);
+    });
+
+    it('should let explicit CLI largeRepoThreshold override config', () => {
+        const config = { largeRepoThreshold: 5000 };
+        const cli = makeDefaultCLI({ largeRepoThreshold: 1000 });
+        const explicit = new Set(['largeRepoThreshold']);
+
+        const merged = mergeConfigWithCLI(config, cli, explicit);
+        expect(merged.largeRepoThreshold).toBe(1000);
     });
 
     it('should let explicit CLI booleans override config booleans', () => {
