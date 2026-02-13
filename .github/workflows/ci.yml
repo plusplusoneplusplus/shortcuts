@@ -32,6 +32,18 @@ jobs:
         run: npm run build
         working-directory: packages/pipeline-core
 
+      - name: Run pipeline-core tests
+        run: npm run test:run
+        working-directory: packages/pipeline-core
+
+      - name: Run pipeline-cli tests
+        run: npm run test:run
+        working-directory: packages/pipeline-cli
+
+      - name: Run deep-wiki tests
+        run: npm run test:run
+        working-directory: packages/deep-wiki
+
       - name: Lint
         run: npm run lint
 
