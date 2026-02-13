@@ -1759,3 +1759,474 @@ describe('CopilotSDKService - Empty response with tool activity', () => {
         expect(result.response).toContain("I'll follow the instructions in the skill file.");
     });
 });
+
+// ============================================================================
+// Debug Logging Tests — verifies the enhanced event logging for diagnosing
+// stuck sessions (tool execution, permissions, session lifecycle)
+// ============================================================================
+
+/**
+ * Create a capturing logger that records all log calls for assertions.
+ */
+function createCapturingLogger() {
+    const logs: Array<{ level: string; category: string; message: string }> = [];
+    return {
+        logs,
+        logger: {
+            debug: (category: string, message: string) => logs.push({ level: 'debug', category, message }),
+            info: (category: string, message: string) => logs.push({ level: 'info', category, message }),
+            warn: (category: string, message: string) => logs.push({ level: 'warn', category, message }),
+            error: (category: string, message: string) => logs.push({ level: 'error', category, message }),
+        },
+        /** Filter logs by substring match on message */
+        matching: (substr: string) => logs.filter(l => l.message.includes(substr)),
+    };
+}
+
+describe('CopilotSDKService - Debug Logging (tool execution events)', () => {
+    let service: CopilotSDKService;
+    let capLogger: ReturnType<typeof createCapturingLogger>;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        capLogger = createCapturingLogger();
+        setLogger(capLogger.logger);
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        setLogger(nullLogger);
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    function setupStreamingCall(options?: { streaming?: boolean; timeoutMs?: number; onPermissionRequest?: any }) {
+        const { MockCopilotClient, sessions } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const resultPromise = service.sendMessage({
+            prompt: 'Test prompt',
+            workingDirectory: '/test',
+            streaming: options?.streaming,
+            timeoutMs: options?.timeoutMs ?? 200000,
+            loadDefaultMcpConfig: false,
+            onPermissionRequest: options?.onPermissionRequest,
+        });
+
+        return { sessions, resultPromise };
+    }
+
+    it('should log tool.execution_start with tool name and arguments', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'result', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-1', toolName: 'view', arguments: { path: '/src/main.ts' } } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-1', success: true, result: { content: 'file contents' } } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const startLogs = capLogger.matching('Tool execution started');
+        expect(startLogs.length).toBe(1);
+        expect(startLogs[0].message).toContain('view');
+        expect(startLogs[0].message).toContain('tc-1');
+        expect(startLogs[0].message).toContain('/src/main.ts');
+    });
+
+    it('should log tool.execution_complete with duration and result length', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'result', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-1', toolName: 'glob' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-1', success: true, result: { content: 'a.ts\nb.ts' } } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const completeLogs = capLogger.matching('Tool execution completed');
+        expect(completeLogs.length).toBe(1);
+        expect(completeLogs[0].message).toContain('glob');
+        expect(completeLogs[0].message).toContain('tc-1');
+        expect(completeLogs[0].message).toContain('success');
+        expect(completeLogs[0].message).toContain('chars');
+    });
+
+    it('should log tool.execution_complete failure with error message', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'result', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-1', toolName: 'view' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-1', success: false, error: { message: 'File not found' } } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const failLogs = capLogger.matching('Tool execution FAILED');
+        expect(failLogs.length).toBe(1);
+        expect(failLogs[0].message).toContain('view');
+        expect(failLogs[0].message).toContain('File not found');
+    });
+
+    it('should log tool.execution_progress events', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'result', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-1', toolName: 'shell' } });
+        dispatchEvent({ type: 'tool.execution_progress', data: { toolCallId: 'tc-1', progressMessage: 'Running npm test...' } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-1', success: true } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const progressLogs = capLogger.matching('Tool progress');
+        expect(progressLogs.length).toBe(1);
+        expect(progressLogs[0].message).toContain('shell');
+        expect(progressLogs[0].message).toContain('Running npm test');
+    });
+
+    it('should log assistant.intent events', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.intent', data: { intent: 'Reading source files' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'done', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const intentLogs = capLogger.matching('Assistant intent');
+        expect(intentLogs.length).toBe(1);
+        expect(intentLogs[0].message).toContain('Reading source files');
+    });
+
+    it('should log session.info events', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'session.info', data: { infoType: 'rate_limit', message: 'Approaching rate limit' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'done', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const infoLogs = capLogger.matching('Session info');
+        expect(infoLogs.length).toBe(1);
+        expect(infoLogs[0].message).toContain('rate_limit');
+        expect(infoLogs[0].message).toContain('Approaching rate limit');
+    });
+
+    it('should log abort events', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'partial', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'abort', data: { reason: 'User cancelled' } });
+        // abort doesn't settle, so we need session.idle or timeout
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const abortLogs = capLogger.matching('Session aborted');
+        expect(abortLogs.length).toBe(1);
+        expect(abortLogs[0].message).toContain('User cancelled');
+    });
+
+    it('should log tool requests in assistant.message events', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: {
+            content: 'Let me check the files',
+            messageId: 'msg-1',
+            toolRequests: [
+                { toolCallId: 'tc-1', name: 'view', arguments: { path: '/a.ts' } },
+                { toolCallId: 'tc-2', name: 'grep', arguments: { pattern: 'foo' } },
+            ],
+        } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const toolReqLogs = capLogger.matching('tool request(s)');
+        expect(toolReqLogs.length).toBe(1);
+        expect(toolReqLogs[0].message).toContain('view');
+        expect(toolReqLogs[0].message).toContain('grep');
+        expect(toolReqLogs[0].message).toContain('2 tool request(s)');
+    });
+
+    it('should log turn_start with elapsed time and active tool count', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.turn_start', data: { turnId: 'turn-1' } });
+        dispatchEvent({ type: 'assistant.message', data: { content: 'done', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const turnStartLogs = capLogger.matching('Turn starting');
+        expect(turnStartLogs.length).toBe(1);
+        expect(turnStartLogs[0].message).toContain('elapsed');
+        expect(turnStartLogs[0].message).toContain('active tool calls');
+    });
+
+    it('should log elapsed time in settle message', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'done', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const settleLogs = capLogger.matching('Streaming completed');
+        expect(settleLogs.length).toBe(1);
+        expect(settleLogs[0].message).toContain('elapsed');
+    });
+
+    it('should warn about active tool calls on settle', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'done', messageId: 'msg-1' } });
+        // Start a tool but never complete it
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-stale', toolName: 'view' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const warningLogs = capLogger.matching('still active at settle');
+        expect(warningLogs.length).toBe(1);
+        expect(warningLogs[0].message).toContain('view');
+        expect(warningLogs[0].message).toContain('tc-stale');
+    });
+
+    it('should track multiple concurrent tool calls and log completions', async () => {
+        const { sessions, resultPromise } = setupStreamingCall();
+
+        await vi.waitFor(() => {
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const { dispatchEvent } = sessions[0];
+
+        dispatchEvent({ type: 'assistant.message', data: { content: 'result', messageId: 'msg-1' } });
+        // Start 3 tools concurrently
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-1', toolName: 'view' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-2', toolName: 'grep' } });
+        dispatchEvent({ type: 'tool.execution_start', data: { toolCallId: 'tc-3', toolName: 'glob' } });
+        // Complete them in different order
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-2', success: true } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-1', success: true } });
+        dispatchEvent({ type: 'tool.execution_complete', data: { toolCallId: 'tc-3', success: true } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+
+        await resultPromise;
+
+        const startLogs = capLogger.matching('Tool execution started');
+        expect(startLogs.length).toBe(3);
+        const completeLogs = capLogger.matching('Tool execution completed');
+        expect(completeLogs.length).toBe(3);
+        // No stale tools at settle
+        const warningLogs = capLogger.matching('still active at settle');
+        expect(warningLogs.length).toBe(0);
+    });
+});
+
+describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () => {
+    let service: CopilotSDKService;
+    let capLogger: ReturnType<typeof createCapturingLogger>;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        capLogger = createCapturingLogger();
+        setLogger(capLogger.logger);
+        vi.clearAllMocks();
+    });
+
+    afterEach(async () => {
+        setLogger(nullLogger);
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    it('should log permission requests and results via wrapped handler', async () => {
+        const { MockCopilotClient, mockClient, sessions } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const permissionHandler = (req: any) =>
+            req.kind === 'read' ? { kind: 'approved' } : { kind: 'denied-by-rules' };
+
+        const resultPromise = service.sendMessage({
+            prompt: 'Test',
+            workingDirectory: '/test',
+            timeoutMs: 200000,
+            loadDefaultMcpConfig: false,
+            onPermissionRequest: permissionHandler,
+        });
+
+        // Wait for createSession to be called and session to be ready
+        await vi.waitFor(() => {
+            expect(mockClient.createSession).toHaveBeenCalled();
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        // Get the wrapped handler that was passed to createSession
+        const sessionOptions = mockClient.createSession.mock.calls[0][0];
+        expect(sessionOptions.onPermissionRequest).toBeDefined();
+        expect(sessionOptions.onPermissionRequest).not.toBe(permissionHandler);
+
+        // Simulate permission requests through the wrapper
+        const readResult = sessionOptions.onPermissionRequest(
+            { kind: 'read', toolCallId: 'tc-1' },
+            { sessionId: sessions[0].session.sessionId }
+        );
+        expect(readResult.kind).toBe('approved');
+
+        const writeResult = sessionOptions.onPermissionRequest(
+            { kind: 'write', toolCallId: 'tc-2' },
+            { sessionId: sessions[0].session.sessionId }
+        );
+        expect(writeResult.kind).toBe('denied-by-rules');
+
+        // Verify logs
+        const permReqLogs = capLogger.matching('Permission request');
+        expect(permReqLogs.length).toBe(2);
+        expect(permReqLogs[0].message).toContain('kind=read');
+        expect(permReqLogs[1].message).toContain('kind=write');
+
+        const permResultLogs = capLogger.matching('Permission result');
+        expect(permResultLogs.length).toBe(2);
+        expect(permResultLogs[0].message).toContain('approved');
+        expect(permResultLogs[1].message).toContain('denied-by-rules');
+
+        // Settle the session properly
+        const { dispatchEvent } = sessions[0];
+        dispatchEvent({ type: 'assistant.message', data: { content: 'done', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+        await resultPromise;
+    });
+
+    it('should handle async permission handlers', async () => {
+        const { MockCopilotClient, mockClient, sessions } = createStreamingMockSDKModule();
+        const serviceAny = service as any;
+        serviceAny.sdkModule = { CopilotClient: MockCopilotClient };
+        serviceAny.availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+
+        const asyncPermHandler = async (req: any) => {
+            return req.kind === 'read' ? { kind: 'approved' as const } : { kind: 'denied-by-rules' as const };
+        };
+
+        const resultPromise = service.sendMessage({
+            prompt: 'Test',
+            workingDirectory: '/test',
+            timeoutMs: 200000,
+            loadDefaultMcpConfig: false,
+            onPermissionRequest: asyncPermHandler,
+        });
+
+        await vi.waitFor(() => {
+            expect(mockClient.createSession).toHaveBeenCalled();
+            expect(sessions.length).toBe(1);
+            expect(sessions[0].session.on).toHaveBeenCalled();
+        }, { timeout: 1000 });
+
+        const sessionOptions = mockClient.createSession.mock.calls[0][0];
+
+        // Call the async wrapper
+        const result = await sessionOptions.onPermissionRequest(
+            { kind: 'read', toolCallId: 'tc-async' },
+            { sessionId: sessions[0].session.sessionId }
+        );
+        expect(result.kind).toBe('approved');
+
+        // Verify async path logs
+        const permResultLogs = capLogger.matching('Permission result');
+        expect(permResultLogs.length).toBe(1);
+        expect(permResultLogs[0].message).toContain('approved');
+
+        // Settle the session properly
+        const { dispatchEvent } = sessions[0];
+        dispatchEvent({ type: 'assistant.message', data: { content: 'done', messageId: 'msg-1' } });
+        dispatchEvent({ type: 'session.idle', data: {} });
+        await resultPromise;
+    });
+});

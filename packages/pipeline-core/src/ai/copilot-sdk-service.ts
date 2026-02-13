@@ -414,11 +414,18 @@ interface ICopilotSession {
  * Known event types:
  * - "session.idle" - Session finished processing (data: {})
  * - "session.error" - Session error (data: { message, stack? })
- * - "assistant.message" - Final assistant message (data: { messageId, content })
+ * - "session.info" - Informational message (data: { infoType, message })
+ * - "assistant.message" - Final assistant message (data: { messageId, content, toolRequests? })
  * - "assistant.message_delta" - Streaming chunk (data: { messageId, deltaContent })
+ * - "assistant.intent" - AI's declared intent (data: { intent })
+ * - "assistant.turn_start" - Turn started (data: { turnId })
  * - "assistant.turn_end" - Turn ended (data: { turnId })
  * - "assistant.usage" - Per-turn token usage (data: { inputTokens, outputTokens, ... })
  * - "session.usage_info" - Session-level quota info (data: { tokenLimit, currentTokens })
+ * - "tool.execution_start" - Tool execution began (data: { toolCallId, toolName, arguments? })
+ * - "tool.execution_complete" - Tool execution finished (data: { toolCallId, success, result?, error? })
+ * - "tool.execution_progress" - Tool execution progress (data: { toolCallId, progressMessage })
+ * - "abort" - Session aborted (data: { reason })
  * 
  * Completion detection order:
  * 1. `session.idle` settles immediately
@@ -442,6 +449,27 @@ interface ISessionEvent {
         // Session quota fields (from session.usage_info)
         tokenLimit?: number;
         currentTokens?: number;
+        // Tool execution fields (from tool.execution_start / tool.execution_complete)
+        toolCallId?: string;
+        toolName?: string;
+        arguments?: unknown;
+        parentToolCallId?: string;
+        success?: boolean;
+        result?: { content?: string };
+        error?: { message?: string; code?: string };
+        toolTelemetry?: Record<string, unknown>;
+        // Tool execution progress (from tool.execution_progress)
+        progressMessage?: string;
+        // Tool execution partial result (from tool.execution_partial_result)
+        partialOutput?: string;
+        // Session info (from session.info)
+        infoType?: string;
+        // Assistant intent (from assistant.intent)
+        intent?: string;
+        // Assistant message tool requests
+        toolRequests?: Array<{ toolCallId: string; name: string; arguments?: unknown }>;
+        // Abort reason
+        reason?: string;
     };
 }
 
@@ -835,9 +863,22 @@ export class CopilotSDKService {
                 }
             }
 
-            // Permission handler
+            // Permission handler — wrap with logging to track permission requests
             if (options.onPermissionRequest) {
-                sessionOptions.onPermissionRequest = options.onPermissionRequest;
+                const originalHandler = options.onPermissionRequest;
+                sessionOptions.onPermissionRequest = (request, invocation) => {
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission request: kind=${request.kind}, toolCallId=${request.toolCallId || '(none)'}`);
+                    const result = originalHandler(request, invocation);
+                    // Handle both sync and async permission handlers
+                    if (result && typeof (result as Promise<PermissionRequestResult>).then === 'function') {
+                        return (result as Promise<PermissionRequestResult>).then(r => {
+                            logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission result: ${r.kind} (for ${request.kind})`);
+                            return r;
+                        });
+                    }
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${invocation.sessionId}]: Permission result: ${(result as PermissionRequestResult).kind} (for ${request.kind})`);
+                    return result;
+                };
             }
 
             const sessionOptionsStr = Object.keys(sessionOptions).length > 0 
@@ -1247,6 +1288,7 @@ export class CopilotSDKService {
         return new Promise((resolve, reject) => {
             const logger = getLogger();
             const sid = session.sessionId;
+            const streamingStartTime = Date.now();
             let response = '';
             // Accumulate ALL assistant.message content across turns.
             // With multi-turn MCP tool usage, the AI may produce multiple messages
@@ -1256,6 +1298,8 @@ export class CopilotSDKService {
             let settled = false;
             let turnEndGraceTimer: ReturnType<typeof setTimeout> | null = null;
             let turnCount = 0;
+            // Track active tool executions for debugging stuck sessions
+            const activeToolCalls = new Map<string, { toolName: string; startTime: number }>();
 
             // Token usage accumulator
             let usageInputTokens = 0;
@@ -1323,11 +1367,20 @@ export class CopilotSDKService {
                     ? allMessages.filter(m => m.trim()).join('\n\n')
                     : '';
                 const result = joinedMessages || response;
-                logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Streaming completed (${result.length} chars, ${turnCount} turns, ${allMessages.length} messages)`);
+                const elapsedMs = Date.now() - streamingStartTime;
+                logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Streaming completed (${result.length} chars, ${turnCount} turns, ${allMessages.length} messages, ${elapsedMs}ms elapsed)`);
+                if (activeToolCalls.size > 0) {
+                    const staleTools = [...activeToolCalls.entries()].map(([id, t]) => `${t.toolName}(${id}, ${Date.now() - t.startTime}ms)`);
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: WARNING: ${activeToolCalls.size} tool call(s) still active at settle: ${staleTools.join(', ')}`);
+                }
                 settle(resolve, { response: result, tokenUsage: buildTokenUsage(), turnCount });
             };
 
             const timeoutId = setTimeout(() => {
+                if (activeToolCalls.size > 0) {
+                    const staleTools = [...activeToolCalls.entries()].map(([id, t]) => `${t.toolName}(${id}, ${Date.now() - t.startTime}ms)`);
+                    logger.error(LogCategory.AI, `CopilotSDKService [${sid}]: Timeout with ${activeToolCalls.size} active tool call(s): ${staleTools.join(', ')}`);
+                }
                 settleError(new Error(`Request timed out after ${timeoutMs}ms`));
             }, timeoutMs);
 
@@ -1358,6 +1411,11 @@ export class CopilotSDKService {
                         allMessages.push(messageContent);
                     }
                     logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Received message #${allMessages.length} (${messageContent.length} chars)`);
+                    // Log tool requests if present — shows which tools the AI wants to invoke
+                    if (event.data?.toolRequests?.length) {
+                        const toolNames = event.data.toolRequests.map(t => t.name).join(', ');
+                        logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Message includes ${event.data.toolRequests.length} tool request(s): ${toolNames}`);
+                    }
                     // If no delta chunks were received but we have a streaming callback,
                     // emit the message as a single chunk so SSE consumers get content
                     if (onStreamingChunk && messageContent && !response) {
@@ -1374,6 +1432,8 @@ export class CopilotSDKService {
                     // starts a new turn (turn_start) to process tool results. If we
                     // don't cancel the grace timer, we'd settle with just the intent
                     // message from the first turn instead of waiting for the full response.
+                    const elapsedMs = Date.now() - streamingStartTime;
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Turn starting (${elapsedMs}ms elapsed, ${activeToolCalls.size} active tool calls)`);
                     if (turnEndGraceTimer) {
                         clearTimeout(turnEndGraceTimer);
                         turnEndGraceTimer = null;
@@ -1436,6 +1496,37 @@ export class CopilotSDKService {
                         usageCurrentTokens = event.data.currentTokens;
                     }
                     logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Session usage info: limit=${usageTokenLimit} current=${usageCurrentTokens}`);
+                } else if (eventType === 'tool.execution_start') {
+                    // Tool execution is starting — track it for debugging stuck sessions
+                    const toolCallId = event.data?.toolCallId || '(unknown)';
+                    const toolName = event.data?.toolName || '(unknown)';
+                    activeToolCalls.set(toolCallId, { toolName, startTime: Date.now() });
+                    const argsStr = event.data?.arguments ? ` args=${JSON.stringify(event.data.arguments).substring(0, 200)}` : '';
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Tool execution started: ${toolName} [${toolCallId}]${argsStr}`);
+                } else if (eventType === 'tool.execution_complete') {
+                    // Tool execution finished — remove from active tracking
+                    const toolCallId = event.data?.toolCallId || '(unknown)';
+                    const tracked = activeToolCalls.get(toolCallId);
+                    const durationStr = tracked ? ` (${Date.now() - tracked.startTime}ms)` : '';
+                    activeToolCalls.delete(toolCallId);
+                    const toolSuccess = event.data?.success;
+                    if (toolSuccess) {
+                        const resultLen = event.data?.result?.content?.length ?? 0;
+                        logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Tool execution completed: ${tracked?.toolName || '?'} [${toolCallId}] success${durationStr} (${resultLen} chars)`);
+                    } else {
+                        const errorMsg = event.data?.error?.message || '(no error message)';
+                        logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Tool execution FAILED: ${tracked?.toolName || '?'} [${toolCallId}]${durationStr} error=${errorMsg}`);
+                    }
+                } else if (eventType === 'tool.execution_progress') {
+                    const toolCallId = event.data?.toolCallId || '(unknown)';
+                    const tracked = activeToolCalls.get(toolCallId);
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Tool progress: ${tracked?.toolName || '?'} [${toolCallId}]: ${event.data?.progressMessage || ''}`);
+                } else if (eventType === 'assistant.intent') {
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Assistant intent: ${event.data?.intent || '(none)'}`);
+                } else if (eventType === 'session.info') {
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Session info [${event.data?.infoType || '?'}]: ${event.data?.message || ''}`);
+                } else if (eventType === 'abort') {
+                    logger.debug(LogCategory.AI, `CopilotSDKService [${sid}]: Session aborted: ${event.data?.reason || '(no reason)'}`);
                 }
             });
 
