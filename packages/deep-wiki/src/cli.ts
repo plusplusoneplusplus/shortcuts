@@ -40,6 +40,28 @@ export function createProgram(): Command {
         .version('1.0.0');
 
     // ========================================================================
+    // deep-wiki init
+    // ========================================================================
+
+    program
+        .command('init')
+        .description('Generate a template deep-wiki.config.yaml configuration file')
+        .option('-o, --output <path>', 'Output file path', 'deep-wiki.config.yaml')
+        .option('--force', 'Overwrite existing file', false)
+        .option('-v, --verbose', 'Verbose logging', false)
+        .option('--no-color', 'Disable colored output')
+        .action(async (opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const { executeInit } = await import('./commands/init');
+            const exitCode = await executeInit({
+                output: opts.output as string | undefined,
+                force: Boolean(opts.force),
+                verbose: Boolean(opts.verbose),
+            });
+            process.exit(exitCode);
+        });
+
+    // ========================================================================
     // deep-wiki seeds <repo-path>
     // ========================================================================
 
