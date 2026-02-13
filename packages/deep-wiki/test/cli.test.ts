@@ -212,6 +212,13 @@ describe('CLI', () => {
             expect(themeOpt!.defaultValue).toBe('auto');
         });
 
+        it('should have --end-phase option', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'generate')!;
+            const optionNames = cmd.options.map(o => o.long || o.short);
+            expect(optionNames).toContain('--end-phase');
+        });
+
         it('should have --skip-website defaulting to false', () => {
             const program = createProgram();
             const cmd = program.commands.find(c => c.name() === 'generate')!;
@@ -362,6 +369,35 @@ describe('CLI', () => {
             expect(capturedOpts.phase).toBe(2);
             expect(Number.isNaN(capturedOpts.concurrency)).toBe(false);
             expect(Number.isNaN(capturedOpts.phase)).toBe(false);
+        });
+
+        it('should parse --end-phase correctly in generate command', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'generate')!;
+
+            let capturedOpts: Record<string, unknown> = {};
+            cmd.action((_repoPath: string, opts: Record<string, unknown>) => {
+                capturedOpts = opts;
+            });
+
+            program.parse(['node', 'deep-wiki', 'generate', '.', '--end-phase', '3']);
+            expect(capturedOpts.endPhase).toBe(3);
+            expect(typeof capturedOpts.endPhase).toBe('number');
+            expect(Number.isNaN(capturedOpts.endPhase)).toBe(false);
+        });
+
+        it('should parse --phase and --end-phase together correctly', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'generate')!;
+
+            let capturedOpts: Record<string, unknown> = {};
+            cmd.action((_repoPath: string, opts: Record<string, unknown>) => {
+                capturedOpts = opts;
+            });
+
+            program.parse(['node', 'deep-wiki', 'generate', '.', '--phase', '2', '--end-phase', '4']);
+            expect(capturedOpts.phase).toBe(2);
+            expect(capturedOpts.endPhase).toBe(4);
         });
     });
 });

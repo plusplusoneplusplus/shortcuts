@@ -206,6 +206,8 @@ export interface DeepWikiConfigFile {
     title?: string;
     /** Start from phase N */
     phase?: number;
+    /** End at phase N (only run phases from `phase` to `endPhase` inclusive) */
+    endPhase?: number;
     /** Per-phase configuration overrides */
     phases?: PhasesConfig;
 }
@@ -474,6 +476,8 @@ export interface GenerateCommandOptions {
     useCache: boolean;
     /** Start from phase N (1, 2, 3, or 4) */
     phase?: number;
+    /** End at phase N (1, 2, 3, 4, or 5). Only runs phases from `phase` to `endPhase` inclusive. */
+    endPhase?: number;
     /** Verbose logging */
     verbose: boolean;
     /** Skip website generation (Phase 5) */

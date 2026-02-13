@@ -445,6 +445,234 @@ describe('executeGenerate — --phase option', () => {
 });
 
 // ============================================================================
+// --end-phase option
+// ============================================================================
+
+describe('executeGenerate — --end-phase option', () => {
+    it('should fail for invalid --end-phase value (0)', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ endPhase: 0 }));
+        expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
+        expect(printError).toHaveBeenCalledWith(
+            expect.stringContaining('Invalid --end-phase value')
+        );
+    });
+
+    it('should fail for invalid --end-phase value (6)', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ endPhase: 6 }));
+        expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
+        expect(printError).toHaveBeenCalledWith(
+            expect.stringContaining('Invalid --end-phase value')
+        );
+    });
+
+    it('should fail when --end-phase < --phase', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3, endPhase: 2 }));
+        expect(exitCode).toBe(EXIT_CODES.CONFIG_ERROR);
+        expect(printError).toHaveBeenCalledWith(
+            expect.stringContaining('less than --phase')
+        );
+    });
+
+    it('--end-phase 1 should stop after Phase 1 (discovery only)', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ endPhase: 1 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Phase 1 should run
+        expect(discoverModuleGraph).toHaveBeenCalled();
+        // Phase 3 analysis should NOT run
+        expect(analyzeModules).not.toHaveBeenCalled();
+        // Phase 5 website should NOT run
+        expect(generateWebsite).not.toHaveBeenCalled();
+
+        expect(printSuccess).toHaveBeenCalledWith(
+            expect.stringContaining('--end-phase 1')
+        );
+    });
+
+    it('--end-phase 2 should stop after Phase 2 (discovery + consolidation)', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ endPhase: 2 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Phase 1 should run
+        expect(discoverModuleGraph).toHaveBeenCalled();
+        // Phase 3 analysis should NOT run
+        expect(analyzeModules).not.toHaveBeenCalled();
+        // Phase 5 website should NOT run
+        expect(generateWebsite).not.toHaveBeenCalled();
+
+        expect(printSuccess).toHaveBeenCalledWith(
+            expect.stringContaining('--end-phase 2')
+        );
+    });
+
+    it('--end-phase 3 should stop after Phase 3 (through analysis, no writing)', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ endPhase: 3 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Phase 1 should run
+        expect(discoverModuleGraph).toHaveBeenCalled();
+        // Phase 3 should run
+        expect(analyzeModules).toHaveBeenCalled();
+        // Phase 4 writing should NOT run
+        expect(generateArticles).not.toHaveBeenCalled();
+        // Phase 5 website should NOT run
+        expect(generateWebsite).not.toHaveBeenCalled();
+
+        expect(printSuccess).toHaveBeenCalledWith(
+            expect.stringContaining('--end-phase 3')
+        );
+    });
+
+    it('--end-phase 4 should run through Phase 4 but skip website (Phase 5)', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ endPhase: 4 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // All phases up to 4 should run
+        expect(discoverModuleGraph).toHaveBeenCalled();
+        expect(analyzeModules).toHaveBeenCalled();
+        expect(generateArticles).toHaveBeenCalled();
+        // Phase 5 website should NOT run
+        expect(generateWebsite).not.toHaveBeenCalled();
+    });
+
+    it('--end-phase 5 should run all phases (same as default)', async () => {
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ endPhase: 5 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // All phases should run
+        expect(discoverModuleGraph).toHaveBeenCalled();
+        expect(analyzeModules).toHaveBeenCalled();
+        expect(generateArticles).toHaveBeenCalled();
+        expect(generateWebsite).toHaveBeenCalled();
+    });
+
+    it('--phase 3 --end-phase 3 should run only Phase 3 (analysis)', async () => {
+        // Set up cached graph for Phase 3
+        vi.mocked(getCachedGraph).mockResolvedValue({
+            metadata: { gitHash: 'abc123', timestamp: Date.now(), version: '1.0.0' },
+            graph: {
+                project: {
+                    name: 'Cached',
+                    description: 'Cached',
+                    language: 'TypeScript',
+                    buildSystem: 'npm',
+                    entryPoints: [],
+                },
+                modules: [{
+                    id: 'cached-mod',
+                    name: 'Cached Module',
+                    path: 'src/cached/',
+                    purpose: 'Cached',
+                    keyFiles: [],
+                    dependencies: [],
+                    dependents: [],
+                    complexity: 'low',
+                    category: 'core',
+                }],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: '',
+            },
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3, endPhase: 3 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Phase 1 should NOT run (skipped by --phase 3)
+        expect(discoverModuleGraph).not.toHaveBeenCalled();
+        // Phase 3 should run
+        expect(analyzeModules).toHaveBeenCalled();
+        // Phase 4 writing should NOT run (stopped by --end-phase 3)
+        expect(generateArticles).not.toHaveBeenCalled();
+        // Phase 5 website should NOT run
+        expect(generateWebsite).not.toHaveBeenCalled();
+
+        expect(printSuccess).toHaveBeenCalledWith(
+            expect.stringContaining('--end-phase 3')
+        );
+    });
+
+    it('--phase 2 --end-phase 4 should skip Phase 1 and Phase 5', async () => {
+        // Set up cached graph
+        vi.mocked(getCachedGraph).mockResolvedValue({
+            metadata: { gitHash: 'abc123', timestamp: Date.now(), version: '1.0.0' },
+            graph: {
+                project: {
+                    name: 'Cached',
+                    description: 'Cached',
+                    language: 'TypeScript',
+                    buildSystem: 'npm',
+                    entryPoints: [],
+                },
+                modules: [{
+                    id: 'cached-mod',
+                    name: 'Cached Module',
+                    path: 'src/cached/',
+                    purpose: 'Cached',
+                    keyFiles: [],
+                    dependencies: [],
+                    dependents: [],
+                    complexity: 'low',
+                    category: 'core',
+                }],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: '',
+            },
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 2, endPhase: 4 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+
+        // Phase 1 should NOT run (skipped by --phase 2)
+        expect(discoverModuleGraph).not.toHaveBeenCalled();
+        // Phase 3 should run
+        expect(analyzeModules).toHaveBeenCalled();
+        // Phase 4 should run
+        expect(generateArticles).toHaveBeenCalled();
+        // Phase 5 website should NOT run (stopped by --end-phase 4)
+        expect(generateWebsite).not.toHaveBeenCalled();
+    });
+
+    it('should print End Phase in header when --end-phase is set', async () => {
+        await executeGenerate(repoDir, defaultOptions({ endPhase: 3 }));
+        expect(printKeyValue).toHaveBeenCalledWith('End Phase', '3');
+    });
+
+    it('should not print End Phase in header when --end-phase is not set', async () => {
+        await executeGenerate(repoDir, defaultOptions());
+        expect(printKeyValue).not.toHaveBeenCalledWith('End Phase', expect.anything());
+    });
+
+    it('--phase 3 --end-phase 3 should equal --end-phase 3 (same as --phase==--end-phase)', async () => {
+        vi.mocked(getCachedGraph).mockResolvedValue({
+            metadata: { gitHash: 'abc', timestamp: Date.now(), version: '1.0.0' },
+            graph: {
+                project: { name: 'T', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
+                modules: [{
+                    id: 'test-mod',
+                    name: 'Test Module',
+                    path: 'src/test/',
+                    purpose: 'Test',
+                    keyFiles: [],
+                    dependencies: [],
+                    dependents: [],
+                    complexity: 'low',
+                    category: 'core',
+                }],
+                categories: [{ name: 'core', description: 'Core' }],
+                architectureNotes: '',
+            },
+        });
+
+        const exitCode = await executeGenerate(repoDir, defaultOptions({ phase: 3, endPhase: 3 }));
+        expect(exitCode).toBe(EXIT_CODES.SUCCESS);
+        // Phase 3 ran
+        expect(analyzeModules).toHaveBeenCalled();
+        // Phase 4 did not run
+        expect(generateArticles).not.toHaveBeenCalled();
+    });
+});
+
+// ============================================================================
 // --force option
 // ============================================================================
 

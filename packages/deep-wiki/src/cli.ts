@@ -141,6 +141,7 @@ export function createProgram(): Command {
         .option('--force', 'Ignore cache, regenerate everything', false)
         .option('--use-cache', 'Use existing cache regardless of git hash', false)
         .option('--phase <number>', 'Start from phase N (uses cached prior phases)', (v: string) => parseInt(v, 10))
+        .option('--end-phase <number>', 'End at phase N (only run phases from --phase to --end-phase)', (v: string) => parseInt(v, 10))
         .option('--skip-website', 'Skip website generation (Phase 5)', false)
         .option('--no-cluster', 'Skip module consolidation (keep original granularity)')
         .option('--no-strict', 'Allow partial failures (default: strict, any failure aborts)')
@@ -164,6 +165,7 @@ export function createProgram(): Command {
                 force: Boolean(opts.force),
                 useCache: Boolean(opts.useCache),
                 phase: opts.phase as number | undefined,
+                endPhase: opts.endPhase as number | undefined,
                 skipWebsite: Boolean(opts.skipWebsite),
                 noCluster: opts.cluster === false,
                 strict: opts.strict !== false,

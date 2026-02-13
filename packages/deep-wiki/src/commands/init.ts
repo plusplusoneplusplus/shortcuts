@@ -46,6 +46,7 @@ export const CONFIG_TEMPLATE = `# Deep Wiki Configuration
 # strict: true                  # Fail pipeline if any module fails
 # skipWebsite: false            # Skip static website generation (Phase 5)
 # phase: 1                      # Start from phase N (1-4)
+# endPhase: 5                   # End at phase N (1-5), only runs phases from phase to endPhase
 
 # ── Per-Phase Overrides ──────────────────────────────────────────
 # Each phase can override: model, timeout, concurrency, depth

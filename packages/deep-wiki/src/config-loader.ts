@@ -139,6 +139,7 @@ export function mergeConfigWithCLI(
         force: resolve('force', cliOptions.force, config.force),
         useCache: resolve('useCache', cliOptions.useCache, config.useCache),
         phase: resolve('phase', cliOptions.phase, config.phase),
+        endPhase: resolve('endPhase', cliOptions.endPhase, config.endPhase),
         verbose: cliOptions.verbose, // always from CLI
         skipWebsite: resolve('skipWebsite', cliOptions.skipWebsite, config.skipWebsite),
         theme: resolve('theme', cliOptions.theme, config.theme as WebsiteTheme | undefined),
@@ -291,6 +292,14 @@ export function validateConfig(raw: Record<string, unknown>): DeepWikiConfigFile
             throw new Error('Config error: "phase" must be an integer between 1 and 4');
         }
         config.phase = raw.phase;
+    }
+
+    // End phase (custom: integer check + range 1-5)
+    if (raw.endPhase !== undefined) {
+        if (typeof raw.endPhase !== 'number' || !Number.isInteger(raw.endPhase) || raw.endPhase < 1 || raw.endPhase > 5) {
+            throw new Error('Config error: "endPhase" must be an integer between 1 and 5');
+        }
+        config.endPhase = raw.endPhase;
     }
 
     // Boolean fields

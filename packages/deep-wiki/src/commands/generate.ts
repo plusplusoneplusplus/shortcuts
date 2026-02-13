@@ -81,6 +81,17 @@ export async function executeGenerate(
         return EXIT_CODES.CONFIG_ERROR;
     }
 
+    // Validate end-phase option
+    const endPhase = options.endPhase !== undefined ? options.endPhase : 5; // default: run through Phase 5 (website)
+    if (endPhase < 1 || endPhase > 5) {
+        printError(`Invalid --end-phase value: ${endPhase}. Must be 1, 2, 3, 4, or 5.`);
+        return EXIT_CODES.CONFIG_ERROR;
+    }
+    if (endPhase < startPhase) {
+        printError(`Invalid --end-phase value: ${endPhase} is less than --phase ${startPhase}.`);
+        return EXIT_CODES.CONFIG_ERROR;
+    }
+
     // Print header
     printHeader('Deep Wiki \u2014 Full Generation');
     printKeyValue('Repository', absoluteRepoPath);
@@ -90,6 +101,7 @@ export async function executeGenerate(
     if (options.model) { printKeyValue('Model', options.model); }
     if (options.concurrency) { printKeyValue('Concurrency', String(options.concurrency)); }
     if (startPhase > 1) { printKeyValue('Starting Phase', String(startPhase)); }
+    if (options.endPhase) { printKeyValue('End Phase', String(endPhase)); }
     if (options.force) { printKeyValue('Force', 'yes (ignoring all caches)'); }
     if (options.useCache) { printKeyValue('Use Cache', 'yes (ignoring git hash)'); }
     if (options.strict === false) { printKeyValue('Strict', 'no (partial failures allowed)'); }
@@ -182,6 +194,12 @@ export async function executeGenerate(
             return EXIT_CODES.CANCELLED;
         }
 
+        // If endPhase is 1, stop after discovery
+        if (endPhase < 2) {
+            printPhaseStopped(1, endPhase);
+            return EXIT_CODES.SUCCESS;
+        }
+
         // ================================================================
         // Phase 2: Consolidation
         // ================================================================
@@ -195,6 +213,12 @@ export async function executeGenerate(
 
         if (isCancelled()) {
             return EXIT_CODES.CANCELLED;
+        }
+
+        // If endPhase is 2, stop after consolidation
+        if (endPhase < 3) {
+            printPhaseStopped(2, endPhase);
+            return EXIT_CODES.SUCCESS;
         }
 
         // ================================================================
@@ -231,6 +255,12 @@ export async function executeGenerate(
             return EXIT_CODES.CANCELLED;
         }
 
+        // If endPhase is 3, stop after analysis
+        if (endPhase < 4) {
+            printPhaseStopped(3, endPhase);
+            return EXIT_CODES.SUCCESS;
+        }
+
         // ================================================================
         // Phase 4: Article Generation
         // ================================================================
@@ -247,7 +277,7 @@ export async function executeGenerate(
         let websiteGenerated = false;
         let phase5Duration = 0;
 
-        if (!options.skipWebsite) {
+        if (!options.skipWebsite && endPhase >= 5) {
             // Ensure module-graph.json reflects the current in-memory graph before
             // Phase 5 reads it. This is critical when Phase 2 (Consolidation)
             // changed module IDs — without this, the website would use the stale
@@ -327,6 +357,15 @@ export async function executeGenerate(
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Print a message indicating that the pipeline stopped at a specific phase
+ * due to the --end-phase option.
+ */
+function printPhaseStopped(lastPhaseRun: number, endPhase: number): void {
+    process.stderr.write('\n');
+    printSuccess(`Stopped after Phase ${lastPhaseRun} (--end-phase ${endPhase})`);
+}
 
 /**
  * Format a duration in milliseconds to a human-readable string.

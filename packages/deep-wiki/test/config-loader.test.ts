@@ -96,6 +96,16 @@ phase: 2
         expect(config.phase).toBe(2);
     });
 
+    it('should load endPhase from config file', () => {
+        const configPath = writeConfigFile('config.yaml', `
+endPhase: 3
+phase: 2
+`);
+        const config = loadConfig(configPath);
+        expect(config.endPhase).toBe(3);
+        expect(config.phase).toBe(2);
+    });
+
     it('should load config with per-phase overrides', () => {
         const configPath = writeConfigFile('config.yaml', `
 model: gpt-4
@@ -251,6 +261,18 @@ describe('validateConfig', () => {
         // Valid values
         expect(validateConfig({ phase: 1 }).phase).toBe(1);
         expect(validateConfig({ phase: 4 }).phase).toBe(4);
+    });
+
+    it('should validate endPhase number', () => {
+        expect(() => validateConfig({ endPhase: 0 })).toThrow('"endPhase" must be an integer between 1 and 5');
+        expect(() => validateConfig({ endPhase: 6 })).toThrow('"endPhase" must be an integer between 1 and 5');
+        expect(() => validateConfig({ endPhase: 1.5 })).toThrow('"endPhase" must be an integer between 1 and 5');
+        expect(() => validateConfig({ endPhase: 'three' })).toThrow('"endPhase" must be an integer between 1 and 5');
+
+        // Valid values
+        expect(validateConfig({ endPhase: 1 }).endPhase).toBe(1);
+        expect(validateConfig({ endPhase: 3 }).endPhase).toBe(3);
+        expect(validateConfig({ endPhase: 5 }).endPhase).toBe(5);
     });
 
     it('should validate boolean fields', () => {
@@ -465,6 +487,23 @@ describe('mergeConfigWithCLI', () => {
         const merged = mergeConfigWithCLI(config, cli, explicit);
         expect(merged.force).toBe(false);
         expect(merged.useCache).toBe(false);
+    });
+
+    it('should merge endPhase from config when CLI does not set it', () => {
+        const config = { endPhase: 3 };
+        const cli = makeDefaultCLI();
+
+        const merged = mergeConfigWithCLI(config, cli);
+        expect(merged.endPhase).toBe(3);
+    });
+
+    it('should let explicit CLI endPhase override config endPhase', () => {
+        const config = { endPhase: 3 };
+        const cli = makeDefaultCLI({ endPhase: 4 });
+        const explicit = new Set(['endPhase']);
+
+        const merged = mergeConfigWithCLI(config, cli, explicit);
+        expect(merged.endPhase).toBe(4);
     });
 
     it('should handle no explicit set (empty set)', () => {
