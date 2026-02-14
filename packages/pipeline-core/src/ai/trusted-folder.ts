@@ -32,11 +32,14 @@ export function setTrustedFolderHomeOverride(dir: string | null): void {
 
 /**
  * Get the Copilot config directory path.
- * Respects XDG_CONFIG_HOME if set, otherwise uses ~/.copilot.
+ * When a home override is set (testing), always uses that.
+ * Otherwise respects XDG_CONFIG_HOME if set, falling back to ~/.copilot.
  */
 function getConfigDir(): string {
-    const home = homeDirectoryOverride ?? os.homedir();
-    return process.env['XDG_CONFIG_HOME'] ?? path.join(home, CONFIG_DIR);
+    if (homeDirectoryOverride !== null) {
+        return path.join(homeDirectoryOverride, CONFIG_DIR);
+    }
+    return process.env['XDG_CONFIG_HOME'] ?? path.join(os.homedir(), CONFIG_DIR);
 }
 
 /**
