@@ -14,25 +14,10 @@
 
 import type { WebsiteTheme } from '../types';
 import { getMermaidZoomStyles, getMermaidZoomScript } from '../rendering/mermaid-zoom';
+import type { SpaTemplateOptions, ScriptOptions } from './spa/types';
+import { escapeHtml } from './spa/helpers';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface SpaTemplateOptions {
-    /** Website theme */
-    theme: WebsiteTheme;
-    /** Project title */
-    title: string;
-    /** Enable search */
-    enableSearch: boolean;
-    /** Enable AI features (Ask panel) */
-    enableAI: boolean;
-    /** Enable interactive dependency graph */
-    enableGraph: boolean;
-    /** Enable watch mode (WebSocket live reload) */
-    enableWatch?: boolean;
-}
+export type { SpaTemplateOptions } from './spa/types';
 
 // ============================================================================
 // Public API
@@ -1229,14 +1214,6 @@ ${getMermaidZoomStyles()}
 // ============================================================================
 // JavaScript
 // ============================================================================
-
-interface ScriptOptions {
-    enableSearch: boolean;
-    enableAI: boolean;
-    enableGraph: boolean;
-    enableWatch: boolean;
-    defaultTheme: WebsiteTheme;
-}
 
 function getSpaScript(opts: ScriptOptions): string {
     return `        // ====================================================================
@@ -2834,16 +2811,4 @@ ${opts.enableWatch ? `
             }
         }`;
 
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function escapeHtml(str: string): string {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 }
