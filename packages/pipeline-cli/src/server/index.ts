@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import { createRequestHandler } from './router';
 import { registerApiRoutes } from './api-handler';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
+import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
@@ -59,8 +60,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });
 
-    // SPA shell placeholder
-    const spaHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pipeline Server</title></head><body><div id="app">Pipeline Execution Server</div></body></html>`;
+    // Generate SPA dashboard HTML (cached — it's static)
+    const spaHtml = generateDashboardHtml();
 
     // Build API routes
     const routes: Route[] = [];
@@ -146,3 +147,5 @@ export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } f
 export { ProcessWebSocketServer, toProcessSummary, sendFrame, decodeFrame } from './websocket';
 export type { WSClient, ProcessSummary, ServerMessage, ClientMessage } from './websocket';
 export type { RouterOptions } from './router';
+export { generateDashboardHtml } from './spa';
+export type { DashboardOptions } from './spa';
