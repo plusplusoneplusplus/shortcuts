@@ -7,3 +7,6 @@ export { buildOutlinePrompt } from './outline-prompts';
 export { runTopicAnalysis, analyzeArticleScope, analyzeCrossCutting } from './topic-analysis';
 export type { TopicAnalysisOptions } from './topic-analysis';
 export { buildArticleAnalysisPrompt, buildCrossCuttingPrompt } from './analysis-prompts';
+export { generateTopicArticles, extractSummary } from './article-generator';
+export type { TopicArticleGenOptions, TopicArticleGenResult } from './article-generator';
+export { buildSubArticlePrompt, buildIndexPagePrompt } from './article-prompts';
