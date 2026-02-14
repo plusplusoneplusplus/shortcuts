@@ -10,6 +10,22 @@
 import type * as http from 'http';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 
+/** Options for the `pipeline serve` CLI command. */
+export interface ServeCommandOptions {
+    /** TCP port (default `4000`). */
+    port?: number;
+    /** Bind address (default `'localhost'`). */
+    host?: string;
+    /** Directory for process storage (default `~/.pipeline-server/`). */
+    dataDir?: string;
+    /** Auto-open browser on start (default `true`). */
+    open?: boolean;
+    /** SPA colour theme (default `'auto'`). */
+    theme?: 'auto' | 'light' | 'dark';
+    /** Disable colored output. */
+    noColor?: boolean;
+}
+
 /** Options accepted by `createExecutionServer()`. */
 export interface ExecutionServerOptions {
     /** Injected process store (FileProcessStore from pipeline-core). */

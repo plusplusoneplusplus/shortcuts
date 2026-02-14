@@ -31,6 +31,13 @@ export interface CLIConfig {
     mcpConfig?: string;
     /** Default timeout in seconds */
     timeout?: number;
+    /** Serve command defaults */
+    serve?: {
+        port?: number;
+        host?: string;
+        dataDir?: string;
+        theme?: 'auto' | 'light' | 'dark';
+    };
 }
 
 /**
@@ -43,6 +50,12 @@ export interface ResolvedCLIConfig {
     approvePermissions: boolean;
     mcpConfig?: string;
     timeout?: number;
+    serve?: {
+        port: number;
+        host: string;
+        dataDir: string;
+        theme: 'auto' | 'light' | 'dark';
+    };
 }
 
 // ============================================================================
@@ -57,6 +70,12 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     parallel: 5,
     output: 'table',
     approvePermissions: false,
+    serve: {
+        port: 4000,
+        host: 'localhost',
+        dataDir: '~/.pipeline-server',
+        theme: 'auto',
+    },
 };
 
 // ============================================================================
@@ -126,6 +145,27 @@ function validateConfig(config: unknown): CLIConfig | undefined {
         result.timeout = raw.timeout;
     }
 
+    // Validate serve sub-object
+    if (typeof raw.serve === 'object' && raw.serve !== null) {
+        const s = raw.serve as Record<string, unknown>;
+        const serve: CLIConfig['serve'] = {};
+        if (typeof s.port === 'number' && s.port > 0) {
+            serve.port = Math.floor(s.port);
+        }
+        if (typeof s.host === 'string') {
+            serve.host = s.host;
+        }
+        if (typeof s.dataDir === 'string') {
+            serve.dataDir = s.dataDir;
+        }
+        if (typeof s.theme === 'string' && ['auto', 'light', 'dark'].includes(s.theme)) {
+            serve.theme = s.theme as 'auto' | 'light' | 'dark';
+        }
+        if (Object.keys(serve).length > 0) {
+            result.serve = serve;
+        }
+    }
+
     return result;
 }
 
@@ -153,5 +193,11 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         approvePermissions: override.approvePermissions ?? base.approvePermissions,
         mcpConfig: override.mcpConfig ?? base.mcpConfig,
         timeout: override.timeout ?? base.timeout,
+        serve: {
+            port: override.serve?.port ?? base.serve?.port ?? 4000,
+            host: override.serve?.host ?? base.serve?.host ?? 'localhost',
+            dataDir: override.serve?.dataDir ?? base.serve?.dataDir ?? '~/.pipeline-server',
+            theme: override.serve?.theme ?? base.serve?.theme ?? 'auto',
+        },
     };
 }

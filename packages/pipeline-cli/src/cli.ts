@@ -16,6 +16,7 @@ import { resolveConfig } from './config';
 import type { ResolvedCLIConfig } from './config';
 import { setColorEnabled, setVerbosity } from './logger';
 import type { OutputFormat } from './output-formatter';
+import type { ServeCommandOptions } from './server/types';
 
 // ============================================================================
 // Exit Codes
@@ -118,6 +119,35 @@ export function createProgram(): Command {
 
             const format = ((opts.output as string) || config.output) as OutputFormat;
             const exitCode = executeList(dirPath, format);
+            process.exit(exitCode);
+        });
+
+    // ========================================================================
+    // pipeline serve
+    // ========================================================================
+
+    program
+        .command('serve')
+        .description('Start the AI Execution Dashboard web server')
+        .option('-p, --port <number>', 'Port number', (v: string) => parseInt(v, 10))
+        .option('-H, --host <string>', 'Bind address')
+        .option('-d, --data-dir <path>', 'Data directory for process storage')
+        .option('--no-open', 'Don\'t auto-open browser')
+        .option('--theme <theme>', 'UI theme: auto, light, dark')
+        .option('--no-color', 'Disable colored output')
+        .action(async (opts: Record<string, unknown>) => {
+            const config = resolveConfig();
+            applyGlobalOptions(opts, config);
+
+            const { executeServe } = await import('./commands/serve');
+            const exitCode = await executeServe({
+                port: (opts.port as number | undefined) ?? config.serve?.port,
+                host: (opts.host as string | undefined) ?? config.serve?.host,
+                dataDir: (opts.dataDir as string | undefined) ?? config.serve?.dataDir,
+                open: opts.open as boolean | undefined,
+                theme: ((opts.theme as string | undefined) ?? config.serve?.theme) as ServeCommandOptions['theme'],
+                noColor: opts.color === false,
+            });
             process.exit(exitCode);
         });
 
