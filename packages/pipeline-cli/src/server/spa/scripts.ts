@@ -11,6 +11,7 @@ import { getThemeScript } from './scripts/theme';
 import { getSidebarScript } from './scripts/sidebar';
 import { getDetailScript } from './scripts/detail';
 import { getFiltersScript } from './scripts/filters';
+import { getQueueScript } from './scripts/queue';
 import { getWebSocketScript } from './scripts/websocket';
 import { getUtilsScript } from './scripts/utils';
 
@@ -21,5 +22,6 @@ export function getDashboardScript(opts: ScriptOptions): string {
         getSidebarScript() +
         getDetailScript() +
         getFiltersScript() +
+        getQueueScript(opts) +
         getWebSocketScript(opts) + '\n';
 }

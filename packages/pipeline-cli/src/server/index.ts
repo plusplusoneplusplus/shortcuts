@@ -14,11 +14,13 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { createRequestHandler } from './router';
 import { registerApiRoutes } from './api-handler';
+import { registerQueueRoutes } from './queue-handler';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Stub Process Store
@@ -63,12 +65,20 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });
 
+    // Create queue manager
+    const queueManager = new TaskQueueManager({
+        maxQueueSize: 0,  // unlimited
+        keepHistory: true,
+        maxHistorySize: 100,
+    });
+
     // Generate SPA dashboard HTML (cached — it's static)
     const spaHtml = generateDashboardHtml();
 
     // Build API routes
     const routes: Route[] = [];
     registerApiRoutes(routes, store);
+    registerQueueRoutes(routes, queueManager);
 
     // Build request handler (health route is prepended automatically)
     const handler = createRequestHandler({ routes, spaHtml, store });
@@ -112,6 +122,37 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 break;
         }
     };
+
+    // Bridge queue manager events to WebSocket
+    queueManager.on('change', () => {
+        const queued = queueManager.getQueued();
+        const running = queueManager.getRunning();
+        const stats = queueManager.getStats();
+
+        wsServer.broadcastProcessEvent({
+            type: 'queue-updated',
+            queue: {
+                queued: queued.map(t => ({
+                    id: t.id,
+                    type: t.type,
+                    priority: t.priority,
+                    status: t.status,
+                    displayName: t.displayName,
+                    createdAt: t.createdAt,
+                })),
+                running: running.map(t => ({
+                    id: t.id,
+                    type: t.type,
+                    priority: t.priority,
+                    status: t.status,
+                    displayName: t.displayName,
+                    createdAt: t.createdAt,
+                    startedAt: t.startedAt,
+                })),
+                stats,
+            },
+        } as any);
+    });
 
     // Start listening
     await new Promise<void>((resolve, reject) => {
@@ -159,9 +200,10 @@ export type { ExecutionServerOptions, ExecutionServer, Route } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from './router';
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from './api-handler';
+export { registerQueueRoutes } from './queue-handler';
 export { handleProcessStream } from './sse-handler';
 export { ProcessWebSocketServer, toProcessSummary, sendFrame, decodeFrame } from './websocket';
-export type { WSClient, ProcessSummary, ServerMessage, ClientMessage } from './websocket';
+export type { WSClient, ProcessSummary, QueueTaskSummary, QueueSnapshot, ServerMessage, ClientMessage } from './websocket';
 export type { RouterOptions } from './router';
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';

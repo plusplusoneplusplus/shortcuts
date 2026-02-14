@@ -69,6 +69,7 @@ ${getDashboardStyles()}
                     <option value="discovery">Discovery</option>
                 </select>
             </div>
+            <div id="queue-panel" class="queue-panel"></div>
             <nav id="process-list" class="process-list">
                 <div class="empty-state" id="empty-state">
                     <div class="empty-state-icon">&#128203;</div>
@@ -91,6 +92,49 @@ ${getDashboardStyles()}
             <div class="detail-content hidden" id="detail-content">
             </div>
         </main>
+    </div>
+
+    <!-- Enqueue Dialog Overlay -->
+    <div id="enqueue-overlay" class="enqueue-overlay hidden">
+        <div class="enqueue-dialog">
+            <div class="enqueue-dialog-header">
+                <h2>Add Task to Queue</h2>
+                <button class="enqueue-close-btn" id="enqueue-cancel">&times;</button>
+            </div>
+            <form id="enqueue-form" class="enqueue-form">
+                <div class="enqueue-field">
+                    <label for="enqueue-name">Task Name</label>
+                    <input type="text" id="enqueue-name" placeholder="e.g., Review PR #42" required />
+                </div>
+                <div class="enqueue-field-row">
+                    <div class="enqueue-field">
+                        <label for="enqueue-type">Type</label>
+                        <select id="enqueue-type">
+                            <option value="custom">Custom</option>
+                            <option value="ai-clarification">AI Clarification</option>
+                            <option value="follow-prompt">Follow Prompt</option>
+                            <option value="code-review">Code Review</option>
+                        </select>
+                    </div>
+                    <div class="enqueue-field">
+                        <label for="enqueue-priority">Priority</label>
+                        <select id="enqueue-priority">
+                            <option value="normal">Normal</option>
+                            <option value="high">High</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="enqueue-field">
+                    <label for="enqueue-prompt">Prompt / Details</label>
+                    <textarea id="enqueue-prompt" rows="4" placeholder="Optional prompt or additional details..."></textarea>
+                </div>
+                <div class="enqueue-actions">
+                    <button type="button" class="enqueue-btn-secondary" id="enqueue-cancel-btn" onclick="hideEnqueueDialog()">Cancel</button>
+                    <button type="submit" class="enqueue-btn-primary">Add to Queue</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script>

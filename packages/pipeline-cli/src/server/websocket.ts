@@ -44,6 +44,32 @@ export interface ProcessSummary {
     workspaceId?: string;
 }
 
+/** Lightweight queue task summary for WebSocket messages. */
+export interface QueueTaskSummary {
+    id: string;
+    type: string;
+    priority: string;
+    status: string;
+    displayName?: string;
+    createdAt: number;
+    startedAt?: number;
+}
+
+/** Queue state snapshot sent via WebSocket. */
+export interface QueueSnapshot {
+    queued: QueueTaskSummary[];
+    running: QueueTaskSummary[];
+    stats: {
+        queued: number;
+        running: number;
+        completed: number;
+        failed: number;
+        cancelled: number;
+        total: number;
+        isPaused: boolean;
+    };
+}
+
 /** Server → Client message types */
 export type ServerMessage =
     | { type: 'welcome'; clientId: string; timestamp: number }
@@ -51,7 +77,8 @@ export type ServerMessage =
     | { type: 'process-added'; process: ProcessSummary }
     | { type: 'process-updated'; process: ProcessSummary }
     | { type: 'process-removed'; processId: string }
-    | { type: 'processes-cleared'; count: number };
+    | { type: 'processes-cleared'; count: number }
+    | { type: 'queue-updated'; queue: QueueSnapshot };
 
 /** Client → Server message types */
 export type ClientMessage =

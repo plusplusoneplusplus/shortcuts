@@ -95,6 +95,11 @@ export function getWebSocketScript(opts: ScriptOptions): string {
                     }
                 }
                 renderProcessList();
+            } else if (msg.type === 'queue-updated' && msg.queue) {
+                queueState.queued = msg.queue.queued || [];
+                queueState.running = msg.queue.running || [];
+                queueState.stats = msg.queue.stats || queueState.stats;
+                renderQueuePanel();
             } else if (msg.type === 'workspace-registered' && msg.data) {
                 var select = document.getElementById('workspace-select');
                 if (select) {

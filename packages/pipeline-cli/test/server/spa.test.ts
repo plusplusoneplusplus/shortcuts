@@ -16,6 +16,7 @@ import { getThemeScript } from '../../src/server/spa/scripts/theme';
 import { getSidebarScript } from '../../src/server/spa/scripts/sidebar';
 import { getDetailScript } from '../../src/server/spa/scripts/detail';
 import { getFiltersScript } from '../../src/server/spa/scripts/filters';
+import { getQueueScript } from '../../src/server/spa/scripts/queue';
 import { getWebSocketScript } from '../../src/server/spa/scripts/websocket';
 
 // ============================================================================
@@ -564,5 +565,160 @@ describe('getWebSocketScript', () => {
 
     it('resets reconnect delay on successful connection', () => {
         expect(script).toContain('wsReconnectDelay = 1000');
+    });
+
+    it('handles queue-updated messages', () => {
+        expect(script).toContain("msg.type === 'queue-updated'");
+        expect(script).toContain('renderQueuePanel');
+    });
+});
+
+// ============================================================================
+// Queue panel
+// ============================================================================
+
+describe('Queue panel HTML', () => {
+    it('contains queue panel element', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="queue-panel"');
+        expect(html).toContain('class="queue-panel"');
+    });
+
+    it('contains enqueue dialog overlay', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('id="enqueue-overlay"');
+        expect(html).toContain('id="enqueue-form"');
+        expect(html).toContain('id="enqueue-name"');
+        expect(html).toContain('id="enqueue-type"');
+        expect(html).toContain('id="enqueue-priority"');
+        expect(html).toContain('id="enqueue-prompt"');
+    });
+
+    it('contains enqueue dialog with task type options', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('Custom');
+        expect(html).toContain('AI Clarification');
+        expect(html).toContain('Follow Prompt');
+    });
+
+    it('contains enqueue dialog with priority options', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('value="normal"');
+        expect(html).toContain('value="high"');
+        expect(html).toContain('value="low"');
+    });
+
+    it('contains Add to Queue submit button', () => {
+        const html = generateDashboardHtml();
+        expect(html).toContain('Add to Queue');
+    });
+});
+
+describe('getQueueScript', () => {
+    const opts = { defaultTheme: 'auto' as const, wsPath: '/ws', apiBasePath: '/api' };
+    const script = getQueueScript(opts);
+
+    it('defines queueState', () => {
+        expect(script).toContain('var queueState');
+        expect(script).toContain('queued: []');
+        expect(script).toContain('running: []');
+        expect(script).toContain('isPaused: false');
+    });
+
+    it('defines fetchQueue function', () => {
+        expect(script).toContain('function fetchQueue()');
+        expect(script).toContain('/queue');
+    });
+
+    it('defines renderQueuePanel function', () => {
+        expect(script).toContain('function renderQueuePanel()');
+        expect(script).toContain('queue-panel');
+    });
+
+    it('defines renderQueueTask function', () => {
+        expect(script).toContain('function renderQueueTask(');
+        expect(script).toContain('queue-task');
+    });
+
+    it('defines queue control functions', () => {
+        expect(script).toContain('function queuePause()');
+        expect(script).toContain('function queueResume()');
+        expect(script).toContain('function queueClear()');
+        expect(script).toContain('function queueCancelTask(');
+        expect(script).toContain('function queueMoveToTop(');
+        expect(script).toContain('function queueMoveUp(');
+        expect(script).toContain('function queueMoveDown(');
+    });
+
+    it('defines enqueue dialog functions', () => {
+        expect(script).toContain('function showEnqueueDialog()');
+        expect(script).toContain('function hideEnqueueDialog()');
+        expect(script).toContain('function submitEnqueueForm(');
+    });
+
+    it('auto-fetches queue on load', () => {
+        expect(script).toContain('fetchQueue();');
+    });
+
+    it('sets up enqueue form event listeners', () => {
+        expect(script).toContain("getElementById('enqueue-form')");
+        expect(script).toContain("getElementById('enqueue-cancel')");
+        expect(script).toContain("getElementById('enqueue-overlay')");
+    });
+
+    it('supports priority icons', () => {
+        expect(script).toContain('priorityIcon');
+        expect(script).toContain('high');
+        expect(script).toContain('low');
+    });
+
+    it('uses confirm dialog for clear', () => {
+        expect(script).toContain('confirm(');
+    });
+});
+
+describe('Queue styles', () => {
+    const styles = getDashboardStyles();
+
+    it('defines queue panel styles', () => {
+        expect(styles).toContain('.queue-panel');
+        expect(styles).toContain('.queue-header');
+        expect(styles).toContain('.queue-task');
+    });
+
+    it('defines queue control button styles', () => {
+        expect(styles).toContain('.queue-ctrl-btn');
+        expect(styles).toContain('.queue-ctrl-danger');
+    });
+
+    it('defines queue task action styles', () => {
+        expect(styles).toContain('.queue-task-actions');
+        expect(styles).toContain('.queue-action-btn');
+        expect(styles).toContain('.queue-action-danger');
+    });
+
+    it('defines queue empty state styles', () => {
+        expect(styles).toContain('.queue-empty');
+        expect(styles).toContain('.queue-add-btn');
+    });
+
+    it('defines enqueue dialog styles', () => {
+        expect(styles).toContain('.enqueue-overlay');
+        expect(styles).toContain('.enqueue-dialog');
+        expect(styles).toContain('.enqueue-form');
+        expect(styles).toContain('.enqueue-btn-primary');
+        expect(styles).toContain('.enqueue-btn-secondary');
+    });
+
+    it('defines queue count badge styles', () => {
+        expect(styles).toContain('.queue-count');
+        expect(styles).toContain('.queue-paused-badge');
+    });
+
+    it('hides task actions until hover', () => {
+        expect(styles).toContain('.queue-task-actions');
+        expect(styles).toContain('opacity: 0');
+        expect(styles).toContain('.queue-task:hover .queue-task-actions');
+        expect(styles).toContain('opacity: 1');
     });
 });

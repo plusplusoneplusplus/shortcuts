@@ -499,6 +499,309 @@ export function getDashboardStyles(): string {
             background: var(--text-secondary);
         }
 
+        /* ---- Queue Panel ---- */
+        .queue-panel {
+            border-bottom: 1px solid var(--border-color);
+        }
+        .queue-panel:empty {
+            display: none;
+        }
+        .queue-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--bg-secondary);
+        }
+        .queue-header-left {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .queue-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            letter-spacing: 0.5px;
+        }
+        .queue-count {
+            background: var(--accent);
+            color: #fff;
+            border-radius: 10px;
+            padding: 0 6px;
+            font-size: 10px;
+            font-weight: 600;
+            min-width: 18px;
+            text-align: center;
+            line-height: 18px;
+        }
+        .queue-paused-badge {
+            background: var(--status-cancelled);
+            color: #fff;
+            border-radius: 3px;
+            padding: 1px 5px;
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .queue-header-right {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .queue-ctrl-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            line-height: 1;
+            transition: background-color 0.15s, color 0.15s;
+        }
+        .queue-ctrl-btn:hover {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+        }
+        .queue-ctrl-danger:hover {
+            background: rgba(241,76,76,0.1);
+            color: var(--status-failed);
+        }
+        .queue-section-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px 2px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            letter-spacing: 0.3px;
+        }
+        .queue-section-count {
+            font-size: 9px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 0 5px;
+        }
+        .queue-task {
+            padding: 6px 12px;
+            border-left: 3px solid transparent;
+            transition: background-color 0.15s;
+        }
+        .queue-task:hover {
+            background: var(--hover-bg);
+        }
+        .queue-task.running {
+            border-left-color: var(--status-running);
+        }
+        .queue-task.queued {
+            border-left-color: var(--status-queued);
+        }
+        .queue-task-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+        .queue-task-status {
+            flex-shrink: 0;
+            font-size: 11px;
+        }
+        .queue-task-priority {
+            flex-shrink: 0;
+            font-size: 10px;
+        }
+        .queue-task-name {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-primary);
+        }
+        .queue-task-time {
+            flex-shrink: 0;
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+        .queue-task-actions {
+            display: flex;
+            gap: 4px;
+            margin-top: 3px;
+            padding-left: 20px;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .queue-task:hover .queue-task-actions {
+            opacity: 1;
+        }
+        .queue-action-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 10px;
+            line-height: 1.2;
+            transition: background-color 0.15s, color 0.15s;
+        }
+        .queue-action-btn:hover {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+        }
+        .queue-action-danger:hover {
+            background: rgba(241,76,76,0.1);
+            color: var(--status-failed);
+        }
+        .queue-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px;
+            gap: 8px;
+        }
+        .queue-empty-text {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .queue-add-btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 12px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .queue-add-btn:hover {
+            opacity: 0.85;
+        }
+
+        /* ---- Enqueue Dialog ---- */
+        .enqueue-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .enqueue-dialog {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            width: 420px;
+            max-width: 90vw;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .enqueue-dialog-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .enqueue-dialog-header h2 {
+            font-size: 15px;
+            font-weight: 600;
+            margin: 0;
+        }
+        .enqueue-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+        }
+        .enqueue-close-btn:hover {
+            color: var(--text-primary);
+        }
+        .enqueue-form {
+            padding: 16px 20px 20px;
+        }
+        .enqueue-field {
+            margin-bottom: 12px;
+        }
+        .enqueue-field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .enqueue-field input,
+        .enqueue-field select,
+        .enqueue-field textarea {
+            width: 100%;
+            padding: 7px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: inherit;
+        }
+        .enqueue-field input:focus,
+        .enqueue-field select:focus,
+        .enqueue-field textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .enqueue-field textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+        .enqueue-field-row {
+            display: flex;
+            gap: 12px;
+        }
+        .enqueue-field-row .enqueue-field {
+            flex: 1;
+        }
+        .enqueue-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        .enqueue-btn-primary {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 7px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .enqueue-btn-primary:hover {
+            opacity: 0.85;
+        }
+        .enqueue-btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 7px 16px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+        .enqueue-btn-secondary:hover {
+            background: var(--hover-bg);
+        }
+
         /* ---- Responsive ---- */
         @media (max-width: 768px) {
             .hamburger-btn { display: block; }
