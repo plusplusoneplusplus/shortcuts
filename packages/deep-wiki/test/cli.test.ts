@@ -559,7 +559,8 @@ describe('resolveRepoPath', () => {
         fs.writeFileSync(configPath, 'repoPath: /config/repo\n', 'utf-8');
 
         const result = resolveRepoPath(undefined, configPath);
-        expect(result).toBe('/config/repo');
+        // path.resolve() normalizes the path (on Windows, prepends drive letter)
+        expect(result).toBe(path.resolve(path.dirname(configPath), '/config/repo'));
     });
 
     it('should resolve relative repoPath from config relative to config directory', () => {
