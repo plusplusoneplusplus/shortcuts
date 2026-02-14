@@ -248,3 +248,5 @@ export type { ExploreRequest } from './explore-handler';
 export type { RetrievedContext } from './context-builder';
 export type { WSClient, WSMessage } from './websocket';
 export type { FileWatcherOptions } from './file-watcher';
+export { handleAdminRequest } from './admin-handlers';
+export type { AdminHandlerContext } from './admin-handlers';

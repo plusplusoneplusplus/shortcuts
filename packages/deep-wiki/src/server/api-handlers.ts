@@ -15,6 +15,7 @@ import type { AskAIFunction } from './ask-handler';
 import { handleAskRequest } from './ask-handler';
 import { getErrorMessage } from '../utils/error-utils';
 import { handleExploreRequest } from './explore-handler';
+import { handleAdminRequest } from './admin-handlers';
 import type { ConversationSessionManager } from './conversation-session-manager';
 
 // ============================================================================
@@ -141,6 +142,17 @@ export function handleApiRequest(
             }
         });
         return;
+    }
+
+    // Admin routes: /api/admin/*
+    if (pathname.startsWith('/api/admin/')) {
+        const handled = handleAdminRequest(req, res, pathname, method, {
+            wikiDir: wikiData.dir,
+            repoPath: context.repoPath,
+        });
+        if (handled) {
+            return;
+        }
     }
 
     // 404 for unknown API routes

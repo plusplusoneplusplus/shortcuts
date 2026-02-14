@@ -83,6 +83,7 @@ ${getSpaStyles(enableAI)}
             <span class="top-bar-project" id="top-bar-project">${escapeHtml(title)}</span>
         </div>
         <div class="top-bar-right">
+            <button class="top-bar-btn" id="admin-toggle" aria-label="Admin portal" title="Admin portal">&#9881;</button>
             <button class="top-bar-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle theme">&#9790;</button>
         </div>
     </header>
@@ -117,6 +118,44 @@ ${enableSearch ? `            <div class="search-box">
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Admin Portal Overlay -->
+    <div class="admin-overlay hidden" id="admin-overlay">
+        <div class="admin-panel">
+            <div class="admin-header">
+                <h2 class="admin-title">Admin Portal</h2>
+                <button class="admin-close-btn" id="admin-close" aria-label="Close admin">&times;</button>
+            </div>
+            <div class="admin-tabs">
+                <button class="admin-tab active" data-tab="seeds" id="admin-tab-seeds">Seeds</button>
+                <button class="admin-tab" data-tab="config" id="admin-tab-config">Config</button>
+            </div>
+            <div class="admin-body">
+                <div class="admin-tab-content active" id="admin-content-seeds">
+                    <div class="admin-file-info">
+                        <span class="admin-file-path" id="seeds-path">Loading...</span>
+                        <span class="admin-file-status" id="seeds-status"></span>
+                    </div>
+                    <textarea class="admin-editor" id="seeds-editor" spellcheck="false" placeholder="Seeds file not found. Paste seeds JSON here to create one."></textarea>
+                    <div class="admin-actions">
+                        <button class="admin-btn admin-btn-save" id="seeds-save">Save</button>
+                        <button class="admin-btn admin-btn-reset" id="seeds-reset">Reset</button>
+                    </div>
+                </div>
+                <div class="admin-tab-content" id="admin-content-config">
+                    <div class="admin-file-info">
+                        <span class="admin-file-path" id="config-path">Loading...</span>
+                        <span class="admin-file-status" id="config-status"></span>
+                    </div>
+                    <textarea class="admin-editor" id="config-editor" spellcheck="false" placeholder="Config file not found. Paste YAML config here to create one."></textarea>
+                    <div class="admin-actions">
+                        <button class="admin-btn admin-btn-save" id="config-save">Save</button>
+                        <button class="admin-btn admin-btn-reset" id="config-reset">Reset</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
 ${enableAI ? `    <!-- Floating Ask AI Widget -->
@@ -1086,6 +1125,88 @@ ${getMermaidZoomStyles()}
             .ask-widget-label { font-size: 11px; margin-bottom: 4px; }
         }`;
     }
+
+    // Admin portal styles
+    styles += `
+        /* ========== Admin Portal ========== */
+        .admin-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 1000;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .admin-overlay.hidden { display: none; }
+        .admin-panel {
+            background: var(--content-bg); border-radius: 12px;
+            width: 90%; max-width: 800px; max-height: 85vh;
+            display: flex; flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .admin-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px; border-bottom: 1px solid var(--content-border);
+        }
+        .admin-title { margin: 0; font-size: 18px; color: var(--content-text); }
+        .admin-close-btn {
+            background: none; border: none; font-size: 24px;
+            color: var(--content-muted); cursor: pointer; padding: 0 4px;
+        }
+        .admin-close-btn:hover { color: var(--content-text); }
+        .admin-tabs {
+            display: flex; padding: 0 20px; gap: 0;
+            border-bottom: 1px solid var(--content-border);
+        }
+        .admin-tab {
+            padding: 10px 20px; border: none; background: none;
+            color: var(--content-muted); cursor: pointer; font-size: 14px;
+            border-bottom: 2px solid transparent; margin-bottom: -1px;
+        }
+        .admin-tab:hover { color: var(--content-text); }
+        .admin-tab.active {
+            color: var(--link-color); border-bottom-color: var(--link-color);
+            font-weight: 600;
+        }
+        .admin-body { flex: 1; overflow: auto; padding: 16px 20px; }
+        .admin-tab-content { display: none; height: 100%; flex-direction: column; }
+        .admin-tab-content.active { display: flex; }
+        .admin-file-info {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 10px; font-size: 12px;
+        }
+        .admin-file-path {
+            color: var(--content-muted); font-family: monospace;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .admin-file-status { font-weight: 600; margin-left: 8px; white-space: nowrap; }
+        .admin-file-status.success { color: #22c55e; }
+        .admin-file-status.error { color: #ef4444; }
+        .admin-editor {
+            width: 100%; min-height: 300px; max-height: 50vh; resize: vertical;
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 13px; line-height: 1.5;
+            padding: 12px; border-radius: 8px;
+            background: var(--code-bg); color: var(--content-text);
+            border: 1px solid var(--code-border);
+            tab-size: 2; white-space: pre; overflow: auto;
+            box-sizing: border-box;
+        }
+        .admin-editor:focus { outline: 2px solid var(--link-color); outline-offset: -1px; }
+        .admin-actions {
+            display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;
+        }
+        .admin-btn {
+            padding: 8px 20px; border-radius: 6px; border: none;
+            font-size: 14px; cursor: pointer; font-weight: 500;
+        }
+        .admin-btn-save {
+            background: var(--link-color); color: #fff;
+        }
+        .admin-btn-save:hover { opacity: 0.9; }
+        .admin-btn-reset {
+            background: var(--code-bg); color: var(--content-text);
+            border: 1px solid var(--content-border);
+        }
+        .admin-btn-reset:hover { background: var(--sidebar-hover); }
+    `;
 
     return styles;
 }
@@ -2520,7 +2641,165 @@ ${opts.enableWatch ? `
             }
         }
 
-        connectWebSocket();` : ''}`;
+        connectWebSocket();` : ''}
+
+        // ================================================================
+        // Admin Portal
+        // ================================================================
+
+        var adminSeedsOriginal = '';
+        var adminConfigOriginal = '';
+
+        document.getElementById('admin-toggle').addEventListener('click', function() {
+            var overlay = document.getElementById('admin-overlay');
+            overlay.classList.remove('hidden');
+            loadAdminSeeds();
+            loadAdminConfig();
+        });
+
+        document.getElementById('admin-close').addEventListener('click', closeAdmin);
+        document.getElementById('admin-overlay').addEventListener('click', function(e) {
+            if (e.target === this) closeAdmin();
+        });
+
+        function closeAdmin() {
+            document.getElementById('admin-overlay').classList.add('hidden');
+            clearAdminStatus('seeds');
+            clearAdminStatus('config');
+        }
+
+        // Tab switching
+        document.querySelectorAll('.admin-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                var target = this.getAttribute('data-tab');
+                document.querySelectorAll('.admin-tab').forEach(function(t) { t.classList.remove('active'); });
+                document.querySelectorAll('.admin-tab-content').forEach(function(c) { c.classList.remove('active'); });
+                this.classList.add('active');
+                document.getElementById('admin-content-' + target).classList.add('active');
+            });
+        });
+
+        function setAdminStatus(which, msg, isError) {
+            var el = document.getElementById(which + '-status');
+            el.textContent = msg;
+            el.className = 'admin-file-status ' + (isError ? 'error' : 'success');
+        }
+
+        function clearAdminStatus(which) {
+            var el = document.getElementById(which + '-status');
+            el.textContent = '';
+            el.className = 'admin-file-status';
+        }
+
+        // Load seeds
+        async function loadAdminSeeds() {
+            try {
+                var res = await fetch('/api/admin/seeds');
+                var data = await res.json();
+                document.getElementById('seeds-path').textContent = data.path || 'seeds.json';
+                if (data.exists && data.content) {
+                    var text = JSON.stringify(data.content, null, 2);
+                    document.getElementById('seeds-editor').value = text;
+                    adminSeedsOriginal = text;
+                } else if (data.exists && data.raw) {
+                    document.getElementById('seeds-editor').value = data.raw;
+                    adminSeedsOriginal = data.raw;
+                } else {
+                    document.getElementById('seeds-editor').value = '';
+                    adminSeedsOriginal = '';
+                }
+            } catch (err) {
+                setAdminStatus('seeds', 'Failed to load: ' + err.message, true);
+            }
+        }
+
+        // Save seeds
+        document.getElementById('seeds-save').addEventListener('click', async function() {
+            clearAdminStatus('seeds');
+            var text = document.getElementById('seeds-editor').value;
+            var content;
+            try {
+                content = JSON.parse(text);
+            } catch (e) {
+                setAdminStatus('seeds', 'Invalid JSON: ' + e.message, true);
+                return;
+            }
+            try {
+                var res = await fetch('/api/admin/seeds', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: content })
+                });
+                var data = await res.json();
+                if (data.success) {
+                    setAdminStatus('seeds', 'Saved', false);
+                    adminSeedsOriginal = text;
+                } else {
+                    setAdminStatus('seeds', data.error || 'Save failed', true);
+                }
+            } catch (err) {
+                setAdminStatus('seeds', 'Error: ' + err.message, true);
+            }
+        });
+
+        // Reset seeds
+        document.getElementById('seeds-reset').addEventListener('click', function() {
+            document.getElementById('seeds-editor').value = adminSeedsOriginal;
+            clearAdminStatus('seeds');
+        });
+
+        // Load config
+        async function loadAdminConfig() {
+            try {
+                var res = await fetch('/api/admin/config');
+                var data = await res.json();
+                document.getElementById('config-path').textContent = data.path || 'deep-wiki.config.yaml';
+                if (data.exists && data.content) {
+                    document.getElementById('config-editor').value = data.content;
+                    adminConfigOriginal = data.content;
+                } else {
+                    document.getElementById('config-editor').value = '';
+                    adminConfigOriginal = '';
+                }
+            } catch (err) {
+                setAdminStatus('config', 'Failed to load: ' + err.message, true);
+            }
+        }
+
+        // Save config
+        document.getElementById('config-save').addEventListener('click', async function() {
+            clearAdminStatus('config');
+            var text = document.getElementById('config-editor').value;
+            try {
+                var res = await fetch('/api/admin/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: text })
+                });
+                var data = await res.json();
+                if (data.success) {
+                    setAdminStatus('config', 'Saved', false);
+                    adminConfigOriginal = text;
+                } else {
+                    setAdminStatus('config', data.error || 'Save failed', true);
+                }
+            } catch (err) {
+                setAdminStatus('config', 'Error: ' + err.message, true);
+            }
+        });
+
+        // Reset config
+        document.getElementById('config-reset').addEventListener('click', function() {
+            document.getElementById('config-editor').value = adminConfigOriginal;
+            clearAdminStatus('config');
+        });
+
+        // Close admin on Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !document.getElementById('admin-overlay').classList.contains('hidden')) {
+                closeAdmin();
+            }
+        });`;
 
 }
 
