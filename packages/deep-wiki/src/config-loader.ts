@@ -130,6 +130,7 @@ export function mergeConfigWithCLI(
     }
 
     return {
+        repoPath: config.repoPath,
         output: resolve('output', cliOptions.output, config.output),
         model: resolve('model', cliOptions.model, config.model),
         concurrency: resolve('concurrency', cliOptions.concurrency, config.concurrency),

@@ -7,9 +7,10 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import * as path from 'path';
 import { Command } from 'commander';
 import { getErrorMessage } from './utils/error-utils';
-import { setColorEnabled, setVerbosity, printInfo } from './logger';
+import { setColorEnabled, setVerbosity, getVerbosity, printInfo } from './logger';
 import { loadConfig, mergeConfigWithCLI, discoverConfigFile } from './config-loader';
 
 // ============================================================================
@@ -62,23 +63,31 @@ export function createProgram(): Command {
         });
 
     // ========================================================================
-    // deep-wiki seeds <repo-path>
+    // deep-wiki seeds [repo-path]
     // ========================================================================
 
     program
         .command('seeds')
         .description('Generate topic seeds for breadth-first discovery')
-        .argument('<repo-path>', 'Path to the local git repository')
+        .argument('[repo-path]', 'Path to the local git repository')
         .option('-o, --output <path>', 'Output file path', 'seeds.json')
         .option('--max-topics <n>', 'Maximum number of topics to generate', (v: string) => parseInt(v, 10), 50)
         .option('-m, --model <model>', 'AI model to use')
         .option('-t, --timeout <seconds>', 'Timeout in seconds for seeds session', (v: string) => parseInt(v, 10))
         .option('-v, --verbose', 'Verbose logging', false)
         .option('--no-color', 'Disable colored output')
-        .action(async (repoPath: string, opts: Record<string, unknown>) => {
+        .action(async (repoPath: string | undefined, opts: Record<string, unknown>) => {
             applyGlobalOptions(opts);
+            const resolvedRepoPath = resolveRepoPath(repoPath, undefined);
+            if (!resolvedRepoPath) {
+                process.stderr.write('Error: No repository path provided. Pass <repo-path> or set repoPath in deep-wiki.config.yaml\n');
+                process.exit(EXIT_CODES.CONFIG_ERROR);
+            }
+            if (resolvedRepoPath !== repoPath) {
+                getVerbosity() === 'verbose' && printInfo(`Using repoPath from config: ${resolvedRepoPath}`);
+            }
             const { executeSeeds } = await import('./commands/seeds');
-            const exitCode = await executeSeeds(repoPath, {
+            const exitCode = await executeSeeds(resolvedRepoPath, {
                 output: opts.output as string,
                 maxTopics: (opts.maxTopics as number) || 50,
                 model: opts.model as string | undefined,
@@ -89,13 +98,13 @@ export function createProgram(): Command {
         });
 
     // ========================================================================
-    // deep-wiki discover <repo-path>
+    // deep-wiki discover [repo-path]
     // ========================================================================
 
     program
         .command('discover')
         .description('Discover module graph for a repository')
-        .argument('<repo-path>', 'Path to the local git repository')
+        .argument('[repo-path]', 'Path to the local git repository')
         .option('-o, --output <path>', 'Output directory for results', './wiki')
         .option('-m, --model <model>', 'AI model to use')
         .option('-t, --timeout <seconds>', 'Timeout in seconds for discovery', (v: string) => parseInt(v, 10))
@@ -106,12 +115,20 @@ export function createProgram(): Command {
         .option('--use-cache', 'Use existing cache regardless of git hash', false)
         .option('-v, --verbose', 'Verbose logging', false)
         .option('--no-color', 'Disable colored output')
-        .action(async (repoPath: string, opts: Record<string, unknown>) => {
+        .action(async (repoPath: string | undefined, opts: Record<string, unknown>) => {
             applyGlobalOptions(opts);
+            const resolvedRepoPath = resolveRepoPath(repoPath, undefined);
+            if (!resolvedRepoPath) {
+                process.stderr.write('Error: No repository path provided. Pass <repo-path> or set repoPath in deep-wiki.config.yaml\n');
+                process.exit(EXIT_CODES.CONFIG_ERROR);
+            }
+            if (resolvedRepoPath !== repoPath) {
+                getVerbosity() === 'verbose' && printInfo(`Using repoPath from config: ${resolvedRepoPath}`);
+            }
 
             // Lazy-load to avoid loading heavy deps when just checking --help
             const { executeDiscover } = await import('./commands/discover');
-            const exitCode = await executeDiscover(repoPath, {
+            const exitCode = await executeDiscover(resolvedRepoPath, {
                 output: opts.output as string,
                 model: opts.model as string | undefined,
                 timeout: opts.timeout as number | undefined,
@@ -126,13 +143,13 @@ export function createProgram(): Command {
         });
 
     // ========================================================================
-    // deep-wiki generate <repo-path>  (stub for future phases)
+    // deep-wiki generate [repo-path]  (stub for future phases)
     // ========================================================================
 
     program
         .command('generate')
         .description('Generate full wiki for a repository (Discovery → Analysis → Articles → Website)')
-        .argument('<repo-path>', 'Path to the local git repository')
+        .argument('[repo-path]', 'Path to the local git repository')
         .option('-o, --output <path>', 'Output directory for wiki', './wiki')
         .option('-m, --model <model>', 'AI model to use')
         .option('-c, --concurrency <number>', 'Number of parallel AI sessions', (v: string) => parseInt(v, 10))
@@ -153,7 +170,7 @@ export function createProgram(): Command {
         .option('--config <path>', 'Path to YAML configuration file (deep-wiki.config.yaml)')
         .option('-v, --verbose', 'Verbose logging', false)
         .option('--no-color', 'Disable colored output')
-        .action(async (repoPath: string, opts: Record<string, unknown>, cmd: Command) => {
+        .action(async (repoPath: string | undefined, opts: Record<string, unknown>, cmd: Command) => {
             applyGlobalOptions(opts);
 
             // Build base CLI options
@@ -180,13 +197,18 @@ export function createProgram(): Command {
             };
 
             // Load config file if --config is specified, or auto-discover
-            const configPath = cliOptions.config || discoverConfigFile(repoPath);
+            const configSearchDir = repoPath || process.cwd();
+            const configPath = cliOptions.config || discoverConfigFile(configSearchDir);
             if (configPath) {
                 try {
                     const config = loadConfig(configPath);
                     // Determine which CLI flags were explicitly set (not defaults)
                     const explicitFields = getExplicitFields(cmd, opts);
                     cliOptions = mergeConfigWithCLI(config, cliOptions, explicitFields);
+                    // Resolve config repoPath relative to config file directory
+                    if (cliOptions.repoPath && config.repoPath) {
+                        cliOptions.repoPath = path.resolve(path.dirname(configPath), config.repoPath);
+                    }
                     if (cliOptions.verbose) {
                         printInfo(`Loaded config from ${configPath}`);
                     }
@@ -203,8 +225,18 @@ export function createProgram(): Command {
                 }
             }
 
+            // Resolve repo path: CLI positional arg overrides config
+            const resolvedRepoPath = repoPath || cliOptions.repoPath;
+            if (!resolvedRepoPath) {
+                process.stderr.write('Error: No repository path provided. Pass <repo-path> or set repoPath in deep-wiki.config.yaml\n');
+                process.exit(EXIT_CODES.CONFIG_ERROR);
+            }
+            if (!repoPath && cliOptions.repoPath) {
+                getVerbosity() === 'verbose' && printInfo(`Using repoPath from config: ${cliOptions.repoPath}`);
+            }
+
             const { executeGenerate } = await import('./commands/generate');
-            const exitCode = await executeGenerate(repoPath, cliOptions);
+            const exitCode = await executeGenerate(resolvedRepoPath, cliOptions);
             process.exit(exitCode);
         });
 
@@ -263,7 +295,7 @@ export function createProgram(): Command {
         .argument('<wiki-dir>', 'Path to the wiki output directory')
         .option('-p, --port <number>', 'Port to listen on', (v: string) => parseInt(v, 10), 3000)
         .option('-H, --host <address>', 'Bind address', 'localhost')
-        .option('-g, --generate <repo-path>', 'Generate wiki before serving')
+        .option('-g, --generate [repo-path]', 'Generate wiki before serving (uses config repoPath if omitted)')
         .option('-w, --watch', 'Watch repo for changes (requires --generate)', false)
         .option('--no-ai', 'Disable AI Q&A and deep-dive features')
         .option('-m, --model <model>', 'AI model for Q&A sessions')
@@ -275,11 +307,25 @@ export function createProgram(): Command {
         .action(async (wikiDir: string, opts: Record<string, unknown>) => {
             applyGlobalOptions(opts);
 
+            // Resolve --generate: if boolean true (no value), fall back to config repoPath
+            let generateRepoPath: string | undefined;
+            if (opts.generate === true) {
+                // --generate was passed without a value; try config fallback
+                generateRepoPath = resolveRepoPath(undefined, undefined);
+                if (!generateRepoPath) {
+                    process.stderr.write('Error: --generate requires a repo path or repoPath in deep-wiki.config.yaml\n');
+                    process.exit(EXIT_CODES.CONFIG_ERROR);
+                }
+                getVerbosity() === 'verbose' && printInfo(`Using repoPath from config for --generate: ${generateRepoPath}`);
+            } else if (typeof opts.generate === 'string') {
+                generateRepoPath = opts.generate;
+            }
+
             const { executeServe } = await import('./commands/serve');
             const exitCode = await executeServe(wikiDir, {
                 port: opts.port as number | undefined,
                 host: opts.host as string | undefined,
-                generate: opts.generate as string | undefined,
+                generate: generateRepoPath,
                 watch: Boolean(opts.watch),
                 ai: Boolean(opts.ai),
                 model: opts.model as string | undefined,
@@ -297,6 +343,36 @@ export function createProgram(): Command {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Resolve the repository path from CLI positional arg or config file.
+ *
+ * Priority: CLI arg > config file repoPath > undefined
+ *
+ * @param cliRepoPath - Positional argument from CLI (may be undefined)
+ * @param configPath - Explicit config file path (may be undefined)
+ * @returns Resolved repo path, or undefined if neither source provides one
+ */
+export function resolveRepoPath(cliRepoPath: string | undefined, configPath: string | undefined): string | undefined {
+    if (cliRepoPath) {
+        return cliRepoPath;
+    }
+
+    // Try to discover config file in CWD and read repoPath
+    const discoveredConfigPath = configPath || discoverConfigFile(process.cwd());
+    if (discoveredConfigPath) {
+        try {
+            const config = loadConfig(discoveredConfigPath);
+            if (config.repoPath) {
+                return path.resolve(path.dirname(discoveredConfigPath), config.repoPath);
+            }
+        } catch {
+            // Config file errors are handled by individual command actions
+        }
+    }
+
+    return undefined;
+}
 
 /**
  * Apply global options (colors, verbosity) based on CLI flags

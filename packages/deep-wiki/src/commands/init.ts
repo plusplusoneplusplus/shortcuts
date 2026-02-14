@@ -31,6 +31,7 @@ export const CONFIG_TEMPLATE = `# Deep Wiki Configuration
 
 # ── Global Settings ──────────────────────────────────────────────
 
+# repoPath: /path/to/your/repo   # Repository path (avoids passing <repo-path> positional arg)
 # output: ./wiki                # Output directory for generated wiki
 # model: claude-sonnet          # AI model (applies to all phases unless overridden)
 # concurrency: 5                # Max parallel AI sessions

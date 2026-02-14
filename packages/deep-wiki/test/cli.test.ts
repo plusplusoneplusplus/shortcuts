@@ -4,8 +4,11 @@
  * Tests for the CLI argument parser and program creation.
  */
 
-import { describe, it, expect } from 'vitest';
-import { createProgram, EXIT_CODES } from '../src/cli';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { createProgram, EXIT_CODES, resolveRepoPath } from '../src/cli';
 
 describe('CLI', () => {
     // ========================================================================
@@ -431,5 +434,164 @@ describe('CLI', () => {
             expect(capturedOpts.phase).toBe(2);
             expect(capturedOpts.endPhase).toBe(4);
         });
+    });
+
+    // ========================================================================
+    // Optional repo-path argument
+    // ========================================================================
+
+    describe('optional repo-path argument', () => {
+        it('seeds command should accept no repo-path argument', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'seeds')!;
+            const args = (cmd as any).registeredArguments || (cmd as any)._args;
+            // [repo-path] is optional — Commander marks it as not required
+            expect(args[0].required).toBe(false);
+        });
+
+        it('discover command should accept no repo-path argument', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'discover')!;
+            const args = (cmd as any).registeredArguments || (cmd as any)._args;
+            expect(args[0].required).toBe(false);
+        });
+
+        it('generate command should accept no repo-path argument', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'generate')!;
+            const args = (cmd as any).registeredArguments || (cmd as any)._args;
+            expect(args[0].required).toBe(false);
+        });
+
+        it('seeds command should still accept a repo-path argument', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'seeds')!;
+
+            let capturedRepoPath: string | undefined;
+            cmd.action((repoPath: string | undefined) => {
+                capturedRepoPath = repoPath;
+            });
+
+            program.parse(['node', 'deep-wiki', 'seeds', '/my/repo']);
+            expect(capturedRepoPath).toBe('/my/repo');
+        });
+
+        it('discover command should still accept a repo-path argument', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'discover')!;
+
+            let capturedRepoPath: string | undefined;
+            cmd.action((repoPath: string | undefined) => {
+                capturedRepoPath = repoPath;
+            });
+
+            program.parse(['node', 'deep-wiki', 'discover', '/my/repo']);
+            expect(capturedRepoPath).toBe('/my/repo');
+        });
+
+        it('generate command should still accept a repo-path argument', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'generate')!;
+
+            let capturedRepoPath: string | undefined;
+            cmd.action((repoPath: string | undefined) => {
+                capturedRepoPath = repoPath;
+            });
+
+            program.parse(['node', 'deep-wiki', 'generate', '/my/repo']);
+            expect(capturedRepoPath).toBe('/my/repo');
+        });
+
+        it('seeds command should pass undefined when no repo-path given', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'seeds')!;
+
+            let capturedRepoPath: string | undefined = 'should-be-replaced';
+            cmd.action((repoPath: string | undefined) => {
+                capturedRepoPath = repoPath;
+            });
+
+            program.parse(['node', 'deep-wiki', 'seeds']);
+            expect(capturedRepoPath).toBeUndefined();
+        });
+
+        it('serve --generate should accept optional value', () => {
+            const program = createProgram();
+            const cmd = program.commands.find(c => c.name() === 'serve')!;
+            const genOpt = cmd.options.find(o => o.long === '--generate');
+            expect(genOpt).toBeDefined();
+            // Optional value options have flags like '-g, --generate [repo-path]'
+            expect(genOpt!.flags).toContain('[');
+        });
+    });
+});
+
+// ============================================================================
+// resolveRepoPath
+// ============================================================================
+
+describe('resolveRepoPath', () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'deepwiki-cli-test-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('should return CLI repo path when provided', () => {
+        const result = resolveRepoPath('/my/repo', undefined);
+        expect(result).toBe('/my/repo');
+    });
+
+    it('should return CLI repo path even when config path is provided', () => {
+        const configPath = path.join(tmpDir, 'deep-wiki.config.yaml');
+        fs.writeFileSync(configPath, 'repoPath: /config/repo\n', 'utf-8');
+
+        const result = resolveRepoPath('/cli/repo', configPath);
+        expect(result).toBe('/cli/repo');
+    });
+
+    it('should read repoPath from explicit config file when no CLI arg', () => {
+        const configPath = path.join(tmpDir, 'deep-wiki.config.yaml');
+        fs.writeFileSync(configPath, 'repoPath: /config/repo\n', 'utf-8');
+
+        const result = resolveRepoPath(undefined, configPath);
+        expect(result).toBe('/config/repo');
+    });
+
+    it('should resolve relative repoPath from config relative to config directory', () => {
+        const configPath = path.join(tmpDir, 'deep-wiki.config.yaml');
+        fs.writeFileSync(configPath, 'repoPath: ../my-project\n', 'utf-8');
+
+        const result = resolveRepoPath(undefined, configPath);
+        expect(result).toBe(path.resolve(tmpDir, '../my-project'));
+    });
+
+    it('should return undefined when neither CLI arg nor config provides repoPath', () => {
+        const configPath = path.join(tmpDir, 'deep-wiki.config.yaml');
+        fs.writeFileSync(configPath, 'model: gpt-4\n', 'utf-8');
+
+        const result = resolveRepoPath(undefined, configPath);
+        expect(result).toBeUndefined();
+    });
+
+    it('should return undefined when no CLI arg and no config file', () => {
+        const result = resolveRepoPath(undefined, undefined);
+        // May discover CWD config, but likely returns undefined in temp env
+        // Test with explicit non-existent config
+        const result2 = resolveRepoPath(undefined, path.join(tmpDir, 'nonexistent.yaml'));
+        expect(result2).toBeUndefined();
+    });
+
+    it('should handle config file with invalid YAML gracefully', () => {
+        const configPath = path.join(tmpDir, 'deep-wiki.config.yaml');
+        fs.writeFileSync(configPath, ':\ninvalid yaml: [unclosed', 'utf-8');
+
+        // Should not throw, returns undefined
+        const result = resolveRepoPath(undefined, configPath);
+        expect(result).toBeUndefined();
     });
 });

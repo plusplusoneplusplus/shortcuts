@@ -114,6 +114,23 @@ largeRepoThreshold: 5000
         expect(config.largeRepoThreshold).toBe(5000);
     });
 
+    it('should load repoPath from config file', () => {
+        const configPath = writeConfigFile('config.yaml', `
+repoPath: /home/user/my-project
+model: gpt-4
+`);
+        const config = loadConfig(configPath);
+        expect(config.repoPath).toBe('/home/user/my-project');
+    });
+
+    it('should load relative repoPath from config file', () => {
+        const configPath = writeConfigFile('config.yaml', `
+repoPath: ../my-project
+`);
+        const config = loadConfig(configPath);
+        expect(config.repoPath).toBe('../my-project');
+    });
+
     it('should load config with per-phase overrides', () => {
         const configPath = writeConfigFile('config.yaml', `
 model: gpt-4
@@ -555,6 +572,22 @@ describe('mergeConfigWithCLI', () => {
         // No cliExplicit parameter — config should win
         const merged = mergeConfigWithCLI(config, cli);
         expect(merged.model).toBe('config-model');
+    });
+
+    it('should include repoPath from config in merged result', () => {
+        const config = { repoPath: '/path/to/repo' };
+        const cli = makeDefaultCLI();
+
+        const merged = mergeConfigWithCLI(config, cli);
+        expect(merged.repoPath).toBe('/path/to/repo');
+    });
+
+    it('should set repoPath to undefined when not in config', () => {
+        const config = { model: 'gpt-4' };
+        const cli = makeDefaultCLI();
+
+        const merged = mergeConfigWithCLI(config, cli);
+        expect(merged.repoPath).toBeUndefined();
     });
 });
 

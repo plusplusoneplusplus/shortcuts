@@ -8,15 +8,15 @@ This task adds full support for `repoPath` in the config file so it becomes the 
 
 ## Acceptance Criteria
 
-- [ ] `repoPath` in `deep-wiki.config.yaml` is loaded and used as the default repo path for `discover`, `generate`, and `seeds` commands
-- [ ] CLI positional `<repo-path>` argument becomes **optional** (not required) for `discover`, `generate`, and `seeds` when `repoPath` is set in config
-- [ ] CLI positional argument **overrides** config file `repoPath` when both are provided (consistent with existing CLI-over-config precedence)
-- [ ] `serve --generate` option also respects config `repoPath` as fallback
-- [ ] Clear error message when neither CLI argument nor config `repoPath` is provided
-- [ ] Config template in `init.ts` includes a commented `repoPath` example
-- [ ] Path resolution works the same way (resolved to absolute path) regardless of source (CLI or config)
-- [ ] All existing CLI usage with positional `<repo-path>` continues to work unchanged (backward compatible)
-- [ ] Existing tests pass; new tests added for config-based repo-path resolution
+- [x] `repoPath` in `deep-wiki.config.yaml` is loaded and used as the default repo path for `discover`, `generate`, and `seeds` commands
+- [x] CLI positional `<repo-path>` argument becomes **optional** (not required) for `discover`, `generate`, and `seeds` when `repoPath` is set in config
+- [x] CLI positional argument **overrides** config file `repoPath` when both are provided (consistent with existing CLI-over-config precedence)
+- [x] `serve --generate` option also respects config `repoPath` as fallback
+- [x] Clear error message when neither CLI argument nor config `repoPath` is provided
+- [x] Config template in `init.ts` includes a commented `repoPath` example
+- [x] Path resolution works the same way (resolved to absolute path) regardless of source (CLI or config)
+- [x] All existing CLI usage with positional `<repo-path>` continues to work unchanged (backward compatible)
+- [x] Existing tests pass; new tests added for config-based repo-path resolution
 
 ## Subtasks
 

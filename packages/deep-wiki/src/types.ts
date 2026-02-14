@@ -466,6 +466,8 @@ export type PhasesConfig = Partial<Record<PhaseName, PhaseConfig>>;
  * Options for the `deep-wiki generate` command.
  */
 export interface GenerateCommandOptions {
+    /** Repository path (from config file, overridden by CLI positional argument) */
+    repoPath?: string;
     /** Output directory */
     output: string;
     /** AI model override */
