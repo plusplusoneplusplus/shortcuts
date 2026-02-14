@@ -107,10 +107,264 @@ export function getDetailScript(): string {
         }
 
         function clearDetail() {
+            // Clean up any active SSE connection
+            closeQueueTaskStream();
             var emptyEl = document.getElementById('detail-empty');
             var contentEl = document.getElementById('detail-content');
             if (emptyEl) emptyEl.classList.remove('hidden');
             if (contentEl) { contentEl.classList.add('hidden'); contentEl.innerHTML = ''; }
+        }
+
+        // ================================================================
+        // Queue Task Detail — Conversation View with SSE Streaming
+        // ================================================================
+
+        var activeQueueTaskStream = null;
+        var queueTaskStreamContent = '';
+        var queueTaskStreamProcessId = null;
+
+        function closeQueueTaskStream() {
+            if (activeQueueTaskStream) {
+                activeQueueTaskStream.close();
+                activeQueueTaskStream = null;
+            }
+            queueTaskStreamProcessId = null;
+        }
+
+        /**
+         * Show a queue task's conversation in the detail panel.
+         * Connects to SSE for real-time streaming if the task is running.
+         * @param {string} taskId - The queue task ID (without 'queue-' prefix)
+         */
+        function showQueueTaskDetail(taskId) {
+            var processId = 'queue-' + taskId;
+
+            // Close any previous stream
+            closeQueueTaskStream();
+
+            var emptyEl = document.getElementById('detail-empty');
+            var contentEl = document.getElementById('detail-content');
+            if (emptyEl) emptyEl.classList.add('hidden');
+            if (!contentEl) return;
+            contentEl.classList.remove('hidden');
+
+            queueTaskStreamContent = '';
+            queueTaskStreamProcessId = processId;
+
+            // First, try to fetch the process from the store for metadata
+            fetchApi('/processes/' + encodeURIComponent(processId)).then(function(data) {
+                var proc = data && data.process ? data.process : null;
+                renderQueueTaskConversation(processId, taskId, proc);
+
+                // Connect SSE for streaming
+                connectQueueTaskSSE(processId, taskId, proc);
+            }).catch(function() {
+                // Process not in store yet — render skeleton and connect SSE
+                renderQueueTaskConversation(processId, taskId, null);
+                connectQueueTaskSSE(processId, taskId, null);
+            });
+        }
+
+        function renderQueueTaskConversation(processId, taskId, proc) {
+            var contentEl = document.getElementById('detail-content');
+            if (!contentEl) return;
+
+            var name = '';
+            var status = '';
+            var prompt = '';
+            var error = '';
+            var startTime = '';
+            var endTime = '';
+
+            if (proc) {
+                name = proc.promptPreview || proc.id || 'Queue Task';
+                status = proc.status || 'running';
+                prompt = proc.fullPrompt || '';
+                error = proc.error || '';
+                startTime = proc.startTime ? new Date(proc.startTime).toLocaleString() : '';
+                endTime = proc.endTime ? new Date(proc.endTime).toLocaleString() : '';
+            } else {
+                // Try to find task info from queue state
+                var allTasks = (queueState.running || []).concat(queueState.queued || []).concat(queueState.history || []);
+                var taskInfo = null;
+                for (var i = 0; i < allTasks.length; i++) {
+                    if (allTasks[i].id === taskId) { taskInfo = allTasks[i]; break; }
+                }
+                if (taskInfo) {
+                    name = taskInfo.displayName || taskInfo.type || 'Queue Task';
+                    status = taskInfo.status || 'running';
+                    startTime = taskInfo.startedAt ? new Date(taskInfo.startedAt).toLocaleString() : '';
+                }
+            }
+
+            var isRunning = (status === 'running' || status === 'queued');
+            var statusClass = status || 'running';
+
+            var html = '<div class="detail-header">' +
+                '<div class="detail-header-top">' +
+                    '<button class="detail-back-btn" onclick="clearDetail()" title="Back">\\u2190</button>' +
+                    '<h1>' + escapeHtmlClient(name) + '</h1>' +
+                '</div>' +
+                '<span class="status-badge ' + statusClass + '">' +
+                    statusIcon(status) + ' ' + statusLabel(status) +
+                '</span>' +
+            '</div>';
+
+            // Metadata
+            html += '<div class="meta-grid">';
+            html += '<div class="meta-item"><label>Process ID</label><span>' + escapeHtmlClient(processId) + '</span></div>';
+            if (startTime) {
+                html += '<div class="meta-item"><label>Started</label><span>' + startTime + '</span></div>';
+            }
+            if (endTime) {
+                html += '<div class="meta-item"><label>Ended</label><span>' + endTime + '</span></div>';
+            }
+            html += '</div>';
+
+            // Error
+            if (error) {
+                html += '<div class="error-alert">' + escapeHtmlClient(error) + '</div>';
+            }
+
+            // Prompt (collapsible)
+            if (prompt) {
+                html += '<details class="prompt-section"><summary>Prompt</summary>' +
+                    '<div class="prompt-body">' + escapeHtmlClient(prompt) + '</div></details>';
+            }
+
+            // Conversation area
+            html += '<div class="conversation-section">' +
+                '<h2>Conversation' + (isRunning ? ' <span class="streaming-indicator">\\u25CF Live</span>' : '') + '</h2>' +
+                '<div id="queue-task-conversation" class="conversation-body">';
+
+            if (proc && proc.result && !isRunning) {
+                // Completed — show full result
+                html += renderMarkdown(proc.result);
+            } else if (queueTaskStreamContent) {
+                // Streaming in progress — show accumulated content
+                html += renderMarkdown(queueTaskStreamContent);
+            } else if (isRunning) {
+                html += '<div class="conversation-waiting">Waiting for response...</div>';
+            } else {
+                html += '<div class="conversation-waiting">No conversation data available.</div>';
+            }
+
+            html += '</div></div>';
+
+            // Action buttons
+            html += '<div class="action-buttons">';
+            if (proc && proc.result) {
+                html += '<button class="action-btn" onclick="copyQueueTaskResult(\\'' + escapeHtmlClient(processId) + '\\')">' +
+                    '\\u{1F4CB} Copy Result</button>';
+            }
+            html += '</div>';
+
+            contentEl.innerHTML = html;
+
+            // Auto-scroll to bottom if streaming
+            if (isRunning) {
+                scrollConversationToBottom();
+            }
+        }
+
+        function connectQueueTaskSSE(processId, taskId, proc) {
+            // If process is already terminal, no need for SSE
+            if (proc && proc.status !== 'running' && proc.status !== 'queued') {
+                return;
+            }
+
+            var sseUrl = API_BASE + '/processes/' + encodeURIComponent(processId) + '/stream';
+            var eventSource = new EventSource(sseUrl);
+            activeQueueTaskStream = eventSource;
+
+            eventSource.addEventListener('chunk', function(e) {
+                if (queueTaskStreamProcessId !== processId) {
+                    eventSource.close();
+                    return;
+                }
+                try {
+                    var data = JSON.parse(e.data);
+                    if (data.content) {
+                        queueTaskStreamContent += data.content;
+                        updateConversationContent();
+                    }
+                } catch(err) {}
+            });
+
+            eventSource.addEventListener('status', function(e) {
+                if (queueTaskStreamProcessId !== processId) {
+                    eventSource.close();
+                    return;
+                }
+                try {
+                    var data = JSON.parse(e.data);
+                    // Refresh the full detail to show final state
+                    fetchApi('/processes/' + encodeURIComponent(processId)).then(function(result) {
+                        if (result && result.process) {
+                            renderQueueTaskConversation(processId, taskId, result.process);
+                        }
+                    });
+                } catch(err) {}
+            });
+
+            eventSource.addEventListener('done', function(e) {
+                eventSource.close();
+                activeQueueTaskStream = null;
+            });
+
+            eventSource.addEventListener('heartbeat', function(e) {
+                // Keep-alive — no action needed
+            });
+
+            eventSource.onerror = function() {
+                // SSE connection failed — process may not exist yet (still queued)
+                // Retry after a delay if process is still the active one
+                eventSource.close();
+                activeQueueTaskStream = null;
+
+                if (queueTaskStreamProcessId === processId) {
+                    setTimeout(function() {
+                        if (queueTaskStreamProcessId === processId) {
+                            // Re-check process status and reconnect if still running
+                            fetchApi('/processes/' + encodeURIComponent(processId)).then(function(result) {
+                                if (result && result.process) {
+                                    if (result.process.status === 'running' || result.process.status === 'queued') {
+                                        connectQueueTaskSSE(processId, taskId, result.process);
+                                    } else {
+                                        // Process finished — render final state
+                                        renderQueueTaskConversation(processId, taskId, result.process);
+                                    }
+                                } else {
+                                    // Process not found yet — retry
+                                    connectQueueTaskSSE(processId, taskId, null);
+                                }
+                            });
+                        }
+                    }, 2000);
+                }
+            };
+        }
+
+        function updateConversationContent() {
+            var el = document.getElementById('queue-task-conversation');
+            if (!el) return;
+            el.innerHTML = renderMarkdown(queueTaskStreamContent);
+            scrollConversationToBottom();
+        }
+
+        function scrollConversationToBottom() {
+            var el = document.getElementById('queue-task-conversation');
+            if (el) {
+                el.scrollTop = el.scrollHeight;
+            }
+        }
+
+        function copyQueueTaskResult(processId) {
+            fetchApi('/processes/' + encodeURIComponent(processId)).then(function(data) {
+                if (data && data.process && data.process.result) {
+                    copyToClipboard(data.process.result);
+                }
+            });
         }
 
         // ================================================================

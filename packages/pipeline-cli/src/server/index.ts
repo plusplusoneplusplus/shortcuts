@@ -12,6 +12,7 @@ import * as http from 'http';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
+import { EventEmitter } from 'events';
 import { createRequestHandler } from './router';
 import { registerApiRoutes } from './api-handler';
 import { registerQueueRoutes } from './queue-handler';
@@ -19,7 +20,7 @@ import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
 import type { Route } from './types';
-import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/pipeline-core';
 import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
 import { createQueueExecutorBridge } from './queue-executor-bridge';
 
@@ -28,23 +29,72 @@ import { createQueueExecutorBridge } from './queue-executor-bridge';
 // ============================================================================
 
 /**
- * Minimal in-memory ProcessStore stub used when no store is injected.
- * Placeholder until a real store is wired in via a later commit.
+ * Minimal in-memory ProcessStore used when no store is injected.
+ * Supports event emission for SSE streaming and process tracking.
  */
 function createStubStore(): ProcessStore {
-    return {
-        addProcess: async () => {},
-        updateProcess: async () => {},
-        getProcess: async () => undefined,
-        getAllProcesses: async () => [],
-        removeProcess: async () => {},
-        clearProcesses: async () => 0,
+    const processes = new Map<string, AIProcess>();
+    const emitters = new Map<string, EventEmitter>();
+    let changeCallback: ProcessChangeCallback | undefined;
+
+    function getOrCreateEmitter(id: string): EventEmitter {
+        let emitter = emitters.get(id);
+        if (!emitter) {
+            emitter = new EventEmitter();
+            emitters.set(id, emitter);
+        }
+        return emitter;
+    }
+
+    const store: ProcessStore = {
+        addProcess: async (proc) => {
+            processes.set(proc.id, proc);
+            changeCallback?.({ type: 'process-added', process: proc });
+        },
+        updateProcess: async (id, updates) => {
+            const existing = processes.get(id);
+            if (!existing) return;
+            const merged = { ...existing, ...updates };
+            processes.set(id, merged as AIProcess);
+            changeCallback?.({ type: 'process-updated', process: merged as AIProcess });
+        },
+        getProcess: async (id) => processes.get(id),
+        getAllProcesses: async () => Array.from(processes.values()),
+        removeProcess: async (id) => {
+            const proc = processes.get(id);
+            processes.delete(id);
+            if (proc) changeCallback?.({ type: 'process-removed', process: proc });
+        },
+        clearProcesses: async () => { const count = processes.size; processes.clear(); changeCallback?.({ type: 'processes-cleared' }); return count; },
         getWorkspaces: async () => [],
         registerWorkspace: async () => {},
-        onProcessOutput: () => () => {},
-        emitProcessOutput: () => {},
-        emitProcessComplete: () => {},
+        onProcessOutput: (id, callback) => {
+            const emitter = getOrCreateEmitter(id);
+            const listener = (event: ProcessOutputEvent) => callback(event);
+            emitter.on('output', listener);
+            return () => { emitter.removeListener('output', listener); };
+        },
+        emitProcessOutput: (id, content) => {
+            const emitter = getOrCreateEmitter(id);
+            emitter.emit('output', { type: 'chunk', content });
+        },
+        emitProcessComplete: (id, status, duration) => {
+            const emitter = emitters.get(id);
+            if (!emitter) return;
+            emitter.emit('output', { type: 'complete', status, duration });
+            emitters.delete(id);
+        },
     };
+
+    // Expose onProcessChange setter via defineProperty
+    Object.defineProperty(store, 'onProcessChange', {
+        get: () => changeCallback,
+        set: (cb: ProcessChangeCallback | undefined) => { changeCallback = cb; },
+        enumerable: true,
+        configurable: true,
+    });
+
+    return store;
 }
 
 // ============================================================================

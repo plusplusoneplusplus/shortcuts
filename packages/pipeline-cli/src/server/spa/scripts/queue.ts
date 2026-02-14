@@ -133,7 +133,12 @@ export function getQueueScript(opts: ScriptOptions): string {
                 elapsed = formatRelativeTime(new Date(task.createdAt).toISOString());
             }
 
-            var html = '<div class="queue-task ' + task.status + '" data-task-id="' + escapeHtmlClient(task.id) + '">' +
+            // Running tasks are clickable to view conversation
+            var clickAttr = task.status === 'running'
+                ? ' onclick="showQueueTaskDetail(\\'' + escapeHtmlClient(task.id) + '\\')" style="cursor:pointer"'
+                : '';
+
+            var html = '<div class="queue-task ' + task.status + '" data-task-id="' + escapeHtmlClient(task.id) + '"' + clickAttr + '>' +
                 '<div class="queue-task-row">' +
                     '<span class="queue-task-status">' + statusIcon + '</span>' +
                     (priorityIcon[task.priority] ? '<span class="queue-task-priority">' + priorityIcon[task.priority] + '</span>' : '') +
@@ -144,14 +149,14 @@ export function getQueueScript(opts: ScriptOptions): string {
             // Action buttons for queued tasks
             if (isQueued) {
                 html += '<div class="queue-task-actions">' +
-                    (index > 0 ? '<button class="queue-action-btn" onclick="queueMoveUp(\\'' + escapeHtmlClient(task.id) + '\\')" title="Move up">&#9650;</button>' : '') +
-                    '<button class="queue-action-btn" onclick="queueMoveToTop(\\'' + escapeHtmlClient(task.id) + '\\')" title="Move to top">&#9196;</button>' +
-                    '<button class="queue-action-btn queue-action-danger" onclick="queueCancelTask(\\'' + escapeHtmlClient(task.id) + '\\')" title="Cancel">&#10005;</button>' +
+                    (index > 0 ? '<button class="queue-action-btn" onclick="event.stopPropagation(); queueMoveUp(\\'' + escapeHtmlClient(task.id) + '\\')" title="Move up">&#9650;</button>' : '') +
+                    '<button class="queue-action-btn" onclick="event.stopPropagation(); queueMoveToTop(\\'' + escapeHtmlClient(task.id) + '\\')" title="Move to top">&#9196;</button>' +
+                    '<button class="queue-action-btn queue-action-danger" onclick="event.stopPropagation(); queueCancelTask(\\'' + escapeHtmlClient(task.id) + '\\')" title="Cancel">&#10005;</button>' +
                 '</div>';
             } else {
                 // Running task — show cancel only
                 html += '<div class="queue-task-actions">' +
-                    '<button class="queue-action-btn queue-action-danger" onclick="queueCancelTask(\\'' + escapeHtmlClient(task.id) + '\\')" title="Cancel">&#10005;</button>' +
+                    '<button class="queue-action-btn queue-action-danger" onclick="event.stopPropagation(); queueCancelTask(\\'' + escapeHtmlClient(task.id) + '\\')" title="Cancel">&#10005;</button>' +
                 '</div>';
             }
 
@@ -175,7 +180,8 @@ export function getQueueScript(opts: ScriptOptions): string {
                 duration = ' (' + formatDuration(task.completedAt - task.startedAt) + ')';
             }
 
-            var html = '<div class="queue-task queue-history-task ' + task.status + '" data-task-id="' + escapeHtmlClient(task.id) + '">' +
+            var html = '<div class="queue-task queue-history-task ' + task.status + '" data-task-id="' + escapeHtmlClient(task.id) + '"' +
+                ' onclick="showQueueTaskDetail(\\'' + escapeHtmlClient(task.id) + '\\')" style="cursor:pointer">' +
                 '<div class="queue-task-row">' +
                     '<span class="queue-task-status">' + statusIcon + '</span>' +
                     '<span class="queue-task-name">' + escapeHtmlClient(name) + '</span>' +

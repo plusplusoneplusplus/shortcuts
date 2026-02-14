@@ -218,6 +218,7 @@ export class CLITaskExecutor implements TaskExecutor {
 
     private async executeWithAI(task: QueuedTask, prompt: string): Promise<unknown> {
         const sdkService = getCopilotSDKService();
+        const processId = `queue-${task.id}`;
 
         const availability = await sdkService.isAvailable();
         if (!availability.available) {
@@ -234,6 +235,14 @@ export class CLITaskExecutor implements TaskExecutor {
             timeoutMs,
             usePool: false,
             onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
+            // Stream response chunks to the process store for real-time UI updates
+            onStreamingChunk: (chunk: string) => {
+                try {
+                    this.store.emitProcessOutput(processId, chunk);
+                } catch {
+                    // Non-fatal: store may be a stub
+                }
+            },
         });
 
         if (!result.success) {

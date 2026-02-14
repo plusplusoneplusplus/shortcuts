@@ -100,21 +100,31 @@ function parseSSE(text: string): Array<{ event: string; data: unknown }> {
 
 describe('Server Integration', () => {
     let server: ExecutionServer;
+    let stubServer: ExecutionServer;
     let store: FileProcessStore;
     let baseUrl: string;
+    let stubBaseUrl: string;
     let tmpDir: string;
+    let stubTmpDir: string;
 
     beforeAll(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-'));
         store = new FileProcessStore({ dataDir: tmpDir });
         server = await createExecutionServer({ store, port: 0, host: '127.0.0.1', dataDir: tmpDir });
         baseUrl = server.url;
+
+        // Create a second server using the default stub store (no store option)
+        stubTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-stub-'));
+        stubServer = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: stubTmpDir });
+        stubBaseUrl = stubServer.url;
     });
 
     afterAll(async () => {
-        // Force-close all connections before closing the server
+        // Force-close all connections before closing the servers
         await server.close();
+        await stubServer.close();
         fs.rmSync(tmpDir, { recursive: true, force: true });
+        fs.rmSync(stubTmpDir, { recursive: true, force: true });
     }, 10_000);
 
     // ------------------------------------------------------------------
@@ -497,6 +507,103 @@ describe('Server Integration', () => {
 
         it('should return 404 for unknown API route', async () => {
             const res = await request(`${baseUrl}/api/does-not-exist`);
+            expect(res.status).toBe(404);
+        });
+    });
+
+    // ------------------------------------------------------------------
+    // Stub Store — In-Memory Process Tracking & SSE Streaming
+    // ------------------------------------------------------------------
+    describe('stub store process tracking', () => {
+        it('should store and retrieve processes via the stub store', async () => {
+            // Create a process
+            const createRes = await request(`${stubBaseUrl}/api/processes`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: 'stub-proc-1',
+                    type: 'queue-ai-clarification',
+                    promptPreview: 'Test prompt',
+                    fullPrompt: 'Full test prompt',
+                    status: 'running',
+                    startTime: new Date().toISOString(),
+                }),
+            });
+            expect(createRes.status).toBe(201);
+
+            // Retrieve it
+            const getRes = await request(`${stubBaseUrl}/api/processes/stub-proc-1`);
+            expect(getRes.status).toBe(200);
+            const body = JSON.parse(getRes.body);
+            expect(body.process).toBeDefined();
+            expect(body.process.id).toBe('stub-proc-1');
+            expect(body.process.status).toBe('running');
+        });
+
+        it('should update process status via the stub store', async () => {
+            // Create a process
+            await request(`${stubBaseUrl}/api/processes`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: 'stub-proc-2',
+                    type: 'queue-custom',
+                    promptPreview: 'Update test',
+                    fullPrompt: 'Full prompt',
+                    status: 'running',
+                    startTime: new Date().toISOString(),
+                }),
+            });
+
+            // Update it
+            const patchRes = await request(`${stubBaseUrl}/api/processes/stub-proc-2`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    status: 'completed',
+                    result: 'Task completed successfully',
+                }),
+            });
+            expect(patchRes.status).toBe(200);
+
+            // Verify update
+            const getRes = await request(`${stubBaseUrl}/api/processes/stub-proc-2`);
+            const body = JSON.parse(getRes.body);
+            expect(body.process.status).toBe('completed');
+            expect(body.process.result).toBe('Task completed successfully');
+        });
+
+        it('should list all processes from stub store', async () => {
+            const listRes = await request(`${stubBaseUrl}/api/processes`);
+            expect(listRes.status).toBe(200);
+            const body = JSON.parse(listRes.body);
+            expect(body.processes).toBeDefined();
+            expect(Array.isArray(body.processes)).toBe(true);
+        });
+
+        it('should return SSE stream for a completed process', async () => {
+            // Create a completed process
+            await request(`${stubBaseUrl}/api/processes`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: 'stub-sse-1',
+                    type: 'queue-ai-clarification',
+                    promptPreview: 'SSE test',
+                    fullPrompt: 'Full prompt',
+                    status: 'completed',
+                    startTime: new Date().toISOString(),
+                    endTime: new Date().toISOString(),
+                    result: 'Completed result',
+                }),
+            });
+
+            // Connect to SSE stream — should get status + done immediately
+            const sseRes = await request(`${stubBaseUrl}/api/processes/stub-sse-1/stream`);
+            expect(sseRes.status).toBe(200);
+            expect(sseRes.headers['content-type']).toBe('text/event-stream');
+            expect(sseRes.body).toContain('event: status');
+            expect(sseRes.body).toContain('event: done');
+        });
+
+        it('should return 404 for SSE stream of nonexistent process', async () => {
+            const res = await request(`${stubBaseUrl}/api/processes/nonexistent-sse/stream`);
             expect(res.status).toBe(404);
         });
     });

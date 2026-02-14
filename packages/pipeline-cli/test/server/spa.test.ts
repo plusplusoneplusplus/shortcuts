@@ -799,3 +799,184 @@ describe('Queue styles', () => {
         expect(styles).toContain('opacity: 1');
     });
 });
+
+// ============================================================================
+// Queue Task Conversation View
+// ============================================================================
+
+describe('Queue task conversation view', () => {
+    const detailScript = getDetailScript();
+    const queueScript = getQueueScript({ apiBasePath: '/api', wsPath: '/ws' });
+
+    describe('detail script — conversation functions', () => {
+        it('defines showQueueTaskDetail function', () => {
+            expect(detailScript).toContain('function showQueueTaskDetail(taskId)');
+        });
+
+        it('defines renderQueueTaskConversation function', () => {
+            expect(detailScript).toContain('function renderQueueTaskConversation(processId, taskId, proc)');
+        });
+
+        it('defines connectQueueTaskSSE function', () => {
+            expect(detailScript).toContain('function connectQueueTaskSSE(processId, taskId, proc)');
+        });
+
+        it('defines closeQueueTaskStream function', () => {
+            expect(detailScript).toContain('function closeQueueTaskStream()');
+        });
+
+        it('defines updateConversationContent function', () => {
+            expect(detailScript).toContain('function updateConversationContent()');
+        });
+
+        it('defines scrollConversationToBottom function', () => {
+            expect(detailScript).toContain('function scrollConversationToBottom()');
+        });
+
+        it('defines copyQueueTaskResult function', () => {
+            expect(detailScript).toContain('function copyQueueTaskResult(processId)');
+        });
+
+        it('constructs process ID with queue- prefix', () => {
+            expect(detailScript).toContain("var processId = 'queue-' + taskId");
+        });
+
+        it('uses EventSource for SSE streaming', () => {
+            expect(detailScript).toContain('new EventSource(sseUrl)');
+        });
+
+        it('listens for chunk events', () => {
+            expect(detailScript).toContain("addEventListener('chunk'");
+        });
+
+        it('listens for status events', () => {
+            expect(detailScript).toContain("addEventListener('status'");
+        });
+
+        it('listens for done events', () => {
+            expect(detailScript).toContain("addEventListener('done'");
+        });
+
+        it('listens for heartbeat events', () => {
+            expect(detailScript).toContain("addEventListener('heartbeat'");
+        });
+
+        it('accumulates streaming content', () => {
+            expect(detailScript).toContain('queueTaskStreamContent += data.content');
+        });
+
+        it('auto-scrolls conversation to bottom during streaming', () => {
+            expect(detailScript).toContain('scrollConversationToBottom()');
+        });
+
+        it('shows streaming indicator for running tasks', () => {
+            expect(detailScript).toContain('streaming-indicator');
+            expect(detailScript).toContain('Live');
+        });
+
+        it('shows waiting message when no content yet', () => {
+            expect(detailScript).toContain('Waiting for response...');
+        });
+
+        it('closes previous SSE stream when opening new task', () => {
+            expect(detailScript).toContain('closeQueueTaskStream()');
+        });
+
+        it('cleans up SSE stream on clearDetail', () => {
+            // clearDetail should call closeQueueTaskStream
+            expect(detailScript).toContain('function clearDetail()');
+            // The clearDetail function should reference closeQueueTaskStream
+            const clearDetailMatch = detailScript.match(/function clearDetail\(\)[^}]*closeQueueTaskStream/s);
+            expect(clearDetailMatch).toBeTruthy();
+        });
+
+        it('fetches process data via REST API', () => {
+            expect(detailScript).toContain("fetchApi('/processes/' + encodeURIComponent(processId))");
+        });
+
+        it('renders markdown in conversation body', () => {
+            expect(detailScript).toContain('renderMarkdown(proc.result)');
+            expect(detailScript).toContain('renderMarkdown(queueTaskStreamContent)');
+        });
+
+        it('retries SSE connection on error with delay', () => {
+            expect(detailScript).toContain('setTimeout(function()');
+            expect(detailScript).toContain('2000');
+        });
+
+        it('renders back button in detail header', () => {
+            expect(detailScript).toContain('detail-back-btn');
+            expect(detailScript).toContain('clearDetail()');
+        });
+
+        it('renders copy result button for completed tasks', () => {
+            expect(detailScript).toContain('Copy Result');
+            expect(detailScript).toContain('copyQueueTaskResult');
+        });
+
+        it('renders prompt section when available', () => {
+            expect(detailScript).toContain('prompt-section');
+            expect(detailScript).toContain('Prompt');
+        });
+
+        it('renders error alert when process has error', () => {
+            expect(detailScript).toContain('error-alert');
+        });
+    });
+
+    describe('queue script — clickable tasks', () => {
+        it('makes running tasks clickable with showQueueTaskDetail', () => {
+            expect(queueScript).toContain("showQueueTaskDetail(\\'");
+        });
+
+        it('makes history tasks clickable with showQueueTaskDetail', () => {
+            // renderQueueHistoryTask should have onclick
+            expect(queueScript).toContain("onclick=\"showQueueTaskDetail(\\'");
+        });
+
+        it('sets cursor pointer on clickable tasks', () => {
+            expect(queueScript).toContain('cursor:pointer');
+        });
+
+        it('stops event propagation on action buttons', () => {
+            expect(queueScript).toContain('event.stopPropagation()');
+        });
+    });
+
+    describe('conversation styles', () => {
+        const conversationStyles = getDashboardStyles();
+
+        it('defines conversation section styles', () => {
+            expect(conversationStyles).toContain('.conversation-section');
+            expect(conversationStyles).toContain('.conversation-body');
+        });
+
+        it('defines streaming indicator with pulse animation', () => {
+            expect(conversationStyles).toContain('.streaming-indicator');
+            expect(conversationStyles).toContain('@keyframes pulse');
+        });
+
+        it('defines conversation waiting state style', () => {
+            expect(conversationStyles).toContain('.conversation-waiting');
+        });
+
+        it('defines back button style', () => {
+            expect(conversationStyles).toContain('.detail-back-btn');
+            expect(conversationStyles).toContain('.detail-header-top');
+        });
+
+        it('sets max-height and overflow on conversation body', () => {
+            expect(conversationStyles).toContain('max-height: 60vh');
+            expect(conversationStyles).toContain('overflow-y: auto');
+        });
+
+        it('styles code blocks in conversation', () => {
+            expect(conversationStyles).toContain('.conversation-body pre');
+            expect(conversationStyles).toContain('.conversation-body code');
+        });
+
+        it('styles blockquotes in conversation', () => {
+            expect(conversationStyles).toContain('.conversation-body blockquote');
+        });
+    });
+});

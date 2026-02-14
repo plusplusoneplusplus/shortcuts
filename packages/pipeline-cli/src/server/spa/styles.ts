@@ -847,6 +847,95 @@ export function getDashboardStyles(): string {
             background: var(--hover-bg);
         }
 
+        /* ---- Queue Task Conversation View ---- */
+        .detail-header-top {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .detail-back-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            line-height: 1.2;
+            transition: background-color 0.15s, color 0.15s;
+        }
+        .detail-back-btn:hover {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+        }
+        .conversation-section {
+            margin-top: 16px;
+        }
+        .conversation-section h2 {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 0 0 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .streaming-indicator {
+            font-size: 10px;
+            color: var(--status-running);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .conversation-body {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 16px;
+            min-height: 200px;
+            max-height: 60vh;
+            overflow-y: auto;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .conversation-body pre {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 12px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+        .conversation-body code {
+            font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+        }
+        .conversation-body p {
+            margin: 4px 0;
+        }
+        .conversation-body h1, .conversation-body h2, .conversation-body h3, .conversation-body h4 {
+            margin: 12px 0 6px 0;
+        }
+        .conversation-body ul, .conversation-body ol {
+            margin: 4px 0;
+            padding-left: 20px;
+        }
+        .conversation-body blockquote {
+            border-left: 3px solid var(--accent);
+            margin: 8px 0;
+            padding: 4px 12px;
+            color: var(--text-secondary);
+        }
+        .conversation-waiting {
+            color: var(--text-secondary);
+            font-style: italic;
+            padding: 20px 0;
+            text-align: center;
+        }
+
         /* ---- Responsive ---- */
         @media (max-width: 768px) {
             .hamburger-btn { display: block; }

@@ -898,6 +898,139 @@ describe('Queue execution via HTTP API', () => {
         expect(result.success).toBe(false);
     });
 
+    it('should pass onStreamingChunk to sendMessage for AI tasks', async () => {
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'task-stream-1',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'Stream me' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        // Verify onStreamingChunk was passed to sendMessage
+        expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+            onStreamingChunk: expect.any(Function),
+        }));
+    });
+
+    it('should emit streaming chunks to process store via onStreamingChunk', async () => {
+        // Capture the onStreamingChunk callback and invoke it during execution
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            // Simulate streaming chunks
+            if (opts.onStreamingChunk) {
+                opts.onStreamingChunk('Hello ');
+                opts.onStreamingChunk('world!');
+            }
+            return { success: true, response: 'Hello world!', sessionId: 'sess-stream' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'task-stream-2',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'Stream test' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        // Verify chunks were emitted to the store
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-stream-2', 'Hello ');
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-stream-2', 'world!');
+        expect(store.outputs.get('queue-task-stream-2')).toEqual(['Hello ', 'world!']);
+    });
+
+    it('should handle store.emitProcessOutput errors gracefully during streaming', async () => {
+        // Make emitProcessOutput throw
+        const failingStore = createMockStore();
+        (failingStore.emitProcessOutput as any).mockImplementation(() => {
+            throw new Error('Store emit error');
+        });
+
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onStreamingChunk) {
+                opts.onStreamingChunk('chunk1');
+            }
+            return { success: true, response: 'done', sessionId: 'sess-err' };
+        });
+
+        const executor = new CLITaskExecutor(failingStore);
+
+        const task: QueuedTask = {
+            id: 'task-stream-err',
+            type: 'ai-clarification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { prompt: 'test' },
+            config: {},
+        };
+
+        // Should not throw — store errors in streaming are non-fatal
+        const result = await executor.execute(task);
+        expect(result.success).toBe(true);
+    });
+
+    it('should emit streaming chunks for custom tasks', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onStreamingChunk) {
+                opts.onStreamingChunk('custom chunk');
+            }
+            return { success: true, response: 'custom response' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'task-stream-custom',
+            type: 'custom',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { data: { prompt: 'Custom task' } },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-stream-custom', 'custom chunk');
+    });
+
+    it('should emit streaming chunks for follow-prompt tasks', async () => {
+        mockSendMessage.mockImplementation(async (opts: any) => {
+            if (opts.onStreamingChunk) {
+                opts.onStreamingChunk('follow chunk');
+            }
+            return { success: true, response: 'follow response' };
+        });
+
+        const executor = new CLITaskExecutor(store);
+
+        const task: QueuedTask = {
+            id: 'task-stream-follow',
+            type: 'follow-prompt',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: { promptFilePath: '/nonexistent/file.md' },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('queue-task-stream-follow', 'follow chunk');
+    });
+
     it('should use default working directory from options', async () => {
         const executor = new CLITaskExecutor(store, { workingDirectory: '/default/dir' });
 
