@@ -14,7 +14,9 @@ import {
     initializeAIQueueService,
     registerQueueCommands,
     getJobTemplateManager,
-    registerTemplateCommands
+    registerTemplateCommands,
+    ServerClient,
+    getWorkspaceInfo
 } from './shortcuts/ai-service';
 import { registerCodeReviewCommands } from './shortcuts/code-review';
 import { ShortcutsCommands } from './shortcuts/commands';
@@ -2031,6 +2033,79 @@ export async function activate(context: vscode.ExtensionContext) {
         // Initialize AI Process Manager with persistence (must be before ReviewEditorViewProvider and DiffReviewEditorProvider)
         const aiProcessManager = new AIProcessManager();
         await aiProcessManager.initialize(context);
+
+        // --- AI Execution Server Client ---
+        {
+            const config = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.server');
+            let serverClient: ServerClient | undefined;
+            const serverStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+            serverStatusBar.command = 'shortcuts.aiService.openDashboard';
+            context.subscriptions.push(serverStatusBar);
+
+            const initServerClient = (url: string, autoSync: boolean) => {
+                serverClient?.dispose();
+                serverClient = undefined;
+                if (url && autoSync) {
+                    try {
+                        serverClient = new ServerClient(url);
+                        aiProcessManager.setServerClient(serverClient);
+                        context.subscriptions.push(serverClient);
+                        const ws = getWorkspaceInfo();
+                        if (ws) { serverClient.registerWorkspace(ws); }
+                        void serverClient.healthCheck();
+                        serverClient.onDidChangeConnection((connected) => {
+                            serverStatusBar.text = connected ? '$(globe) AI Server' : '$(globe) AI Server (offline)';
+                            serverStatusBar.tooltip = connected ? `Connected to ${url}` : `Disconnected from ${url}`;
+                            serverStatusBar.show();
+                        });
+                        serverStatusBar.text = '$(globe) AI Server';
+                        serverStatusBar.tooltip = `Connecting to ${url}…`;
+                        serverStatusBar.show();
+                    } catch {
+                        serverStatusBar.hide();
+                    }
+                } else {
+                    aiProcessManager.setServerClient(undefined);
+                    serverStatusBar.hide();
+                }
+            };
+
+            initServerClient(config.get<string>('url', ''), config.get<boolean>('autoSync', true));
+
+            context.subscriptions.push(
+                vscode.workspace.onDidChangeConfiguration((e) => {
+                    if (e.affectsConfiguration('workspaceShortcuts.aiService.server')) {
+                        const c = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.server');
+                        initServerClient(c.get<string>('url', ''), c.get<boolean>('autoSync', true));
+                    }
+                })
+            );
+
+            context.subscriptions.push(
+                vscode.commands.registerCommand('shortcuts.aiService.openDashboard', () => {
+                    const url = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.server').get<string>('url', '');
+                    if (url) {
+                        void vscode.env.openExternal(vscode.Uri.parse(url));
+                    } else {
+                        void vscode.window.showInformationMessage('No AI execution server configured. Set workspaceShortcuts.aiService.server.url first.');
+                    }
+                })
+            );
+
+            context.subscriptions.push(
+                vscode.commands.registerCommand('shortcuts.aiService.configureServer', async () => {
+                    const current = vscode.workspace.getConfiguration('workspaceShortcuts.aiService.server').get<string>('url', '');
+                    const url = await vscode.window.showInputBox({
+                        prompt: 'Enter AI execution server URL (leave empty to disable)',
+                        value: current,
+                        placeHolder: 'http://localhost:4000',
+                    });
+                    if (url !== undefined) {
+                        await vscode.workspace.getConfiguration('workspaceShortcuts.aiService.server').update('url', url, vscode.ConfigurationTarget.Workspace);
+                    }
+                })
+            );
+        }
 
         // Initialize AI Queue Service (needed for queued Ask AI / Follow Prompt modes)
         const aiQueueService = initializeAIQueueService(aiProcessManager);

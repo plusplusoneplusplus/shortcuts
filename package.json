@@ -369,6 +369,16 @@
           "default": true,
           "markdownDescription": "Automatically load MCP server configuration from `~/.copilot/mcp-config.json` when using the Copilot SDK backend. This allows you to configure MCP servers once and use them across all workspaces."
         },
+        "workspaceShortcuts.aiService.server.url": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "URL of the AI execution server (e.g. `http://localhost:4000`). Leave empty to disable server sync."
+        },
+        "workspaceShortcuts.aiService.server.autoSync": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically push AI process changes to the configured server."
+        },
         "workspaceShortcuts.aiService.model": {
           "type": "string",
           "enum": [

@@ -227,3 +227,9 @@ export {
     showTemplatePicker,
     manageTemplates
 } from './job-template-commands';
+
+// Export workspace identity
+export { WorkspaceInfo, getWorkspaceInfo, computeWorkspaceId } from './workspace-identity';
+
+// Export server client
+export { ServerClient } from './server-client';

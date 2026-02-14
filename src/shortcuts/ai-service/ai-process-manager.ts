@@ -14,6 +14,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
 import { getCopilotSDKService } from '@plusplusoneplusplus/pipeline-core';
+import { ServerClient } from './server-client';
+import { getWorkspaceInfo } from './workspace-identity';
 import {
     AIProcess,
     AIProcessStatus,
@@ -64,6 +66,8 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
     private processCounter = 0;
     private context?: vscode.ExtensionContext;
     private initialized = false;
+    private serverClient?: ServerClient;
+    private serverSyncDisposable?: vscode.Disposable;
 
     private readonly _onDidChangeProcesses = new vscode.EventEmitter<ProcessEvent>();
     readonly onDidChangeProcesses: vscode.Event<ProcessEvent> = this._onDidChangeProcesses.event;
@@ -1310,6 +1314,40 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
     }
 
     /**
+     * Set the server client for remote sync.
+     * Subscribes to process events and forwards mutations to the server.
+     */
+    setServerClient(client: ServerClient | undefined): void {
+        this.serverSyncDisposable?.dispose();
+        this.serverClient = client;
+        if (!client) { return; }
+        this.serverSyncDisposable = this.onDidChangeProcesses((event) => {
+            if (!this.serverClient) { return; }
+            const ws = getWorkspaceInfo();
+            if (!ws) { return; }
+            switch (event.type) {
+                case 'process-added':
+                    if (event.process) {
+                        this.serverClient.submitProcess(event.process, ws);
+                    }
+                    break;
+                case 'process-updated':
+                    if (event.process) {
+                        this.serverClient.updateProcess(event.process.id, event.process);
+                    }
+                    break;
+                case 'process-removed':
+                    if (event.process) {
+                        this.serverClient.removeProcess(event.process.id);
+                    }
+                    break;
+                case 'processes-cleared':
+                    break;
+            }
+        });
+    }
+
+    /**
      * Dispose of resources
      */
     dispose(): void {
@@ -1320,6 +1358,8 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
             }
         }
         this.processes.clear();
+        this.serverSyncDisposable?.dispose();
+        this.serverClient?.dispose();
         this._onDidChangeProcesses.dispose();
     }
 }
