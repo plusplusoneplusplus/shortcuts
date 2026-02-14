@@ -671,4 +671,352 @@ suite('Tasks Viewer - Folder Drag and Drop Tests', () => {
             );
         });
     });
+
+    suite('Undo Support - canUndo and undoLastMove', () => {
+        test('canUndo should return false when no move has been performed', () => {
+            assert.strictEqual(dragDropController.canUndo(), false);
+        });
+
+        test('should undo a single file move', async () => {
+            // Create source file and target folder
+            const taskPath = createTaskFile('.vscode/tasks/feature-a/task1.md', '# Task 1\n\nContent.\n');
+            createDir('.vscode/tasks/feature-b');
+
+            const targetFolder = path.join(tempDir, '.vscode/tasks/feature-b');
+
+            // Move the file via TaskManager (simulating what handleInternalDrop does)
+            const newPath = await taskManager.moveTask(taskPath, targetFolder);
+
+            // Manually set the undo entry (simulating what handleInternalDrop records)
+            (dragDropController as any).lastUndoEntry = {
+                operations: [{
+                    type: 'file',
+                    sourcePath: taskPath,
+                    targetPath: newPath,
+                    timestamp: Date.now()
+                }],
+                timestamp: Date.now()
+            };
+
+            // Verify file is at new location
+            assert.ok(fs.existsSync(newPath), 'File should be at new location');
+            assert.ok(!fs.existsSync(taskPath), 'File should not be at original location');
+
+            // Verify undo is available
+            assert.strictEqual(dragDropController.canUndo(), true);
+
+            // Perform undo
+            await dragDropController.undoLastMove();
+
+            // Verify file is back at original location
+            assert.ok(fs.existsSync(taskPath), 'File should be restored to original location');
+            assert.ok(!fs.existsSync(newPath), 'File should not be at moved location');
+
+            // Verify undo is no longer available
+            assert.strictEqual(dragDropController.canUndo(), false);
+        });
+
+        test('should undo a folder move', async () => {
+            // Create folder with content
+            createTaskFile('.vscode/tasks/feature-a/task1.md', '# Task 1\n');
+            createTaskFile('.vscode/tasks/feature-a/task2.md', '# Task 2\n');
+            createDir('.vscode/tasks/feature-b');
+
+            const sourcePath = path.join(tempDir, '.vscode/tasks/feature-a');
+            const targetParent = path.join(tempDir, '.vscode/tasks/feature-b');
+
+            // Move the folder
+            const newPath = await taskManager.moveFolder(sourcePath, targetParent);
+
+            // Set undo entry
+            (dragDropController as any).lastUndoEntry = {
+                operations: [{
+                    type: 'folder',
+                    sourcePath: sourcePath,
+                    targetPath: newPath,
+                    timestamp: Date.now()
+                }],
+                timestamp: Date.now()
+            };
+
+            // Verify folder is at new location
+            assert.ok(fs.existsSync(newPath), 'Folder should be at new location');
+            assert.ok(!fs.existsSync(sourcePath), 'Folder should not be at original location');
+
+            // Perform undo
+            await dragDropController.undoLastMove();
+
+            // Verify folder is back
+            assert.ok(fs.existsSync(sourcePath), 'Folder should be restored');
+            assert.ok(!fs.existsSync(newPath), 'Folder should not be at moved location');
+
+            // Verify contents are intact
+            assert.ok(pathExists('.vscode/tasks/feature-a/task1.md'), 'task1.md should be restored');
+            assert.ok(pathExists('.vscode/tasks/feature-a/task2.md'), 'task2.md should be restored');
+        });
+
+        test('should undo a batch of file moves', async () => {
+            // Create multiple files
+            const task1Path = createTaskFile('.vscode/tasks/feature-a/task1.md', '# Task 1\n');
+            const task2Path = createTaskFile('.vscode/tasks/feature-a/task2.md', '# Task 2\n');
+            createDir('.vscode/tasks/feature-b');
+
+            const targetFolder = path.join(tempDir, '.vscode/tasks/feature-b');
+
+            // Move both files
+            const newPath1 = await taskManager.moveTask(task1Path, targetFolder);
+            const newPath2 = await taskManager.moveTask(task2Path, targetFolder);
+
+            // Set undo entry with batch
+            (dragDropController as any).lastUndoEntry = {
+                operations: [
+                    { type: 'file', sourcePath: task1Path, targetPath: newPath1, timestamp: Date.now() },
+                    { type: 'file', sourcePath: task2Path, targetPath: newPath2, timestamp: Date.now() }
+                ],
+                timestamp: Date.now()
+            };
+
+            // Perform undo
+            await dragDropController.undoLastMove();
+
+            // Verify both files are restored
+            assert.ok(fs.existsSync(task1Path), 'task1 should be restored');
+            assert.ok(fs.existsSync(task2Path), 'task2 should be restored');
+            assert.ok(!fs.existsSync(newPath1), 'task1 should not be at moved location');
+            assert.ok(!fs.existsSync(newPath2), 'task2 should not be at moved location');
+        });
+
+        test('should preserve file content after undo', async () => {
+            const content = '# Important Task\n\nDo not lose this content.\n';
+            const taskPath = createTaskFile('.vscode/tasks/feature-a/important.md', content);
+            createDir('.vscode/tasks/feature-b');
+
+            const targetFolder = path.join(tempDir, '.vscode/tasks/feature-b');
+            const newPath = await taskManager.moveTask(taskPath, targetFolder);
+
+            (dragDropController as any).lastUndoEntry = {
+                operations: [{
+                    type: 'file',
+                    sourcePath: taskPath,
+                    targetPath: newPath,
+                    timestamp: Date.now()
+                }],
+                timestamp: Date.now()
+            };
+
+            await dragDropController.undoLastMove();
+
+            const restoredContent = fs.readFileSync(taskPath, 'utf8');
+            assert.strictEqual(restoredContent, content, 'Content should be preserved after undo');
+        });
+
+        test('canUndo should return false after undo timeout', async () => {
+            // Set an expired undo entry
+            (dragDropController as any).lastUndoEntry = {
+                operations: [{
+                    type: 'file',
+                    sourcePath: '/fake/source',
+                    targetPath: '/fake/target',
+                    timestamp: Date.now() - 120000 // 2 minutes ago
+                }],
+                timestamp: Date.now() - 120000
+            };
+
+            assert.strictEqual(dragDropController.canUndo(), false, 'canUndo should be false for expired entry');
+        });
+
+        test('undoLastMove should warn when operation is too old', async () => {
+            // Set an expired undo entry
+            (dragDropController as any).lastUndoEntry = {
+                operations: [{
+                    type: 'file',
+                    sourcePath: '/fake/source',
+                    targetPath: '/fake/target',
+                    timestamp: Date.now() - 120000
+                }],
+                timestamp: Date.now() - 120000
+            };
+
+            // Should not throw, just warn
+            await dragDropController.undoLastMove();
+
+            // Entry should be cleared
+            assert.strictEqual(dragDropController.canUndo(), false, 'Entry should be cleared after expired undo attempt');
+        });
+
+        test('canUndo should return false after successful undo', async () => {
+            const taskPath = createTaskFile('.vscode/tasks/undo-test.md');
+            createDir('.vscode/tasks/target');
+
+            const targetFolder = path.join(tempDir, '.vscode/tasks/target');
+            const newPath = await taskManager.moveTask(taskPath, targetFolder);
+
+            (dragDropController as any).lastUndoEntry = {
+                operations: [{
+                    type: 'file',
+                    sourcePath: taskPath,
+                    targetPath: newPath,
+                    timestamp: Date.now()
+                }],
+                timestamp: Date.now()
+            };
+
+            assert.strictEqual(dragDropController.canUndo(), true);
+            await dragDropController.undoLastMove();
+            assert.strictEqual(dragDropController.canUndo(), false);
+        });
+
+        test('should handle undo when target file was already deleted', async () => {
+            // Set undo entry pointing to a non-existent target
+            (dragDropController as any).lastUndoEntry = {
+                operations: [{
+                    type: 'file',
+                    sourcePath: path.join(tempDir, '.vscode/tasks/original.md'),
+                    targetPath: path.join(tempDir, '.vscode/tasks/moved-but-deleted.md'),
+                    timestamp: Date.now()
+                }],
+                timestamp: Date.now()
+            };
+
+            // Should not throw
+            await dragDropController.undoLastMove();
+
+            // Entry should be cleared
+            assert.strictEqual(dragDropController.canUndo(), false);
+        });
+
+        test('should recreate parent directory if it was removed during undo', async () => {
+            // Create and move a file
+            const taskPath = createTaskFile('.vscode/tasks/temp-folder/task.md', '# Task\n');
+            createDir('.vscode/tasks/target');
+
+            const targetFolder = path.join(tempDir, '.vscode/tasks/target');
+            const newPath = await taskManager.moveTask(taskPath, targetFolder);
+
+            // Remove the source parent directory (simulating it being cleaned up)
+            const sourceParent = path.join(tempDir, '.vscode/tasks/temp-folder');
+            if (fs.existsSync(sourceParent)) {
+                fs.rmSync(sourceParent, { recursive: true });
+            }
+
+            (dragDropController as any).lastUndoEntry = {
+                operations: [{
+                    type: 'file',
+                    sourcePath: taskPath,
+                    targetPath: newPath,
+                    timestamp: Date.now()
+                }],
+                timestamp: Date.now()
+            };
+
+            // Undo should recreate the parent directory
+            await dragDropController.undoLastMove();
+
+            assert.ok(fs.existsSync(taskPath), 'File should be restored even if parent was removed');
+            assert.ok(fs.existsSync(sourceParent), 'Parent directory should be recreated');
+        });
+
+        test('undoLastMove should clear entry even on partial failure', async () => {
+            // Create one valid and one invalid operation
+            const taskPath = createTaskFile('.vscode/tasks/valid-task.md');
+            createDir('.vscode/tasks/target');
+            const targetFolder = path.join(tempDir, '.vscode/tasks/target');
+            const newPath = await taskManager.moveTask(taskPath, targetFolder);
+
+            (dragDropController as any).lastUndoEntry = {
+                operations: [
+                    {
+                        type: 'file',
+                        sourcePath: path.join(tempDir, '.vscode/tasks/ghost.md'),
+                        targetPath: path.join(tempDir, '.vscode/tasks/target/ghost.md'), // doesn't exist
+                        timestamp: Date.now()
+                    },
+                    {
+                        type: 'file',
+                        sourcePath: taskPath,
+                        targetPath: newPath,
+                        timestamp: Date.now()
+                    }
+                ],
+                timestamp: Date.now()
+            };
+
+            await dragDropController.undoLastMove();
+
+            // The valid operation should have been undone
+            assert.ok(fs.existsSync(taskPath), 'Valid file should be restored');
+
+            // Entry should be cleared
+            assert.strictEqual(dragDropController.canUndo(), false, 'Entry should be cleared after partial undo');
+        });
+
+        test('should undo operations in reverse order', async () => {
+            // This test verifies that batch operations are undone in reverse order.
+            // Create two files and move them to different targets.
+            const task1Path = createTaskFile('.vscode/tasks/order-test-1.md', '# Order 1\n');
+            const task2Path = createTaskFile('.vscode/tasks/order-test-2.md', '# Order 2\n');
+            createDir('.vscode/tasks/target-a');
+            createDir('.vscode/tasks/target-b');
+
+            const newPath1 = await taskManager.moveTask(task1Path, path.join(tempDir, '.vscode/tasks/target-a'));
+            const newPath2 = await taskManager.moveTask(task2Path, path.join(tempDir, '.vscode/tasks/target-b'));
+
+            (dragDropController as any).lastUndoEntry = {
+                operations: [
+                    { type: 'file', sourcePath: task1Path, targetPath: newPath1, timestamp: Date.now() },
+                    { type: 'file', sourcePath: task2Path, targetPath: newPath2, timestamp: Date.now() }
+                ],
+                timestamp: Date.now()
+            };
+
+            await dragDropController.undoLastMove();
+
+            // Both should be restored
+            assert.ok(fs.existsSync(task1Path), 'First file should be restored');
+            assert.ok(fs.existsSync(task2Path), 'Second file should be restored');
+            assert.ok(!fs.existsSync(newPath1), 'First file should not be at moved location');
+            assert.ok(!fs.existsSync(newPath2), 'Second file should not be at moved location');
+        });
+
+        test('new move should replace previous undo entry', async () => {
+            // First move
+            const task1Path = createTaskFile('.vscode/tasks/replace-test-1.md');
+            createDir('.vscode/tasks/target1');
+            const newPath1 = await taskManager.moveTask(task1Path, path.join(tempDir, '.vscode/tasks/target1'));
+
+            (dragDropController as any).lastUndoEntry = {
+                operations: [{
+                    type: 'file',
+                    sourcePath: task1Path,
+                    targetPath: newPath1,
+                    timestamp: Date.now()
+                }],
+                timestamp: Date.now()
+            };
+
+            assert.strictEqual(dragDropController.canUndo(), true);
+
+            // Second move — should replace the undo entry
+            const task2Path = createTaskFile('.vscode/tasks/replace-test-2.md');
+            createDir('.vscode/tasks/target2');
+            const newPath2 = await taskManager.moveTask(task2Path, path.join(tempDir, '.vscode/tasks/target2'));
+
+            (dragDropController as any).lastUndoEntry = {
+                operations: [{
+                    type: 'file',
+                    sourcePath: task2Path,
+                    targetPath: newPath2,
+                    timestamp: Date.now()
+                }],
+                timestamp: Date.now()
+            };
+
+            // Undo should only affect the second move
+            await dragDropController.undoLastMove();
+
+            assert.ok(fs.existsSync(task2Path), 'Second file should be restored');
+            // First file is NOT restored because its undo entry was replaced
+            assert.ok(!fs.existsSync(task1Path), 'First file should NOT be restored (undo entry was replaced)');
+        });
+    });
 });

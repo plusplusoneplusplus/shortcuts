@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import { safeExists, safeRename } from '../shared';
 import { TaskItem } from './task-item';
 import { TaskDocumentItem } from './task-document-item';
 import { TaskDocumentGroupItem } from './task-document-group-item';
@@ -23,6 +25,30 @@ interface InternalDragData {
 }
 
 /**
+ * Represents a single move operation that can be undone.
+ * For file moves: sourcePath is the original file, targetPath is where it was moved.
+ * For folder moves: sourcePath is the original folder, targetPath is the new folder location.
+ */
+interface TaskMoveOperation {
+    type: 'file' | 'folder';
+    /** Original path before the move */
+    sourcePath: string;
+    /** Path after the move */
+    targetPath: string;
+    /** Timestamp when the move occurred */
+    timestamp: number;
+}
+
+/**
+ * Represents a batch of move operations from a single drag-and-drop action.
+ * All operations in a batch are undone together.
+ */
+interface TaskMoveUndoEntry {
+    operations: TaskMoveOperation[];
+    timestamp: number;
+}
+
+/**
  * Drag and drop controller for the Tasks tree view
  * Enables dragging task files to external targets like Copilot Chat,
  * dropping external .md files onto the Active Tasks group,
@@ -42,6 +68,12 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
      * Custom MIME type for internal drag operations
      */
     readonly dropMimeTypes = ['text/uri-list', INTERNAL_DRAG_MIME_TYPE];
+
+    /** Undo timeout: operations older than this cannot be undone */
+    private static readonly UNDO_TIMEOUT_MS = 60000; // 1 minute
+
+    /** Last move batch that can be undone */
+    private lastUndoEntry: TaskMoveUndoEntry | null = null;
 
     constructor(private taskManager: TaskManager, private refreshCallback: () => void) {}
 
@@ -281,6 +313,7 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
         const fileDrags = dragDataArray.filter(d => d.type !== 'folder');
 
         let successCount = 0;
+        const completedOperations: TaskMoveOperation[] = [];
 
         // Process folder drags
         for (const dragData of folderDrags) {
@@ -302,7 +335,13 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
             }
 
             try {
-                await this.taskManager.moveFolder(folderPath, targetFolder);
+                const newPath = await this.taskManager.moveFolder(folderPath, targetFolder);
+                completedOperations.push({
+                    type: 'folder',
+                    sourcePath: folderPath,
+                    targetPath: newPath,
+                    timestamp: Date.now()
+                });
                 successCount++;
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
@@ -344,16 +383,31 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
             try {
                 if (isArchiveDrop) {
                     // Archive the task, preserving folder structure
+                    // Note: archive operations are not undoable via this mechanism
                     await this.taskManager.archiveTask(filePath, true);
                 } else {
-                    // Regular move
-                    await this.taskManager.moveTask(filePath, targetFolder);
+                    // Regular move — track for undo
+                    const newPath = await this.taskManager.moveTask(filePath, targetFolder);
+                    completedOperations.push({
+                        type: 'file',
+                        sourcePath: filePath,
+                        targetPath: newPath,
+                        timestamp: Date.now()
+                    });
                 }
                 successCount++;
             } catch (error) {
                 // Log error but continue with other files
                 console.error(`Failed to ${isArchiveDrop ? 'archive' : 'move'} ${filePath}:`, error);
             }
+        }
+
+        // Store completed non-archive operations for undo
+        if (completedOperations.length > 0) {
+            this.lastUndoEntry = {
+                operations: completedOperations,
+                timestamp: Date.now()
+            };
         }
 
         if (successCount > 0) {
@@ -436,6 +490,93 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
                 }
             }
             return 'error';
+        }
+    }
+
+    // =========================================================================
+    // Undo Support
+    // =========================================================================
+
+    /**
+     * Check whether the last move operation can be undone.
+     * Returns false if there is no recorded operation or if it has expired.
+     */
+    public canUndo(): boolean {
+        if (!this.lastUndoEntry) {
+            return false;
+        }
+        const elapsed = Date.now() - this.lastUndoEntry.timestamp;
+        return elapsed <= TasksDragDropController.UNDO_TIMEOUT_MS;
+    }
+
+    /**
+     * Undo the last move operation (or batch of operations).
+     * Moves are reversed in reverse order so that dependencies are satisfied
+     * (e.g., a folder that was moved first is moved back last).
+     */
+    public async undoLastMove(): Promise<void> {
+        if (!this.lastUndoEntry) {
+            vscode.window.showInformationMessage('No move operation to undo.');
+            return;
+        }
+
+        const elapsed = Date.now() - this.lastUndoEntry.timestamp;
+        if (elapsed > TasksDragDropController.UNDO_TIMEOUT_MS) {
+            vscode.window.showWarningMessage('Cannot undo: the move operation is too old (> 1 minute).');
+            this.lastUndoEntry = null;
+            return;
+        }
+
+        const { operations } = this.lastUndoEntry;
+        let successCount = 0;
+        let failCount = 0;
+
+        // Reverse the operations so the last move is undone first
+        for (let i = operations.length - 1; i >= 0; i--) {
+            const op = operations[i];
+
+            try {
+                // Verify the target (current location) still exists
+                if (!safeExists(op.targetPath)) {
+                    console.warn(`Undo skipped: target no longer exists at ${op.targetPath}`);
+                    failCount++;
+                    continue;
+                }
+
+                // Verify the original location's parent directory still exists
+                const sourceParent = path.dirname(op.sourcePath);
+                if (!safeExists(sourceParent)) {
+                    // Recreate the parent directory if it was removed
+                    const { ensureDirectoryExists } = await import('../shared');
+                    ensureDirectoryExists(sourceParent);
+                }
+
+                // Move back to original location
+                safeRename(op.targetPath, op.sourcePath);
+                successCount++;
+            } catch (error) {
+                console.error(`Failed to undo move of ${op.targetPath} → ${op.sourcePath}:`, error);
+                failCount++;
+            }
+        }
+
+        // Clear the undo entry regardless of outcome
+        this.lastUndoEntry = null;
+
+        if (successCount > 0) {
+            this.refreshCallback();
+            if (failCount > 0) {
+                vscode.window.showWarningMessage(
+                    `Undo partially completed: ${successCount} item(s) restored, ${failCount} failed.`
+                );
+            } else {
+                const message = successCount === 1
+                    ? 'Move undone — 1 item restored to its original location.'
+                    : `Move undone — ${successCount} items restored to their original locations.`;
+                vscode.window.showInformationMessage(message);
+            }
+        } else if (failCount > 0) {
+            vscode.window.showErrorMessage('Undo failed: could not restore any items to their original locations.');
         }
     }
 }

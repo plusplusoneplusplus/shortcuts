@@ -1849,6 +1849,12 @@
         "icon": "$(folder-opened)"
       },
       {
+        "command": "tasksView.undoMove",
+        "title": "Undo Last Move",
+        "category": "Tasks",
+        "icon": "$(discard)"
+      },
+      {
         "command": "tasksViewer.copyRelativePath",
         "title": "Copy Relative Path",
         "category": "Tasks",
@@ -3245,6 +3251,10 @@
           "when": "false"
         },
         {
+          "command": "tasksView.undoMove",
+          "when": "false"
+        },
+        {
           "command": "tasksViewer.createFeature",
           "when": "false"
         },
@@ -3959,6 +3969,12 @@
         "key": "ctrl+z",
         "mac": "cmd+z",
         "when": "focusedView == shortcutsView"
+      },
+      {
+        "command": "tasksView.undoMove",
+        "key": "ctrl+z",
+        "mac": "cmd+z",
+        "when": "focusedView == tasksView"
       }
     ]
   },

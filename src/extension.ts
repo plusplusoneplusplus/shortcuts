@@ -307,6 +307,16 @@ export async function activate(context: vscode.ExtensionContext) {
             tasksCommands.setTreeView(tasksTreeView);
             tasksCommands.setReviewStatusManager(reviewStatusManager);
             tasksCommandDisposables = tasksCommands.registerCommands(context);
+
+            // Register undo command for tasks drag-and-drop operations
+            const tasksUndoMoveCommand = vscode.commands.registerCommand('tasksView.undoMove', async () => {
+                if (tasksDragDropController.canUndo()) {
+                    await tasksDragDropController.undoLastMove();
+                } else {
+                    vscode.window.showInformationMessage('No move operation to undo.');
+                }
+            });
+            context.subscriptions.push(tasksUndoMoveCommand);
         }
 
         // Initialize Pipelines Viewer
