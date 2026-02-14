@@ -1,0 +1,595 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { TopicRequest, TopicOutline } from '../../src/types';
+import type { ProbeFoundModule } from '../../src/discovery/iterative/types';
+import type { EnrichedProbeResult } from '../../src/topic/topic-probe';
+
+// ─── Mock SDK ──────────────────────────────────────────────────────────
+
+const mockSendMessage = vi.fn();
+const mockIsAvailable = vi.fn();
+
+vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
+    return {
+        ...actual,
+        getCopilotSDKService: () => ({
+            sendMessage: mockSendMessage,
+            isAvailable: mockIsAvailable,
+        }),
+    };
+});
+
+vi.mock('../../src/logger', () => ({
+    printInfo: vi.fn(),
+    printWarning: vi.fn(),
+    gray: (s: string) => s,
+}));
+
+import {
+    generateTopicOutline,
+    buildFallbackOutline,
+    parseOutlineResponse,
+    type OutlineGeneratorOptions,
+} from '../../src/topic/outline-generator';
+import { buildOutlinePrompt } from '../../src/topic/outline-prompts';
+
+// ─── Helpers ───────────────────────────────────────────────────────────
+
+function makeModule(overrides: Partial<ProbeFoundModule> = {}): ProbeFoundModule {
+    return {
+        id: 'mod-a',
+        name: 'Module A',
+        path: 'src/mod-a',
+        purpose: 'Does A things',
+        keyFiles: ['src/mod-a/index.ts'],
+        evidence: 'found references',
+        ...overrides,
+    };
+}
+
+function makeProbeResult(modules: ProbeFoundModule[]): EnrichedProbeResult {
+    return {
+        probeResult: {
+            topic: 'test-topic',
+            foundModules: modules,
+            discoveredTopics: [],
+            dependencies: [],
+            confidence: 0.8,
+        },
+        existingModuleIds: [],
+        newModuleIds: modules.map(m => m.id),
+        allKeyFiles: modules.flatMap(m => m.keyFiles),
+    };
+}
+
+function makeTopic(overrides: Partial<TopicRequest> = {}): TopicRequest {
+    return {
+        topic: 'compaction',
+        description: 'Log compaction and cleanup',
+        hints: ['compact', 'merge'],
+        ...overrides,
+    };
+}
+
+function makeOptions(
+    moduleCount: number,
+    overrides: Partial<OutlineGeneratorOptions> = {}
+): OutlineGeneratorOptions {
+    const modules = Array.from({ length: moduleCount }, (_, i) =>
+        makeModule({
+            id: `mod-${i}`,
+            name: `Module ${i}`,
+            path: `src/mod-${i}`,
+            keyFiles: [`src/mod-${i}/index.ts`],
+        })
+    );
+    return {
+        repoPath: '/repo',
+        topic: makeTopic(),
+        probeResult: makeProbeResult(modules),
+        depth: 'normal',
+        ...overrides,
+    };
+}
+
+// ─── Tests ─────────────────────────────────────────────────────────────
+
+describe('outline-prompts', () => {
+    describe('buildOutlinePrompt', () => {
+        it('should include topic name and description', () => {
+            const topic = makeTopic();
+            const probe = makeProbeResult([makeModule()]);
+            const prompt = buildOutlinePrompt(topic, probe, 'normal');
+
+            expect(prompt).toContain('compaction');
+            expect(prompt).toContain('Log compaction and cleanup');
+        });
+
+        it('should include search hints', () => {
+            const topic = makeTopic({ hints: ['compact', 'merge'] });
+            const probe = makeProbeResult([makeModule()]);
+            const prompt = buildOutlinePrompt(topic, probe, 'normal');
+
+            expect(prompt).toContain('compact, merge');
+        });
+
+        it('should include module information', () => {
+            const mod = makeModule({ name: 'Compactor', purpose: 'Handles compaction' });
+            const probe = makeProbeResult([mod]);
+            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+
+            expect(prompt).toContain('Compactor');
+            expect(prompt).toContain('Handles compaction');
+            expect(prompt).toContain('src/mod-a/index.ts');
+        });
+
+        it('should include module count', () => {
+            const modules = [
+                makeModule({ id: 'mod-1', name: 'M1' }),
+                makeModule({ id: 'mod-2', name: 'M2' }),
+                makeModule({ id: 'mod-3', name: 'M3' }),
+            ];
+            const probe = makeProbeResult(modules);
+            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+
+            expect(prompt).toContain('3 found');
+        });
+
+        it('should use shallow depth instruction', () => {
+            const probe = makeProbeResult([makeModule()]);
+            const prompt = buildOutlinePrompt(makeTopic(), probe, 'shallow');
+
+            expect(prompt).toContain('SHALLOW');
+            expect(prompt).toContain('fewer articles');
+        });
+
+        it('should use normal depth instruction', () => {
+            const probe = makeProbeResult([makeModule()]);
+            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+
+            expect(prompt).toContain('NORMAL');
+            expect(prompt).toContain('Balanced');
+        });
+
+        it('should use deep depth instruction', () => {
+            const probe = makeProbeResult([makeModule()]);
+            const prompt = buildOutlinePrompt(makeTopic(), probe, 'deep');
+
+            expect(prompt).toContain('DEEP');
+            expect(prompt).toContain('Fine-grained');
+        });
+
+        it('should suggest single-article layout for few modules', () => {
+            const probe = makeProbeResult([makeModule()]);
+            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+
+            expect(prompt).toContain('single-article layout');
+        });
+
+        it('should suggest area layout for medium module count', () => {
+            const modules = Array.from({ length: 4 }, (_, i) =>
+                makeModule({ id: `mod-${i}`, name: `M${i}` })
+            );
+            const probe = makeProbeResult(modules);
+            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+
+            expect(prompt).toContain('area layout');
+        });
+
+        it('should suggest area layout for large module count', () => {
+            const modules = Array.from({ length: 8 }, (_, i) =>
+                makeModule({ id: `mod-${i}`, name: `M${i}` })
+            );
+            const probe = makeProbeResult(modules);
+            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+
+            expect(prompt).toContain('large topic');
+        });
+
+        it('should handle topic without description or hints', () => {
+            const topic: TopicRequest = { topic: 'auth' };
+            const probe = makeProbeResult([makeModule()]);
+            const prompt = buildOutlinePrompt(topic, probe, 'normal');
+
+            expect(prompt).toContain('auth');
+            expect(prompt).not.toContain('Description:');
+            expect(prompt).not.toContain('Search hints:');
+        });
+
+        it('should handle empty modules', () => {
+            const probe = makeProbeResult([]);
+            const prompt = buildOutlinePrompt(makeTopic(), probe, 'normal');
+
+            expect(prompt).toContain('0 found');
+            expect(prompt).toContain('no modules discovered');
+        });
+    });
+});
+
+describe('outline-generator', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    describe('parseOutlineResponse', () => {
+        const topic = makeTopic();
+        const probe = makeProbeResult([makeModule()]);
+
+        it('should parse a valid single-article response', () => {
+            const response = JSON.stringify({
+                title: 'Compaction',
+                layout: 'single',
+                articles: [{
+                    slug: 'index',
+                    title: 'Compaction Guide',
+                    description: 'Full guide',
+                    isIndex: true,
+                    coveredModuleIds: ['mod-a'],
+                    coveredFiles: ['src/mod-a/index.ts'],
+                }],
+            });
+
+            const outline = parseOutlineResponse(response, topic, probe);
+
+            expect(outline.topicId).toBe('compaction');
+            expect(outline.title).toBe('Compaction');
+            expect(outline.layout).toBe('single');
+            expect(outline.articles).toHaveLength(1);
+            expect(outline.articles[0].isIndex).toBe(true);
+            expect(outline.articles[0].coveredModuleIds).toEqual(['mod-a']);
+        });
+
+        it('should parse a valid area-layout response', () => {
+            const response = JSON.stringify({
+                title: 'Compaction',
+                layout: 'area',
+                articles: [
+                    { slug: 'index', title: 'Overview', description: 'Intro', isIndex: true, coveredModuleIds: ['mod-a'], coveredFiles: [] },
+                    { slug: 'details', title: 'Details', description: 'Deep dive', isIndex: false, coveredModuleIds: ['mod-a'], coveredFiles: ['file.ts'] },
+                ],
+            });
+
+            const outline = parseOutlineResponse(response, topic, probe);
+
+            expect(outline.layout).toBe('area');
+            expect(outline.articles).toHaveLength(2);
+            expect(outline.articles[0].isIndex).toBe(true);
+            expect(outline.articles[1].isIndex).toBe(false);
+        });
+
+        it('should default layout to single for invalid value', () => {
+            const response = JSON.stringify({
+                title: 'Test',
+                layout: 'unknown',
+                articles: [{ slug: 'x', title: 'X', description: '', isIndex: false, coveredModuleIds: [], coveredFiles: [] }],
+            });
+
+            const outline = parseOutlineResponse(response, topic, probe);
+            expect(outline.layout).toBe('single');
+        });
+
+        it('should generate fallback article when articles array is empty', () => {
+            const response = JSON.stringify({
+                title: 'Compaction',
+                layout: 'single',
+                articles: [],
+            });
+
+            const outline = parseOutlineResponse(response, topic, probe);
+
+            expect(outline.articles).toHaveLength(1);
+            expect(outline.articles[0].slug).toBe('index');
+            expect(outline.articles[0].isIndex).toBe(true);
+            expect(outline.articles[0].coveredModuleIds).toEqual(['mod-a']);
+        });
+
+        it('should skip articles missing required fields', () => {
+            const response = JSON.stringify({
+                title: 'Test',
+                layout: 'single',
+                articles: [
+                    { slug: 'valid', title: 'Valid', description: '', isIndex: false, coveredModuleIds: [], coveredFiles: [] },
+                    { title: 'No Slug' },  // missing slug
+                    { slug: 'no-title' },  // missing title
+                    null,
+                    42,
+                ],
+            });
+
+            const outline = parseOutlineResponse(response, topic, probe);
+            expect(outline.articles).toHaveLength(1);
+            expect(outline.articles[0].slug).toBe('valid');
+        });
+
+        it('should use topic name as title when title is missing', () => {
+            const response = JSON.stringify({
+                layout: 'single',
+                articles: [{ slug: 'x', title: 'X', description: '', isIndex: false, coveredModuleIds: [], coveredFiles: [] }],
+            });
+
+            const outline = parseOutlineResponse(response, topic, probe);
+            expect(outline.title).toBe('Compaction');
+        });
+
+        it('should handle JSON embedded in markdown fences', () => {
+            const response = 'Here is the outline:\n```json\n' + JSON.stringify({
+                title: 'Test',
+                layout: 'single',
+                articles: [{ slug: 'x', title: 'X', description: 'desc', isIndex: true, coveredModuleIds: [], coveredFiles: [] }],
+            }) + '\n```';
+
+            const outline = parseOutlineResponse(response, topic, probe);
+            expect(outline.title).toBe('Test');
+            expect(outline.articles).toHaveLength(1);
+        });
+
+        it('should throw on completely invalid response', () => {
+            expect(() => parseOutlineResponse('not json at all', topic, probe)).toThrow();
+        });
+
+        it('should throw on empty response', () => {
+            expect(() => parseOutlineResponse('', topic, probe)).toThrow();
+        });
+
+        it('should populate involvedModules from probe results', () => {
+            const response = JSON.stringify({
+                title: 'Test',
+                layout: 'single',
+                articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredModuleIds: [], coveredFiles: [] }],
+            });
+
+            const outline = parseOutlineResponse(response, topic, probe);
+
+            expect(outline.involvedModules).toHaveLength(1);
+            expect(outline.involvedModules[0].moduleId).toBe('mod-a');
+            expect(outline.involvedModules[0].keyFiles).toEqual(['src/mod-a/index.ts']);
+        });
+
+        it('should handle missing coveredModuleIds and coveredFiles gracefully', () => {
+            const response = JSON.stringify({
+                title: 'Test',
+                layout: 'single',
+                articles: [{ slug: 'x', title: 'X', description: '' }],
+            });
+
+            const outline = parseOutlineResponse(response, topic, probe);
+            expect(outline.articles[0].coveredModuleIds).toEqual([]);
+            expect(outline.articles[0].coveredFiles).toEqual([]);
+            expect(outline.articles[0].isIndex).toBe(false);
+        });
+    });
+
+    describe('buildFallbackOutline', () => {
+        it('should produce single layout for 1-2 modules', () => {
+            const topic = makeTopic();
+            const probe = makeProbeResult([makeModule()]);
+
+            const outline = buildFallbackOutline(topic, probe);
+
+            expect(outline.topicId).toBe('compaction');
+            expect(outline.layout).toBe('single');
+            expect(outline.articles).toHaveLength(1);
+            expect(outline.articles[0].isIndex).toBe(true);
+            expect(outline.articles[0].coveredModuleIds).toEqual(['mod-a']);
+        });
+
+        it('should produce single layout for 2 modules', () => {
+            const modules = [
+                makeModule({ id: 'mod-1', name: 'M1', keyFiles: ['a.ts'] }),
+                makeModule({ id: 'mod-2', name: 'M2', keyFiles: ['b.ts'] }),
+            ];
+            const outline = buildFallbackOutline(makeTopic(), makeProbeResult(modules));
+
+            expect(outline.layout).toBe('single');
+            expect(outline.articles).toHaveLength(1);
+            expect(outline.articles[0].coveredModuleIds).toEqual(['mod-1', 'mod-2']);
+        });
+
+        it('should produce area layout for 3+ modules', () => {
+            const modules = Array.from({ length: 4 }, (_, i) =>
+                makeModule({ id: `mod-${i}`, name: `Module ${i}`, keyFiles: [`src/${i}.ts`] })
+            );
+
+            const outline = buildFallbackOutline(makeTopic(), makeProbeResult(modules));
+
+            expect(outline.layout).toBe('area');
+            // index + 4 per-module articles
+            expect(outline.articles).toHaveLength(5);
+            expect(outline.articles[0].isIndex).toBe(true);
+            expect(outline.articles[0].slug).toBe('index');
+            expect(outline.articles[1].slug).toBe('mod-0');
+            expect(outline.articles[1].isIndex).toBe(false);
+        });
+
+        it('should produce area layout for 7+ modules', () => {
+            const modules = Array.from({ length: 8 }, (_, i) =>
+                makeModule({ id: `mod-${i}`, name: `Module ${i}` })
+            );
+
+            const outline = buildFallbackOutline(makeTopic(), makeProbeResult(modules));
+
+            expect(outline.layout).toBe('area');
+            expect(outline.articles).toHaveLength(9); // index + 8
+        });
+
+        it('should handle zero modules', () => {
+            const outline = buildFallbackOutline(makeTopic(), makeProbeResult([]));
+
+            expect(outline.layout).toBe('single');
+            expect(outline.articles).toHaveLength(1);
+            expect(outline.articles[0].coveredModuleIds).toEqual([]);
+        });
+
+        it('should format topic title from kebab-case', () => {
+            const topic = makeTopic({ topic: 'log-compaction-engine' });
+            const outline = buildFallbackOutline(topic, makeProbeResult([]));
+
+            expect(outline.title).toBe('Log Compaction Engine');
+        });
+
+        it('should populate involvedModules', () => {
+            const mod = makeModule({ id: 'mod-x', purpose: 'Core compactor' });
+            const outline = buildFallbackOutline(makeTopic(), makeProbeResult([mod]));
+
+            expect(outline.involvedModules).toHaveLength(1);
+            expect(outline.involvedModules[0].moduleId).toBe('mod-x');
+            expect(outline.involvedModules[0].role).toBe('Core compactor');
+        });
+    });
+
+    describe('generateTopicOutline', () => {
+        it('should return AI-generated outline on success', async () => {
+            mockIsAvailable.mockResolvedValue(true);
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: JSON.stringify({
+                    title: 'Compaction',
+                    layout: 'area',
+                    articles: [
+                        { slug: 'index', title: 'Overview', description: 'Intro', isIndex: true, coveredModuleIds: ['mod-0'], coveredFiles: [] },
+                        { slug: 'details', title: 'Details', description: 'Deep', isIndex: false, coveredModuleIds: ['mod-0'], coveredFiles: ['f.ts'] },
+                    ],
+                }),
+            });
+
+            const opts = makeOptions(1);
+            const outline = await generateTopicOutline(opts);
+
+            expect(outline.layout).toBe('area');
+            expect(outline.articles).toHaveLength(2);
+            expect(mockSendMessage).toHaveBeenCalledOnce();
+        });
+
+        it('should fall back when SDK is unavailable', async () => {
+            mockIsAvailable.mockResolvedValue(false);
+
+            const opts = makeOptions(4);
+            const outline = await generateTopicOutline(opts);
+
+            // Fallback: 4 modules → area layout
+            expect(outline.layout).toBe('area');
+            expect(mockSendMessage).not.toHaveBeenCalled();
+        });
+
+        it('should fall back when AI returns failure', async () => {
+            mockIsAvailable.mockResolvedValue(true);
+            mockSendMessage.mockResolvedValue({ success: false, error: 'timeout' });
+
+            const opts = makeOptions(1);
+            const outline = await generateTopicOutline(opts);
+
+            expect(outline.layout).toBe('single');
+            expect(outline.articles).toHaveLength(1);
+        });
+
+        it('should fall back when AI returns empty response', async () => {
+            mockIsAvailable.mockResolvedValue(true);
+            mockSendMessage.mockResolvedValue({ success: true, response: '' });
+
+            const outline = await generateTopicOutline(makeOptions(1));
+            expect(outline.layout).toBe('single');
+        });
+
+        it('should fall back when sendMessage throws', async () => {
+            mockIsAvailable.mockResolvedValue(true);
+            mockSendMessage.mockRejectedValue(new Error('network error'));
+
+            const outline = await generateTopicOutline(makeOptions(3));
+
+            expect(outline.layout).toBe('area');
+            expect(outline.articles.length).toBeGreaterThan(1);
+        });
+
+        it('should pass model and timeout options to SDK', async () => {
+            mockIsAvailable.mockResolvedValue(true);
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: JSON.stringify({
+                    title: 'T', layout: 'single',
+                    articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredModuleIds: [], coveredFiles: [] }],
+                }),
+            });
+
+            await generateTopicOutline(makeOptions(1, { model: 'gpt-4', timeout: 30000 }));
+
+            const call = mockSendMessage.mock.calls[0][0];
+            expect(call.model).toBe('gpt-4');
+            expect(call.timeoutMs).toBe(30000);
+        });
+
+        it('should use default timeout when not specified', async () => {
+            mockIsAvailable.mockResolvedValue(true);
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: JSON.stringify({
+                    title: 'T', layout: 'single',
+                    articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredModuleIds: [], coveredFiles: [] }],
+                }),
+            });
+
+            await generateTopicOutline(makeOptions(1));
+
+            const call = mockSendMessage.mock.calls[0][0];
+            expect(call.timeoutMs).toBe(60_000);
+        });
+
+        it('should use direct session (usePool: false)', async () => {
+            mockIsAvailable.mockResolvedValue(true);
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: JSON.stringify({
+                    title: 'T', layout: 'single',
+                    articles: [{ slug: 'x', title: 'X', description: '', isIndex: true, coveredModuleIds: [], coveredFiles: [] }],
+                }),
+            });
+
+            await generateTopicOutline(makeOptions(1));
+
+            const call = mockSendMessage.mock.calls[0][0];
+            expect(call.usePool).toBe(false);
+        });
+
+        it('should handle depth=shallow producing fewer articles via AI', async () => {
+            mockIsAvailable.mockResolvedValue(true);
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: JSON.stringify({
+                    title: 'Compaction',
+                    layout: 'single',
+                    articles: [{
+                        slug: 'index', title: 'Compaction', description: 'All-in-one',
+                        isIndex: true, coveredModuleIds: ['mod-0', 'mod-1', 'mod-2'], coveredFiles: [],
+                    }],
+                }),
+            });
+
+            const opts = makeOptions(3, { depth: 'shallow' });
+            const outline = await generateTopicOutline(opts);
+
+            expect(outline.articles).toHaveLength(1);
+        });
+
+        it('should handle depth=deep producing more articles via AI', async () => {
+            mockIsAvailable.mockResolvedValue(true);
+            mockSendMessage.mockResolvedValue({
+                success: true,
+                response: JSON.stringify({
+                    title: 'Compaction',
+                    layout: 'area',
+                    articles: [
+                        { slug: 'index', title: 'Overview', description: '', isIndex: true, coveredModuleIds: [], coveredFiles: [] },
+                        { slug: 'core', title: 'Core', description: '', isIndex: false, coveredModuleIds: ['mod-0'], coveredFiles: [] },
+                        { slug: 'strategies', title: 'Strategies', description: '', isIndex: false, coveredModuleIds: ['mod-1'], coveredFiles: [] },
+                        { slug: 'internals', title: 'Internals', description: '', isIndex: false, coveredModuleIds: ['mod-2'], coveredFiles: [] },
+                        { slug: 'tuning', title: 'Tuning', description: '', isIndex: false, coveredModuleIds: [], coveredFiles: [] },
+                    ],
+                }),
+            });
+
+            const opts = makeOptions(3, { depth: 'deep' });
+            const outline = await generateTopicOutline(opts);
+
+            expect(outline.articles).toHaveLength(5);
+        });
+    });
+});
