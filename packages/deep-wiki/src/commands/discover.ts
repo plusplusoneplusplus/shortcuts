@@ -37,6 +37,7 @@ import {
 } from '../logger';
 import { EXIT_CODES } from '../cli';
 import { getErrorMessage } from '../utils/error-utils';
+import { initWikiGitRepo } from '../utils/git-init';
 
 // ============================================================================
 // Execute Discover Command
@@ -242,6 +243,12 @@ export async function executeDiscover(
             fs.writeFileSync(outputFile, jsonOutput, 'utf-8');
             process.stderr.write('\n');
             printSuccess(`Module graph written to ${bold(outputFile)}`);
+
+            // Initialize wiki output directory as a Git repository
+            initWikiGitRepo(outputDir, {
+                info: (msg) => { if (options.verbose) { printInfo(msg); } },
+                warn: (msg) => printWarning(msg),
+            });
         } catch (writeError) {
             printWarning(`Could not write to file: ${getErrorMessage(writeError)}`);
             printInfo('Outputting to stdout instead');

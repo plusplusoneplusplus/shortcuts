@@ -40,6 +40,7 @@ import {
 } from '../../logger';
 import { EXIT_CODES } from '../../cli';
 import { getErrorMessage } from '../../utils/error-utils';
+import { initWikiGitRepo } from '../../utils/git-init';
 
 // ============================================================================
 // Types
@@ -344,6 +345,12 @@ export async function runPhase4Writing(
             const wikiOutput = { articles: allArticles, duration: Date.now() - startTime };
             const writtenPaths = writeWikiOutput(wikiOutput, outputDir);
             printSuccess(`Wrote ${writtenPaths.length} files to ${bold(outputDir)}`);
+
+            // Initialize wiki output directory as a Git repository
+            initWikiGitRepo(outputDir, {
+                info: (msg) => { if (options.verbose) { printInfo(msg); } },
+                warn: (msg) => printWarning(msg),
+            });
 
             if (options.verbose) {
                 for (const p of writtenPaths) {
