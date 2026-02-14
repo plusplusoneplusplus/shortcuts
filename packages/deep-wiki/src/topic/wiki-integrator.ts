@@ -43,7 +43,7 @@ export function updateModuleGraph(wikiDir: string, topicMeta: TopicAreaMeta): vo
     } catch {
         // If file doesn't exist or is invalid, create minimal graph
         graph = {
-            project: { name: '', description: '', language: '', rootPath: '' } as ModuleGraph['project'],
+            project: { name: '', description: '', language: '', buildSystem: '', entryPoints: [] } as ModuleGraph['project'],
             modules: [],
             categories: [],
             architectureNotes: '',
