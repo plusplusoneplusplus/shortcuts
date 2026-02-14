@@ -139,7 +139,7 @@ export function getAskAiScript(): string {
                             var data = JSON.parse(line.slice(6));
                             if (data.type === 'context' && !contextShown) {
                                 contextShown = true;
-                                appendAskContext(data.moduleIds);
+                                appendAskContext(data.moduleIds, data.topicIds);
                             } else if (data.type === 'chunk') {
                                 if (typingEl && typingEl.parentNode) {
                                     typingEl.parentNode.removeChild(typingEl);
@@ -214,17 +214,33 @@ export function getAskAiScript(): string {
             messages.scrollTop = messages.scrollHeight;
         }
 
-        function appendAskContext(moduleIds) {
-            if (!moduleIds || moduleIds.length === 0) return;
+        function appendAskContext(moduleIds, topicIds) {
+            if ((!moduleIds || moduleIds.length === 0) && (!topicIds || topicIds.length === 0)) return;
             var messages = document.getElementById('ask-messages');
             var div = document.createElement('div');
             div.className = 'ask-message-context';
-            var links = moduleIds.map(function(id) {
-                var mod = moduleGraph.modules.find(function(m) { return m.id === id; });
-                var name = mod ? mod.name : id;
-                return '<a onclick="loadModule(\\'' + id.replace(/'/g, "\\\\'") + '\\')">' + escapeHtml(name) + '</a>';
-            });
-            div.innerHTML = 'Context: ' + links.join(', ');
+            var parts = [];
+
+            if (moduleIds && moduleIds.length > 0) {
+                var links = moduleIds.map(function(id) {
+                    var mod = moduleGraph.modules.find(function(m) { return m.id === id; });
+                    var name = mod ? mod.name : id;
+                    return '<a onclick="loadModule(\\'' + id.replace(/'/g, "\\\\'") + '\\')">\\ud83d\\udce6 ' + escapeHtml(name) + '</a>';
+                });
+                parts = parts.concat(links);
+            }
+
+            if (topicIds && topicIds.length > 0) {
+                var topicLinks = topicIds.map(function(ref) {
+                    var parts = ref.split('/');
+                    var topicId = parts[0] || ref;
+                    var slug = parts[1] || topicId;
+                    return '<a onclick="loadTopicArticle(\\'' + topicId.replace(/'/g, "\\\\'") + '\\', \\'' + slug.replace(/'/g, "\\\\'") + '\\')">\\ud83d\\udccb ' + escapeHtml(ref) + '</a>';
+                });
+                parts = parts.concat(topicLinks);
+            }
+
+            div.innerHTML = 'Context: ' + parts.join(', ');
             messages.appendChild(div);
             messages.scrollTop = messages.scrollHeight;
         }

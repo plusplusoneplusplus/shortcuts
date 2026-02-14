@@ -205,5 +205,38 @@ ${opts.enableAI ? `            addDeepDiveButton(mod.id);` : ''}
             }
             document.getElementById('content-scroll').scrollTop = 0;
         }
+
+        async function loadTopicArticle(topicId, slug, skipHistory) {
+            currentModuleId = null;
+            var navId = 'topic:' + topicId + ':' + slug;
+            setActive(navId);
+            showWikiContent();
+            if (!skipHistory) {
+                history.pushState({ type: 'topic', topicId: topicId, slug: slug }, '', location.pathname + '#topic-' + encodeURIComponent(topicId) + '-' + encodeURIComponent(slug));
+            }
+${opts.enableAI ? `            updateAskSubject(topicId + '/' + slug);` : ''}
+
+            var cacheKey = '__topic_' + topicId + '_' + slug;
+            if (markdownCache[cacheKey]) {
+                renderMarkdownContent(markdownCache[cacheKey]);
+                buildToc();
+                document.getElementById('content-scroll').scrollTop = 0;
+                return;
+            }
+
+            document.getElementById('content').innerHTML = '<div class="loading">Loading topic article...</div>';
+            try {
+                var res = await fetch('/api/topics/' + encodeURIComponent(topicId) + '/' + encodeURIComponent(slug));
+                if (!res.ok) throw new Error('Topic article not found');
+                var data = await res.json();
+                markdownCache[cacheKey] = data.content;
+                renderMarkdownContent(data.content);
+                buildToc();
+            } catch(err) {
+                document.getElementById('content').innerHTML =
+                    '<p style="color: red;">Error loading topic article: ' + err.message + '</p>';
+            }
+            document.getElementById('content-scroll').scrollTop = 0;
+        }
 `;
 }

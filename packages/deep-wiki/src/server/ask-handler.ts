@@ -106,10 +106,13 @@ export async function handleAskRequest(
         // 1. Retrieve context
         const context = options.contextBuilder.retrieve(askReq.question);
 
-        // Send context event
+        // Send context event (include topic info alongside moduleIds)
         sendSSE(res, {
             type: 'context',
             moduleIds: context.moduleIds,
+            ...(context.topicContexts.length > 0 ? {
+                topicIds: context.topicContexts.map(t => `${t.topicId}/${t.slug}`),
+            } : {}),
         });
 
         // 2. Determine session mode vs legacy mode

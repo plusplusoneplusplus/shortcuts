@@ -43,6 +43,7 @@ export function getCoreScript(defaultTheme: WebsiteTheme): string {
             if (state.type === 'home') showHome(true);
             else if (state.type === 'module' && state.id) loadModule(state.id, true);
             else if (state.type === 'special' && state.key && state.title) loadSpecialPage(state.key, state.title, true);
+            else if (state.type === 'topic' && state.topicId && state.slug) loadTopicArticle(state.topicId, state.slug, true);
             else if (state.type === 'graph') { if (typeof showGraph === 'function') showGraph(true); else showHome(true); }
             else if (state.type === 'admin') showAdmin(true);
             else showHome(true);

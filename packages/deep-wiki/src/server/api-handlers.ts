@@ -60,6 +60,29 @@ export function handleApiRequest(
         return;
     }
 
+    // GET /api/topics (must come before /api/topics/:id to avoid catch-all)
+    if (method === 'GET' && pathname === '/api/topics') {
+        handleGetTopics(res, wikiData);
+        return;
+    }
+
+    // GET /api/topics/:topicId/:slug
+    const topicArticleMatch = pathname.match(/^\/api\/topics\/([^/]+)\/([^/]+)$/);
+    if (method === 'GET' && topicArticleMatch) {
+        const topicId = decodeURIComponent(topicArticleMatch[1]);
+        const slug = decodeURIComponent(topicArticleMatch[2]);
+        handleGetTopicArticle(res, wikiData, topicId, slug);
+        return;
+    }
+
+    // GET /api/topics/:topicId
+    const topicMatch = pathname.match(/^\/api\/topics\/([^/]+)$/);
+    if (method === 'GET' && topicMatch) {
+        const topicId = decodeURIComponent(topicMatch[1]);
+        handleGetTopicById(res, wikiData, topicId);
+        return;
+    }
+
     // GET /api/modules
     if (method === 'GET' && pathname === '/api/modules') {
         handleGetModules(res, wikiData);
@@ -221,6 +244,61 @@ function handleGetPage(
             return;
         }
         sendJson(res, page);
+    } catch (error) {
+        sendJson(res, { error: getErrorMessage(error) }, 500);
+    }
+}
+
+/**
+ * GET /api/topics — Returns list of all topic areas.
+ */
+function handleGetTopics(res: http.ServerResponse, wikiData: WikiData): void {
+    try {
+        const topics = wikiData.getTopicList();
+        sendJson(res, topics);
+    } catch (error) {
+        sendJson(res, { error: getErrorMessage(error) }, 500);
+    }
+}
+
+/**
+ * GET /api/topics/:topicId — Returns topic area with all articles.
+ */
+function handleGetTopicById(
+    res: http.ServerResponse,
+    wikiData: WikiData,
+    topicId: string
+): void {
+    try {
+        const topics = wikiData.getTopicList();
+        const meta = topics.find(t => t.id === topicId);
+        if (!meta) {
+            send404(res, `Topic not found: ${topicId}`);
+            return;
+        }
+        const articles = wikiData.getTopicArticles(topicId);
+        sendJson(res, { ...meta, articles: articles.map(a => ({ slug: a.slug, title: a.title, content: a.content })) });
+    } catch (error) {
+        sendJson(res, { error: getErrorMessage(error) }, 500);
+    }
+}
+
+/**
+ * GET /api/topics/:topicId/:slug — Returns a single topic article.
+ */
+function handleGetTopicArticle(
+    res: http.ServerResponse,
+    wikiData: WikiData,
+    topicId: string,
+    slug: string
+): void {
+    try {
+        const detail = wikiData.getTopicArticle(topicId, slug);
+        if (!detail) {
+            send404(res, `Topic article not found: ${topicId}/${slug}`);
+            return;
+        }
+        sendJson(res, { topicId, slug, content: detail.content, meta: detail.meta });
     } catch (error) {
         sendJson(res, { error: getErrorMessage(error) }, 500);
     }

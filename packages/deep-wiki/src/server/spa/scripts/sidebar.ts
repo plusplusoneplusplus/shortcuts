@@ -155,6 +155,9 @@ ${opts.enableSearch ? `
                 group.appendChild(childrenEl);
                 navContainer.appendChild(group);
             }
+
+            // Render topics section
+            buildTopicsSidebar(navContainer);
         }
 
         // Build category-based sidebar (fallback for non-area repos)
@@ -192,6 +195,59 @@ ${opts.enableSearch ? `
 
                 group.appendChild(childrenEl);
                 navContainer.appendChild(group);
+            });
+
+            // Render topics section
+            buildTopicsSidebar(navContainer);
+        }
+
+        // Build topics section in sidebar
+        function buildTopicsSidebar(navContainer) {
+            var topics = moduleGraph.topics;
+            if (!topics || topics.length === 0) return;
+
+            var divider = document.createElement('div');
+            divider.className = 'nav-section-title';
+            divider.textContent = 'Topics';
+            divider.setAttribute('data-section', 'topics');
+            navContainer.appendChild(divider);
+
+            topics.forEach(function(topic) {
+                if (topic.layout === 'area' && topic.articles.length > 1) {
+                    // Area-layout: expandable tree with sub-articles
+                    var group = document.createElement('div');
+                    group.className = 'nav-area-group nav-topic-group';
+
+                    var topicItem = document.createElement('div');
+                    topicItem.className = 'nav-area-item';
+                    topicItem.setAttribute('data-topic-id', topic.id);
+                    topicItem.innerHTML = '<span class="nav-item-name">\\ud83d\\udccb ' + escapeHtml(topic.title) + '</span>';
+                    group.appendChild(topicItem);
+
+                    var childrenEl = document.createElement('div');
+                    childrenEl.className = 'nav-area-children';
+
+                    topic.articles.forEach(function(article) {
+                        var item = document.createElement('div');
+                        item.className = 'nav-area-module nav-topic-article';
+                        item.setAttribute('data-id', 'topic:' + topic.id + ':' + article.slug);
+                        item.innerHTML = '<span class="nav-item-name">' + escapeHtml(article.title) + '</span>';
+                        item.onclick = function() { loadTopicArticle(topic.id, article.slug); };
+                        childrenEl.appendChild(item);
+                    });
+
+                    group.appendChild(childrenEl);
+                    navContainer.appendChild(group);
+                } else {
+                    // Single-layout: flat link
+                    var slug = topic.articles.length > 0 ? topic.articles[0].slug : topic.id;
+                    var item = document.createElement('div');
+                    item.className = 'nav-item nav-topic-article';
+                    item.setAttribute('data-id', 'topic:' + topic.id + ':' + slug);
+                    item.innerHTML = '<span class="nav-item-name">\\ud83d\\udccb ' + escapeHtml(topic.title) + '</span>';
+                    item.onclick = function() { loadTopicArticle(topic.id, slug); };
+                    navContainer.appendChild(item);
+                }
             });
         }
 

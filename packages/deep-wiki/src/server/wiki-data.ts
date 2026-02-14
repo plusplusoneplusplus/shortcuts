@@ -9,7 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ModuleGraph, ModuleInfo, ModuleAnalysis } from '../types';
+import type { ModuleGraph, ModuleInfo, ModuleAnalysis, TopicAreaMeta } from '../types';
 
 // ============================================================================
 // Types
@@ -45,6 +45,23 @@ export interface SpecialPage {
     markdown: string;
 }
 
+/**
+ * Single topic article content.
+ */
+export interface TopicArticleContent {
+    slug: string;
+    title: string;
+    content: string;
+}
+
+/**
+ * Topic article detail returned by the /api/topics/:id/:slug endpoint.
+ */
+export interface TopicArticleDetail {
+    content: string;
+    meta: TopicAreaMeta;
+}
+
 // ============================================================================
 // WikiData Class
 // ============================================================================
@@ -59,6 +76,7 @@ export class WikiData {
     private _graph: ModuleGraph | null = null;
     private _markdown: Record<string, string> = {};
     private _analyses: Map<string, ModuleAnalysis> = new Map();
+    private _topicMarkdown: Record<string, string> = {};
 
     constructor(wikiDir: string) {
         this.wikiDir = path.resolve(wikiDir);
@@ -71,6 +89,7 @@ export class WikiData {
         this._graph = this.readModuleGraph();
         this._markdown = this.readMarkdownFiles();
         this._analyses = this.readAnalyses();
+        this._topicMarkdown = this.readTopicFiles();
     }
 
     /**
@@ -155,6 +174,68 @@ export class WikiData {
      */
     getMarkdownData(): Record<string, string> {
         return { ...this._markdown };
+    }
+
+    /**
+     * Get all topic markdown data (used by context builder for indexing).
+     */
+    getTopicMarkdownData(): Record<string, string> {
+        return { ...this._topicMarkdown };
+    }
+
+    /**
+     * Get the list of all topic areas with metadata.
+     */
+    getTopicList(): TopicAreaMeta[] {
+        return this.graph.topics || [];
+    }
+
+    /**
+     * Get a single topic article by topicId and optional slug.
+     * If slug is omitted, returns the first article (or index) for the topic.
+     */
+    getTopicArticle(topicId: string, slug?: string): TopicArticleDetail | null {
+        const topics = this.graph.topics || [];
+        const meta = topics.find(t => t.id === topicId);
+        if (!meta) {
+            return null;
+        }
+
+        const targetSlug = slug || (meta.articles.length > 0 ? meta.articles[0].slug : undefined);
+        if (!targetSlug) {
+            return null;
+        }
+
+        const key = `topic:${topicId}:${targetSlug}`;
+        const content = this._topicMarkdown[key];
+        if (!content) {
+            return null;
+        }
+
+        return { content, meta };
+    }
+
+    /**
+     * Get all articles for a topic area.
+     */
+    getTopicArticles(topicId: string): TopicArticleContent[] {
+        const topics = this.graph.topics || [];
+        const meta = topics.find(t => t.id === topicId);
+        if (!meta) {
+            return [];
+        }
+
+        const articles: TopicArticleContent[] = [];
+        for (const article of meta.articles) {
+            const key = `topic:${topicId}:${article.slug}`;
+            const content = this._topicMarkdown[key] || '';
+            articles.push({
+                slug: article.slug,
+                title: article.title,
+                content,
+            });
+        }
+        return articles;
     }
 
     /**
@@ -261,6 +342,50 @@ export class WikiData {
         }
 
         return analyses;
+    }
+
+    /**
+     * Read topic article files from the topics/ directory.
+     * Keys are in format `topic:{topicId}:{slug}`.
+     */
+    private readTopicFiles(): Record<string, string> {
+        const data: Record<string, string> = {};
+        const topicsDir = path.join(this.wikiDir, 'topics');
+
+        if (!fs.existsSync(topicsDir) || !fs.statSync(topicsDir).isDirectory()) {
+            return data;
+        }
+
+        const topics = this._graph?.topics || [];
+
+        for (const topic of topics) {
+            if (topic.layout === 'single') {
+                // Single-file topics: topics/{topicId}.md
+                const filePath = path.join(topicsDir, `${topic.id}.md`);
+                if (fs.existsSync(filePath)) {
+                    const slug = topic.articles.length > 0 ? topic.articles[0].slug : topic.id;
+                    data[`topic:${topic.id}:${slug}`] = fs.readFileSync(filePath, 'utf-8');
+                }
+            } else {
+                // Area-layout topics: topics/{topicId}/*.md
+                const topicDir = path.join(topicsDir, topic.id);
+                if (fs.existsSync(topicDir) && fs.statSync(topicDir).isDirectory()) {
+                    for (const article of topic.articles) {
+                        const slug = article.slug;
+                        // Try the slug directly, then fallback to index.md for index articles
+                        let filePath = path.join(topicDir, `${slug}.md`);
+                        if (!fs.existsSync(filePath) && slug === topic.id) {
+                            filePath = path.join(topicDir, 'index.md');
+                        }
+                        if (fs.existsSync(filePath)) {
+                            data[`topic:${topic.id}:${slug}`] = fs.readFileSync(filePath, 'utf-8');
+                        }
+                    }
+                }
+            }
+        }
+
+        return data;
     }
 
     private findModuleIdBySlug(slug: string): string | null {

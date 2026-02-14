@@ -11,6 +11,7 @@
  */
 
 import type { ModuleGraph } from '../types';
+import type { TopicAreaMeta } from '../types';
 
 // ============================================================================
 // Types
@@ -20,12 +21,14 @@ import type { ModuleGraph } from '../types';
  * A document in the TF-IDF index.
  */
 interface IndexedDocument {
-    /** Module ID */
+    /** Document ID (module ID or topic:{topicId}:{slug}) */
     moduleId: string;
-    /** Module name */
+    /** Display name */
     name: string;
-    /** Module category */
+    /** Category */
     category: string;
+    /** Source type */
+    source: 'module' | 'topic';
     /** Tokenized terms with their TF values */
     termFrequencies: Map<string, number>;
     /** Total number of terms in the document */
@@ -42,6 +45,22 @@ export interface RetrievedContext {
     contextText: string;
     /** Module graph summary for architectural context */
     graphSummary: string;
+    /** Topic articles included in context */
+    topicContexts: TopicContextEntry[];
+}
+
+/**
+ * A topic article included in context retrieval results.
+ */
+export interface TopicContextEntry {
+    /** Topic area ID */
+    topicId: string;
+    /** Article slug */
+    slug: string;
+    /** Article title (from metadata) */
+    title: string;
+    /** Article markdown content */
+    content: string;
 }
 
 // ============================================================================
@@ -76,10 +95,12 @@ export class ContextBuilder {
     private inverseDocFreq: Map<string, number> = new Map();
     private graph: ModuleGraph;
     private markdownData: Record<string, string>;
+    private topicMarkdownData: Record<string, string>;
 
-    constructor(graph: ModuleGraph, markdownData: Record<string, string>) {
+    constructor(graph: ModuleGraph, markdownData: Record<string, string>, topicMarkdownData?: Record<string, string>) {
         this.graph = graph;
         this.markdownData = markdownData;
+        this.topicMarkdownData = topicMarkdownData || {};
         this.buildIndex();
     }
 
@@ -88,13 +109,16 @@ export class ContextBuilder {
      *
      * @param question - The user's question
      * @param maxModules - Maximum number of modules to return (default: 5)
+     * @param maxTopics - Maximum number of topic articles to return (default: 3)
      * @returns Retrieved context with module IDs, markdown, and graph summary
      */
-    retrieve(question: string, maxModules = 5): RetrievedContext {
+    retrieve(question: string, maxModules = 5, maxTopics = 3): RetrievedContext {
         const queryTerms = tokenize(question);
 
         // Score each document
-        const scores: Array<{ moduleId: string; score: number }> = [];
+        const moduleScores: Array<{ moduleId: string; score: number }> = [];
+        const topicScores: Array<{ docId: string; score: number }> = [];
+
         for (const doc of this.documents) {
             let score = 0;
             for (const term of queryTerms) {
@@ -112,15 +136,20 @@ export class ContextBuilder {
             }
 
             if (score > 0) {
-                scores.push({ moduleId: doc.moduleId, score });
+                if (doc.source === 'topic') {
+                    topicScores.push({ docId: doc.moduleId, score });
+                } else {
+                    moduleScores.push({ moduleId: doc.moduleId, score });
+                }
             }
         }
 
         // Sort by score descending
-        scores.sort((a, b) => b.score - a.score);
+        moduleScores.sort((a, b) => b.score - a.score);
+        topicScores.sort((a, b) => b.score - a.score);
 
-        // Select top-K
-        const topModules = scores.slice(0, maxModules);
+        // Select top-K modules
+        const topModules = moduleScores.slice(0, maxModules);
         const selectedIds = topModules.map(s => s.moduleId);
 
         // Expand with 1-hop dependency neighbors if we have room
@@ -143,13 +172,42 @@ export class ContextBuilder {
 
         const finalIds = Array.from(expandedIds);
 
-        // Build context text
+        // Build context text for modules
         const contextParts: string[] = [];
         for (const moduleId of finalIds) {
             const markdown = this.markdownData[moduleId];
             if (markdown) {
                 contextParts.push(`## Module: ${moduleId}\n\n${markdown}`);
             }
+        }
+
+        // Select top-K topic articles
+        const selectedTopics = topicScores.slice(0, maxTopics);
+        const topicContexts: TopicContextEntry[] = [];
+        const topics = this.graph.topics || [];
+
+        for (const { docId } of selectedTopics) {
+            // docId format: topic:{topicId}:{slug}
+            const parts = docId.split(':');
+            if (parts.length < 3) continue;
+            const topicId = parts[1];
+            const slug = parts.slice(2).join(':');
+
+            const meta = topics.find(t => t.id === topicId);
+            if (!meta) continue;
+
+            const articleMeta = meta.articles.find(a => a.slug === slug);
+            const content = this.topicMarkdownData[docId] || '';
+            if (!content) continue;
+
+            topicContexts.push({
+                topicId,
+                slug,
+                title: articleMeta?.title || slug,
+                content,
+            });
+
+            contextParts.push(`## Topic Article: ${articleMeta?.title || slug}\n\nSource: topics/${topicId}/${slug}.md\n\n${content}`);
         }
 
         // Build graph summary
@@ -159,6 +217,7 @@ export class ContextBuilder {
             moduleIds: finalIds,
             contextText: contextParts.join('\n\n---\n\n'),
             graphSummary,
+            topicContexts,
         };
     }
 
@@ -213,9 +272,54 @@ export class ContextBuilder {
                 moduleId: mod.id,
                 name: mod.name,
                 category: mod.category,
+                source: 'module',
                 termFrequencies,
                 termCount,
             });
+        }
+
+        // Index topic articles
+        const topics = this.graph.topics || [];
+        for (const topic of topics) {
+            for (const article of topic.articles) {
+                const docId = `topic:${topic.id}:${article.slug}`;
+                const markdown = this.topicMarkdownData[docId] || '';
+
+                const involvedModuleNames = topic.involvedModuleIds
+                    .map(id => this.graph.modules.find(m => m.id === id)?.name || '')
+                    .filter(Boolean);
+
+                const text = [
+                    topic.title,
+                    topic.description,
+                    article.title,
+                    involvedModuleNames.join(' '),
+                    markdown,
+                ].join(' ');
+
+                const terms = tokenize(text);
+                const termFrequencies = new Map<string, number>();
+
+                for (const term of terms) {
+                    termFrequencies.set(term, (termFrequencies.get(term) || 0) + 1);
+                }
+
+                const termCount = terms.length;
+                if (termCount > 0) {
+                    for (const [term, count] of termFrequencies) {
+                        termFrequencies.set(term, count / termCount);
+                    }
+                }
+
+                this.documents.push({
+                    moduleId: docId,
+                    name: article.title || topic.title,
+                    category: 'topic',
+                    source: 'topic',
+                    termFrequencies,
+                    termCount,
+                });
+            }
         }
 
         // Compute IDF for each term
