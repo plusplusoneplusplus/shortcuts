@@ -1,6 +1,6 @@
 {
   "name": "@plusplusoneplusplus/deep-wiki",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "CLI tool to auto-generate comprehensive wikis for any codebase",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
