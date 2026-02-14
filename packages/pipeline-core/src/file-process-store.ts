@@ -10,10 +10,12 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import { EventEmitter } from 'events';
 
-import { ProcessStore, ProcessFilter, WorkspaceInfo, ProcessChangeCallback } from './process-store';
+import { ProcessStore, ProcessFilter, WorkspaceInfo, ProcessChangeCallback, ProcessOutputEvent } from './process-store';
 import {
     AIProcess,
+    AIProcessStatus,
     SerializedAIProcess,
     serializeProcess,
     deserializeProcess,
@@ -51,6 +53,7 @@ export class FileProcessStore implements ProcessStore {
     private readonly processesPath: string;
     private readonly workspacesPath: string;
     private writeQueue: Promise<void>;
+    private readonly emitters: Map<string, EventEmitter> = new Map();
 
     onProcessChange?: ProcessChangeCallback;
 
@@ -208,6 +211,40 @@ export class FileProcessStore implements ProcessStore {
 
     async getWorkspaces(): Promise<WorkspaceInfo[]> {
         return this.readWorkspaces();
+    }
+
+    // --- Streaming support (in-memory, not persisted) ---
+
+    onProcessOutput(id: string, callback: (event: ProcessOutputEvent) => void): () => void {
+        let emitter = this.emitters.get(id);
+        if (!emitter) {
+            emitter = new EventEmitter();
+            this.emitters.set(id, emitter);
+        }
+        const listener = (event: ProcessOutputEvent) => callback(event);
+        emitter.on('output', listener);
+        return () => {
+            emitter!.removeListener('output', listener);
+        };
+    }
+
+    emitProcessOutput(id: string, content: string): void {
+        let emitter = this.emitters.get(id);
+        if (!emitter) {
+            emitter = new EventEmitter();
+            this.emitters.set(id, emitter);
+        }
+        const event: ProcessOutputEvent = { type: 'chunk', content };
+        emitter.emit('output', event);
+    }
+
+    emitProcessComplete(id: string, status: AIProcessStatus, duration: string): void {
+        const emitter = this.emitters.get(id);
+        if (!emitter) { return; }
+        const event: ProcessOutputEvent = { type: 'complete', status, duration };
+        emitter.emit('output', event);
+        // Clean up emitter after notifying all listeners
+        this.emitters.delete(id);
     }
 
     // --- Internal helpers ---

@@ -15,6 +15,7 @@ import {
     ensureDataDir,
     AIProcess,
     AIProcessStatus,
+    ProcessOutputEvent,
 } from '../src/index';
 
 function makeProcess(id: string, overrides?: Partial<AIProcess>): AIProcess {
@@ -328,6 +329,133 @@ describe('FileProcessStore', () => {
         expect(events[0].type).toBe('process-added');
         expect(events[1].type).toBe('process-updated');
         expect(events[2].type).toBe('process-removed');
+    });
+
+    // --- onProcessOutput / emitProcessOutput ---
+    it('should deliver output chunks to subscriber in order', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { status: 'running' }));
+
+        const received: ProcessOutputEvent[] = [];
+        store.onProcessOutput('p1', (event) => received.push(event));
+
+        store.emitProcessOutput('p1', 'chunk-1');
+        store.emitProcessOutput('p1', 'chunk-2');
+        store.emitProcessOutput('p1', 'chunk-3');
+
+        expect(received).toHaveLength(3);
+        expect(received[0]).toEqual({ type: 'chunk', content: 'chunk-1' });
+        expect(received[1]).toEqual({ type: 'chunk', content: 'chunk-2' });
+        expect(received[2]).toEqual({ type: 'chunk', content: 'chunk-3' });
+    });
+
+    it('should deliver complete event and clean up emitter', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p1', { status: 'running' }));
+
+        const received: ProcessOutputEvent[] = [];
+        store.onProcessOutput('p1', (event) => received.push(event));
+
+        store.emitProcessOutput('p1', 'hello');
+        store.emitProcessComplete('p1', 'completed', '2m 30s');
+
+        expect(received).toHaveLength(2);
+        expect(received[1]).toEqual({ type: 'complete', status: 'completed', duration: '2m 30s' });
+
+        // Emitter should be cleaned up — further emits are no-ops
+        store.emitProcessOutput('p1', 'after-complete');
+        expect(received).toHaveLength(2);
+    });
+
+    it('should support unsubscribe before complete', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+
+        const received: ProcessOutputEvent[] = [];
+        const unsub = store.onProcessOutput('p1', (event) => received.push(event));
+
+        store.emitProcessOutput('p1', 'before-unsub');
+        unsub();
+        store.emitProcessOutput('p1', 'after-unsub');
+
+        expect(received).toHaveLength(1);
+        expect(received[0].content).toBe('before-unsub');
+    });
+
+    it('should handle emitProcessOutput with no subscribers', () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        // Should not throw
+        store.emitProcessOutput('no-subscribers', 'data');
+    });
+
+    it('should handle emitProcessComplete with no subscribers', () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        // No emitter exists — should not throw
+        store.emitProcessComplete('no-emitter', 'completed', '1s');
+    });
+
+    // --- Concurrent write safety (expanded) ---
+    it('should handle 10 parallel updates on overlapping IDs', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        for (let i = 0; i < 5; i++) {
+            await store.addProcess(makeProcess(`p${i}`, { status: 'running' }));
+        }
+
+        const updates = Array.from({ length: 10 }, (_, i) =>
+            store.updateProcess(`p${i % 5}`, { result: `result-${i}` })
+        );
+        await Promise.all(updates);
+
+        // All 5 processes should still exist and have a result
+        for (let i = 0; i < 5; i++) {
+            const p = await store.getProcess(`p${i}`);
+            expect(p).toBeDefined();
+            expect(p!.result).toBeDefined();
+        }
+    });
+
+    // --- Large dataset performance ---
+    it('should handle 500 processes with fast list and get', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses: 600 });
+        const count = 500;
+
+        for (let i = 0; i < count; i++) {
+            await store.addProcess(makeProcess(`p${i}`, {
+                metadata: { type: 'clarification', workspaceId: i % 2 === 0 ? 'ws-a' : 'ws-b' }
+            }));
+        }
+
+        const startList = Date.now();
+        const all = await store.getAllProcesses();
+        const listDuration = Date.now() - startList;
+        expect(all).toHaveLength(count);
+        expect(listDuration).toBeLessThan(2000);
+
+        // Filter by workspace
+        const wsA = await store.getAllProcesses({ workspaceId: 'ws-a' });
+        expect(wsA).toHaveLength(250);
+
+        // Fast single get
+        const startGet = Date.now();
+        const last = await store.getProcess(`p${count - 1}`);
+        const getDuration = Date.now() - startGet;
+        expect(last).toBeDefined();
+        expect(getDuration).toBeLessThan(500);
+    });
+
+    // --- Retention pruning expanded ---
+    it('should prune old processes while respecting maxCount', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir, maxProcesses: 100 });
+
+        // Insert 150 completed processes
+        for (let i = 0; i < 150; i++) {
+            await store.addProcess(makeProcess(`p${i}`, {
+                status: 'completed',
+                startTime: new Date(Date.now() - (150 - i) * 60_000),
+            }));
+        }
+
+        const all = await store.getAllProcesses();
+        expect(all.length).toBeLessThanOrEqual(100);
     });
 });
 

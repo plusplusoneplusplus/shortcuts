@@ -345,6 +345,7 @@ export {
 // ============================================================================
 
 export {
+    ProcessOutputEvent,
     WorkspaceInfo,
     ProcessFilter,
     ProcessChangeCallback,

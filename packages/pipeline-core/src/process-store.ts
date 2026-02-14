@@ -10,6 +10,20 @@
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent } from './ai/process-types';
 
 /**
+ * Output event emitted during process execution.
+ * Used by SSE streaming to push real-time output to clients.
+ */
+export interface ProcessOutputEvent {
+    type: 'chunk' | 'complete';
+    /** Partial output text (for 'chunk' events). */
+    content?: string;
+    /** Final process status (for 'complete' events). */
+    status?: AIProcessStatus;
+    /** Human-readable duration string (for 'complete' events). */
+    duration?: string;
+}
+
+/**
  * Workspace identity for multi-workspace process tracking.
  * `id` is a stable hash of the workspace root path.
  */
@@ -64,4 +78,13 @@ export interface ProcessStore {
 
     /** Optional callback invoked on every process mutation. */
     onProcessChange?: ProcessChangeCallback;
+
+    /** Subscribe to output events for a running process. Returns unsubscribe function. */
+    onProcessOutput(id: string, callback: (event: ProcessOutputEvent) => void): () => void;
+
+    /** Emit an output chunk for a running process (called by execution engine). */
+    emitProcessOutput(id: string, content: string): void;
+
+    /** Emit process completion (called by execution engine). */
+    emitProcessComplete(id: string, status: AIProcessStatus, duration: string): void;
 }

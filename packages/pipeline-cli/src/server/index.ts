@@ -38,6 +38,9 @@ function createStubStore(): ProcessStore {
         clearProcesses: async () => 0,
         getWorkspaces: async () => [],
         registerWorkspace: async () => {},
+        onProcessOutput: () => () => {},
+        emitProcessOutput: () => {},
+        emitProcessComplete: () => {},
     };
 }
 
@@ -121,6 +124,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const actualPort = typeof address === 'object' && address ? address.port : port;
     const url = `http://${host}:${actualPort}`;
 
+    // Track active connections for force-close on shutdown
+    const activeSockets = new Set<import('net').Socket>();
+    server.on('connection', (socket) => {
+        activeSockets.add(socket);
+        socket.on('close', () => activeSockets.delete(socket));
+    });
+
     return {
         server,
         store,
@@ -129,6 +139,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         url,
         close: async () => {
             wsServer.closeAll();
+            // Destroy remaining keep-alive connections
+            for (const socket of activeSockets) {
+                socket.destroy();
+            }
+            activeSockets.clear();
             await new Promise<void>((resolve, reject) => {
                 server.close((err) => {
                     if (err) { reject(err); }
@@ -144,6 +159,7 @@ export type { ExecutionServerOptions, ExecutionServer, Route } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from './router';
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from './api-handler';
+export { handleProcessStream } from './sse-handler';
 export { ProcessWebSocketServer, toProcessSummary, sendFrame, decodeFrame } from './websocket';
 export type { WSClient, ProcessSummary, ServerMessage, ClientMessage } from './websocket';
 export type { RouterOptions } from './router';

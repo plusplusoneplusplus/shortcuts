@@ -13,6 +13,7 @@ import * as url from 'url';
 import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo } from '@plusplusoneplusplus/pipeline-core';
 import { deserializeProcess } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
+import { handleProcessStream } from './sse-handler';
 
 // ============================================================================
 // Response Helpers
@@ -263,6 +264,16 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore): void {
 
             await store.addProcess(process);
             sendJSON(res, 201, process);
+        },
+    });
+
+    // GET /api/processes/:id/stream — SSE stream for real-time output
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/processes\/([^/]+)\/stream$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            return handleProcessStream(req, res, id, store);
         },
     });
 
