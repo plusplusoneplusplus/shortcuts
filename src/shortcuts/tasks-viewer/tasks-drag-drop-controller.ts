@@ -15,9 +15,11 @@ const INTERNAL_DRAG_MIME_TYPE = 'application/vnd.code.tree.tasksView';
  * Internal drag data structure
  */
 interface InternalDragData {
-    type: 'task' | 'document' | 'documentGroup';
+    type: 'task' | 'document' | 'documentGroup' | 'folder';
     filePaths: string[];
     sourceFolderPath: string;
+    /** For folder drags: the absolute path of the folder being dragged */
+    draggedFolderPath?: string;
 }
 
 /**
@@ -88,6 +90,19 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
                     filePaths,
                     sourceFolderPath: item.folderPath
                 });
+            }
+            // Handle TaskFolderItem (entire folder)
+            else if (item instanceof TaskFolderItem) {
+                // Only allow dragging non-archived folders
+                if (!item.folder.isArchived) {
+                    uris.push(vscode.Uri.file(item.folder.folderPath));
+                    internalDragData.push({
+                        type: 'folder',
+                        filePaths: [],
+                        sourceFolderPath: this.getParentFolder(item.folder.folderPath),
+                        draggedFolderPath: item.folder.folderPath
+                    });
+                }
             }
             // Handle any item with resourceUri (fallback)
             else if (item.resourceUri) {
@@ -213,7 +228,7 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
     }
 
     /**
-     * Handle internal drop - move tasks between folders or archive tasks
+     * Handle internal drop - move tasks/folders between folders or archive tasks
      */
     private async handleInternalDrop(
         target: vscode.TreeItem | undefined,
@@ -261,9 +276,48 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
             return;
         }
 
+        // Separate folder drags from file drags
+        const folderDrags = dragDataArray.filter(d => d.type === 'folder' && d.draggedFolderPath);
+        const fileDrags = dragDataArray.filter(d => d.type !== 'folder');
+
+        let successCount = 0;
+
+        // Process folder drags
+        for (const dragData of folderDrags) {
+            if (token.isCancellationRequested) {
+                break;
+            }
+
+            const folderPath = dragData.draggedFolderPath!;
+
+            // Archiving folders via drag is not supported — use the archive command
+            if (isArchiveDrop) {
+                vscode.window.showWarningMessage('Archiving folders via drag-and-drop is not supported. Use the archive command instead.');
+                continue;
+            }
+
+            // Skip if source parent and target are the same (no-op)
+            if (this.normalizePath(dragData.sourceFolderPath) === this.normalizePath(targetFolder)) {
+                continue;
+            }
+
+            try {
+                await this.taskManager.moveFolder(folderPath, targetFolder);
+                successCount++;
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                if (errorMessage.includes('Cannot move a folder into itself')) {
+                    vscode.window.showWarningMessage('Cannot move a folder into itself or its own subfolder.');
+                } else {
+                    console.error(`Failed to move folder ${folderPath}:`, error);
+                    vscode.window.showErrorMessage(`Failed to move folder: ${errorMessage}`);
+                }
+            }
+        }
+
         // Collect all file paths to process
         const filesToProcess: string[] = [];
-        for (const dragData of dragDataArray) {
+        for (const dragData of fileDrags) {
             // For archive drops, skip files already in archive
             if (isArchiveDrop) {
                 const archiveFolder = this.taskManager.getArchiveFolder();
@@ -281,12 +335,7 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
             filesToProcess.push(...dragData.filePaths);
         }
 
-        if (filesToProcess.length === 0) {
-            return;
-        }
-
         // Process files
-        let successCount = 0;
         for (const filePath of filesToProcess) {
             if (token.isCancellationRequested) {
                 break;
@@ -311,13 +360,13 @@ export class TasksDragDropController implements vscode.TreeDragAndDropController
             this.refreshCallback();
             if (isArchiveDrop) {
                 const message = successCount === 1
-                    ? '1 task archived successfully.'
-                    : `${successCount} tasks archived successfully.`;
+                    ? '1 item archived successfully.'
+                    : `${successCount} items archived successfully.`;
                 vscode.window.showInformationMessage(message);
             } else {
                 const message = successCount === 1
-                    ? '1 task moved successfully.'
-                    : `${successCount} tasks moved successfully.`;
+                    ? '1 item moved successfully.'
+                    : `${successCount} items moved successfully.`;
                 vscode.window.showInformationMessage(message);
             }
         }

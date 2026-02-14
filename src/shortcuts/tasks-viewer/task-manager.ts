@@ -616,6 +616,61 @@ export class TaskManager implements vscode.Disposable {
     }
 
     /**
+     * Move an entire folder (and all its contents) into a target folder.
+     * Prevents circular moves (moving a folder into its own subtree).
+     * Handles name collisions by appending a numeric suffix.
+     * @param sourceFolderPath - Absolute path to the folder to move
+     * @param targetParentFolder - Absolute path to the destination parent folder
+     * @returns The new folder path
+     */
+    async moveFolder(sourceFolderPath: string, targetParentFolder: string): Promise<string> {
+        if (!safeExists(sourceFolderPath)) {
+            throw new Error(`Folder not found: ${sourceFolderPath}`);
+        }
+
+        const statsResult = safeStats(sourceFolderPath);
+        if (!statsResult.success || !statsResult.data?.isDirectory()) {
+            throw new Error(`Path is not a directory: ${sourceFolderPath}`);
+        }
+
+        if (!safeExists(targetParentFolder)) {
+            throw new Error(`Target folder not found: ${targetParentFolder}`);
+        }
+
+        const targetStats = safeStats(targetParentFolder);
+        if (!targetStats.success || !targetStats.data?.isDirectory()) {
+            throw new Error(`Target path is not a directory: ${targetParentFolder}`);
+        }
+
+        // Prevent circular move: target must not be inside source
+        const normalizedSource = sourceFolderPath.replace(/\\/g, '/').toLowerCase();
+        const normalizedTarget = targetParentFolder.replace(/\\/g, '/').toLowerCase();
+        if (normalizedTarget.startsWith(normalizedSource + '/') || normalizedTarget === normalizedSource) {
+            throw new Error('Cannot move a folder into itself or its own subtree');
+        }
+
+        const folderName = path.basename(sourceFolderPath);
+        let newPath = path.join(targetParentFolder, folderName);
+
+        // Handle name collision with numeric suffix
+        if (sourceFolderPath !== newPath && safeExists(newPath)) {
+            let counter = 1;
+            while (safeExists(newPath)) {
+                newPath = path.join(targetParentFolder, `${folderName}-${counter}`);
+                counter++;
+            }
+        }
+
+        // Don't move if already in target location
+        if (sourceFolderPath === newPath) {
+            return sourceFolderPath;
+        }
+
+        safeRename(sourceFolderPath, newPath);
+        return newPath;
+    }
+
+    /**
      * Move multiple task files to a different folder (for document groups)
      * @param sourcePaths - Array of absolute paths to source files
      * @param targetFolder - Absolute path to the target folder
