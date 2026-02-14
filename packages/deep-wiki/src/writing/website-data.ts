@@ -76,6 +76,41 @@ export function readMarkdownFiles(
         }
     }
 
+    // Read topic files (topics/{topicId}.md for single, topics/{topicId}/ for area)
+    const topicsDir = path.join(wikiDir, 'topics');
+    if (fs.existsSync(topicsDir) && fs.statSync(topicsDir).isDirectory()) {
+        const entries = fs.readdirSync(topicsDir);
+        for (const entry of entries) {
+            const entryPath = path.join(topicsDir, entry);
+            const stat = fs.statSync(entryPath);
+
+            if (stat.isFile() && entry.endsWith('.md')) {
+                // Single-layout topic: topics/{topicId}.md
+                const topicId = path.basename(entry, '.md');
+                data[`__topic_${topicId}`] = fs.readFileSync(entryPath, 'utf-8');
+            } else if (stat.isDirectory()) {
+                // Area-layout topic: topics/{topicId}/
+                const topicId = entry;
+                const topicDir = entryPath;
+
+                // Read index.md
+                const indexPath = path.join(topicDir, 'index.md');
+                if (fs.existsSync(indexPath)) {
+                    data[`__topic_${topicId}_index`] = fs.readFileSync(indexPath, 'utf-8');
+                }
+
+                // Read sub-article files
+                const subFiles = fs.readdirSync(topicDir).filter(f =>
+                    f.endsWith('.md') && f !== 'index.md'
+                );
+                for (const subFile of subFiles) {
+                    const slug = path.basename(subFile, '.md');
+                    data[`__topic_${topicId}_${slug}`] = fs.readFileSync(path.join(topicDir, subFile), 'utf-8');
+                }
+            }
+        }
+    }
+
     // Read hierarchical-layout area files
     const areasDir = path.join(wikiDir, 'areas');
     if (fs.existsSync(areasDir) && fs.statSync(areasDir).isDirectory()) {

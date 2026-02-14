@@ -1562,3 +1562,387 @@ describe('generateHtmlTemplate — area-based sidebar', () => {
         expect(html).toContain('.nav-area-children { padding-left: 8px; }');
     });
 });
+
+// ============================================================================
+// Topic Support
+// ============================================================================
+
+describe('readMarkdownFiles — topic files', () => {
+    it('should read single-layout topic file', () => {
+        const graph = createTestModuleGraph();
+        const wikiDir = setupWikiDir(graph);
+
+        // Create topic file
+        const topicsDir = path.join(wikiDir, 'topics');
+        fs.mkdirSync(topicsDir, { recursive: true });
+        fs.writeFileSync(path.join(topicsDir, 'error-handling.md'), '# Error Handling\n\nTopic content.', 'utf-8');
+
+        const data = readMarkdownFiles(wikiDir, graph);
+        expect(data['__topic_error-handling']).toBe('# Error Handling\n\nTopic content.');
+    });
+
+    it('should read area-layout topic with index and sub-articles', () => {
+        const graph = createTestModuleGraph();
+        const wikiDir = setupWikiDir(graph);
+
+        // Create topic area directory
+        const topicDir = path.join(wikiDir, 'topics', 'compaction');
+        fs.mkdirSync(topicDir, { recursive: true });
+        fs.writeFileSync(path.join(topicDir, 'index.md'), '# Compaction Overview', 'utf-8');
+        fs.writeFileSync(path.join(topicDir, 'styles.md'), '# Compaction Styles', 'utf-8');
+        fs.writeFileSync(path.join(topicDir, 'scheduling.md'), '# Scheduling', 'utf-8');
+
+        const data = readMarkdownFiles(wikiDir, graph);
+        expect(data['__topic_compaction_index']).toBe('# Compaction Overview');
+        expect(data['__topic_compaction_styles']).toBe('# Compaction Styles');
+        expect(data['__topic_compaction_scheduling']).toBe('# Scheduling');
+    });
+
+    it('should handle wiki with no topics directory', () => {
+        const graph = createTestModuleGraph();
+        const wikiDir = setupWikiDir(graph);
+
+        const data = readMarkdownFiles(wikiDir, graph);
+        // Should still have module data, no topic keys
+        expect(data['auth']).toBeDefined();
+        const topicKeys = Object.keys(data).filter(k => k.startsWith('__topic_'));
+        expect(topicKeys).toHaveLength(0);
+    });
+
+    it('should handle empty topics directory', () => {
+        const graph = createTestModuleGraph();
+        const wikiDir = setupWikiDir(graph);
+        fs.mkdirSync(path.join(wikiDir, 'topics'), { recursive: true });
+
+        const data = readMarkdownFiles(wikiDir, graph);
+        const topicKeys = Object.keys(data).filter(k => k.startsWith('__topic_'));
+        expect(topicKeys).toHaveLength(0);
+    });
+
+    it('should ignore non-md files in topics directory', () => {
+        const graph = createTestModuleGraph();
+        const wikiDir = setupWikiDir(graph);
+        const topicsDir = path.join(wikiDir, 'topics');
+        fs.mkdirSync(topicsDir, { recursive: true });
+        fs.writeFileSync(path.join(topicsDir, 'notes.txt'), 'not a topic', 'utf-8');
+        fs.writeFileSync(path.join(topicsDir, 'valid-topic.md'), '# Valid', 'utf-8');
+
+        const data = readMarkdownFiles(wikiDir, graph);
+        expect(data['__topic_valid-topic']).toBe('# Valid');
+        const topicKeys = Object.keys(data).filter(k => k.startsWith('__topic_'));
+        expect(topicKeys).toHaveLength(1);
+    });
+});
+
+describe('generateHtmlTemplate — topic sidebar navigation', () => {
+    it('should include buildTopicsSidebar function', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('buildTopicsSidebar');
+    });
+
+    it('should include loadTopicPage function', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('function loadTopicPage(');
+    });
+
+    it('should only build topics sidebar when topics exist', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('moduleGraph.topics && moduleGraph.topics.length > 0');
+    });
+
+    it('should include nav-topic CSS classes', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.nav-topic-group');
+        expect(html).toContain('.nav-topic-header');
+        expect(html).toContain('.nav-topic-item');
+        expect(html).toContain('.nav-topic-article');
+        expect(html).toContain('.nav-topic-children');
+    });
+
+    it('should include topic active styles', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.nav-topic-item.active');
+        expect(html).toContain('.nav-topic-article.active');
+    });
+
+    it('should include Topics header with icon', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('Topics');
+        expect(html).toContain('nav-topic-header');
+    });
+
+    it('should handle single-layout topics as flat links', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("topic.layout === 'single'");
+    });
+
+    it('should handle area-layout topics with expandable children', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('nav-topic-children');
+        expect(html).toContain('topic.articles');
+    });
+
+    it('should include topic items in setActive selector', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.nav-topic-item, .nav-topic-article');
+    });
+
+    it('should include topic items in search filtering', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.nav-topic-item[data-id]');
+        expect(html).toContain('.nav-topic-article[data-id]');
+    });
+
+    it('should hide topic groups when no children match search', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.nav-topic-group');
+        // Verify search filtering for topic groups
+        expect(html).toContain("querySelectorAll('.nav-topic-group')");
+    });
+});
+
+describe('generateHtmlTemplate — topic page rendering', () => {
+    it('should set breadcrumb for single-layout topic', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // Breadcrumb includes "Home > Topics > " for topic pages
+        expect(html).toContain("'Home > Topics > '");
+    });
+
+    it('should set breadcrumb for area sub-article', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        // Sub-article breadcrumb includes topic title + article title
+        expect(html).toContain("' > ' + title");
+    });
+
+    it('should use __topic_ prefix for data keys', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("'__topic_' + topicId");
+    });
+
+    it('should add topic-wide class for area index pages', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('topic-wide');
+    });
+
+    it('should include wider max-width for topic-wide layout', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('.topic-wide .markdown-body { max-width: 1200px; }');
+    });
+
+    it('should remove topic-wide class for non-index pages', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("classList.remove('topic-wide')");
+    });
+});
+
+describe('generateHtmlTemplate — topic browser history', () => {
+    it('should include topic state type in popstate handler', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("state.type === 'topic'");
+    });
+
+    it('should call loadTopicPage from popstate handler', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('loadTopicPage(state.topicId');
+    });
+
+    it('should push topic state to history', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("type: 'topic'");
+        expect(html).toContain('topicId: topicId');
+    });
+
+    it('should include articleSlug in history state', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain('articleSlug: articleSlug');
+    });
+
+    it('should encode topic ID in URL hash', () => {
+        const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
+        expect(html).toContain("'#topic-' + encodeURIComponent(topicId)");
+    });
+
+    it('topic history should be present across all themes', () => {
+        const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
+        for (const theme of themes) {
+            const html = generateHtmlTemplate({ theme, title: 'Test', enableSearch: true });
+            expect(html).toContain("state.type === 'topic'");
+            expect(html).toContain('loadTopicPage');
+        }
+    });
+});
+
+describe('generateWebsite — topic integration', () => {
+    it('should render website unchanged when no topics exist', () => {
+        const graph = createTestModuleGraph();
+        const wikiDir = setupWikiDir(graph);
+
+        generateWebsite(wikiDir);
+
+        const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
+        expect(html).toContain('buildTopicsSidebar');
+        // The function exists but won't be called since no topics in graph
+        expect(html).toContain('moduleGraph.topics && moduleGraph.topics.length > 0');
+
+        const embeddedData = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
+        // No topic keys in markdown data
+        expect(embeddedData).not.toContain('__topic_');
+    });
+
+    it('should include topic markdown in embedded data when topics exist', () => {
+        const graph = createTestModuleGraph();
+        graph.topics = [
+            {
+                id: 'error-handling',
+                title: 'Error Handling',
+                description: 'How errors are handled',
+                layout: 'single' as const,
+                articles: [{ slug: 'error-handling', title: 'Error Handling', path: 'topics/error-handling.md' }],
+                involvedModuleIds: ['auth'],
+                directoryPath: 'topics/',
+                generatedAt: Date.now(),
+            },
+        ];
+        const wikiDir = setupWikiDir(graph);
+
+        // Create topic file
+        const topicsDir = path.join(wikiDir, 'topics');
+        fs.mkdirSync(topicsDir, { recursive: true });
+        fs.writeFileSync(path.join(topicsDir, 'error-handling.md'), '# Error Handling\n\nContent here.', 'utf-8');
+
+        generateWebsite(wikiDir);
+
+        const embeddedData = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
+        expect(embeddedData).toContain('__topic_error-handling');
+        expect(embeddedData).toContain('Error Handling');
+    });
+
+    it('should include area topic articles in embedded data', () => {
+        const graph = createTestModuleGraph();
+        graph.topics = [
+            {
+                id: 'compaction',
+                title: 'Compaction',
+                description: 'Database compaction strategies',
+                layout: 'area' as const,
+                articles: [
+                    { slug: 'styles', title: 'Compaction Styles', path: 'topics/compaction/styles.md' },
+                    { slug: 'scheduling', title: 'Scheduling', path: 'topics/compaction/scheduling.md' },
+                ],
+                involvedModuleIds: ['database'],
+                directoryPath: 'topics/compaction/',
+                generatedAt: Date.now(),
+            },
+        ];
+        const wikiDir = setupWikiDir(graph);
+
+        // Create topic area files
+        const topicDir = path.join(wikiDir, 'topics', 'compaction');
+        fs.mkdirSync(topicDir, { recursive: true });
+        fs.writeFileSync(path.join(topicDir, 'index.md'), '# Compaction Overview\n\n```mermaid\ngraph TD\n  A-->B\n```', 'utf-8');
+        fs.writeFileSync(path.join(topicDir, 'styles.md'), '# Compaction Styles', 'utf-8');
+        fs.writeFileSync(path.join(topicDir, 'scheduling.md'), '# Scheduling', 'utf-8');
+
+        generateWebsite(wikiDir);
+
+        const embeddedData = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
+        expect(embeddedData).toContain('__topic_compaction_index');
+        expect(embeddedData).toContain('__topic_compaction_styles');
+        expect(embeddedData).toContain('__topic_compaction_scheduling');
+    });
+
+    it('should handle multiple topics (area + single)', () => {
+        const graph = createTestModuleGraph();
+        graph.topics = [
+            {
+                id: 'compaction',
+                title: 'Compaction',
+                description: 'Compaction strategies',
+                layout: 'area' as const,
+                articles: [{ slug: 'styles', title: 'Styles', path: 'topics/compaction/styles.md' }],
+                involvedModuleIds: ['database'],
+                directoryPath: 'topics/compaction/',
+                generatedAt: Date.now(),
+            },
+            {
+                id: 'error-handling',
+                title: 'Error Handling',
+                description: 'Error patterns',
+                layout: 'single' as const,
+                articles: [{ slug: 'error-handling', title: 'Error Handling', path: 'topics/error-handling.md' }],
+                involvedModuleIds: ['auth'],
+                directoryPath: 'topics/',
+                generatedAt: Date.now(),
+            },
+            {
+                id: 'testing',
+                title: 'Testing Strategy',
+                description: 'How to test',
+                layout: 'area' as const,
+                articles: [{ slug: 'unit', title: 'Unit Tests', path: 'topics/testing/unit.md' }],
+                involvedModuleIds: ['utils'],
+                directoryPath: 'topics/testing/',
+                generatedAt: Date.now(),
+            },
+        ];
+        const wikiDir = setupWikiDir(graph);
+
+        // Create all topic files
+        const topicsDir = path.join(wikiDir, 'topics');
+        fs.mkdirSync(path.join(topicsDir, 'compaction'), { recursive: true });
+        fs.mkdirSync(path.join(topicsDir, 'testing'), { recursive: true });
+        fs.writeFileSync(path.join(topicsDir, 'error-handling.md'), '# Error Handling', 'utf-8');
+        fs.writeFileSync(path.join(topicsDir, 'compaction', 'index.md'), '# Compaction', 'utf-8');
+        fs.writeFileSync(path.join(topicsDir, 'compaction', 'styles.md'), '# Styles', 'utf-8');
+        fs.writeFileSync(path.join(topicsDir, 'testing', 'index.md'), '# Testing', 'utf-8');
+        fs.writeFileSync(path.join(topicsDir, 'testing', 'unit.md'), '# Unit Tests', 'utf-8');
+
+        generateWebsite(wikiDir);
+
+        const embeddedData = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
+        expect(embeddedData).toContain('__topic_error-handling');
+        expect(embeddedData).toContain('__topic_compaction_index');
+        expect(embeddedData).toContain('__topic_compaction_styles');
+        expect(embeddedData).toContain('__topic_testing_index');
+        expect(embeddedData).toContain('__topic_testing_unit');
+
+        const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
+        expect(html).toContain('buildTopicsSidebar');
+    });
+
+    it('should include mermaid rendering for topic articles', () => {
+        const graph = createTestModuleGraph();
+        graph.topics = [
+            {
+                id: 'arch-topic',
+                title: 'Architecture',
+                description: 'Architecture overview',
+                layout: 'area' as const,
+                articles: [],
+                involvedModuleIds: [],
+                directoryPath: 'topics/arch-topic/',
+                generatedAt: Date.now(),
+            },
+        ];
+        const wikiDir = setupWikiDir(graph);
+
+        const topicDir = path.join(wikiDir, 'topics', 'arch-topic');
+        fs.mkdirSync(topicDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(topicDir, 'index.md'),
+            '# Architecture\n\n```mermaid\ngraph TD\n  A[Auth] --> B[DB]\n```',
+            'utf-8'
+        );
+
+        generateWebsite(wikiDir);
+
+        const embeddedData = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
+        expect(embeddedData).toContain('mermaid');
+        expect(embeddedData).toContain('__topic_arch-topic_index');
+
+        // HTML should still include mermaid rendering infrastructure
+        const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
+        expect(html).toContain('mermaid');
+        expect(html).toContain('renderMarkdownContent');
+    });
+});
