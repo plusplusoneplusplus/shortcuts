@@ -2127,20 +2127,25 @@ export class ReviewEditorViewProvider implements vscode.CustomTextEditorProvider
      */
     private async handleUpdateDocument(instruction: string, filePath: string): Promise<void> {
         try {
-            // Read current document content
-            const documentContent = await fs.promises.readFile(filePath, 'utf-8');
+            const fileName = path.basename(filePath);
 
-            // Build the prompt
-            const prompt = `The user wants to update this markdown document with the following instruction:
+            // Build the prompt — no need to embed content, AI can read the file
+            const prompt = `The user wants to update the following markdown document:
 
+File: ${fileName}
+Path: ${filePath}
+
+## User Instruction
 ${instruction}
 
-Current document content:
----
-${documentContent}
----
+## Output Requirements
 
-Please make the requested changes to the document.`;
+**CRITICAL:** Read the file and then edit it in-place at: ${filePath}
+
+- Make only the changes described in the instruction
+- Preserve markdown format and any frontmatter
+- Do NOT create new files or write to session state/temp directories
+- Do NOT output the full file content to stdout`;
 
             // Get the interactive session manager
             const sessionManager = getInteractiveSessionManager();
