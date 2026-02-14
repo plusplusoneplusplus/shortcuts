@@ -259,7 +259,11 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore): void {
 
             // Tag with workspaceId if provided
             if (body.workspaceId) {
-                process.metadata = { ...process.metadata, workspaceId: body.workspaceId };
+                process.metadata = {
+                    type: process.metadata?.type ?? process.type ?? 'unknown',
+                    ...process.metadata,
+                    workspaceId: body.workspaceId,
+                };
             }
 
             await store.addProcess(process);
