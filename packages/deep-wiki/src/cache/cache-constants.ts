@@ -31,6 +31,9 @@ export const REDUCE_METADATA_FILE = '_reduce-metadata.json';
 /** Prefix for reduce article cache files */
 export const REDUCE_ARTICLE_PREFIX = '_reduce-';
 
+/** Subdirectory for per-topic generation cache */
+export const TOPICS_DIR = 'topics';
+
 /** Current version for cache metadata */
 export const CACHE_VERSION = '1.0.0';
 

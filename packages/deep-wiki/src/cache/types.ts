@@ -8,8 +8,9 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ModuleGraph, ModuleAnalysis, GeneratedArticle, TopicSeed, StructuralScanResult } from '../types';
+import type { ModuleGraph, ModuleAnalysis, GeneratedArticle, TopicSeed, StructuralScanResult, TopicOutline, TopicAnalysis, TopicArticle } from '../types';
 import type { TopicProbeResult } from '../discovery/iterative/types';
+import type { EnrichedProbeResult } from '../topic/topic-probe';
 
 // ============================================================================
 // Graph Cache Types
@@ -181,4 +182,56 @@ export interface DiscoveryProgressMetadata {
     converged: boolean;
     /** Coverage estimate (0-1) */
     coverage: number;
+}
+
+// ============================================================================
+// Topic Cache Types
+// ============================================================================
+
+/**
+ * A cached topic probe result (enriched).
+ */
+export interface CachedTopicProbe {
+    /** The enriched probe result */
+    result: EnrichedProbeResult;
+    /** Git hash when this probe was executed */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
+}
+
+/**
+ * A cached topic outline.
+ */
+export interface CachedTopicOutline {
+    /** The topic outline */
+    outline: TopicOutline;
+    /** Git hash when this outline was created */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
+}
+
+/**
+ * A cached topic analysis.
+ */
+export interface CachedTopicAnalysis {
+    /** The topic analysis */
+    analysis: TopicAnalysis;
+    /** Git hash when this analysis was created */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
+}
+
+/**
+ * A cached topic article (per-article incremental).
+ */
+export interface CachedTopicArticle {
+    /** The topic article */
+    article: TopicArticle;
+    /** Git hash when this article was generated */
+    gitHash: string;
+    /** Timestamp */
+    timestamp: number;
 }
