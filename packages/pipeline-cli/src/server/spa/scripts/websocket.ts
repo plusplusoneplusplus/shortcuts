@@ -99,7 +99,15 @@ export function getWebSocketScript(opts: ScriptOptions): string {
                 queueState.queued = msg.queue.queued || [];
                 queueState.running = msg.queue.running || [];
                 queueState.stats = msg.queue.stats || queueState.stats;
-                renderQueuePanel();
+                // Refresh history when tasks complete/fail (stats changed)
+                fetchApi('/queue/history').then(function(data) {
+                    if (data && data.history) {
+                        queueState.history = data.history;
+                    }
+                    renderQueuePanel();
+                }).catch(function() {
+                    renderQueuePanel();
+                });
             } else if (msg.type === 'workspace-registered' && msg.data) {
                 var select = document.getElementById('workspace-select');
                 if (select) {

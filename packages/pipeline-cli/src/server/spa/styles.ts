@@ -681,6 +681,46 @@ export function getDashboardStyles(): string {
             opacity: 0.85;
         }
 
+        /* ---- Queue History ---- */
+        .queue-history-toggle {
+            cursor: pointer;
+            user-select: none;
+            margin-top: 4px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 6px;
+        }
+        .queue-history-toggle:hover {
+            color: var(--text-primary);
+        }
+        .queue-history-clear {
+            margin-left: auto;
+            font-size: 10px;
+            padding: 1px 4px;
+        }
+        .queue-history-task {
+            opacity: 0.75;
+        }
+        .queue-history-task:hover {
+            opacity: 1;
+        }
+        .queue-task.completed {
+            border-left-color: var(--status-completed);
+        }
+        .queue-task.failed {
+            border-left-color: var(--status-failed);
+        }
+        .queue-task.cancelled {
+            border-left-color: var(--text-secondary);
+        }
+        .queue-task-error {
+            font-size: 10px;
+            color: var(--status-failed);
+            padding: 2px 0 0 22px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         /* ---- Enqueue Dialog ---- */
         .enqueue-overlay {
             position: fixed;

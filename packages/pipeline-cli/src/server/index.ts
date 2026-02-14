@@ -21,6 +21,7 @@ import type { ExecutionServerOptions, ExecutionServer } from './types';
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 import { TaskQueueManager } from '@plusplusoneplusplus/pipeline-core';
+import { createQueueExecutorBridge } from './queue-executor-bridge';
 
 // ============================================================================
 // Stub Process Store
@@ -70,6 +71,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         maxQueueSize: 0,  // unlimited
         keepHistory: true,
         maxHistorySize: 100,
+    });
+
+    // Create queue executor to actually process queued tasks
+    const queueExecutor = createQueueExecutorBridge(queueManager, store, {
+        maxConcurrency: 1,
+        autoStart: true,
+        approvePermissions: true,
     });
 
     // Generate SPA dashboard HTML (cached — it's static)
@@ -179,6 +187,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         host,
         url,
         close: async () => {
+            // Stop the queue executor first
+            queueExecutor.dispose();
             wsServer.closeAll();
             // Destroy remaining keep-alive connections
             for (const socket of activeSockets) {
@@ -207,3 +217,5 @@ export type { WSClient, ProcessSummary, QueueTaskSummary, QueueSnapshot, ServerM
 export type { RouterOptions } from './router';
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
+export { CLITaskExecutor, createQueueExecutorBridge } from './queue-executor-bridge';
+export type { QueueExecutorBridgeOptions } from './queue-executor-bridge';

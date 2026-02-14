@@ -13,8 +13,10 @@ export function getQueueScript(opts: ScriptOptions): string {
         var queueState = {
             queued: [],
             running: [],
+            history: [],
             stats: { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false },
-            showDialog: false
+            showDialog: false,
+            showHistory: false
         };
 
         async function fetchQueue() {
@@ -24,8 +26,13 @@ export function getQueueScript(opts: ScriptOptions): string {
                     queueState.queued = data.queued || [];
                     queueState.running = data.running || [];
                     queueState.stats = data.stats || queueState.stats;
-                    renderQueuePanel();
                 }
+                // Also fetch history
+                var historyData = await fetchApi('/queue/history');
+                if (historyData) {
+                    queueState.history = historyData.history || [];
+                }
+                renderQueuePanel();
             } catch(e) {}
         }
 
@@ -76,6 +83,21 @@ export function getQueueScript(opts: ScriptOptions): string {
                 '</div>';
             }
 
+            // History section (completed/failed/cancelled)
+            if (queueState.history.length > 0) {
+                var historyCount = queueState.history.length;
+                html += '<div class="queue-section-label queue-history-toggle" onclick="toggleQueueHistory()">' +
+                    (queueState.showHistory ? '&#9660;' : '&#9654;') +
+                    ' History <span class="queue-section-count">' + historyCount + '</span>' +
+                    '<button class="queue-action-btn queue-action-danger queue-history-clear" onclick="event.stopPropagation(); queueClearHistory()" title="Clear history">&#128465;</button>' +
+                '</div>';
+                if (queueState.showHistory) {
+                    queueState.history.forEach(function(task) {
+                        html += renderQueueHistoryTask(task);
+                    });
+                }
+            }
+
             panel.innerHTML = html;
         }
 
@@ -118,6 +140,42 @@ export function getQueueScript(opts: ScriptOptions): string {
             return html;
         }
 
+        function renderQueueHistoryTask(task) {
+            var name = task.displayName || task.type || 'Task';
+            if (name.length > 35) name = name.substring(0, 35) + '...';
+
+            var statusIcon = task.status === 'completed' ? '\\u2705'
+                : task.status === 'failed' ? '\\u274C'
+                : '\\u{1F6AB}'; // cancelled
+            var elapsed = '';
+            if (task.completedAt) {
+                elapsed = formatRelativeTime(new Date(task.completedAt).toISOString());
+            }
+            var duration = '';
+            if (task.startedAt && task.completedAt) {
+                duration = ' (' + formatDuration(task.completedAt - task.startedAt) + ')';
+            }
+
+            var html = '<div class="queue-task queue-history-task ' + task.status + '" data-task-id="' + escapeHtmlClient(task.id) + '">' +
+                '<div class="queue-task-row">' +
+                    '<span class="queue-task-status">' + statusIcon + '</span>' +
+                    '<span class="queue-task-name">' + escapeHtmlClient(name) + '</span>' +
+                    '<span class="queue-task-time">' + elapsed + duration + '</span>' +
+                '</div>';
+
+            if (task.error) {
+                html += '<div class="queue-task-error">' + escapeHtmlClient(task.error.length > 80 ? task.error.substring(0, 77) + '...' : task.error) + '</div>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        function toggleQueueHistory() {
+            queueState.showHistory = !queueState.showHistory;
+            renderQueuePanel();
+        }
+
         // ================================================================
         // Queue — API Actions
         // ================================================================
@@ -135,6 +193,12 @@ export function getQueueScript(opts: ScriptOptions): string {
         async function queueClear() {
             if (!confirm('Clear all queued tasks?')) return;
             await fetch(API_BASE + '/queue', { method: 'DELETE' });
+            fetchQueue();
+        }
+
+        async function queueClearHistory() {
+            if (!confirm('Clear queue history?')) return;
+            await fetch(API_BASE + '/queue/history', { method: 'DELETE' });
             fetchQueue();
         }
 
