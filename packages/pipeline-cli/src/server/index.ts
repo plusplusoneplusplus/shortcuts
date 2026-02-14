@@ -13,7 +13,9 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { createRequestHandler } from './router';
+import { registerApiRoutes } from './api-handler';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
+import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
@@ -59,8 +61,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // SPA shell placeholder
     const spaHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pipeline Server</title></head><body><div id="app">Pipeline Execution Server</div></body></html>`;
 
+    // Build API routes
+    const routes: Route[] = [];
+    registerApiRoutes(routes, store);
+
     // Build request handler (health route is prepended automatically)
-    const handler = createRequestHandler({ routes: [], spaHtml, store });
+    const handler = createRequestHandler({ routes, spaHtml, store });
     const server = http.createServer(handler);
 
     // Start listening
@@ -95,4 +101,5 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 export type { ExecutionServerOptions, ExecutionServer, Route } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from './router';
+export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from './api-handler';
 export type { RouterOptions } from './router';
