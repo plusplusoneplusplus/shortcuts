@@ -446,7 +446,7 @@ describe('PUT /api/admin/config', () => {
 // ============================================================================
 
 describe('SPA admin portal', () => {
-    it('should include admin button in SPA HTML', async () => {
+    it('should include admin page elements in SPA HTML', async () => {
         const { wikiDir } = setupWikiDir();
         const s = await startServer(wikiDir);
 
@@ -459,8 +459,26 @@ describe('SPA admin portal', () => {
         });
 
         expect(body).toContain('id="admin-toggle"');
-        expect(body).toContain('id="admin-overlay"');
+        expect(body).toContain('id="admin-page"');
         expect(body).toContain('admin-tab-seeds');
         expect(body).toContain('admin-tab-config');
+        expect(body).toContain('id="admin-back"');
+        expect(body).toContain('Admin Portal');
+    });
+
+    it('should not contain overlay elements', async () => {
+        const { wikiDir } = setupWikiDir();
+        const s = await startServer(wikiDir);
+
+        const { body } = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+            http.get(s.url, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => resolve({ status: res.statusCode || 0, body: data }));
+            }).on('error', reject);
+        });
+
+        expect(body).not.toContain('admin-overlay');
+        expect(body).not.toContain('admin-close-btn');
     });
 });
