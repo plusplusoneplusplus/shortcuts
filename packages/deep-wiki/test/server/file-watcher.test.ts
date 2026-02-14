@@ -1,5 +1,10 @@
 /**
  * Tests for FileWatcher - repository change detection.
+ *
+ * NOTE: fs.watch({ recursive: true }) is unreliable on Linux with Node 18.
+ * On those platforms, the watcher may silently fail to start. Tests that
+ * depend on the watcher actually working are skipped when recursive
+ * watching is not supported.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -12,6 +17,26 @@ import type { ModuleGraph } from '../../src/types';
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Detect whether fs.watch with { recursive: true } actually works on
+ * this platform. On Linux + Node 18 it may throw or silently fail.
+ */
+function supportsRecursiveWatch(): boolean {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fswatch-probe-'));
+    try {
+        const w = fs.watch(tmpDir, { recursive: true });
+        w.close();
+        return true;
+    } catch {
+        return false;
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+}
+
+const HAS_RECURSIVE_WATCH = supportsRecursiveWatch();
+const itIfRecursive = HAS_RECURSIVE_WATCH ? it : it.skip;
 
 function createTestGraph(): ModuleGraph {
     return {
@@ -92,7 +117,7 @@ describe('FileWatcher', () => {
     });
 
     describe('lifecycle', () => {
-        it('should start watching', () => {
+        itIfRecursive('should start watching', () => {
             const onChange = vi.fn();
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
@@ -106,7 +131,7 @@ describe('FileWatcher', () => {
             watcher.stop();
         });
 
-        it('should stop watching', () => {
+        itIfRecursive('should stop watching', () => {
             const onChange = vi.fn();
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
@@ -120,7 +145,7 @@ describe('FileWatcher', () => {
             expect(watcher.isWatching).toBe(false);
         });
 
-        it('should not start twice', () => {
+        itIfRecursive('should not start twice', () => {
             const onChange = vi.fn();
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
@@ -137,7 +162,7 @@ describe('FileWatcher', () => {
     });
 
     describe('change detection', () => {
-        it('should detect file changes and call onChange after debounce', async () => {
+        itIfRecursive('should detect file changes and call onChange after debounce', async () => {
             const onChange = vi.fn();
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
@@ -165,7 +190,7 @@ describe('FileWatcher', () => {
             watcher.stop();
         });
 
-        it('should debounce rapid changes', async () => {
+        itIfRecursive('should debounce rapid changes', async () => {
             const onChange = vi.fn();
             const watcher = new FileWatcher({
                 repoPath: tmpDir,
@@ -193,7 +218,7 @@ describe('FileWatcher', () => {
             watcher.stop();
         });
 
-        it('should ignore node_modules changes', async () => {
+        itIfRecursive('should ignore node_modules changes', async () => {
             const onChange = vi.fn();
 
             // Create node_modules BEFORE starting watcher
@@ -233,7 +258,7 @@ describe('FileWatcher', () => {
             watcher.stop();
         });
 
-        it('should ignore .git directory changes', async () => {
+        itIfRecursive('should ignore .git directory changes', async () => {
             const onChange = vi.fn();
 
             // Create .git directory BEFORE starting watcher to avoid mkdir events
