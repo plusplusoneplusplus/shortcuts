@@ -1552,12 +1552,16 @@ ${opts.enableSearch ? `
             document.getElementById('content-scroll').style.display = '';
             document.getElementById('admin-page').classList.add('hidden');
             document.getElementById('sidebar').style.display = '';
+            var askWidget = document.getElementById('ask-widget');
+            if (askWidget) askWidget.style.display = '';
         }
 
         function showAdminContent() {
             document.getElementById('content-scroll').style.display = 'none';
             document.getElementById('admin-page').classList.remove('hidden');
             document.getElementById('sidebar').style.display = 'none';
+            var askWidget = document.getElementById('ask-widget');
+            if (askWidget) askWidget.style.display = 'none';
         }
 
         // ================================================================

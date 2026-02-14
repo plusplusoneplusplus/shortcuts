@@ -481,4 +481,22 @@ describe('SPA admin portal', () => {
         expect(body).not.toContain('admin-overlay');
         expect(body).not.toContain('admin-close-btn');
     });
+
+    it('should hide ask-widget when admin page is shown', async () => {
+        const { wikiDir } = setupWikiDir();
+        const s = await startServer(wikiDir);
+
+        const { body } = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+            http.get(s.url, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => resolve({ status: res.statusCode || 0, body: data }));
+            }).on('error', reject);
+        });
+
+        // showAdminContent hides the ask-widget, showWikiContent restores it
+        expect(body).toContain("var askWidget = document.getElementById('ask-widget')");
+        expect(body).toContain("if (askWidget) askWidget.style.display = 'none'");
+        expect(body).toContain("if (askWidget) askWidget.style.display = ''");
+    });
 });
