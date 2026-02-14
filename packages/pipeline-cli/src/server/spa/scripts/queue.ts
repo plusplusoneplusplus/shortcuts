@@ -21,6 +21,9 @@ export function getQueueScript(opts: ScriptOptions): string {
 
         async function fetchQueue() {
             try {
+                var prevCompleted = queueState.stats ? (queueState.stats.completed || 0) : 0;
+                var prevFailed = queueState.stats ? (queueState.stats.failed || 0) : 0;
+
                 var data = await fetchApi('/queue');
                 if (data) {
                     queueState.queued = data.queued || [];
@@ -32,7 +35,23 @@ export function getQueueScript(opts: ScriptOptions): string {
                 if (historyData) {
                     queueState.history = historyData.history || [];
                 }
+
+                // Auto-expand history when new tasks complete or fail
+                var newCompleted = queueState.stats.completed || 0;
+                var newFailed = queueState.stats.failed || 0;
+                if (newCompleted > prevCompleted || newFailed > prevFailed) {
+                    queueState.showHistory = true;
+                }
+
                 renderQueuePanel();
+
+                // Start/stop polling based on active tasks
+                var hasActive = (queueState.stats.queued > 0 || queueState.stats.running > 0);
+                if (hasActive) {
+                    startQueuePolling();
+                } else {
+                    stopQueuePolling();
+                }
             } catch(e) {}
         }
 
@@ -282,6 +301,8 @@ export function getQueueScript(opts: ScriptOptions): string {
                 if (nameInput) nameInput.value = '';
                 if (promptInput) promptInput.value = '';
                 fetchQueue();
+                // Start polling to track task progress
+                startQueuePolling();
             } catch(err) {
                 alert('Failed to enqueue task');
             }
@@ -289,6 +310,29 @@ export function getQueueScript(opts: ScriptOptions): string {
 
         // Initialize queue on load
         fetchQueue();
+
+        // Periodic queue polling fallback (in case WebSocket messages are missed)
+        var queuePollInterval = null;
+
+        function startQueuePolling() {
+            if (queuePollInterval) return;
+            queuePollInterval = setInterval(function() {
+                var hasActive = (queueState.stats.queued > 0 || queueState.stats.running > 0);
+                if (hasActive) {
+                    fetchQueue();
+                } else {
+                    // No active tasks — stop polling
+                    stopQueuePolling();
+                }
+            }, 3000);
+        }
+
+        function stopQueuePolling() {
+            if (queuePollInterval) {
+                clearInterval(queuePollInterval);
+                queuePollInterval = null;
+            }
+        }
 
         // Enqueue dialog event listeners
         var enqueueForm = document.getElementById('enqueue-form');

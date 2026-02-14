@@ -132,11 +132,15 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     };
 
     // Bridge queue manager events to WebSocket
-    queueManager.on('change', () => {
+    queueManager.on('change', (event: { type: string; taskId?: string }) => {
         const queued = queueManager.getQueued();
         const running = queueManager.getRunning();
         const history = queueManager.getHistory();
         const stats = queueManager.getStats();
+
+        // Debug: log queue state changes
+        const taskInfo = event.taskId ? ` task=${event.taskId}` : '';
+        process.stderr.write(`[Queue] ${event.type}${taskInfo} — queued=${stats.queued} running=${stats.running} completed=${stats.completed} failed=${stats.failed} ws_clients=${wsServer.clientCount}\n`);
 
         wsServer.broadcastProcessEvent({
             type: 'queue-updated',

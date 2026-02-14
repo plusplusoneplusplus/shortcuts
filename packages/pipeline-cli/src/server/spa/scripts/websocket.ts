@@ -115,6 +115,17 @@ export function getWebSocketScript(opts: ScriptOptions): string {
                     queueState.showHistory = true;
                 }
 
+                // Always render immediately with current state
+                renderQueuePanel();
+
+                // Start/stop polling based on active tasks
+                var hasActive = (queueState.stats.queued > 0 || queueState.stats.running > 0);
+                if (hasActive && typeof startQueuePolling === 'function') {
+                    startQueuePolling();
+                } else if (!hasActive && typeof stopQueuePolling === 'function') {
+                    stopQueuePolling();
+                }
+
                 // If history was not in the WS message, fetch it via REST as fallback
                 if (!msg.queue.history) {
                     fetchApi('/queue/history').then(function(data) {
@@ -123,10 +134,8 @@ export function getWebSocketScript(opts: ScriptOptions): string {
                         }
                         renderQueuePanel();
                     }).catch(function() {
-                        renderQueuePanel();
+                        // Already rendered above
                     });
-                } else {
-                    renderQueuePanel();
                 }
             } else if (msg.type === 'workspace-registered' && msg.data) {
                 var select = document.getElementById('workspace-select');

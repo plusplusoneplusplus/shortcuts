@@ -29,6 +29,8 @@ import {
     getCopilotSDKService,
     approveAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
+    getLogger,
+    LogCategory,
 } from '@plusplusoneplusplus/pipeline-core';
 import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
 
@@ -68,10 +70,14 @@ export class CLITaskExecutor implements TaskExecutor {
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
+        const logger = getLogger();
         const startTime = Date.now();
+
+        logger.debug(LogCategory.AI, `[QueueExecutor] Starting task ${task.id} (type: ${task.type}, name: ${task.displayName || 'unnamed'})`);
 
         // Check if cancelled before starting
         if (this.cancelledTasks.has(task.id)) {
+            logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} was cancelled before starting`);
             return { success: false, error: new Error('Task cancelled'), durationMs: 0 };
         }
 
@@ -104,9 +110,11 @@ export class CLITaskExecutor implements TaskExecutor {
         try {
             const result = await this.executeByType(task, prompt);
 
+            const duration = Date.now() - startTime;
+            logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} completed in ${duration}ms`);
+
             // Update process as completed
             try {
-                const duration = Date.now() - startTime;
                 await this.store.updateProcess(processId, {
                     status: 'completed',
                     endTime: new Date(),
@@ -124,10 +132,11 @@ export class CLITaskExecutor implements TaskExecutor {
             };
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
+            const duration = Date.now() - startTime;
+            logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} failed in ${duration}ms: ${errorMsg}`);
 
             // Update process as failed
             try {
-                const duration = Date.now() - startTime;
                 await this.store.updateProcess(processId, {
                     status: 'failed',
                     endTime: new Date(),

@@ -577,9 +577,23 @@ describe('getWebSocketScript', () => {
         expect(script).toContain('queueState.history = msg.queue.history');
     });
 
+    it('renders immediately before REST fallback', () => {
+        // renderQueuePanel is called immediately, not deferred to REST callback
+        expect(script).toContain('// Always render immediately with current state');
+        expect(script).toContain('renderQueuePanel()');
+    });
+
     it('falls back to REST fetch when history not in WS message', () => {
         expect(script).toContain("if (!msg.queue.history)");
         expect(script).toContain("fetchApi('/queue/history')");
+    });
+
+    it('starts queue polling when active tasks detected via WS', () => {
+        expect(script).toContain('startQueuePolling');
+    });
+
+    it('stops queue polling when no active tasks via WS', () => {
+        expect(script).toContain('stopQueuePolling');
     });
 
     it('auto-expands history when tasks complete', () => {
@@ -695,6 +709,28 @@ describe('getQueueScript', () => {
 
     it('auto-fetches queue on load', () => {
         expect(script).toContain('fetchQueue();');
+    });
+
+    it('defines queue polling functions', () => {
+        expect(script).toContain('function startQueuePolling()');
+        expect(script).toContain('function stopQueuePolling()');
+    });
+
+    it('polls queue every 3 seconds when active', () => {
+        expect(script).toContain('3000');
+        expect(script).toContain('queuePollInterval');
+    });
+
+    it('stops polling when no active tasks', () => {
+        expect(script).toContain('stopQueuePolling()');
+    });
+
+    it('starts polling after enqueue', () => {
+        expect(script).toContain('startQueuePolling()');
+    });
+
+    it('auto-expands history on fetchQueue when tasks complete', () => {
+        expect(script).toContain('queueState.showHistory = true');
     });
 
     it('sets up enqueue form event listeners', () => {
