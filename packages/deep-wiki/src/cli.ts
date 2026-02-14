@@ -209,6 +209,51 @@ export function createProgram(): Command {
         });
 
     // ========================================================================
+    // deep-wiki topic <repo-path> [topic-name]
+    // ========================================================================
+
+    program
+        .command('topic')
+        .description('Generate focused wiki articles about a specific topic/feature')
+        .argument('<repo-path>', 'Path to the repository to analyze')
+        .argument('[topic-name]', 'Topic to generate (e.g., "compaction", "authentication")')
+        .option('-d, --description <text>', 'Description to guide topic discovery')
+        .option('-w, --wiki <path>', 'Path to existing wiki directory', './wiki')
+        .option('--force', 'Regenerate even if topic already exists', false)
+        .option('--check', 'Only check if topic exists, do not generate', false)
+        .option('--list', 'List existing topic articles', false)
+        .option('-m, --model <model>', 'AI model to use')
+        .option('--depth <level>', 'Article detail level: shallow, normal, deep', 'normal')
+        .option('-t, --timeout <seconds>', 'Timeout per AI call in seconds', (v: string) => parseInt(v, 10), 120)
+        .option('-c, --concurrency <number>', 'Parallel AI sessions', (v: string) => parseInt(v, 10), 3)
+        .option('--no-cross-link', 'Skip cross-linking module articles')
+        .option('--no-website', 'Skip website regeneration')
+        .option('--interactive', 'Review outline before generating', false)
+        .option('-v, --verbose', 'Verbose output', false)
+        .option('--no-color', 'Disable colored output')
+        .action(async (repoPath: string, topicName: string | undefined, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const { executeTopic } = await import('./commands/topic');
+            const exitCode = await executeTopic(repoPath, topicName, {
+                topic: topicName ?? '',
+                description: opts.description as string | undefined,
+                wiki: opts.wiki as string,
+                force: Boolean(opts.force),
+                check: Boolean(opts.check),
+                list: Boolean(opts.list),
+                model: opts.model as string | undefined,
+                depth: (opts.depth as 'shallow' | 'normal' | 'deep') || 'normal',
+                timeout: (opts.timeout as number) || 120,
+                concurrency: (opts.concurrency as number) || 3,
+                noCrossLink: opts.crossLink === false,
+                noWebsite: opts.website === false,
+                interactive: Boolean(opts.interactive),
+                verbose: Boolean(opts.verbose),
+            });
+            process.exit(exitCode);
+        });
+
+    // ========================================================================
     // deep-wiki serve <wiki-dir>
     // ========================================================================
 
