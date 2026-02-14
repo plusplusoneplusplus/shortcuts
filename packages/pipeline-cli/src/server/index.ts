@@ -14,6 +14,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { createRequestHandler } from './router';
 import { registerApiRoutes } from './api-handler';
+import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
@@ -69,6 +70,45 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const handler = createRequestHandler({ routes, spaHtml, store });
     const server = http.createServer(handler);
 
+    // Attach WebSocket server and bridge ProcessStore events
+    const wsServer = new ProcessWebSocketServer();
+    wsServer.attach(server);
+
+    store.onProcessChange = (event) => {
+        switch (event.type) {
+            case 'process-added':
+                if (event.process) {
+                    wsServer.broadcastProcessEvent({
+                        type: 'process-added',
+                        process: toProcessSummary(event.process),
+                    });
+                }
+                break;
+            case 'process-updated':
+                if (event.process) {
+                    wsServer.broadcastProcessEvent({
+                        type: 'process-updated',
+                        process: toProcessSummary(event.process),
+                    });
+                }
+                break;
+            case 'process-removed':
+                if (event.process) {
+                    wsServer.broadcastProcessEvent({
+                        type: 'process-removed',
+                        processId: event.process.id,
+                    });
+                }
+                break;
+            case 'processes-cleared':
+                wsServer.broadcastProcessEvent({
+                    type: 'processes-cleared',
+                    count: 0,
+                });
+                break;
+        }
+    };
+
     // Start listening
     await new Promise<void>((resolve, reject) => {
         server.on('error', reject);
@@ -87,6 +127,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         host,
         url,
         close: async () => {
+            wsServer.closeAll();
             await new Promise<void>((resolve, reject) => {
                 server.close((err) => {
                     if (err) { reject(err); }
@@ -102,4 +143,6 @@ export type { ExecutionServerOptions, ExecutionServer, Route } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 export { sendJson, send404, send400, send500, readJsonBody, createRequestHandler } from './router';
 export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } from './api-handler';
+export { ProcessWebSocketServer, toProcessSummary, sendFrame, decodeFrame } from './websocket';
+export type { WSClient, ProcessSummary, ServerMessage, ClientMessage } from './websocket';
 export type { RouterOptions } from './router';
