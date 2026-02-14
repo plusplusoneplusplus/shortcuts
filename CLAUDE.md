@@ -64,6 +64,19 @@ NEVER create document file unless user's explicit ask.
 
 When creating new tree data providers, prefer extending these base classes over implementing from scratch.
 
+**AI Execution Server** - A standalone web server for the AI Processes dashboard, allowing multi-workspace process tracking outside VS Code:
+
+- **Server:** `pipeline serve` command in `packages/pipeline-cli/` starts an HTTP server (default port 4000)
+- **Process Store:** `ProcessStore` interface and `FileProcessStore` in `packages/pipeline-core/` — JSON file-based persistence at `~/.pipeline-server/`, atomic writes, 500-process retention
+- **Workspace Awareness:** `WorkspaceInfo` type with deterministic SHA-256 ID from workspace root path; multiple VS Code workspaces submit processes to a single server
+- **Real-Time:** Raw WebSocket (RFC 6455, `/ws`) for process lifecycle events with workspace-scoped filtering; SSE (`/api/processes/:id/stream`) for streaming individual process output
+- **REST API:** CRUD endpoints for processes (`/api/processes`), workspace registration (`/api/workspaces`), stats (`/api/stats`), and health (`/api/health`)
+- **SPA Dashboard:** Inline HTML/CSS/JS (no build step), vanilla JS, dark/light/auto theme support
+- **Extension Client:** Fire-and-forget `ServerClient` in `src/shortcuts/ai-service/server-client.ts` — bounded offline queue (500 items) with exponential back-off, connection state events
+- **Workspace Identity:** `src/shortcuts/ai-service/workspace-identity.ts` — deterministic workspace ID generation using SHA-256 hash of workspace root path
+- **Testing:** 5 test files (api-handler, integration, SPA, WebSocket, serve command) with 2640+ lines of tests
+- **Debugging:** `cd packages/pipeline-cli && npm run build && npm link && cd ../..`, then `pipeline serve --no-open` to start. Test with `curl http://localhost:4000/api/health`.
+
 ## Project Overview
 
 This is the "Markdown Review & Workspace Shortcuts" VSCode extension that provides:

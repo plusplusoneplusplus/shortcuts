@@ -103,6 +103,11 @@ This section lists all files in the `ai-service` module and their responsibiliti
 
 - **index.ts** - Module exports. Main entry point exporting all public APIs from the module.
 
+### Server Integration
+- **server-client.ts** - Fire-and-forget HTTP client for the AI Execution Server (`pipeline serve`). Implements `vscode.Disposable`. Features: bounded offline queue (default 500 items), exponential back-off (1s → 30s max), connection state tracking with `onDidChangeConnection` event. Methods: `registerWorkspace`, `submitProcess`, `updateProcess`, `removeProcess`, `cancelProcess`, `healthCheck`. Uses raw Node.js `http`/`https` modules (no external dependencies).
+
+- **workspace-identity.ts** - Deterministic workspace identity for multi-workspace server scenarios. `getWorkspaceInfo()` reads `vscode.workspace.workspaceFolders` and returns `WorkspaceInfo`. `computeWorkspaceId()` generates a stable ID via SHA-256 hash of the workspace root path (first 16 hex chars).
+
 ## Task Queue System
 
 The task queue system provides priority-based queuing and execution of AI tasks. It wraps `pipeline-core`'s `TaskQueueManager` and `QueueExecutor` with VS Code integration.

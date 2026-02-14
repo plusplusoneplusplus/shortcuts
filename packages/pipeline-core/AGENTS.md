@@ -40,6 +40,8 @@ packages/pipeline-core/
 │   │   ├── prompt-builder.ts      # Pure prompt template variable substitution
 │   │   ├── program-utils.ts       # Program existence checking
 │   │   └── timeouts.ts            # Re-exports default AI timeout
+│   ├── process-store.ts      # ProcessStore interface — abstract storage for AI processes
+│   ├── file-process-store.ts # FileProcessStore — JSON file-based persistence
 │   ├── map-reduce/           # Map-reduce framework
 │   │   ├── index.ts          # Map-reduce exports
 │   │   ├── types.ts          # Core types (WorkItem, MapResult, etc.)
@@ -73,12 +75,14 @@ packages/pipeline-core/
 │       ├── window-focus-service.ts  # Window focus service
 │       ├── external-terminal-launcher.ts  # External terminal launcher
 │       └── process-monitor.ts     # Process monitoring utilities
-├── test/                     # Vitest tests (27 test files)
+├── test/                     # Vitest tests (29 test files)
 │   ├── ai/                   # AI tests
 │   │   ├── mcp-config-loader.test.ts
 │   │   └── model-registry.test.ts
 │   ├── errors/               # Error handling tests
 │   │   └── pipeline-core-error.test.ts
+│   ├── process-store.test.ts        # ProcessStore interface tests
+│   ├── file-process-store.test.ts   # FileProcessStore persistence tests
 │   ├── map-reduce/           # Map-reduce tests
 │   │   ├── concurrency-limiter.test.ts
 │   │   ├── executor.test.ts
@@ -471,9 +475,58 @@ const result = substituteTemplateVariables(
 // Result: 'Hello Alice, you have 5 items'
 ```
 
+### Process Store
+
+Abstract storage for AI process tracking, designed for multi-workspace server scenarios.
+
+```typescript
+import {
+    ProcessStore,
+    FileProcessStore,
+    WorkspaceInfo,
+    ProcessFilter,
+    ProcessOutputEvent
+} from 'pipeline-core';
+
+// FileProcessStore — JSON file persistence at configurable directory
+const store = new FileProcessStore({ dataDir: '~/.pipeline-server' });
+await store.initialize();
+
+// Register a workspace
+const workspace: WorkspaceInfo = {
+    id: 'a1b2c3d4e5f6a7b8',  // SHA-256 of workspace root (first 16 hex)
+    name: 'my-project',
+    rootPath: '/path/to/project',
+    color: '#4fc3f7'
+};
+await store.registerWorkspace(workspace);
+
+// Add/update processes
+await store.addProcess(workspace.id, process);
+await store.updateProcess(processId, { status: 'completed', endTime: Date.now() });
+
+// Query with filters
+const filter: ProcessFilter = { workspaceId: workspace.id, status: 'running', limit: 50 };
+const processes = await store.getAllProcesses(filter);
+
+// Stream output events
+store.onProcessOutput(processId, (event: ProcessOutputEvent) => {
+    console.log(event.chunk);
+});
+
+// Cleanup
+await store.clearProcesses('completed');
+```
+
+**Key behaviors:**
+- Atomic writes via temp file + rename pattern
+- Sequential write queue prevents corruption
+- Max 500 processes retained; pruning preserves non-terminal processes
+- In-memory EventEmitter per process for streaming support
+
 ## Testing
 
-Tests use Vitest and are located in `test/`. There are 27 test files covering all modules.
+Tests use Vitest and are located in `test/`. There are 29 test files covering all modules.
 
 ```bash
 # Run all tests
