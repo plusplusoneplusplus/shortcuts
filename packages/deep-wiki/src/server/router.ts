@@ -17,6 +17,7 @@ import { handleApiRequest } from './api-handlers';
 import type { ContextBuilder } from './context-builder';
 import type { AskAIFunction } from './ask-handler';
 import type { ConversationSessionManager } from './conversation-session-manager';
+import type { WebSocketServer } from './websocket';
 
 // ============================================================================
 // Constants
@@ -69,6 +70,8 @@ export interface RouterOptions {
     aiWorkingDirectory?: string;
     /** Session manager for multi-turn conversations */
     sessionManager?: ConversationSessionManager;
+    /** WebSocket server (for broadcasting events) */
+    wsServer?: WebSocketServer;
 }
 
 /**
@@ -83,7 +86,7 @@ export interface RouterOptions {
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-    const { wikiData, spaHtml, aiEnabled, repoPath, contextBuilder, aiSendMessage, aiModel, aiWorkingDirectory, sessionManager } = options;
+    const { wikiData, spaHtml, aiEnabled, repoPath, contextBuilder, aiSendMessage, aiModel, aiWorkingDirectory, sessionManager, wsServer } = options;
 
     return (req: http.IncomingMessage, res: http.ServerResponse) => {
         const parsedUrl = url.parse(req.url || '/', true);
@@ -113,6 +116,7 @@ export function createRequestHandler(
                 aiModel,
                 aiWorkingDirectory,
                 sessionManager,
+                wsServer,
             });
             return;
         }

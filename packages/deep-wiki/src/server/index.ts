@@ -127,6 +127,13 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
         enableWatch: !!(options.watch && options.repoPath),
     });
 
+    // Set up WebSocket server and file watcher
+    let wsServer: WebSocketServer | undefined;
+    let fileWatcher: FileWatcher | undefined;
+
+    // Mutable ref so the router closure always sees the latest wsServer
+    const wsRef: { current?: WebSocketServer } = {};
+
     // Create HTTP server
     const handler = createRequestHandler({
         wikiData,
@@ -138,16 +145,14 @@ export async function createServer(options: WikiServerOptions): Promise<WikiServ
         aiModel: options.aiModel,
         aiWorkingDirectory: options.repoPath,
         sessionManager,
+        get wsServer() { return wsRef.current; },
     });
 
     const server = http.createServer(handler);
 
-    // Set up WebSocket server for live reload
-    let wsServer: WebSocketServer | undefined;
-    let fileWatcher: FileWatcher | undefined;
-
     if (options.watch && options.repoPath) {
         wsServer = new WebSocketServer();
+        wsRef.current = wsServer;
         wsServer.attach(server);
 
         // Handle ping from clients
@@ -251,3 +256,5 @@ export type { WSClient, WSMessage } from './websocket';
 export type { FileWatcherOptions } from './file-watcher';
 export { handleAdminRequest } from './admin-handlers';
 export type { AdminHandlerContext } from './admin-handlers';
+export { handleGenerateRequest, getGenerationState, resetGenerationState } from './generate-handler';
+export type { GenerateHandlerContext, GenerateRequest } from './generate-handler';

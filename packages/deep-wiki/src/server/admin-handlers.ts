@@ -20,6 +20,10 @@ import * as path from 'path';
 import { sendJson, send404, send400, send500, readBody } from './router';
 import { getErrorMessage } from '../utils/error-utils';
 import { validateConfig, discoverConfigFile } from '../config-loader';
+import { handleGenerateRequest } from './generate-handler';
+import type { GenerateHandlerContext } from './generate-handler';
+import type { WikiData } from './wiki-data';
+import type { WebSocketServer } from './websocket';
 
 // ============================================================================
 // Types
@@ -30,6 +34,10 @@ export interface AdminHandlerContext {
     wikiDir: string;
     /** Repository root path (contains deep-wiki.config.yaml) */
     repoPath?: string;
+    /** Wiki data layer (for reload after generation) */
+    wikiData?: WikiData;
+    /** WebSocket server (for broadcasting reload events) */
+    wsServer?: WebSocketServer;
 }
 
 // ============================================================================
@@ -77,6 +85,17 @@ export function handleAdminRequest(
             }
         });
         return true;
+    }
+
+    // Generate routes: /api/admin/generate*
+    if (pathname.startsWith('/api/admin/generate')) {
+        const generateContext: GenerateHandlerContext = {
+            wikiDir: context.wikiDir,
+            repoPath: context.repoPath,
+            wikiData: context.wikiData,
+            wsServer: context.wsServer,
+        };
+        return handleGenerateRequest(req, res, pathname, method, generateContext);
     }
 
     return false;

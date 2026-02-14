@@ -97,11 +97,12 @@ ${enableSearch ? `            <div class="search-box">
                         <h1 class="admin-page-title">Admin Portal</h1>
                         <button class="admin-btn admin-btn-back" id="admin-back" aria-label="Back to wiki">&larr; Back to Wiki</button>
                     </div>
-                    <p class="admin-page-desc">Manage seeds and configuration files for wiki generation.</p>
+                    <p class="admin-page-desc">Manage seeds, configuration, and generation.</p>
                 </div>
                 <div class="admin-tabs" id="admin-tabs">
                     <button class="admin-tab active" data-tab="seeds" id="admin-tab-seeds">Seeds</button>
                     <button class="admin-tab" data-tab="config" id="admin-tab-config">Config</button>
+                    <button class="admin-tab" data-tab="generate" id="admin-tab-generate">Generate</button>
                 </div>
                 <div class="admin-body">
                     <div class="admin-tab-content active" id="admin-content-seeds">
@@ -127,6 +128,105 @@ ${enableSearch ? `            <div class="search-box">
                             <div class="admin-actions">
                                 <button class="admin-btn admin-btn-save" id="config-save">Save</button>
                                 <button class="admin-btn admin-btn-reset" id="config-reset">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="admin-tab-content" id="admin-content-generate">
+                        <div class="admin-section">
+                            <div id="generate-unavailable" class="generate-unavailable hidden">
+                                <p>Generation requires a repository path. Restart with:</p>
+                                <code>deep-wiki serve &lt;wiki-dir&gt; --generate &lt;repo-path&gt;</code>
+                            </div>
+                            <div id="generate-controls">
+                                <div class="generate-options">
+                                    <label class="generate-force-label">
+                                        <input type="checkbox" id="generate-force"> Force (ignore cache)
+                                    </label>
+                                </div>
+                                <div class="generate-phases" id="generate-phases">
+                                    <div class="generate-phase-card" data-phase="1" id="phase-card-1">
+                                        <div class="phase-card-header">
+                                            <span class="phase-number">1</span>
+                                            <div class="phase-info">
+                                                <span class="phase-name">Discovery</span>
+                                                <span class="phase-desc">Scan repo and build module graph</span>
+                                            </div>
+                                            <span class="phase-cache-badge" id="phase-cache-1"></span>
+                                            <button class="admin-btn admin-btn-save phase-run-btn" id="phase-run-1" data-phase="1">Run</button>
+                                        </div>
+                                        <div class="phase-log hidden" id="phase-log-1"></div>
+                                    </div>
+                                    <div class="generate-phase-card" data-phase="2" id="phase-card-2">
+                                        <div class="phase-card-header">
+                                            <span class="phase-number">2</span>
+                                            <div class="phase-info">
+                                                <span class="phase-name">Consolidation</span>
+                                                <span class="phase-desc">Merge related modules into clusters</span>
+                                            </div>
+                                            <span class="phase-cache-badge" id="phase-cache-2"></span>
+                                            <button class="admin-btn admin-btn-save phase-run-btn" id="phase-run-2" data-phase="2">Run</button>
+                                        </div>
+                                        <div class="phase-log hidden" id="phase-log-2"></div>
+                                    </div>
+                                    <div class="generate-phase-card" data-phase="3" id="phase-card-3">
+                                        <div class="phase-card-header">
+                                            <span class="phase-number">3</span>
+                                            <div class="phase-info">
+                                                <span class="phase-name">Analysis</span>
+                                                <span class="phase-desc">Deep analysis of each module</span>
+                                            </div>
+                                            <span class="phase-cache-badge" id="phase-cache-3"></span>
+                                            <button class="admin-btn admin-btn-save phase-run-btn" id="phase-run-3" data-phase="3">Run</button>
+                                        </div>
+                                        <div class="phase-log hidden" id="phase-log-3"></div>
+                                    </div>
+                                    <div class="generate-phase-card" data-phase="4" id="phase-card-4">
+                                        <div class="phase-card-header">
+                                            <span class="phase-number">4</span>
+                                            <div class="phase-info">
+                                                <span class="phase-name">Writing</span>
+                                                <span class="phase-desc">Generate wiki articles from analyses</span>
+                                            </div>
+                                            <span class="phase-cache-badge" id="phase-cache-4"></span>
+                                            <button class="admin-btn admin-btn-save phase-run-btn" id="phase-run-4" data-phase="4">Run</button>
+                                        </div>
+                                        <div class="phase-log hidden" id="phase-log-4"></div>
+                                    </div>
+                                    <div class="generate-phase-card" data-phase="5" id="phase-card-5">
+                                        <div class="phase-card-header">
+                                            <span class="phase-number">5</span>
+                                            <div class="phase-info">
+                                                <span class="phase-name">Website</span>
+                                                <span class="phase-desc">Build static HTML site</span>
+                                            </div>
+                                            <span class="phase-cache-badge" id="phase-cache-5"></span>
+                                            <button class="admin-btn admin-btn-save phase-run-btn" id="phase-run-5" data-phase="5">Run</button>
+                                        </div>
+                                        <div class="phase-log hidden" id="phase-log-5"></div>
+                                    </div>
+                                </div>
+                                <div class="generate-range-controls" id="generate-range-controls">
+                                    <div class="generate-range-row">
+                                        <label>Run range:</label>
+                                        <select id="generate-start-phase">
+                                            <option value="1">Phase 1</option>
+                                            <option value="2">Phase 2</option>
+                                            <option value="3">Phase 3</option>
+                                            <option value="4">Phase 4</option>
+                                            <option value="5">Phase 5</option>
+                                        </select>
+                                        <span>to</span>
+                                        <select id="generate-end-phase">
+                                            <option value="1">Phase 1</option>
+                                            <option value="2">Phase 2</option>
+                                            <option value="3">Phase 3</option>
+                                            <option value="4">Phase 4</option>
+                                            <option value="5" selected>Phase 5</option>
+                                        </select>
+                                        <button class="admin-btn admin-btn-save" id="generate-run-range">Run Range</button>
+                                    </div>
+                                </div>
+                                <div class="generate-status-bar hidden" id="generate-status-bar"></div>
                             </div>
                         </div>
                     </div>

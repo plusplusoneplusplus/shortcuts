@@ -17,6 +17,7 @@ import { getErrorMessage } from '../utils/error-utils';
 import { handleExploreRequest } from './explore-handler';
 import { handleAdminRequest } from './admin-handlers';
 import type { ConversationSessionManager } from './conversation-session-manager';
+import type { WebSocketServer } from './websocket';
 
 // ============================================================================
 // Types
@@ -36,6 +37,8 @@ export interface ApiHandlerContext {
     aiWorkingDirectory?: string;
     /** Session manager for multi-turn conversations */
     sessionManager?: ConversationSessionManager;
+    /** WebSocket server (for broadcasting events) */
+    wsServer?: WebSocketServer;
 }
 
 // ============================================================================
@@ -172,6 +175,8 @@ export function handleApiRequest(
         const handled = handleAdminRequest(req, res, pathname, method, {
             wikiDir: wikiData.dir,
             repoPath: context.repoPath,
+            wikiData: context.wikiData,
+            wsServer: context.wsServer,
         });
         if (handled) {
             return;
