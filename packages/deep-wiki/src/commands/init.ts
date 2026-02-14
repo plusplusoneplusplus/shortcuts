@@ -96,8 +96,18 @@ export interface InitCommandOptions {
  * @param options - Command options
  * @returns Exit code (0 = success, 1 = error)
  */
+/** Default configuration file name */
+export const DEFAULT_CONFIG_FILENAME = 'deep-wiki.config.yaml';
+
 export async function executeInit(options: InitCommandOptions): Promise<number> {
-    const outputPath = path.resolve(options.output || 'deep-wiki.config.yaml');
+    let outputPath = path.resolve(options.output || DEFAULT_CONFIG_FILENAME);
+
+    // If the output path is an existing directory, or ends with a path separator,
+    // treat it as a directory and append the default config filename.
+    const endsWithSep = options.output?.endsWith('/') || options.output?.endsWith(path.sep);
+    if (endsWithSep || (fs.existsSync(outputPath) && fs.statSync(outputPath).isDirectory())) {
+        outputPath = path.join(outputPath, DEFAULT_CONFIG_FILENAME);
+    }
 
     if (options.verbose) {
         printInfo(`Writing config template to ${outputPath}`);

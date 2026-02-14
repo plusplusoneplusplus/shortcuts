@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { executeInit, CONFIG_TEMPLATE } from '../../src/commands/init';
+import { executeInit, CONFIG_TEMPLATE, DEFAULT_CONFIG_FILENAME } from '../../src/commands/init';
 import { validateConfig } from '../../src/config-loader';
 import * as yaml from 'js-yaml';
 
@@ -206,6 +206,105 @@ describe('executeInit', () => {
 
         expect(exitCode).toBe(0);
         expect(fs.existsSync(outputPath)).toBe(true);
+    });
+
+    // ========================================================================
+    // Directory Output (auto-append default filename)
+    // ========================================================================
+
+    it('should create default config file inside existing directory when output ends with /', async () => {
+        const dirPath = path.join(tmpDir, 'wiki-output');
+        fs.mkdirSync(dirPath, { recursive: true });
+
+        const exitCode = await executeInit({
+            output: dirPath + '/',
+            force: false,
+            verbose: false,
+        });
+
+        expect(exitCode).toBe(0);
+        const expectedPath = path.join(dirPath, DEFAULT_CONFIG_FILENAME);
+        expect(fs.existsSync(expectedPath)).toBe(true);
+        const content = fs.readFileSync(expectedPath, 'utf-8');
+        expect(content).toBe(CONFIG_TEMPLATE);
+    });
+
+    it('should create default config file inside existing directory (no trailing slash)', async () => {
+        const dirPath = path.join(tmpDir, 'existing-dir');
+        fs.mkdirSync(dirPath, { recursive: true });
+
+        const exitCode = await executeInit({
+            output: dirPath,
+            force: false,
+            verbose: false,
+        });
+
+        expect(exitCode).toBe(0);
+        const expectedPath = path.join(dirPath, DEFAULT_CONFIG_FILENAME);
+        expect(fs.existsSync(expectedPath)).toBe(true);
+        const content = fs.readFileSync(expectedPath, 'utf-8');
+        expect(content).toBe(CONFIG_TEMPLATE);
+    });
+
+    it('should create directory and default config file when output ends with / but dir does not exist', async () => {
+        const dirPath = path.join(tmpDir, 'new-dir');
+
+        const exitCode = await executeInit({
+            output: dirPath + '/',
+            force: false,
+            verbose: false,
+        });
+
+        expect(exitCode).toBe(0);
+        const expectedPath = path.join(dirPath, DEFAULT_CONFIG_FILENAME);
+        expect(fs.existsSync(expectedPath)).toBe(true);
+    });
+
+    it('should refuse to overwrite existing config inside directory without --force', async () => {
+        const dirPath = path.join(tmpDir, 'dir-with-config');
+        fs.mkdirSync(dirPath, { recursive: true });
+        const configPath = path.join(dirPath, DEFAULT_CONFIG_FILENAME);
+        fs.writeFileSync(configPath, 'existing', 'utf-8');
+
+        const exitCode = await executeInit({
+            output: dirPath + '/',
+            force: false,
+            verbose: false,
+        });
+
+        expect(exitCode).toBe(1);
+        expect(fs.readFileSync(configPath, 'utf-8')).toBe('existing');
+    });
+
+    it('should overwrite existing config inside directory with --force', async () => {
+        const dirPath = path.join(tmpDir, 'dir-force');
+        fs.mkdirSync(dirPath, { recursive: true });
+        const configPath = path.join(dirPath, DEFAULT_CONFIG_FILENAME);
+        fs.writeFileSync(configPath, 'old', 'utf-8');
+
+        const exitCode = await executeInit({
+            output: dirPath + '/',
+            force: true,
+            verbose: false,
+        });
+
+        expect(exitCode).toBe(0);
+        expect(fs.readFileSync(configPath, 'utf-8')).toBe(CONFIG_TEMPLATE);
+    });
+
+    it('should handle path.sep as trailing separator on all platforms', async () => {
+        const dirPath = path.join(tmpDir, 'sep-dir');
+        fs.mkdirSync(dirPath, { recursive: true });
+
+        const exitCode = await executeInit({
+            output: dirPath + path.sep,
+            force: false,
+            verbose: false,
+        });
+
+        expect(exitCode).toBe(0);
+        const expectedPath = path.join(dirPath, DEFAULT_CONFIG_FILENAME);
+        expect(fs.existsSync(expectedPath)).toBe(true);
     });
 
     // ========================================================================
