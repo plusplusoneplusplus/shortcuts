@@ -25,5 +25,5 @@ Use [deep-verify](references/deep-verify.prompt.md) to verify arguments using mu
 Use [deep-plan](references/deep-plan.prompt.md) to decompose a feature into a sequence of atomic, reviewable commits:
 1. **Scope Analysis**: Explore codebase, map dependencies, identify natural split points
 2. **Commit Decomposition**: Break work into ordered, independently reviewable commits
-3. **Plan File Generation**: Write numbered plan files (`001-*.md`, `002-*.md`, ...) to `.vscode/tasks/<feature>/<work>/`
+3. **Plan File Generation (Parallel Sub-Agents)**: Dispatch sub-agents to write numbered plan files (`001-*.md`, `002-*.md`, ...) to `.vscode/tasks/<feature>/<work>/` — each sub-agent explores the relevant code and enriches the plan
 4. **Validation**: Verify coverage, ordering, atomicity, and testability

@@ -53,9 +53,11 @@ Break the work into a sequence of atomic commits, ordered by dependency.
 
 ---
 
-## Phase 3: Plan File Generation
+## Phase 3: Plan File Generation (Parallel Sub-Agents)
 
-Generate numbered plan files under `.vscode/tasks/<feature>/<work>/`.
+For each commit identified in Phase 2, dispatch an independent sub-agent to generate the plan file.
+
+**Output Directory:** `.vscode/tasks/<feature>/<work>/`
 
 **File Naming Convention:**
 ```
@@ -65,7 +67,27 @@ Generate numbered plan files under `.vscode/tasks/<feature>/<work>/`.
 ...
 ```
 
-**Each Plan File Format:**
+### Sub-Agent Dispatch
+
+For each commit from Phase 2, launch a **general-purpose sub-agent** with the following context:
+1. The commit's title, motivation, file list, changes, tests, and acceptance criteria from Phase 2
+2. The output file path (e.g., `.vscode/tasks/<feature>/<work>/001-<slug>.md`)
+3. The plan file template (below)
+4. Relevant codebase context (key files the commit touches, existing patterns, conventions)
+
+Sub-agents run **in parallel** since each writes to its own file. The orchestrator should wait for all sub-agents to complete before proceeding to Phase 4.
+
+### Per Sub-Agent Instructions
+
+Each sub-agent:
+1. **Explore** the codebase areas relevant to the assigned commit (read the actual files to be modified/created)
+2. **Enrich** the commit plan with concrete implementation details based on what it finds in the code
+3. **Write** the plan file using the template below
+4. **Self-validate** that the plan is specific enough to implement without ambiguity
+
+### Plan File Template
+
+Each sub-agent writes its plan file in this format:
 ```markdown
 ---
 status: pending
