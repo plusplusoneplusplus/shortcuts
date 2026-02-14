@@ -135,6 +135,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     queueManager.on('change', () => {
         const queued = queueManager.getQueued();
         const running = queueManager.getRunning();
+        const history = queueManager.getHistory();
         const stats = queueManager.getStats();
 
         wsServer.broadcastProcessEvent({
@@ -156,6 +157,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     displayName: t.displayName,
                     createdAt: t.createdAt,
                     startedAt: t.startedAt,
+                })),
+                history: history.map(t => ({
+                    id: t.id,
+                    type: t.type,
+                    priority: t.priority,
+                    status: t.status,
+                    displayName: t.displayName,
+                    createdAt: t.createdAt,
+                    startedAt: t.startedAt,
+                    completedAt: t.completedAt,
+                    error: t.error,
                 })),
                 stats,
             },
@@ -213,7 +225,7 @@ export { registerApiRoutes, sendJSON, sendError, parseBody, parseQueryParams } f
 export { registerQueueRoutes } from './queue-handler';
 export { handleProcessStream } from './sse-handler';
 export { ProcessWebSocketServer, toProcessSummary, sendFrame, decodeFrame } from './websocket';
-export type { WSClient, ProcessSummary, QueueTaskSummary, QueueSnapshot, ServerMessage, ClientMessage } from './websocket';
+export type { WSClient, ProcessSummary, QueueTaskSummary, QueueHistoryTaskSummary, QueueSnapshot, ServerMessage, ClientMessage } from './websocket';
 export type { RouterOptions } from './router';
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';

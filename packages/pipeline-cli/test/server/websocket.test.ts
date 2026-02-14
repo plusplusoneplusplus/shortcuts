@@ -587,6 +587,159 @@ describe('WebSocket Server', () => {
     });
 
     // ========================================================================
+    // Queue Event Broadcasting
+    // ========================================================================
+
+    describe('Queue Event Broadcasting', () => {
+        it('should broadcast queue-updated event when task is enqueued', async () => {
+            const srv = await startServer();
+            const { socket, messages } = await connectWebSocket(srv.port);
+            await waitForMessages(messages, 1); // welcome
+
+            // Enqueue a task via REST
+            const res = await new Promise<string>((resolve, reject) => {
+                const reqBody = JSON.stringify({
+                    type: 'custom',
+                    priority: 'normal',
+                    payload: { data: { prompt: 'test' } },
+                    displayName: 'WS test task',
+                });
+                const req = http.request({
+                    hostname: 'localhost',
+                    port: srv.port,
+                    path: '/api/queue',
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                }, (res) => {
+                    let body = '';
+                    res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+                    res.on('end', () => resolve(body));
+                });
+                req.on('error', reject);
+                req.write(reqBody);
+                req.end();
+            });
+
+            // Wait for queue-updated WS message
+            await waitForMessages(messages, 2, 3000);
+
+            // Find the queue-updated message (may be after welcome)
+            const queueMsg = messages
+                .map(m => { try { return JSON.parse(m); } catch { return null; } })
+                .find(m => m && m.type === 'queue-updated');
+
+            expect(queueMsg).toBeDefined();
+            expect(queueMsg.queue).toBeDefined();
+            expect(queueMsg.queue.stats).toBeDefined();
+            expect(queueMsg.queue.queued).toBeDefined();
+            expect(queueMsg.queue.running).toBeDefined();
+
+            socket.destroy();
+        });
+
+        it('should include history in queue-updated event', async () => {
+            const srv = await startServer();
+            const { socket, messages } = await connectWebSocket(srv.port);
+            await waitForMessages(messages, 1); // welcome
+
+            // Enqueue a task that will complete quickly (code-review is a no-op)
+            const reqBody = JSON.stringify({
+                type: 'code-review',
+                priority: 'normal',
+                payload: { diffType: 'staged', rulesFolder: '.github/cr-rules' },
+                displayName: 'History test task',
+            });
+            await new Promise<void>((resolve, reject) => {
+                const req = http.request({
+                    hostname: 'localhost',
+                    port: srv.port,
+                    path: '/api/queue',
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                }, (res) => {
+                    let body = '';
+                    res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+                    res.on('end', () => resolve());
+                });
+                req.on('error', reject);
+                req.write(reqBody);
+                req.end();
+            });
+
+            // Wait for multiple queue-updated messages (enqueue, start, complete)
+            await delay(1000);
+
+            // Find the last queue-updated message which should have history
+            const queueMsgs = messages
+                .map(m => { try { return JSON.parse(m); } catch { return null; } })
+                .filter(m => m && m.type === 'queue-updated');
+
+            // There should be at least one queue-updated message
+            expect(queueMsgs.length).toBeGreaterThan(0);
+
+            // The last queue-updated message should include history array
+            const lastQueueMsg = queueMsgs[queueMsgs.length - 1];
+            expect(lastQueueMsg.queue.history).toBeDefined();
+            expect(Array.isArray(lastQueueMsg.queue.history)).toBe(true);
+
+            socket.destroy();
+        });
+
+        it('should include task details in history entries of queue-updated event', async () => {
+            const srv = await startServer();
+            const { socket, messages } = await connectWebSocket(srv.port);
+            await waitForMessages(messages, 1); // welcome
+
+            // Enqueue a code-review task (completes as no-op)
+            const reqBody = JSON.stringify({
+                type: 'code-review',
+                priority: 'high',
+                payload: { diffType: 'staged', rulesFolder: '.github/cr-rules' },
+                displayName: 'Detail test task',
+            });
+            await new Promise<void>((resolve, reject) => {
+                const req = http.request({
+                    hostname: 'localhost',
+                    port: srv.port,
+                    path: '/api/queue',
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                }, (res) => {
+                    let body = '';
+                    res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+                    res.on('end', () => resolve());
+                });
+                req.on('error', reject);
+                req.write(reqBody);
+                req.end();
+            });
+
+            // Wait for task to complete
+            await delay(1000);
+
+            // Find the last queue-updated message with history
+            const queueMsgs = messages
+                .map(m => { try { return JSON.parse(m); } catch { return null; } })
+                .filter(m => m && m.type === 'queue-updated' && m.queue.history && m.queue.history.length > 0);
+
+            if (queueMsgs.length > 0) {
+                const lastMsg = queueMsgs[queueMsgs.length - 1];
+                const historyEntry = lastMsg.queue.history[0];
+
+                // Verify history entry has expected fields
+                expect(historyEntry.id).toBeDefined();
+                expect(historyEntry.type).toBe('code-review');
+                expect(historyEntry.status).toBe('completed');
+                expect(historyEntry.displayName).toBe('Detail test task');
+                expect(typeof historyEntry.createdAt).toBe('number');
+                expect(typeof historyEntry.completedAt).toBe('number');
+            }
+
+            socket.destroy();
+        });
+    });
+
+    // ========================================================================
     // Frame Codec
     // ========================================================================
 

@@ -96,18 +96,38 @@ export function getWebSocketScript(opts: ScriptOptions): string {
                 }
                 renderProcessList();
             } else if (msg.type === 'queue-updated' && msg.queue) {
+                var prevCompleted = queueState.stats ? (queueState.stats.completed || 0) : 0;
+                var prevFailed = queueState.stats ? (queueState.stats.failed || 0) : 0;
+
                 queueState.queued = msg.queue.queued || [];
                 queueState.running = msg.queue.running || [];
                 queueState.stats = msg.queue.stats || queueState.stats;
-                // Refresh history when tasks complete/fail (stats changed)
-                fetchApi('/queue/history').then(function(data) {
-                    if (data && data.history) {
-                        queueState.history = data.history;
-                    }
+
+                // Use history from WebSocket message if available (avoids REST race condition)
+                if (msg.queue.history) {
+                    queueState.history = msg.queue.history;
+                }
+
+                // Auto-expand history when new tasks complete or fail
+                var newCompleted = queueState.stats.completed || 0;
+                var newFailed = queueState.stats.failed || 0;
+                if (newCompleted > prevCompleted || newFailed > prevFailed) {
+                    queueState.showHistory = true;
+                }
+
+                // If history was not in the WS message, fetch it via REST as fallback
+                if (!msg.queue.history) {
+                    fetchApi('/queue/history').then(function(data) {
+                        if (data && data.history) {
+                            queueState.history = data.history;
+                        }
+                        renderQueuePanel();
+                    }).catch(function() {
+                        renderQueuePanel();
+                    });
+                } else {
                     renderQueuePanel();
-                }).catch(function() {
-                    renderQueuePanel();
-                });
+                }
             } else if (msg.type === 'workspace-registered' && msg.data) {
                 var select = document.getElementById('workspace-select');
                 if (select) {

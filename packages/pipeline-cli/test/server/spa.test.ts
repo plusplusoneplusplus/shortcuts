@@ -571,6 +571,33 @@ describe('getWebSocketScript', () => {
         expect(script).toContain("msg.type === 'queue-updated'");
         expect(script).toContain('renderQueuePanel');
     });
+
+    it('uses history from queue-updated WS message when available', () => {
+        expect(script).toContain('msg.queue.history');
+        expect(script).toContain('queueState.history = msg.queue.history');
+    });
+
+    it('falls back to REST fetch when history not in WS message', () => {
+        expect(script).toContain("if (!msg.queue.history)");
+        expect(script).toContain("fetchApi('/queue/history')");
+    });
+
+    it('auto-expands history when tasks complete', () => {
+        expect(script).toContain('newCompleted > prevCompleted');
+        expect(script).toContain('queueState.showHistory = true');
+    });
+
+    it('auto-expands history when tasks fail', () => {
+        expect(script).toContain('newFailed > prevFailed');
+        expect(script).toContain('queueState.showHistory = true');
+    });
+
+    it('tracks previous completed/failed counts for comparison', () => {
+        expect(script).toContain('prevCompleted');
+        expect(script).toContain('prevFailed');
+        expect(script).toContain('newCompleted');
+        expect(script).toContain('newFailed');
+    });
 });
 
 // ============================================================================
