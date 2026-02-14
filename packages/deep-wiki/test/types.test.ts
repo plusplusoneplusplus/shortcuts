@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { isValidModuleId, normalizeModuleId, MODULE_GRAPH_REQUIRED_FIELDS, PROJECT_INFO_REQUIRED_FIELDS, MODULE_INFO_REQUIRED_FIELDS, VALID_COMPLEXITY_VALUES, MODULE_GRAPH_SCHEMA, STRUCTURAL_SCAN_SCHEMA } from '../src/schemas';
-import type { ModuleGraph, ModuleInfo, ProjectInfo, CategoryInfo, DiscoveryOptions, DiscoveryResult, DeepWikiConfig, DiscoverCommandOptions, TopLevelArea, StructuralScanResult, CacheMetadata, CachedGraph, AreaInfo, GeneratedArticle, ArticleType } from '../src/types';
+import type { ModuleGraph, ModuleInfo, ProjectInfo, CategoryInfo, DiscoveryOptions, DiscoveryResult, DeepWikiConfig, DiscoverCommandOptions, TopLevelArea, StructuralScanResult, CacheMetadata, CachedGraph, AreaInfo, GeneratedArticle, ArticleType, TopicRequest, TopicCoverageCheck, TopicOutline, TopicAnalysis, TopicArticle, TopicAreaMeta, TopicCommandOptions } from '../src/types';
 
 describe('Types and Schemas', () => {
     // ========================================================================
@@ -458,6 +458,294 @@ describe('Types and Schemas', () => {
                 areaId: 'packages-core',
             };
             expect(article.type).toBe('area-architecture');
+        });
+    });
+
+    // ========================================================================
+    // Topic Generation Types
+    // ========================================================================
+
+    describe('TopicRequest type', () => {
+        it('should allow constructing a minimal TopicRequest', () => {
+            const req: TopicRequest = { topic: 'compaction' };
+            expect(req.topic).toBe('compaction');
+            expect(req.description).toBeUndefined();
+            expect(req.hints).toBeUndefined();
+        });
+
+        it('should allow constructing a full TopicRequest', () => {
+            const req: TopicRequest = {
+                topic: 'compaction',
+                description: 'How LSM-tree compaction works',
+                hints: ['compact', 'merge', 'level'],
+            };
+            expect(req.hints).toHaveLength(3);
+        });
+    });
+
+    describe('TopicCoverageCheck type', () => {
+        it('should allow new status', () => {
+            const check: TopicCoverageCheck = {
+                status: 'new',
+                relatedModules: [],
+            };
+            expect(check.status).toBe('new');
+            expect(check.existingArticlePath).toBeUndefined();
+        });
+
+        it('should allow exists status with article path', () => {
+            const check: TopicCoverageCheck = {
+                status: 'exists',
+                existingArticlePath: 'topics/compaction/index.md',
+                relatedModules: [{
+                    moduleId: 'storage',
+                    articlePath: 'modules/storage.md',
+                    relevance: 'high',
+                    matchReason: 'Contains compaction logic',
+                }],
+            };
+            expect(check.relatedModules).toHaveLength(1);
+            expect(check.relatedModules[0].relevance).toBe('high');
+        });
+
+        it('should allow partial status', () => {
+            const check: TopicCoverageCheck = {
+                status: 'partial',
+                relatedModules: [
+                    { moduleId: 'a', articlePath: 'a.md', relevance: 'medium', matchReason: 'reason' },
+                    { moduleId: 'b', articlePath: 'b.md', relevance: 'low', matchReason: 'reason' },
+                ],
+            };
+            expect(check.relatedModules).toHaveLength(2);
+        });
+    });
+
+    describe('TopicOutline type', () => {
+        it('should allow constructing a single-layout outline', () => {
+            const outline: TopicOutline = {
+                topicId: 'compaction',
+                title: 'Compaction',
+                layout: 'single',
+                articles: [{
+                    slug: 'compaction',
+                    title: 'Compaction',
+                    description: 'Overview of compaction',
+                    isIndex: true,
+                    coveredModuleIds: ['storage'],
+                    coveredFiles: ['src/storage/compact.ts'],
+                }],
+                involvedModules: [{
+                    moduleId: 'storage',
+                    role: 'Primary compaction engine',
+                    keyFiles: ['src/storage/compact.ts'],
+                }],
+            };
+            expect(outline.layout).toBe('single');
+            expect(outline.articles).toHaveLength(1);
+            expect(outline.articles[0].isIndex).toBe(true);
+        });
+
+        it('should allow constructing an area-layout outline', () => {
+            const outline: TopicOutline = {
+                topicId: 'auth',
+                title: 'Authentication',
+                layout: 'area',
+                articles: [
+                    { slug: 'index', title: 'Auth Overview', description: 'Overview', isIndex: true, coveredModuleIds: [], coveredFiles: [] },
+                    { slug: 'jwt', title: 'JWT Tokens', description: 'JWT handling', isIndex: false, coveredModuleIds: ['auth'], coveredFiles: [] },
+                ],
+                involvedModules: [],
+            };
+            expect(outline.layout).toBe('area');
+            expect(outline.articles).toHaveLength(2);
+        });
+    });
+
+    describe('TopicAnalysis type', () => {
+        it('should allow constructing a full TopicAnalysis', () => {
+            const analysis: TopicAnalysis = {
+                topicId: 'compaction',
+                overview: 'Compaction is the process of merging SSTables',
+                perArticle: [{
+                    slug: 'compaction',
+                    keyConcepts: [{ name: 'SSTable', description: 'Sorted string table', codeRef: 'src/sstable.ts' }],
+                    dataFlow: 'Input SSTables → Merge → Output SSTable',
+                    codeExamples: [{ title: 'Basic compaction', code: 'compact()', file: 'src/compact.ts' }],
+                    internalDetails: 'Uses leveled compaction strategy',
+                }],
+                crossCutting: {
+                    architecture: 'Tiered compaction',
+                    dataFlow: 'Memtable → L0 → L1 → ...',
+                    suggestedDiagram: 'graph TD; A-->B',
+                    configuration: 'max_compaction_bytes',
+                    relatedTopics: ['storage', 'write-path'],
+                },
+            };
+            expect(analysis.perArticle).toHaveLength(1);
+            expect(analysis.crossCutting.relatedTopics).toHaveLength(2);
+        });
+
+        it('should allow minimal cross-cutting analysis', () => {
+            const analysis: TopicAnalysis = {
+                topicId: 'test',
+                overview: 'Test',
+                perArticle: [],
+                crossCutting: {
+                    architecture: 'Simple',
+                    dataFlow: 'A → B',
+                    suggestedDiagram: '',
+                },
+            };
+            expect(analysis.crossCutting.configuration).toBeUndefined();
+            expect(analysis.crossCutting.relatedTopics).toBeUndefined();
+        });
+    });
+
+    describe('TopicArticle type', () => {
+        it('should allow topic-index article', () => {
+            const article: TopicArticle = {
+                type: 'topic-index',
+                slug: 'index',
+                title: 'Compaction Overview',
+                content: '# Compaction',
+                topicId: 'compaction',
+                coveredModuleIds: ['storage', 'lsm'],
+            };
+            expect(article.type).toBe('topic-index');
+        });
+
+        it('should allow topic-article type', () => {
+            const article: TopicArticle = {
+                type: 'topic-article',
+                slug: 'leveled-compaction',
+                title: 'Leveled Compaction',
+                content: '# Leveled Compaction',
+                topicId: 'compaction',
+                coveredModuleIds: [],
+            };
+            expect(article.type).toBe('topic-article');
+        });
+    });
+
+    describe('TopicAreaMeta type', () => {
+        it('should allow constructing a full TopicAreaMeta', () => {
+            const meta: TopicAreaMeta = {
+                id: 'compaction',
+                title: 'Compaction',
+                description: 'LSM-tree compaction processes',
+                layout: 'area',
+                articles: [
+                    { slug: 'index', title: 'Overview', path: 'topics/compaction/index.md' },
+                    { slug: 'leveled', title: 'Leveled', path: 'topics/compaction/leveled.md' },
+                ],
+                involvedModuleIds: ['storage', 'lsm'],
+                directoryPath: 'topics/compaction',
+                generatedAt: Date.now(),
+                gitHash: 'abc123',
+            };
+            expect(meta.articles).toHaveLength(2);
+            expect(meta.involvedModuleIds).toHaveLength(2);
+        });
+
+        it('should allow TopicAreaMeta without gitHash', () => {
+            const meta: TopicAreaMeta = {
+                id: 'auth',
+                title: 'Auth',
+                description: 'Auth topic',
+                layout: 'single',
+                articles: [{ slug: 'auth', title: 'Auth', path: 'topics/auth.md' }],
+                involvedModuleIds: [],
+                directoryPath: 'topics/auth',
+                generatedAt: 1700000000000,
+            };
+            expect(meta.gitHash).toBeUndefined();
+        });
+    });
+
+    describe('TopicCommandOptions type', () => {
+        it('should allow constructing full TopicCommandOptions', () => {
+            const opts: TopicCommandOptions = {
+                topic: 'compaction',
+                description: 'How compaction works',
+                wiki: './wiki',
+                force: false,
+                check: false,
+                list: false,
+                model: 'claude-sonnet',
+                depth: 'normal',
+                timeout: 300,
+                concurrency: 5,
+                noCrossLink: false,
+                noWebsite: false,
+                interactive: true,
+                verbose: false,
+            };
+            expect(opts.topic).toBe('compaction');
+            expect(opts.depth).toBe('normal');
+        });
+
+        it('should allow minimal TopicCommandOptions', () => {
+            const opts: TopicCommandOptions = {
+                topic: 'auth',
+                wiki: './wiki',
+                force: false,
+                check: false,
+                list: false,
+                depth: 'shallow',
+                timeout: 120,
+                concurrency: 3,
+                noCrossLink: false,
+                noWebsite: false,
+                interactive: false,
+                verbose: false,
+            };
+            expect(opts.description).toBeUndefined();
+            expect(opts.model).toBeUndefined();
+        });
+    });
+
+    describe('ModuleGraph with topics', () => {
+        it('should allow ModuleGraph without topics (backward compat)', () => {
+            const graph: ModuleGraph = {
+                project: {
+                    name: 'test',
+                    description: '',
+                    language: 'TypeScript',
+                    buildSystem: 'npm',
+                    entryPoints: [],
+                },
+                modules: [],
+                categories: [],
+                architectureNotes: '',
+            };
+            expect(graph.topics).toBeUndefined();
+        });
+
+        it('should allow ModuleGraph with topics', () => {
+            const graph: ModuleGraph = {
+                project: {
+                    name: 'test',
+                    description: '',
+                    language: 'TypeScript',
+                    buildSystem: 'npm',
+                    entryPoints: [],
+                },
+                modules: [],
+                categories: [],
+                architectureNotes: '',
+                topics: [{
+                    id: 'compaction',
+                    title: 'Compaction',
+                    description: 'LSM-tree compaction',
+                    layout: 'area',
+                    articles: [{ slug: 'index', title: 'Overview', path: 'topics/compaction/index.md' }],
+                    involvedModuleIds: ['storage'],
+                    directoryPath: 'topics/compaction',
+                    generatedAt: Date.now(),
+                }],
+            };
+            expect(graph.topics).toHaveLength(1);
+            expect(graph.topics![0].id).toBe('compaction');
         });
     });
 

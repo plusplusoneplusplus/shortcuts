@@ -105,6 +105,8 @@ export interface ModuleGraph {
     architectureNotes: string;
     /** Top-level areas (only present for large repos with 3000+ files) */
     areas?: AreaInfo[];
+    /** Topic area metadata (populated by topic command) */
+    topics?: TopicAreaMeta[];
 }
 
 /**
@@ -544,6 +546,216 @@ export interface SeedsCommandOptions {
     model?: string;
     /** Timeout in seconds for seeds session */
     timeout?: number;
+    /** Verbose logging */
+    verbose: boolean;
+}
+
+// ============================================================================
+// Topic Generation Types
+// ============================================================================
+
+/**
+ * User-provided topic request.
+ */
+export interface TopicRequest {
+    /** kebab-case ID (e.g., "compaction") */
+    topic: string;
+    /** User-provided description for better discovery */
+    description?: string;
+    /** Optional search hints (grep terms) */
+    hints?: string[];
+}
+
+/**
+ * Result of checking topic coverage in existing wiki.
+ */
+export interface TopicCoverageCheck {
+    /** Whether the topic is new, partially covered, or already exists */
+    status: 'new' | 'partial' | 'exists';
+    /** Path to existing article if topic already exists */
+    existingArticlePath?: string;
+    /** Modules related to the topic */
+    relatedModules: TopicRelatedModule[];
+}
+
+/**
+ * A module related to a topic with relevance scoring.
+ */
+export interface TopicRelatedModule {
+    /** ID of the related module */
+    moduleId: string;
+    /** Path to the module's article */
+    articlePath: string;
+    /** Relevance level */
+    relevance: 'high' | 'medium' | 'low';
+    /** Reason for the match */
+    matchReason: string;
+}
+
+/**
+ * AI-generated outline for how to decompose the topic into articles.
+ */
+export interface TopicOutline {
+    /** Topic identifier */
+    topicId: string;
+    /** Human-readable title */
+    title: string;
+    /** Layout strategy: single article or area with multiple articles */
+    layout: 'single' | 'area';
+    /** Planned articles */
+    articles: TopicArticlePlan[];
+    /** Modules involved in the topic */
+    involvedModules: TopicInvolvedModule[];
+}
+
+/**
+ * Plan for a single article within a topic.
+ */
+export interface TopicArticlePlan {
+    /** URL-safe slug for the article */
+    slug: string;
+    /** Human-readable title */
+    title: string;
+    /** Brief description of what the article covers */
+    description: string;
+    /** Whether this is the index article for the topic area */
+    isIndex: boolean;
+    /** IDs of modules covered by this article */
+    coveredModuleIds: string[];
+    /** Files covered by this article */
+    coveredFiles: string[];
+}
+
+/**
+ * A module involved in a topic with its role.
+ */
+export interface TopicInvolvedModule {
+    /** Module ID */
+    moduleId: string;
+    /** Role of the module in the topic */
+    role: string;
+    /** Key files relevant to the topic */
+    keyFiles: string[];
+}
+
+/**
+ * Cross-cutting topic analysis result.
+ */
+export interface TopicAnalysis {
+    /** Topic identifier */
+    topicId: string;
+    /** High-level overview */
+    overview: string;
+    /** Per-article analysis results */
+    perArticle: TopicArticleAnalysis[];
+    /** Cross-cutting analysis */
+    crossCutting: TopicCrossCuttingAnalysis;
+}
+
+/**
+ * Analysis for a single article within a topic.
+ */
+export interface TopicArticleAnalysis {
+    /** Article slug */
+    slug: string;
+    /** Key concepts discovered */
+    keyConcepts: { name: string; description: string; codeRef?: string }[];
+    /** Data flow description */
+    dataFlow: string;
+    /** Illustrative code examples */
+    codeExamples: { title: string; code: string; file: string }[];
+    /** Internal implementation details */
+    internalDetails: string;
+}
+
+/**
+ * Cross-cutting analysis across all articles in a topic.
+ */
+export interface TopicCrossCuttingAnalysis {
+    /** Architecture overview */
+    architecture: string;
+    /** Data flow description */
+    dataFlow: string;
+    /** Suggested Mermaid diagram */
+    suggestedDiagram: string;
+    /** Configuration notes */
+    configuration?: string;
+    /** Related topic IDs */
+    relatedTopics?: string[];
+}
+
+/**
+ * Generated topic article (individual file within the area).
+ */
+export interface TopicArticle {
+    /** Article type */
+    type: 'topic-index' | 'topic-article';
+    /** URL-safe slug */
+    slug: string;
+    /** Human-readable title */
+    title: string;
+    /** Markdown content */
+    content: string;
+    /** Parent topic identifier */
+    topicId: string;
+    /** IDs of modules covered by this article */
+    coveredModuleIds: string[];
+}
+
+/**
+ * Topic area metadata stored in module-graph.json.
+ */
+export interface TopicAreaMeta {
+    /** Unique topic identifier */
+    id: string;
+    /** Human-readable title */
+    title: string;
+    /** Topic description */
+    description: string;
+    /** Layout strategy */
+    layout: 'single' | 'area';
+    /** Articles within this topic area */
+    articles: { slug: string; title: string; path: string }[];
+    /** IDs of modules involved in this topic */
+    involvedModuleIds: string[];
+    /** Directory path for the topic area output */
+    directoryPath: string;
+    /** Timestamp when this topic was generated */
+    generatedAt: number;
+    /** Git hash at generation time */
+    gitHash?: string;
+}
+
+/**
+ * CLI options for the `deep-wiki topic` command.
+ */
+export interface TopicCommandOptions {
+    /** Topic identifier */
+    topic: string;
+    /** User-provided description */
+    description?: string;
+    /** Path to existing wiki directory */
+    wiki: string;
+    /** Force regeneration */
+    force: boolean;
+    /** Check coverage only (no generation) */
+    check: boolean;
+    /** List existing topics */
+    list: boolean;
+    /** AI model override */
+    model?: string;
+    /** Analysis depth */
+    depth: 'shallow' | 'normal' | 'deep';
+    /** Timeout in seconds */
+    timeout: number;
+    /** Number of parallel AI sessions */
+    concurrency: number;
+    /** Disable cross-linking with existing articles */
+    noCrossLink: boolean;
+    /** Skip website regeneration */
+    noWebsite: boolean;
+    /** Interactive mode */
+    interactive: boolean;
     /** Verbose logging */
     verbose: boolean;
 }
