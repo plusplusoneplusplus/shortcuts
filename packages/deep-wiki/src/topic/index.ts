@@ -10,3 +10,12 @@ export { buildArticleAnalysisPrompt, buildCrossCuttingPrompt } from './analysis-
 export { generateTopicArticles, extractSummary } from './article-generator';
 export type { TopicArticleGenOptions, TopicArticleGenResult } from './article-generator';
 export { buildSubArticlePrompt, buildIndexPagePrompt } from './article-prompts';
+export { writeTopicArticles } from './file-writer';
+export type { TopicWriteOptions, TopicWriteResult } from './file-writer';
+export {
+    updateModuleGraph,
+    updateWikiIndex,
+    addCrossLinks,
+    integrateTopicIntoWiki,
+} from './wiki-integrator';
+export type { WikiIntegrationOptions } from './wiki-integrator';
