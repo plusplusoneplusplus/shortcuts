@@ -141,6 +141,7 @@ export async function runPhase4Writing(
 
     // Create writing invoker (session pool, no tools)
     const baseWritingInvoker = createWritingInvoker({
+        repoPath,
         model: writingModel,
         timeoutMs: writingTimeout ? writingTimeout * 1000 : undefined,
     });

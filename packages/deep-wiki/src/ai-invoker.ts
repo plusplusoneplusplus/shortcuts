@@ -40,6 +40,8 @@ export interface AnalysisInvokerOptions {
  * Uses direct sessions without tools for article generation.
  */
 export interface WritingInvokerOptions {
+    /** Absolute path to the repository (working directory for SDK session) */
+    repoPath?: string;
     /** AI model to use */
     model?: string;
     /** Timeout per article in milliseconds (default: 120000 = 2 min) */
@@ -161,6 +163,7 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
             const sendOptions: SendMessageOptions = {
                 prompt,
                 model,
+                workingDirectory: options.repoPath,
                 timeoutMs,
                 usePool: false, // Direct session — consistent with all deep-wiki phases
                 loadDefaultMcpConfig: false, // Writing doesn't need MCP; avoid user's global MCP config

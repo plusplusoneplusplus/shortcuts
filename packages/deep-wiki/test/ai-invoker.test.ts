@@ -239,6 +239,26 @@ describe('AI Invoker Factory', () => {
             expect(callArgs.usePool).toBe(false);
         });
 
+        it('should pass repoPath as workingDirectory', async () => {
+            mockSendMessage.mockResolvedValue({ success: true, response: 'ok' });
+
+            const invoker = createWritingInvoker({ repoPath: '/my/repo' });
+            await invoker('test');
+
+            const callArgs = mockSendMessage.mock.calls[0][0];
+            expect(callArgs.workingDirectory).toBe('/my/repo');
+        });
+
+        it('should leave workingDirectory undefined when repoPath is not set', async () => {
+            mockSendMessage.mockResolvedValue({ success: true, response: 'ok' });
+
+            const invoker = createWritingInvoker({});
+            await invoker('test');
+
+            const callArgs = mockSendMessage.mock.calls[0][0];
+            expect(callArgs.workingDirectory).toBeUndefined();
+        });
+
         it('should not configure any tools', async () => {
             mockSendMessage.mockResolvedValue({ success: true, response: 'ok' });
 
