@@ -31,6 +31,10 @@ export type AIProcessType = 'clarification' | 'code-review' | 'discovery' | 'cod
 export interface GenericProcessMetadata {
     /** Type identifier for the metadata (matches AIProcessType) */
     type: string;
+    /** Workspace ID this process belongs to (hash of workspace root path) */
+    workspaceId?: string;
+    /** Human-readable workspace name */
+    workspaceName?: string;
     /** Feature-specific data stored as key-value pairs */
     [key: string]: unknown;
 }
