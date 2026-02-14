@@ -226,6 +226,137 @@ describe('Queue Handler', () => {
     });
 
     // ========================================================================
+    // Auto-generated display name
+    // ========================================================================
+
+    describe('Auto-generated display name', () => {
+        it('should auto-generate name from ai-clarification prompt', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'ai-clarification',
+                payload: { prompt: 'Explain how authentication works' },
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.displayName).toBe('Explain how authentication works');
+        });
+
+        it('should truncate long prompts in auto-generated name', async () => {
+            const srv = await startServer();
+
+            const longPrompt = 'A'.repeat(100);
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'ai-clarification',
+                payload: { prompt: longPrompt },
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.displayName.length).toBeLessThanOrEqual(60);
+            expect(body.task.displayName).toContain('...');
+        });
+
+        it('should auto-generate name from follow-prompt file path', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'follow-prompt',
+                payload: { promptFilePath: '/home/user/prompts/review-code.md' },
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.displayName).toBe('Follow Prompt: review-code.md');
+        });
+
+        it('should auto-generate name from code-review diff type', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'code-review',
+                payload: { diffType: 'staged', rulesFolder: '.github/cr-rules' },
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.displayName).toBe('Code Review: staged');
+        });
+
+        it('should auto-generate name from code-review with commit SHA', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'code-review',
+                payload: { diffType: 'commit', commitSha: 'abc1234567890', rulesFolder: '.github/cr-rules' },
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.displayName).toBe('Code Review: commit (abc1234)');
+        });
+
+        it('should auto-generate name from custom task data.prompt', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'custom',
+                payload: { data: { prompt: 'Analyze performance metrics' } },
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.displayName).toBe('Analyze performance metrics');
+        });
+
+        it('should fallback to type label with timestamp when no content', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'custom',
+                payload: { data: {} },
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.displayName).toMatch(/^Task @ \d{2}:\d{2}$/);
+        });
+
+        it('should use explicit displayName when provided', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'custom',
+                displayName: 'My custom name',
+                payload: { data: { prompt: 'This should be ignored for name' } },
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.displayName).toBe('My custom name');
+        });
+
+        it('should ignore empty string displayName and auto-generate', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'ai-clarification',
+                displayName: '',
+                payload: { prompt: 'What does this function do?' },
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.displayName).toBe('What does this function do?');
+        });
+
+        it('should ignore whitespace-only displayName and auto-generate', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, {
+                type: 'ai-clarification',
+                displayName: '   ',
+                payload: { prompt: 'Summarize this module' },
+            });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.displayName).toBe('Summarize this module');
+        });
+    });
+
+    // ========================================================================
     // List queue
     // ========================================================================
 

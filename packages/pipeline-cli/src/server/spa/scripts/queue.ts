@@ -189,28 +189,28 @@ export function getQueueScript(opts: ScriptOptions): string {
             var priority = prioritySelect ? prioritySelect.value : 'normal';
             var prompt = promptInput ? promptInput.value.trim() : '';
 
-            if (!displayName) {
-                alert('Task name is required');
-                return;
-            }
-
             var payload = type === 'ai-clarification'
-                ? { prompt: prompt || displayName }
+                ? { prompt: prompt || displayName || 'AI clarification task' }
                 : type === 'follow-prompt'
                     ? { promptFilePath: prompt || '', workingDirectory: '' }
-                    : { data: { prompt: prompt || displayName } };
+                    : { data: { prompt: prompt || displayName || '' } };
+
+            var body = {
+                type: type,
+                priority: priority,
+                payload: payload,
+                config: {}
+            };
+            // Only include displayName if user provided one; server auto-generates otherwise
+            if (displayName) {
+                body.displayName = displayName;
+            }
 
             try {
                 await fetch(API_BASE + '/queue', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: type,
-                        priority: priority,
-                        displayName: displayName,
-                        payload: payload,
-                        config: {}
-                    })
+                    body: JSON.stringify(body)
                 });
 
                 hideEnqueueDialog();

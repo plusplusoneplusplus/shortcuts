@@ -20,6 +20,53 @@ import type { Route } from './types';
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
 const VALID_TASK_TYPES: Set<string> = new Set(['follow-prompt', 'resolve-comments', 'code-review', 'ai-clarification', 'custom']);
 
+/** Human-readable labels for task types, used when auto-generating display names. */
+const TYPE_LABELS: Record<string, string> = {
+    'follow-prompt': 'Follow Prompt',
+    'resolve-comments': 'Resolve Comments',
+    'code-review': 'Code Review',
+    'ai-clarification': 'AI Clarification',
+    'custom': 'Task',
+};
+
+/**
+ * Auto-generate a display name for a task when the user doesn't provide one.
+ * Derives a meaningful name from the task type and payload content.
+ */
+function generateDisplayName(type: string, payload: any): string {
+    const typeLabel = TYPE_LABELS[type] || 'Task';
+
+    // Try to extract a meaningful snippet from the payload
+    if (payload) {
+        // AI clarification: use prompt text
+        if (typeof payload.prompt === 'string' && payload.prompt.trim()) {
+            const snippet = payload.prompt.trim();
+            return snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+        }
+        // Follow prompt: use file path basename
+        if (typeof payload.promptFilePath === 'string' && payload.promptFilePath.trim()) {
+            const filePath = payload.promptFilePath.trim();
+            const basename = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
+            return `${typeLabel}: ${basename}`;
+        }
+        // Code review: use commit SHA or diff type
+        if (payload.diffType) {
+            const sha = payload.commitSha ? ` (${String(payload.commitSha).substring(0, 7)})` : '';
+            return `${typeLabel}: ${payload.diffType}${sha}`;
+        }
+        // Custom: use data.prompt if available
+        if (payload.data && typeof payload.data.prompt === 'string' && payload.data.prompt.trim()) {
+            const snippet = payload.data.prompt.trim();
+            return snippet.length > 60 ? snippet.substring(0, 57) + '...' : snippet;
+        }
+    }
+
+    // Fallback: type label with timestamp
+    const now = new Date();
+    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `${typeLabel} @ ${time}`;
+}
+
 /**
  * Serialize a QueuedTask for JSON response.
  * Converts internal representation to a clean API response.
@@ -92,10 +139,15 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
 
             const priority: TaskPriority = VALID_PRIORITIES.has(body.priority) ? body.priority : 'normal';
 
+            const payload = body.payload || { data: {} };
+            const displayName = (typeof body.displayName === 'string' && body.displayName.trim())
+                ? body.displayName.trim()
+                : generateDisplayName(body.type, payload);
+
             const input: CreateTaskInput = {
                 type: body.type,
                 priority,
-                payload: body.payload || { data: {} },
+                payload,
                 config: {
                     model: body.config?.model,
                     timeoutMs: body.config?.timeoutMs,
@@ -103,7 +155,7 @@ export function registerQueueRoutes(routes: Route[], queueManager: TaskQueueMana
                     retryAttempts: body.config?.retryAttempts,
                     retryDelayMs: body.config?.retryDelayMs,
                 },
-                displayName: body.displayName,
+                displayName,
             };
 
             try {

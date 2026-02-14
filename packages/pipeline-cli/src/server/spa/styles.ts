@@ -739,6 +739,11 @@ export function getDashboardStyles(): string {
             color: var(--text-secondary);
             margin-bottom: 4px;
         }
+        .enqueue-optional {
+            font-weight: 400;
+            font-size: 11px;
+            opacity: 0.7;
+        }
         .enqueue-field input,
         .enqueue-field select,
         .enqueue-field textarea {

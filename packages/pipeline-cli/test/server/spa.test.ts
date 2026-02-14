@@ -594,6 +594,16 @@ describe('Queue panel HTML', () => {
         expect(html).toContain('id="enqueue-prompt"');
     });
 
+    it('has optional task name field (not required)', () => {
+        const html = generateDashboardHtml();
+        // Name input should NOT have required attribute
+        const nameInputMatch = html.match(/<input[^>]*id="enqueue-name"[^>]*>/);
+        expect(nameInputMatch).toBeTruthy();
+        expect(nameInputMatch![0]).not.toContain('required');
+        // Should show optional hint
+        expect(html).toContain('auto-generated if empty');
+    });
+
     it('contains enqueue dialog with task type options', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('Custom');
@@ -713,6 +723,10 @@ describe('Queue styles', () => {
     it('defines queue count badge styles', () => {
         expect(styles).toContain('.queue-count');
         expect(styles).toContain('.queue-paused-badge');
+    });
+
+    it('defines optional hint style for task name label', () => {
+        expect(styles).toContain('.enqueue-optional');
     });
 
     it('hides task actions until hover', () => {

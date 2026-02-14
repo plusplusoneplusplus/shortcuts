@@ -103,8 +103,8 @@ ${getDashboardStyles()}
             </div>
             <form id="enqueue-form" class="enqueue-form">
                 <div class="enqueue-field">
-                    <label for="enqueue-name">Task Name</label>
-                    <input type="text" id="enqueue-name" placeholder="e.g., Review PR #42" required />
+                    <label for="enqueue-name">Task Name <span class="enqueue-optional">(optional &mdash; auto-generated if empty)</span></label>
+                    <input type="text" id="enqueue-name" placeholder="e.g., Review PR #42" />
                 </div>
                 <div class="enqueue-field-row">
                     <div class="enqueue-field">
