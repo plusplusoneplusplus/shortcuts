@@ -26,6 +26,7 @@ export function getAdminScript(): string {
             if (!adminInitialized) {
                 initAdminEvents();
                 initGenerateEvents();
+                initPhase4ModuleList();
                 adminInitialized = true;
             }
             loadAdminSeeds();
@@ -239,6 +240,12 @@ export function getAdminScript(): string {
                     statusBar.classList.remove('hidden');
                 } else {
                     generateRunning = false;
+                }
+
+                // Populate Phase 4 module list if available
+                var phase4Data = data.phases['4'];
+                if (phase4Data && phase4Data.modules) {
+                    renderPhase4ModuleList(phase4Data.modules);
                 }
             } catch (err) {
                 // Silently fail on status load
@@ -480,6 +487,131 @@ export function getAdminScript(): string {
                 await fetch('/api/admin/generate/cancel', { method: 'POST' });
             } catch (e) {
                 // Ignore cancel errors
+            }
+        }
+
+        // ================================================================
+        // Phase 4 Module List
+        // ================================================================
+
+        function initPhase4ModuleList() {
+            var toggle = document.getElementById('phase4-module-toggle');
+            if (!toggle) return;
+            toggle.addEventListener('click', function() {
+                var list = document.getElementById('phase4-module-list');
+                var expanded = toggle.classList.toggle('expanded');
+                if (list) {
+                    list.classList.toggle('expanded', expanded);
+                }
+            });
+        }
+
+        function renderPhase4ModuleList(modules) {
+            var toggle = document.getElementById('phase4-module-toggle');
+            var list = document.getElementById('phase4-module-list');
+            var countEl = document.getElementById('phase4-module-count');
+            if (!toggle || !list || !modules) return;
+
+            var keys = Object.keys(modules);
+            if (keys.length === 0) {
+                toggle.style.display = 'none';
+                return;
+            }
+
+            toggle.style.display = '';
+            countEl.textContent = keys.length;
+
+            var html = '';
+            keys.forEach(function(moduleId) {
+                var info = modules[moduleId];
+                var mod = moduleGraph ? moduleGraph.modules.find(function(m) { return m.id === moduleId; }) : null;
+                var name = mod ? mod.name : moduleId;
+                var badgeClass = info.cached ? 'cached' : 'missing';
+                var badgeText = info.cached ? '\\u2713' : '\\u2717';
+
+                html += '<div class="phase-module-row" id="phase4-mod-row-' + moduleId.replace(/[^a-z0-9-]/g, '_') + '">' +
+                    '<span class="phase-module-badge ' + badgeClass + '">' + badgeText + '</span>' +
+                    '<span class="phase-module-id">' + escapeHtml(moduleId) + '</span>' +
+                    '<span class="phase-module-name">' + escapeHtml(name) + '</span>' +
+                    '<button class="phase-module-run-btn" onclick="runModuleRegenFromAdmin(\\'' +
+                    moduleId.replace(/'/g, "\\\\'") + '\\')" title="Regenerate article for ' + escapeHtml(name) + '">Run</button>' +
+                    '</div>' +
+                    '<div class="phase-module-log" id="phase4-mod-log-' + moduleId.replace(/[^a-z0-9-]/g, '_') + '"></div>';
+            });
+
+            list.innerHTML = html;
+        }
+
+        async function runModuleRegenFromAdmin(moduleId) {
+            if (generateRunning) return;
+            generateRunning = true;
+
+            var safeId = moduleId.replace(/[^a-z0-9-]/g, '_');
+            var row = document.getElementById('phase4-mod-row-' + safeId);
+            var logEl = document.getElementById('phase4-mod-log-' + safeId);
+            var btn = row ? row.querySelector('.phase-module-run-btn') : null;
+
+            if (btn) { btn.disabled = true; btn.textContent = '...'; }
+            if (logEl) { logEl.textContent = 'Regenerating...'; logEl.classList.add('visible'); }
+
+            setAllPhaseButtonsDisabled(true);
+
+            try {
+                var response = await fetch('/api/admin/generate/module/' + encodeURIComponent(moduleId), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ force: document.getElementById('generate-force').checked })
+                });
+
+                if (response.status === 409) {
+                    if (logEl) logEl.textContent = 'Error: Generation already in progress';
+                    return;
+                }
+
+                if (!response.ok && response.headers.get('content-type')?.indexOf('text/event-stream') === -1) {
+                    var errData = await response.json();
+                    if (logEl) logEl.textContent = 'Error: ' + (errData.error || 'Unknown error');
+                    return;
+                }
+
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                var buffer = '';
+
+                while (true) {
+                    var result = await reader.read();
+                    if (result.done) break;
+                    buffer += decoder.decode(result.value, { stream: true });
+                    var lines = buffer.split('\\n');
+                    buffer = lines.pop() || '';
+                    for (var li = 0; li < lines.length; li++) {
+                        var line = lines[li];
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            var event = JSON.parse(line.substring(6));
+                            if (logEl) {
+                                if (event.type === 'log' || event.type === 'status') {
+                                    logEl.textContent += '\\n' + event.message;
+                                    logEl.scrollTop = logEl.scrollHeight;
+                                }
+                                if (event.type === 'done') {
+                                    var dur = event.duration ? ' (' + formatDuration(event.duration) + ')' : '';
+                                    logEl.textContent += '\\n' + (event.success ? 'Done' + dur : 'Failed: ' + (event.error || 'Unknown'));
+                                }
+                                if (event.type === 'error') {
+                                    logEl.textContent += '\\nError: ' + event.message;
+                                }
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                }
+            } catch (err) {
+                if (logEl) logEl.textContent += '\\nConnection error: ' + err.message;
+            } finally {
+                generateRunning = false;
+                setAllPhaseButtonsDisabled(false);
+                if (btn) { btn.disabled = false; btn.textContent = 'Run'; }
+                loadGenerateStatus();
             }
         }`;
 

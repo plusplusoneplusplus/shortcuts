@@ -17,9 +17,9 @@ import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
 import { sendSSE } from './ask-handler';
-import { sendJson, send400, send500, readBody } from './router';
+import { sendJson, send400, send404, send500, readBody } from './router';
 import { getErrorMessage } from '../utils/error-utils';
-import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis } from '../types';
+import type { GenerateCommandOptions, ModuleGraph, ModuleAnalysis, GeneratedArticle } from '../types';
 import type { WikiData } from './wiki-data';
 import type { WebSocketServer } from './websocket';
 
@@ -91,6 +91,18 @@ export function handleGenerateRequest(
     // GET /api/admin/generate/status — Get phase cache status
     if (method === 'GET' && pathname === '/api/admin/generate/status') {
         handleGetGenerateStatus(res, context);
+        return true;
+    }
+
+    // POST /api/admin/generate/module/:moduleId — Regenerate single module article
+    const moduleMatch = pathname.match(/^\/api\/admin\/generate\/module\/(.+)$/);
+    if (method === 'POST' && moduleMatch) {
+        const moduleId = decodeURIComponent(moduleMatch[1]);
+        handleModuleRegenerate(req, res, moduleId, context).catch(() => {
+            if (!res.headersSent) {
+                send500(res, 'Failed to regenerate module article');
+            }
+        });
         return true;
     }
 
@@ -471,6 +483,192 @@ async function runGeneration(
 }
 
 // ============================================================================
+// Single-Module Article Regeneration
+// ============================================================================
+
+/**
+ * POST /api/admin/generate/module/:moduleId — Regenerate article for a single module.
+ * Streams progress via SSE. Uses cached analysis + module graph.
+ */
+async function handleModuleRegenerate(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    moduleId: string,
+    context: GenerateHandlerContext
+): Promise<void> {
+    // 503: No repo path configured
+    if (!context.repoPath) {
+        sendJson(res, { error: 'No repository path configured. Start server with --generate <repo-path>.' }, 503);
+        return;
+    }
+
+    // 409: Another generation is already running
+    if (generationState?.running) {
+        sendJson(res, { error: 'A generation is already in progress' }, 409);
+        return;
+    }
+
+    // Validate module exists in graph
+    if (!context.wikiData) {
+        send500(res, 'Wiki data not loaded');
+        return;
+    }
+
+    const graph = context.wikiData.graph;
+    const moduleInfo = graph.modules.find(m => m.id === moduleId);
+    if (!moduleInfo) {
+        send404(res, `Module not found: ${moduleId}`);
+        return;
+    }
+
+    // Parse optional request body
+    const body = await readBody(req);
+    let force = false;
+    try {
+        if (body.trim()) {
+            const parsed = JSON.parse(body);
+            force = !!parsed.force;
+        }
+    } catch {
+        // Ignore parse errors — use defaults
+    }
+
+    // Load analysis for this module
+    const { getCachedAnalysis } = await import('../cache');
+    const outputDir = context.wikiDir;
+    const analysis = getCachedAnalysis(moduleId, outputDir);
+
+    // Also check in-memory analyses from wikiData
+    const detail = context.wikiData.getModuleDetail(moduleId);
+    const moduleAnalysis = analysis || detail?.analysis;
+
+    if (!moduleAnalysis) {
+        sendJson(res, { error: `No analysis cached for module "${moduleId}". Run Phase 3 (Analysis) first.` }, 412);
+        return;
+    }
+
+    // Set up SSE response
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+    });
+
+    // Set generation state to block concurrent runs
+    generationState = {
+        running: true,
+        currentPhase: 4,
+        cancelled: false,
+        startTime: Date.now(),
+    };
+
+    try {
+        await runModuleRegeneration(res, context, moduleId, moduleAnalysis, graph, force);
+    } catch (error) {
+        const message = getErrorMessage(error);
+        sendSSE(res, { type: 'error', message });
+        sendSSE(res, { type: 'done', success: false, moduleId, error: message });
+    } finally {
+        generationState = null;
+        res.end();
+    }
+}
+
+/**
+ * Execute single-module article regeneration.
+ */
+async function runModuleRegeneration(
+    res: http.ServerResponse,
+    context: GenerateHandlerContext,
+    moduleId: string,
+    analysis: ModuleAnalysis,
+    graph: ModuleGraph,
+    _force: boolean
+): Promise<void> {
+    const outputDir = context.wikiDir;
+    const repoPath = path.resolve(context.repoPath!);
+    const startTime = Date.now();
+
+    const moduleInfo = graph.modules.find(m => m.id === moduleId)!;
+    const moduleName = moduleInfo.name || moduleId;
+
+    sendSSE(res, { type: 'status', state: 'running', moduleId, message: `Generating article for ${moduleName}...` });
+
+    // Check AI availability
+    const { checkAIAvailability } = await import('../ai-invoker');
+    const availability = await checkAIAvailability();
+    if (!availability.available) {
+        sendSSE(res, { type: 'error', message: `Copilot SDK not available: ${availability.reason || 'Unknown'}` });
+        sendSSE(res, { type: 'done', success: false, moduleId, error: 'AI service unavailable' });
+        return;
+    }
+
+    // Build prompt using existing utilities
+    const { buildModuleArticlePrompt } = await import('../writing/prompts');
+    const prompt = buildModuleArticlePrompt(analysis, graph, 'normal');
+
+    sendSSE(res, { type: 'log', message: 'Sending to AI model...' });
+
+    // Create a writing invoker and invoke AI
+    const { createWritingInvoker } = await import('../ai-invoker');
+    const invoker = createWritingInvoker({ repoPath });
+    const aiResult = await invoker(prompt);
+
+    if (!aiResult.success || !aiResult.response) {
+        const errMsg = aiResult.error || 'AI returned empty response';
+        sendSSE(res, { type: 'error', message: errMsg });
+        sendSSE(res, { type: 'done', success: false, moduleId, error: errMsg });
+        return;
+    }
+
+    sendSSE(res, { type: 'log', message: 'Article generated, saving...' });
+
+    // Build the GeneratedArticle
+    const { normalizeModuleId } = await import('../schemas');
+    const areaId = moduleInfo.area;
+    const article: GeneratedArticle = {
+        type: 'module',
+        slug: normalizeModuleId(moduleId),
+        title: moduleName,
+        content: aiResult.response,
+        moduleId,
+        areaId,
+    };
+
+    // Save to cache
+    const { saveArticle } = await import('../cache/article-cache');
+    const { getFolderHeadHash } = await import('../cache/git-utils');
+    const gitHash = await getFolderHeadHash(repoPath) || 'unknown';
+    saveArticle(moduleId, article, outputDir, gitHash);
+
+    // Write markdown file to disk
+    const { getArticleFilePath, normalizeLineEndings } = await import('../writing/file-writer');
+    const resolvedDir = path.resolve(outputDir);
+    const filePath = getArticleFilePath(article, resolvedDir);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, normalizeLineEndings(article.content), 'utf-8');
+
+    // Reload wiki data
+    if (context.wikiData) {
+        try {
+            context.wikiData.reload();
+            sendSSE(res, { type: 'log', message: 'Wiki data reloaded' });
+        } catch (error) {
+            sendSSE(res, { type: 'log', message: `Warning: Failed to reload wiki data: ${getErrorMessage(error)}` });
+        }
+    }
+
+    // Broadcast WebSocket refresh
+    if (context.wsServer) {
+        context.wsServer.broadcast({ type: 'reload', modules: [moduleId] });
+    }
+
+    const duration = Date.now() - startTime;
+    sendSSE(res, { type: 'done', success: true, moduleId, duration, message: 'Article regenerated' });
+}
+
+// ============================================================================
 // Cancel Generation
 // ============================================================================
 
@@ -502,7 +700,7 @@ function handleGetGenerateStatus(
         const outputDir = context.wikiDir;
         const available = !!context.repoPath;
 
-        const phases: Record<string, { cached: boolean; timestamp?: string }> = {};
+        const phases: Record<string, { cached: boolean; timestamp?: string; modules?: Record<string, { cached: boolean; timestamp?: string }> }> = {};
 
         if (available) {
             // Phase 1: Check graph cache
@@ -514,8 +712,24 @@ function handleGetGenerateStatus(
             // Phase 3: Check analysis cache
             phases['3'] = checkAnalysisCacheStatus(outputDir);
 
-            // Phase 4: Check article cache
+            // Phase 4: Check article cache + per-module article status
             phases['4'] = checkArticleCacheStatus(outputDir);
+
+            // Add per-module article cache status to Phase 4
+            if (context.wikiData) {
+                try {
+                    const modules: Record<string, { cached: boolean; timestamp?: string }> = {};
+                    const graph = context.wikiData.graph;
+                    const articlesDir = path.join(path.resolve(outputDir), '.wiki-cache', 'articles');
+
+                    for (const mod of graph.modules) {
+                        modules[mod.id] = getModuleArticleCacheStatus(articlesDir, mod.id, mod.area);
+                    }
+                    phases['4'].modules = modules;
+                } catch {
+                    // Ignore errors reading per-module status
+                }
+            }
 
             // Phase 5: Check website existence
             phases['5'] = checkWebsiteCacheStatus(outputDir);
@@ -582,6 +796,38 @@ function checkWebsiteCacheStatus(outputDir: string): { cached: boolean; timestam
     } catch {
         return { cached: false };
     }
+}
+
+/**
+ * Check per-module article cache status.
+ * Looks in both flat and area-scoped cache directories.
+ */
+function getModuleArticleCacheStatus(
+    articlesDir: string,
+    moduleId: string,
+    areaId?: string
+): { cached: boolean; timestamp?: string } {
+    // Check area-scoped path first, then flat path
+    const pathsToTry = areaId
+        ? [path.join(articlesDir, areaId, `${moduleId}.json`), path.join(articlesDir, `${moduleId}.json`)]
+        : [path.join(articlesDir, `${moduleId}.json`)];
+
+    for (const cachePath of pathsToTry) {
+        try {
+            if (fs.existsSync(cachePath)) {
+                const content = fs.readFileSync(cachePath, 'utf-8');
+                const parsed = JSON.parse(content);
+                if (parsed.article && parsed.article.slug) {
+                    const timestamp = parsed.timestamp ? new Date(parsed.timestamp).toISOString() : undefined;
+                    return { cached: true, timestamp };
+                }
+            }
+        } catch {
+            // Skip invalid cache files
+        }
+    }
+
+    return { cached: false };
 }
 
 // ============================================================================

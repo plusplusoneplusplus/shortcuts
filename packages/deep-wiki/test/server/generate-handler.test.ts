@@ -611,4 +611,195 @@ describe('Admin handler routing for generate', () => {
         const { status } = await fetchJson(`${s.url}/api/admin/generate/unknown`);
         expect(status).toBe(404);
     });
+
+    it('should route POST /api/admin/generate/module/:moduleId', async () => {
+        const { wikiDir, repoPath } = setupWikiDir({ withCacheDir: false });
+        const s = await startServer(wikiDir, { repoPath });
+
+        // Should return 412 (no analysis cached) — proves the route was matched
+        const { status } = await postJson(`${s.url}/api/admin/generate/module/core`, {});
+        expect(status).toBe(412);
+    });
+});
+
+// ============================================================================
+// POST /api/admin/generate/module/:moduleId (validation)
+// ============================================================================
+
+describe('POST /api/admin/generate/module/:moduleId (validation)', () => {
+    it('should return 503 when no repo path is configured', async () => {
+        const { wikiDir } = setupWikiDir();
+        const s = await startServer(wikiDir);
+
+        const { status, body } = await postJson(`${s.url}/api/admin/generate/module/core`, {});
+        expect(status).toBe(503);
+        expect((body as { error: string }).error).toContain('repository path');
+    });
+
+    it('should return 404 when module is not in graph', async () => {
+        const { wikiDir, repoPath } = setupWikiDir();
+        const s = await startServer(wikiDir, { repoPath });
+
+        const { status, body } = await postJson(`${s.url}/api/admin/generate/module/nonexistent-module`, {});
+        expect(status).toBe(404);
+        expect((body as { error: string }).error).toContain('not found');
+    });
+
+    it('should return 412 when no analysis is cached for the module', async () => {
+        // Setup wiki dir without analysis cache for 'core'
+        const { wikiDir, repoPath } = setupWikiDir({ withCacheDir: false });
+        const s = await startServer(wikiDir, { repoPath });
+
+        const { status, body } = await postJson(`${s.url}/api/admin/generate/module/core`, {});
+        expect(status).toBe(412);
+        expect((body as { error: string }).error).toContain('analysis');
+    });
+
+    it('should handle URL-encoded module IDs', async () => {
+        const { wikiDir, repoPath } = setupWikiDir();
+        const s = await startServer(wikiDir, { repoPath });
+
+        const { status } = await postJson(`${s.url}/api/admin/generate/module/${encodeURIComponent('nonexistent/module')}`, {});
+        expect(status).toBe(404);
+    });
+});
+
+// ============================================================================
+// GET /api/admin/generate/status (per-module extension)
+// ============================================================================
+
+describe('GET /api/admin/generate/status (per-module)', () => {
+    it('should include per-module article cache status in phase 4', async () => {
+        const { wikiDir, repoPath } = setupWikiDir({ withCacheDir: true });
+        const s = await startServer(wikiDir, { repoPath });
+
+        const { status, body } = await fetchJson(`${s.url}/api/admin/generate/status`);
+        expect(status).toBe(200);
+
+        const result = body as { phases: Record<string, { cached: boolean; modules?: Record<string, { cached: boolean; timestamp?: string }> }> };
+        expect(result.phases['4']).toBeDefined();
+        expect(result.phases['4'].modules).toBeDefined();
+        expect(result.phases['4'].modules!['core']).toBeDefined();
+    });
+
+    it('should report uncached module when no article cache file exists', async () => {
+        const { wikiDir, repoPath } = setupWikiDir({ withCacheDir: true });
+        const s = await startServer(wikiDir, { repoPath });
+
+        const { body } = await fetchJson(`${s.url}/api/admin/generate/status`);
+        const result = body as { phases: Record<string, { modules?: Record<string, { cached: boolean }> }> };
+
+        // No individual article cache file for 'core' was created in setupWikiDir
+        expect(result.phases['4'].modules!['core'].cached).toBe(false);
+    });
+
+    it('should report cached module when article cache file exists', async () => {
+        const { wikiDir, repoPath } = setupWikiDir({ withCacheDir: true });
+
+        // Create a cached article file for 'core'
+        const articlesDir = path.join(wikiDir, '.wiki-cache', 'articles');
+        fs.writeFileSync(
+            path.join(articlesDir, 'core.json'),
+            JSON.stringify({
+                article: { type: 'module', slug: 'core', title: 'Core', content: '# Core', moduleId: 'core' },
+                gitHash: 'abc123',
+                timestamp: Date.now(),
+            }),
+            'utf-8'
+        );
+
+        const s = await startServer(wikiDir, { repoPath });
+        const { body } = await fetchJson(`${s.url}/api/admin/generate/status`);
+        const result = body as { phases: Record<string, { modules?: Record<string, { cached: boolean; timestamp?: string }> }> };
+
+        expect(result.phases['4'].modules!['core'].cached).toBe(true);
+        expect(result.phases['4'].modules!['core'].timestamp).toBeDefined();
+    });
+
+    it('should not include modules when no repo path', async () => {
+        const { wikiDir } = setupWikiDir();
+        const s = await startServer(wikiDir);
+
+        const { body } = await fetchJson(`${s.url}/api/admin/generate/status`);
+        const result = body as { phases: Record<string, unknown> };
+
+        // No phases when not available
+        expect(Object.keys(result.phases).length).toBe(0);
+    });
+});
+
+// ============================================================================
+// SPA Module Regeneration UI
+// ============================================================================
+
+describe('SPA module regeneration UI', () => {
+    it('should include regenerate button in module page script', async () => {
+        const { wikiDir } = setupWikiDir();
+        const s = await startServer(wikiDir);
+
+        const { body } = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+            http.get(s.url, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => resolve({ status: res.statusCode || 0, body: data }));
+            }).on('error', reject);
+        });
+
+        expect(body).toContain('module-regen-btn');
+        expect(body).toContain('regenerateModule');
+        expect(body).toContain('checkRegenAvailability');
+    });
+
+    it('should include Phase 4 module list HTML elements', async () => {
+        const { wikiDir } = setupWikiDir();
+        const s = await startServer(wikiDir);
+
+        const { body } = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+            http.get(s.url, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => resolve({ status: res.statusCode || 0, body: data }));
+            }).on('error', reject);
+        });
+
+        expect(body).toContain('phase4-module-toggle');
+        expect(body).toContain('phase4-module-list');
+        expect(body).toContain('phase4-module-count');
+    });
+
+    it('should include module list JavaScript functions', async () => {
+        const { wikiDir } = setupWikiDir();
+        const s = await startServer(wikiDir);
+
+        const { body } = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+            http.get(s.url, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => resolve({ status: res.statusCode || 0, body: data }));
+            }).on('error', reject);
+        });
+
+        expect(body).toContain('initPhase4ModuleList');
+        expect(body).toContain('renderPhase4ModuleList');
+        expect(body).toContain('runModuleRegenFromAdmin');
+    });
+
+    it('should include regeneration CSS styles', async () => {
+        const { wikiDir } = setupWikiDir();
+        const s = await startServer(wikiDir);
+
+        const { body } = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+            http.get(s.url, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => resolve({ status: res.statusCode || 0, body: data }));
+            }).on('error', reject);
+        });
+
+        expect(body).toContain('.module-regen-btn');
+        expect(body).toContain('.regen-overlay');
+        expect(body).toContain('.phase-module-list');
+        expect(body).toContain('.phase-module-row');
+        expect(body).toContain('.phase-module-run-btn');
+    });
 });

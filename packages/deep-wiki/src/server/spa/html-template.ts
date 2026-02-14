@@ -191,6 +191,10 @@ ${enableSearch ? `            <div class="search-box">
                                             <button class="admin-btn admin-btn-save phase-run-btn" id="phase-run-4" data-phase="4">Run</button>
                                         </div>
                                         <div class="phase-log hidden" id="phase-log-4"></div>
+                                        <button class="phase-module-list-toggle" id="phase4-module-toggle" style="display: none;">
+                                            <span class="toggle-arrow">&#x25B6;</span> Modules (<span id="phase4-module-count">0</span>)
+                                        </button>
+                                        <div class="phase-module-list" id="phase4-module-list"></div>
                                     </div>
                                     <div class="generate-phase-card" data-phase="5" id="phase-card-5">
                                         <div class="phase-card-header">

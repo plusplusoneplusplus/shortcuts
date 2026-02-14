@@ -147,6 +147,13 @@ ${opts.enableAI ? `            updateAskSubject(mod.name);` : ''}
         function renderModulePage(mod, markdown) {
             var html = '';
 
+            // Regenerate button (visible when generation is available)
+            html += '<div class="module-page-header" style="overflow: hidden; margin-bottom: 8px;">' +
+                '<button class="module-regen-btn" id="module-regen-btn" ' +
+                'onclick="regenerateModule(\\'' + mod.id.replace(/'/g, "\\\\'") + '\\')" ' +
+                'style="display: none;" title="Regenerate this module\\u2019s article using the latest analysis">' +
+                '&#x1F504; Regenerate</button></div>';
+
             // Source files section
             if (mod.keyFiles && mod.keyFiles.length > 0) {
                 html += '<div class="source-files-section" id="source-files">' +
@@ -162,13 +169,127 @@ ${opts.enableAI ? `            updateAskSubject(mod.name);` : ''}
             }
 
             // Markdown content
-            html += '<div class="markdown-body">' + marked.parse(markdown) + '</div>';
+            html += '<div class="markdown-body" id="module-article-body">' + marked.parse(markdown) + '</div>';
             document.getElementById('content').innerHTML = html;
 
             // Post-processing
             processMarkdownContent();
             buildToc();
 ${opts.enableAI ? `            addDeepDiveButton(mod.id);` : ''}
+
+            // Check generation availability and show regen button
+            checkRegenAvailability(mod.id);
+        }
+
+        var regenAvailable = null;
+
+        async function checkRegenAvailability(moduleId) {
+            try {
+                if (regenAvailable === null) {
+                    var res = await fetch('/api/admin/generate/status');
+                    var data = await res.json();
+                    regenAvailable = data.available || false;
+                }
+                var btn = document.getElementById('module-regen-btn');
+                if (btn && regenAvailable) {
+                    btn.style.display = '';
+                }
+            } catch(e) {
+                // Silently fail
+            }
+        }
+
+        async function regenerateModule(moduleId) {
+            var btn = document.getElementById('module-regen-btn');
+            if (!btn || btn.disabled) return;
+
+            // Confirm
+            if (!confirm('Regenerate the article for this module?\\nThis will replace the current article with a freshly generated one.')) return;
+
+            btn.disabled = true;
+            btn.innerHTML = '&#x23F3; Regenerating\\u2026';
+            btn.classList.add('regen-running');
+
+            // Add loading overlay to article body
+            var articleBody = document.getElementById('module-article-body');
+            if (articleBody) {
+                articleBody.classList.add('regen-overlay');
+                var overlayText = document.createElement('div');
+                overlayText.className = 'regen-overlay-text';
+                overlayText.textContent = 'Regenerating article\\u2026';
+                articleBody.appendChild(overlayText);
+            }
+
+            try {
+                var response = await fetch('/api/admin/generate/module/' + encodeURIComponent(moduleId), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ force: false })
+                });
+
+                if (!response.ok && response.headers.get('content-type')?.indexOf('text/event-stream') === -1) {
+                    var errData = await response.json();
+                    throw new Error(errData.error || 'Generation failed (HTTP ' + response.status + ')');
+                }
+
+                // Parse SSE stream
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                var buffer = '';
+                var success = false;
+                var duration = 0;
+
+                while (true) {
+                    var result = await reader.read();
+                    if (result.done) break;
+
+                    buffer += decoder.decode(result.value, { stream: true });
+                    var lines = buffer.split('\\n');
+                    buffer = lines.pop() || '';
+
+                    for (var li = 0; li < lines.length; li++) {
+                        var line = lines[li];
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            var event = JSON.parse(line.substring(6));
+                            if (event.type === 'done') {
+                                success = event.success;
+                                duration = event.duration || 0;
+                            }
+                            if (event.type === 'error') {
+                                throw new Error(event.message || 'Generation error');
+                            }
+                        } catch (parseErr) {
+                            if (parseErr.message && parseErr.message !== 'Generation error') continue;
+                            throw parseErr;
+                        }
+                    }
+                }
+
+                if (success) {
+                    btn.innerHTML = '&#x2705; Regenerated';
+                    btn.classList.remove('regen-running');
+                    btn.classList.add('regen-success');
+                    // Reload the module to show new content
+                    delete markdownCache[moduleId];
+                    setTimeout(function() {
+                        loadModule(moduleId, true);
+                    }, 800);
+                } else {
+                    throw new Error('Generation completed without success');
+                }
+            } catch (err) {
+                btn.innerHTML = '&#x1F504; Regenerate';
+                btn.classList.remove('regen-running');
+                btn.disabled = false;
+                if (articleBody) {
+                    articleBody.classList.remove('regen-overlay');
+                    var ot = articleBody.querySelector('.regen-overlay-text');
+                    if (ot) ot.remove();
+                }
+                alert('Regeneration failed: ' + err.message);
+            }
+        }
         }
 
         function toggleSourceFiles() {

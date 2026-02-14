@@ -1157,6 +1157,94 @@ ${getMermaidZoomStyles()}
             .phase-log { padding-left: 40px; }
             .generate-range-row { flex-direction: column; align-items: flex-start; }
         }
+
+        /* Module Regenerate Button (on module page) */
+        .module-regen-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px; border: none; border-radius: 6px;
+            background: var(--code-bg); color: var(--content-text);
+            font-size: 13px; font-weight: 500; cursor: pointer;
+            transition: background 0.15s, opacity 0.15s;
+            float: right; margin-top: -4px;
+        }
+        .module-regen-btn:hover { background: var(--sidebar-hover); }
+        .module-regen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .module-regen-btn.regen-running {
+            pointer-events: none; opacity: 0.8;
+        }
+        .module-regen-btn.regen-success {
+            background: rgba(34, 197, 94, 0.15); color: #22c55e;
+        }
+
+        /* Loading overlay during regeneration */
+        .regen-overlay {
+            position: relative;
+        }
+        .regen-overlay::after {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(var(--content-bg-rgb, 255, 255, 255), 0.7);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 10; border-radius: 8px;
+        }
+        .regen-overlay-text {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 11; font-size: 14px; color: var(--content-muted); font-weight: 500;
+        }
+
+        /* Phase 4 Module List (admin generate tab) */
+        .phase-module-list-toggle {
+            display: flex; align-items: center; gap: 6px;
+            padding: 8px 16px 8px 56px;
+            background: none; border: none; cursor: pointer;
+            font-size: 13px; color: var(--link-color); font-weight: 500;
+            width: 100%;
+        }
+        .phase-module-list-toggle:hover { text-decoration: underline; }
+        .phase-module-list-toggle .toggle-arrow {
+            display: inline-block; transition: transform 0.2s;
+            font-size: 10px;
+        }
+        .phase-module-list-toggle.expanded .toggle-arrow {
+            transform: rotate(90deg);
+        }
+        .phase-module-list {
+            display: none; padding: 0 16px 12px 56px;
+        }
+        .phase-module-list.expanded { display: block; }
+        .phase-module-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 6px 10px; border-radius: 6px;
+            font-size: 13px; border-bottom: 1px solid var(--content-border);
+        }
+        .phase-module-row:last-child { border-bottom: none; }
+        .phase-module-badge {
+            display: inline-block; width: 16px; text-align: center;
+            font-size: 12px; flex-shrink: 0;
+        }
+        .phase-module-badge.cached { color: #22c55e; }
+        .phase-module-badge.missing { color: #6b7280; }
+        .phase-module-id {
+            flex: 1; font-family: monospace; font-size: 12px; color: var(--content-muted);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .phase-module-name {
+            flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .phase-module-run-btn {
+            padding: 3px 10px; font-size: 12px; border: none; border-radius: 4px;
+            background: var(--link-color); color: #fff; cursor: pointer; flex-shrink: 0;
+        }
+        .phase-module-run-btn:hover { opacity: 0.85; }
+        .phase-module-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .phase-module-log {
+            display: none; padding: 4px 10px 4px 36px;
+            font-family: monospace; font-size: 11px; line-height: 1.4;
+            color: var(--content-muted); white-space: pre-wrap;
+            max-height: 120px; overflow-y: auto;
+            background: var(--code-bg); border-radius: 4px; margin: 4px 10px;
+        }
+        .phase-module-log.visible { display: block; }
     `;
 
     return styles;
