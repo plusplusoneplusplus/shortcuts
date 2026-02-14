@@ -351,6 +351,13 @@ export {
     ProcessStore
 } from './process-store';
 
+export {
+    FileProcessStore,
+    FileProcessStoreOptions,
+    getDefaultDataDir,
+    ensureDataDir
+} from './file-process-store';
+
 // ============================================================================
 // Map-Reduce Framework
 // ============================================================================
