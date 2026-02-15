@@ -161,9 +161,10 @@ describe('Dependency Graph — navigation', () => {
         expect(html).toContain('Dependency Graph');
     });
 
-    it('should NOT include Graph nav item when disabled', () => {
+    it('should always include Graph nav item since bundle includes all code', () => {
         const html = getNoGraphHtml();
-        expect(html).not.toContain('data-id="__graph"');
+        expect(html).toContain('data-id="__graph"');
+        expect(html).toContain('enableGraph: false');
     });
 
     it('should have onclick handler to showGraph', () => {
@@ -182,14 +183,16 @@ describe('Dependency Graph — showGraph function', () => {
         expect(html).toContain('function showGraph(');
     });
 
-    it('should NOT define showGraph when graph is disabled', () => {
+    it('should always include showGraph in bundle even when graph is disabled', () => {
         const html = getNoGraphHtml();
-        expect(html).not.toContain('function showGraph(');
+        expect(html).toContain('function showGraph(');
+        // Config should have enableGraph: false
+        expect(html).toContain('enableGraph: false');
     });
 
     it('should push graph state to history', () => {
         const html = getGraphHtml();
-        expect(html).toContain("history.pushState({ type: 'graph' }");
+        expect(html).toContain('history.pushState({ type: "graph" }');
     });
 
     it('should reference Dependency Graph text', () => {
@@ -215,8 +218,8 @@ describe('Dependency Graph — rendering', () => {
 
     it('should create SVG element via D3', () => {
         const html = getGraphHtml();
-        expect(html).toContain("d3.select('#graph-container')");
-        expect(html).toContain(".append('svg')");
+        expect(html).toContain('d3.select("#graph-container")');
+        expect(html).toContain('.append("svg")');
     });
 
     it('should create force simulation', () => {
@@ -230,7 +233,7 @@ describe('Dependency Graph — rendering', () => {
 
     it('should create arrow markers for directed edges', () => {
         const html = getGraphHtml();
-        expect(html).toContain("'arrowhead'");
+        expect(html).toContain('"arrowhead"');
         expect(html).toContain('marker-end');
     });
 
@@ -289,8 +292,8 @@ describe('Dependency Graph — category filter', () => {
 
     it('should add/remove disabled class on legend items', () => {
         const html = getGraphHtml();
-        expect(html).toContain("item.classList.remove('disabled')");
-        expect(html).toContain("item.classList.add('disabled')");
+        expect(html).toContain('item.classList.remove("disabled")');
+        expect(html).toContain('item.classList.add("disabled")');
     });
 });
 
@@ -340,26 +343,26 @@ describe('Dependency Graph — tooltips', () => {
 
     it('should show tooltip on mouseover', () => {
         const html = getGraphHtml();
-        expect(html).toContain("'mouseover'");
+        expect(html).toContain('"mouseover"');
         expect(html).toContain('graph-tooltip-name');
         expect(html).toContain('graph-tooltip-purpose');
     });
 
     it('should move tooltip on mousemove', () => {
         const html = getGraphHtml();
-        expect(html).toContain("'mousemove'");
+        expect(html).toContain('"mousemove"');
         expect(html).toContain('event.pageX');
     });
 
     it('should hide tooltip on mouseout', () => {
         const html = getGraphHtml();
-        expect(html).toContain("'mouseout'");
-        expect(html).toContain("display = 'none'");
+        expect(html).toContain('"mouseout"');
+        expect(html).toContain('display = "none"');
     });
 
     it('should show module complexity in tooltip', () => {
         const html = getGraphHtml();
-        expect(html).toContain("'Complexity: '");
+        expect(html).toContain('Complexity: ');
     });
 });
 
@@ -416,7 +419,7 @@ describe('Dependency Graph — drag', () => {
 describe('Dependency Graph — history', () => {
     it('should handle graph state in popstate', () => {
         const html = getGraphHtml();
-        expect(html).toContain("state.type === 'graph'");
+        expect(html).toContain('state.type === "graph"');
     });
 
     it('should call showGraph on graph popstate', () => {
@@ -433,13 +436,14 @@ describe('Dependency Graph — content style restoration', () => {
     it('should restore article styles when clicking graph node to navigate', () => {
         const html = getGraphHtml();
         // When navigating from graph to module, article styles are restored
-        expect(html).toContain("article.style.maxWidth = ''");
-        expect(html).toContain("article.style.padding = ''");
+        expect(html).toContain('articleEl.style.maxWidth = ""');
+        expect(html).toContain("articleEl.style.padding");
     });
 
     it('should clear TOC on showGraph', () => {
         const html = getGraphHtml();
-        expect(html).toContain("document.getElementById('toc-nav').innerHTML = ''");
+        expect(html).toContain('getElementById("toc-nav")');
+        expect(html).toContain('innerHTML = ""');
     });
 });
 

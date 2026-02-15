@@ -17,6 +17,10 @@ import { getAskAiScript } from './scripts/ask-ai';
 import { getWebSocketScript } from './scripts/websocket';
 import { getAdminScript } from './scripts/admin';
 
+/**
+ * @deprecated Use the esbuild-bundled client/dist/bundle.js instead.
+ * Kept for backward compatibility with existing tests.
+ */
 export function getSpaScript(opts: ScriptOptions): string {
     return getCoreScript(opts.defaultTheme) +
         getThemeScript() +

@@ -13,14 +13,17 @@ import * as path from 'path';
 
 import type { DashboardOptions } from './types';
 import { escapeHtml } from './helpers';
-import { getDashboardStyles } from './styles';
 import { getAllModels } from '@plusplusoneplusplus/pipeline-core';
 
+/** Read the esbuild-bundled client CSS (built by npm run build:client). */
+const bundleCss = fs.readFileSync(
+    path.join(__dirname, 'client', 'dist', 'bundle.css'), 'utf-8'
+);
+
 /** Read the esbuild-bundled client JS (built by npm run build:client). */
-function getClientBundle(): string {
-    const bundlePath = path.join(__dirname, 'client', 'dist', 'bundle.js');
-    return fs.readFileSync(bundlePath, 'utf8');
-}
+const bundleJs = fs.readFileSync(
+    path.join(__dirname, 'client', 'dist', 'bundle.js'), 'utf-8'
+);
 
 export function generateDashboardHtml(options: DashboardOptions = {}): string {
     const {
@@ -39,7 +42,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHtml(title)}</title>
     <style>
-${getDashboardStyles()}
+${bundleCss}
     </style>
 </head>
 <body>
@@ -166,7 +169,7 @@ ${getAllModels().map(m => `                            <option value="${escapeHt
         };
     </script>
     <script>
-${getClientBundle()}
+${bundleJs}
     </script>
 </body>
 </html>`;

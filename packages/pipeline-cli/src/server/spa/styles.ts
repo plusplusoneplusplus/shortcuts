@@ -13,6 +13,10 @@ const cssContent = fs.readFileSync(
     path.join(__dirname, 'client', 'styles.css'), 'utf-8'
 );
 
+/**
+ * @deprecated Use the esbuild-bundled client/dist/bundle.css instead.
+ * Kept for backward compatibility with existing tests.
+ */
 export function getDashboardStyles(): string {
     return cssContent;
 }

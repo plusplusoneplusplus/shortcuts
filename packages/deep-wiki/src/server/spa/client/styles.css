@@ -1,3 +1,6 @@
+/* Include ask-widget styles unconditionally; unused selectors have zero runtime cost */
+@import './ask-widget.css';
+
 :root {
     --sidebar-bg: #ffffff;
     --sidebar-header-bg: #ffffff;

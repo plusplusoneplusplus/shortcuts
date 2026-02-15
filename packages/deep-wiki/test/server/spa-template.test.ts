@@ -113,7 +113,7 @@ describe('generateSpaHtml — server mode', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain("fetch('/api/graph')");
+        expect(html).toContain('fetch("/api/graph")');
     });
 
     it('should fetch module data from /api/modules/', () => {
@@ -121,7 +121,7 @@ describe('generateSpaHtml — server mode', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain("fetch('/api/modules/'");
+        expect(html).toContain('fetch("/api/modules/"');
     });
 
     it('should fetch special pages from /api/pages/', () => {
@@ -129,7 +129,7 @@ describe('generateSpaHtml — server mode', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain("fetch('/api/pages/'");
+        expect(html).toContain('fetch("/api/pages/"');
     });
 
     it('should use a markdown cache for fetched content', () => {
@@ -288,12 +288,12 @@ describe('generateSpaHtml — floating ask widget layout', () => {
         expect(html).toContain('position: fixed');
     });
 
-    it('should NOT add padding-bottom to app-layout when AI is disabled', () => {
+    it('should always include ask-widget CSS in the bundle', () => {
         const html = generateSpaHtml({
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).not.toContain('.ask-widget');
+        expect(html).toContain('.ask-widget');
     });
 
     it('should include responsive adjustments for ask widget on mobile', () => {
@@ -301,7 +301,8 @@ describe('generateSpaHtml — floating ask widget layout', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: true, enableGraph: false,
         });
-        expect(html).toContain('.ask-widget { bottom:');
+        expect(html).toContain('.ask-widget {');
+        expect(html).toContain('bottom:');
     });
 
     it('should render ask-widget as direct child of body', () => {
@@ -365,7 +366,7 @@ describe('generateSpaHtml — browser history', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain("addEventListener('popstate'");
+        expect(html).toContain('addEventListener("popstate"');
     });
 });
 
@@ -518,7 +519,8 @@ describe('generateSpaHtml — TOC sidebar', () => {
             enableAI: false, enableGraph: false,
         });
         expect(html).toContain('@media (max-width: 1024px)');
-        expect(html).toContain('.toc-sidebar { display: none; }');
+        expect(html).toContain('.toc-sidebar');
+        expect(html).toContain('display: none');
     });
 });
 
@@ -579,7 +581,8 @@ describe('generateSpaHtml — sidebar collapse/expand', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain("document.getElementById('sidebar-collapse').addEventListener('click'");
+        expect(html).toContain('getElementById("sidebar-collapse")');
+        expect(html).toContain('addEventListener("click"');
     });
 
     it('should include updateSidebarCollapseBtn function', () => {
@@ -595,8 +598,8 @@ describe('generateSpaHtml — sidebar collapse/expand', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain("localStorage.setItem('deep-wiki-sidebar-collapsed'");
-        expect(html).toContain("localStorage.getItem('deep-wiki-sidebar-collapsed')");
+        expect(html).toContain('localStorage.setItem("deep-wiki-sidebar-collapsed"');
+        expect(html).toContain('localStorage.getItem("deep-wiki-sidebar-collapsed")');
     });
 
     it('should restore sidebar collapsed state on load', () => {
@@ -604,7 +607,7 @@ describe('generateSpaHtml — sidebar collapse/expand', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('restoreSidebarState');
+        expect(html).toContain('initializeSidebar');
     });
 
     it('should update button icon when toggling collapse', () => {
@@ -621,7 +624,8 @@ describe('generateSpaHtml — sidebar collapse/expand', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('.sidebar-collapse-btn { display: none; }');
+        expect(html).toContain('.sidebar-collapse-btn');
+        expect(html).toContain('display: none');
     });
 
     it('should include sidebar collapse button in all themes', () => {
@@ -672,7 +676,7 @@ describe('generateSpaHtml — nav sections', () => {
             enableAI: false, enableGraph: false,
         });
         // buildCategorySidebar now uses nav-area-group style like buildAreaSidebar
-        expect(html).toContain("group.className = 'nav-area-group'");
+        expect(html).toContain('group.className = "nav-area-group"');
     });
 });
 
@@ -746,7 +750,7 @@ describe('generateSpaHtml — area-based sidebar', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain("'__other'");
+        expect(html).toContain('"__other"');
     });
 
     it('should include data-area-id attribute on area items', () => {
@@ -779,7 +783,8 @@ describe('generateSpaHtml — area-based sidebar', () => {
             theme: 'auto', title: 'Test', enableSearch: true,
             enableAI: false, enableGraph: false,
         });
-        expect(html).toContain('.nav-area-children { padding-left: 8px; }');
+        expect(html).toContain('nav-area-children');
+        expect(html).toContain('padding-left: 8px');
     });
 
     it('should set active state on area modules via setActive', () => {
@@ -812,7 +817,7 @@ describe('generateSpaHtml — area-based sidebar', () => {
             enableAI: false, enableGraph: false,
         });
         // showHome should check for areas and group accordingly
-        expect(html).toContain('var hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0');
+        expect(html).toContain('hasAreas = moduleGraph.areas && moduleGraph.areas.length > 0');
     });
 
     it('should show area names and descriptions in home overview', () => {
@@ -872,7 +877,7 @@ describe('generateSpaHtml — cross-theme', () => {
                 theme, title: 'Test', enableSearch: true,
                 enableAI: false, enableGraph: false,
             });
-            expect(html).toContain("fetch('/api/graph')");
+            expect(html).toContain('fetch("/api/graph")');
             expect(html).toContain('renderMarkdownContent');
             expect(html).toContain('history.pushState');
             expect(html).toContain('initMermaid');

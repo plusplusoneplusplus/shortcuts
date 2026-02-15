@@ -111,7 +111,7 @@ describe('Bundle Configuration', () => {
         });
 
         it('should have files array limited to bundle output only', () => {
-            expect(pkg.files).toEqual(['dist/index.js', 'dist/index.js.map']);
+            expect(pkg.files).toEqual(['dist/index.js', 'dist/index.js.map', 'dist/server/spa/client/dist']);
         });
 
         it('should have publishConfig with public access', () => {

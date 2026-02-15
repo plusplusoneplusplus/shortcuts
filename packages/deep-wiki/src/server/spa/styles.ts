@@ -15,6 +15,10 @@ const askWidgetCss = fs.readFileSync(
     path.join(__dirname, 'client', 'ask-widget.css'), 'utf-8'
 );
 
+/**
+ * @deprecated Use the esbuild-bundled client/dist/bundle.css instead.
+ * Kept for backward compatibility with existing tests.
+ */
 export function getSpaStyles(enableAI: boolean): string {
     return enableAI ? baseCss + '\n' + askWidgetCss : baseCss;
 }

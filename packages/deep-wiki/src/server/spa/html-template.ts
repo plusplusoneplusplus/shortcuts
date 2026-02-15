@@ -5,10 +5,21 @@
  * with sidebar/main/admin/ask-widget) for the DeepWiki SPA.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 import type { SpaTemplateOptions } from './types';
 import { escapeHtml } from './helpers';
-import { getSpaStyles } from './styles';
-import { getSpaScript } from './script';
+
+/** Read the esbuild-bundled client CSS (built by npm run build:client). */
+const bundleCss = fs.readFileSync(
+    path.join(__dirname, 'client', 'dist', 'bundle.css'), 'utf-8'
+);
+
+/** Read the esbuild-bundled client JS (built by npm run build:client). */
+const bundleJs = fs.readFileSync(
+    path.join(__dirname, 'client', 'dist', 'bundle.js'), 'utf-8'
+);
 
 /**
  * Generate the SPA HTML for server mode.
@@ -44,7 +55,7 @@ ${enableGraph ? `    <!-- D3.js for interactive dependency graph -->
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>` : ''}
 
     <style>
-${getSpaStyles(enableAI)}
+${bundleCss}
     </style>
 </head>
 <body>
@@ -261,7 +272,16 @@ ${enableAI ? `    <!-- Floating Ask AI Widget -->
 ${enableWatch ? `    <div class="live-reload-bar" id="live-reload-bar"></div>` : ''}
 
     <script>
-${getSpaScript({ enableSearch, enableAI, enableGraph, enableWatch, defaultTheme: theme })}
+    window.__WIKI_CONFIG__ = {
+        defaultTheme: ${JSON.stringify(theme)},
+        enableSearch: ${JSON.stringify(enableSearch)},
+        enableAI: ${JSON.stringify(enableAI)},
+        enableGraph: ${JSON.stringify(enableGraph)},
+        enableWatch: ${JSON.stringify(enableWatch)}
+    };
+    </script>
+    <script>
+${bundleJs}
     </script>
 </body>
 </html>`;

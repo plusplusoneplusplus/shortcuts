@@ -142,10 +142,11 @@ describe('Ask AI — CSS styles', () => {
         expect(html).toContain('@keyframes typing');
     });
 
-    it('should not include ask styles when AI is disabled', () => {
+    it('should always include ask styles in bundle even when AI is disabled', () => {
         const html = generateSpaHtml(createOptions({ enableAI: false }));
-        expect(html).not.toContain('.ask-widget {');
-        expect(html).not.toContain('.ask-messages');
+        expect(html).toContain('.ask-widget {');
+        expect(html).toContain('.ask-messages');
+        expect(html).toContain('enableAI: false');
     });
 });
 
@@ -186,34 +187,35 @@ describe('Ask AI — JavaScript functionality', () => {
 
     it('should include close widget event listener', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-close').addEventListener('click'");
+        expect(html).toContain('getElementById("ask-close")');
+        expect(html).toContain('addEventListener("click", collapseWidget)');
     });
 
     it('should include clear conversation event listener', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-clear').addEventListener('click'");
+        expect(html).toContain('getElementById("ask-clear")');
     });
 
     it('should include send button event listener', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-widget-send').addEventListener('click', askPanelSend)");
+        expect(html).toContain('addEventListener("click", askPanelSend)');
     });
 
     it('should include Enter key handler on textarea', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("e.key === 'Enter'");
+        expect(html).toContain('e.key === "Enter"');
         expect(html).toContain('!e.shiftKey');
     });
 
     it('should include auto-resize for textarea', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain('this.scrollHeight');
+        expect(html).toContain('scrollHeight');
     });
 
     it('should fetch /api/ask with POST', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("fetch('/api/ask'");
-        expect(html).toContain("method: 'POST'");
+        expect(html).toContain('fetch("/api/ask"');
+        expect(html).toContain('method: "POST"');
     });
 
     it('should send conversation history in request', () => {
@@ -229,10 +231,10 @@ describe('Ask AI — JavaScript functionality', () => {
 
     it('should process SSE events', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("data.type === 'context'");
-        expect(html).toContain("data.type === 'chunk'");
-        expect(html).toContain("data.type === 'done'");
-        expect(html).toContain("data.type === 'error'");
+        expect(html).toContain('data.type === "context"');
+        expect(html).toContain('data.type === "chunk"');
+        expect(html).toContain('data.type === "done"');
+        expect(html).toContain('data.type === "error"');
     });
 
     it('should include helper functions for message rendering', () => {
@@ -257,28 +259,29 @@ describe('Ask AI — JavaScript functionality', () => {
 
     it('should disable send button during streaming', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-widget-send').disabled = true");
+        expect(html).toContain('sendBtn.disabled = true');
     });
 
     it('should re-enable send button after streaming', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.getElementById('ask-widget-send').disabled = false");
+        expect(html).toContain('sendBtn.disabled = false');
     });
 
     it('should add assistant response to conversation history', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("conversationHistory.push({ role: 'assistant'");
+        expect(html).toContain('conversationHistory.push({ role: "assistant"');
     });
 
     it('should add user message to conversation history', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("conversationHistory.push({ role: 'user'");
+        expect(html).toContain('conversationHistory.push({ role: "user"');
     });
 
     it('should clear conversation on clear button click', () => {
         const html = generateSpaHtml(createOptions());
         expect(html).toContain("conversationHistory = []");
-        expect(html).toContain("document.getElementById('ask-messages').innerHTML = ''");
+        expect(html).toContain('getElementById("ask-messages")');
+        expect(html).toContain('innerHTML = ""');
     });
 
     it('should reset currentSessionId on clear', () => {
@@ -288,8 +291,8 @@ describe('Ask AI — JavaScript functionality', () => {
 
     it('should destroy server session on clear via DELETE', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("fetch('/api/ask/session/'");
-        expect(html).toContain("method: 'DELETE'");
+        expect(html).toContain('fetch("/api/ask/session/"');
+        expect(html).toContain('method: "DELETE"');
     });
 
     it('should store sessionId from done event', () => {
@@ -313,10 +316,11 @@ describe('Ask AI — JavaScript functionality', () => {
         expect(html).toContain('typingEl.parentNode.removeChild(typingEl)');
     });
 
-    it('should not include ask JS when AI is disabled', () => {
+    it('should always include ask JS in bundle when AI is disabled, controlled by config', () => {
         const html = generateSpaHtml(createOptions({ enableAI: false }));
-        expect(html).not.toContain('function askPanelSend');
-        expect(html).not.toContain('var conversationHistory');
+        expect(html).toContain('function askPanelSend');
+        expect(html).toContain('var conversationHistory');
+        expect(html).toContain('enableAI: false');
     });
 
     it('should expand widget when sending a message', () => {
@@ -324,9 +328,10 @@ describe('Ask AI — JavaScript functionality', () => {
         expect(html).toContain('expandWidget()');
     });
 
-    it('should not include keyboard shortcut refs to old functions when AI is disabled', () => {
+    it('should always include keyboard shortcut refs in bundle when AI is disabled, controlled by config', () => {
         const html = generateSpaHtml(createOptions({ enableAI: false }));
-        expect(html).not.toContain('expandWidget');
+        expect(html).toContain('expandWidget');
+        expect(html).toContain('enableAI: false');
     });
 });
 
@@ -349,7 +354,7 @@ describe('Ask AI — SSE event handling', () => {
 
     it('should handle error responses from API', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("'Error: '");
+        expect(html).toContain('"Error: "');
         expect(html).toContain('appendAskError');
     });
 });
@@ -361,28 +366,29 @@ describe('Ask AI — SSE event handling', () => {
 describe('Ask AI — keyboard shortcuts', () => {
     it('should include keyboard event listener', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("document.addEventListener('keydown'");
+        expect(html).toContain('document.addEventListener("keydown"');
     });
 
     it('should include Ctrl/Cmd+B shortcut for sidebar toggle', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("e.key === 'b'");
+        expect(html).toContain('e.key === "b"');
         expect(html).toContain('e.ctrlKey || e.metaKey');
     });
 
     it('should include Ctrl/Cmd+I shortcut for Ask AI widget toggle', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("e.key === 'i'");
+        expect(html).toContain('e.key === "i"');
     });
 
     it('should include Escape shortcut to collapse Ask AI widget', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain("e.key === 'Escape'");
+        expect(html).toContain('e.key === "Escape"');
     });
 
-    it('should not include keyboard shortcuts when AI is disabled', () => {
+    it('should always include keyboard shortcuts in bundle when AI is disabled, controlled by config', () => {
         const html = generateSpaHtml(createOptions({ enableAI: false }));
-        expect(html).not.toContain('expandWidget');
+        expect(html).toContain('expandWidget');
+        expect(html).toContain('enableAI: false');
     });
 });
 

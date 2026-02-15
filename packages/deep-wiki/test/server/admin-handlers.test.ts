@@ -495,8 +495,8 @@ describe('SPA admin portal', () => {
         });
 
         // showAdminContent hides the ask-widget, showWikiContent restores it
-        expect(body).toContain("var askWidget = document.getElementById('ask-widget')");
-        expect(body).toContain("if (askWidget) askWidget.style.display = 'none'");
-        expect(body).toContain("if (askWidget) askWidget.style.display = ''");
+        expect(body).toContain('const askWidget = document.getElementById("ask-widget")');
+        expect(body).toContain('if (askWidget) askWidget.style.display = "none"');
+        expect(body).toContain('if (askWidget) askWidget.style.display = ""');
     });
 });

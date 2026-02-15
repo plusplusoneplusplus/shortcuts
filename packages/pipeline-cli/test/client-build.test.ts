@@ -123,9 +123,9 @@ describe('Client Build Infrastructure', () => {
             expect(scripts['build:client']).toBe('node scripts/build-client.mjs');
         });
 
-        it('should run build:client before tsc in build script', () => {
+        it('should run build:client before tsc and copy client in build script', () => {
             const scripts = pkg.scripts as Record<string, string>;
-            expect(scripts['build']).toBe('npm run build:client && tsc');
+            expect(scripts['build']).toBe('npm run build:client && tsc && npm run build:copy-client');
         });
 
         it('should have esbuild as devDependency', () => {

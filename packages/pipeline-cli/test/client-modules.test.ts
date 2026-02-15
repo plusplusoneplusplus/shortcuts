@@ -614,8 +614,10 @@ describe('html-template.ts — config injection', () => {
         expect(content).not.toContain("from './scripts'");
     });
 
-    it('reads client bundle from file', () => {
-        expect(content).toContain('getClientBundle');
+    it('reads client bundles from file at module level', () => {
+        expect(content).toContain('bundleCss');
+        expect(content).toContain('bundleJs');
+        expect(content).toContain('bundle.css');
         expect(content).toContain('bundle.js');
     });
 });

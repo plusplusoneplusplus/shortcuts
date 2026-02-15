@@ -67,12 +67,12 @@ describe('Deep Dive UI', () => {
 
         it('should fetch /api/explore/ endpoint', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain("fetch('/api/explore/'");
+            expect(html).toContain('fetch("/api/explore/"');
         });
 
         it('should send depth: deep in request body', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain("body.depth = 'deep'");
+            expect(html).toContain('body.depth = "deep"');
         });
 
         it('should include question input field', () => {
@@ -93,10 +93,10 @@ describe('Deep Dive UI', () => {
 
         it('should process SSE events for deep dive', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain("data.type === 'status'");
-            expect(html).toContain("data.type === 'chunk'");
-            expect(html).toContain("data.type === 'done'");
-            expect(html).toContain("data.type === 'error'");
+            expect(html).toContain('data.type === "status"');
+            expect(html).toContain('data.type === "chunk"');
+            expect(html).toContain('data.type === "done"');
+            expect(html).toContain('data.type === "error"');
         });
 
         it('should render markdown in deep dive response', () => {
@@ -121,7 +121,7 @@ describe('Deep Dive UI', () => {
 
         it('should handle Enter key on deep-dive input', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain("e.key === 'Enter'");
+            expect(html).toContain('e.key === "Enter"');
         });
     });
 
@@ -148,25 +148,28 @@ describe('Deep Dive UI', () => {
             expect(html).toContain('.deep-dive-status');
         });
 
-        it('should not include deep-dive JS functions when AI is disabled', () => {
+        it('should always include deep-dive JS in bundle even when AI is disabled', () => {
             const html = generateSpaHtml(createOptions({ enableAI: false }));
-            expect(html).not.toContain('function addDeepDiveButton');
-            expect(html).not.toContain('function startDeepDive');
+            expect(html).toContain('function addDeepDiveButton');
+            expect(html).toContain('function startDeepDive');
+            expect(html).toContain('enableAI: false');
         });
     });
 
     describe('when AI is disabled', () => {
         const opts = createOptions({ enableAI: false });
 
-        it('should not include deep dive functions', () => {
+        it('should always include deep dive functions in bundle, controlled by config', () => {
             const html = generateSpaHtml(opts);
-            expect(html).not.toContain('function addDeepDiveButton');
-            expect(html).not.toContain('function startDeepDive');
+            expect(html).toContain('function addDeepDiveButton');
+            expect(html).toContain('function startDeepDive');
+            expect(html).toContain('enableAI: false');
         });
 
-        it('should not include deep dive button call', () => {
+        it('should always include deep dive button call in bundle, controlled by config', () => {
             const html = generateSpaHtml(opts);
-            expect(html).not.toContain('addDeepDiveButton(moduleId)');
+            expect(html).toContain('addDeepDiveButton(moduleId)');
+            expect(html).toContain('enableAI: false');
         });
     });
 });
@@ -196,7 +199,7 @@ describe('WebSocket Live Reload UI', () => {
 
         it('should construct WebSocket URL from location', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain("location.host + '/ws'");
+            expect(html).toContain('location.host + "/ws"');
         });
 
         it('should call connectWebSocket on load', () => {
@@ -207,7 +210,7 @@ describe('WebSocket Live Reload UI', () => {
 
         it('should send periodic pings', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain("{ type: 'ping' }");
+            expect(html).toContain('{ type: "ping" }');
             expect(html).toContain('setInterval');
         });
 
@@ -219,19 +222,19 @@ describe('WebSocket Live Reload UI', () => {
 
         it('should handle rebuilding messages', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain("msg.type === 'rebuilding'");
+            expect(html).toContain('msg.type === "rebuilding"');
             expect(html).toContain('Rebuilding:');
         });
 
         it('should handle reload messages', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain("msg.type === 'reload'");
+            expect(html).toContain('msg.type === "reload"');
             expect(html).toContain('Updated:');
         });
 
         it('should handle error messages', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain("msg.type === 'error'");
+            expect(html).toContain('msg.type === "error"');
         });
 
         it('should invalidate markdown cache on reload', () => {
@@ -247,7 +250,7 @@ describe('WebSocket Live Reload UI', () => {
 
         it('should auto-hide notification bar after 3 seconds', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain('3000');
+            expect(html).toContain('3e3');
         });
     });
 
@@ -276,10 +279,11 @@ describe('WebSocket Live Reload UI', () => {
             expect(html).not.toContain('id="live-reload-bar"');
         });
 
-        it('should not include WebSocket connection code', () => {
+        it('should always include WebSocket code in bundle, controlled by config', () => {
             const html = generateSpaHtml(opts);
-            expect(html).not.toContain('function connectWebSocket');
-            expect(html).not.toContain('function handleWsMessage');
+            expect(html).toContain('function connectWebSocket');
+            expect(html).toContain('function handleWsMessage');
+            expect(html).toContain('enableWatch: false');
         });
     });
 });
