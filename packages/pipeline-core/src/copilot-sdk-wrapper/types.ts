@@ -210,6 +210,14 @@ export interface SendMessageOptions {
      * Only works with direct sessions (usePool: false).
      */
     onStreamingChunk?: (chunk: string) => void;
+
+    /**
+     * When true, the session is NOT destroyed after the first message completes.
+     * The returned `sessionId` can be passed to `sendFollowUp()` for multi-turn conversation.
+     * Only applies to direct sessions (usePool: false).
+     * @default false
+     */
+    keepAlive?: boolean;
 }
 
 // ============================================================================

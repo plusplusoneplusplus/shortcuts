@@ -311,6 +311,7 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
+    SendFollowUpOptions,
     TokenUsage,
     MCPServerConfigBase,
     MCPLocalServerConfig,

@@ -61,6 +61,7 @@ export {
     CopilotSDKService,
     getCopilotSDKService,
     resetCopilotSDKService,
+    SendFollowUpOptions,
 } from './copilot-sdk-service';
 
 // MCP Config Loader

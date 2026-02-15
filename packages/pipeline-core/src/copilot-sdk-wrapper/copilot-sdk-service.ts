@@ -76,6 +76,25 @@ interface StreamingResult {
 }
 
 /**
+ * A session kept alive for multi-turn conversation.
+ */
+interface KeptAliveSession {
+    session: ICopilotSession;
+    createdAt: number;
+    lastUsedAt: number;
+}
+
+/**
+ * Options for follow-up messages on a kept-alive session.
+ */
+export interface SendFollowUpOptions {
+    /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS) */
+    timeoutMs?: number;
+    /** Callback for streaming chunks */
+    onStreamingChunk?: (chunk: string) => void;
+}
+
+/**
  * Options for creating a CopilotClient
  */
 interface ICopilotClientOptions {
@@ -229,6 +248,18 @@ export class CopilotSDKService {
 
     /** Map of active sessions for cancellation support */
     private activeSessions: Map<string, ICopilotSession> = new Map();
+
+    /** Sessions kept alive for multi-turn conversation */
+    private keptAliveSessions: Map<string, KeptAliveSession> = new Map();
+
+    /** Default idle timeout for kept-alive sessions (10 minutes) */
+    private static readonly KEEP_ALIVE_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+    /** Cleanup interval for kept-alive sessions (1 minute) */
+    private static readonly KEEP_ALIVE_CLEANUP_INTERVAL_MS = 60 * 1000;
+
+    /** Timer handle for kept-alive session cleanup */
+    private keepAliveCleanupTimer?: ReturnType<typeof setInterval>;
 
     /** Default timeout for SDK requests */
     private static readonly DEFAULT_TIMEOUT_MS = DEFAULT_AI_TIMEOUT_MS;
@@ -511,6 +542,7 @@ export class CopilotSDKService {
         }
 
         let session: ICopilotSession | null = null;
+        let result: SDKInvocationResult | null = null;
 
         try {
             // Create/reuse client with the specified working directory
@@ -626,27 +658,30 @@ export class CopilotSDKService {
                 // successfully — treat empty text as success, not failure.
                 if (turnCount > 0) {
                     logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Empty text response but ${turnCount} turns completed — treating as success (tool-based execution)`);
-                    return {
+                    result = {
                         success: true,
                         response: '',
                         sessionId: session.sessionId,
                         tokenUsage,
                     };
+                    return result;
                 }
-                return {
+                result = {
                     success: false,
                     error: 'No response received from Copilot SDK',
                     sessionId: session.sessionId,
                     tokenUsage,
                 };
+                return result;
             }
 
-            return {
+            result = {
                 success: true,
                 response,
                 sessionId: session.sessionId,
                 tokenUsage,
             };
+            return result;
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -654,25 +689,196 @@ export class CopilotSDKService {
 
             logger.error(LogCategory.AI, `CopilotSDKService [${session?.sessionId ?? 'no-session'}]: Request failed after ${durationMs}ms`, error instanceof Error ? error : undefined);
 
-            return {
+            result = {
                 success: false,
                 error: `Copilot SDK error: ${errorMessage}`,
                 sessionId: session?.sessionId
             };
+            return result;
 
         } finally {
             // Clean up session
             if (session) {
-                // Untrack the session first
                 this.untrackSession(session.sessionId);
-                try {
-                    await session.destroy();
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session destroyed`);
-                } catch (destroyError) {
-                    logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Warning: Error destroying session: ${destroyError}`);
+                if (options.keepAlive && result?.success) {
+                    // Preserve session for follow-up messages
+                    const now = Date.now();
+                    this.keptAliveSessions.set(session.sessionId, {
+                        session,
+                        createdAt: now,
+                        lastUsedAt: now,
+                    });
+                    this.ensureKeepAliveCleanupTimer();
+                    logger.debug(LogCategory.AI,
+                        `CopilotSDKService [${session.sessionId}]: Session kept alive for follow-up`);
+                } else {
+                    try {
+                        await session.destroy();
+                        logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Session destroyed`);
+                    } catch (destroyError) {
+                        logger.debug(LogCategory.AI, `CopilotSDKService [${session.sessionId}]: Warning: Error destroying session: ${destroyError}`);
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Send a follow-up message to a kept-alive session.
+     *
+     * @param sessionId - The session ID returned from a previous sendMessage({ keepAlive: true }) call
+     * @param prompt - The follow-up prompt
+     * @param options - Optional timeout and streaming settings
+     * @returns SDKInvocationResult with the same sessionId
+     */
+    public async sendFollowUp(
+        sessionId: string,
+        prompt: string,
+        options?: SendFollowUpOptions,
+    ): Promise<SDKInvocationResult> {
+        const logger = getLogger();
+        const entry = this.keptAliveSessions.get(sessionId);
+        if (!entry) {
+            return {
+                success: false,
+                error: `Session ${sessionId} not found or has expired`,
+            };
+        }
+
+        const { session } = entry;
+        const startTime = Date.now();
+        const timeoutMs = options?.timeoutMs ?? CopilotSDKService.DEFAULT_TIMEOUT_MS;
+
+        // Track for cancellation during the call
+        this.trackSession(session);
+
+        try {
+            let response: string;
+            let tokenUsage: TokenUsage | undefined;
+            let turnCount = 0;
+
+            if ((options?.onStreamingChunk || timeoutMs > 120000) && session.on && session.send) {
+                const streamingResult = await this.sendWithStreaming(
+                    session, prompt, timeoutMs, options?.onStreamingChunk,
+                );
+                response = streamingResult.response;
+                tokenUsage = streamingResult.tokenUsage;
+                turnCount = streamingResult.turnCount;
+            } else {
+                const sendResult = await this.sendWithTimeout(session, prompt, timeoutMs);
+                response = sendResult?.data?.content || '';
+            }
+
+            // Update last-used timestamp
+            entry.lastUsedAt = Date.now();
+
+            const durationMs = Date.now() - startTime;
+            logger.debug(LogCategory.AI,
+                `CopilotSDKService [${sessionId}]: Follow-up completed in ${durationMs}ms`);
+
+            if (!response && turnCount > 0) {
+                return { success: true, response: '', sessionId, tokenUsage };
+            }
+            if (!response) {
+                return { success: false, error: 'No response received', sessionId, tokenUsage };
+            }
+
+            return { success: true, response, sessionId, tokenUsage };
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            logger.error(LogCategory.AI,
+                `CopilotSDKService [${sessionId}]: Follow-up failed: ${errorMessage}`,
+                error instanceof Error ? error : undefined);
+
+            // Destroy the broken session
+            this.keptAliveSessions.delete(sessionId);
+            try { await session.destroy(); } catch { /* ignore */ }
+
+            return { success: false, error: `Follow-up error: ${errorMessage}`, sessionId };
+        } finally {
+            this.untrackSession(sessionId);
+        }
+    }
+
+    /**
+     * Explicitly destroy a kept-alive session and free its resources.
+     *
+     * @param sessionId - The session ID to destroy
+     * @returns true if the session was found and destroyed, false if not found
+     */
+    public async destroyKeptAliveSession(sessionId: string): Promise<boolean> {
+        const logger = getLogger();
+        const entry = this.keptAliveSessions.get(sessionId);
+        if (!entry) {
+            logger.debug(LogCategory.AI,
+                `CopilotSDKService [${sessionId}]: Kept-alive session not found for destroy`);
+            return false;
+        }
+
+        this.keptAliveSessions.delete(sessionId);
+        try {
+            await entry.session.destroy();
+            logger.debug(LogCategory.AI,
+                `CopilotSDKService [${sessionId}]: Kept-alive session destroyed`);
+        } catch (error) {
+            logger.debug(LogCategory.AI,
+                `CopilotSDKService [${sessionId}]: Warning: Error destroying kept-alive session: ${error}`);
+        }
+        return true;
+    }
+
+    /**
+     * Start the keep-alive cleanup timer (idempotent).
+     */
+    private ensureKeepAliveCleanupTimer(): void {
+        if (this.keepAliveCleanupTimer) { return; }
+        this.keepAliveCleanupTimer = setInterval(() => {
+            this.cleanupIdleKeptAliveSessions().catch(() => { /* ignore */ });
+        }, CopilotSDKService.KEEP_ALIVE_CLEANUP_INTERVAL_MS);
+
+        // Don't block Node exit
+        if (this.keepAliveCleanupTimer.unref) {
+            this.keepAliveCleanupTimer.unref();
+        }
+    }
+
+    /**
+     * Destroy kept-alive sessions that have been idle beyond the timeout.
+     */
+    private async cleanupIdleKeptAliveSessions(): Promise<number> {
+        const logger = getLogger();
+        const now = Date.now();
+        const expired: string[] = [];
+
+        for (const [sessionId, entry] of this.keptAliveSessions) {
+            if (now - entry.lastUsedAt > CopilotSDKService.KEEP_ALIVE_IDLE_TIMEOUT_MS) {
+                expired.push(sessionId);
+            }
+        }
+
+        for (const sessionId of expired) {
+            const entry = this.keptAliveSessions.get(sessionId);
+            if (entry) {
+                this.keptAliveSessions.delete(sessionId);
+                try { await entry.session.destroy(); } catch { /* ignore */ }
+                logger.debug(LogCategory.AI,
+                    `CopilotSDKService [${sessionId}]: Idle kept-alive session cleaned up`);
+            }
+        }
+
+        if (expired.length > 0) {
+            logger.debug(LogCategory.AI,
+                `CopilotSDKService: Cleaned up ${expired.length} idle kept-alive session(s)`);
+        }
+
+        // Stop the timer when no sessions remain
+        if (this.keptAliveSessions.size === 0 && this.keepAliveCleanupTimer) {
+            clearInterval(this.keepAliveCleanupTimer);
+            this.keepAliveCleanupTimer = undefined;
+        }
+
+        return expired.length;
     }
 
     /**
@@ -816,6 +1022,18 @@ export class CopilotSDKService {
         }
         await Promise.allSettled(abortPromises);
         this.activeSessions.clear();
+
+        // Destroy all kept-alive sessions
+        const keepAlivePromises: Promise<void>[] = [];
+        for (const [, entry] of this.keptAliveSessions) {
+            keepAlivePromises.push(entry.session.destroy().catch(() => {}));
+        }
+        this.keptAliveSessions.clear();
+        if (this.keepAliveCleanupTimer) {
+            clearInterval(this.keepAliveCleanupTimer);
+            this.keepAliveCleanupTimer = undefined;
+        }
+        await Promise.allSettled(keepAlivePromises);
 
         // Dispose session pool
         if (this.sessionPool) {
