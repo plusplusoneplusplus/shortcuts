@@ -109,6 +109,20 @@ export function handleHashChange(): void {
         return;
     }
 
+    // #repos/{id}/tasks/{filePath} — task file deep link
+    const repoTaskFileMatch = hash.match(/^repos\/([^/]+)\/tasks\/(.+)$/);
+    if (repoTaskFileMatch) {
+        (window as any).switchTab?.('repos');
+        const wsId = decodeURIComponent(repoTaskFileMatch[1]);
+        const filePath = decodeURIComponent(repoTaskFileMatch[2]);
+        (window as any).showRepoDetail?.(wsId, 'tasks', filePath);
+        // Open the file after tasks load
+        setTimeout(() => {
+            (window as any).openTaskFileFromHash?.(wsId, filePath);
+        }, 100);
+        return;
+    }
+
     // #repos/{id}/tasks or #repos/{id}/pipelines
     const repoSubTabMatch = hash.match(/^repos\/([^/]+)\/(tasks|pipelines|info)$/);
     if (repoSubTabMatch) {
@@ -189,4 +203,5 @@ export function navigateToHome(): void {
 (window as any).navigateToProcess = navigateToProcess;
 (window as any).navigateToSession = navigateToSession;
 (window as any).navigateToHome = navigateToHome;
+(window as any).__setHashSilent = setHashSilent;
 (window as any).appState = appState;

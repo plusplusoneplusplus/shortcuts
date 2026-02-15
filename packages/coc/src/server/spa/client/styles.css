@@ -1516,15 +1516,49 @@ body {
 }
 
 /* ================================================================
+   Tasks Split Layout (Finder-style horizontal)
+   ================================================================ */
+
+.tasks-split-layout {
+    display: flex;
+    gap: 0;
+    min-height: 300px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-secondary);
+}
+
+.tasks-split-layout .tasks-tree {
+    border: none;
+    border-radius: 0;
+    min-height: 300px;
+    max-height: 70vh;
+    overflow-y: auto;
+    flex: 1;
+    min-width: 0;
+}
+
+.tasks-split-layout.split-open .tasks-tree {
+    flex: 0 0 320px;
+    max-width: 320px;
+    border-right: 1px solid var(--border-color);
+}
+
+.tasks-split-layout.split-open .task-file-preview {
+    flex: 1;
+    min-width: 0;
+}
+
+/* ================================================================
    Task File Preview Panel
    ================================================================ */
 
 .task-file-preview {
-    margin-top: 16px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
     background: var(--bg-primary);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .task-preview-header {
@@ -1564,7 +1598,7 @@ body {
     padding: 16px 20px;
     font-size: 14px;
     line-height: 1.7;
-    max-height: 60vh;
+    flex: 1;
     overflow-y: auto;
 }
 

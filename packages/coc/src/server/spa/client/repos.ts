@@ -224,14 +224,18 @@ function truncatePath(p: string, max: number): string {
 // Repo detail view with sub-tabs
 // ================================================================
 
-export function showRepoDetail(wsId: string, subTab?: RepoSubTab): void {
+export function showRepoDetail(wsId: string, subTab?: RepoSubTab, taskFile?: string): void {
     appState.selectedRepoId = wsId;
     appState.activeRepoSubTab = subTab || 'info';
 
-    // Update hash silently
-    const hashSuffix = appState.activeRepoSubTab === 'info'
-        ? ''
-        : '/' + appState.activeRepoSubTab;
+    // Update hash silently — include task file path if on tasks tab
+    let hashSuffix = '';
+    if (appState.activeRepoSubTab !== 'info') {
+        hashSuffix = '/' + appState.activeRepoSubTab;
+    }
+    if (appState.activeRepoSubTab === 'tasks' && taskFile) {
+        hashSuffix += '/' + encodeURIComponent(taskFile);
+    }
     setHashSilent('#repos/' + encodeURIComponent(wsId) + hashSuffix);
 
     // Update active state in sidebar
@@ -403,9 +407,13 @@ function renderTasksTab(repo: RepoData): string {
         '<button class="enqueue-btn-primary" id="repo-tasks-folder-btn">+ New Folder</button>' +
         '<button class="enqueue-btn-primary" id="repo-tasks-ai-btn" title="Generate task with AI">&#129302; AI Generate</button>' +
     '</div>';
+    // Horizontal split: tree on left, preview on right (Finder-style)
+    html += '<div class="tasks-split-layout" id="tasks-split-layout">';
     html += '<div class="tasks-tree" id="repo-tasks-tree">';
     html += '<div class="empty-state"><div class="empty-state-icon">&#128203;</div>' +
         '<div class="empty-state-title">Loading tasks...</div></div>';
+    html += '</div>';
+    html += '<div class="task-file-preview hidden" id="task-file-preview"></div>';
     html += '</div>';
 
     // Trigger async task fetch

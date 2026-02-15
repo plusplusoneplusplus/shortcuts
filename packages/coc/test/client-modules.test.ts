@@ -263,6 +263,15 @@ describe('client/core.ts', () => {
         expect(content).toContain('(window as any).navigateToProcess = navigateToProcess');
     });
 
+    it('exposes setHashSilent on window as __setHashSilent', () => {
+        expect(content).toContain('(window as any).__setHashSilent = setHashSilent');
+    });
+
+    it('handles #repos/{id}/tasks/{filePath} deep link', () => {
+        expect(content).toContain('repoTaskFileMatch');
+        expect(content).toContain('openTaskFileFromHash');
+    });
+
     it('does not call init() at top level', () => {
         // init() is called from index.ts, not core.ts
         const lines = content.split('\n');
@@ -650,7 +659,7 @@ describe('old scripts files removed', () => {
 // ============================================================================
 
 describe('window global assignments', () => {
-    it('should have all 21 required window globals across client modules', () => {
+    it('should have all 23 required window globals across client modules', () => {
         const allContent = [
             'state.ts', 'utils.ts', 'core.ts', 'detail.ts', 'queue.ts',
             'tasks.ts', 'repos.ts',
@@ -678,6 +687,8 @@ describe('window global assignments', () => {
             'createRepoTask',
             'createRepoFolder',
             'showRepoAIGenerateDialog',
+            'openTaskFileFromHash',
+            '__setHashSilent',
         ];
 
         for (const name of expectedGlobals) {
@@ -748,6 +759,38 @@ describe('client/tasks.ts', () => {
 
     it('has closeTaskPreview function', () => {
         expect(content).toContain('function closeTaskPreview');
+    });
+
+    it('has openTaskFileFromHash for deep-link navigation', () => {
+        expect(content).toContain('async function openTaskFileFromHash');
+    });
+
+    it('exposes openTaskFileFromHash on window', () => {
+        expect(content).toContain('(window as any).openTaskFileFromHash = openTaskFileFromHash');
+    });
+
+    it('has updateTaskHash for URL state management', () => {
+        expect(content).toContain('function updateTaskHash');
+    });
+
+    it('updates taskPanelState.openFilePath on open', () => {
+        expect(content).toContain('taskPanelState.openFilePath = filePath');
+    });
+
+    it('clears taskPanelState.openFilePath on close', () => {
+        expect(content).toContain('taskPanelState.openFilePath = null');
+    });
+
+    it('adds split-open class to layout when file is opened', () => {
+        expect(content).toContain('split-open');
+    });
+
+    it('removes split-open class when preview is closed', () => {
+        expect(content).toContain("layout.classList.remove('split-open')");
+    });
+
+    it('uses __setHashSilent from window for URL updates', () => {
+        expect(content).toContain('__setHashSilent');
     });
 
     it('has countFolderItems function for recursive item counting', () => {
@@ -862,6 +905,19 @@ describe('client/repos.ts', () => {
         expect(content).toContain('repo-tasks-folder-btn');
         expect(content).toContain('repo-tasks-ai-btn');
     });
+
+    it('renders tasks split layout container', () => {
+        expect(content).toContain('tasks-split-layout');
+        expect(content).toContain('task-file-preview');
+    });
+
+    it('showRepoDetail accepts optional taskFile parameter', () => {
+        expect(content).toContain('taskFile?: string');
+    });
+
+    it('includes task file path in URL hash', () => {
+        expect(content).toContain("encodeURIComponent(taskFile)");
+    });
 });
 
 // ============================================================================
@@ -880,6 +936,7 @@ describe('client/state.ts — TaskPanelState', () => {
         expect(content).toContain('export const taskPanelState');
         expect(content).toContain('selectedWorkspaceId: null');
         expect(content).toContain('expandedFolders: {}');
+        expect(content).toContain('openFilePath: null');
     });
 });
 
@@ -918,6 +975,13 @@ describe('styles.css — Task styles', () => {
 
     it('has active file highlight style', () => {
         expect(cssContent).toContain('.task-file-active');
+    });
+
+    it('has horizontal split layout styles', () => {
+        expect(cssContent).toContain('.tasks-split-layout');
+        expect(cssContent).toContain('.split-open');
+        expect(cssContent).toContain('.tasks-split-layout.split-open .tasks-tree');
+        expect(cssContent).toContain('.tasks-split-layout.split-open .task-file-preview');
     });
 
     it('has file preview panel styles', () => {

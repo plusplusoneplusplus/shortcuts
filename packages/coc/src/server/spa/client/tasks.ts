@@ -548,14 +548,14 @@ function attachTreeEventListeners(container: HTMLElement): void {
 }
 
 // ================================================================
-// Markdown file preview
+// Markdown file preview (Finder-style horizontal split)
 // ================================================================
 
-/** Currently open file path (to highlight active row). */
-let currentOpenFile: string | null = null;
-
 async function openTaskFile(wsId: string, filePath: string): Promise<void> {
-    currentOpenFile = filePath;
+    taskPanelState.openFilePath = filePath;
+
+    // Update URL hash to include the open file
+    updateTaskHash(wsId, filePath);
 
     // Highlight the active row
     const container = document.getElementById('repo-tasks-tree');
@@ -565,20 +565,16 @@ async function openTaskFile(wsId: string, filePath: string): Promise<void> {
         });
     }
 
-    // Show or create the preview panel
-    let previewPanel = document.getElementById('task-file-preview');
-    if (!previewPanel) {
-        // Create the preview panel after the tree
-        const treeEl = document.getElementById('repo-tasks-tree');
-        if (!treeEl) return;
-        previewPanel = document.createElement('div');
-        previewPanel.id = 'task-file-preview';
-        previewPanel.className = 'task-file-preview';
-        treeEl.parentElement!.appendChild(previewPanel);
-    }
+    // Show the preview panel (already in DOM from renderTasksTab)
+    const previewPanel = document.getElementById('task-file-preview');
+    if (!previewPanel) return;
 
     previewPanel.innerHTML = '<div class="task-preview-loading">Loading...</div>';
     previewPanel.classList.remove('hidden');
+
+    // Add split-open class to the layout for side-by-side
+    const layout = document.getElementById('tasks-split-layout');
+    if (layout) layout.classList.add('split-open');
 
     try {
         const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/content?path=${encodeURIComponent(filePath)}`);
@@ -603,18 +599,59 @@ async function openTaskFile(wsId: string, filePath: string): Promise<void> {
     }
 }
 
+/**
+ * Called from hash router when navigating to #repos/{id}/tasks/{file}.
+ * Waits for the tasks tree to load, then opens the file.
+ */
+async function openTaskFileFromHash(wsId: string, filePath: string): Promise<void> {
+    // Wait for tasks to be loaded (retry a few times)
+    let retries = 0;
+    while (!currentTasks && retries < 20) {
+        await new Promise(r => setTimeout(r, 150));
+        retries++;
+    }
+    openTaskFile(wsId, filePath);
+}
+
 function closeTaskPreview(): void {
-    currentOpenFile = null;
+    taskPanelState.openFilePath = null;
+
+    // Update URL hash to remove the file path
+    const wsId = taskPanelState.selectedWorkspaceId;
+    if (wsId) {
+        updateTaskHash(wsId, null);
+    }
+
     const previewPanel = document.getElementById('task-file-preview');
     if (previewPanel) {
         previewPanel.classList.add('hidden');
         previewPanel.innerHTML = '';
     }
+
+    // Remove split-open class
+    const layout = document.getElementById('tasks-split-layout');
+    if (layout) layout.classList.remove('split-open');
+
     // Remove active highlight
     const container = document.getElementById('repo-tasks-tree');
     if (container) {
         container.querySelectorAll('.task-file-active').forEach(el => el.classList.remove('task-file-active'));
     }
+}
+
+/** Update the URL hash to reflect the current task file state. */
+function updateTaskHash(wsId: string, filePath: string | null): void {
+    const { setHashSilent } = await_setHashSilent();
+    if (filePath) {
+        setHashSilent('#repos/' + encodeURIComponent(wsId) + '/tasks/' + encodeURIComponent(filePath));
+    } else {
+        setHashSilent('#repos/' + encodeURIComponent(wsId) + '/tasks');
+    }
+}
+
+/** Lazy import of setHashSilent to avoid circular dependency. */
+function await_setHashSilent(): { setHashSilent: (hash: string) => void } {
+    return { setHashSilent: (window as any).__setHashSilent || (() => {}) };
 }
 
 // ================================================================
@@ -827,3 +864,4 @@ export function showRepoAIGenerateDialog(wsId: string): void {
 (window as any).createRepoTask = createRepoTask;
 (window as any).createRepoFolder = createRepoFolder;
 (window as any).showRepoAIGenerateDialog = showRepoAIGenerateDialog;
+(window as any).openTaskFileFromHash = openTaskFileFromHash;

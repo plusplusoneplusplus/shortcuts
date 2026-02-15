@@ -66,9 +66,11 @@ export const queueState: QueueState = {
 export interface TaskPanelState {
     selectedWorkspaceId: string | null;
     expandedFolders: Record<string, boolean>;
+    openFilePath: string | null;
 }
 
 export const taskPanelState: TaskPanelState = {
     selectedWorkspaceId: null,
     expandedFolders: {},
+    openFilePath: null,
 };
