@@ -668,3 +668,21 @@ export {
     SimpleTaskExecutor,
     createSimpleTaskExecutor,
 } from './queue';
+
+// ============================================================================
+// Tasks
+// ============================================================================
+
+export {
+    // Types
+    Task, TaskDocument, TaskDocumentGroup, TaskSortBy, TaskStatus,
+    TaskFolder, TasksViewerSettings, DiscoverySettings, DiscoveryDefaultScope,
+    RelatedItemCategory, RelatedItemType, RelatedItem, RelatedItemsConfig,
+    TaskCreationMode, TaskGenerationDepth,
+    AITaskCreateOptions, AITaskFromFeatureOptions, AITaskCreationOptions,
+    AITaskDialogResult, FeatureContext,
+    ReviewStatus, ReviewStatusRecord, ReviewStatusStore,
+    // Parser utilities
+    VALID_TASK_STATUSES, COMMON_DOC_TYPES,
+    parseTaskStatus, updateTaskStatus, parseFileName, sanitizeFileName,
+} from './tasks';
