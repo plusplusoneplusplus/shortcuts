@@ -1527,8 +1527,8 @@ body {
 }
 
 .miller-preview-column {
-    flex: 1 0 380px;
-    min-width: 320px;
+    flex: 0 0 calc(80vw - 320px);
+    min-width: 380px;
     max-width: none;
 }
 
