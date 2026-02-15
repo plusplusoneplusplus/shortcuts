@@ -35,7 +35,7 @@ import './repos';
 // 9. Tasks (workspace task CRUD, tree rendering)
 import './tasks';
 
-// 10. Wiki (wiki list, component browser, add wiki dialog, ask AI, graph)
+// 10. Wiki (wiki list, component browser, add wiki dialog, ask AI, graph, admin)
 import './wiki';
 import './wiki-components';
 import './wiki-content';
@@ -44,6 +44,7 @@ import './wiki-toc';
 import './wiki-mermaid-zoom';
 import './wiki-ask';
 import './wiki-graph';
+import './wiki-admin';
 
 // 11. AI Actions (dropdown for task AI operations)
 import './ai-actions';

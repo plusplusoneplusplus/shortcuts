@@ -2951,3 +2951,286 @@ html[data-theme="dark"] .ai-action-dropdown {
     width: 16px;
     height: 16px;
 }
+
+/* ================================================================
+   Wiki Admin Panel
+   Ported from deep-wiki admin styles.
+   ================================================================ */
+
+.wiki-admin-toggle-btn {
+    padding: 6px 10px; border: 1px solid var(--border-color);
+    border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary);
+    cursor: pointer; font-size: 16px; line-height: 1;
+}
+.wiki-admin-toggle-btn:hover { background: var(--hover-bg); }
+.wiki-admin-toggle-btn.hidden { display: none; }
+
+.admin-page {
+    height: 100%; display: flex; flex-direction: column;
+    overflow: auto;
+}
+.admin-page.hidden { display: none; }
+.admin-page-header {
+    padding: 24px 32px 0;
+}
+.admin-page-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 4px;
+}
+.admin-page-title {
+    margin: 0; font-size: 22px; color: var(--text-primary);
+}
+.admin-page-desc {
+    margin: 0 0 16px; font-size: 14px; color: var(--text-secondary);
+}
+.admin-btn-back {
+    background: var(--bg-secondary); color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 6px 16px; border-radius: 6px; font-size: 13px;
+    cursor: pointer; white-space: nowrap;
+}
+.admin-btn-back:hover { background: var(--hover-bg); }
+.admin-tabs {
+    display: flex; padding: 0 32px; gap: 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.admin-tab {
+    padding: 10px 20px; border: none; background: none;
+    color: var(--text-secondary); cursor: pointer; font-size: 14px;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.admin-tab:hover { color: var(--text-primary); }
+.admin-tab.active {
+    color: var(--accent); border-bottom-color: var(--accent);
+    font-weight: 600;
+}
+.admin-body { flex: 1; overflow: auto; padding: 24px 32px; }
+.admin-tab-content { display: none; flex-direction: column; }
+.admin-tab-content.active { display: flex; }
+.admin-section { max-width: 900px; }
+.admin-file-info {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px; font-size: 12px;
+}
+.admin-file-path {
+    color: var(--text-secondary); font-family: monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.admin-file-status { font-weight: 600; margin-left: 8px; white-space: nowrap; }
+.admin-file-status.success { color: #22c55e; }
+.admin-file-status.error { color: #ef4444; }
+.admin-editor {
+    width: 100%; min-height: 400px; resize: vertical;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.5;
+    padding: 12px; border-radius: 8px;
+    background: var(--code-bg); color: var(--text-primary);
+    border: 1px solid var(--code-border);
+    tab-size: 2; white-space: pre; overflow: auto;
+    box-sizing: border-box;
+}
+.admin-editor:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.admin-actions {
+    display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;
+}
+.admin-btn {
+    padding: 8px 20px; border-radius: 6px; border: none;
+    font-size: 14px; cursor: pointer; font-weight: 500;
+}
+.admin-btn-save {
+    background: var(--accent); color: #fff;
+}
+.admin-btn-save:hover { opacity: 0.9; }
+.admin-btn-reset {
+    background: var(--bg-secondary); color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+.admin-btn-reset:hover { background: var(--hover-bg); }
+.admin-btn:disabled {
+    opacity: 0.5; cursor: not-allowed;
+}
+
+/* Generate Tab */
+.generate-unavailable {
+    padding: 24px; text-align: center; color: var(--text-secondary);
+}
+.generate-unavailable.hidden { display: none; }
+.generate-options {
+    margin-bottom: 16px;
+}
+.generate-force-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 14px; color: var(--text-primary); cursor: pointer;
+}
+.generate-force-label input[type="checkbox"] {
+    width: 16px; height: 16px; cursor: pointer;
+}
+.generate-phases {
+    display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;
+}
+.generate-phase-card {
+    border: 1px solid var(--border-color); border-radius: 8px;
+    background: var(--card-bg); transition: border-color 0.2s, box-shadow 0.2s;
+    border-left: 3px solid var(--border-color);
+}
+.generate-phase-card:hover {
+    border-color: var(--card-hover-border);
+}
+.phase-card-header {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+}
+.phase-number {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    font-size: 13px; font-weight: 700; flex-shrink: 0;
+}
+.phase-info {
+    flex: 1; display: flex; flex-direction: column; gap: 2px;
+}
+.phase-name {
+    font-size: 14px; font-weight: 600; color: var(--text-primary);
+}
+.phase-desc {
+    font-size: 12px; color: var(--text-secondary);
+}
+.phase-cache-badge {
+    font-size: 12px; padding: 2px 8px; border-radius: 10px;
+    font-weight: 500; flex-shrink: 0;
+}
+.phase-cache-badge.cached {
+    background: rgba(34, 197, 94, 0.1); color: #22c55e;
+}
+.phase-cache-badge.stale {
+    background: rgba(245, 158, 11, 0.1); color: #f59e0b;
+}
+.phase-cache-badge.missing {
+    background: rgba(107, 114, 128, 0.1); color: #6b7280;
+}
+.phase-run-btn {
+    padding: 6px 16px; font-size: 13px; flex-shrink: 0;
+}
+.phase-log {
+    padding: 0 16px 12px 56px;
+    font-family: monospace; font-size: 12px; line-height: 1.5;
+    color: var(--text-secondary); white-space: pre-wrap;
+    max-height: 200px; overflow-y: auto;
+    background: var(--code-bg); border-radius: 0 0 8px 8px;
+    margin: 0 1px 1px;
+}
+.phase-log.hidden { display: none; }
+
+/* Phase card states */
+.phase-running {
+    border-left-color: var(--accent);
+    animation: phase-pulse 1.5s ease-in-out infinite;
+}
+.phase-success {
+    border-left-color: #22c55e;
+}
+.phase-error {
+    border-left-color: #ef4444;
+}
+@keyframes phase-pulse {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.15); }
+}
+
+/* Generate range controls */
+.generate-range-controls {
+    margin-top: 16px; padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+.generate-range-row {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.generate-range-row label {
+    font-size: 14px; color: var(--text-primary); font-weight: 500;
+}
+.generate-range-row span {
+    font-size: 14px; color: var(--text-secondary);
+}
+.generate-range-row select {
+    padding: 6px 10px; border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg); color: var(--text-primary);
+    font-size: 13px;
+}
+
+/* Generate status bar */
+.generate-status-bar {
+    margin-top: 16px; padding: 10px 16px;
+    border-radius: 6px; font-size: 13px; font-weight: 500;
+    background: rgba(0, 120, 212, 0.1); color: var(--accent);
+}
+.generate-status-bar.hidden { display: none; }
+.generate-status-bar.success {
+    background: rgba(34, 197, 94, 0.1); color: #22c55e;
+}
+.generate-status-bar.error {
+    background: rgba(239, 68, 68, 0.1); color: #ef4444;
+}
+
+/* Phase 4 Component List */
+.phase-component-list-toggle {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 16px 8px 56px;
+    background: none; border: none; cursor: pointer;
+    font-size: 13px; color: var(--accent); font-weight: 500;
+    width: 100%;
+}
+.phase-component-list-toggle:hover { text-decoration: underline; }
+.phase-component-list-toggle .toggle-arrow {
+    display: inline-block; transition: transform 0.2s;
+    font-size: 10px;
+}
+.phase-component-list-toggle.expanded .toggle-arrow {
+    transform: rotate(90deg);
+}
+.phase-component-list {
+    display: none; padding: 0 16px 12px 56px;
+}
+.phase-component-list.expanded { display: block; }
+.phase-component-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 10px; border-radius: 6px;
+    font-size: 13px; border-bottom: 1px solid var(--border-color);
+}
+.phase-component-row:last-child { border-bottom: none; }
+.phase-component-badge {
+    display: inline-block; width: 16px; text-align: center;
+    font-size: 12px; flex-shrink: 0;
+}
+.phase-component-badge.cached { color: #22c55e; }
+.phase-component-badge.missing { color: #6b7280; }
+.phase-component-id {
+    flex: 1; font-family: monospace; font-size: 12px; color: var(--text-secondary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.phase-component-name {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.phase-component-run-btn {
+    padding: 3px 10px; font-size: 12px; border: none; border-radius: 4px;
+    background: var(--accent); color: #fff; cursor: pointer; flex-shrink: 0;
+}
+.phase-component-run-btn:hover { opacity: 0.85; }
+.phase-component-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.phase-component-log {
+    display: none; padding: 4px 10px 4px 36px;
+    font-family: monospace; font-size: 11px; line-height: 1.4;
+    color: var(--text-secondary); white-space: pre-wrap;
+    max-height: 120px; overflow-y: auto;
+    background: var(--code-bg); border-radius: 4px; margin: 4px 10px;
+}
+.phase-component-log.visible { display: block; }
+
+@media (max-width: 768px) {
+    .admin-page-header { padding: 20px 16px 0; }
+    .admin-tabs { padding: 0 16px; }
+    .admin-body { padding: 16px; }
+    .admin-page-title-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .phase-card-header { padding: 10px 12px; gap: 8px; }
+    .phase-log { padding-left: 40px; }
+    .generate-range-row { flex-direction: column; align-items: flex-start; }
+}

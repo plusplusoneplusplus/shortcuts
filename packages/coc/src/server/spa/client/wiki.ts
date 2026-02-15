@@ -13,6 +13,7 @@ import { buildComponentTree } from './wiki-components';
 import { setWikiGraph, clearWikiState, showWikiHome, loadWikiComponent } from './wiki-content';
 import { showWikiGraph, hideWikiGraph, isGraphShowing } from './wiki-graph';
 import { setupWikiAskListeners } from './wiki-ask';
+import { showWikiAdmin, hideWikiAdmin, resetAdminState } from './wiki-admin';
 import type { WikiData, ComponentGraph } from './wiki-types';
 
 // ================================================================
@@ -59,6 +60,12 @@ function populateWikiSelect(): void {
 // ================================================================
 
 async function onWikiSelected(wikiId: string): Promise<void> {
+    // Reset and hide admin panel when switching wikis
+    hideWikiAdmin();
+    resetAdminState();
+
+    const adminToggle = document.getElementById('wiki-admin-toggle');
+
     if (!wikiId) {
         appState.selectedWikiId = null;
         clearWikiState();
@@ -66,11 +73,13 @@ async function onWikiSelected(wikiId: string): Promise<void> {
         clearComponentTree();
         const graphBtnContainer = document.getElementById('wiki-graph-btn-container');
         if (graphBtnContainer) graphBtnContainer.classList.add('hidden');
+        if (adminToggle) adminToggle.classList.add('hidden');
         return;
     }
 
     appState.selectedWikiId = wikiId;
     setHashSilent(`#wiki/${encodeURIComponent(wikiId)}`);
+    if (adminToggle) adminToggle.classList.remove('hidden');
 
     // Fetch component graph
     const graph = await fetchApi(`/wikis/${encodeURIComponent(wikiId)}/graph`) as ComponentGraph | null;
@@ -378,6 +387,15 @@ if (wikiPathBrowserSelect) wikiPathBrowserSelect.addEventListener('click', selec
 // Dependency graph button
 const wikiGraphBtn = document.getElementById('wiki-graph-btn');
 if (wikiGraphBtn) wikiGraphBtn.addEventListener('click', () => showWikiGraph());
+
+// Admin toggle button
+const adminToggle = document.getElementById('wiki-admin-toggle');
+if (adminToggle) {
+    adminToggle.addEventListener('click', () => {
+        const wikiId = appState.selectedWikiId;
+        if (wikiId) showWikiAdmin(wikiId);
+    });
+}
 
 // Expose for global access
 (window as any).fetchWikisData = fetchWikisData;
