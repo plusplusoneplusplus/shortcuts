@@ -371,9 +371,9 @@ describe('Dependency Graph — tooltips', () => {
 // ============================================================================
 
 describe('Dependency Graph — node click navigation', () => {
-    it('should call loadModule on node click', () => {
+    it('should call loadComponent on node click', () => {
         const html = getGraphHtml();
-        expect(html).toContain('loadModule(d.id)');
+        expect(html).toContain('loadComponent(d.id)');
     });
 
     it('should stop event propagation on click', () => {

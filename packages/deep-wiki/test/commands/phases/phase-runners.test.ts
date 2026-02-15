@@ -357,7 +357,7 @@ afterEach(() => {
 // ============================================================================
 
 describe('runPhase1', () => {
-    it('should discover modules and return graph', async () => {
+    it('should discover components and return graph', async () => {
         const result = await runPhase1(repoDir, defaultOptions(), () => false);
         expect(result.graph).toBeDefined();
         expect(result.graph!.components).toHaveLength(1);
@@ -409,7 +409,7 @@ describe('runPhase1', () => {
 // ============================================================================
 
 describe('runPhase2Consolidation', () => {
-    it('should consolidate modules and return graph', async () => {
+    it('should consolidate components and return graph', async () => {
         const tracker = new UsageTracker();
         const result = await runPhase2Consolidation(repoDir, sampleGraph, defaultOptions(), tracker);
         expect(result.graph).toBeDefined();
@@ -453,7 +453,7 @@ describe('runPhase2Consolidation', () => {
 // ============================================================================
 
 describe('runPhase3Analysis', () => {
-    it('should analyze modules and return analyses', async () => {
+    it('should analyze components and return analyses', async () => {
         const result = await runPhase3Analysis(repoDir, sampleGraph, defaultOptions(), () => false);
         expect(result.analyses).toBeDefined();
         expect(result.analyses!).toHaveLength(1);
@@ -465,18 +465,18 @@ describe('runPhase3Analysis', () => {
         expect(analyzeComponents).toHaveBeenCalled();
     });
 
-    it('should return reanalyzedModuleIds', async () => {
+    it('should return reanalyzedComponentIds', async () => {
         const result = await runPhase3Analysis(repoDir, sampleGraph, defaultOptions(), () => false);
-        expect(result.reanalyzedModuleIds).toEqual(['test-module']);
+        expect(result.reanalyzedComponentIds).toEqual(['test-module']);
     });
 
-    it('should return empty reanalyzedModuleIds when all cached', async () => {
+    it('should return empty reanalyzedComponentIds when all cached', async () => {
         vi.mocked(getComponentsNeedingReanalysis).mockResolvedValue([]);
         const { getCachedAnalyses } = await import('../../../src/cache');
         vi.mocked(getCachedAnalyses).mockReturnValue(sampleAnalyses);
 
         const result = await runPhase3Analysis(repoDir, sampleGraph, defaultOptions(), () => false);
-        expect(result.reanalyzedModuleIds).toEqual([]);
+        expect(result.reanalyzedComponentIds).toEqual([]);
         expect(analyzeComponents).not.toHaveBeenCalled();
     });
 
@@ -538,7 +538,7 @@ describe('runPhase4Writing', () => {
         expect(result.exitCode).toBe(EXIT_CODES.EXECUTION_ERROR);
     });
 
-    it('should accept reanalyzedModuleIds parameter', async () => {
+    it('should accept reanalyzedComponentIds parameter', async () => {
         const result = await runPhase4Writing(
             repoDir, sampleGraph, sampleAnalyses, defaultOptions(), () => false,
             undefined, ['test-module']

@@ -1,7 +1,7 @@
 /**
- * Phase 2: Module Consolidation
+ * Phase 2: Component Consolidation
  *
- * Reduces the module graph by consolidating related modules using rule-based and AI-powered clustering.
+ * Reduces the component graph by consolidating related components using rule-based and AI-powered clustering.
  */
 
 import * as path from 'path';
@@ -36,7 +36,7 @@ export interface Phase2ConsolidationResult {
 }
 
 // ============================================================================
-// Phase 2: Module Consolidation
+// Phase 2: Component Consolidation
 // ============================================================================
 
 export async function runPhase2Consolidation(
@@ -49,7 +49,7 @@ export async function runPhase2Consolidation(
 
     process.stderr.write('\n');
     printHeader('Phase 2: Consolidation');
-    printInfo(`Input: ${graph.components.length} modules`);
+    printInfo(`Input: ${graph.components.length} components`);
 
     const outputDir = path.resolve(options.output);
     const inputComponentCount = graph.components.length;
@@ -62,13 +62,13 @@ export async function runPhase2Consolidation(
 
         if (cached) {
             printSuccess(
-                `Using cached consolidation (${inputComponentCount} → ${cached.graph.components.length} modules)`
+                `Using cached consolidation (${inputComponentCount} → ${cached.graph.components.length} components)`
             );
             usageTracker?.markCached('consolidation');
 
-            // Ensure module-graph.json reflects the consolidated graph, even from cache.
+            // Ensure component-graph.json reflects the consolidated graph, even from cache.
             // Phase 1 may have overwritten it with the pre-consolidation graph.
-            const graphOutputFile = path.join(outputDir, 'module-graph.json');
+            const graphOutputFile = path.join(outputDir, 'component-graph.json');
             try {
                 fs.mkdirSync(outputDir, { recursive: true });
                 fs.writeFileSync(graphOutputFile, JSON.stringify(cached.graph, null, 2), 'utf-8');
@@ -81,7 +81,7 @@ export async function runPhase2Consolidation(
     }
 
     const spinner = new Spinner();
-    spinner.start('Consolidating modules...');
+    spinner.start('Consolidating components...');
 
     try {
         // Resolve per-phase settings for consolidation
@@ -111,29 +111,29 @@ export async function runPhase2Consolidation(
         });
 
         spinner.succeed(
-            `Consolidation complete: ${result.originalCount} → ${result.afterRuleBasedCount} (rule-based) → ${result.finalCount} modules`
+            `Consolidation complete: ${result.originalCount} → ${result.afterRuleBasedCount} (rule-based) → ${result.finalCount} components`
         );
 
         // Save consolidation result to cache
         await saveConsolidation(repoPath, result.graph, outputDir, inputComponentCount);
 
-        // Update module-graph.json with the consolidated graph.
+        // Update component-graph.json with the consolidated graph.
         // Phase 5 (Website) reads this file to build the embedded data, so it must
-        // reflect the post-consolidation module IDs used in Phases 3–4.
-        const graphOutputFile = path.join(outputDir, 'module-graph.json');
+        // reflect the post-consolidation component IDs used in Phases 3–4.
+        const graphOutputFile = path.join(outputDir, 'component-graph.json');
         try {
             fs.mkdirSync(outputDir, { recursive: true });
             fs.writeFileSync(graphOutputFile, JSON.stringify(result.graph, null, 2), 'utf-8');
         } catch {
             // Non-fatal: website may show stale graph but generation continues
             if (options.verbose) {
-                printWarning('Failed to update module-graph.json after consolidation');
+                printWarning('Failed to update component-graph.json after consolidation');
             }
         }
 
         return { graph: result.graph, duration: Date.now() - startTime };
     } catch (error) {
-        spinner.warn('Consolidation failed — using original modules');
+        spinner.warn('Consolidation failed — using original components');
         if (options.verbose) {
             printWarning(getErrorMessage(error));
         }

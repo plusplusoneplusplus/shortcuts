@@ -729,7 +729,7 @@ describe('GET /api/admin/generate/status (per-component)', () => {
 });
 
 // ============================================================================
-// SPA Module Regeneration UI
+// SPA Component Regeneration UI
 // ============================================================================
 
 describe('SPA component regeneration UI', () => {
@@ -745,12 +745,12 @@ describe('SPA component regeneration UI', () => {
             }).on('error', reject);
         });
 
-        expect(body).toContain('module-regen-btn');
-        expect(body).toContain('regenerateModule');
+        expect(body).toContain('component-regen-btn');
+        expect(body).toContain('regenerateComponent');
         expect(body).toContain('checkRegenAvailability');
     });
 
-    it('should include Phase 4 module list HTML elements', async () => {
+    it('should include Phase 4 component list HTML elements', async () => {
         const { wikiDir } = setupWikiDir();
         const s = await startServer(wikiDir);
 
@@ -762,12 +762,12 @@ describe('SPA component regeneration UI', () => {
             }).on('error', reject);
         });
 
-        expect(body).toContain('phase4-module-toggle');
-        expect(body).toContain('phase4-module-list');
-        expect(body).toContain('phase4-module-count');
+        expect(body).toContain('phase4-component-toggle');
+        expect(body).toContain('phase4-component-list');
+        expect(body).toContain('phase4-component-count');
     });
 
-    it('should include module list JavaScript functions', async () => {
+    it('should include component list JavaScript functions', async () => {
         const { wikiDir } = setupWikiDir();
         const s = await startServer(wikiDir);
 
@@ -779,9 +779,9 @@ describe('SPA component regeneration UI', () => {
             }).on('error', reject);
         });
 
-        expect(body).toContain('initPhase4ModuleList');
-        expect(body).toContain('renderPhase4ModuleList');
-        expect(body).toContain('runModuleRegenFromAdmin');
+        expect(body).toContain('initPhase4ComponentList');
+        expect(body).toContain('renderPhase4ComponentList');
+        expect(body).toContain('runComponentRegenFromAdmin');
     });
 
     it('should include regeneration CSS styles', async () => {
@@ -796,10 +796,10 @@ describe('SPA component regeneration UI', () => {
             }).on('error', reject);
         });
 
-        expect(body).toContain('.module-regen-btn');
+        expect(body).toContain('.component-regen-btn');
         expect(body).toContain('.regen-overlay');
-        expect(body).toContain('.phase-module-list');
-        expect(body).toContain('.phase-module-row');
-        expect(body).toContain('.phase-module-run-btn');
+        expect(body).toContain('.phase-component-list');
+        expect(body).toContain('.phase-component-row');
+        expect(body).toContain('.phase-component-run-btn');
     });
 });

@@ -52,7 +52,7 @@ interface GenerationState {
 }
 
 // ============================================================================
-// Module-Level State
+// Component-Level State
 // ============================================================================
 
 let generationState: GenerationState | null = null;
@@ -358,7 +358,7 @@ async function runGeneration(
                 return;
             }
             analyses = phase3Result.analyses!;
-            reanalyzedComponentIds = phase3Result.reanalyzedModuleIds;
+            reanalyzedComponentIds = phase3Result.reanalyzedComponentIds;
             const duration = Date.now() - phaseStart;
             sendSSE(res, {
                 type: 'phase-complete', phase: 3, success: true, duration,

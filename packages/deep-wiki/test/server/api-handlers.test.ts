@@ -137,7 +137,7 @@ async function fetchText(url: string): Promise<{ status: number; body: string }>
 // ============================================================================
 
 describe('GET /api/graph', () => {
-    it('should return the full module graph', async () => {
+    it('should return the full component graph', async () => {
         const wikiDir = setupWikiDir();
         const s = await startServer(wikiDir);
 
@@ -172,9 +172,9 @@ describe('GET /api/components', () => {
         const { status, body } = await fetchJson(`${s.url}/api/components`);
         expect(status).toBe(200);
 
-        const modules = body as Array<{ id: string; name: string }>;
-        expect(modules).toHaveLength(2);
-        expect(modules.find(m => m.id === 'auth')).toBeDefined();
+        const components = body as Array<{ id: string; name: string }>;
+        expect(components).toHaveLength(2);
+        expect(components.find(m => m.id === 'auth')).toBeDefined();
     });
 
     it('should include id, name, category, complexity, path, purpose', async () => {
@@ -182,8 +182,8 @@ describe('GET /api/components', () => {
         const s = await startServer(wikiDir);
 
         const { body } = await fetchJson(`${s.url}/api/components`);
-        const modules = body as Array<Record<string, string>>;
-        const auth = modules.find(m => m.id === 'auth')!;
+        const components = body as Array<Record<string, string>>;
+        const auth = components.find(m => m.id === 'auth')!;
 
         expect(auth.name).toBe('Auth Module');
         expect(auth.category).toBe('core');

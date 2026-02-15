@@ -85,9 +85,9 @@ export function processMarkdownContent(): void {
         }
 
         const slug = href.replace(/^(\.\.\/|\.\/)+/g, '')
-            .replace(/^domains\/[^/]+\/modules\//, '')
+            .replace(/^domains\/[^/]+\/components\//, '')
             .replace(/^domains\/[^/]+\//, '')
-            .replace(/^modules\//, '')
+            .replace(/^components\//, '')
             .replace(/\.md$/, '');
 
         const specialPages: Record<string, { key: string; title: string }> = {

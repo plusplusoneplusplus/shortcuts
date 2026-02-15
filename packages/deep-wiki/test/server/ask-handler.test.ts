@@ -311,7 +311,7 @@ describe('handleAskRequest', () => {
         await handleAskRequest(req, res, options);
 
         const events = parseSSEEvents(getOutput());
-        // Should still work — just with potentially empty or few context modules
+        // Should still work — just with potentially empty or few context components
         expect(events.some(e => e.type === 'done')).toBe(true);
     });
 

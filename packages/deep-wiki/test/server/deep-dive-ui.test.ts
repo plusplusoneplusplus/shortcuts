@@ -242,10 +242,10 @@ describe('WebSocket Live Reload UI', () => {
             expect(html).toContain('delete markdownCache[id]');
         });
 
-        it('should reload current module if affected', () => {
+        it('should reload current component if affected', () => {
             const html = generateSpaHtml(opts);
-            expect(html).toContain('currentModuleId');
-            expect(html).toContain('loadModule(currentModuleId, true)');
+            expect(html).toContain('currentComponentId');
+            expect(html).toContain('loadComponent(currentComponentId, true)');
         });
 
         it('should auto-hide notification bar after 3 seconds', () => {

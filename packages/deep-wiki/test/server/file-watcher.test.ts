@@ -174,7 +174,7 @@ describe('FileWatcher', () => {
 
             watcher.start();
 
-            // Modify a file in the auth module
+            // Modify a file in the auth component
             fs.writeFileSync(
                 path.join(tmpDir, 'src', 'auth', 'login.ts'),
                 'export function login() { /* updated */ }',

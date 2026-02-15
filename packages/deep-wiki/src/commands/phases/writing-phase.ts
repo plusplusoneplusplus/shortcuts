@@ -1,7 +1,7 @@
 /**
  * Phase 4: Article Generation (Writing)
  *
- * Generates wiki articles from module analyses, with incremental caching and reduce-phase support.
+ * Generates wiki articles from component analyses, with incremental caching and reduce-phase support.
  */
 
 import * as path from 'path';
@@ -63,7 +63,7 @@ export async function runPhase4Writing(
     options: GenerateCommandOptions,
     isCancelled: () => boolean,
     usageTracker?: UsageTracker,
-    reanalyzedModuleIds?: string[]
+    reanalyzedComponentIds?: string[]
 ): Promise<Phase4WritingResult> {
     const startTime = Date.now();
 
@@ -85,7 +85,7 @@ export async function runPhase4Writing(
         // Non-fatal: incremental saves won't work but generation continues
     }
 
-    // Determine which modules need article generation
+    // Determine which components need article generation
     let analysesToGenerate = analyses;
     let cachedArticles: GeneratedArticle[] = [];
 
@@ -94,24 +94,24 @@ export async function runPhase4Writing(
             .map(a => a.componentId)
             .filter(id => !!id);
 
-        // Re-stamp unchanged module articles with the new git hash BEFORE scanning.
-        // This is the key to Phase 4 incremental invalidation: modules that were NOT
+        // Re-stamp unchanged component articles with the new git hash BEFORE scanning.
+        // This is the key to Phase 4 incremental invalidation: components that were NOT
         // re-analyzed in Phase 3 get their cached articles re-stamped so they pass
         // the git hash validation in scanIndividualArticlesCache().
         //
         // Skip re-stamping when:
         // - No git hash available
-        // - reanalyzedModuleIds is undefined (Phase 3 was skipped)
-        // - reanalyzedModuleIds is empty (nothing changed, articles already valid)
+        // - reanalyzedComponentIds is undefined (Phase 3 was skipped)
+        // - reanalyzedComponentIds is empty (nothing changed, articles already valid)
         // - --use-cache mode (articles are loaded regardless of hash)
-        if (gitHash && reanalyzedModuleIds !== undefined && reanalyzedModuleIds.length > 0 && !options.useCache) {
-            const unchangedModuleIds = componentIds.filter(
-                id => !reanalyzedModuleIds.includes(id)
+        if (gitHash && reanalyzedComponentIds !== undefined && reanalyzedComponentIds.length > 0 && !options.useCache) {
+            const unchangedComponentIds = componentIds.filter(
+                id => !reanalyzedComponentIds.includes(id)
             );
-            if (unchangedModuleIds.length > 0) {
-                const restamped = restampArticles(unchangedModuleIds, options.output, gitHash);
+            if (unchangedComponentIds.length > 0) {
+                const restamped = restampArticles(unchangedComponentIds, options.output, gitHash);
                 if (restamped > 0 && options.verbose) {
-                    printInfo(`Re-stamped ${restamped} unchanged module articles with current git hash`);
+                    printInfo(`Re-stamped ${restamped} unchanged component articles with current git hash`);
                 }
             }
         }
@@ -127,13 +127,13 @@ export async function runPhase4Writing(
             cachedArticles = found;
 
             if (missing.length === 0) {
-                // All module articles are cached — skip map phase
-                printSuccess(`All ${found.length} module articles loaded from cache`);
+                // All component articles are cached — skip map phase
+                printSuccess(`All ${found.length} component articles loaded from cache`);
             } else {
                 printInfo(`Recovered ${found.length} cached articles, ${missing.length} remaining`);
             }
 
-            // Only generate articles for modules NOT in cache
+            // Only generate articles for components NOT in cache
             analysesToGenerate = analyses.filter(
                 a => missing.includes(a.componentId)
             );
@@ -160,8 +160,8 @@ export async function runPhase4Writing(
         let freshArticles: GeneratedArticle[] = [];
 
         if (analysesToGenerate.length > 0) {
-            // Generate articles for modules that are not cached
-            spinner.start(`Generating articles for ${analysesToGenerate.length} modules...`);
+            // Generate articles for components that are not cached
+            spinner.start(`Generating articles for ${analysesToGenerate.length} components...`);
 
             const wikiOutput = await generateArticles(
                 {
@@ -193,14 +193,14 @@ export async function runPhase4Writing(
                         const componentId = output?.item?.componentId;
                         const content = output?.rawText || output?.rawResponse;
                         if (componentId && content) {
-                            const moduleInfo = graph.components.find(m => m.id === componentId);
+                            const componentInfo = graph.components.find(m => m.id === componentId);
                             const article: GeneratedArticle = {
                                 type: 'component',
                                 slug: normalizeComponentId(componentId),
-                                title: moduleInfo?.name || componentId,
+                                title: componentInfo?.name || componentId,
                                 content,
                                 componentId,
-                                domainId: moduleInfo?.domain,
+                                domainId: componentInfo?.domain,
                             };
                             saveArticle(componentId, article, options.output, gitHash);
                         }
@@ -210,21 +210,21 @@ export async function runPhase4Writing(
                 },
             );
 
-            // Separate module articles from reduce-generated articles
+            // Separate component articles from reduce-generated articles
             freshArticles = wikiOutput.articles;
 
             // Check for failed articles
-            const failedArticleModuleIds = wikiOutput.failedComponentIds || [];
-            if (failedArticleModuleIds.length > 0) {
+            const failedArticleComponentIds = wikiOutput.failedComponentIds || [];
+            if (failedArticleComponentIds.length > 0) {
                 spinner.warn(
-                    `Article generation: ${freshArticles.length} succeeded, ${failedArticleModuleIds.length} failed`
+                    `Article generation: ${freshArticles.length} succeeded, ${failedArticleComponentIds.length} failed`
                 );
 
                 // Strict mode: fail the phase if any article failed
                 if (options.strict !== false) {
                     printError(
-                        `Strict mode: ${failedArticleModuleIds.length} module(s) failed article generation: ` +
-                        `${failedArticleModuleIds.join(', ')}. Use --no-strict to continue with partial results.`
+                        `Strict mode: ${failedArticleComponentIds.length} component(s) failed article generation: ` +
+                        `${failedArticleComponentIds.join(', ')}. Use --no-strict to continue with partial results.`
                     );
                     return {
                         articlesWritten: 0,
@@ -237,23 +237,23 @@ export async function runPhase4Writing(
             }
         }
 
-        // Merge cached + fresh module articles
-        // Module-type articles are the per-module ones; all others are reduce/domain artifacts
-        const moduleTypes = new Set(['component']);
-        const freshModuleArticles = freshArticles.filter(a => moduleTypes.has(a.type));
-        const reduceArticles = freshArticles.filter(a => !moduleTypes.has(a.type));
-        const allModuleArticles = [...cachedArticles, ...freshModuleArticles];
+        // Merge cached + fresh component articles
+        // Component-type articles are the per-component ones; all others are reduce/domain artifacts
+        const componentTypes = new Set(['component']);
+        const freshComponentArticles = freshArticles.filter(a => componentTypes.has(a.type));
+        const reduceArticles = freshArticles.filter(a => !componentTypes.has(a.type));
+        const allComponentArticles = [...cachedArticles, ...freshComponentArticles];
 
         // If we had cached articles but skipped generation, we still need the reduce phase
-        // (index/architecture/getting-started) which depends on ALL module articles.
+        // (index/architecture/getting-started) which depends on ALL component articles.
         // Try to load reduce articles from cache first — skip reduce phase if cached.
         //
         // Reduce skip criteria:
-        // - Skip reduce ONLY when NO modules were re-analyzed (truly nothing changed)
-        // - When reanalyzedModuleIds is undefined (Phase 3 was skipped via --phase 4),
+        // - Skip reduce ONLY when NO components were re-analyzed (truly nothing changed)
+        // - When reanalyzedComponentIds is undefined (Phase 3 was skipped via --phase 4),
         //   fall back to old behavior: skip reduce when all articles are cached
-        const nothingChanged = reanalyzedModuleIds !== undefined
-            ? reanalyzedModuleIds.length === 0
+        const nothingChanged = reanalyzedComponentIds !== undefined
+            ? reanalyzedComponentIds.length === 0
             : analysesToGenerate.length === 0;
 
         if (nothingChanged && cachedArticles.length > 0) {
@@ -269,10 +269,10 @@ export async function runPhase4Writing(
                 // All reduce articles loaded from cache — skip reduce phase entirely
                 reduceArticles.push(...cachedReduceArticles);
                 printSuccess(
-                    `All ${cachedArticles.length} module articles + ${cachedReduceArticles.length} reduce articles loaded from cache`
+                    `All ${cachedArticles.length} component articles + ${cachedReduceArticles.length} reduce articles loaded from cache`
                 );
             } else {
-                // Reduce articles not cached — generate them (reduce-only; don't re-generate module articles)
+                // Reduce articles not cached — generate them (reduce-only; don't re-generate component articles)
                 spinner.start('Generating index and overview pages...');
 
                 const reduceOnly = await generateReduceOnlyArticles(
@@ -298,9 +298,9 @@ export async function runPhase4Writing(
                 spinner.succeed('Generated index and overview pages');
             }
         } else if (analysesToGenerate.length === 0 && cachedArticles.length > 0 && !nothingChanged) {
-            // Modules were re-analyzed but all articles were re-stamped/cached.
-            // We still need to regenerate reduce articles because module content changed.
-            spinner.start('Regenerating index and overview pages (module content changed)...');
+            // Components were re-analyzed but all articles were re-stamped/cached.
+            // We still need to regenerate reduce articles because component content changed.
+            spinner.start('Regenerating index and overview pages (component content changed)...');
 
             const reduceOnly = await generateReduceOnlyArticles(
                 graph,
@@ -337,7 +337,7 @@ export async function runPhase4Writing(
         }
 
         // Combine all articles for writing
-        const allArticles = [...allModuleArticles, ...reduceArticles];
+        const allArticles = [...allComponentArticles, ...reduceArticles];
 
         // Write to disk
         const outputDir = path.resolve(options.output);
@@ -368,7 +368,7 @@ export async function runPhase4Writing(
 
         // Save article cache metadata (marks cache as "complete")
         try {
-            await saveAllArticles(allModuleArticles, options.output, repoPath);
+            await saveAllArticles(allComponentArticles, options.output, repoPath);
         } catch {
             if (options.verbose) {
                 printWarning('Failed to cache articles (non-fatal)');
@@ -395,7 +395,7 @@ export async function runPhase4Writing(
 // ============================================================================
 
 /**
- * Generate reduce-only articles (index/architecture/getting-started) without re-generating module articles.
+ * Generate reduce-only articles (index/architecture/getting-started) without re-generating component articles.
  */
 export async function generateReduceOnlyArticles(
     graph: ComponentGraph,
@@ -408,7 +408,7 @@ export async function generateReduceOnlyArticles(
         return [];
     }
 
-    // Provide compact per-module summaries to the reducer (avoid re-generating module articles).
+    // Provide compact per-component summaries to the reducer (avoid re-generating component articles).
     const resultsForPrompt = analyses.map(a => {
         const mod = graph.components.find(m => m.id === a.componentId);
         return {

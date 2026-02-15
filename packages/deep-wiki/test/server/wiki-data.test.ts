@@ -185,7 +185,7 @@ describe('WikiData', () => {
 // ============================================================================
 
 describe('WikiData — graph', () => {
-    it('should return the module graph', () => {
+    it('should return the component graph', () => {
         const wikiDir = setupWikiDir();
         const wd = new WikiData(wikiDir);
         wd.load();
@@ -206,7 +206,7 @@ describe('WikiData — graph', () => {
 // ============================================================================
 
 describe('WikiData — getComponentSummaries', () => {
-    it('should return summaries for all modules', () => {
+    it('should return summaries for all components', () => {
         const wikiDir = setupWikiDir();
         const wd = new WikiData(wikiDir);
         wd.load();
@@ -236,7 +236,7 @@ describe('WikiData — getComponentSummaries', () => {
 // ============================================================================
 
 describe('WikiData — getComponentDetail', () => {
-    it('should return detail for an existing module', () => {
+    it('should return detail for an existing component', () => {
         const wikiDir = setupWikiDir();
         const wd = new WikiData(wikiDir);
         wd.load();
@@ -247,7 +247,7 @@ describe('WikiData — getComponentDetail', () => {
         expect(detail!.markdown).toContain('# Auth Module');
     });
 
-    it('should return null for non-existent module', () => {
+    it('should return null for non-existent component', () => {
         const wikiDir = setupWikiDir();
         const wd = new WikiData(wikiDir);
         wd.load();
@@ -262,13 +262,13 @@ describe('WikiData — getComponentDetail', () => {
         const wd = new WikiData(wikiDir);
         wd.load();
 
-        // 'database' module exists in graph but no .md file
+        // 'database' component exists in graph but no .md file
         const detail = wd.getComponentDetail('database');
         expect(detail).not.toBeNull();
         expect(detail!.markdown).toBe('');
     });
 
-    it('should include module info from graph', () => {
+    it('should include component info from graph', () => {
         const wikiDir = setupWikiDir();
         const wd = new WikiData(wikiDir);
         wd.load();
@@ -469,7 +469,7 @@ describe('WikiData — analysis loading', () => {
 // ============================================================================
 
 describe('WikiData — edge cases', () => {
-    it('should handle empty modules directory', () => {
+    it('should handle empty components directory', () => {
         const graph = createTestModuleGraph();
         const wikiDir = path.join(tempDir, 'empty-modules');
         fs.mkdirSync(path.join(wikiDir, 'components'), { recursive: true });
@@ -486,7 +486,7 @@ describe('WikiData — edge cases', () => {
         expect(wd.getComponentDetail('auth')!.markdown).toBe('');
     });
 
-    it('should handle no modules directory at all', () => {
+    it('should handle no components directory at all', () => {
         const graph = createTestModuleGraph();
         const wikiDir = path.join(tempDir, 'no-modules');
         fs.mkdirSync(wikiDir, { recursive: true });
@@ -503,7 +503,7 @@ describe('WikiData — edge cases', () => {
         expect(Object.keys(data)).toHaveLength(0);
     });
 
-    it('should handle graph with no modules', () => {
+    it('should handle graph with no components', () => {
         const graph: ComponentGraph = {
             project: {
                 name: 'Empty',

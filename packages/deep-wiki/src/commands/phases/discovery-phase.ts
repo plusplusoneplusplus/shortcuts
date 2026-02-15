@@ -1,7 +1,7 @@
 /**
  * Phase 1: Discovery
  *
- * Discovers the module graph of a repository using AI-powered analysis.
+ * Discovers the component graph of a repository using AI-powered analysis.
  */
 
 import * as path from 'path';
@@ -78,7 +78,7 @@ export async function runPhase1(
                 : await getCachedGraph(repoPath, options.output);
             if (cached) {
                 const duration = Date.now() - startTime;
-                printSuccess(`Using cached module graph (${cached.graph.components.length} modules)`);
+                printSuccess(`Using cached component graph (${cached.graph.components.length} components)`);
                 return { graph: cached.graph, duration };
             }
         } catch {
@@ -87,7 +87,7 @@ export async function runPhase1(
     }
 
     const spinner = new Spinner();
-    spinner.start('Discovering module graph...');
+    spinner.start('Discovering component graph...');
 
     try {
         let result;
@@ -174,20 +174,20 @@ export async function runPhase1(
             });
         }
 
-        spinner.succeed(`Discovery complete — ${result.graph.components.length} modules found`);
+        spinner.succeed(`Discovery complete — ${result.graph.components.length} components found`);
 
         // Save to cache
         try {
             await saveGraph(repoPath, result.graph, options.output, options.focus);
         } catch {
             if (options.verbose) {
-                printWarning('Failed to cache module graph (non-fatal)');
+                printWarning('Failed to cache component graph (non-fatal)');
             }
         }
 
-        // Also write module-graph.json to output
+        // Also write component-graph.json to output
         const outputDir = path.resolve(options.output);
-        const outputFile = path.join(outputDir, 'module-graph.json');
+        const outputFile = path.join(outputDir, 'component-graph.json');
         try {
             fs.mkdirSync(outputDir, { recursive: true });
             fs.writeFileSync(outputFile, JSON.stringify(result.graph, null, 2), 'utf-8');

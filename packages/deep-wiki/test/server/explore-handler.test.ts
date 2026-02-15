@@ -123,7 +123,7 @@ describe('handleExploreRequest', () => {
         options = { wikiData, sendMessage: mockSendMessage };
     });
 
-    it('should return 404 for non-existent module', async () => {
+    it('should return 404 for non-existent component', async () => {
         const req = createMockRequest('{}');
         const { res, getOutput, getStatusCode } = createMockResponse();
 
@@ -200,7 +200,7 @@ describe('handleExploreRequest', () => {
         expect(doneEvent!.fullResponse).toBe('Deep analysis');
     });
 
-    it('should include module name in status message', async () => {
+    it('should include component name in status message', async () => {
         const req = createMockRequest('{}');
         const { res, getOutput } = createMockResponse();
 
@@ -303,7 +303,7 @@ describe('buildExplorePrompt', () => {
         components: [{ id: 'auth', name: 'Auth', purpose: 'Auth', dependencies: ['db'] }],
     };
 
-    it('should include module information', () => {
+    it('should include component information', () => {
         const prompt = buildExplorePrompt(mod, '', graph, {});
         expect(prompt).toContain('Auth');
         expect(prompt).toContain('src/auth');

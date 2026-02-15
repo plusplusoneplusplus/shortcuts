@@ -152,21 +152,21 @@ describe('ContextBuilder', () => {
     const graph = createTestGraph();
     const markdownData = createTestMarkdown();
 
-    it('should build an index from module articles', () => {
+    it('should build an index from component articles', () => {
         const builder = new ContextBuilder(graph, markdownData);
         expect(builder.documentCount).toBe(5);
         expect(builder.vocabularySize).toBeGreaterThan(0);
     });
 
-    it('should index modules even without markdown data', () => {
+    it('should index components even without markdown data', () => {
         const builder = new ContextBuilder(graph, {});
         expect(builder.documentCount).toBe(5);
-        // Still indexes module metadata (name, purpose, etc.)
+        // Still indexes component metadata (name, purpose, etc.)
         expect(builder.vocabularySize).toBeGreaterThan(0);
     });
 
     describe('retrieve()', () => {
-        it('should return relevant modules for an authentication question', () => {
+        it('should return relevant components for an authentication question', () => {
             const builder = new ContextBuilder(graph, markdownData);
             const result = builder.retrieve('How does authentication work?');
 
@@ -175,7 +175,7 @@ describe('ContextBuilder', () => {
             expect(result.graphSummary).toContain('TestProject');
         });
 
-        it('should return relevant modules for a database question', () => {
+        it('should return relevant components for a database question', () => {
             const builder = new ContextBuilder(graph, markdownData);
             const result = builder.retrieve('How is the database connection pool configured?');
 
@@ -183,14 +183,14 @@ describe('ContextBuilder', () => {
             expect(result.contextText).toContain('Database Module');
         });
 
-        it('should return relevant modules for a UI question', () => {
+        it('should return relevant components for a UI question', () => {
             const builder = new ContextBuilder(graph, markdownData);
             const result = builder.retrieve('What React components are in the login form?');
 
             expect(result.componentIds).toContain('ui-components');
         });
 
-        it('should boost module name matches', () => {
+        it('should boost component name matches', () => {
             const builder = new ContextBuilder(graph, markdownData);
             const result = builder.retrieve('authentication');
 
@@ -209,14 +209,14 @@ describe('ContextBuilder', () => {
             // database-module is a dependency of auth-module, may be included via expansion
         });
 
-        it('should respect maxModules limit', () => {
+        it('should respect maxComponents limit', () => {
             const builder = new ContextBuilder(graph, markdownData);
             const result = builder.retrieve('authentication', 2);
 
             expect(result.componentIds.length).toBeLessThanOrEqual(2);
         });
 
-        it('should include context text for selected modules', () => {
+        it('should include context text for selected components', () => {
             const builder = new ContextBuilder(graph, markdownData);
             const result = builder.retrieve('database query builder');
 
@@ -241,7 +241,7 @@ describe('ContextBuilder', () => {
             expect(result.graphSummary).toContain('TestProject');
         });
 
-        it('should handle queries matching multiple modules', () => {
+        it('should handle queries matching multiple components', () => {
             const builder = new ContextBuilder(graph, markdownData);
             // "login" appears in both auth-module and ui-components
             const result = builder.retrieve('login form handling');
@@ -269,7 +269,7 @@ describe('ContextBuilder', () => {
             expect(result.graphSummary).toContain('Components: 5');
         });
 
-        it('should include module dependencies in graph summary', () => {
+        it('should include component dependencies in graph summary', () => {
             const builder = new ContextBuilder(graph, markdownData);
             const result = builder.retrieve('test');
 
@@ -277,7 +277,7 @@ describe('ContextBuilder', () => {
             expect(result.graphSummary).toContain('database-module');
         });
 
-        it('should list all modules in graph summary', () => {
+        it('should list all components in graph summary', () => {
             const builder = new ContextBuilder(graph, markdownData);
             const result = builder.retrieve('test');
 

@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { EXIT_CODES } from '../../src/cli';
 
-// Mock the discovery module to avoid actual SDK calls
+// Mock the discovery component to avoid actual SDK calls
 vi.mock('../../src/discovery', () => ({
     discoverComponentGraph: vi.fn().mockRejectedValue(new Error('SDK not available in test')),
     runIterativeDiscovery: vi.fn(),
@@ -318,7 +318,7 @@ describe('Discover Command', () => {
 
             expect(stderrOutput).toContain('my-project');
             expect(stderrOutput).toContain('TypeScript');
-            expect(stderrOutput).toContain('2'); // 2 modules
+            expect(stderrOutput).toContain('2'); // 2 components
         });
 
         it('should output JSON to stdout', async () => {
@@ -348,7 +348,7 @@ describe('Discover Command', () => {
             expect(parsed.project.name).toBe('stdout-test');
         });
 
-        it('should print verbose module list when verbose is true', async () => {
+        it('should print verbose component list when verbose is true', async () => {
             const discovery = await import('../../src/discovery');
             vi.mocked(discovery.discoverComponentGraph).mockResolvedValueOnce({
                 graph: {

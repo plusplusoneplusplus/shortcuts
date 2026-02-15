@@ -433,7 +433,7 @@ function printCoverageResult(
         printWarning(`Theme "${themeId}" is partially covered.`);
         const relatedHigh = coverage.relatedComponents.filter(m => m.relevance === 'high');
         if (relatedHigh.length > 0) {
-            printInfo(`  Related modules: ${relatedHigh.map(m => m.componentId).join(', ')}`);
+            printInfo(`  Related components: ${relatedHigh.map(m => m.componentId).join(', ')}`);
         }
     } else {
         printInfo(`Theme "${themeId}" is new — not covered in wiki.`);

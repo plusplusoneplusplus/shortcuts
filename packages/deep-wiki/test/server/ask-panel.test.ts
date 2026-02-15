@@ -346,9 +346,9 @@ describe('Ask AI — SSE event handling', () => {
         expect(html).toContain('TextDecoder');
     });
 
-    it('should handle context module links', () => {
+    it('should handle context component links', () => {
         const html = generateSpaHtml(createOptions());
-        expect(html).toContain('loadModule');
+        expect(html).toContain('loadComponent');
         expect(html).toContain("Context: ");
     });
 

@@ -227,7 +227,7 @@ export async function executeGenerate(
         let analyses: ComponentAnalysis[];
         let phase3Duration = 0;
 
-        let reanalyzedModuleIds: string[] | undefined;
+        let reanalyzedComponentIds: string[] | undefined;
 
         if (startPhase <= 3) {
             const phase3Result = await runPhase3Analysis(
@@ -238,7 +238,7 @@ export async function executeGenerate(
             }
             analyses = phase3Result.analyses!;
             phase3Duration = phase3Result.duration;
-            reanalyzedModuleIds = phase3Result.reanalyzedModuleIds;
+            reanalyzedComponentIds = phase3Result.reanalyzedComponentIds;
         } else {
             // Load from cache
             const cached = getCachedAnalyses(options.output);
@@ -265,7 +265,7 @@ export async function executeGenerate(
         // Phase 4: Article Generation
         // ================================================================
         const phase4Result = await runPhase4Writing(
-            absoluteRepoPath, graph, analyses, options, isCancelled, usageTracker, reanalyzedModuleIds
+            absoluteRepoPath, graph, analyses, options, isCancelled, usageTracker, reanalyzedComponentIds
         );
         if (phase4Result.exitCode !== undefined) {
             return phase4Result.exitCode;
