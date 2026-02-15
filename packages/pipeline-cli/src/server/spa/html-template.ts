@@ -12,6 +12,7 @@ import type { DashboardOptions } from './types';
 import { escapeHtml } from './helpers';
 import { getDashboardStyles } from './styles';
 import { getDashboardScript } from './scripts';
+import { getAllModels } from '@plusplusoneplusplus/pipeline-core';
 
 export function generateDashboardHtml(options: DashboardOptions = {}): string {
     const {
@@ -128,7 +129,10 @@ ${getDashboardStyles()}
                 <div class="enqueue-field-row">
                     <div class="enqueue-field">
                         <label for="enqueue-model">Model <span class="enqueue-optional">(optional)</span></label>
-                        <input type="text" id="enqueue-model" placeholder="e.g., claude-sonnet-4-5" />
+                        <select id="enqueue-model">
+                            <option value="">Default</option>
+${getAllModels().map(m => `                            <option value="${escapeHtml(m.id)}">${escapeHtml(m.label)}${m.description ? ' ' + escapeHtml(m.description) : ''}</option>`).join('\n')}
+                        </select>
                     </div>
                     <div class="enqueue-field">
                         <label for="enqueue-cwd">Working Directory <span class="enqueue-optional">(optional)</span></label>

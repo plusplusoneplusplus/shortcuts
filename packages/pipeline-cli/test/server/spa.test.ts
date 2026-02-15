@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { generateDashboardHtml } from '../../src/server/spa';
 import { escapeHtml } from '../../src/server/spa/helpers';
+import { getAllModels } from '@plusplusoneplusplus/pipeline-core';
 import { getDashboardStyles } from '../../src/server/spa/styles';
 import { getDashboardScript } from '../../src/server/spa/scripts';
 import { getUtilsScript } from '../../src/server/spa/scripts/utils';
@@ -661,13 +662,59 @@ describe('Queue panel HTML', () => {
         expect(html).toContain('auto-generated if empty');
     });
 
-    it('contains enqueue dialog with model field', () => {
+    it('contains enqueue dialog with model selector', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('id="enqueue-model"');
+        // Model field should be a <select>, not an <input>
+        const modelSelectMatch = html.match(/<select[^>]*id="enqueue-model"[^>]*>/);
+        expect(modelSelectMatch).toBeTruthy();
+        // Should have a default empty option
+        expect(html).toContain('<option value="">Default</option>');
+        // Should contain model options from the registry
+        expect(html).toContain('claude-sonnet-4.5');
+        expect(html).toContain('Claude Sonnet 4.5');
+    });
+
+    it('model selector is not a text input', () => {
+        const html = generateDashboardHtml();
+        // Should NOT have an <input> with id="enqueue-model"
         const modelInputMatch = html.match(/<input[^>]*id="enqueue-model"[^>]*>/);
-        expect(modelInputMatch).toBeTruthy();
-        expect(modelInputMatch![0]).not.toContain('required');
-        expect(html).toContain('claude-sonnet-4-5');
+        expect(modelInputMatch).toBeNull();
+    });
+
+    it('model selector contains all models from registry', () => {
+        const html = generateDashboardHtml();
+        const models = getAllModels();
+        for (const model of models) {
+            expect(html).toContain(`value="${model.id}"`);
+            expect(html).toContain(model.label);
+        }
+    });
+
+    it('model selector includes descriptions for models that have them', () => {
+        const html = generateDashboardHtml();
+        const models = getAllModels();
+        for (const model of models) {
+            if (model.description) {
+                expect(html).toContain(model.description);
+            }
+        }
+    });
+
+    it('model selector default option has empty value', () => {
+        const html = generateDashboardHtml();
+        // The default option should have value="" so submitting without selection sends no model
+        expect(html).toContain('<option value="">Default</option>');
+    });
+
+    it('model selector has correct number of options (models + default)', () => {
+        const html = generateDashboardHtml();
+        const models = getAllModels();
+        // Count option tags within the model select
+        const modelSelectSection = html.match(/<select[^>]*id="enqueue-model"[^>]*>[\s\S]*?<\/select>/);
+        expect(modelSelectSection).toBeTruthy();
+        const optionCount = (modelSelectSection![0].match(/<option /g) || []).length;
+        expect(optionCount).toBe(models.length + 1); // +1 for "Default" option
     });
 
     it('contains enqueue dialog with working directory field', () => {
@@ -767,7 +814,7 @@ describe('getQueueScript', () => {
         expect(script).toContain('queueState.showHistory = true');
     });
 
-    it('reads model and cwd inputs in submitEnqueueForm', () => {
+    it('reads model select and cwd input in submitEnqueueForm', () => {
         expect(script).toContain("getElementById('enqueue-model')");
         expect(script).toContain("getElementById('enqueue-cwd')");
     });
@@ -780,9 +827,18 @@ describe('getQueueScript', () => {
         expect(script).toContain('payload.workingDirectory = cwd');
     });
 
-    it('clears model and cwd inputs after submit', () => {
-        expect(script).toContain("modelInput) modelInput.value = ''");
+    it('resets model select and clears cwd input after submit', () => {
+        expect(script).toContain("modelSelect) modelSelect.value = ''");
         expect(script).toContain("cwdInput) cwdInput.value = ''");
+    });
+
+    it('uses modelSelect variable name (not modelInput) for the model field', () => {
+        expect(script).toContain('var modelSelect = document.getElementById');
+        expect(script).not.toContain('var modelInput = document.getElementById');
+    });
+
+    it('reads model value from select element', () => {
+        expect(script).toContain('modelSelect ? modelSelect.value');
     });
 
     it('sets up enqueue form event listeners', () => {

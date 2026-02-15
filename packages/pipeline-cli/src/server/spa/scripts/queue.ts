@@ -272,14 +272,14 @@ export function getQueueScript(opts: ScriptOptions): string {
             var typeSelect = document.getElementById('enqueue-type');
             var prioritySelect = document.getElementById('enqueue-priority');
             var promptInput = document.getElementById('enqueue-prompt');
-            var modelInput = document.getElementById('enqueue-model');
+            var modelSelect = document.getElementById('enqueue-model');
             var cwdInput = document.getElementById('enqueue-cwd');
 
             var displayName = nameInput ? nameInput.value.trim() : '';
             var type = typeSelect ? typeSelect.value : 'custom';
             var priority = prioritySelect ? prioritySelect.value : 'normal';
             var prompt = promptInput ? promptInput.value.trim() : '';
-            var model = modelInput ? modelInput.value.trim() : '';
+            var model = modelSelect ? modelSelect.value : '';
             var cwd = cwdInput ? cwdInput.value.trim() : '';
 
             var payload = type === 'ai-clarification'
@@ -323,7 +323,7 @@ export function getQueueScript(opts: ScriptOptions): string {
                 // Clear form
                 if (nameInput) nameInput.value = '';
                 if (promptInput) promptInput.value = '';
-                if (modelInput) modelInput.value = '';
+                if (modelSelect) modelSelect.value = '';
                 if (cwdInput) cwdInput.value = '';
                 fetchQueue();
                 // Start polling to track task progress
