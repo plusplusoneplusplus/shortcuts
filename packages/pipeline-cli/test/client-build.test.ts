@@ -39,9 +39,9 @@ describe('Client Build Infrastructure', () => {
             expect(content).toContain('export {}');
         });
 
-        it('client/styles.css should be a valid placeholder', () => {
+        it('client/styles.css should contain real CSS', () => {
             const content = fs.readFileSync(path.join(CLIENT_DIR, 'styles.css'), 'utf8');
-            expect(content).toContain('Placeholder');
+            expect(content).toContain(':root');
         });
     });
 
