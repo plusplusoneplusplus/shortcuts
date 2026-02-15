@@ -24,24 +24,24 @@ NEVER create document file unless user's explicit ask.
 - **New Package:** `deep-wiki` in `packages/deep-wiki/`
 - **Pure Node.js:** No VS Code dependencies, uses `pipeline-core` for AI SDK
 - **Five-Phase Pipeline:**
-  - **Phase 1 (Discovery):** AI session with MCP tools to produce a `ModuleGraph` JSON
+  - **Phase 1 (Discovery):** AI session with MCP tools to produce a `ComponentGraph` JSON
   - **Phase 2 (Consolidation):** Merge and consolidate discovery output for large repos
-  - **Phase 3 (Analysis):** Per-module deep analysis producing `ModuleAnalysis[]` with incremental caching
+  - **Phase 3 (Analysis):** Per-component deep analysis producing `ComponentAnalysis[]` with incremental caching
   - **Phase 4 (Writing):** Article generation, reduce/synthesis
   - **Phase 5 (Website):** Static website output
 - **Modules:**
   - `discovery` - SDK session orchestration, prompt templates, response parsing, large repo handler
-  - `analysis` - Per-module analysis executor, prompts, and response parsing
+  - `analysis` - Per-component analysis executor, prompts, and response parsing
   - `writing` - Article executor, file writer, website generator, reduce prompts
   - `cache` - Git-hash-based cache invalidation for discovery, analysis, and articles
   - `commands` - CLI commands (`discover`, `generate`, and `serve`)
   - `server` - Interactive HTTP server with AI Q&A, SSE streaming, and TF-IDF context retrieval
 - **CLI Commands:**
-  - `deep-wiki discover <repo-path>` - Discover module graph only
+  - `deep-wiki discover <repo-path>` - Discover component graph only
   - `deep-wiki generate <repo-path>` - Full pipeline: Discovery → Analysis → Articles → Website
-  - `deep-wiki serve <wiki-dir>` - Interactive server with AI Q&A and module exploration
+  - `deep-wiki serve <wiki-dir>` - Interactive server with AI Q&A and component exploration
   - Options: --output, --model, --concurrency, --timeout, --focus, --force, --use-cache, --phase, --depth, --skip-website, --theme, --title, --verbose, --no-color
-- **Large Repo Support:** Multi-round discovery for repos with 3000+ files (structural scan → per-area drill-down → merge)
+- **Large Repo Support:** Multi-round discovery for repos with 3000+ files (structural scan → per-domain drill-down → merge)
 - **Debugging Serve Mode:** Build with `cd packages/deep-wiki && npm run build && npm link && cd ../..`, then `deep-wiki serve ./.wiki` to start the server. Test the Ask AI endpoint with `curl -s -N -X POST http://localhost:3000/api/ask -H 'Content-Type: application/json' -d '{"question":"test"}'`. See `packages/deep-wiki/AGENTS.md` for full debugging instructions.
 - **Testing:** Vitest tests across 23 test files
 
@@ -783,7 +783,7 @@ interface ShortcutsConfig {
 - 8 test files; run with `npm run test:run` in `packages/coc/` directory
 
 **Deep Wiki Tests** (Vitest) - Located in `packages/deep-wiki/test/`:
-- Discovery: prompt templates, response parsing, large repo handler, area tagging
+- Discovery: prompt templates, response parsing, large repo handler, domain tagging
 - Analysis: executor, prompts, response parsing
 - Writing: article executor, file writer, prompts, website generator, hierarchical structure
 - Cache: discovery cache, analysis cache, article cache, reduce-article cache, git utilities

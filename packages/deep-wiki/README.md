@@ -43,7 +43,7 @@ deep-wiki generate /path/to/repo --output ./wiki --phase 4
 deep-wiki generate /path/to/repo --output ./wiki --force
 ```
 
-### Discover Module Graph Only (Phase 1)
+### Discover Component Graph Only (Phase 1)
 
 ```bash
 deep-wiki discover /path/to/repo --output ./wiki --verbose
@@ -72,9 +72,9 @@ wiki/
 ├── index.md              # Project overview + categorized table of contents
 ├── architecture.md       # High-level architecture with Mermaid diagrams
 ├── getting-started.md    # Prerequisites, setup, build, run instructions
-├── module-graph.json     # Raw Phase 1 discovery output
-└── modules/
-    ├── auth.md           # Per-module article
+├── component-graph.json     # Raw Phase 1 discovery output
+└── components/
+    ├── auth.md           # Per-component article
     ├── database.md
     └── ...
 ```
@@ -85,45 +85,45 @@ wiki/
 ├── index.md                    # Project-level index (links to areas)
 ├── architecture.md             # Project-level architecture
 ├── getting-started.md          # Project-level getting started
-├── module-graph.json           # Raw Phase 1 discovery output
-├── areas/
+├── component-graph.json           # Raw Phase 1 discovery output
+├── domains/
 │   ├── packages-core/
-│   │   ├── index.md            # Area index (links to its modules)
-│   │   ├── architecture.md     # Area-level architecture diagram
-│   │   └── modules/
+│   │   ├── index.md            # Domain index (links to its components)
+│   │   ├── architecture.md     # Domain-level architecture diagram
+│   │   └── components/
 │   │       ├── auth.md
 │   │       ├── database.md
 │   │       └── ...
 │   ├── packages-api/
 │   │   ├── index.md
 │   │   ├── architecture.md
-│   │   └── modules/
+│   │   └── components/
 │   │       ├── routes.md
 │   │       └── ...
 │   └── ...
-└── modules/                    # (empty — modules live under their area)
+└── components/                    # (empty — components live under their domain)
 ```
 
-The hierarchical layout activates automatically when Phase 1 discovers top-level areas (repos with 3000+ files). No additional CLI flags needed.
+The hierarchical layout activates automatically when Phase 1 discovers top-level domains (repos with 3000+ files). No additional CLI flags needed.
 
 ## Five-Phase Pipeline
 
 ### Phase 1: Discovery (~1-3 min)
 
-A single AI session with MCP tools scans the repo and produces a `ModuleGraph` JSON:
+A single AI session with MCP tools scans the repo and produces a `ComponentGraph` JSON:
 - Project info (name, language, build system, entry points)
-- Modules (id, name, path, purpose, key files, dependencies, complexity, category)
+- Components (id, name, path, purpose, key files, dependencies, complexity, category)
 - Categories and architecture notes
 
 Large repos (3000+ files) use multi-round discovery automatically.
 
 ### Phase 2: Consolidation
 
-Consolidates and refines the module graph from Phase 1 before analysis.
+Consolidates and refines the component graph from Phase 1 before analysis.
 
 ### Phase 3: Deep Analysis (~2-10 min)
 
-Parallel AI sessions (each with read-only MCP tools) analyze every module:
+Parallel AI sessions (each with read-only MCP tools) analyze every component:
 - Public API, internal architecture, data flow
 - Design patterns, error handling, code examples
 - Internal and external dependency mapping
@@ -137,12 +137,12 @@ Three depth levels control investigation thoroughness:
 ### Phase 4: Article Generation (~2-5 min)
 
 Parallel AI sessions (session pool, no tools needed) write markdown articles:
-- **Map phase** — one article per module with cross-links between modules
+- **Map phase** — one article per component with cross-links between components
 - **Reduce phase** — AI generates index, architecture, and getting-started pages
 
-For large repos with areas, Phase 4 uses a 2-tier reduce:
-1. **Per-area reduce** — generates area index + area architecture (10-30 modules per area)
-2. **Project-level reduce** — receives area summaries → generates project index + architecture + getting-started
+For large repos with domains, Phase 4 uses a 2-tier reduce:
+1. **Per-domain reduce** — generates domain index + domain architecture (10-30 components per domain)
+2. **Project-level reduce** — receives domain summaries → generates project index + architecture + getting-started
 
 ### Phase 5: Website
 
@@ -150,14 +150,14 @@ Creates optional static HTML website with navigation, themes (light/dark/auto). 
 
 ## Incremental Rebuilds
 
-Subsequent runs are faster thanks to per-module caching:
+Subsequent runs are faster thanks to per-component caching:
 
 1. Git diff detects changed files since last analysis
-2. Changed files are mapped to affected modules
-3. Only affected modules are re-analyzed (unchanged modules load from cache)
+2. Changed files are mapped to affected components
+3. Only affected components are re-analyzed (unchanged components load from cache)
 4. Phase 4 always re-runs (cheap, cross-links may need updating)
 
-Cache is stored in `<output>/.wiki-cache/`. Use `--force` to bypass. Article cache supports area-scoped storage: `articles/{area-id}/{module-id}.json`.
+Cache is stored in `<output>/.wiki-cache/`. Use `--force` to bypass. Article cache supports domain-scoped storage: `articles/{domain-id}/{component-id}.json`.
 
 ## Testing
 
@@ -169,7 +169,7 @@ npm run test:run
 npm test
 ```
 
-451 tests across 21 test files covering all phases: types, schemas, AI invoker, prompt generation, response parsing, map-reduce orchestration, file writing, caching (with incremental rebuild), CLI parsing, command integration, hierarchical output, area tagging, and area-scoped article caching.
+451 tests across 21 test files covering all phases: types, schemas, AI invoker, prompt generation, response parsing, map-reduce orchestration, file writing, caching (with incremental rebuild), CLI parsing, command integration, hierarchical output, domain tagging, and domain-scoped article caching.
 
 ## Architecture
 
@@ -185,29 +185,29 @@ src/
 │   ├── discover.ts         # deep-wiki discover <repo>
 │   └── generate.ts         # deep-wiki generate <repo> (5-phase orchestration)
 ├── discovery/
-│   ├── index.ts            # discoverModuleGraph()
+│   ├── index.ts            # discoverComponentGraph()
 │   ├── prompts.ts          # Discovery prompt templates
 │   ├── discovery-session.ts    # SDK session orchestration
 │   ├── response-parser.ts     # JSON extraction + validation
 │   └── large-repo-handler.ts  # Multi-round for big repos
 ├── consolidation/
-│   ├── index.ts            # consolidateModules()
+│   ├── index.ts            # consolidateComponents()
 │   ├── consolidator.ts     # Hybrid orchestration
 │   ├── rule-based-consolidator.ts
 │   └── ai-consolidator.ts
 ├── analysis/
-│   ├── index.ts            # analyzeModules()
+│   ├── index.ts            # analyzeComponents()
 │   ├── prompts.ts          # Analysis prompt templates (3 depths)
 │   ├── analysis-executor.ts    # MapReduceExecutor orchestration
-│   └── response-parser.ts     # ModuleAnalysis JSON parsing + Mermaid validation
+│   └── response-parser.ts     # ComponentAnalysis JSON parsing + Mermaid validation
 ├── writing/
 │   ├── index.ts            # generateArticles()
-│   ├── prompts.ts          # Module article prompt templates
+│   ├── prompts.ts          # Component article prompt templates
 │   ├── reduce-prompts.ts   # Index/architecture/getting-started prompts
 │   ├── article-executor.ts # MapReduceExecutor orchestration
 │   └── file-writer.ts      # Write markdown to disk (flat + hierarchical layouts)
 └── cache/
-    ├── index.ts            # Cache manager (graph + consolidation + analyses + area-scoped articles)
+    ├── index.ts            # Cache manager (graph + consolidation + analyses + domain-scoped articles)
     └── git-utils.ts        # Git hash + change detection
 ```
 
