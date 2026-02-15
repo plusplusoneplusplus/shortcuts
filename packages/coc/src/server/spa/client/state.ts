@@ -74,3 +74,23 @@ export const taskPanelState: TaskPanelState = {
     expandedFolders: {},
     openFilePath: null,
 };
+
+// ================================================================
+// Queue Task Conversation State
+// ================================================================
+
+/** Lightweight conversation turn for the SPA client (timestamps are strings) */
+export interface ClientConversationTurn {
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp?: string;
+    turnIndex?: number;
+    streaming?: boolean;
+}
+
+/** Parsed conversation turns for the active queue task detail view */
+export let queueTaskConversationTurns: ClientConversationTurn[] = [];
+
+export function setQueueTaskConversationTurns(turns: ClientConversationTurn[]): void {
+    queueTaskConversationTurns = turns;
+}

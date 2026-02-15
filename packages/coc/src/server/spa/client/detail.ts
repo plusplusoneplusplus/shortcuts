@@ -3,7 +3,8 @@
  */
 
 import { getApiBase } from './config';
-import { appState, queueState } from './state';
+import { appState, queueState, queueTaskConversationTurns, setQueueTaskConversationTurns } from './state';
+import type { ClientConversationTurn } from './state';
 import {
     formatDuration, formatRelativeTime, statusIcon, statusLabel,
     typeLabel, escapeHtmlClient, copyToClipboard,
@@ -192,9 +193,36 @@ export function showQueueTaskDetail(taskId: string): void {
     queueTaskStreamContent = '';
     queueTaskStreamProcessId = processId;
 
+    // Reset conversation turns
+    setQueueTaskConversationTurns([]);
+
     // First, try to fetch the process from the store for metadata
     fetchApi('/processes/' + encodeURIComponent(processId)).then(function(data: any) {
         const proc = data && data.process ? data.process : null;
+
+        // Populate conversation turns from process data
+        if (proc && proc.conversationTurns && proc.conversationTurns.length > 0) {
+            setQueueTaskConversationTurns(proc.conversationTurns);
+        } else if (proc) {
+            // Build synthetic turns from legacy fields
+            const syntheticTurns: ClientConversationTurn[] = [];
+            if (proc.promptPreview) {
+                syntheticTurns.push({
+                    role: 'user',
+                    content: proc.promptPreview,
+                    timestamp: proc.startTime || undefined,
+                });
+            }
+            if (proc.result) {
+                syntheticTurns.push({
+                    role: 'assistant',
+                    content: proc.result,
+                    timestamp: proc.endTime || undefined,
+                });
+            }
+            setQueueTaskConversationTurns(syntheticTurns);
+        }
+
         renderQueueTaskConversation(processId, taskId, proc);
 
         // Connect SSE for streaming
@@ -204,6 +232,40 @@ export function showQueueTaskDetail(taskId: string): void {
         renderQueueTaskConversation(processId, taskId, null);
         connectQueueTaskSSE(processId, taskId, null);
     });
+}
+
+function renderChatMessage(turn: ClientConversationTurn): string {
+    const isUser = turn.role === 'user';
+    const roleLabel = isUser ? 'You' : 'Assistant';
+    const roleIcon = isUser ? '\u{1F464}' : '\u{1F916}';
+    const bubbleClass = 'chat-message' + (isUser ? ' user' : ' assistant') + (turn.streaming ? ' streaming' : '');
+
+    let html = '<div class="' + bubbleClass + '">';
+
+    // Header: role label + icon + timestamp + optional streaming indicator
+    html += '<div class="chat-message-header">';
+    html += '<span class="role-icon">' + roleIcon + '</span>';
+    html += '<span class="role-label">' + roleLabel + '</span>';
+    if (turn.timestamp) {
+        html += '<span class="timestamp">' + new Date(turn.timestamp).toLocaleTimeString() + '</span>';
+    }
+    if (turn.streaming) {
+        html += '<span class="streaming-indicator">\u25CF Live</span>';
+    }
+    html += '</div>';
+
+    // Content
+    html += '<div class="chat-message-content">' + renderMarkdown(turn.content || '') + '</div>';
+
+    // Copy button (assistant messages only)
+    if (!isUser && turn.content) {
+        html += '<button class="bubble-copy-btn" onclick="copyToClipboard(' +
+            escapeHtmlClient(JSON.stringify(turn.content)) +
+            ')" title="Copy message">\u{1F4CB}</button>';
+    }
+
+    html += '</div>';
+    return html;
 }
 
 function renderQueueTaskConversation(processId: string, taskId: string, proc: any): void {
@@ -277,7 +339,17 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
         '</span>' +
     '</div>';
 
-    // Metadata
+    // Metadata — collapsed by default
+    html += '<details class="meta-section">';
+    html += '<summary class="meta-summary">';
+    html += escapeHtmlClient(processId);
+    if (proc && proc.metadata && proc.metadata.model) {
+        html += ' \u00B7 ' + escapeHtmlClient(proc.metadata.model);
+    }
+    if (startTime) {
+        html += ' \u00B7 ' + startTime;
+    }
+    html += '</summary>';
     html += '<div class="meta-grid">';
     html += '<div class="meta-item"><label>Process ID</label><span>' + escapeHtmlClient(processId) + '</span></div>';
     if (proc && proc.metadata && proc.metadata.model) {
@@ -293,6 +365,7 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
         html += '<div class="meta-item"><label>Ended</label><span>' + endTime + '</span></div>';
     }
     html += '</div>';
+    html += '</details>';
 
     // Error
     if (error) {
@@ -305,17 +378,38 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
             '<div class="prompt-body">' + escapeHtmlClient(prompt) + '</div></details>';
     }
 
-    // Conversation area
+    // Conversation area — chat bubbles
     html += '<div class="conversation-section">' +
-        '<h2>Conversation' + (isRunning ? ' <span class="streaming-indicator">\u25CF Live</span>' : '') + '</h2>' +
+        '<h2>Conversation</h2>' +
         '<div id="queue-task-conversation" class="conversation-body">';
 
-    if (proc && proc.result && !isRunning) {
-        // Completed — show full result
-        html += renderMarkdown(proc.result);
+    const turns = queueTaskConversationTurns;
+
+    if (turns.length > 0) {
+        for (let i = 0; i < turns.length; i++) {
+            html += renderChatMessage(turns[i]);
+        }
+    } else if (proc && proc.result && !isRunning) {
+        // Backward compatibility: no conversationTurns, build synthetic bubbles
+        if (proc.promptPreview) {
+            html += renderChatMessage({
+                role: 'user',
+                content: proc.promptPreview,
+                timestamp: proc.startTime || undefined,
+            });
+        }
+        html += renderChatMessage({
+            role: 'assistant',
+            content: proc.result,
+            timestamp: proc.endTime || undefined,
+        });
     } else if (queueTaskStreamContent) {
-        // Streaming in progress — show accumulated content
-        html += renderMarkdown(queueTaskStreamContent);
+        // Streaming in progress with no parsed turns — legacy path
+        html += renderChatMessage({
+            role: 'assistant',
+            content: queueTaskStreamContent,
+            streaming: true,
+        });
     } else if (isRunning) {
         html += '<div class="conversation-waiting">Waiting for response...</div>';
     } else {
@@ -379,6 +473,14 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
             const data = JSON.parse(e.data);
             if (data.content) {
                 queueTaskStreamContent += data.content;
+
+                // Update the last assistant turn's content in state
+                const turns = queueTaskConversationTurns;
+                if (turns.length > 0 && turns[turns.length - 1].role === 'assistant') {
+                    turns[turns.length - 1].content = queueTaskStreamContent;
+                    turns[turns.length - 1].streaming = true;
+                }
+
                 updateConversationContent();
             }
         } catch(err) {}
@@ -391,9 +493,17 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
         }
         try {
             const data = JSON.parse(e.data);
+            // Mark streaming complete
+            const turns = queueTaskConversationTurns;
+            if (turns.length > 0 && turns[turns.length - 1].streaming) {
+                turns[turns.length - 1].streaming = false;
+            }
             // Refresh the full detail to show final state
             fetchApi('/processes/' + encodeURIComponent(processId)).then(function(result: any) {
                 if (result && result.process) {
+                    if (result.process.conversationTurns && result.process.conversationTurns.length > 0) {
+                        setQueueTaskConversationTurns(result.process.conversationTurns);
+                    }
                     renderQueueTaskConversation(processId, taskId, result.process);
                 }
             });
@@ -439,9 +549,29 @@ function connectQueueTaskSSE(processId: string, taskId: string, proc: any): void
 }
 
 function updateConversationContent(): void {
-    const el = document.getElementById('queue-task-conversation');
-    if (!el) return;
-    el.innerHTML = renderMarkdown(queueTaskStreamContent);
+    const container = document.getElementById('queue-task-conversation');
+    if (!container) return;
+
+    // Find the last assistant bubble (the streaming one)
+    const bubbles = container.querySelectorAll('.chat-message.assistant');
+    const lastBubble = bubbles.length > 0 ? bubbles[bubbles.length - 1] : null;
+
+    if (lastBubble) {
+        // Update only the content div inside the last assistant bubble
+        const contentDiv = lastBubble.querySelector('.chat-message-content');
+        if (contentDiv) {
+            contentDiv.innerHTML = renderMarkdown(queueTaskStreamContent);
+        }
+    } else {
+        // No assistant bubble yet — append one (streaming just started)
+        const streamingTurn: ClientConversationTurn = {
+            role: 'assistant',
+            content: queueTaskStreamContent,
+            streaming: true,
+        };
+        container.insertAdjacentHTML('beforeend', renderChatMessage(streamingTurn));
+    }
+
     scrollConversationToBottom();
 }
 
