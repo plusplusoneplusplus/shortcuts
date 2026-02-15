@@ -1,7 +1,7 @@
 /**
  * Serve Command
  *
- * Implements the `pipeline serve` command.
+ * Implements the `coc serve` command.
  * Starts the AI Execution Dashboard web server.
  *
  * Mirrors packages/deep-wiki/src/commands/serve.ts pattern.
@@ -35,7 +35,7 @@ import type { ServeCommandOptions } from '../server/types';
 export async function executeServe(options: ServeCommandOptions): Promise<number> {
     const port = options.port ?? 4000;
     const host = options.host ?? 'localhost';
-    const dataDir = resolveDataDir(options.dataDir ?? '~/.pipeline-server');
+    const dataDir = resolveDataDir(options.dataDir ?? '~/.coc');
 
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });

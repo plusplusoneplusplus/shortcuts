@@ -21,7 +21,7 @@ describe('List Command', () => {
     let stdoutSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-cli-list-'));
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-list-'));
         stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
         stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
         setColorEnabled(false);

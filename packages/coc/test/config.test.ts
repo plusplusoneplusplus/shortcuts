@@ -25,7 +25,7 @@ describe('Config', () => {
 
     describe('Constants', () => {
         it('should have correct config file name', () => {
-            expect(CONFIG_FILE_NAME).toBe('.pipeline-cli.yaml');
+            expect(CONFIG_FILE_NAME).toBe('.coc.yaml');
         });
 
         it('should have correct default config', () => {
@@ -45,7 +45,7 @@ describe('Config', () => {
     describe('getConfigFilePath', () => {
         it('should return path in home directory', () => {
             const result = getConfigFilePath();
-            expect(result).toBe(path.join(os.homedir(), '.pipeline-cli.yaml'));
+            expect(result).toBe(path.join(os.homedir(), '.coc.yaml'));
         });
     });
 
@@ -57,7 +57,7 @@ describe('Config', () => {
         let tmpDir: string;
 
         beforeEach(() => {
-            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-cli-config-'));
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-config-'));
         });
 
         afterEach(() => {
@@ -242,7 +242,7 @@ timeout: 300
         let tmpDir: string;
 
         beforeEach(() => {
-            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-cli-resolve-'));
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-resolve-'));
         });
 
         afterEach(() => {

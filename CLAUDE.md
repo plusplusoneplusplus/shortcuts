@@ -16,8 +16,8 @@ NEVER create document file unless user's explicit ask.
   - `map-reduce` - Parallel AI processing framework (executor, splitters, reducers, jobs)
   - `pipeline` - YAML pipeline execution (executor, CSV reader, template engine, filters)
 
-- **Monorepo Structure:** npm workspaces with `packages/pipeline-core`, `packages/pipeline-cli`, `packages/deep-wiki`, and root extension
-- **Testing:** Vitest for pipeline-core/pipeline-cli/deep-wiki, Mocha for extension (6900+ extension tests passing)
+- **Monorepo Structure:** npm workspaces with `packages/pipeline-core`, `packages/coc`, `packages/deep-wiki`, and root extension
+- **Testing:** Vitest for pipeline-core/coc/deep-wiki, Mocha for extension (6900+ extension tests passing)
 
 **Deep Wiki Generator** - A standalone CLI tool that auto-generates comprehensive wikis for any codebase:
 
@@ -66,8 +66,8 @@ When creating new tree data providers, prefer extending these base classes over 
 
 **AI Execution Server** - A standalone web server for the AI Processes dashboard, allowing multi-workspace process tracking outside VS Code:
 
-- **Server:** `pipeline serve` command in `packages/pipeline-cli/` starts an HTTP server (default port 4000)
-- **Process Store:** `ProcessStore` interface and `FileProcessStore` in `packages/pipeline-core/` — JSON file-based persistence at `~/.pipeline-server/`, atomic writes, 500-process retention
+- **Server:** `coc serve` command in `packages/coc/` starts an HTTP server (default port 4000)
+- **Process Store:** `ProcessStore` interface and `FileProcessStore` in `packages/pipeline-core/` — JSON file-based persistence at `~/.coc/`, atomic writes, 500-process retention
 - **Workspace Awareness:** `WorkspaceInfo` type with deterministic SHA-256 ID from workspace root path; multiple VS Code workspaces submit processes to a single server
 - **Real-Time:** Raw WebSocket (RFC 6455, `/ws`) for process lifecycle events with workspace-scoped filtering; SSE (`/api/processes/:id/stream`) for streaming individual process output
 - **REST API:** CRUD endpoints for processes (`/api/processes`), workspace registration (`/api/workspaces`), stats (`/api/stats`), and health (`/api/health`)
@@ -75,7 +75,7 @@ When creating new tree data providers, prefer extending these base classes over 
 - **Extension Client:** Fire-and-forget `ServerClient` in `src/shortcuts/ai-service/server-client.ts` — bounded offline queue (500 items) with exponential back-off, connection state events
 - **Workspace Identity:** `src/shortcuts/ai-service/workspace-identity.ts` — deterministic workspace ID generation using SHA-256 hash of workspace root path
 - **Testing:** 5 test files (api-handler, integration, SPA, WebSocket, serve command) with 2640+ lines of tests
-- **Debugging:** `cd packages/pipeline-cli && npm run build && npm link && cd ../..`, then `pipeline serve --no-open` to start. Test with `curl http://localhost:4000/api/health`.
+- **Debugging:** `cd packages/coc && npm run build && npm link && cd ../..`, then `coc serve --no-open` to start. Test with `curl http://localhost:4000/api/health`.
 
 ## Project Overview
 
@@ -755,7 +755,7 @@ interface ShortcutsConfig {
 - Format on save and import organization enabled
 - **Monorepo structure** with npm workspaces:
   - `packages/pipeline-core` - Pure Node.js AI pipeline engine (Vitest tests)
-  - `packages/pipeline-cli` - Standalone CLI for YAML pipelines (Vitest tests)
+  - `packages/coc` - CoC (Copilot of Copilot) standalone CLI for YAML pipelines (Vitest tests)
   - `packages/deep-wiki` - CLI tool for auto-generating codebase wikis (Vitest tests)
   - Root extension - VS Code extension (Mocha tests)
 - Extension activates on view container or command usage
@@ -778,9 +778,9 @@ interface ShortcutsConfig {
 - Concurrency limiter, temp file utilities, CSV reader tests
 - Run with `npm run test:run` in `packages/pipeline-core/` directory
 
-**Pipeline CLI Tests** (Vitest) - Located in `packages/pipeline-cli/test/`:
+**CoC Tests** (Vitest) - Located in `packages/coc/test/`:
 - CLI argument parsing, run/validate/list commands, config, output formatter, AI invoker, logger
-- 8 test files; run with `npm run test:run` in `packages/pipeline-cli/` directory
+- 8 test files; run with `npm run test:run` in `packages/coc/` directory
 
 **Deep Wiki Tests** (Vitest) - Located in `packages/deep-wiki/test/`:
 - Discovery: prompt templates, response parsing, large repo handler, area tagging

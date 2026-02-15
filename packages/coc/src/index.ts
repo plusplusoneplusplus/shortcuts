@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Pipeline CLI Entry Point
+ * CoC (Copilot of Copilot) CLI Entry Point
  *
  * Standalone CLI tool for executing YAML-based AI pipelines.
  * Uses @plusplusoneplusplus/pipeline-core for pipeline execution.
  *
  * Usage:
- *   pipeline run <path>       Execute a pipeline
- *   pipeline validate <path>  Validate a pipeline YAML
- *   pipeline list [dir]       List pipeline packages
+ *   coc run <path>       Execute a pipeline
+ *   coc validate <path>  Validate a pipeline YAML
+ *   coc list [dir]       List pipeline packages
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */

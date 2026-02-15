@@ -2,7 +2,7 @@
  * CLI Configuration
  *
  * Resolves CLI configuration from config files and environment variables.
- * Configuration file: ~/.pipeline-cli.yaml
+ * Configuration file: ~/.coc.yaml
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -63,7 +63,7 @@ export interface ResolvedCLIConfig {
 // ============================================================================
 
 /** Default configuration file name */
-export const CONFIG_FILE_NAME = '.pipeline-cli.yaml';
+export const CONFIG_FILE_NAME = '.coc.yaml';
 
 /** Default configuration values */
 export const DEFAULT_CONFIG: ResolvedCLIConfig = {
@@ -73,7 +73,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     serve: {
         port: 4000,
         host: 'localhost',
-        dataDir: '~/.pipeline-server',
+        dataDir: '~/.coc',
         theme: 'auto',
     },
 };
@@ -196,7 +196,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         serve: {
             port: override.serve?.port ?? base.serve?.port ?? 4000,
             host: override.serve?.host ?? base.serve?.host ?? 'localhost',
-            dataDir: override.serve?.dataDir ?? base.serve?.dataDir ?? '~/.pipeline-server',
+            dataDir: override.serve?.dataDir ?? base.serve?.dataDir ?? '~/.coc',
             theme: override.serve?.theme ?? base.serve?.theme ?? 'auto',
         },
     };

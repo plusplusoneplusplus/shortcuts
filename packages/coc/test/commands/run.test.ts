@@ -31,7 +31,7 @@ describe('Run Command', () => {
     };
 
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-cli-run-'));
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-run-'));
         stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
         stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
         setColorEnabled(false);

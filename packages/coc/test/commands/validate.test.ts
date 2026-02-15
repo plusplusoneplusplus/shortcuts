@@ -22,7 +22,7 @@ describe('Validate Command', () => {
     let stderrSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-cli-validate-'));
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-validate-'));
         stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
         setColorEnabled(false);
     });

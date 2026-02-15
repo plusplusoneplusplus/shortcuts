@@ -29,15 +29,15 @@ interface StoredProcessEntry {
 }
 
 export interface FileProcessStoreOptions {
-    /** Directory for data files. Default: ~/.pipeline-server/ */
+    /** Directory for data files. Default: ~/.coc/ */
     dataDir?: string;
     /** Maximum number of stored processes before pruning. Default: 500 */
     maxProcesses?: number;
 }
 
-/** Returns ~/.pipeline-server/ with ~ expanded via os.homedir() */
+/** Returns ~/.coc/ with ~ expanded via os.homedir() */
 export function getDefaultDataDir(): string {
-    return path.join(os.homedir(), '.pipeline-server');
+    return path.join(os.homedir(), '.coc');
 }
 
 /** Creates directory (and parents) if it doesn't exist. Returns resolved path. */

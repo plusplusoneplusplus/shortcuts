@@ -396,4 +396,4 @@ Run with `npm run test:run` in `packages/deep-wiki/` directory.
 ## See Also
 
 - `packages/pipeline-core/AGENTS.md` - AI SDK and pipeline engine
-- `packages/pipeline-cli/AGENTS.md` - YAML pipeline CLI (sibling package)
+- `packages/coc/AGENTS.md` - CoC CLI (sibling package)

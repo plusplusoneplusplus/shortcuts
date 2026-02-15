@@ -1,5 +1,5 @@
 /**
- * esbuild config for bundling the pipeline-cli SPA client code.
+ * esbuild config for bundling the CoC SPA client code.
  *
  * Produces:
  *   src/server/spa/client/dist/bundle.js   (IIFE, for <script> inlining)

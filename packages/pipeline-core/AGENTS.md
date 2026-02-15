@@ -489,7 +489,7 @@ import {
 } from 'pipeline-core';
 
 // FileProcessStore — JSON file persistence at configurable directory
-const store = new FileProcessStore({ dataDir: '~/.pipeline-server' });
+const store = new FileProcessStore({ dataDir: '~/.coc' });
 await store.initialize();
 
 // Register a workspace

@@ -10,7 +10,7 @@
   },
   "workspaces": [
     "packages/pipeline-core",
-    "packages/pipeline-cli",
+    "packages/coc",
     "packages/deep-wiki"
   ],
   "engines": {
@@ -3990,7 +3990,7 @@
     "lint": "eslint src --ext ts",
     "validate:models": "node scripts/validate-model-registry.js",
     "test": "node ./out/test/runTest.js",
-    "pipeline:link": "cd packages/pipeline-core && npm run build && npm link && cd ../pipeline-cli && npm run build && npm link",
+    "coc:link": "cd packages/pipeline-core && npm run build && npm link && cd ../coc && npm run build && npm link",
     "deep-wiki:link": "cd packages/deep-wiki && npm run build && npm link",
     "vsce:package": "vsce package",
     "vsce:publish": "vsce publish"

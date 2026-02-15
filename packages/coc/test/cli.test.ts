@@ -46,7 +46,7 @@ describe('CLI', () => {
 
         it('should have the correct name', () => {
             const program = createProgram();
-            expect(program.name()).toBe('pipeline');
+            expect(program.name()).toBe('coc');
         });
 
         it('should have run command', () => {

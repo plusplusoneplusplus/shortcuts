@@ -1,5 +1,5 @@
 /**
- * Pipeline CLI — Dashboard client entry point.
+ * CoC — Dashboard client entry point.
  *
  * Bundled by esbuild into client/dist/bundle.js (IIFE).
  * Import order matters: each module's top-level side effects

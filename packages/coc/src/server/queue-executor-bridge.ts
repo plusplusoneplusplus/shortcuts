@@ -2,7 +2,7 @@
  * Queue Executor Bridge
  *
  * Wires up a QueueExecutor with a CLITaskExecutor to actually execute
- * queued tasks in the pipeline serve server. Bridges executor events
+ * queued tasks in the coc serve server. Bridges executor events
  * to the ProcessStore and WebSocket for real-time UI updates.
  *
  * Task types supported:

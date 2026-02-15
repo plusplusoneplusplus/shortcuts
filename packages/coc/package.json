@@ -1,11 +1,11 @@
 {
-  "name": "@plusplusoneplusplus/pipeline-cli",
+  "name": "@plusplusoneplusplus/coc",
   "version": "1.0.0",
-  "description": "CLI tool for executing YAML-based AI pipelines",
+  "description": "CoC (Copilot of Copilot) - CLI tool for executing YAML-based AI pipelines",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "pipeline": "./dist/index.js"
+    "coc": "./dist/index.js"
   },
   "files": [
     "dist"

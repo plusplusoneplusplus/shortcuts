@@ -1,7 +1,7 @@
 /**
  * Server Types
  *
- * Shared type definitions for the pipeline execution server module.
+ * Shared type definitions for the CoC execution server module.
  * Mirrors packages/deep-wiki/src/server/types.ts pattern.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -10,13 +10,13 @@
 import type * as http from 'http';
 import type { ProcessStore } from '@plusplusoneplusplus/pipeline-core';
 
-/** Options for the `pipeline serve` CLI command. */
+/** Options for the `coc serve` CLI command. */
 export interface ServeCommandOptions {
     /** TCP port (default `4000`). */
     port?: number;
     /** Bind address (default `'localhost'`). */
     host?: string;
-    /** Directory for process storage (default `~/.pipeline-server/`). */
+    /** Directory for process storage (default `~/.coc/`). */
     dataDir?: string;
     /** Auto-open browser on start (default `true`). */
     open?: boolean;
@@ -34,7 +34,7 @@ export interface ExecutionServerOptions {
     port?: number;
     /** Bind address (default `'localhost'`). */
     host?: string;
-    /** Directory for server state / execution artefacts (default `~/.pipeline-server/`). */
+    /** Directory for server state / execution artefacts (default `~/.coc/`). */
     dataDir?: string;
     /** Open the default browser on start. */
     openBrowser?: boolean;

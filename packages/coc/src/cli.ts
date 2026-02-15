@@ -41,12 +41,12 @@ export function createProgram(): Command {
     const program = new Command();
 
     program
-        .name('pipeline')
-        .description('Execute YAML-based AI pipelines from the command line')
+        .name('coc')
+        .description('CoC (Copilot of Copilot) - Execute YAML-based AI pipelines from the command line')
         .version('1.0.0');
 
     // ========================================================================
-    // pipeline run <path>
+    // coc run <path>
     // ========================================================================
 
     program
@@ -87,7 +87,7 @@ export function createProgram(): Command {
         });
 
     // ========================================================================
-    // pipeline validate <path>
+    // coc validate <path>
     // ========================================================================
 
     program
@@ -104,7 +104,7 @@ export function createProgram(): Command {
         });
 
     // ========================================================================
-    // pipeline list [dir]
+    // coc list [dir]
     // ========================================================================
 
     program
@@ -123,7 +123,7 @@ export function createProgram(): Command {
         });
 
     // ========================================================================
-    // pipeline serve
+    // coc serve
     // ========================================================================
 
     program

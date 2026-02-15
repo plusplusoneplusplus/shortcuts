@@ -36,9 +36,9 @@ jobs:
         run: npm run test:run
         working-directory: packages/pipeline-core
 
-      - name: Run pipeline-cli tests
+      - name: Run coc tests
         run: npm run test:run
-        working-directory: packages/pipeline-cli
+        working-directory: packages/coc
 
       - name: Run deep-wiki tests
         run: npm run test:run

@@ -1,7 +1,7 @@
 /**
  * HTTP Router
  *
- * Simple request routing for the pipeline execution server.
+ * Simple request routing for the CoC server.
  * Routes requests to API handlers, static files, or SPA fallback.
  * Uses only Node.js built-in modules (http, fs, path, url).
  *

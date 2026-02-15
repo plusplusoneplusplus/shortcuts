@@ -1,4 +1,4 @@
-# Pipeline CLI
+# CoC (Copilot of Copilot)
 
 Standalone Node.js CLI for executing YAML-based AI pipelines outside VS Code. Consumes `@plusplusoneplusplus/pipeline-core`.
 
@@ -13,20 +13,20 @@ npm run test:run     # Run tests (Vitest)
 
 ```bash
 # Run from project root
-node packages/pipeline-cli/dist/index.js <command>
+node packages/coc/dist/index.js <command>
 
 # Or link globally
-cd packages/pipeline-cli && npm link
-pipeline <command>
+cd packages/coc && npm link
+coc <command>
 ```
 
 ## Commands
 
 ```bash
-pipeline run <path>              # Execute a pipeline
-pipeline validate <path>         # Validate YAML without executing
-pipeline list [dir]              # List pipeline packages in a directory
-pipeline serve                   # Start AI Execution Dashboard web server
+coc run <path>              # Execute a pipeline
+coc validate <path>         # Validate YAML without executing
+coc list [dir]              # List pipeline packages in a directory
+coc serve                   # Start AI Execution Dashboard web server
 ```
 
 ### `run` Options
@@ -64,7 +64,7 @@ pipeline serve                   # Start AI Execution Dashboard web server
 |------|-------------|
 | `-p, --port <number>` | Port number (default: 4000) |
 | `-H, --host <string>` | Bind address (default: localhost) |
-| `-d, --data-dir <path>` | Data directory for process storage (default: ~/.pipeline-server) |
+| `-d, --data-dir <path>` | Data directory for process storage (default: ~/.coc) |
 | `--no-open` | Don't auto-open browser |
 | `--theme <theme>` | UI theme: `auto`, `light`, `dark` |
 | `--no-color` | Disable colored output |
@@ -96,12 +96,12 @@ src/
 ├── ai-invoker.ts         # AI invoker factory - Creates CopilotSDKService instances with session pooling
 ├── logger.ts             # Console logger - Colored output, spinners, and progress bars
 ├── output-formatter.ts   # Result formatting - Formats results as table/json/csv/markdown
-└── config.ts             # Config resolution - Loads and merges ~/.pipeline-cli.yaml with defaults
+└── config.ts             # Config resolution - Loads and merges ~/.coc.yaml with defaults
 ```
 
 ## Configuration
 
-Configuration file: `~/.pipeline-cli.yaml`
+Configuration file: `~/.coc.yaml`
 
 ```yaml
 # Default AI model
@@ -126,7 +126,7 @@ timeout: 1800
 serve:
   port: 4000
   host: localhost
-  dataDir: ~/.pipeline-server
+  dataDir: ~/.coc
   theme: auto
 ```
 

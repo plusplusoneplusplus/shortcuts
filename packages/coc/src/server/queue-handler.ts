@@ -3,7 +3,7 @@
  *
  * HTTP API routes for task queue management: enqueue, dequeue, reorder,
  * pause/resume, cancel, and stats. Mirrors the VS Code extension's
- * AIQueueService feature for the standalone pipeline serve dashboard.
+ * AIQueueService feature for the standalone coc serve dashboard.
  *
  * No VS Code dependencies - uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).

@@ -460,9 +460,9 @@ describe('FileProcessStore', () => {
 });
 
 describe('getDefaultDataDir', () => {
-    it('should return path ending in .pipeline-server under homedir', () => {
+    it('should return path ending in .coc under homedir', () => {
         const dir = getDefaultDataDir();
-        expect(dir).toContain('.pipeline-server');
+        expect(dir).toContain('.coc');
         expect(dir.startsWith(os.homedir())).toBe(true);
     });
 });

@@ -1,7 +1,7 @@
 /**
  * Serve Command Tests
  *
- * Tests for the pipeline serve command — option parsing, startup banner,
+ * Tests for the coc serve command — option parsing, startup banner,
  * browser open, signal handling, error handling, and config integration.
  */
 
@@ -75,7 +75,7 @@ describe('Serve Command', () => {
     let tmpDir: string;
 
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-cli-serve-'));
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-serve-'));
         stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
         setColorEnabled(false);
         mockClose.mockClear();

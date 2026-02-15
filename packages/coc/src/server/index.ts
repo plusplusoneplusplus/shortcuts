@@ -1,7 +1,7 @@
 /**
- * Pipeline Execution Server
+ * CoC Execution Server
  *
- * Creates and manages an HTTP server for the `pipeline serve` command.
+ * Creates and manages an HTTP server for the `coc serve` command.
  * Uses only Node.js built-in modules (http, fs, path, os).
  *
  * Mirrors packages/deep-wiki/src/server/index.ts pattern.
@@ -102,7 +102,7 @@ function createStubStore(): ProcessStore {
 // ============================================================================
 
 /**
- * Create and start the pipeline execution server.
+ * Create and start the CoC execution server.
  *
  * @param options - Server options
  * @returns A running ExecutionServer instance
@@ -110,7 +110,7 @@ function createStubStore(): ProcessStore {
 export async function createExecutionServer(options: ExecutionServerOptions = {}): Promise<ExecutionServer> {
     const port = options.port ?? 4000;
     const host = options.host ?? 'localhost';
-    const dataDir = options.dataDir ?? path.join(os.homedir(), '.pipeline-server');
+    const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
     const store = options.store ?? createStubStore();
 
     // Ensure data directory exists
