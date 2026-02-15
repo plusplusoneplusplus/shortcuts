@@ -17,7 +17,8 @@
   "license": "MIT",
   "scripts": {
     "prebuild": "cd ../pipeline-core && npm run build",
-    "build": "tsc",
+    "build:client": "node scripts/build-client.mjs",
+    "build": "npm run build:client && tsc",
     "build:bundle": "node esbuild.config.mjs",
     "prepublishOnly": "npm run build:bundle && npm run test:run",
     "test": "vitest",

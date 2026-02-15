@@ -139,7 +139,7 @@ describe('Bundle Configuration', () => {
 
         it('should keep tsc build script for development', () => {
             const scripts = pkg.scripts as Record<string, string>;
-            expect(scripts['build']).toBe('tsc');
+            expect(scripts['build']).toContain('tsc');
         });
 
         it('should have @github/copilot-sdk as runtime dependency', () => {

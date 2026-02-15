@@ -127,3 +127,6 @@ dist/
 
 .vscode/
 .wiki/
+
+# SPA client build output (esbuild)
+**/spa/client/dist/

@@ -11,7 +11,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build:client": "node scripts/build-client.mjs",
+    "build": "npm run build:client && tsc",
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint src"
@@ -22,6 +23,7 @@
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
+    "esbuild": "^0.21.5",
     "typescript": "^5.3.0",
     "vitest": "^1.0.0",
     "@types/node": "^20.0.0",
