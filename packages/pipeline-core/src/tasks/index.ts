@@ -61,3 +61,29 @@ export {
     groupTaskDocuments,
     buildTaskFolderHierarchy,
 } from './task-scanner';
+
+export {
+    // Task CRUD operations
+    createTask,
+    createFeature,
+    createSubfolder,
+    renameTask,
+    renameFolder,
+    renameDocumentGroup,
+    renameDocument,
+    deleteTask,
+    deleteFolder,
+    archiveTask,
+    unarchiveTask,
+    archiveDocument,
+    unarchiveDocument,
+    archiveDocumentGroup,
+    unarchiveDocumentGroup,
+    moveTask,
+    moveFolder,
+    moveTaskGroup,
+    importTask,
+    moveExternalTask,
+    taskExistsInFolder,
+    taskExists,
+} from './task-operations';

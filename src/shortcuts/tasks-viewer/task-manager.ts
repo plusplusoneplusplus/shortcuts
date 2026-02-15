@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
-import { ensureDirectoryExists, safeExists, safeReadDir, safeRename, safeStats, safeWriteFile } from '../shared';
+import { ensureDirectoryExists, safeExists, safeReadDir, safeStats } from '../shared';
 import { Task, TasksViewerSettings, TaskSortBy, TaskDocument, TaskDocumentGroup, TaskFolder, DiscoverySettings, DiscoveryDefaultScope, TaskStatus } from './types';
 import { loadRelatedItems, mergeRelatedItems, RELATED_ITEMS_FILENAME } from './related-items-loader';
 import { RelatedItem } from './types';
@@ -14,6 +14,7 @@ import {
     groupTaskDocuments as coreGroupTaskDocuments,
     buildTaskFolderHierarchy as coreBuildTaskFolderHierarchy,
 } from '@plusplusoneplusplus/pipeline-core';
+import * as taskOps from '@plusplusoneplusplus/pipeline-core';
 
 
 /**
@@ -143,19 +144,7 @@ export class TaskManager implements vscode.Disposable {
      */
     async createTask(name: string): Promise<string> {
         this.ensureFoldersExist();
-
-        const sanitizedName = this.sanitizeFileName(name);
-        const filePath = path.join(this.getTasksFolder(), `${sanitizedName}.md`);
-
-        if (safeExists(filePath)) {
-            throw new Error(`Task "${name}" already exists`);
-        }
-
-        // Create empty file with task name as header
-        const content = `# ${name}\n\n`;
-        safeWriteFile(filePath, content);
-
-        return filePath;
+        return taskOps.createTask(this.getTasksFolder(), name);
     }
 
     /**
@@ -164,21 +153,7 @@ export class TaskManager implements vscode.Disposable {
      */
     async createFeature(name: string): Promise<string> {
         this.ensureFoldersExist();
-
-        const sanitizedName = this.sanitizeFileName(name);
-        const folderPath = path.join(this.getTasksFolder(), sanitizedName);
-
-        if (safeExists(folderPath)) {
-            throw new Error(`Feature "${name}" already exists`);
-        }
-
-        ensureDirectoryExists(folderPath);
-
-        // Create placeholder.md file so the feature appears in the tree view
-        const placeholderFilePath = path.join(folderPath, 'placeholder.md');
-        safeWriteFile(placeholderFilePath, '');
-
-        return folderPath;
+        return taskOps.createFeature(this.getTasksFolder(), name);
     }
 
     /**
@@ -188,24 +163,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns The path to the created subfolder
      */
     async createSubfolder(parentFolderPath: string, name: string): Promise<string> {
-        if (!safeExists(parentFolderPath)) {
-            throw new Error(`Parent folder not found: ${parentFolderPath}`);
-        }
-
-        const sanitizedName = this.sanitizeFileName(name);
-        const subfolderPath = path.join(parentFolderPath, sanitizedName);
-
-        if (safeExists(subfolderPath)) {
-            throw new Error(`Subfolder "${name}" already exists`);
-        }
-
-        ensureDirectoryExists(subfolderPath);
-
-        // Create placeholder.md file so the subfolder appears in the tree view
-        const placeholderFilePath = path.join(subfolderPath, 'placeholder.md');
-        safeWriteFile(placeholderFilePath, '');
-
-        return subfolderPath;
+        return taskOps.createSubfolder(parentFolderPath, name);
     }
 
     /**
@@ -213,20 +171,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns The new file path
      */
     async renameTask(oldPath: string, newName: string): Promise<string> {
-        if (!safeExists(oldPath)) {
-            throw new Error(`Task file not found: ${oldPath}`);
-        }
-
-        const sanitizedName = this.sanitizeFileName(newName);
-        const directory = path.dirname(oldPath);
-        const newPath = path.join(directory, `${sanitizedName}.md`);
-
-        if (oldPath !== newPath && safeExists(newPath)) {
-            throw new Error(`Task "${newName}" already exists`);
-        }
-
-        safeRename(oldPath, newPath);
-        return newPath;
+        return taskOps.renameTask(oldPath, newName);
     }
 
     /**
@@ -236,25 +181,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns The new folder path
      */
     async renameFolder(folderPath: string, newName: string): Promise<string> {
-        if (!safeExists(folderPath)) {
-            throw new Error(`Folder not found: ${folderPath}`);
-        }
-
-        const statsResult = safeStats(folderPath);
-        if (!statsResult.success || !statsResult.data?.isDirectory()) {
-            throw new Error(`Path is not a directory: ${folderPath}`);
-        }
-
-        const sanitizedName = this.sanitizeFileName(newName);
-        const parentDir = path.dirname(folderPath);
-        const newPath = path.join(parentDir, sanitizedName);
-
-        if (folderPath !== newPath && safeExists(newPath)) {
-            throw new Error(`Folder "${newName}" already exists`);
-        }
-
-        safeRename(folderPath, newPath);
-        return newPath;
+        return taskOps.renameFolder(folderPath, newName);
     }
 
     /**
@@ -265,65 +192,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns Array of new file paths
      */
     async renameDocumentGroup(folderPath: string, oldBaseName: string, newBaseName: string): Promise<string[]> {
-        if (!safeExists(folderPath)) {
-            throw new Error(`Folder not found: ${folderPath}`);
-        }
-
-        const sanitizedNewBaseName = this.sanitizeFileName(newBaseName);
-        const renamedPaths: string[] = [];
-        const failedRenames: string[] = [];
-
-        // Find all files with the old base name
-        const readResult = safeReadDir(folderPath);
-        if (!readResult.success || !readResult.data) {
-            throw new Error(`Failed to read folder: ${folderPath}`);
-        }
-
-        const filesToRename: Array<{ oldPath: string; newPath: string }> = [];
-
-        for (const fileName of readResult.data) {
-            if (!fileName.endsWith('.md')) {
-                continue;
-            }
-
-            const { baseName, docType } = this.parseFileName(fileName);
-            if (baseName !== oldBaseName) {
-                continue;
-            }
-
-            const oldFilePath = path.join(folderPath, fileName);
-            const newFileName = docType
-                ? `${sanitizedNewBaseName}.${docType}.md`
-                : `${sanitizedNewBaseName}.md`;
-            const newFilePath = path.join(folderPath, newFileName);
-
-            // Check for collision before adding to rename list
-            if (oldFilePath !== newFilePath && safeExists(newFilePath)) {
-                throw new Error(`File "${newFileName}" already exists`);
-            }
-
-            filesToRename.push({ oldPath: oldFilePath, newPath: newFilePath });
-        }
-
-        if (filesToRename.length === 0) {
-            throw new Error(`No documents found with base name "${oldBaseName}"`);
-        }
-
-        // Perform the renames
-        for (const { oldPath, newPath } of filesToRename) {
-            try {
-                safeRename(oldPath, newPath);
-                renamedPaths.push(newPath);
-            } catch (error) {
-                failedRenames.push(path.basename(oldPath));
-            }
-        }
-
-        if (failedRenames.length > 0) {
-            throw new Error(`Failed to rename: ${failedRenames.join(', ')}`);
-        }
-
-        return renamedPaths;
+        return taskOps.renameDocumentGroup(folderPath, oldBaseName, newBaseName);
     }
 
     /**
@@ -333,37 +202,14 @@ export class TaskManager implements vscode.Disposable {
      * @returns The new file path
      */
     async renameDocument(oldPath: string, newBaseName: string): Promise<string> {
-        if (!safeExists(oldPath)) {
-            throw new Error(`Document not found: ${oldPath}`);
-        }
-
-        const fileName = path.basename(oldPath);
-        const { docType } = this.parseFileName(fileName);
-        const sanitizedNewBaseName = this.sanitizeFileName(newBaseName);
-        
-        const directory = path.dirname(oldPath);
-        const newFileName = docType
-            ? `${sanitizedNewBaseName}.${docType}.md`
-            : `${sanitizedNewBaseName}.md`;
-        const newPath = path.join(directory, newFileName);
-
-        if (oldPath !== newPath && safeExists(newPath)) {
-            throw new Error(`Document "${newFileName}" already exists`);
-        }
-
-        safeRename(oldPath, newPath);
-        return newPath;
+        return taskOps.renameDocument(oldPath, newBaseName);
     }
 
     /**
      * Delete a task file
      */
     async deleteTask(filePath: string): Promise<void> {
-        if (!safeExists(filePath)) {
-            throw new Error(`Task file not found: ${filePath}`);
-        }
-
-        fs.unlinkSync(filePath);
+        return taskOps.deleteTask(filePath);
     }
 
     /**
@@ -371,16 +217,7 @@ export class TaskManager implements vscode.Disposable {
      * @param folderPath - Absolute path to the folder to delete
      */
     async deleteFolder(folderPath: string): Promise<void> {
-        if (!safeExists(folderPath)) {
-            throw new Error(`Folder not found: ${folderPath}`);
-        }
-
-        const statsResult = safeStats(folderPath);
-        if (!statsResult.success || !statsResult.data?.isDirectory()) {
-            throw new Error(`Path is not a directory: ${folderPath}`);
-        }
-
-        fs.rmSync(folderPath, { recursive: true, force: true });
+        return taskOps.deleteFolder(folderPath);
     }
 
     /**
@@ -390,45 +227,8 @@ export class TaskManager implements vscode.Disposable {
      * @returns The new file path
      */
     async archiveTask(filePath: string, preserveStructure: boolean = false): Promise<string> {
-        if (!safeExists(filePath)) {
-            throw new Error(`Task file not found: ${filePath}`);
-        }
-
         this.ensureFoldersExist();
-
-        const fileName = path.basename(filePath);
-        const tasksFolder = this.getTasksFolder();
-        const archiveFolder = this.getArchiveFolder();
-
-        let targetFolder = archiveFolder;
-
-        if (preserveStructure) {
-            // Calculate relative path from tasks folder to the file's directory
-            const fileDir = path.dirname(filePath);
-            const normalizedTasksFolder = tasksFolder.replace(/\\/g, '/');
-            const normalizedFileDir = fileDir.replace(/\\/g, '/');
-            
-            if (normalizedFileDir.startsWith(normalizedTasksFolder)) {
-                const relativePath = normalizedFileDir.substring(normalizedTasksFolder.length).replace(/^[/\\]/, '');
-                if (relativePath && relativePath !== 'archive' && !relativePath.startsWith('archive/') && !relativePath.startsWith('archive\\')) {
-                    targetFolder = path.join(archiveFolder, relativePath);
-                    ensureDirectoryExists(targetFolder);
-                }
-            }
-        }
-
-        const newPath = path.join(targetFolder, fileName);
-
-        // Handle name collision in archive
-        let finalPath = newPath;
-        if (safeExists(newPath)) {
-            const baseName = path.basename(fileName, '.md');
-            const timestamp = Date.now();
-            finalPath = path.join(targetFolder, `${baseName}-${timestamp}.md`);
-        }
-
-        safeRename(filePath, finalPath);
-        return finalPath;
+        return taskOps.archiveTask(filePath, this.getTasksFolder(), this.getArchiveFolder(), preserveStructure);
     }
 
     /**
@@ -436,23 +236,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns The new file path
      */
     async unarchiveTask(filePath: string): Promise<string> {
-        if (!safeExists(filePath)) {
-            throw new Error(`Task file not found: ${filePath}`);
-        }
-
-        const fileName = path.basename(filePath);
-        const newPath = path.join(this.getTasksFolder(), fileName);
-
-        // Handle name collision
-        let finalPath = newPath;
-        if (safeExists(newPath)) {
-            const baseName = path.basename(fileName, '.md');
-            const timestamp = Date.now();
-            finalPath = path.join(this.getTasksFolder(), `${baseName}-${timestamp}.md`);
-        }
-
-        safeRename(filePath, finalPath);
-        return finalPath;
+        return taskOps.unarchiveTask(filePath, this.getTasksFolder());
     }
 
     /**
@@ -480,12 +264,8 @@ export class TaskManager implements vscode.Disposable {
      * @returns Array of new file paths
      */
     async archiveDocumentGroup(filePaths: string[], preserveStructure: boolean = false): Promise<string[]> {
-        const newPaths: string[] = [];
-        for (const filePath of filePaths) {
-            const newPath = await this.archiveTask(filePath, preserveStructure);
-            newPaths.push(newPath);
-        }
-        return newPaths;
+        this.ensureFoldersExist();
+        return taskOps.archiveDocumentGroup(filePaths, this.getTasksFolder(), this.getArchiveFolder(), preserveStructure);
     }
 
     /**
@@ -494,12 +274,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns Array of new file paths
      */
     async unarchiveDocumentGroup(filePaths: string[]): Promise<string[]> {
-        const newPaths: string[] = [];
-        for (const filePath of filePaths) {
-            const newPath = await this.unarchiveTask(filePath);
-            newPaths.push(newPath);
-        }
-        return newPaths;
+        return taskOps.unarchiveDocumentGroup(filePaths, this.getTasksFolder());
     }
 
     /**
@@ -509,33 +284,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns The new file path
      */
     async moveTask(sourcePath: string, targetFolder: string): Promise<string> {
-        if (!safeExists(sourcePath)) {
-            throw new Error(`Task file not found: ${sourcePath}`);
-        }
-
-        // Ensure target folder exists
-        ensureDirectoryExists(targetFolder);
-
-        const fileName = path.basename(sourcePath);
-        let newPath = path.join(targetFolder, fileName);
-
-        // Handle name collision with suffix
-        if (sourcePath !== newPath && safeExists(newPath)) {
-            const baseName = path.basename(fileName, '.md');
-            let counter = 1;
-            while (safeExists(newPath)) {
-                newPath = path.join(targetFolder, `${baseName}-${counter}.md`);
-                counter++;
-            }
-        }
-
-        // Don't move if already in target location
-        if (sourcePath === newPath) {
-            return sourcePath;
-        }
-
-        safeRename(sourcePath, newPath);
-        return newPath;
+        return taskOps.moveTask(sourcePath, targetFolder);
     }
 
     /**
@@ -547,50 +296,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns The new folder path
      */
     async moveFolder(sourceFolderPath: string, targetParentFolder: string): Promise<string> {
-        if (!safeExists(sourceFolderPath)) {
-            throw new Error(`Folder not found: ${sourceFolderPath}`);
-        }
-
-        const statsResult = safeStats(sourceFolderPath);
-        if (!statsResult.success || !statsResult.data?.isDirectory()) {
-            throw new Error(`Path is not a directory: ${sourceFolderPath}`);
-        }
-
-        if (!safeExists(targetParentFolder)) {
-            throw new Error(`Target folder not found: ${targetParentFolder}`);
-        }
-
-        const targetStats = safeStats(targetParentFolder);
-        if (!targetStats.success || !targetStats.data?.isDirectory()) {
-            throw new Error(`Target path is not a directory: ${targetParentFolder}`);
-        }
-
-        // Prevent circular move: target must not be inside source
-        const normalizedSource = sourceFolderPath.replace(/\\/g, '/').toLowerCase();
-        const normalizedTarget = targetParentFolder.replace(/\\/g, '/').toLowerCase();
-        if (normalizedTarget.startsWith(normalizedSource + '/') || normalizedTarget === normalizedSource) {
-            throw new Error('Cannot move a folder into itself or its own subtree');
-        }
-
-        const folderName = path.basename(sourceFolderPath);
-        let newPath = path.join(targetParentFolder, folderName);
-
-        // Handle name collision with numeric suffix
-        if (sourceFolderPath !== newPath && safeExists(newPath)) {
-            let counter = 1;
-            while (safeExists(newPath)) {
-                newPath = path.join(targetParentFolder, `${folderName}-${counter}`);
-                counter++;
-            }
-        }
-
-        // Don't move if already in target location
-        if (sourceFolderPath === newPath) {
-            return sourceFolderPath;
-        }
-
-        safeRename(sourceFolderPath, newPath);
-        return newPath;
+        return taskOps.moveFolder(sourceFolderPath, targetParentFolder);
     }
 
     /**
@@ -600,12 +306,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns Array of new file paths
      */
     async moveTaskGroup(sourcePaths: string[], targetFolder: string): Promise<string[]> {
-        const newPaths: string[] = [];
-        for (const sourcePath of sourcePaths) {
-            const newPath = await this.moveTask(sourcePath, targetFolder);
-            newPaths.push(newPath);
-        }
-        return newPaths;
+        return taskOps.moveTaskGroup(sourcePaths, targetFolder);
     }
 
     /**
@@ -807,23 +508,7 @@ export class TaskManager implements vscode.Disposable {
      */
     async importTask(sourcePath: string, newName?: string): Promise<string> {
         this.ensureFoldersExist();
-
-        const sourceFileName = path.basename(sourcePath);
-        const targetName = newName 
-            ? this.sanitizeFileName(newName) 
-            : path.basename(sourceFileName, '.md');
-
-        const targetPath = path.join(this.getTasksFolder(), `${targetName}.md`);
-
-        if (safeExists(targetPath)) {
-            throw new Error(`Task "${targetName}" already exists`);
-        }
-
-        // Copy file content (not move, to preserve original)
-        const content = fs.readFileSync(sourcePath, 'utf-8');
-        safeWriteFile(targetPath, content);
-
-        return targetPath;
+        return taskOps.importTask(sourcePath, this.getTasksFolder(), newName);
     }
 
     /**
@@ -835,32 +520,7 @@ export class TaskManager implements vscode.Disposable {
      */
     async moveExternalTask(sourcePath: string, targetFolder?: string, newName?: string): Promise<string> {
         this.ensureFoldersExist();
-
-        if (!safeExists(sourcePath)) {
-            throw new Error(`Source file not found: ${sourcePath}`);
-        }
-
-        if (!sourcePath.toLowerCase().endsWith('.md')) {
-            throw new Error('Only markdown (.md) files can be moved to tasks');
-        }
-
-        const resolvedTargetFolder = targetFolder || this.getTasksFolder();
-        ensureDirectoryExists(resolvedTargetFolder);
-
-        const sourceFileName = path.basename(sourcePath);
-        const targetName = newName
-            ? this.sanitizeFileName(newName)
-            : path.basename(sourceFileName, '.md');
-
-        let targetPath = path.join(resolvedTargetFolder, `${targetName}.md`);
-
-        if (safeExists(targetPath)) {
-            throw new Error(`Task "${targetName}" already exists`);
-        }
-
-        safeRename(sourcePath, targetPath);
-
-        return targetPath;
+        return taskOps.moveExternalTask(sourcePath, this.getTasksFolder(), targetFolder, newName);
     }
 
     /**
@@ -869,10 +529,7 @@ export class TaskManager implements vscode.Disposable {
      * @param folder - Optional folder path (defaults to tasks root)
      */
     taskExistsInFolder(name: string, folder?: string): boolean {
-        const sanitizedName = this.sanitizeFileName(name);
-        const targetFolder = folder || this.getTasksFolder();
-        const filePath = path.join(targetFolder, `${sanitizedName}.md`);
-        return safeExists(filePath);
+        return taskOps.taskExistsInFolder(name, this.getTasksFolder(), folder);
     }
 
     /**
@@ -880,22 +537,14 @@ export class TaskManager implements vscode.Disposable {
      * @param name - Task name (without .md extension)
      */
     taskExists(name: string): boolean {
-        const sanitizedName = this.sanitizeFileName(name);
-        const filePath = path.join(this.getTasksFolder(), `${sanitizedName}.md`);
-        return safeExists(filePath);
+        return taskOps.taskExists(name, this.getTasksFolder());
     }
 
     /**
      * Sanitize a file name to remove invalid characters
      */
     sanitizeFileName(name: string): string {
-        // Remove/replace characters that are invalid in file names
-        return name
-            .replace(/[<>:"/\\|?*]/g, '-')
-            .replace(/\s+/g, '-')
-            .replace(/-+/g, '-')
-            .replace(/^-|-$/g, '')
-            .trim();
+        return taskOps.sanitizeFileName(name);
     }
 
     /**
