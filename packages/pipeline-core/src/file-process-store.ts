@@ -131,6 +131,8 @@ export class FileProcessStore implements ProcessStore {
             if (idx === -1) { return; }
 
             const existing = deserializeProcess(entries[idx].process);
+            // Spread-merge replaces arrays (e.g. conversationTurns) wholesale.
+            // Callers must supply the complete array on each update.
             const merged = { ...existing, ...updates };
             entries[idx] = {
                 workspaceId: merged.metadata?.workspaceId ?? entries[idx].workspaceId,

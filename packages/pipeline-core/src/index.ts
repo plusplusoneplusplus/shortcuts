@@ -284,6 +284,8 @@ export {
     AIProcess,
     SerializedAIProcess,
     TrackedProcessFields,
+    ConversationTurn,
+    SerializedConversationTurn,
     serializeProcess,
     deserializeProcess,
     ProcessEventType,

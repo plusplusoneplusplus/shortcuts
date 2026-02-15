@@ -88,6 +88,33 @@ export interface CompleteGroupOptions {
     executionStats?: Record<string, unknown>;
 }
 
+/**
+ * A single turn in a multi-turn conversation
+ */
+export interface ConversationTurn {
+    /** Role of the speaker */
+    role: 'user' | 'assistant';
+    /** Message content */
+    content: string;
+    /** When this turn was created */
+    timestamp: Date;
+    /** Zero-based index of this turn in the conversation */
+    turnIndex: number;
+    /** True while the assistant response is still being streamed (ephemeral UI hint) */
+    streaming?: boolean;
+}
+
+/**
+ * Serialized format of ConversationTurn for persistence (Date -> ISO string)
+ */
+export interface SerializedConversationTurn {
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: string;  // ISO string
+    turnIndex: number;
+    streaming?: boolean;
+}
+
 // ============================================================================
 // LEGACY TYPES - Kept for backward compatibility
 // These types are deprecated and will be removed in a future version.
@@ -231,6 +258,13 @@ export interface AIProcess {
     backend?: AIBackendType;
     /** Working directory used for the original session */
     workingDirectory?: string;
+
+    // ========================================================================
+    // Conversation Fields (Added 2026-02)
+    // ========================================================================
+
+    /** Ordered list of conversation turns for multi-turn chat */
+    conversationTurns?: ConversationTurn[];
 }
 
 /**
@@ -270,6 +304,13 @@ export interface SerializedAIProcess {
     backend?: AIBackendType;
     /** Working directory used for the original session */
     workingDirectory?: string;
+
+    // ========================================================================
+    // Conversation Fields (Added 2026-02)
+    // ========================================================================
+
+    /** Ordered list of conversation turns (timestamps as ISO strings) */
+    conversationTurns?: SerializedConversationTurn[];
 }
 
 /**
@@ -311,7 +352,15 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
         // Session resume fields
         sdkSessionId: process.sdkSessionId,
         backend: process.backend,
-        workingDirectory: process.workingDirectory
+        workingDirectory: process.workingDirectory,
+        // Conversation turns (Date → ISO string)
+        conversationTurns: process.conversationTurns?.map(turn => ({
+            role: turn.role,
+            content: turn.content,
+            timestamp: turn.timestamp.toISOString(),
+            turnIndex: turn.turnIndex,
+            streaming: turn.streaming
+        }))
     };
 }
 
@@ -341,7 +390,15 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         // Session resume fields
         sdkSessionId: serialized.sdkSessionId,
         backend: serialized.backend,
-        workingDirectory: serialized.workingDirectory
+        workingDirectory: serialized.workingDirectory,
+        // Conversation turns (ISO string → Date)
+        conversationTurns: serialized.conversationTurns?.map(turn => ({
+            role: turn.role,
+            content: turn.content,
+            timestamp: new Date(turn.timestamp),
+            turnIndex: turn.turnIndex,
+            streaming: turn.streaming
+        }))
     };
 }
 
