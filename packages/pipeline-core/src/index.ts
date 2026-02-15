@@ -695,4 +695,10 @@ export {
     mergeRelatedItems,
     getRelatedItemsPath,
     categorizeItem,
+    // Task scanning and grouping
+    scanTasksRecursively,
+    scanDocumentsRecursively,
+    scanFoldersRecursively,
+    groupTaskDocuments,
+    buildTaskFolderHierarchy,
 } from './tasks';

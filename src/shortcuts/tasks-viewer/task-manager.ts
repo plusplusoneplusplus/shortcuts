@@ -6,53 +6,15 @@ import { ensureDirectoryExists, safeExists, safeReadDir, safeRename, safeStats, 
 import { Task, TasksViewerSettings, TaskSortBy, TaskDocument, TaskDocumentGroup, TaskFolder, DiscoverySettings, DiscoveryDefaultScope, TaskStatus } from './types';
 import { loadRelatedItems, mergeRelatedItems, RELATED_ITEMS_FILENAME } from './related-items-loader';
 import { RelatedItem } from './types';
+import {
+    parseFileName as coreParseFileName,
+    scanTasksRecursively as coreScanTasksRecursively,
+    scanDocumentsRecursively as coreScanDocumentsRecursively,
+    scanFoldersRecursively as coreScanFoldersRecursively,
+    groupTaskDocuments as coreGroupTaskDocuments,
+    buildTaskFolderHierarchy as coreBuildTaskFolderHierarchy,
+} from '@plusplusoneplusplus/pipeline-core';
 
-/** Valid task status values */
-const VALID_TASK_STATUSES: TaskStatus[] = ['pending', 'in-progress', 'done', 'future'];
-
-/**
- * Parse frontmatter from a markdown file and extract task status
- * @param filePath - Absolute path to the markdown file
- * @returns TaskStatus or undefined if no valid status found
- */
-function parseTaskStatus(filePath: string): TaskStatus | undefined {
-    try {
-        const content = fs.readFileSync(filePath, 'utf-8');
-        
-        // Check for frontmatter (starts with ---)
-        if (!content.startsWith('---')) {
-            return undefined;
-        }
-        
-        // Find the closing ---
-        const endIndex = content.indexOf('---', 3);
-        if (endIndex === -1) {
-            return undefined;
-        }
-        
-        const frontmatterContent = content.substring(3, endIndex).trim();
-        if (!frontmatterContent) {
-            return undefined;
-        }
-        
-        // Parse YAML frontmatter
-        const frontmatter = yaml.load(frontmatterContent) as Record<string, unknown>;
-        if (!frontmatter || typeof frontmatter !== 'object') {
-            return undefined;
-        }
-        
-        // Extract status field
-        const status = frontmatter.status;
-        if (typeof status === 'string' && VALID_TASK_STATUSES.includes(status as TaskStatus)) {
-            return status as TaskStatus;
-        }
-        
-        return undefined;
-    } catch {
-        // Silently ignore parsing errors
-        return undefined;
-    }
-}
 
 /**
  * Update the status field in a markdown file's frontmatter
@@ -172,46 +134,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns Array of tasks found
      */
     private scanTasksRecursively(dirPath: string, relativePath: string, isArchived: boolean): Task[] {
-        const tasks: Task[] = [];
-        const archiveFolderName = 'archive';
-
-        const readResult = safeReadDir(dirPath);
-        if (!readResult.success || !readResult.data) {
-            return tasks;
-        }
-
-        for (const item of readResult.data) {
-            const itemPath = path.join(dirPath, item);
-            const statsResult = safeStats(itemPath);
-            
-            if (!statsResult.success || !statsResult.data) {
-                continue;
-            }
-
-            if (statsResult.data.isDirectory()) {
-                // Skip archive folder when scanning active tasks
-                if (!isArchived && item === archiveFolderName) {
-                    continue;
-                }
-                // Recursively scan subdirectory
-                const subRelativePath = relativePath ? path.join(relativePath, item) : item;
-                const subTasks = this.scanTasksRecursively(itemPath, subRelativePath, isArchived);
-                tasks.push(...subTasks);
-            } else if (statsResult.data.isFile() && item.endsWith('.md')) {
-                // Found a markdown file - parse status from frontmatter
-                const status = parseTaskStatus(itemPath);
-                tasks.push({
-                    name: path.basename(item, '.md'),
-                    filePath: itemPath,
-                    modifiedTime: statsResult.data.mtime,
-                    isArchived,
-                    relativePath: relativePath || undefined,
-                    status
-                });
-            }
-        }
-
-        return tasks;
+        return coreScanTasksRecursively(dirPath, relativePath, isArchived);
     }
 
     /**
@@ -765,32 +688,7 @@ export class TaskManager implements vscode.Disposable {
      *   "task1.test.spec.md" -> { baseName: "task1.test", docType: "spec" }
      */
     parseFileName(fileName: string): { baseName: string; docType?: string } {
-        // Remove .md extension
-        const withoutMd = fileName.replace(/\.md$/i, '');
-        
-        // Split by dot to find potential doc type suffix
-        const parts = withoutMd.split('.');
-        
-        if (parts.length >= 2) {
-            // Check if the last part looks like a doc type (common types)
-            const lastPart = parts[parts.length - 1].toLowerCase();
-            const commonDocTypes = [
-                'plan', 'spec', 'test', 'notes', 'todo', 'readme', 
-                'design', 'impl', 'implementation', 'review', 'checklist',
-                'requirements', 'analysis', 'research', 'summary', 'log',
-                'draft', 'final', 'v1', 'v2', 'v3', 'old', 'new', 'backup'
-            ];
-            
-            if (commonDocTypes.includes(lastPart) || /^v\d+$/.test(lastPart)) {
-                return {
-                    baseName: parts.slice(0, -1).join('.'),
-                    docType: parts[parts.length - 1]
-                };
-            }
-        }
-        
-        // No doc type suffix found
-        return { baseName: withoutMd, docType: undefined };
+        return coreParseFileName(fileName);
     }
 
     /**
@@ -823,49 +721,7 @@ export class TaskManager implements vscode.Disposable {
      * @returns Array of task documents found
      */
     private scanDocumentsRecursively(dirPath: string, relativePath: string, isArchived: boolean): TaskDocument[] {
-        const documents: TaskDocument[] = [];
-        const archiveFolderName = 'archive';
-
-        const readResult = safeReadDir(dirPath);
-        if (!readResult.success || !readResult.data) {
-            return documents;
-        }
-
-        for (const item of readResult.data) {
-            const itemPath = path.join(dirPath, item);
-            const statsResult = safeStats(itemPath);
-            
-            if (!statsResult.success || !statsResult.data) {
-                continue;
-            }
-
-            if (statsResult.data.isDirectory()) {
-                // Skip archive folder when scanning active documents
-                if (!isArchived && item === archiveFolderName) {
-                    continue;
-                }
-                // Recursively scan subdirectory
-                const subRelativePath = relativePath ? path.join(relativePath, item) : item;
-                const subDocuments = this.scanDocumentsRecursively(itemPath, subRelativePath, isArchived);
-                documents.push(...subDocuments);
-            } else if (statsResult.data.isFile() && item.endsWith('.md')) {
-                // Found a markdown file - parse status from frontmatter
-                const { baseName, docType } = this.parseFileName(item);
-                const status = parseTaskStatus(itemPath);
-                documents.push({
-                    baseName,
-                    docType,
-                    fileName: item,
-                    filePath: itemPath,
-                    modifiedTime: statsResult.data.mtime,
-                    isArchived,
-                    relativePath: relativePath || undefined,
-                    status
-                });
-            }
-        }
-
-        return documents;
+        return coreScanDocumentsRecursively(dirPath, relativePath, isArchived);
     }
 
     /**
@@ -883,54 +739,7 @@ export class TaskManager implements vscode.Disposable {
         folderMap: Map<string, TaskFolder>,
         parentFolder: TaskFolder
     ): void {
-        const archiveFolderName = 'archive';
-
-        const readResult = safeReadDir(dirPath);
-        if (!readResult.success || !readResult.data) {
-            return;
-        }
-
-        for (const item of readResult.data) {
-            const itemPath = path.join(dirPath, item);
-            const statsResult = safeStats(itemPath);
-            
-            if (!statsResult.success || !statsResult.data) {
-                continue;
-            }
-
-            if (statsResult.data.isDirectory()) {
-                // Skip archive folder when scanning active folders
-                if (!isArchived && item === archiveFolderName) {
-                    continue;
-                }
-
-                const folderRelativePath = relativePath ? path.join(relativePath, item) : item;
-
-                // Check if folder already exists in map
-                if (!folderMap.has(folderRelativePath)) {
-                    const newFolder: TaskFolder = {
-                        name: item,
-                        folderPath: itemPath,
-                        relativePath: folderRelativePath,
-                        isArchived,
-                        children: [],
-                        tasks: [],
-                        documentGroups: [],
-                        singleDocuments: []
-                    };
-
-                    folderMap.set(folderRelativePath, newFolder);
-                    parentFolder.children.push(newFolder);
-
-                    // Recursively scan subdirectory
-                    this.scanFoldersRecursively(itemPath, folderRelativePath, isArchived, folderMap, newFolder);
-                } else {
-                    // Folder already exists, just recurse into it
-                    const existingFolder = folderMap.get(folderRelativePath)!;
-                    this.scanFoldersRecursively(itemPath, folderRelativePath, isArchived, folderMap, existingFolder);
-                }
-            }
-        }
+        coreScanFoldersRecursively(dirPath, relativePath, isArchived, folderMap, parentFolder);
     }
 
     /**
@@ -940,42 +749,7 @@ export class TaskManager implements vscode.Disposable {
      */
     async getTaskDocumentGroups(): Promise<{ groups: TaskDocumentGroup[]; singles: TaskDocument[] }> {
         const documents = await this.getTaskDocuments();
-        
-        // Group by baseName, isArchived status, and relativePath
-        const groupMap = new Map<string, TaskDocument[]>();
-        
-        for (const doc of documents) {
-            // Create key combining baseName, archived status, and relative path
-            const relPath = doc.relativePath || '';
-            const key = `${doc.baseName}|${doc.isArchived ? 'archived' : 'active'}|${relPath}`;
-            const existing = groupMap.get(key) || [];
-            existing.push(doc);
-            groupMap.set(key, existing);
-        }
-
-        const groups: TaskDocumentGroup[] = [];
-        const singles: TaskDocument[] = [];
-
-        for (const [key, docs] of groupMap) {
-            if (docs.length > 1) {
-                // Multiple documents with same base name - create a group
-                const latestModifiedTime = docs.reduce(
-                    (latest, doc) => doc.modifiedTime > latest ? doc.modifiedTime : latest,
-                    docs[0].modifiedTime
-                );
-                groups.push({
-                    baseName: docs[0].baseName,
-                    documents: docs,
-                    isArchived: docs[0].isArchived,
-                    latestModifiedTime
-                });
-            } else {
-                // Single document - don't group
-                singles.push(docs[0]);
-            }
-        }
-
-        return { groups, singles };
+        return coreGroupTaskDocuments(documents);
     }
 
     /**
@@ -983,102 +757,22 @@ export class TaskManager implements vscode.Disposable {
      * @returns Root task folder with nested children
      */
     async getTaskFolderHierarchy(): Promise<TaskFolder> {
-        const { groups, singles } = await this.getTaskDocumentGroups();
+        const documents = await this.getTaskDocuments();
         const settings = this.getSettings();
-        
-        // Create root folder
-        const rootFolder: TaskFolder = {
-            name: '',
-            folderPath: this.getTasksFolder(),
-            relativePath: '',
-            isArchived: false,
-            children: [],
-            tasks: [],
-            documentGroups: [],
-            singleDocuments: []
-        };
 
-        // Build folder hierarchy
-        const folderMap = new Map<string, TaskFolder>();
-        folderMap.set('', rootFolder);
-
-        // First, scan all directories (including empty ones) to build complete folder structure
-        this.scanFoldersRecursively(this.getTasksFolder(), '', false, folderMap, rootFolder);
-
-        // Also scan archive folder if showArchived is enabled
-        if (settings.showArchived) {
-            const archiveFolder = this.getArchiveFolder();
-            if (safeExists(archiveFolder)) {
-                this.scanFoldersRecursively(archiveFolder, '', true, folderMap, rootFolder);
-            }
-        }
-
-        // Process all documents to ensure their folder paths exist (for documents in scanned folders)
-        const allDocuments = [
-            ...groups.flatMap(g => g.documents),
-            ...singles
-        ];
-
-        for (const doc of allDocuments) {
-            if (!doc.relativePath) {
-                // Document is in root folder
-                continue;
-            }
-
-            const pathParts = doc.relativePath.split(path.sep);
-            let currentPath = '';
-
-            // Create folder hierarchy (should already exist from directory scan, but ensure it)
-            for (const part of pathParts) {
-                const parentPath = currentPath;
-                currentPath = currentPath ? path.join(currentPath, part) : part;
-
-                if (!folderMap.has(currentPath)) {
-                    const newFolder: TaskFolder = {
-                        name: part,
-                        folderPath: path.join(this.getTasksFolder(), currentPath),
-                        relativePath: currentPath,
-                        isArchived: doc.isArchived,
-                        children: [],
-                        tasks: [],
-                        documentGroups: [],
-                        singleDocuments: []
-                    };
-
-                    folderMap.set(currentPath, newFolder);
-
-                    // Add to parent's children
-                    const parent = folderMap.get(parentPath);
-                    if (parent) {
-                        parent.children.push(newFolder);
-                    }
-                }
-            }
-        }
-
-        // Assign documents and groups to their folders
-        for (const group of groups) {
-            const folderPath = group.documents[0].relativePath || '';
-            const folder = folderMap.get(folderPath);
-            if (folder) {
-                folder.documentGroups.push(group);
-            }
-        }
-
-        for (const doc of singles) {
-            const folderPath = doc.relativePath || '';
-            const folder = folderMap.get(folderPath);
-            if (folder) {
-                folder.singleDocuments.push(doc);
-            }
-        }
+        const { root, folderMap } = coreBuildTaskFolderHierarchy(
+            this.getTasksFolder(),
+            documents,
+            settings.showArchived,
+            settings.showArchived ? this.getArchiveFolder() : undefined
+        );
 
         // Load related items for all folders if discovery is enabled
         if (settings.discovery.enabled && settings.discovery.showRelatedInTree) {
             await this.loadRelatedItemsForFolders(folderMap);
         }
 
-        return rootFolder;
+        return root;
     }
 
     /**

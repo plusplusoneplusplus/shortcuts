@@ -52,3 +52,12 @@ export {
     getRelatedItemsPath,
     categorizeItem,
 } from './related-items-loader';
+
+export {
+    // Task scanning and grouping
+    scanTasksRecursively,
+    scanDocumentsRecursively,
+    scanFoldersRecursively,
+    groupTaskDocuments,
+    buildTaskFolderHierarchy,
+} from './task-scanner';
