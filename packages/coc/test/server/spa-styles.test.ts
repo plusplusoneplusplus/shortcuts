@@ -62,6 +62,87 @@ describe('Bundled CSS — via generateDashboardHtml', () => {
     });
 });
 
+describe('Chat bubble CSS styles', () => {
+    const html = generateDashboardHtml();
+
+    it('defines chat message bubble styles', () => {
+        expect(html).toContain('.chat-message');
+        expect(html).toContain('.chat-message.user');
+        expect(html).toContain('.chat-message.assistant');
+    });
+
+    it('defines user bubble with accent background and right alignment', () => {
+        expect(html).toContain('align-self: flex-end');
+        expect(html).toContain('var(--active-bg)');
+    });
+
+    it('defines assistant bubble with primary background and left alignment', () => {
+        expect(html).toContain('align-self: flex-start');
+    });
+
+    it('defines chat message header with role icon and timestamp', () => {
+        expect(html).toContain('.chat-message-header');
+        expect(html).toContain('.chat-message-header .role-icon');
+        expect(html).toContain('.chat-message-header .timestamp');
+    });
+
+    it('defines chat message content styles', () => {
+        expect(html).toContain('.chat-message-content');
+    });
+
+    it('defines chat input bar styles', () => {
+        expect(html).toContain('.chat-input-bar');
+        expect(html).toContain('.chat-input-bar textarea');
+        expect(html).toContain('.chat-input-bar .send-btn');
+    });
+
+    it('defines input bar disabled state', () => {
+        expect(html).toContain('.chat-input-bar.disabled textarea');
+        expect(html).toContain('.chat-input-bar.disabled .send-btn');
+    });
+
+    it('defines streaming state per-bubble', () => {
+        expect(html).toContain('.chat-message.streaming');
+        expect(html).toContain('var(--status-running)');
+    });
+
+    it('defines typing cursor with blink animation', () => {
+        expect(html).toContain('.typing-cursor');
+        expect(html).toContain('@keyframes blink');
+    });
+
+    it('defines collapsible metadata styles', () => {
+        expect(html).toContain('.meta-collapse');
+        expect(html).toContain('.meta-collapse.expanded');
+        expect(html).toContain('.meta-collapse .meta-grid');
+        expect(html).toContain('.meta-collapse.expanded .meta-grid');
+    });
+
+    it('defines scroll-to-bottom button styles', () => {
+        expect(html).toContain('.scroll-to-bottom');
+        expect(html).toContain('.scroll-to-bottom.visible');
+    });
+
+    it('converts conversation-body to flex column layout', () => {
+        expect(html).toContain('flex-direction: column');
+        expect(html).toContain('gap: 12px');
+    });
+
+    it('removes white-space: pre-wrap from conversation-body', () => {
+        // Extract the .conversation-body rule and verify no white-space: pre-wrap
+        const bodyStart = html.indexOf('.conversation-body {');
+        const bodyEnd = html.indexOf('}', bodyStart);
+        const bodyRule = html.substring(bodyStart, bodyEnd + 1);
+        expect(bodyRule).not.toContain('white-space: pre-wrap');
+    });
+
+    it('defines responsive chat styles at 768px breakpoint', () => {
+        expect(html).toContain('.chat-message {');
+        expect(html).toContain('max-width: 95%');
+        expect(html).toContain('.chat-input-bar .send-btn {');
+    });
+});
+
 describe('Repos sidebar CSS styles', () => {
     const html = generateDashboardHtml();
 
