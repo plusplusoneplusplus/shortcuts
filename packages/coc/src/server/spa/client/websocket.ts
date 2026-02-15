@@ -3,11 +3,12 @@
  */
 
 import { getWsPath, getApiBase } from './config';
-import { appState, queueState } from './state';
+import { appState, queueState, taskPanelState } from './state';
 import { fetchApi } from './core';
 import { renderProcessList } from './sidebar';
 import { renderDetail, clearDetail } from './detail';
 import { renderQueuePanel, startQueuePolling, stopQueuePolling } from './queue';
+import { fetchTasksData } from './tasks';
 
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let wsReconnectDelay = 1000;
@@ -150,6 +151,11 @@ export function handleWsMessage(msg: any): void {
                 opt.textContent = msg.data.name || msg.data.path || msg.data.id;
                 select.appendChild(opt);
             }
+        }
+    } else if (msg.type === 'tasks-changed' && msg.workspaceId) {
+        // Re-fetch the task list if the changed workspace matches the currently viewed one
+        if (taskPanelState.selectedWorkspaceId === msg.workspaceId) {
+            fetchTasksData();
         }
     }
 }

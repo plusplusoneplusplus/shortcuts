@@ -26,6 +26,7 @@ import { TaskQueueManager, FileProcessStore } from '@plusplusoneplusplus/pipelin
 import { createQueueExecutorBridge } from './queue-executor-bridge';
 import { QueuePersistence } from './queue-persistence';
 import { OutputPruner } from './output-pruner';
+import { TaskWatcher } from './task-watcher';
 
 // ============================================================================
 // Stub Process Store
@@ -253,6 +254,35 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         } as any);
     });
 
+    // Bridge task file changes to WebSocket
+    const taskWatcher = new TaskWatcher((workspaceId) => {
+        wsServer.broadcastProcessEvent({
+            type: 'tasks-changed',
+            workspaceId,
+            timestamp: Date.now(),
+        });
+    });
+
+    // Watch tasks directories for already-registered workspaces (handles server restart)
+    const existingWorkspaces = await store.getWorkspaces();
+    for (const ws of existingWorkspaces) {
+        taskWatcher.watchWorkspace(ws.id, ws.rootPath);
+    }
+
+    // Intercept workspace registration/removal to manage task watchers
+    const originalRegister = store.registerWorkspace!.bind(store);
+    const originalRemove = store.removeWorkspace!.bind(store);
+
+    store.registerWorkspace = async (workspace: any) => {
+        await originalRegister(workspace);
+        taskWatcher.watchWorkspace(workspace.id, workspace.rootPath);
+    };
+
+    store.removeWorkspace = async (id: string) => {
+        taskWatcher.unwatchWorkspace(id);
+        return originalRemove(id);
+    };
+
     // Start listening
     await new Promise<void>((resolve, reject) => {
         server.on('error', reject);
@@ -280,6 +310,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         close: async () => {
             // Stop output pruner cleanup
             outputPruner.stopListening();
+            // Close task file watchers
+            taskWatcher.closeAll();
             // Flush persisted queue state before stopping executor
             queuePersistence.dispose();
             // Stop the queue executor first
@@ -317,3 +349,5 @@ export { CLITaskExecutor, createQueueExecutorBridge } from './queue-executor-bri
 export type { QueueExecutorBridgeOptions } from './queue-executor-bridge';
 export { QueuePersistence } from './queue-persistence';
 export { OutputPruner } from './output-pruner';
+export { TaskWatcher } from './task-watcher';
+export type { TasksChangedCallback } from './task-watcher';

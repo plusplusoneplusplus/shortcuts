@@ -92,7 +92,8 @@ export type ServerMessage =
     | { type: 'process-updated'; process: ProcessSummary }
     | { type: 'process-removed'; processId: string }
     | { type: 'processes-cleared'; count: number }
-    | { type: 'queue-updated'; queue: QueueSnapshot };
+    | { type: 'queue-updated'; queue: QueueSnapshot }
+    | { type: 'tasks-changed'; workspaceId: string; timestamp: number };
 
 /** Client → Server message types */
 export type ClientMessage =
@@ -281,6 +282,9 @@ export class ProcessWebSocketServer {
     private getMessageWorkspaceId(message: ServerMessage): string | undefined {
         if ('process' in message && message.process) {
             return (message.process as ProcessSummary).workspaceId;
+        }
+        if (message.type === 'tasks-changed') {
+            return message.workspaceId;
         }
         return undefined;
     }

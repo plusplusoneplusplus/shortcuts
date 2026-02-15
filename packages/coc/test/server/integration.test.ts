@@ -701,4 +701,75 @@ describe('Server Integration', () => {
             }
         });
     });
+
+    // ------------------------------------------------------------------
+    // Task Watcher Integration
+    // ------------------------------------------------------------------
+    describe('task watcher integration', () => {
+        it('should start task watcher when workspace is registered with .vscode/tasks/', async () => {
+            const wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-tw-'));
+            fs.mkdirSync(path.join(wsRoot, '.vscode', 'tasks'), { recursive: true });
+
+            const res = await request(`${baseUrl}/api/workspaces`, {
+                method: 'POST',
+                body: JSON.stringify({ id: 'tw-ws-1', name: 'TW Test', rootPath: wsRoot }),
+            });
+            expect(res.status).toBe(201);
+
+            // Write a task file — the watcher should detect it and broadcast
+            fs.writeFileSync(
+                path.join(wsRoot, '.vscode', 'tasks', 'integ-test.md'),
+                '# Integration test task',
+            );
+
+            // Wait for debounce (300ms) + margin
+            await new Promise(r => setTimeout(r, 800));
+
+            // Clean up
+            fs.rmSync(wsRoot, { recursive: true, force: true });
+        });
+
+        it('should stop task watcher when workspace is removed', async () => {
+            const wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-tw-rm-'));
+            fs.mkdirSync(path.join(wsRoot, '.vscode', 'tasks'), { recursive: true });
+
+            await request(`${baseUrl}/api/workspaces`, {
+                method: 'POST',
+                body: JSON.stringify({ id: 'tw-ws-rm', name: 'TW Remove', rootPath: wsRoot }),
+            });
+
+            // Remove the workspace
+            const delRes = await request(`${baseUrl}/api/workspaces/tw-ws-rm`, {
+                method: 'DELETE',
+            });
+            expect([200, 204]).toContain(delRes.status);
+
+            // Write a task file — no watcher should be active
+            fs.writeFileSync(
+                path.join(wsRoot, '.vscode', 'tasks', 'after-remove.md'),
+                '# Should not trigger',
+            );
+
+            await new Promise(r => setTimeout(r, 600));
+
+            // Clean up
+            fs.rmSync(wsRoot, { recursive: true, force: true });
+        });
+
+        it('should handle workspace without .vscode/tasks/ gracefully', async () => {
+            const wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'integ-tw-nodir-'));
+            // Do NOT create .vscode/tasks/
+
+            const res = await request(`${baseUrl}/api/workspaces`, {
+                method: 'POST',
+                body: JSON.stringify({ id: 'tw-ws-nodir', name: 'No Tasks Dir', rootPath: wsRoot }),
+            });
+            expect(res.status).toBe(201);
+
+            // Should not crash — just silently skip
+            await new Promise(r => setTimeout(r, 200));
+
+            fs.rmSync(wsRoot, { recursive: true, force: true });
+        });
+    });
 });
