@@ -1604,6 +1604,137 @@ describe('Queue task conversation view', () => {
 });
 
 // ============================================================================
+// Tasks context menu (right-click status change)
+// ============================================================================
+
+describe('Tasks context menu — CSS styles', () => {
+    const html = generateDashboardHtml();
+
+    it('defines task-context-menu container style', () => {
+        expect(html).toContain('.task-context-menu');
+    });
+
+    it('defines task-context-menu-item style', () => {
+        expect(html).toContain('.task-context-menu-item');
+    });
+
+    it('defines has-submenu indicator style', () => {
+        expect(html).toContain('.has-submenu');
+    });
+
+    it('defines task-context-submenu style', () => {
+        expect(html).toContain('.task-context-submenu');
+    });
+
+    it('defines task-context-submenu-item style', () => {
+        expect(html).toContain('.task-context-submenu-item');
+    });
+
+    it('defines ctx-status-icon style', () => {
+        expect(html).toContain('.ctx-status-icon');
+    });
+
+    it('defines ctx-status-label style', () => {
+        expect(html).toContain('.ctx-status-label');
+    });
+
+    it('defines ctx-active style for current status highlight', () => {
+        expect(html).toContain('.ctx-active');
+    });
+
+    it('defines task-context-menu-separator style', () => {
+        expect(html).toContain('.task-context-menu-separator');
+    });
+
+    it('positions context menu with fixed positioning', () => {
+        expect(html).toContain('position: fixed');
+    });
+
+    it('positions submenu absolutely relative to parent', () => {
+        expect(html).toContain('position: absolute');
+    });
+
+    it('uses high z-index for context menu', () => {
+        expect(html).toContain('z-index: 10000');
+    });
+});
+
+describe('Tasks context menu — client bundle functions', () => {
+    let script: string;
+    beforeAll(() => { script = getClientBundle(); });
+
+    it('defines dismissContextMenu function', () => {
+        expect(script).toContain('dismissContextMenu');
+    });
+
+    it('defines showTaskContextMenu function', () => {
+        expect(script).toContain('showTaskContextMenu');
+    });
+
+    it('defines resolveFileStatus function', () => {
+        expect(script).toContain('resolveFileStatus');
+    });
+
+    it('defines findDocStatus function', () => {
+        expect(script).toContain('findDocStatus');
+    });
+
+    it('creates context menu element with id task-context-menu', () => {
+        expect(script).toContain('task-context-menu');
+    });
+
+    it('renders Change Status label in context menu', () => {
+        expect(script).toContain('Change Status');
+    });
+
+    it('uses data-ctx-action attribute for status actions', () => {
+        expect(script).toContain('data-ctx-action');
+    });
+
+    it('uses data-ctx-status attribute for target status', () => {
+        expect(script).toContain('data-ctx-status');
+    });
+
+    it('uses data-ctx-path attribute for file path', () => {
+        expect(script).toContain('data-ctx-path');
+    });
+
+    it('listens for contextmenu event on container', () => {
+        expect(script).toContain('contextmenu');
+    });
+
+    it('calls preventDefault on contextmenu event', () => {
+        expect(script).toContain('preventDefault');
+    });
+
+    it('calls updateStatus when a status submenu item is clicked', () => {
+        expect(script).toContain('updateStatus');
+    });
+
+    it('dismisses context menu on Escape key', () => {
+        expect(script).toContain('Escape');
+    });
+
+    it('renders all four status options in submenu', () => {
+        // STATUS_CYCLE has pending, in-progress, done, future
+        expect(script).toContain('STATUS_CYCLE');
+    });
+
+    it('highlights current status with ctx-active class', () => {
+        expect(script).toContain('ctx-active');
+    });
+
+    it('adjusts menu position to stay within viewport', () => {
+        expect(script).toContain('innerWidth');
+        expect(script).toContain('innerHeight');
+    });
+
+    it('uses set-status as the context action identifier', () => {
+        expect(script).toContain('set-status');
+    });
+});
+
+// ============================================================================
 // Bundle file existence
 // ============================================================================
 

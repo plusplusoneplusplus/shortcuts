@@ -480,6 +480,21 @@ function attachMillerEventListeners(container: HTMLElement): void {
             return;
         }
     });
+
+    // Right-click context menu on file rows
+    container.addEventListener('contextmenu', (e: Event) => {
+        const me = e as MouseEvent;
+        const target = me.target as HTMLElement;
+        const fileRow = target.closest('[data-file-path]') as HTMLElement | null;
+        if (!fileRow) return;
+
+        me.preventDefault();
+        const filePath = fileRow.getAttribute('data-file-path');
+        if (!filePath) return;
+
+        const currentStatus = resolveFileStatus(filePath);
+        showTaskContextMenu(me.clientX, me.clientY, filePath, currentStatus);
+    });
 }
 
 // ================================================================
@@ -503,6 +518,147 @@ function renderArchiveButton(itemPath: string, name: string): string {
     const icon = isArchived ? '📤' : '📦';
     const title = isArchived ? 'Unarchive' : 'Archive';
     return '<button class="task-action-btn" data-action="' + action + '" data-path="' + escapeHtmlClient(itemPath) + '" title="' + title + '">' + icon + '</button>';
+}
+
+// ================================================================
+// Context menu (right-click on Miller rows)
+// ================================================================
+
+/** Remove any open context menu from the DOM. */
+function dismissContextMenu(): void {
+    const existing = document.getElementById('task-context-menu');
+    if (existing) existing.remove();
+}
+
+/** Show a context menu at (x, y) for a task file with the given path and current status. */
+function showTaskContextMenu(x: number, y: number, filePath: string, currentStatus: string | undefined): void {
+    dismissContextMenu();
+
+    const wsId = taskPanelState.selectedWorkspaceId;
+    if (!wsId) return;
+
+    const menu = document.createElement('div');
+    menu.id = 'task-context-menu';
+    menu.className = 'task-context-menu';
+
+    // Build "Change Status" submenu items
+    let submenuHtml = '';
+    for (const status of STATUS_CYCLE) {
+        const icon = STATUS_ICONS[status] || '○';
+        const label = STATUS_LABELS[status] || status;
+        const isActive = currentStatus === status;
+        submenuHtml +=
+            '<div class="task-context-submenu-item' + (isActive ? ' ctx-active' : '') + '" ' +
+                'data-ctx-action="set-status" data-ctx-status="' + escapeHtmlClient(status) + '" data-ctx-path="' + escapeHtmlClient(filePath) + '">' +
+                '<span class="ctx-status-icon">' + icon + '</span>' +
+                '<span class="ctx-status-label">' + escapeHtmlClient(label) + '</span>' +
+            '</div>';
+    }
+
+    menu.innerHTML =
+        '<div class="task-context-menu-item has-submenu">' +
+            '<span>Change Status</span>' +
+            '<div class="task-context-submenu">' + submenuHtml + '</div>' +
+        '</div>';
+
+    document.body.appendChild(menu);
+
+    // Position: keep within viewport
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = x;
+    let top = y;
+
+    if (left + rect.width > vw) left = vw - rect.width - 4;
+    if (top + rect.height > vh) top = vh - rect.height - 4;
+    if (left < 0) left = 4;
+    if (top < 0) top = 4;
+
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+
+    // Also adjust submenu if it would overflow to the right
+    const submenu = menu.querySelector('.task-context-submenu') as HTMLElement | null;
+    if (submenu) {
+        // Temporarily show to measure
+        submenu.style.display = 'block';
+        const subRect = submenu.getBoundingClientRect();
+        submenu.style.display = '';
+        if (left + rect.width + subRect.width > vw) {
+            // Open submenu to the left instead
+            submenu.style.left = 'auto';
+            submenu.style.right = '100%';
+        }
+    }
+
+    // Click handler for submenu items
+    menu.addEventListener('click', (e: Event) => {
+        const target = e.target as HTMLElement;
+        const item = target.closest('[data-ctx-action="set-status"]') as HTMLElement | null;
+        if (item) {
+            const newStatus = item.getAttribute('data-ctx-status');
+            const path = item.getAttribute('data-ctx-path');
+            if (newStatus && path) {
+                updateStatus(wsId, path, newStatus);
+            }
+            dismissContextMenu();
+        }
+    });
+
+    // Dismiss on click outside or Escape
+    const onClickOutside = (e: MouseEvent) => {
+        if (!menu.contains(e.target as Node)) {
+            dismissContextMenu();
+            document.removeEventListener('click', onClickOutside, true);
+        }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            dismissContextMenu();
+            document.removeEventListener('keydown', onKeyDown, true);
+        }
+    };
+    // Use setTimeout so the current right-click event doesn't immediately dismiss
+    setTimeout(() => {
+        document.addEventListener('click', onClickOutside, true);
+        document.addEventListener('keydown', onKeyDown, true);
+    }, 0);
+}
+
+/** Resolve the current status of a file from the task tree data. */
+function resolveFileStatus(filePath: string): string | undefined {
+    if (!currentTasks) return undefined;
+    return findDocStatus(currentTasks, filePath);
+}
+
+/** Recursively search the task tree for a document's status by file path. */
+function findDocStatus(folder: TaskFolder, filePath: string): string | undefined {
+    // Check single documents
+    if (folder.singleDocuments) {
+        for (const doc of folder.singleDocuments) {
+            const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
+            if (docPath === filePath) return doc.status;
+        }
+    }
+    // Check document groups
+    if (folder.documentGroups) {
+        for (const group of folder.documentGroups) {
+            for (const doc of group.documents) {
+                const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
+                if (docPath === filePath) return doc.status;
+            }
+        }
+    }
+    // Recurse into children
+    if (folder.children) {
+        for (const child of folder.children) {
+            const found = findDocStatus(child, filePath);
+            if (found !== undefined) return found;
+        }
+    }
+    return undefined;
 }
 
 // ================================================================

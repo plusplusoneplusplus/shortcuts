@@ -1723,6 +1723,98 @@ body {
     color: var(--status-completed);
 }
 
+/* ================================================================
+   Task Context Menu (right-click)
+   ================================================================ */
+
+.task-context-menu {
+    position: fixed;
+    z-index: 10000;
+    min-width: 180px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    padding: 4px 0;
+    font-size: 13px;
+    user-select: none;
+}
+
+.task-context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    color: var(--text-primary);
+    position: relative;
+}
+
+.task-context-menu-item:hover {
+    background: var(--hover-bg);
+}
+
+.task-context-menu-item.has-submenu::after {
+    content: '▶';
+    font-size: 9px;
+    color: var(--text-secondary);
+    margin-left: auto;
+    padding-left: 12px;
+}
+
+.task-context-menu-separator {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 0;
+}
+
+.task-context-submenu {
+    position: absolute;
+    left: 100%;
+    top: -4px;
+    min-width: 160px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    padding: 4px 0;
+    display: none;
+}
+
+.task-context-menu-item.has-submenu:hover > .task-context-submenu {
+    display: block;
+}
+
+.task-context-submenu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+.task-context-submenu-item:hover {
+    background: var(--hover-bg);
+}
+
+.task-context-submenu-item .ctx-status-icon {
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.task-context-submenu-item .ctx-status-label {
+    flex: 1;
+}
+
+.task-context-submenu-item.ctx-active {
+    font-weight: 600;
+    color: var(--accent);
+}
+
 /* Loading / error states */
 .task-preview-loading {
     padding: 24px;
