@@ -39,3 +39,16 @@ export {
     parseFileName,
     sanitizeFileName,
 } from './task-parser';
+
+export {
+    // Related-items-loader
+    RELATED_ITEMS_FILENAME,
+    loadRelatedItems,
+    saveRelatedItems,
+    hasRelatedItems,
+    deleteRelatedItems,
+    removeRelatedItem,
+    mergeRelatedItems,
+    getRelatedItemsPath,
+    categorizeItem,
+} from './related-items-loader';

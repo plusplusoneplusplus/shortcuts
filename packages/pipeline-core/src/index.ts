@@ -685,4 +685,14 @@ export {
     // Parser utilities
     VALID_TASK_STATUSES, COMMON_DOC_TYPES,
     parseTaskStatus, updateTaskStatus, parseFileName, sanitizeFileName,
+    // Related-items-loader
+    RELATED_ITEMS_FILENAME,
+    loadRelatedItems,
+    saveRelatedItems,
+    hasRelatedItems,
+    deleteRelatedItems,
+    removeRelatedItem,
+    mergeRelatedItems,
+    getRelatedItemsPath,
+    categorizeItem,
 } from './tasks';

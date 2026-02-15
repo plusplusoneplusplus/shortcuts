@@ -28,7 +28,9 @@ export enum LogCategory {
     /** Utility operations */
     UTILS = 'Utils',
     /** General operations */
-    GENERAL = 'General'
+    GENERAL = 'General',
+    /** Task management operations */
+    TASKS = 'Tasks'
 }
 
 /**
