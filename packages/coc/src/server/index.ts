@@ -18,6 +18,7 @@ import { registerApiRoutes } from './api-handler';
 import { registerQueueRoutes } from './queue-handler';
 import { registerTaskRoutes, registerTaskWriteRoutes } from './tasks-handler';
 import { registerTaskGenerationRoutes } from './task-generation-handler';
+import { registerPromptRoutes } from './prompt-handler';
 import { ProcessWebSocketServer, toProcessSummary } from './websocket';
 import { generateDashboardHtml } from './spa';
 import type { ExecutionServerOptions, ExecutionServer } from './types';
@@ -165,6 +166,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     registerTaskRoutes(routes, store);
     registerTaskWriteRoutes(routes, store);
     registerTaskGenerationRoutes(routes, store);
+    registerPromptRoutes(routes, store);
 
     // Build request handler (health route is prepended automatically)
     const handler = createRequestHandler({ routes, spaHtml, store });
