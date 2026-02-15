@@ -750,6 +750,26 @@ describe('client/tasks.ts', () => {
         expect(content).toContain('function closeTaskPreview');
     });
 
+    it('has countFolderItems function for recursive item counting', () => {
+        expect(content).toContain('function countFolderItems');
+    });
+
+    it('renders folder count badge in folder rows', () => {
+        expect(content).toContain('task-folder-count');
+    });
+
+    it('countFolderItems counts singleDocuments', () => {
+        expect(content).toContain('folder.singleDocuments');
+    });
+
+    it('countFolderItems counts documentGroups', () => {
+        expect(content).toContain('folder.documentGroups');
+    });
+
+    it('countFolderItems recurses into children', () => {
+        expect(content).toContain('countFolderItems(child)');
+    });
+
     it('renders file rows with data-file-path attribute', () => {
         expect(content).toContain('data-file-path');
     });
@@ -923,6 +943,10 @@ describe('styles.css — Task styles', () => {
     it('has loading and error states for preview', () => {
         expect(cssContent).toContain('.task-preview-loading');
         expect(cssContent).toContain('.task-preview-error');
+    });
+
+    it('has folder item count badge style', () => {
+        expect(cssContent).toContain('.task-folder-count');
     });
 });
 

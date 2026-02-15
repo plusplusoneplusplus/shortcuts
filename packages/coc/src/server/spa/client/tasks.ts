@@ -322,6 +322,19 @@ function renderTasksInRepo(): void {
     }
 }
 
+/** Recursively count all items (documents + groups) inside a folder. */
+function countFolderItems(folder: TaskFolder): number {
+    let count = 0;
+    if (folder.singleDocuments) count += folder.singleDocuments.length;
+    if (folder.documentGroups) count += folder.documentGroups.length;
+    if (folder.children) {
+        for (const child of folder.children) {
+            count += countFolderItems(child);
+        }
+    }
+    return count;
+}
+
 function renderFolder(folder: TaskFolder, parentPath: string): string {
     let html = '';
 
@@ -331,11 +344,15 @@ function renderFolder(folder: TaskFolder, parentPath: string): string {
             const folderPath = child.relativePath || child.name;
             const isExpanded = taskPanelState.expandedFolders[folderPath] === true;
             const isArchive = child.name === 'archive';
+            const itemCount = countFolderItems(child);
+            const countBadge = itemCount > 0
+                ? '<span class="task-folder-count">' + itemCount + '</span>'
+                : '';
             html += '<div class="task-tree-folder' + (isArchive ? ' task-archive-folder' : '') + '">' +
                 '<div class="task-tree-row task-folder-row" data-path="' + escapeHtmlClient(folderPath) + '">' +
                     '<span class="task-tree-toggle" data-folder="' + escapeHtmlClient(folderPath) + '">' + (isExpanded ? '▼' : '▶') + '</span>' +
                     '<span class="task-tree-icon">📁</span>' +
-                    '<span class="task-tree-name">' + escapeHtmlClient(child.name) + '</span>' +
+                    '<span class="task-tree-name">' + escapeHtmlClient(child.name) + countBadge + '</span>' +
                     '<span class="task-tree-actions">' +
                         '<button class="task-action-btn" data-action="new-task" data-folder="' + escapeHtmlClient(folderPath) + '" title="New task">+📄</button>' +
                         '<button class="task-action-btn" data-action="new-folder" data-parent="' + escapeHtmlClient(folderPath) + '" title="New folder">+📁</button>' +

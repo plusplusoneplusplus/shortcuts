@@ -1475,6 +1475,24 @@ body {
     padding-left: 28px;
 }
 
+/* Folder item count badge */
+.task-folder-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    margin-left: 6px;
+    border-radius: 9px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    vertical-align: middle;
+}
+
 /* Clickable folder rows */
 .task-folder-row {
     cursor: pointer;
