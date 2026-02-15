@@ -700,4 +700,117 @@ describe('API Handler', () => {
             expect(body.byWorkspace).toEqual([]);
         });
     });
+
+    // ========================================================================
+    // Filesystem browse endpoint
+    // ========================================================================
+
+    describe('Filesystem browse endpoint', () => {
+        it('should browse a valid directory', async () => {
+            const srv = await startServer();
+            // Create a temp dir with subdirectories
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browse-test-'));
+            fs.mkdirSync(path.join(tmpDir, 'subdir-a'));
+            fs.mkdirSync(path.join(tmpDir, 'subdir-b'));
+            fs.writeFileSync(path.join(tmpDir, 'file.txt'), 'hello');
+
+            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(tmpDir)}`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.path).toBe(tmpDir);
+            expect(body.parent).toBe(path.dirname(tmpDir));
+            // Only directories returned, not files
+            expect(body.entries).toHaveLength(2);
+            expect(body.entries[0].name).toBe('subdir-a');
+            expect(body.entries[0].type).toBe('directory');
+            expect(body.entries[1].name).toBe('subdir-b');
+
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it('should return 404 for non-existent path', async () => {
+            const srv = await startServer();
+            const fakePath = path.join(os.tmpdir(), 'nonexistent-browse-' + Date.now());
+
+            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(fakePath)}`);
+            expect(res.status).toBe(404);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('not found');
+        });
+
+        it('should default to home directory when no path provided', async () => {
+            const srv = await startServer();
+
+            const res = await request(`${srv.url}/api/fs/browse`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.path).toBe(os.homedir());
+            expect(Array.isArray(body.entries)).toBe(true);
+        });
+
+        it('should hide hidden directories by default', async () => {
+            const srv = await startServer();
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browse-hidden-'));
+            fs.mkdirSync(path.join(tmpDir, '.hidden'));
+            fs.mkdirSync(path.join(tmpDir, 'visible'));
+
+            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(tmpDir)}`);
+            const body = JSON.parse(res.body);
+            expect(body.entries).toHaveLength(1);
+            expect(body.entries[0].name).toBe('visible');
+
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it('should show hidden directories with showHidden=true', async () => {
+            const srv = await startServer();
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browse-show-hidden-'));
+            fs.mkdirSync(path.join(tmpDir, '.hidden'));
+            fs.mkdirSync(path.join(tmpDir, 'visible'));
+
+            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(tmpDir)}&showHidden=true`);
+            const body = JSON.parse(res.body);
+            expect(body.entries).toHaveLength(2);
+            const names = body.entries.map((e: any) => e.name);
+            expect(names).toContain('.hidden');
+            expect(names).toContain('visible');
+
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it('should detect git repos via .git subdirectory', async () => {
+            const srv = await startServer();
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browse-git-'));
+            const gitRepo = path.join(tmpDir, 'my-repo');
+            fs.mkdirSync(gitRepo);
+            fs.mkdirSync(path.join(gitRepo, '.git'));
+            fs.mkdirSync(path.join(tmpDir, 'not-a-repo'));
+
+            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(tmpDir)}`);
+            const body = JSON.parse(res.body);
+            expect(body.entries).toHaveLength(2);
+
+            const repo = body.entries.find((e: any) => e.name === 'my-repo');
+            const nonRepo = body.entries.find((e: any) => e.name === 'not-a-repo');
+            expect(repo.isGitRepo).toBe(true);
+            expect(nonRepo.isGitRepo).toBe(false);
+
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it('should sort entries alphabetically', async () => {
+            const srv = await startServer();
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browse-sort-'));
+            fs.mkdirSync(path.join(tmpDir, 'charlie'));
+            fs.mkdirSync(path.join(tmpDir, 'alpha'));
+            fs.mkdirSync(path.join(tmpDir, 'bravo'));
+
+            const res = await request(`${srv.url}/api/fs/browse?path=${encodeURIComponent(tmpDir)}`);
+            const body = JSON.parse(res.body);
+            const names = body.entries.map((e: any) => e.name);
+            expect(names).toEqual(['alpha', 'bravo', 'charlie']);
+
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+    });
 });

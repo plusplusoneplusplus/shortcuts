@@ -150,8 +150,21 @@ ${bundleCss}
             <form id="add-repo-form" class="enqueue-form">
                 <div class="enqueue-field">
                     <label for="repo-path">Path</label>
-                    <input type="text" id="repo-path" placeholder="/path/to/repository" required />
+                    <div class="path-input-row">
+                        <input type="text" id="repo-path" placeholder="/path/to/repository" required />
+                        <button type="button" class="browse-btn" id="browse-btn">Browse</button>
+                    </div>
                     <span class="enqueue-optional">Absolute path to git repo root</span>
+                    <div id="path-browser" class="path-browser hidden">
+                        <div class="path-browser-breadcrumb" id="path-breadcrumb"></div>
+                        <div class="path-browser-list" id="path-browser-list">
+                            <div class="path-browser-loading">Loading...</div>
+                        </div>
+                        <div class="path-browser-actions">
+                            <button type="button" class="enqueue-btn-secondary path-browser-cancel-btn" id="path-browser-cancel">Cancel</button>
+                            <button type="button" class="enqueue-btn-primary path-browser-select-btn" id="path-browser-select">Select This Directory</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="enqueue-field">
                     <label for="repo-alias">Alias <span class="enqueue-optional">(optional)</span></label>

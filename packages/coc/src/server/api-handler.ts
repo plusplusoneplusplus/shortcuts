@@ -13,6 +13,7 @@ import * as url from 'url';
 import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo } from '@plusplusoneplusplus/pipeline-core';
 import { deserializeProcess } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
@@ -251,6 +252,38 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore): void {
             const pipelinesDir = path.resolve(ws.rootPath, folder);
             const pipelines = discoverPipelines(pipelinesDir);
             sendJSON(res, 200, { pipelines });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // Filesystem browse endpoint
+    // ------------------------------------------------------------------
+
+    // GET /api/fs/browse — Browse directories for repo path selection
+    routes.push({
+        method: 'GET',
+        pattern: '/api/fs/browse',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const rawPath = typeof parsed.query.path === 'string' && parsed.query.path
+                ? parsed.query.path
+                : os.homedir();
+            const showHidden = parsed.query.showHidden === 'true';
+
+            const resolved = path.resolve(rawPath.replace(/^~/, os.homedir()));
+
+            // Security: block traversal above home directory
+            const home = os.homedir();
+            const tmpDir = os.tmpdir();
+            if (!resolved.startsWith(home) && !resolved.startsWith(tmpDir) && !resolved.startsWith('/tmp') && resolved !== '/') {
+                return sendError(res, 403, 'Access denied: path is outside allowed directories');
+            }
+
+            const result = browseDirectory(resolved, showHidden);
+            if (!result) {
+                return sendError(res, 404, 'Directory not found or not accessible');
+            }
+            sendJSON(res, 200, result);
         },
     });
 
@@ -527,5 +560,41 @@ export function discoverPipelines(pipelinesDir: string): Array<{ name: string; p
         return pipelines;
     } catch {
         return [];
+    }
+}
+
+/** Browse a directory and return its entries (directories only) for repo path selection. */
+export function browseDirectory(dirPath: string, showHidden = false): {
+    path: string;
+    parent: string | null;
+    entries: Array<{ name: string; type: 'directory'; isGitRepo: boolean }>;
+} | null {
+    try {
+        if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) {
+            return null;
+        }
+
+        const parentDir = path.dirname(dirPath);
+        const parent = parentDir !== dirPath ? parentDir : null;
+
+        const rawEntries = fs.readdirSync(dirPath, { withFileTypes: true });
+        const entries: Array<{ name: string; type: 'directory'; isGitRepo: boolean }> = [];
+
+        for (const entry of rawEntries) {
+            if (!entry.isDirectory()) continue;
+            if (!showHidden && entry.name.startsWith('.')) continue;
+
+            const fullPath = path.join(dirPath, entry.name);
+            const isGitRepo = fs.existsSync(path.join(fullPath, '.git'));
+
+            entries.push({ name: entry.name, type: 'directory', isGitRepo });
+        }
+
+        // Sort alphabetically
+        entries.sort((a, b) => a.name.localeCompare(b.name));
+
+        return { path: dirPath, parent, entries };
+    } catch {
+        return null;
     }
 }

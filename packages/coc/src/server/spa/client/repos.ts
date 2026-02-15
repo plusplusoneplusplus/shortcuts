@@ -338,6 +338,131 @@ async function removeRepo(wsId: string): Promise<void> {
 }
 
 // ================================================================
+// Directory browser
+// ================================================================
+
+let browserCurrentPath = '';
+
+async function openPathBrowser(): Promise<void> {
+    const panel = document.getElementById('path-browser');
+    if (!panel) return;
+
+    const pathInput = document.getElementById('repo-path') as HTMLInputElement | null;
+    const startPath = pathInput?.value.trim() || '~';
+
+    panel.classList.remove('hidden');
+    await navigateToDir(startPath);
+}
+
+async function navigateToDir(dirPath: string): Promise<void> {
+    const list = document.getElementById('path-browser-list');
+    const breadcrumb = document.getElementById('path-breadcrumb');
+    if (!list) return;
+
+    list.innerHTML = '<div class="path-browser-loading">Loading...</div>';
+
+    try {
+        const data = await fetchApi(`/fs/browse?path=${encodeURIComponent(dirPath)}`);
+        if (!data || data.error) {
+            list.innerHTML = '<div class="path-browser-error">' + escapeHtmlClient(data?.error || 'Failed to browse') + '</div>';
+            return;
+        }
+
+        browserCurrentPath = data.path;
+
+        // Render breadcrumb
+        if (breadcrumb) {
+            renderBreadcrumb(breadcrumb, data.path);
+        }
+
+        // Render entries
+        let html = '';
+        if (data.parent) {
+            html += '<div class="path-browser-entry path-browser-parent" data-path="' + escapeHtmlClient(data.parent) + '">' +
+                '<span class="entry-icon">📁</span>' +
+                '<span class="entry-name">..</span>' +
+            '</div>';
+        }
+
+        if (data.entries.length === 0) {
+            html += '<div class="path-browser-empty">No subdirectories</div>';
+        } else {
+            for (const entry of data.entries) {
+                const entryPath = data.path + (data.path.endsWith('/') ? '' : '/') + entry.name;
+                html += '<div class="path-browser-entry" data-path="' + escapeHtmlClient(entryPath) + '">' +
+                    '<span class="entry-icon">📁</span>' +
+                    '<span class="entry-name">' + escapeHtmlClient(entry.name) + '</span>' +
+                    (entry.isGitRepo ? '<span class="git-badge">git</span>' : '') +
+                '</div>';
+            }
+        }
+
+        list.innerHTML = html;
+
+        // Attach click handlers
+        list.querySelectorAll('.path-browser-entry').forEach(el => {
+            el.addEventListener('click', () => {
+                const p = el.getAttribute('data-path');
+                if (p) navigateToDir(p);
+            });
+        });
+    } catch {
+        list.innerHTML = '<div class="path-browser-error">Failed to load directory</div>';
+    }
+}
+
+function renderBreadcrumb(container: HTMLElement, fullPath: string): void {
+    const parts = fullPath.split('/').filter(Boolean);
+    let html = '<span class="breadcrumb-segment" data-path="/">/</span>';
+    let accumulated = '';
+    for (const part of parts) {
+        accumulated += '/' + part;
+        html += '<span class="breadcrumb-sep">/</span>' +
+            '<span class="breadcrumb-segment" data-path="' + escapeHtmlClient(accumulated) + '">' +
+            escapeHtmlClient(part) + '</span>';
+    }
+    container.innerHTML = html;
+
+    container.querySelectorAll('.breadcrumb-segment').forEach(el => {
+        el.addEventListener('click', () => {
+            const p = el.getAttribute('data-path');
+            if (p) navigateToDir(p);
+        });
+    });
+}
+
+function closePathBrowser(): void {
+    const panel = document.getElementById('path-browser');
+    if (panel) panel.classList.add('hidden');
+}
+
+function selectBrowserPath(): void {
+    if (!browserCurrentPath) return;
+    const pathInput = document.getElementById('repo-path') as HTMLInputElement | null;
+    if (pathInput) {
+        pathInput.value = browserCurrentPath;
+        // Trigger alias auto-detection
+        const aliasInput = document.getElementById('repo-alias') as HTMLInputElement | null;
+        if (aliasInput && !aliasInput.value.trim()) {
+            aliasInput.value = browserCurrentPath.split('/').filter(Boolean).pop() || '';
+        }
+    }
+    closePathBrowser();
+}
+
+// Browser button
+const browseBtn = document.getElementById('browse-btn');
+if (browseBtn) browseBtn.addEventListener('click', openPathBrowser);
+
+// Browser cancel
+const browserCancelBtn = document.getElementById('path-browser-cancel');
+if (browserCancelBtn) browserCancelBtn.addEventListener('click', closePathBrowser);
+
+// Browser select
+const browserSelectBtn = document.getElementById('path-browser-select');
+if (browserSelectBtn) browserSelectBtn.addEventListener('click', selectBrowserPath);
+
+// ================================================================
 // Add Repo dialog
 // ================================================================
 
@@ -351,6 +476,7 @@ export function showAddRepoDialog(): void {
         if (aliasInput) aliasInput.value = '';
         const validation = document.getElementById('repo-validation');
         if (validation) { validation.innerHTML = ''; validation.className = 'repo-validation'; }
+        closePathBrowser();
     }
 }
 
