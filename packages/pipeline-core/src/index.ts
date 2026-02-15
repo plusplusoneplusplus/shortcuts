@@ -745,3 +745,17 @@ export {
     DiscoveryScope,
     DiscoveredItem,
 } from './tasks';
+
+// ============================================================================
+// Discovery
+// ============================================================================
+
+export {
+    // Types
+    PromptFileInfo,
+    SkillInfo,
+    // Prompt file discovery
+    findPromptFiles,
+    // Skill discovery
+    findSkills
+} from './discovery';

@@ -10,7 +10,8 @@
     "./map-reduce": "./dist/map-reduce/index.js",
     "./pipeline": "./dist/pipeline/index.js",
     "./utils": "./dist/utils/index.js",
-    "./tasks": "./dist/tasks/index.js"
+    "./tasks": "./dist/tasks/index.js",
+    "./discovery": "./dist/discovery/index.js"
   },
   "files": [
     "dist"
