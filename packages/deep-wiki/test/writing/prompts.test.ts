@@ -2,23 +2,23 @@
  * Writing Prompt Tests
  *
  * Tests for article writing prompt generation, depth variants,
- * cross-linking, and module graph simplification.
+ * cross-linking, and component graph simplification.
  */
 
 import { describe, it, expect } from 'vitest';
 import {
-    buildModuleArticlePrompt,
-    buildModuleArticlePromptTemplate,
+    buildComponentArticlePrompt,
+    buildComponentArticlePromptTemplate,
     buildSimplifiedGraph,
     getArticleStyleGuide,
 } from '../../src/writing/prompts';
-import type { ModuleAnalysis, ModuleGraph } from '../../src/types';
+import type { ComponentAnalysis, ComponentGraph } from '../../src/types';
 
 // ============================================================================
 // Test Data
 // ============================================================================
 
-function createTestGraph(): ModuleGraph {
+function createTestGraph(): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -27,10 +27,10 @@ function createTestGraph(): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: [
+        components: [
             {
                 id: 'auth',
-                name: 'Auth Module',
+                name: 'Auth Component',
                 path: 'src/auth/',
                 purpose: 'Authentication',
                 keyFiles: ['src/auth/index.ts'],
@@ -41,7 +41,7 @@ function createTestGraph(): ModuleGraph {
             },
             {
                 id: 'database',
-                name: 'Database Module',
+                name: 'Database Component',
                 path: 'src/db/',
                 purpose: 'Data access',
                 keyFiles: ['src/db/index.ts'],
@@ -52,16 +52,16 @@ function createTestGraph(): ModuleGraph {
             },
         ],
         categories: [
-            { name: 'security', description: 'Security modules' },
+            { name: 'security', description: 'Security components' },
             { name: 'infrastructure', description: 'Infrastructure' },
         ],
         architectureNotes: 'Layered architecture',
     };
 }
 
-function createTestAnalysis(): ModuleAnalysis {
+function createTestAnalysis(): ComponentAnalysis {
     return {
-        moduleId: 'auth',
+        componentId: 'auth',
         overview: 'Handles user authentication.',
         keyConcepts: [{ name: 'JWT', description: 'Token auth' }],
         publicAPI: [{ name: 'login', signature: 'login(): void', description: 'Logs in' }],
@@ -88,7 +88,7 @@ describe('buildSimplifiedGraph', () => {
         expect(parsed).toHaveLength(2);
         expect(parsed[0]).toEqual({
             id: 'auth',
-            name: 'Auth Module',
+            name: 'Auth Component',
             path: 'src/auth/',
             category: 'security',
         });
@@ -134,23 +134,23 @@ describe('getArticleStyleGuide', () => {
 });
 
 // ============================================================================
-// buildModuleArticlePrompt
+// buildComponentArticlePrompt
 // ============================================================================
 
-describe('buildModuleArticlePrompt', () => {
+describe('buildComponentArticlePrompt', () => {
     it('should include analysis JSON', () => {
         const graph = createTestGraph();
         const analysis = createTestAnalysis();
-        const prompt = buildModuleArticlePrompt(analysis, graph, 'normal');
+        const prompt = buildComponentArticlePrompt(analysis, graph, 'normal');
 
-        expect(prompt).toContain('"moduleId": "auth"');
+        expect(prompt).toContain('"componentId": "auth"');
         expect(prompt).toContain('"overview"');
     });
 
-    it('should include simplified module graph', () => {
+    it('should include simplified component graph', () => {
         const graph = createTestGraph();
         const analysis = createTestAnalysis();
-        const prompt = buildModuleArticlePrompt(analysis, graph, 'normal');
+        const prompt = buildComponentArticlePrompt(analysis, graph, 'normal');
 
         expect(prompt).toContain('"id": "auth"');
         expect(prompt).toContain('"id": "database"');
@@ -159,53 +159,53 @@ describe('buildModuleArticlePrompt', () => {
     it('should include cross-link instructions', () => {
         const graph = createTestGraph();
         const analysis = createTestAnalysis();
-        const prompt = buildModuleArticlePrompt(analysis, graph, 'normal');
+        const prompt = buildComponentArticlePrompt(analysis, graph, 'normal');
 
-        expect(prompt).toContain('./modules/module-id.md');
+        expect(prompt).toContain('./components/component-id.md');
         expect(prompt).toContain('Cross-Linking Rules');
     });
 
     it('should include Mermaid instructions', () => {
         const graph = createTestGraph();
         const analysis = createTestAnalysis();
-        const prompt = buildModuleArticlePrompt(analysis, graph, 'normal');
+        const prompt = buildComponentArticlePrompt(analysis, graph, 'normal');
 
         expect(prompt).toContain('mermaid');
         expect(prompt).toContain('suggestedDiagram');
     });
 
-    it('should use module name in heading instruction', () => {
+    it('should use component name in heading instruction', () => {
         const graph = createTestGraph();
         const analysis = createTestAnalysis();
-        const prompt = buildModuleArticlePrompt(analysis, graph, 'normal');
+        const prompt = buildComponentArticlePrompt(analysis, graph, 'normal');
 
-        expect(prompt).toContain('# Auth Module');
+        expect(prompt).toContain('# Auth Component');
     });
 
     it('should instruct markdown-only output', () => {
         const graph = createTestGraph();
         const analysis = createTestAnalysis();
-        const prompt = buildModuleArticlePrompt(analysis, graph, 'normal');
+        const prompt = buildComponentArticlePrompt(analysis, graph, 'normal');
 
         expect(prompt).toContain('Return ONLY the markdown content');
     });
 });
 
 // ============================================================================
-// buildModuleArticlePromptTemplate
+// buildComponentArticlePromptTemplate
 // ============================================================================
 
-describe('buildModuleArticlePromptTemplate', () => {
+describe('buildComponentArticlePromptTemplate', () => {
     it('should contain template variables', () => {
-        const template = buildModuleArticlePromptTemplate('normal');
-        expect(template).toContain('{{moduleName}}');
+        const template = buildComponentArticlePromptTemplate('normal');
+        expect(template).toContain('{{componentName}}');
         expect(template).toContain('{{analysis}}');
-        expect(template).toContain('{{moduleGraph}}');
+        expect(template).toContain('{{componentGraph}}');
     });
 
     it('should vary by depth', () => {
-        const shallow = buildModuleArticlePromptTemplate('shallow');
-        const deep = buildModuleArticlePromptTemplate('deep');
+        const shallow = buildComponentArticlePromptTemplate('shallow');
+        const deep = buildComponentArticlePromptTemplate('deep');
 
         expect(shallow).toContain('concise');
         expect(deep).toContain('thorough');

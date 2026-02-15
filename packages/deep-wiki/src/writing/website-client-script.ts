@@ -25,14 +25,14 @@ export function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): st
         // Deep Wiki Viewer
         // ====================================================================
 
-        let moduleGraph = null;
-        let currentModuleId = null;
+        let componentGraph = null;
+        let currentComponentId = null;
         let currentTheme = '${defaultTheme}';
         let mermaidInitialized = false;
 
         // Initialize
         try {
-            moduleGraph = MODULE_GRAPH;
+            componentGraph = COMPONENT_GRAPH;
             initTheme();
             initializeSidebar();
             showHome(true);
@@ -40,7 +40,7 @@ export function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): st
             history.replaceState({ type: 'home' }, '', location.pathname);
         } catch(err) {
             document.getElementById('content').innerHTML =
-                '<p style="color: red;">Error loading module graph: ' + err.message + '</p>';
+                '<p style="color: red;">Error loading component graph: ' + err.message + '</p>';
         }
 
         // ================================================================
@@ -55,8 +55,8 @@ export function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): st
             }
             if (state.type === 'home') {
                 showHome(true);
-            } else if (state.type === 'module' && state.id) {
-                loadModule(state.id, true);
+            } else if (state.type === 'component' && state.id) {
+                loadComponent(state.id, true);
             } else if (state.type === 'special' && state.key && state.title) {
                 loadSpecialPage(state.key, state.title, true);
             } else if (state.type === 'topic' && state.topicId) {
@@ -91,8 +91,8 @@ export function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): st
             localStorage.setItem('deep-wiki-theme', currentTheme);
             updateThemeStyles();
             // Re-render current content to apply new highlight theme
-            if (currentModuleId) {
-                loadModule(currentModuleId);
+            if (currentComponentId) {
+                loadComponent(currentComponentId);
             }
         }
 
@@ -121,11 +121,11 @@ export function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): st
         // ================================================================
 
         function initializeSidebar() {
-            document.getElementById('project-name').textContent = moduleGraph.project.name;
-            document.getElementById('project-description').textContent = moduleGraph.project.description;
+            document.getElementById('project-name').textContent = componentGraph.project.name;
+            document.getElementById('project-description').textContent = componentGraph.project.description;
 
             var navContainer = document.getElementById('nav-container');
-            var hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0;
+            var hasDomains = componentGraph.domains && componentGraph.domains.length > 0;
 
             // Home link
             var homeSection = document.createElement('div');
@@ -155,7 +155,7 @@ export function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): st
             navContainer.appendChild(homeSection);
 
             if (hasDomains) {
-                // DeepWiki-style: domains as top-level, modules indented underneath
+                // DeepWiki-style: domains as top-level, components indented underneath
                 buildDomainSidebar(navContainer);
             } else {
                 // Fallback: category-based grouping
@@ -163,14 +163,14 @@ export function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): st
             }
 
             // Topics section (if any)
-            if (moduleGraph.topics && moduleGraph.topics.length > 0) {
+            if (componentGraph.topics && componentGraph.topics.length > 0) {
                 buildTopicsSidebar(navContainer);
             }
 ${enableSearch ? `
             // Search
             document.getElementById('search').addEventListener('input', function(e) {
                 var query = e.target.value.toLowerCase();
-                document.querySelectorAll('.nav-domain-module[data-id], .nav-item[data-id], .nav-topic-item[data-id], .nav-topic-article[data-id]').forEach(function(item) {
+                document.querySelectorAll('.nav-domain-component[data-id], .nav-item[data-id], .nav-topic-item[data-id], .nav-topic-article[data-id]').forEach(function(item) {
                     var id = item.getAttribute('data-id');
                     if (id === '__home' || id === '__index' || id === '__architecture' || id === '__getting-started') {
                         return;
@@ -180,7 +180,7 @@ ${enableSearch ? `
                 });
                 // Hide area headers when no children match
                 document.querySelectorAll('.nav-domain-group').forEach(function(group) {
-                    var visibleChildren = group.querySelectorAll('.nav-domain-module:not([style*="display: none"])');
+                    var visibleChildren = group.querySelectorAll('.nav-domain-component:not([style*="display: none"])');
                     var domainItem = group.querySelector('.nav-domain-item');
                     if (domainItem) {
                         domainItem.style.display = visibleChildren.length === 0 ? 'none' : '';
@@ -215,33 +215,33 @@ ${enableSearch ? `
 
         // Build domain-based sidebar (DeepWiki-style hierarchy)
         function buildDomainSidebar(navContainer) {
-            var domainModules = {};
-            moduleGraph.domains.forEach(function(area) {
-                domainModules[area.id] = [];
+            var domainComponents = {};
+            componentGraph.domains.forEach(function(area) {
+                domainComponents[area.id] = [];
             });
 
-            moduleGraph.modules.forEach(function(mod) {
+            componentGraph.components.forEach(function(mod) {
                 var domainId = mod.domain;
-                if (domainId && domainModules[domainId]) {
-                    domainModules[domainId].push(mod);
+                if (domainId && domainComponents[domainId]) {
+                    domainComponents[domainId].push(mod);
                 } else {
                     var found = false;
-                    moduleGraph.domains.forEach(function(area) {
-                        if (area.modules && area.modules.indexOf(mod.id) !== -1) {
-                            domainModules[area.id].push(mod);
+                    componentGraph.domains.forEach(function(area) {
+                        if (area.components && area.components.indexOf(mod.id) !== -1) {
+                            domainComponents[area.id].push(mod);
                             found = true;
                         }
                     });
                     if (!found) {
-                        if (!domainModules['__other']) domainModules['__other'] = [];
-                        domainModules['__other'].push(mod);
+                        if (!domainComponents['__other']) domainComponents['__other'] = [];
+                        domainComponents['__other'].push(mod);
                     }
                 }
             });
 
-            moduleGraph.domains.forEach(function(area) {
-                var modules = domainModules[area.id] || [];
-                if (modules.length === 0) return;
+            componentGraph.domains.forEach(function(area) {
+                var components = domainComponents[area.id] || [];
+                if (components.length === 0) return;
 
                 var group = document.createElement('div');
                 group.className = 'nav-area-group';
@@ -255,12 +255,12 @@ ${enableSearch ? `
                 var childrenEl = document.createElement('div');
                 childrenEl.className = 'nav-area-children';
 
-                modules.forEach(function(mod) {
+                components.forEach(function(mod) {
                     var item = document.createElement('div');
-                    item.className = 'nav-area-module';
+                    item.className = 'nav-area-component';
                     item.setAttribute('data-id', mod.id);
                     item.innerHTML = escapeHtml(mod.name);
-                    item.onclick = function() { loadModule(mod.id); };
+                    item.onclick = function() { loadComponent(mod.id); };
                     childrenEl.appendChild(item);
                 });
 
@@ -268,8 +268,8 @@ ${enableSearch ? `
                 navContainer.appendChild(group);
             });
 
-            var otherModules = domainModules['__other'] || [];
-            if (otherModules.length > 0) {
+            var otherComponents = domainComponents['__other'] || [];
+            if (otherComponents.length > 0) {
                 var group = document.createElement('div');
                 group.className = 'nav-area-group';
                 var domainItem = document.createElement('div');
@@ -279,12 +279,12 @@ ${enableSearch ? `
 
                 var childrenEl = document.createElement('div');
                 childrenEl.className = 'nav-area-children';
-                otherModules.forEach(function(mod) {
+                otherComponents.forEach(function(mod) {
                     var item = document.createElement('div');
-                    item.className = 'nav-area-module';
+                    item.className = 'nav-area-component';
                     item.setAttribute('data-id', mod.id);
                     item.innerHTML = escapeHtml(mod.name);
-                    item.onclick = function() { loadModule(mod.id); };
+                    item.onclick = function() { loadComponent(mod.id); };
                     childrenEl.appendChild(item);
                 });
                 group.appendChild(childrenEl);
@@ -295,7 +295,7 @@ ${enableSearch ? `
         // Build category-based sidebar (fallback, uses same visual style as domain-based)
         function buildCategorySidebar(navContainer) {
             var categories = {};
-            moduleGraph.modules.forEach(function(mod) {
+            componentGraph.components.forEach(function(mod) {
                 var cat = mod.category || 'other';
                 if (!categories[cat]) categories[cat] = [];
                 categories[cat].push(mod);
@@ -315,10 +315,10 @@ ${enableSearch ? `
 
                 categories[category].forEach(function(mod) {
                     var item = document.createElement('div');
-                    item.className = 'nav-area-module';
+                    item.className = 'nav-area-component';
                     item.setAttribute('data-id', mod.id);
                     item.innerHTML = escapeHtml(mod.name);
-                    item.onclick = function() { loadModule(mod.id); };
+                    item.onclick = function() { loadComponent(mod.id); };
                     childrenEl.appendChild(item);
                 });
 
@@ -337,7 +337,7 @@ ${enableSearch ? `
             header.textContent = '\\uD83D\\uDCCB Topics';
             topicSection.appendChild(header);
 
-            moduleGraph.topics.forEach(function(topic) {
+            componentGraph.topics.forEach(function(topic) {
                 if (topic.layout === 'single') {
                     // Single-article topic: flat link
                     var item = document.createElement('div');
@@ -381,11 +381,11 @@ ${enableSearch ? `
         }
 
         function setActive(id) {
-            document.querySelectorAll('.nav-item, .nav-domain-module, .nav-domain-item, .nav-topic-item, .nav-topic-article').forEach(function(el) {
+            document.querySelectorAll('.nav-item, .nav-domain-component, .nav-domain-item, .nav-topic-item, .nav-topic-article').forEach(function(el) {
                 el.classList.remove('active');
             });
             var target = document.querySelector('.nav-item[data-id="' + id + '"]') ||
-                         document.querySelector('.nav-domain-module[data-id="' + id + '"]') ||
+                         document.querySelector('.nav-domain-component[data-id="' + id + '"]') ||
                          document.querySelector('.nav-topic-item[data-id="' + id + '"]') ||
                          document.querySelector('.nav-topic-article[data-id="' + id + '"]');
             if (target) target.classList.add('active');
@@ -396,7 +396,7 @@ ${enableSearch ? `
         // ================================================================
 
         function showHome(skipHistory) {
-            currentModuleId = null;
+            currentComponentId = null;
             setActive('__home');
             document.getElementById('breadcrumb').textContent = 'Home';
             document.getElementById('content-title').textContent = 'Project Overview';
@@ -405,47 +405,47 @@ ${enableSearch ? `
             }
 
             var stats = {
-                modules: moduleGraph.modules.length,
-                categories: (moduleGraph.categories || []).length,
-                language: moduleGraph.project.language,
-                buildSystem: moduleGraph.project.buildSystem,
+                components: componentGraph.components.length,
+                categories: (componentGraph.categories || []).length,
+                language: componentGraph.project.language,
+                buildSystem: componentGraph.project.buildSystem,
             };
 
             var html = '<div class="home-view">' +
                 '<p style="font-size: 15px; color: var(--content-muted); margin-bottom: 24px;">' +
-                escapeHtml(moduleGraph.project.description) + '</p>' +
+                escapeHtml(componentGraph.project.description) + '</p>' +
                 '<div class="project-stats">' +
-                '<div class="stat-card"><h3>Modules</h3><div class="value">' + stats.modules + '</div></div>' +
+                '<div class="stat-card"><h3>Components</h3><div class="value">' + stats.components + '</div></div>' +
                 '<div class="stat-card"><h3>Categories</h3><div class="value">' + stats.categories + '</div></div>' +
                 '<div class="stat-card"><h3>Language</h3><div class="value small">' + escapeHtml(stats.language) + '</div></div>' +
                 '<div class="stat-card"><h3>Build System</h3><div class="value small">' + escapeHtml(stats.buildSystem) + '</div></div>' +
                 '</div>';
 
-            if (moduleGraph.project.entryPoints && moduleGraph.project.entryPoints.length > 0) {
+            if (componentGraph.project.entryPoints && componentGraph.project.entryPoints.length > 0) {
                 html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">Entry Points</h3><ul>';
-                moduleGraph.project.entryPoints.forEach(function(ep) {
+                componentGraph.project.entryPoints.forEach(function(ep) {
                     html += '<li><code>' + escapeHtml(ep) + '</code></li>';
                 });
                 html += '</ul>';
             }
 
-            var hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0;
+            var hasDomains = componentGraph.domains && componentGraph.domains.length > 0;
             if (hasDomains) {
-                moduleGraph.domains.forEach(function(area) {
-                    var domainModules = moduleGraph.modules.filter(function(mod) {
+                componentGraph.domains.forEach(function(area) {
+                    var domainComponents = componentGraph.components.filter(function(mod) {
                         if (mod.domain === area.id) return true;
-                        return area.modules && area.modules.indexOf(mod.id) !== -1;
+                        return area.components && area.components.indexOf(mod.id) !== -1;
                     });
-                    if (domainModules.length === 0) return;
+                    if (domainComponents.length === 0) return;
 
                     html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">' + escapeHtml(area.name) + '</h3>';
                     if (area.description) {
                         html += '<p style="color: var(--content-muted); margin-bottom: 12px; font-size: 14px;">' +
                             escapeHtml(area.description) + '</p>';
                     }
-                    html += '<div class="module-grid">';
-                    domainModules.forEach(function(mod) {
-                        html += '<div class="module-card" onclick="loadModule(\\'' +
+                    html += '<div class="component-grid">';
+                    domainComponents.forEach(function(mod) {
+                        html += '<div class="component-card" onclick="loadComponent(\\'' +
                             mod.id.replace(/'/g, "\\\\'") + '\\')">' +
                             '<h4>' + escapeHtml(mod.name) +
                             ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
@@ -456,18 +456,18 @@ ${enableSearch ? `
                 });
 
                 var assignedIds = new Set();
-                moduleGraph.domains.forEach(function(area) {
-                    moduleGraph.modules.forEach(function(mod) {
-                        if (mod.domain === area.id || (area.modules && area.modules.indexOf(mod.id) !== -1)) {
+                componentGraph.domains.forEach(function(area) {
+                    componentGraph.components.forEach(function(mod) {
+                        if (mod.domain === area.id || (area.components && area.components.indexOf(mod.id) !== -1)) {
                             assignedIds.add(mod.id);
                         }
                     });
                 });
-                var unassigned = moduleGraph.modules.filter(function(mod) { return !assignedIds.has(mod.id); });
+                var unassigned = componentGraph.components.filter(function(mod) { return !assignedIds.has(mod.id); });
                 if (unassigned.length > 0) {
-                    html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">Other</h3><div class="module-grid">';
+                    html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">Other</h3><div class="component-grid">';
                     unassigned.forEach(function(mod) {
-                        html += '<div class="module-card" onclick="loadModule(\\'' +
+                        html += '<div class="component-card" onclick="loadComponent(\\'' +
                             mod.id.replace(/'/g, "\\\\'") + '\\')">' +
                             '<h4>' + escapeHtml(mod.name) +
                             ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
@@ -477,10 +477,10 @@ ${enableSearch ? `
                     html += '</div>';
                 }
             } else {
-                html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">All Modules</h3>' +
-                    '<div class="module-grid">';
-                moduleGraph.modules.forEach(function(mod) {
-                    html += '<div class="module-card" onclick="loadModule(\\'' +
+                html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">All Components</h3>' +
+                    '<div class="component-grid">';
+                componentGraph.components.forEach(function(mod) {
+                    html += '<div class="component-card" onclick="loadComponent(\\'' +
                         mod.id.replace(/'/g, "\\\\'") + '\\')">' +
                         '<h4>' + escapeHtml(mod.name) +
                         ' <span class="complexity-badge complexity-' + mod.complexity + '">' +
@@ -495,20 +495,20 @@ ${enableSearch ? `
             document.getElementById('content').innerHTML = html;
         }
 
-        function loadModule(moduleId, skipHistory) {
-            var mod = moduleGraph.modules.find(function(m) { return m.id === moduleId; });
+        function loadComponent(componentId, skipHistory) {
+            var mod = componentGraph.components.find(function(m) { return m.id === componentId; });
             if (!mod) return;
 
-            currentModuleId = moduleId;
-            setActive(moduleId);
+            currentComponentId = componentId;
+            setActive(componentId);
 
             document.getElementById('breadcrumb').textContent = mod.category + ' / ' + mod.name;
             document.getElementById('content-title').textContent = mod.name;
             if (!skipHistory) {
-                history.pushState({ type: 'module', id: moduleId }, '', location.pathname + '#module-' + encodeURIComponent(moduleId));
+                history.pushState({ type: 'component', id: componentId }, '', location.pathname + '#component-' + encodeURIComponent(componentId));
             }
 
-            var markdown = (typeof MARKDOWN_DATA !== 'undefined') ? MARKDOWN_DATA[moduleId] : null;
+            var markdown = (typeof MARKDOWN_DATA !== 'undefined') ? MARKDOWN_DATA[componentId] : null;
             if (markdown) {
                 renderMarkdownContent(markdown);
             } else {
@@ -530,7 +530,7 @@ ${enableSearch ? `
         }
 
         function loadSpecialPage(key, title, skipHistory) {
-            currentModuleId = null;
+            currentComponentId = null;
             setActive(key);
             document.getElementById('breadcrumb').textContent = title;
             document.getElementById('content-title').textContent = title;
@@ -548,17 +548,17 @@ ${enableSearch ? `
         }
 
         function loadTopicPage(topicId, articleSlug, title, layout, skipHistory) {
-            currentModuleId = null;
+            currentComponentId = null;
             var dataKey;
             var navId;
             var breadcrumb;
 
             // Find topic metadata
             var topicMeta = null;
-            if (moduleGraph.topics) {
-                for (var i = 0; i < moduleGraph.topics.length; i++) {
-                    if (moduleGraph.topics[i].id === topicId) {
-                        topicMeta = moduleGraph.topics[i];
+            if (componentGraph.topics) {
+                for (var i = 0; i < componentGraph.topics.length; i++) {
+                    if (componentGraph.topics[i].id === topicId) {
+                        topicMeta = componentGraph.topics[i];
                         break;
                     }
                 }
@@ -688,7 +688,7 @@ ${enableSearch ? `
                 }
 
                 // Extract slug from the href path
-                var slug = href.replace(/^(\\.\\/|\\.\\.\\/)*/, '').replace(/^modules\\//, '').replace(/\\.md$/, '');
+                var slug = href.replace(/^(\\.\\/|\\.\\.\\/)*/, '').replace(/^components\\//, '').replace(/\\.md$/, '');
 
                 // Check special pages
                 var specialPages = {
@@ -701,10 +701,10 @@ ${enableSearch ? `
                     return;
                 }
 
-                // Try to find matching module ID
-                var matchedId = findModuleIdBySlugClient(slug);
+                // Try to find matching component ID
+                var matchedId = findComponentIdBySlugClient(slug);
                 if (matchedId) {
-                    loadModule(matchedId);
+                    loadComponent(matchedId);
                     if (hashPart) {
                         setTimeout(function() {
                             var el = document.getElementById(hashPart);
@@ -715,11 +715,11 @@ ${enableSearch ? `
             });
         }
 
-        // Client-side module ID lookup by slug
-        function findModuleIdBySlugClient(slug) {
+        // Client-side component ID lookup by slug
+        function findComponentIdBySlugClient(slug) {
             var normalized = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-            for (var i = 0; i < moduleGraph.modules.length; i++) {
-                var mod = moduleGraph.modules[i];
+            for (var i = 0; i < componentGraph.components.length; i++) {
+                var mod = componentGraph.components[i];
                 var modSlug = mod.id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
                 if (modSlug === normalized) return mod.id;
             }
@@ -767,7 +767,7 @@ ${enableSearch ? `
         }
 
         // ================================================================
-        // Mermaid Zoom & Pan (shared via mermaid-zoom module)
+        // Mermaid Zoom & Pan (shared via mermaid-zoom component)
         // ================================================================
 ${getMermaidZoomScript()}
 

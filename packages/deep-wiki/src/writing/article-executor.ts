@@ -3,7 +3,7 @@
  *
  * Orchestrates Phase 4 (Article Generation) using the MapReduceExecutor
  * from pipeline-core. Runs two stages:
- * 1. Map: Generate per-module markdown articles (text mode, no structured output)
+ * 1. Map: Generate per-component markdown articles (text mode, no structured output)
  * 2. Reduce: AI generates index, architecture, and getting-started pages
  *
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -22,20 +22,20 @@ import type {
     ItemCompleteCallback,
 } from '@plusplusoneplusplus/pipeline-core';
 import type {
-    ModuleGraph,
-    ModuleAnalysis,
+    ComponentGraph,
+    ComponentAnalysis,
     GeneratedArticle,
 } from '../types';
-import { buildModuleArticlePromptTemplate, buildSimplifiedGraph } from './prompts';
+import { buildComponentArticlePromptTemplate, buildSimplifiedGraph } from './prompts';
 import {
     buildReducePromptTemplate,
     getReduceOutputFields,
-    buildModuleSummaryForReduce,
+    buildComponentSummaryForReduce,
     buildDomainReducePromptTemplate,
     getDomainReduceOutputFields,
     buildHierarchicalReducePromptTemplate,
 } from './reduce-prompts';
-import { normalizeModuleId } from '../schemas';
+import { normalizeComponentId } from '../schemas';
 import type { DomainInfo } from '../types';
 
 // ============================================================================
@@ -48,10 +48,10 @@ import type { DomainInfo } from '../types';
 export interface ArticleExecutorOptions {
     /** AI invoker for writing (session pool, no tools) */
     aiInvoker: AIInvoker;
-    /** Module graph from Phase 1 (Discovery) */
-    graph: ModuleGraph;
-    /** Per-module analyses from Phase 3 (Analysis) */
-    analyses: ModuleAnalysis[];
+    /** Component graph from Phase 1 (Discovery) */
+    graph: ComponentGraph;
+    /** Per-component analyses from Phase 3 (Analysis) */
+    analyses: ComponentAnalysis[];
     /** Article depth */
     depth: 'shallow' | 'normal' | 'deep';
     /** Maximum concurrent AI sessions (default: 10) */
@@ -75,10 +75,10 @@ export interface ArticleExecutorOptions {
  * Result of the article executor.
  */
 export interface ArticleExecutorResult {
-    /** Generated articles (module + index pages) */
+    /** Generated articles (component + index pages) */
     articles: GeneratedArticle[];
-    /** Module IDs that failed article generation */
-    failedModuleIds: string[];
+    /** Component IDs that failed article generation */
+    failedComponentIds: string[];
     /** Total duration in milliseconds */
     duration: number;
 }
@@ -92,17 +92,17 @@ export interface ArticleExecutorResult {
  * Uses text mode (no output fields) so the AI returns raw markdown.
  */
 export function analysisToPromptItem(
-    analysis: ModuleAnalysis,
-    graph: ModuleGraph
+    analysis: ComponentAnalysis,
+    graph: ComponentGraph
 ): PromptItem {
-    const moduleInfo = graph.modules.find(m => m.id === analysis.moduleId);
-    const moduleName = moduleInfo?.name || analysis.moduleId;
+    const componentInfo = graph.components.find(m => m.id === analysis.componentId);
+    const componentName = componentInfo?.name || analysis.componentId;
 
     return {
-        moduleId: analysis.moduleId,
-        moduleName,
+        componentId:  analysis.componentId,
+        componentName,
         analysis: JSON.stringify(analysis, null, 2),
-        moduleGraph: buildSimplifiedGraph(graph),
+        componentGraph: buildSimplifiedGraph(graph),
     };
 }
 
@@ -153,19 +153,19 @@ async function runFlatArticleExecutor(
     } = options;
 
     if (analyses.length === 0) {
-        return { articles: [], failedModuleIds: [], duration: 0 };
+        return { articles: [], failedComponentIds: [], duration: 0 };
     }
 
     // Convert analyses to PromptItems
     const items: PromptItem[] = analyses.map(a => analysisToPromptItem(a, graph));
 
     // Build the article prompt template (text mode — no output fields)
-    const promptTemplate = buildModuleArticlePromptTemplate(depth);
+    const promptTemplate = buildComponentArticlePromptTemplate(depth);
 
     // Create prompt map input
     const input = createPromptMapInput(items, promptTemplate, []);
 
-    // Map phase only — reduce is done separately with module summaries
+    // Map phase only — reduce is done separately with component summaries
     // to avoid exceeding token limits (full articles can be very large)
     const job = createPromptMapJob({
         aiInvoker,
@@ -191,48 +191,48 @@ async function runFlatArticleExecutor(
     // Execute map phase
     const result = await executor.execute(job, input);
 
-    // Collect module articles from map results
+    // Collect component articles from map results
     const articles: GeneratedArticle[] = [];
-    const failedModuleIds: string[] = [];
+    const failedComponentIds: string[] = [];
 
     if (result.output) {
         const output = result.output as PromptMapOutput;
         for (const mapResult of output.results) {
-            const moduleId = mapResult.item.moduleId;
-            const moduleInfo = graph.modules.find(m => m.id === moduleId);
-            const moduleName = moduleInfo?.name || moduleId;
+            const componentId = mapResult.item.componentId;
+            const componentInfo = graph.components.find(m => m.id === componentId);
+            const componentName = componentInfo?.name || componentId;
 
             if (mapResult.success && (mapResult.rawText || mapResult.rawResponse)) {
                 const content = mapResult.rawText || mapResult.rawResponse || '';
                 articles.push({
-                    type: 'module',
-                    slug: normalizeModuleId(moduleId),
-                    title: moduleName,
+                    type: 'component',
+                    slug: normalizeComponentId(componentId),
+                    title: componentName,
                     content,
-                    moduleId,
+                    componentId: componentId,
                 });
             } else {
-                failedModuleIds.push(moduleId);
+                failedComponentIds.push(componentId);
             }
         }
     }
 
-    // Separate reduce phase: use compact module summaries (not full articles)
+    // Separate reduce phase: use compact component summaries (not full articles)
     // to stay within model token limits
-    const moduleSummaries = analyses.map(a => {
-        const mod = graph.modules.find(m => m.id === a.moduleId);
-        return buildModuleSummaryForReduce(
-            a.moduleId,
-            mod?.name || a.moduleId,
+    const componentSummaries = analyses.map(a => {
+        const mod = graph.components.find(m => m.id === a.componentId);
+        return buildComponentSummaryForReduce(
+            a.componentId,
+            mod?.name || a.componentId,
             mod?.category || 'uncategorized',
             a.overview
         );
     });
 
     const reduceInput = createPromptMapInput(
-        moduleSummaries.map((summary, i) => ({
+        componentSummaries.map((summary, i) => ({
             summary,
-            moduleId: analyses[i].moduleId,
+            componentId:  analyses[i].componentId,
         })),
         '{{summary}}',
         []
@@ -309,7 +309,7 @@ async function runFlatArticleExecutor(
 
     return {
         articles,
-        failedModuleIds,
+        failedComponentIds,
         duration: Date.now() - startTime,
     };
 }
@@ -320,13 +320,13 @@ async function runFlatArticleExecutor(
 
 /** Result of grouping analyses by domain. */
 export interface DomainGrouping {
-    moduleDomainMap: Map<string, string>;
-    analysesByDomain: Map<string, ModuleAnalysis[]>;
-    unassignedAnalyses: ModuleAnalysis[];
+    componentDomainMap: Map<string, string>;
+    analysesByDomain: Map<string, ComponentAnalysis[]>;
+    unassignedAnalyses: ComponentAnalysis[];
 }
 
-/** Result of the module map phase. */
-interface ModuleMapResult {
+/** Result of the component map phase. */
+interface ComponentMapResult {
     articles: GeneratedArticle[];
     failedIds: Set<string>;
 }
@@ -334,28 +334,28 @@ interface ModuleMapResult {
 /** Result of a single domain reduce phase. */
 interface DomainReduceResult {
     articles: GeneratedArticle[];
-    domainSummary: { domainId: string; name: string; description: string; summary: string; moduleCount: number };
+    domainSummary: { domainId: string; name: string; description: string; summary: string; componentCount: number };
 }
 
 /**
  * Group analyses by their domain assignment.
- * Builds module→domain mapping and buckets analyses accordingly.
+ * Builds component→domain mapping and buckets analyses accordingly.
  */
 export function groupAnalysesByDomain(
-    analyses: ModuleAnalysis[],
+    analyses: ComponentAnalysis[],
     domains: DomainInfo[]
 ): DomainGrouping {
-    const moduleDomainMap = new Map<string, string>();
+    const componentDomainMap = new Map<string, string>();
     for (const domain of domains) {
-        for (const moduleId of domain.modules) {
-            moduleDomainMap.set(moduleId, domain.id);
+        for (const compId of domain.components) {
+            componentDomainMap.set(compId, domain.id);
         }
     }
 
-    const analysesByDomain = new Map<string, ModuleAnalysis[]>();
-    const unassignedAnalyses: ModuleAnalysis[] = [];
+    const analysesByDomain = new Map<string, ComponentAnalysis[]>();
+    const unassignedAnalyses: ComponentAnalysis[] = [];
     for (const analysis of analyses) {
-        const domainId = moduleDomainMap.get(analysis.moduleId);
+        const domainId = componentDomainMap.get(analysis.componentId);
         if (domainId) {
             if (!analysesByDomain.has(domainId)) {
                 analysesByDomain.set(domainId, []);
@@ -366,18 +366,18 @@ export function groupAnalysesByDomain(
         }
     }
 
-    return { moduleDomainMap, analysesByDomain, unassignedAnalyses };
+    return { componentDomainMap, analysesByDomain, unassignedAnalyses };
 }
 
 /**
- * Run the unified map phase across all modules, tagging results with their domain.
+ * Run the unified map phase across all components, tagging results with their domain.
  */
-async function runModuleMapPhase(
+async function runComponentMapPhase(
     options: ArticleExecutorOptions,
-    analyses: ModuleAnalysis[],
-    graph: ModuleGraph,
-    moduleDomainMap: Map<string, string>
-): Promise<ModuleMapResult> {
+    analyses: ComponentAnalysis[],
+    graph: ComponentGraph,
+    componentDomainMap: Map<string, string>
+): Promise<ComponentMapResult> {
     const {
         aiInvoker,
         depth,
@@ -390,7 +390,7 @@ async function runModuleMapPhase(
     } = options;
 
     const allItems: PromptItem[] = analyses.map(a => analysisToPromptItem(a, graph));
-    const defaultPromptTemplate = buildModuleArticlePromptTemplate(depth);
+    const defaultPromptTemplate = buildComponentArticlePromptTemplate(depth);
     const input = createPromptMapInput(allItems, defaultPromptTemplate, []);
 
     const job = createPromptMapJob({
@@ -421,23 +421,23 @@ async function runModuleMapPhase(
     if (mapResult.output) {
         const output = mapResult.output as PromptMapOutput;
         for (const result of output.results) {
-            const moduleId = result.item.moduleId;
-            const moduleInfo = graph.modules.find(m => m.id === moduleId);
-            const moduleName = moduleInfo?.name || moduleId;
-            const domainId = moduleDomainMap.get(moduleId);
+            const componentId = result.item.componentId;
+            const componentInfo = graph.components.find(m => m.id === componentId);
+            const componentName = componentInfo?.name || componentId;
+            const domainId = componentDomainMap.get(componentId);
 
             if (result.success && (result.rawText || result.rawResponse)) {
                 const content = result.rawText || result.rawResponse || '';
                 articles.push({
-                    type: 'module',
-                    slug: normalizeModuleId(moduleId),
-                    title: moduleName,
+                    type: 'component',
+                    slug: normalizeComponentId(componentId),
+                    title: componentName,
                     content,
-                    moduleId,
+                    componentId: componentId,
                     domainId,
                 });
             } else {
-                failedIds.add(moduleId);
+                failedIds.add(componentId);
             }
         }
     }
@@ -451,26 +451,26 @@ async function runModuleMapPhase(
  */
 async function runDomainReducePhase(
     domain: DomainInfo,
-    domainAnalyses: ModuleAnalysis[],
-    graph: ModuleGraph,
+    domainAnalyses: ComponentAnalysis[],
+    graph: ComponentGraph,
     options: ArticleExecutorOptions
 ): Promise<DomainReduceResult> {
     const { aiInvoker, timeoutMs, model, isCancelled } = options;
 
-    const domainModuleSummaries = domainAnalyses.map(a => {
-        const mod = graph.modules.find(m => m.id === a.moduleId);
-        return buildModuleSummaryForReduce(
-            a.moduleId,
-            mod?.name || a.moduleId,
+    const domainComponentSummaries = domainAnalyses.map(a => {
+        const mod = graph.components.find(m => m.id === a.componentId);
+        return buildComponentSummaryForReduce(
+            a.componentId,
+            mod?.name || a.componentId,
             mod?.category || 'uncategorized',
             a.overview
         );
     });
 
     const domainReduceInput = createPromptMapInput(
-        domainModuleSummaries.map((summary, i) => ({
+        domainComponentSummaries.map((summary, i) => ({
             summary,
-            moduleId: domainAnalyses[i].moduleId,
+            componentId:  domainAnalyses[i].componentId,
         })),
         '{{summary}}',
         []
@@ -508,7 +508,7 @@ async function runDomainReducePhase(
         name: domain.name,
         description: domain.description,
         summary: domain.description,
-        moduleCount: domainAnalyses.length,
+        componentCount: domainAnalyses.length,
     };
 
     try {
@@ -534,7 +534,7 @@ async function runDomainReducePhase(
                     name: domain.name,
                     description: domain.description,
                     summary: parsed.index.substring(0, 1000),
-                    moduleCount: domainAnalyses.length,
+                    componentCount: domainAnalyses.length,
                 };
             }
 
@@ -569,9 +569,9 @@ async function runDomainReducePhase(
  * Falls back to static pages on failure.
  */
 async function runProjectReducePhase(
-    domainSummaries: Array<{ domainId: string; name: string; description: string; summary: string; moduleCount: number }>,
+    domainSummaries: Array<{ domainId: string; name: string; description: string; summary: string; componentCount: number }>,
     domains: DomainInfo[],
-    graph: ModuleGraph,
+    graph: ComponentGraph,
     options: ArticleExecutorOptions
 ): Promise<GeneratedArticle[]> {
     const { aiInvoker, timeoutMs, model, isCancelled } = options;
@@ -663,7 +663,7 @@ async function runProjectReducePhase(
 /**
  * Hierarchical article executor for large repos with domains.
  * Orchestrates a 3-step pipeline:
- *   1. Map: Generate per-module articles (grouped by domain)
+ *   1. Map: Generate per-component articles (grouped by domain)
  *   2. Per-domain reduce: Generate domain index + domain architecture
  *   3. Project-level reduce: Generate project index + architecture + getting-started
  */
@@ -674,19 +674,19 @@ async function runHierarchicalArticleExecutor(
     const { graph, analyses } = options;
 
     if (analyses.length === 0) {
-        return { articles: [], failedModuleIds: [], duration: 0 };
+        return { articles: [], failedComponentIds: [], duration: 0 };
     }
 
     const domains = graph.domains!;
 
     // Step 1: Group analyses by domain
-    const { moduleDomainMap, analysesByDomain } = groupAnalysesByDomain(analyses, domains);
+    const { componentDomainMap, analysesByDomain } = groupAnalysesByDomain(analyses, domains);
 
-    // Step 2: Generate per-module articles
-    const mapResult = await runModuleMapPhase(options, analyses, graph, moduleDomainMap);
+    // Step 2: Generate per-component articles
+    const mapResult = await runComponentMapPhase(options, analyses, graph, componentDomainMap);
 
     // Step 3: Per-domain reduce
-    const domainSummaries: Array<{ domainId: string; name: string; description: string; summary: string; moduleCount: number }> = [];
+    const domainSummaries: Array<{ domainId: string; name: string; description: string; summary: string; componentCount: number }> = [];
     for (const domain of domains) {
         const domainAnalyses = analysesByDomain.get(domain.id) || [];
         if (domainAnalyses.length === 0) { continue; }
@@ -702,7 +702,7 @@ async function runHierarchicalArticleExecutor(
 
     return {
         articles: mapResult.articles,
-        failedModuleIds: [...mapResult.failedIds],
+        failedComponentIds: [...mapResult.failedIds],
         duration: Date.now() - startTime,
     };
 }
@@ -716,8 +716,8 @@ async function runHierarchicalArticleExecutor(
  */
 export function generateStaticDomainPages(
     domain: DomainInfo,
-    analyses: ModuleAnalysis[],
-    graph: ModuleGraph
+    analyses: ComponentAnalysis[],
+    graph: ComponentGraph
 ): GeneratedArticle[] {
     const articles: GeneratedArticle[] = [];
 
@@ -727,15 +727,15 @@ export function generateStaticDomainPages(
         '',
         domain.description || '',
         '',
-        '## Modules',
+        '## Components',
         '',
     ];
 
     for (const a of analyses) {
-        const mod = graph.modules.find(m => m.id === a.moduleId);
-        const name = mod?.name || a.moduleId;
-        const slug = normalizeModuleId(a.moduleId);
-        indexLines.push(`- [${name}](./modules/${slug}.md) — ${a.overview.substring(0, 100)}`);
+        const mod = graph.components.find(m => m.id === a.componentId);
+        const name = mod?.name || a.componentId;
+        const slug = normalizeComponentId(a.componentId);
+        indexLines.push(`- [${name}](./components/${slug}.md) — ${a.overview.substring(0, 100)}`);
     }
 
     articles.push({
@@ -766,9 +766,9 @@ export function generateStaticDomainPages(
  * Generate static project-level index pages for hierarchical layout.
  */
 export function generateStaticHierarchicalIndexPages(
-    graph: ModuleGraph,
+    graph: ComponentGraph,
     domains: DomainInfo[],
-    domainSummaries: Array<{ domainId: string; name: string; description: string; moduleCount: number }>
+    domainSummaries: Array<{ domainId: string; name: string; description: string; componentCount: number }>
 ): GeneratedArticle[] {
     const articles: GeneratedArticle[] = [];
 
@@ -783,7 +783,7 @@ export function generateStaticHierarchicalIndexPages(
     ];
 
     for (const summary of domainSummaries) {
-        indexLines.push(`- [${summary.name}](./domains/${summary.domainId}/index.md) — ${summary.description} (${summary.moduleCount} modules)`);
+        indexLines.push(`- [${summary.name}](./domains/${summary.domainId}/index.md) — ${summary.description} (${summary.componentCount} components)`);
     }
 
     articles.push({
@@ -815,8 +815,8 @@ export function generateStaticHierarchicalIndexPages(
  * Produces a basic TOC and architecture placeholder.
  */
 export function generateStaticIndexPages(
-    graph: ModuleGraph,
-    analyses: ModuleAnalysis[]
+    graph: ComponentGraph,
+    analyses: ComponentAnalysis[]
 ): GeneratedArticle[] {
     const articles: GeneratedArticle[] = [];
 
@@ -826,14 +826,14 @@ export function generateStaticIndexPages(
         '',
         graph.project.description || '',
         '',
-        '## Modules',
+        '## Components',
         '',
     ];
 
     // Group by category
-    const byCategory = new Map<string, ModuleAnalysis[]>();
+    const byCategory = new Map<string, ComponentAnalysis[]>();
     for (const a of analyses) {
-        const mod = graph.modules.find(m => m.id === a.moduleId);
+        const mod = graph.components.find(m => m.id === a.componentId);
         const category = mod?.category || 'uncategorized';
         if (!byCategory.has(category)) {
             byCategory.set(category, []);
@@ -844,10 +844,10 @@ export function generateStaticIndexPages(
     for (const [category, mods] of byCategory) {
         indexLines.push(`### ${category}`, '');
         for (const a of mods) {
-            const mod = graph.modules.find(m => m.id === a.moduleId);
-            const name = mod?.name || a.moduleId;
-            const slug = normalizeModuleId(a.moduleId);
-            indexLines.push(`- [${name}](./modules/${slug}.md) — ${a.overview.substring(0, 100)}`);
+            const mod = graph.components.find(m => m.id === a.componentId);
+            const name = mod?.name || a.componentId;
+            const slug = normalizeComponentId(a.componentId);
+            indexLines.push(`- [${name}](./components/${slug}.md) — ${a.overview.substring(0, 100)}`);
         }
         indexLines.push('');
     }

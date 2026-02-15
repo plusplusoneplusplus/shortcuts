@@ -12,14 +12,14 @@ import {
     runArticleExecutor,
     generateStaticIndexPages,
 } from '../../src/writing/article-executor';
-import type { ModuleGraph, ModuleAnalysis } from '../../src/types';
+import type { ComponentGraph, ComponentAnalysis } from '../../src/types';
 import type { AIInvoker } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Test Data
 // ============================================================================
 
-function createTestGraph(): ModuleGraph {
+function createTestGraph(): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -28,10 +28,10 @@ function createTestGraph(): ModuleGraph {
             buildSystem: 'npm',
             entryPoints: ['src/index.ts'],
         },
-        modules: [
+        components: [
             {
                 id: 'auth',
-                name: 'Auth Module',
+                name: 'Auth Component',
                 path: 'src/auth/',
                 purpose: 'Authentication',
                 keyFiles: ['src/auth/index.ts'],
@@ -41,15 +41,15 @@ function createTestGraph(): ModuleGraph {
                 category: 'core',
             },
         ],
-        categories: [{ name: 'core', description: 'Core modules' }],
+        categories: [{ name: 'core', description: 'Core components' }],
         architectureNotes: 'Test architecture',
     };
 }
 
-function createTestAnalysis(moduleId = 'auth'): ModuleAnalysis {
+function createTestAnalysis(componentId = 'auth'): ComponentAnalysis {
     return {
-        moduleId,
-        overview: 'Authentication module overview.',
+        componentId,
+        overview: 'Authentication component overview.',
         keyConcepts: [],
         publicAPI: [],
         internalArchitecture: '',
@@ -67,13 +67,13 @@ function createTestAnalysis(moduleId = 'auth'): ModuleAnalysis {
 // ============================================================================
 
 describe('analysisToPromptItem', () => {
-    it('should include moduleId and moduleName', () => {
+    it('should include componentId and componentName', () => {
         const graph = createTestGraph();
         const analysis = createTestAnalysis();
         const item = analysisToPromptItem(analysis, graph);
 
-        expect(item.moduleId).toBe('auth');
-        expect(item.moduleName).toBe('Auth Module');
+        expect(item.componentId).toBe('auth');
+        expect(item.componentName).toBe('Auth Component');
     });
 
     it('should include full analysis JSON', () => {
@@ -82,26 +82,26 @@ describe('analysisToPromptItem', () => {
         const item = analysisToPromptItem(analysis, graph);
 
         const parsed = JSON.parse(item.analysis);
-        expect(parsed.moduleId).toBe('auth');
+        expect(parsed.componentId).toBe('auth');
         expect(parsed.overview).toContain('Authentication');
     });
 
-    it('should include simplified module graph', () => {
+    it('should include simplified component graph', () => {
         const graph = createTestGraph();
         const analysis = createTestAnalysis();
         const item = analysisToPromptItem(analysis, graph);
 
-        const parsed = JSON.parse(item.moduleGraph);
+        const parsed = JSON.parse(item.componentGraph);
         expect(parsed).toBeInstanceOf(Array);
         expect(parsed[0].id).toBe('auth');
     });
 
-    it('should use moduleId as name when module not found in graph', () => {
+    it('should use componentId as name when component not found in graph', () => {
         const graph = createTestGraph();
         const analysis = createTestAnalysis('unknown-module');
         const item = analysisToPromptItem(analysis, graph);
 
-        expect(item.moduleName).toBe('unknown-module');
+        expect(item.componentName).toBe('unknown-module');
     });
 });
 
@@ -122,7 +122,7 @@ describe('runArticleExecutor', () => {
         });
 
         expect(result.articles).toEqual([]);
-        expect(result.failedModuleIds).toEqual([]);
+        expect(result.failedComponentIds).toEqual([]);
         expect(result.duration).toBe(0);
     });
 
@@ -133,7 +133,7 @@ describe('runArticleExecutor', () => {
         // Mock invoker returns markdown for map and JSON for reduce
         const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
             success: true,
-            response: '# Auth Module\n\nContent here.',
+            response: '# Auth Component\n\nContent here.',
         });
 
         const result = await runArticleExecutor({
@@ -201,7 +201,7 @@ describe('generateStaticIndexPages', () => {
         expect(index.content).toContain('TestProject');
     });
 
-    it('should group modules by category', () => {
+    it('should group components by category', () => {
         const graph = createTestGraph();
         const analyses = [createTestAnalysis()];
 
@@ -211,14 +211,14 @@ describe('generateStaticIndexPages', () => {
         expect(index.content).toContain('### core');
     });
 
-    it('should include module links', () => {
+    it('should include component links', () => {
         const graph = createTestGraph();
         const analyses = [createTestAnalysis()];
 
         const articles = generateStaticIndexPages(graph, analyses);
         const index = articles.find(a => a.type === 'index')!;
 
-        expect(index.content).toContain('./modules/auth.md');
+        expect(index.content).toContain('./components/auth.md');
     });
 
     it('should include architecture notes', () => {
@@ -232,9 +232,9 @@ describe('generateStaticIndexPages', () => {
     });
 
     it('should handle multiple categories', () => {
-        const graph: ModuleGraph = {
+        const graph: ComponentGraph = {
             ...createTestGraph(),
-            modules: [
+            components: [
                 {
                     id: 'auth', name: 'Auth', path: 'src/auth/', purpose: 'Auth',
                     keyFiles: [], dependencies: [], dependents: [],

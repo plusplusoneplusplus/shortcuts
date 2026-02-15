@@ -159,7 +159,7 @@ export function getStyles(): string {
         .nav-domain-item.active { background: var(--sidebar-hover); border-left: 3px solid var(--sidebar-active-border); }
 
         .nav-domain-children { padding-left: 8px; }
-        .nav-domain-module {
+        .nav-domain-component {
             padding: 6px 20px 6px 28px;
             cursor: pointer;
             font-size: 13px;
@@ -167,8 +167,8 @@ export function getStyles(): string {
             display: block;
             transition: background 0.15s, color 0.15s;
         }
-        .nav-domain-module:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
-        .nav-domain-module.active { background: var(--sidebar-hover); color: var(--sidebar-text); border-left: 3px solid var(--sidebar-active-border); }
+        .nav-domain-component:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
+        .nav-domain-component.active { background: var(--sidebar-hover); color: var(--sidebar-text); border-left: 3px solid var(--sidebar-active-border); }
 
         .complexity-badge {
             display: inline-block;
@@ -347,13 +347,13 @@ export function getStyles(): string {
         .stat-card .value { font-size: 28px; font-weight: 700; color: var(--content-text); }
         .stat-card .value.small { font-size: 16px; }
 
-        .module-grid {
+        .component-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
             gap: 12px;
             margin-top: 24px;
         }
-        .module-card {
+        .component-card {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
             border-radius: 8px;
@@ -361,12 +361,12 @@ export function getStyles(): string {
             cursor: pointer;
             transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .module-card:hover {
+        .component-card:hover {
             border-color: var(--card-hover-border);
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }
-        .module-card h4 { margin-bottom: 6px; font-size: 14px; }
-        .module-card p { font-size: 12px; color: var(--content-muted); line-height: 1.4; }
+        .component-card h4 { margin-bottom: 6px; font-size: 14px; }
+        .component-card p { font-size: 12px; color: var(--content-muted); line-height: 1.4; }
 
         /* Topic items in sidebar */
         .nav-topic-group { padding: 2px 0; }

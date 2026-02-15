@@ -93,15 +93,15 @@ describe('normalizeLineEndings', () => {
 // ============================================================================
 
 describe('getArticleFilePath', () => {
-    it('should place module articles in modules/ subdirectory', () => {
+    it('should place component articles in components/ subdirectory', () => {
         const article: GeneratedArticle = {
-            type: 'module',
+            type: 'component',
             slug: 'auth',
             title: 'Auth',
             content: '',
         };
         const result = getArticleFilePath(article, '/output');
-        expect(result).toBe(path.join('/output', 'modules', 'auth.md'));
+        expect(result).toBe(path.join('/output', 'components', 'auth.md'));
     });
 
     it('should place index at root', () => {
@@ -139,13 +139,13 @@ describe('getArticleFilePath', () => {
 
     it('should slugify the filename', () => {
         const article: GeneratedArticle = {
-            type: 'module',
+            type: 'component',
             slug: 'My Module',
             title: 'My Module',
             content: '',
         };
         const result = getArticleFilePath(article, '/output');
-        expect(result).toBe(path.join('/output', 'modules', 'my-module.md'));
+        expect(result).toBe(path.join('/output', 'components', 'my-module.md'));
     });
 });
 
@@ -154,7 +154,7 @@ describe('getArticleFilePath', () => {
 // ============================================================================
 
 describe('writeWikiOutput', () => {
-    it('should create output directory and modules subdirectory', () => {
+    it('should create output directory and components subdirectory', () => {
         const outputDir = path.join(tempDir, 'wiki');
         const output: WikiOutput = {
             articles: [],
@@ -164,18 +164,18 @@ describe('writeWikiOutput', () => {
         writeWikiOutput(output, outputDir);
 
         expect(fs.existsSync(outputDir)).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'modules'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'components'))).toBe(true);
     });
 
-    it('should write module articles to modules/', () => {
+    it('should write component articles to components/', () => {
         const outputDir = path.join(tempDir, 'wiki');
         const output: WikiOutput = {
             articles: [
                 {
-                    type: 'module',
+                    type: 'component',
                     slug: 'auth',
                     title: 'Auth',
-                    content: '# Auth Module\n\nContent.',
+                    content: '# Auth Component\n\nContent.',
                 },
             ],
             duration: 100,
@@ -184,9 +184,9 @@ describe('writeWikiOutput', () => {
         const written = writeWikiOutput(output, outputDir);
 
         expect(written).toHaveLength(1);
-        const filePath = path.join(outputDir, 'modules', 'auth.md');
+        const filePath = path.join(outputDir, 'components', 'auth.md');
         expect(fs.existsSync(filePath)).toBe(true);
-        expect(fs.readFileSync(filePath, 'utf-8')).toContain('# Auth Module');
+        expect(fs.readFileSync(filePath, 'utf-8')).toContain('# Auth Component');
     });
 
     it('should write index at root', () => {
@@ -215,7 +215,7 @@ describe('writeWikiOutput', () => {
         const output: WikiOutput = {
             articles: [
                 {
-                    type: 'module',
+                    type: 'component',
                     slug: 'unicode',
                     title: 'Unicode Test',
                     content: '# Unicode: café 日本語 🚀',
@@ -227,7 +227,7 @@ describe('writeWikiOutput', () => {
         writeWikiOutput(output, outputDir);
 
         const content = fs.readFileSync(
-            path.join(outputDir, 'modules', 'unicode.md'),
+            path.join(outputDir, 'components', 'unicode.md'),
             'utf-8'
         );
         expect(content).toContain('café');
@@ -240,7 +240,7 @@ describe('writeWikiOutput', () => {
         const output: WikiOutput = {
             articles: [
                 {
-                    type: 'module',
+                    type: 'component',
                     slug: 'crlf',
                     title: 'CRLF Test',
                     content: 'line1\r\nline2\r\n',
@@ -252,7 +252,7 @@ describe('writeWikiOutput', () => {
         writeWikiOutput(output, outputDir);
 
         const content = fs.readFileSync(
-            path.join(outputDir, 'modules', 'crlf.md'),
+            path.join(outputDir, 'components', 'crlf.md'),
             'utf-8'
         );
         expect(content).toBe('line1\nline2\n');
@@ -260,14 +260,14 @@ describe('writeWikiOutput', () => {
 
     it('should overwrite existing files', () => {
         const outputDir = path.join(tempDir, 'wiki');
-        const modulesDir = path.join(outputDir, 'modules');
-        fs.mkdirSync(modulesDir, { recursive: true });
-        fs.writeFileSync(path.join(modulesDir, 'auth.md'), 'old content', 'utf-8');
+        const componentsDir = path.join(outputDir, 'components');
+        fs.mkdirSync(componentsDir, { recursive: true });
+        fs.writeFileSync(path.join(componentsDir, 'auth.md'), 'old content', 'utf-8');
 
         const output: WikiOutput = {
             articles: [
                 {
-                    type: 'module',
+                    type: 'component',
                     slug: 'auth',
                     title: 'Auth',
                     content: 'new content',
@@ -278,7 +278,7 @@ describe('writeWikiOutput', () => {
 
         writeWikiOutput(output, outputDir);
 
-        const content = fs.readFileSync(path.join(modulesDir, 'auth.md'), 'utf-8');
+        const content = fs.readFileSync(path.join(componentsDir, 'auth.md'), 'utf-8');
         expect(content).toBe('new content');
     });
 
@@ -287,7 +287,7 @@ describe('writeWikiOutput', () => {
         const output: WikiOutput = {
             articles: [
                 { type: 'index', slug: 'index', title: 'Wiki', content: '# Wiki' },
-                { type: 'module', slug: 'auth', title: 'Auth', content: '# Auth' },
+                { type: 'component', slug: 'auth', title: 'Auth', content: '# Auth' },
                 { type: 'architecture', slug: 'architecture', title: 'Arch', content: '# Arch' },
             ],
             duration: 100,
@@ -308,8 +308,8 @@ describe('writeWikiOutput', () => {
                 { type: 'index', slug: 'index', title: 'Index', content: '# Index' },
                 { type: 'architecture', slug: 'architecture', title: 'Arch', content: '# Arch' },
                 { type: 'getting-started', slug: 'getting-started', title: 'GS', content: '# GS' },
-                { type: 'module', slug: 'auth', title: 'Auth', content: '# Auth' },
-                { type: 'module', slug: 'database', title: 'DB', content: '# DB' },
+                { type: 'component', slug: 'auth', title: 'Auth', content: '# Auth' },
+                { type: 'component', slug: 'database', title: 'DB', content: '# DB' },
             ],
             duration: 100,
         };
@@ -319,7 +319,7 @@ describe('writeWikiOutput', () => {
         expect(fs.existsSync(path.join(outputDir, 'index.md'))).toBe(true);
         expect(fs.existsSync(path.join(outputDir, 'architecture.md'))).toBe(true);
         expect(fs.existsSync(path.join(outputDir, 'getting-started.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'modules', 'auth.md'))).toBe(true);
-        expect(fs.existsSync(path.join(outputDir, 'modules', 'database.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'components', 'auth.md'))).toBe(true);
+        expect(fs.existsSync(path.join(outputDir, 'components', 'database.md'))).toBe(true);
     });
 });

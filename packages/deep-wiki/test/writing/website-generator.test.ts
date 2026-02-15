@@ -4,7 +4,7 @@
  * Comprehensive tests for the website generation phase:
  *   - Data embedding with special characters and deterministic output
  *   - HTML template generation with theme/search/title options
- *   - Module graph reading and markdown file reading
+ *   - Component graph reading and markdown file reading
  *   - Full website generation flow
  *   - Custom template support
  *   - Flat and hierarchical layout support
@@ -20,11 +20,11 @@ import {
     generateWebsite,
     generateEmbeddedData,
     generateHtmlTemplate,
-    readModuleGraph,
+    readComponentGraph,
     readMarkdownFiles,
     stableStringify,
 } from '../../src/writing/website-generator';
-import type { ModuleGraph, WebsiteOptions } from '../../src/types';
+import type { ComponentGraph, WebsiteOptions } from '../../src/types';
 
 // ============================================================================
 // Test Helpers
@@ -40,7 +40,7 @@ afterEach(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-function createTestModuleGraph(): ModuleGraph {
+function createTestComponentGraph(): ComponentGraph {
     return {
         project: {
             name: 'TestProject',
@@ -49,10 +49,10 @@ function createTestModuleGraph(): ModuleGraph {
             buildSystem: 'npm + webpack',
             entryPoints: ['src/index.ts'],
         },
-        modules: [
+        components: [
             {
                 id: 'auth',
-                name: 'Auth Module',
+                name: 'Auth Component',
                 path: 'src/auth/',
                 purpose: 'Handles authentication',
                 keyFiles: ['src/auth/index.ts', 'src/auth/login.ts'],
@@ -63,7 +63,7 @@ function createTestModuleGraph(): ModuleGraph {
             },
             {
                 id: 'database',
-                name: 'Database Module',
+                name: 'Database Component',
                 path: 'src/database/',
                 purpose: 'Database access layer',
                 keyFiles: ['src/database/index.ts'],
@@ -86,28 +86,28 @@ function createTestModuleGraph(): ModuleGraph {
         ],
         categories: [
             { name: 'core', description: 'Core functionality' },
-            { name: 'utility', description: 'Utility modules' },
+            { name: 'utility', description: 'Utility components' },
         ],
-        architectureNotes: 'Layered architecture with core and utility modules.',
+        architectureNotes: 'Layered architecture with core and utility components.',
     };
 }
 
-function setupWikiDir(moduleGraph: ModuleGraph, markdownFiles?: Record<string, string>): string {
+function setupWikiDir(componentGraph: ComponentGraph, markdownFiles?: Record<string, string>): string {
     const wikiDir = path.join(tempDir, 'wiki');
-    const modulesDir = path.join(wikiDir, 'modules');
-    fs.mkdirSync(modulesDir, { recursive: true });
+    const componentsDir = path.join(wikiDir, 'components');
+    fs.mkdirSync(componentsDir, { recursive: true });
 
-    // Write module-graph.json
+    // Write component-graph.json
     fs.writeFileSync(
-        path.join(wikiDir, 'module-graph.json'),
-        JSON.stringify(moduleGraph, null, 2),
+        path.join(wikiDir, 'component-graph.json'),
+        JSON.stringify(componentGraph, null, 2),
         'utf-8'
     );
 
     // Write markdown files
     const defaultMarkdown: Record<string, string> = {
-        auth: '# Auth Module\n\nHandles authentication.\n\n## API\n\n```typescript\nlogin(user: string): Promise<Token>\n```',
-        database: '# Database Module\n\nDatabase access layer.\n\n```mermaid\ngraph TD\n  A[App] --> B[Database]\n```',
+        auth: '# Auth Component\n\nHandles authentication.\n\n## API\n\n```typescript\nlogin(user: string): Promise<Token>\n```',
+        database: '# Database Component\n\nDatabase access layer.\n\n```mermaid\ngraph TD\n  A[App] --> B[Database]\n```',
         utils: '# Utilities\n\nShared utility functions.',
     };
 
@@ -118,7 +118,7 @@ function setupWikiDir(moduleGraph: ModuleGraph, markdownFiles?: Record<string, s
             const filename = id.replace(/^__/, '') + '.md';
             fs.writeFileSync(path.join(wikiDir, filename), content, 'utf-8');
         } else {
-            fs.writeFileSync(path.join(modulesDir, `${id}.md`), content, 'utf-8');
+            fs.writeFileSync(path.join(componentsDir, `${id}.md`), content, 'utf-8');
         }
     }
 
@@ -164,8 +164,8 @@ describe('stableStringify', () => {
     });
 
     it('should produce valid JSON', () => {
-        const moduleGraph = createTestModuleGraph();
-        const result = stableStringify(moduleGraph);
+        const componentGraph = createTestComponentGraph();
+        const result = stableStringify(componentGraph);
         expect(() => JSON.parse(result)).not.toThrow();
     });
 });
@@ -175,20 +175,20 @@ describe('stableStringify', () => {
 // ============================================================================
 
 describe('generateEmbeddedData', () => {
-    it('should produce valid JavaScript with MODULE_GRAPH and MARKDOWN_DATA', () => {
-        const graph = createTestModuleGraph();
+    it('should produce valid JavaScript with COMPONENT_GRAPH and MARKDOWN_DATA', () => {
+        const graph = createTestComponentGraph();
         const markdown = { auth: '# Auth', database: '# Database' };
 
         const result = generateEmbeddedData(graph, markdown);
 
-        expect(result).toContain('const MODULE_GRAPH =');
+        expect(result).toContain('const COMPONENT_GRAPH =');
         expect(result).toContain('const MARKDOWN_DATA =');
         expect(result).toContain('"TestProject"');
         expect(result).toContain('"# Auth"');
     });
 
     it('should handle special characters in markdown', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const markdown = {
             test: '# Test\n\n`code` with <html> & "quotes" and \'apostrophes\'',
         };
@@ -202,7 +202,7 @@ describe('generateEmbeddedData', () => {
     });
 
     it('should handle unicode content', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const markdown = { test: '# 日本語テスト\n\ncafé 🚀 emoji' };
 
         const result = generateEmbeddedData(graph, markdown);
@@ -212,14 +212,14 @@ describe('generateEmbeddedData', () => {
     });
 
     it('should handle empty markdown data', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const result = generateEmbeddedData(graph, {});
 
         expect(result).toContain('const MARKDOWN_DATA = {}');
     });
 
     it('should produce deterministic output', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const markdown = { b: '# B', a: '# A' };
 
         const result1 = generateEmbeddedData(graph, markdown);
@@ -229,7 +229,7 @@ describe('generateEmbeddedData', () => {
     });
 
     it('should sort keys for deterministic output', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const markdown = { z: '# Z', a: '# A', m: '# M' };
 
         const result = generateEmbeddedData(graph, markdown);
@@ -242,13 +242,13 @@ describe('generateEmbeddedData', () => {
     });
 
     it('should start with auto-generated comment', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const result = generateEmbeddedData(graph, {});
         expect(result).toMatch(/^\/\/ Auto-generated by deep-wiki/);
     });
 
     it('should handle backslash content in markdown', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const markdown = { test: 'Windows path: C:\\Users\\test\\file.ts' };
 
         const result = generateEmbeddedData(graph, markdown);
@@ -257,7 +257,7 @@ describe('generateEmbeddedData', () => {
     });
 
     it('should handle backtick content in markdown', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const markdown = { test: '```typescript\nconst x = `hello ${world}`;\n```' };
 
         const result = generateEmbeddedData(graph, markdown);
@@ -317,7 +317,7 @@ describe('generateHtmlTemplate', () => {
     it('should include search box when enableSearch is true', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain('id="search"');
-        expect(html).toContain('Search modules');
+        expect(html).toContain('Search components');
     });
 
     it('should exclude search box when enableSearch is false', () => {
@@ -626,33 +626,33 @@ describe('generateHtmlTemplate — mermaid zoom and pan', () => {
 });
 
 // ============================================================================
-// readModuleGraph
+// readComponentGraph
 // ============================================================================
 
-describe('readModuleGraph', () => {
-    it('should read and parse module-graph.json', () => {
-        const graph = createTestModuleGraph();
+describe('readComponentGraph', () => {
+    it('should read and parse component-graph.json', () => {
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
-        const result = readModuleGraph(wikiDir);
+        const result = readComponentGraph(wikiDir);
 
         expect(result.project.name).toBe('TestProject');
-        expect(result.modules).toHaveLength(3);
+        expect(result.components).toHaveLength(3);
     });
 
-    it('should throw when module-graph.json is missing', () => {
+    it('should throw when component-graph.json is missing', () => {
         const wikiDir = path.join(tempDir, 'empty-wiki');
         fs.mkdirSync(wikiDir, { recursive: true });
 
-        expect(() => readModuleGraph(wikiDir)).toThrow('module-graph.json not found');
+        expect(() => readComponentGraph(wikiDir)).toThrow('component-graph.json not found');
     });
 
     it('should throw on invalid JSON', () => {
         const wikiDir = path.join(tempDir, 'bad-wiki');
         fs.mkdirSync(wikiDir, { recursive: true });
-        fs.writeFileSync(path.join(wikiDir, 'module-graph.json'), 'not json', 'utf-8');
+        fs.writeFileSync(path.join(wikiDir, 'component-graph.json'), 'not json', 'utf-8');
 
-        expect(() => readModuleGraph(wikiDir)).toThrow();
+        expect(() => readComponentGraph(wikiDir)).toThrow();
     });
 });
 
@@ -661,19 +661,19 @@ describe('readModuleGraph', () => {
 // ============================================================================
 
 describe('readMarkdownFiles', () => {
-    it('should read markdown files from modules/ directory', () => {
-        const graph = createTestModuleGraph();
+    it('should read markdown files from components/ directory', () => {
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         const result = readMarkdownFiles(wikiDir, graph);
 
-        expect(result['auth']).toContain('# Auth Module');
-        expect(result['database']).toContain('# Database Module');
+        expect(result['auth']).toContain('# Auth Component');
+        expect(result['database']).toContain('# Database Component');
         expect(result['utils']).toContain('# Utilities');
     });
 
     it('should read top-level markdown files', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph, {
             auth: '# Auth',
             __index: '# Project Index',
@@ -688,28 +688,28 @@ describe('readMarkdownFiles', () => {
         expect(result['__architecture']).toContain('# Architecture');
     });
 
-    it('should handle missing modules directory gracefully', () => {
-        const wikiDir = path.join(tempDir, 'no-modules');
+    it('should handle missing components directory gracefully', () => {
+        const wikiDir = path.join(tempDir, 'no-components');
         fs.mkdirSync(wikiDir, { recursive: true });
         fs.writeFileSync(
-            path.join(wikiDir, 'module-graph.json'),
-            JSON.stringify(createTestModuleGraph()),
+            path.join(wikiDir, 'component-graph.json'),
+            JSON.stringify(createTestComponentGraph()),
             'utf-8'
         );
 
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const result = readMarkdownFiles(wikiDir, graph);
 
         expect(Object.keys(result)).toHaveLength(0);
     });
 
-    it('should handle empty modules directory', () => {
-        const graph = createTestModuleGraph();
-        const wikiDir = path.join(tempDir, 'empty-modules');
-        const modulesDir = path.join(wikiDir, 'modules');
-        fs.mkdirSync(modulesDir, { recursive: true });
+    it('should handle empty components directory', () => {
+        const graph = createTestComponentGraph();
+        const wikiDir = path.join(tempDir, 'empty-components');
+        const componentsDir = path.join(wikiDir, 'components');
+        fs.mkdirSync(componentsDir, { recursive: true });
         fs.writeFileSync(
-            path.join(wikiDir, 'module-graph.json'),
+            path.join(wikiDir, 'component-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
@@ -719,35 +719,35 @@ describe('readMarkdownFiles', () => {
         expect(Object.keys(result)).toHaveLength(0);
     });
 
-    it('should map file slugs to module IDs', () => {
-        const graph = createTestModuleGraph();
+    it('should map file slugs to component IDs', () => {
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         const result = readMarkdownFiles(wikiDir, graph);
 
-        // 'auth.md' should map to module ID 'auth'
+        // 'auth.md' should map to component ID 'auth'
         expect(result).toHaveProperty('auth');
         expect(result).toHaveProperty('database');
     });
 
     it('should read hierarchical area layout', () => {
-        const graph: ModuleGraph = {
-            ...createTestModuleGraph(),
+        const graph: ComponentGraph = {
+            ...createTestComponentGraph(),
             domains: [
-                { id: 'core', name: 'Core', path: 'src/core/', description: 'Core modules', modules: ['auth'] },
+                { id: 'core', name: 'Core', path: 'src/core/', description: 'Core components', components: ['auth'] },
             ],
         };
 
         // Set up area structure
         const wikiDir = path.join(tempDir, 'hierarchical-wiki');
-        const domainModulesDir = path.join(wikiDir, 'domains', 'core', 'modules');
-        fs.mkdirSync(domainModulesDir, { recursive: true });
+        const domainComponentsDir = path.join(wikiDir, 'domains', 'core', 'components');
+        fs.mkdirSync(domainComponentsDir, { recursive: true });
         fs.writeFileSync(
-            path.join(wikiDir, 'module-graph.json'),
+            path.join(wikiDir, 'component-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
-        fs.writeFileSync(path.join(domainModulesDir, 'auth.md'), '# Area Auth', 'utf-8');
+        fs.writeFileSync(path.join(domainComponentsDir, 'auth.md'), '# Area Auth', 'utf-8');
         fs.writeFileSync(path.join(wikiDir, 'domains', 'core', 'index.md'), '# Core Index', 'utf-8');
         fs.writeFileSync(path.join(wikiDir, 'domains', 'core', 'architecture.md'), '# Core Arch', 'utf-8');
 
@@ -758,12 +758,12 @@ describe('readMarkdownFiles', () => {
         expect(result['__domain_core_architecture']).toContain('# Core Arch');
     });
 
-    it('should ignore non-md files in modules directory', () => {
-        const graph = createTestModuleGraph();
+    it('should ignore non-md files in components directory', () => {
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         // Add a non-md file
-        fs.writeFileSync(path.join(wikiDir, 'modules', 'readme.txt'), 'not markdown', 'utf-8');
+        fs.writeFileSync(path.join(wikiDir, 'components', 'readme.txt'), 'not markdown', 'utf-8');
 
         const result = readMarkdownFiles(wikiDir, graph);
 
@@ -777,7 +777,7 @@ describe('readMarkdownFiles', () => {
 
 describe('generateWebsite', () => {
     it('should generate index.html and embedded-data.js', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         const files = generateWebsite(wikiDir);
@@ -787,31 +787,31 @@ describe('generateWebsite', () => {
         expect(fs.existsSync(path.join(wikiDir, 'embedded-data.js'))).toBe(true);
     });
 
-    it('should embed module graph data in embedded-data.js', () => {
-        const graph = createTestModuleGraph();
+    it('should embed component graph data in embedded-data.js', () => {
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir);
 
         const embeddedData = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
-        expect(embeddedData).toContain('MODULE_GRAPH');
+        expect(embeddedData).toContain('COMPONENT_GRAPH');
         expect(embeddedData).toContain('MARKDOWN_DATA');
         expect(embeddedData).toContain('TestProject');
     });
 
     it('should embed markdown content in embedded-data.js', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir);
 
         const embeddedData = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
-        expect(embeddedData).toContain('Auth Module');
-        expect(embeddedData).toContain('Database Module');
+        expect(embeddedData).toContain('Auth Component');
+        expect(embeddedData).toContain('Database Component');
     });
 
     it('should generate valid HTML', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir);
@@ -823,7 +823,7 @@ describe('generateWebsite', () => {
     });
 
     it('should use project name as title by default', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir);
@@ -833,7 +833,7 @@ describe('generateWebsite', () => {
     });
 
     it('should use custom title when provided', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir, { title: 'Custom Wiki Title' });
@@ -843,7 +843,7 @@ describe('generateWebsite', () => {
     });
 
     it('should apply dark theme', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir, { theme: 'dark' });
@@ -853,7 +853,7 @@ describe('generateWebsite', () => {
     });
 
     it('should apply light theme', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir, { theme: 'light' });
@@ -863,7 +863,7 @@ describe('generateWebsite', () => {
     });
 
     it('should default to auto theme', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir);
@@ -873,7 +873,7 @@ describe('generateWebsite', () => {
     });
 
     it('should include search when noSearch is not set', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir);
@@ -883,7 +883,7 @@ describe('generateWebsite', () => {
     });
 
     it('should exclude search when noSearch is true', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir, { noSearch: true });
@@ -892,19 +892,19 @@ describe('generateWebsite', () => {
         expect(html).not.toContain('id="search"');
     });
 
-    it('should throw when module-graph.json is missing', () => {
+    it('should throw when component-graph.json is missing', () => {
         const wikiDir = path.join(tempDir, 'empty');
         fs.mkdirSync(wikiDir, { recursive: true });
 
-        expect(() => generateWebsite(wikiDir)).toThrow('module-graph.json not found');
+        expect(() => generateWebsite(wikiDir)).toThrow('component-graph.json not found');
     });
 
     it('should handle wiki with no markdown files', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = path.join(tempDir, 'no-md');
         fs.mkdirSync(wikiDir, { recursive: true });
         fs.writeFileSync(
-            path.join(wikiDir, 'module-graph.json'),
+            path.join(wikiDir, 'component-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
@@ -917,7 +917,7 @@ describe('generateWebsite', () => {
     });
 
     it('should use custom template when provided', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         // Create a custom template
@@ -931,7 +931,7 @@ describe('generateWebsite', () => {
     });
 
     it('should throw when custom template does not exist', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         expect(() =>
@@ -940,7 +940,7 @@ describe('generateWebsite', () => {
     });
 
     it('should overwrite existing index.html', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         // Create existing index.html
@@ -954,7 +954,7 @@ describe('generateWebsite', () => {
     });
 
     it('should overwrite existing embedded-data.js', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         // Create existing embedded-data.js
@@ -964,30 +964,30 @@ describe('generateWebsite', () => {
 
         const data = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
         expect(data).not.toBe('old data');
-        expect(data).toContain('MODULE_GRAPH');
+        expect(data).toContain('COMPONENT_GRAPH');
     });
 
     it('should produce deterministic output', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir1 = setupWikiDir(graph);
         generateWebsite(wikiDir1);
 
         // Set up second wiki dir
         const wikiDir2 = path.join(tempDir, 'wiki2');
-        const modulesDir2 = path.join(wikiDir2, 'modules');
-        fs.mkdirSync(modulesDir2, { recursive: true });
+        const componentsDir2 = path.join(wikiDir2, 'components');
+        fs.mkdirSync(componentsDir2, { recursive: true });
         fs.writeFileSync(
-            path.join(wikiDir2, 'module-graph.json'),
+            path.join(wikiDir2, 'component-graph.json'),
             JSON.stringify(graph, null, 2),
             'utf-8'
         );
         // Write the same markdown files
         for (const [id, content] of Object.entries({
-            auth: '# Auth Module\n\nHandles authentication.\n\n## API\n\n```typescript\nlogin(user: string): Promise<Token>\n```',
-            database: '# Database Module\n\nDatabase access layer.\n\n```mermaid\ngraph TD\n  A[App] --> B[Database]\n```',
+            auth: '# Auth Component\n\nHandles authentication.\n\n## API\n\n```typescript\nlogin(user: string): Promise<Token>\n```',
+            database: '# Database Component\n\nDatabase access layer.\n\n```mermaid\ngraph TD\n  A[App] --> B[Database]\n```',
             utils: '# Utilities\n\nShared utility functions.',
         })) {
-            fs.writeFileSync(path.join(modulesDir2, `${id}.md`), content, 'utf-8');
+            fs.writeFileSync(path.join(componentsDir2, `${id}.md`), content, 'utf-8');
         }
         generateWebsite(wikiDir2);
 
@@ -997,9 +997,9 @@ describe('generateWebsite', () => {
     });
 
     it('should handle markdown with special characters', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph, {
-            auth: '# Auth <Module>\n\n"Special" & \'characters\' `code`\n\nLine with $dollar and \\backslash',
+            auth: '# Auth <Component>\n\n"Special" & \'characters\' `code`\n\nLine with $dollar and \\backslash',
         });
 
         // Should not throw
@@ -1007,14 +1007,14 @@ describe('generateWebsite', () => {
         expect(files).toHaveLength(2);
 
         const data = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
-        expect(data).toContain('Auth <Module>');
+        expect(data).toContain('Auth <Component>');
     });
 
     it('should use UTF-8 encoding for generated files', () => {
-        const graph: ModuleGraph = {
-            ...createTestModuleGraph(),
+        const graph: ComponentGraph = {
+            ...createTestComponentGraph(),
             project: {
-                ...createTestModuleGraph().project,
+                ...createTestComponentGraph().project,
                 name: 'プロジェクト',
                 description: 'Résumé of café',
             },
@@ -1034,7 +1034,7 @@ describe('generateWebsite', () => {
     });
 
     it('should return paths as absolute paths', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         const files = generateWebsite(wikiDir);
@@ -1051,8 +1051,8 @@ describe('generateWebsite', () => {
 // ============================================================================
 
 describe('generateWebsite — hierarchical layout', () => {
-    it('should handle domains with module files', () => {
-        const graph: ModuleGraph = {
+    it('should handle domains with component files', () => {
+        const graph: ComponentGraph = {
             project: {
                 name: 'LargeProject',
                 description: 'A large project',
@@ -1060,7 +1060,7 @@ describe('generateWebsite — hierarchical layout', () => {
                 buildSystem: 'npm',
                 entryPoints: ['src/index.ts'],
             },
-            modules: [
+            components: [
                 {
                     id: 'core-auth',
                     name: 'Core Auth',
@@ -1077,21 +1077,21 @@ describe('generateWebsite — hierarchical layout', () => {
             categories: [{ name: 'core', description: 'Core' }],
             architectureNotes: '',
             domains: [
-                { id: 'core', name: 'Core', path: 'src/core/', description: 'Core area', modules: ['core-auth'] },
+                { id: 'core', name: 'Core', path: 'src/core/', description: 'Core area', components: ['core-auth'] },
             ],
         };
 
         const wikiDir = path.join(tempDir, 'hierarchical');
-        const domainModulesDir = path.join(wikiDir, 'domains', 'core', 'modules');
-        fs.mkdirSync(domainModulesDir, { recursive: true });
+        const domainComponentsDir = path.join(wikiDir, 'domains', 'core', 'components');
+        fs.mkdirSync(domainComponentsDir, { recursive: true });
         fs.writeFileSync(
-            path.join(wikiDir, 'module-graph.json'),
+            path.join(wikiDir, 'component-graph.json'),
             JSON.stringify(graph),
             'utf-8'
         );
         fs.writeFileSync(
-            path.join(domainModulesDir, 'core-auth.md'),
-            '# Core Auth Module',
+            path.join(domainComponentsDir, 'core-auth.md'),
+            '# Core Auth Component',
             'utf-8'
         );
 
@@ -1099,7 +1099,7 @@ describe('generateWebsite — hierarchical layout', () => {
         expect(files).toHaveLength(2);
 
         const data = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
-        expect(data).toContain('Core Auth Module');
+        expect(data).toContain('Core Auth Component');
     });
 });
 
@@ -1109,7 +1109,7 @@ describe('generateWebsite — hierarchical layout', () => {
 
 describe('generateWebsite — options combinations', () => {
     it('should accept all options simultaneously', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         const options: WebsiteOptions = {
@@ -1128,7 +1128,7 @@ describe('generateWebsite — options combinations', () => {
     });
 
     it('should use defaults when no options provided', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         const files = generateWebsite(wikiDir);
@@ -1141,7 +1141,7 @@ describe('generateWebsite — options combinations', () => {
     });
 
     it('should use undefined options as defaults', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         const files = generateWebsite(wikiDir, {});
@@ -1192,9 +1192,9 @@ describe('generateHtmlTemplate — internal link interception', () => {
         expect(html).toContain("replace(/^(\\.\\/|\\.\\.\\/)*/, '')");
     });
 
-    it('should strip modules/ prefix from href', () => {
+    it('should strip components/ prefix from href', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain("replace(/^modules\\//, '')");
+        expect(html).toContain("replace(/^components\\//, '')");
     });
 
     it('should strip .md extension from slug', () => {
@@ -1223,10 +1223,10 @@ describe('generateHtmlTemplate — internal link interception', () => {
         expect(html).toContain('loadSpecialPage(specialPages[slug].key, specialPages[slug].title)');
     });
 
-    // --- Module matching ---
-    it('should define findModuleIdBySlugClient function', () => {
+    // --- Component matching ---
+    it('should define findComponentIdBySlugClient function', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('function findModuleIdBySlugClient(slug)');
+        expect(html).toContain('function findComponentIdBySlugClient(slug)');
     });
 
     it('should normalize slug with lowercase and hyphen replacement', () => {
@@ -1235,14 +1235,14 @@ describe('generateHtmlTemplate — internal link interception', () => {
         expect(html).toContain("slug.toLowerCase().replace(/[^a-z0-9]+/g, '-')");
     });
 
-    it('should call loadModule for matched module IDs', () => {
+    it('should call loadComponent for matched component IDs', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('loadModule(matchedId)');
+        expect(html).toContain('loadComponent(matchedId)');
     });
 
-    it('should call findModuleIdBySlugClient with extracted slug', () => {
+    it('should call findComponentIdBySlugClient with extracted slug', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('findModuleIdBySlugClient(slug)');
+        expect(html).toContain('findComponentIdBySlugClient(slug)');
     });
 
     // --- Hash fragment handling ---
@@ -1252,7 +1252,7 @@ describe('generateHtmlTemplate — internal link interception', () => {
         expect(html).toContain('hashPart');
     });
 
-    it('should scroll to hash target after module load', () => {
+    it('should scroll to hash target after component load', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain('scrollIntoView');
     });
@@ -1262,19 +1262,19 @@ describe('generateHtmlTemplate — internal link interception', () => {
         const themes: Array<'auto' | 'dark' | 'light'> = ['auto', 'dark', 'light'];
         for (const theme of themes) {
             const html = generateHtmlTemplate({ theme, title: 'Test', enableSearch: true });
-            expect(html).toContain('findModuleIdBySlugClient');
+            expect(html).toContain('findComponentIdBySlugClient');
             expect(html).toContain("container.addEventListener('click'");
         }
     });
 
     // --- Integration with full website ---
     it('link interception should be present in generated website', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
         generateWebsite(wikiDir);
 
         const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
-        expect(html).toContain('findModuleIdBySlugClient');
+        expect(html).toContain('findComponentIdBySlugClient');
         expect(html).toContain("container.addEventListener('click'");
     });
 });
@@ -1301,20 +1301,20 @@ describe('generateHtmlTemplate — browser history management', () => {
         expect(html).toContain('if (!skipHistory)');
     });
 
-    // --- pushState in loadModule ---
-    it('should call history.pushState in loadModule with module state', () => {
+    // --- pushState in loadComponent ---
+    it('should call history.pushState in loadComponent with component state', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain("history.pushState({ type: 'module', id: moduleId }");
+        expect(html).toContain("history.pushState({ type: 'component', id: componentId }");
     });
 
-    it('loadModule should accept skipHistory parameter', () => {
+    it('loadComponent should accept skipHistory parameter', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('function loadModule(moduleId, skipHistory)');
+        expect(html).toContain('function loadComponent(componentId, skipHistory)');
     });
 
-    it('loadModule pushState should include module ID in hash', () => {
+    it('loadComponent pushState should include component ID in hash', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain("'#module-' + encodeURIComponent(moduleId)");
+        expect(html).toContain("'#component-' + encodeURIComponent(componentId)");
     });
 
     // --- pushState in loadSpecialPage ---
@@ -1350,9 +1350,9 @@ describe('generateHtmlTemplate — browser history management', () => {
         expect(html).toContain("state.type === 'home'");
     });
 
-    it('popstate handler should handle module state', () => {
+    it('popstate handler should handle component state', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain("state.type === 'module' && state.id");
+        expect(html).toContain("state.type === 'component' && state.id");
     });
 
     it('popstate handler should handle special page state', () => {
@@ -1360,9 +1360,9 @@ describe('generateHtmlTemplate — browser history management', () => {
         expect(html).toContain("state.type === 'special' && state.key && state.title");
     });
 
-    it('popstate handler should call loadModule with skipHistory=true', () => {
+    it('popstate handler should call loadComponent with skipHistory=true', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('loadModule(state.id, true)');
+        expect(html).toContain('loadComponent(state.id, true)');
     });
 
     it('popstate handler should call loadSpecialPage with skipHistory=true', () => {
@@ -1395,7 +1395,7 @@ describe('generateHtmlTemplate — browser history management', () => {
 
     // --- Integration with full website ---
     it('history management should be present in generated website', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
         generateWebsite(wikiDir);
 
@@ -1410,7 +1410,7 @@ describe('generateHtmlTemplate — browser history management', () => {
         expect(html).toContain('history.pushState');
         expect(html).toContain('history.replaceState');
         expect(html).toContain("window.addEventListener('popstate'");
-        expect(html).toContain('findModuleIdBySlugClient');
+        expect(html).toContain('findComponentIdBySlugClient');
     });
 });
 
@@ -1429,36 +1429,36 @@ describe('generateHtmlTemplate — domain-based sidebar', () => {
         expect(html).toContain('function buildCategorySidebar');
     });
 
-    it('should detect domains via moduleGraph.domains', () => {
+    it('should detect domains via componentGraph.domains', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('moduleGraph.domains && moduleGraph.domains.length > 0');
+        expect(html).toContain('componentGraph.domains && componentGraph.domains.length > 0');
     });
 
     it('should include nav-area CSS classes', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain('.nav-domain-item');
         expect(html).toContain('.nav-domain-children');
-        expect(html).toContain('.nav-domain-module');
+        expect(html).toContain('.nav-domain-component');
         expect(html).toContain('.nav-domain-group');
     });
 
     it('should include area active styles', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain('.nav-domain-item.active');
-        expect(html).toContain('.nav-domain-module.active');
+        expect(html).toContain('.nav-domain-component.active');
     });
 
-    it('should handle module assignment via mod.domain field', () => {
+    it('should handle component assignment via mod.domain field', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain('mod.domain');
     });
 
-    it('should fall back to area.modules list for assignment', () => {
+    it('should fall back to area.components list for assignment', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('area.modules');
+        expect(html).toContain('area.components');
     });
 
-    it('should handle unassigned modules in __other group', () => {
+    it('should handle unassigned components in __other group', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain("'__other'");
     });
@@ -1468,10 +1468,10 @@ describe('generateHtmlTemplate — domain-based sidebar', () => {
         expect(html).toContain('data-domain-id');
     });
 
-    it('should set active state on area modules via setActive', () => {
+    it('should set active state on area components via setActive', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('.nav-domain-module');
-        expect(html).toContain("'.nav-domain-module[data-id=");
+        expect(html).toContain('.nav-domain-component');
+        expect(html).toContain("'.nav-domain-component[data-id=");
     });
 
     it('should include domain-based sidebar in all themes', () => {
@@ -1486,13 +1486,13 @@ describe('generateHtmlTemplate — domain-based sidebar', () => {
 
     it('should include domain-based search filtering', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('.nav-domain-module[data-id]');
+        expect(html).toContain('.nav-domain-component[data-id]');
         expect(html).toContain('.nav-domain-group');
     });
 
-    it('should group modules by area in showHome overview', () => {
+    it('should group components by area in showHome overview', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('var hasDomains = moduleGraph.domains && moduleGraph.domains.length > 0');
+        expect(html).toContain('var hasDomains = componentGraph.domains && componentGraph.domains.length > 0');
     });
 
     it('should show area description in home overview', () => {
@@ -1501,19 +1501,19 @@ describe('generateHtmlTemplate — domain-based sidebar', () => {
         expect(html).toContain('area.name');
     });
 
-    it('should fall back to All Modules when no domains present', () => {
+    it('should fall back to All Components when no domains present', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('All Modules');
+        expect(html).toContain('All Components');
     });
 
-    it('should show unassigned modules under Other heading in home', () => {
+    it('should show unassigned components under Other heading in home', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
         expect(html).toContain('assignedIds');
         expect(html).toContain('unassigned');
     });
 
     it('domain-based sidebar should also work in generated website', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
         generateWebsite(wikiDir);
 
@@ -1521,31 +1521,31 @@ describe('generateHtmlTemplate — domain-based sidebar', () => {
         expect(html).toContain('buildDomainSidebar');
         expect(html).toContain('buildCategorySidebar');
         expect(html).toContain('.nav-domain-item');
-        expect(html).toContain('.nav-domain-module');
+        expect(html).toContain('.nav-domain-component');
     });
 
-    it('domain-based sidebar should work with domains in module graph', () => {
-        const graph = createTestModuleGraph();
+    it('domain-based sidebar should work with domains in component graph', () => {
+        const graph = createTestComponentGraph();
         // Add domains to the test graph
         graph.domains = [
             {
                 id: 'core-system',
                 name: 'Core System',
                 path: 'src/core/',
-                description: 'Core system modules',
-                modules: ['auth'],
+                description: 'Core system components',
+                components: ['auth'],
             },
             {
                 id: 'data-layer',
                 name: 'Data Layer',
                 path: 'src/data/',
-                description: 'Data access modules',
-                modules: ['database'],
+                description: 'Data access components',
+                components: ['database'],
             },
         ];
-        // Assign area to modules
-        graph.modules[0].area = 'core-system'; // auth
-        graph.modules[1].area = 'data-layer'; // database
+        // Assign area to components
+        graph.components[0].area = 'core-system'; // auth
+        graph.components[1].area = 'data-layer'; // database
 
         const wikiDir = setupWikiDir(graph);
         generateWebsite(wikiDir);
@@ -1569,7 +1569,7 @@ describe('generateHtmlTemplate — domain-based sidebar', () => {
 
 describe('readMarkdownFiles — topic files', () => {
     it('should read single-layout topic file', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         // Create topic file
@@ -1582,7 +1582,7 @@ describe('readMarkdownFiles — topic files', () => {
     });
 
     it('should read area-layout topic with index and sub-articles', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         // Create topic area directory
@@ -1599,18 +1599,18 @@ describe('readMarkdownFiles — topic files', () => {
     });
 
     it('should handle wiki with no topics directory', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         const data = readMarkdownFiles(wikiDir, graph);
-        // Should still have module data, no topic keys
+        // Should still have component data, no topic keys
         expect(data['auth']).toBeDefined();
         const topicKeys = Object.keys(data).filter(k => k.startsWith('__topic_'));
         expect(topicKeys).toHaveLength(0);
     });
 
     it('should handle empty topics directory', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
         fs.mkdirSync(path.join(wikiDir, 'topics'), { recursive: true });
 
@@ -1620,7 +1620,7 @@ describe('readMarkdownFiles — topic files', () => {
     });
 
     it('should ignore non-md files in topics directory', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
         const topicsDir = path.join(wikiDir, 'topics');
         fs.mkdirSync(topicsDir, { recursive: true });
@@ -1647,7 +1647,7 @@ describe('generateHtmlTemplate — topic sidebar navigation', () => {
 
     it('should only build topics sidebar when topics exist', () => {
         const html = generateHtmlTemplate({ theme: 'auto', title: 'Test', enableSearch: true });
-        expect(html).toContain('moduleGraph.topics && moduleGraph.topics.length > 0');
+        expect(html).toContain('componentGraph.topics && componentGraph.topics.length > 0');
     });
 
     it('should include nav-topic CSS classes', () => {
@@ -1774,7 +1774,7 @@ describe('generateHtmlTemplate — topic browser history', () => {
 
 describe('generateWebsite — topic integration', () => {
     it('should render website unchanged when no topics exist', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
         generateWebsite(wikiDir);
@@ -1782,7 +1782,7 @@ describe('generateWebsite — topic integration', () => {
         const html = fs.readFileSync(path.join(wikiDir, 'index.html'), 'utf-8');
         expect(html).toContain('buildTopicsSidebar');
         // The function exists but won't be called since no topics in graph
-        expect(html).toContain('moduleGraph.topics && moduleGraph.topics.length > 0');
+        expect(html).toContain('componentGraph.topics && componentGraph.topics.length > 0');
 
         const embeddedData = fs.readFileSync(path.join(wikiDir, 'embedded-data.js'), 'utf-8');
         // No topic keys in markdown data
@@ -1790,7 +1790,7 @@ describe('generateWebsite — topic integration', () => {
     });
 
     it('should include topic markdown in embedded data when topics exist', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         graph.topics = [
             {
                 id: 'error-handling',
@@ -1798,7 +1798,7 @@ describe('generateWebsite — topic integration', () => {
                 description: 'How errors are handled',
                 layout: 'single' as const,
                 articles: [{ slug: 'error-handling', title: 'Error Handling', path: 'topics/error-handling.md' }],
-                involvedModuleIds: ['auth'],
+                involvedComponentIds: ['auth'],
                 directoryPath: 'topics/',
                 generatedAt: Date.now(),
             },
@@ -1818,7 +1818,7 @@ describe('generateWebsite — topic integration', () => {
     });
 
     it('should include area topic articles in embedded data', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         graph.topics = [
             {
                 id: 'compaction',
@@ -1829,7 +1829,7 @@ describe('generateWebsite — topic integration', () => {
                     { slug: 'styles', title: 'Compaction Styles', path: 'topics/compaction/styles.md' },
                     { slug: 'scheduling', title: 'Scheduling', path: 'topics/compaction/scheduling.md' },
                 ],
-                involvedModuleIds: ['database'],
+                involvedComponentIds: ['database'],
                 directoryPath: 'topics/compaction/',
                 generatedAt: Date.now(),
             },
@@ -1852,7 +1852,7 @@ describe('generateWebsite — topic integration', () => {
     });
 
     it('should handle multiple topics (area + single)', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         graph.topics = [
             {
                 id: 'compaction',
@@ -1860,7 +1860,7 @@ describe('generateWebsite — topic integration', () => {
                 description: 'Compaction strategies',
                 layout: 'area' as const,
                 articles: [{ slug: 'styles', title: 'Styles', path: 'topics/compaction/styles.md' }],
-                involvedModuleIds: ['database'],
+                involvedComponentIds: ['database'],
                 directoryPath: 'topics/compaction/',
                 generatedAt: Date.now(),
             },
@@ -1870,7 +1870,7 @@ describe('generateWebsite — topic integration', () => {
                 description: 'Error patterns',
                 layout: 'single' as const,
                 articles: [{ slug: 'error-handling', title: 'Error Handling', path: 'topics/error-handling.md' }],
-                involvedModuleIds: ['auth'],
+                involvedComponentIds: ['auth'],
                 directoryPath: 'topics/',
                 generatedAt: Date.now(),
             },
@@ -1880,7 +1880,7 @@ describe('generateWebsite — topic integration', () => {
                 description: 'How to test',
                 layout: 'area' as const,
                 articles: [{ slug: 'unit', title: 'Unit Tests', path: 'topics/testing/unit.md' }],
-                involvedModuleIds: ['utils'],
+                involvedComponentIds: ['utils'],
                 directoryPath: 'topics/testing/',
                 generatedAt: Date.now(),
             },
@@ -1911,7 +1911,7 @@ describe('generateWebsite — topic integration', () => {
     });
 
     it('should include mermaid rendering for topic articles', () => {
-        const graph = createTestModuleGraph();
+        const graph = createTestComponentGraph();
         graph.topics = [
             {
                 id: 'arch-topic',
@@ -1919,7 +1919,7 @@ describe('generateWebsite — topic integration', () => {
                 description: 'Architecture overview',
                 layout: 'area' as const,
                 articles: [],
-                involvedModuleIds: [],
+                involvedComponentIds: [],
                 directoryPath: 'topics/arch-topic/',
                 generatedAt: Date.now(),
             },

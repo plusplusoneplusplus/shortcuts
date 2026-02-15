@@ -1,7 +1,7 @@
 /**
- * Writing Module — Public API
+ * Writing Component — Public API
  *
- * Phase 4 (Article Generation) entry point. Converts ModuleAnalysis results
+ * Phase 4 (Article Generation) entry point. Converts ComponentAnalysis results
  * into markdown wiki articles and generates index/architecture overview pages.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -12,11 +12,11 @@ import type { AIInvoker, JobProgress, ItemCompleteCallback } from '@plusplusonep
 import { runArticleExecutor } from './article-executor';
 
 // Re-export for convenience
-export { buildModuleArticlePrompt, buildModuleArticlePromptTemplate, buildSimplifiedGraph, getArticleStyleGuide, buildCrossLinkRules } from './prompts';
-export { buildReducePromptTemplate, getReduceOutputFields, buildModuleSummaryForReduce, buildDomainReducePromptTemplate, getDomainReduceOutputFields, buildHierarchicalReducePromptTemplate } from './reduce-prompts';
+export { buildComponentArticlePrompt, buildComponentArticlePromptTemplate, buildSimplifiedGraph, getArticleStyleGuide, buildCrossLinkRules } from './prompts';
+export { buildReducePromptTemplate, getReduceOutputFields, buildComponentSummaryForReduce, buildDomainReducePromptTemplate, getDomainReduceOutputFields, buildHierarchicalReducePromptTemplate } from './reduce-prompts';
 export { runArticleExecutor, analysisToPromptItem, generateStaticIndexPages, generateStaticDomainPages, generateStaticHierarchicalIndexPages } from './article-executor';
 export { writeWikiOutput, getArticleFilePath, slugify, normalizeLineEndings } from './file-writer';
-export { generateWebsite, generateEmbeddedData, generateHtmlTemplate, readModuleGraph, readMarkdownFiles, stableStringify } from './website-generator';
+export { generateWebsite, generateEmbeddedData, generateHtmlTemplate, readComponentGraph, readMarkdownFiles, stableStringify } from './website-generator';
 export type { ArticleExecutorOptions, ArticleExecutorResult } from './article-executor';
 
 // ============================================================================
@@ -24,10 +24,10 @@ export type { ArticleExecutorOptions, ArticleExecutorResult } from './article-ex
 // ============================================================================
 
 /**
- * Generate wiki articles from module analyses.
+ * Generate wiki articles from component analyses.
  *
  * Runs a map-reduce job:
- * - Map: Per-module article generation (text mode, raw markdown)
+ * - Map: Per-component article generation (text mode, raw markdown)
  * - Reduce: AI-generated index, architecture, and getting-started pages
  *
  * @param options Writing options
@@ -62,6 +62,6 @@ export async function generateArticles(
     return {
         articles: result.articles,
         duration: Date.now() - startTime,
-        failedModuleIds: result.failedModuleIds.length > 0 ? result.failedModuleIds : undefined,
+        failedComponentIds: result.failedComponentIds.length > 0 ? result.failedComponentIds : undefined,
     };
 }

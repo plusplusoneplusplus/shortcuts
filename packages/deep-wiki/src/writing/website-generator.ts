@@ -3,7 +3,7 @@
  *
  * Generates a standalone HTML website from the wiki output.
  * The generated website includes:
- *   - Embedded module graph and markdown data (no CORS issues with file://)
+ *   - Embedded component graph and markdown data (no CORS issues with file://)
  *   - Syntax highlighting via highlight.js CDN
  *   - Mermaid diagram rendering via mermaid.js CDN
  *   - Markdown rendering via marked.js CDN
@@ -20,10 +20,10 @@ import * as path from 'path';
 import type { WebsiteOptions, WebsiteTheme } from '../types';
 import { getStyles } from './website-styles';
 import { getScript } from './website-client-script';
-import { escapeHtml, readModuleGraph, readMarkdownFiles, generateEmbeddedData } from './website-data';
+import { escapeHtml, readComponentGraph, readMarkdownFiles, generateEmbeddedData } from './website-data';
 
 // Re-export for backward compatibility
-export { readModuleGraph, readMarkdownFiles, generateEmbeddedData, stableStringify } from './website-data';
+export { readComponentGraph, readMarkdownFiles, generateEmbeddedData, stableStringify } from './website-data';
 
 // ============================================================================
 // Constants
@@ -45,29 +45,29 @@ const EMBEDDED_DATA_FILENAME = 'embedded-data.js';
 /**
  * Generate a standalone HTML website from wiki output.
  *
- * Reads module-graph.json and all module markdown files from the wiki directory,
+ * Reads component-graph.json and all component markdown files from the wiki directory,
  * then generates index.html with embedded data for offline viewing.
  *
- * @param wikiDir - Path to the wiki output directory (contains module-graph.json and modules/)
+ * @param wikiDir - Path to the wiki output directory (contains component-graph.json and components/)
  * @param options - Website generation options
  * @returns Paths to the generated files
  */
 export function generateWebsite(wikiDir: string, options?: WebsiteOptions): string[] {
     const resolvedDir = path.resolve(wikiDir);
 
-    // Read module graph
-    const moduleGraph = readModuleGraph(resolvedDir);
+    // Read component graph
+    const componentGraph = readComponentGraph(resolvedDir);
 
     // Read all markdown files
-    const markdownData = readMarkdownFiles(resolvedDir, moduleGraph);
+    const markdownData = readMarkdownFiles(resolvedDir, componentGraph);
 
     // Determine effective options
     const theme = options?.theme || DEFAULT_THEME;
-    const title = options?.title || moduleGraph.project.name;
+    const title = options?.title || componentGraph.project.name;
     const enableSearch = !options?.noSearch;
 
     // Generate embedded data JS
-    const embeddedDataContent = generateEmbeddedData(moduleGraph, markdownData);
+    const embeddedDataContent = generateEmbeddedData(componentGraph, markdownData);
     const embeddedDataPath = path.join(resolvedDir, EMBEDDED_DATA_FILENAME);
     fs.writeFileSync(embeddedDataPath, embeddedDataContent, 'utf-8');
 
@@ -143,7 +143,7 @@ ${getStyles()}
             <p id="project-description"></p>
         </div>
 ${enableSearch ? `        <div class="search-box">
-            <input type="text" id="search" placeholder="Search modules..." aria-label="Search modules">
+            <input type="text" id="search" placeholder="Search components..." aria-label="Search components">
         </div>` : ''}
         <div id="nav-container"></div>
     </div>

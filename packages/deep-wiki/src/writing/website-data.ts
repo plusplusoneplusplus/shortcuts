@@ -9,25 +9,25 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ModuleGraph } from '../types';
+import type { ComponentGraph } from '../types';
 
 // ============================================================================
-// Module Graph Reader
+// Component Graph Reader
 // ============================================================================
 
 /**
- * Read module-graph.json from the wiki directory.
+ * Read component-graph.json from the wiki directory.
  * @param wikiDir - Resolved wiki directory path
- * @returns Parsed module graph
+ * @returns Parsed component graph
  */
-export function readModuleGraph(wikiDir: string): ModuleGraph {
-    const graphPath = path.join(wikiDir, 'module-graph.json');
+export function readComponentGraph(wikiDir: string): ComponentGraph {
+    const graphPath = path.join(wikiDir, 'component-graph.json');
     if (!fs.existsSync(graphPath)) {
-        throw new Error(`module-graph.json not found in ${wikiDir}`);
+        throw new Error(`component-graph.json not found in ${wikiDir}`);
     }
 
     const content = fs.readFileSync(graphPath, 'utf-8');
-    return JSON.parse(content) as ModuleGraph;
+    return JSON.parse(content) as ComponentGraph;
 }
 
 // ============================================================================
@@ -35,22 +35,22 @@ export function readModuleGraph(wikiDir: string): ModuleGraph {
 // ============================================================================
 
 /**
- * Read all markdown files for modules from the wiki directory.
+ * Read all markdown files for components from the wiki directory.
  *
  * Supports both flat and hierarchical layouts:
- *   - Flat: modules/{slug}.md
- *   - Hierarchical: domains/{domainId}/modules/{slug}.md
+ *   - Flat: components/{slug}.md
+ *   - Hierarchical: domains/{domainId}/components/{slug}.md
  *
  * Also reads top-level markdown files (index.md, architecture.md, getting-started.md)
  * and area-level index/architecture files.
  *
  * @param wikiDir - Resolved wiki directory path
- * @param moduleGraph - The module graph (for module ID mapping)
- * @returns Map of module ID to markdown content
+ * @param componentGraph - The component graph (for component ID mapping)
+ * @returns Map of component ID to markdown content
  */
 export function readMarkdownFiles(
     wikiDir: string,
-    moduleGraph: ModuleGraph
+    componentGraph: ComponentGraph
 ): Record<string, string> {
     const data: Record<string, string> = {};
 
@@ -64,15 +64,15 @@ export function readMarkdownFiles(
         }
     }
 
-    // Read flat-layout module files
-    const modulesDir = path.join(wikiDir, 'modules');
-    if (fs.existsSync(modulesDir) && fs.statSync(modulesDir).isDirectory()) {
-        const files = fs.readdirSync(modulesDir).filter(f => f.endsWith('.md'));
+    // Read flat-layout component files
+    const componentsDir = path.join(wikiDir, 'components');
+    if (fs.existsSync(componentsDir) && fs.statSync(componentsDir).isDirectory()) {
+        const files = fs.readdirSync(componentsDir).filter(f => f.endsWith('.md'));
         for (const file of files) {
             const slug = path.basename(file, '.md');
-            const moduleId = findModuleIdBySlug(slug, moduleGraph);
-            const key = moduleId || slug;
-            data[key] = fs.readFileSync(path.join(modulesDir, file), 'utf-8');
+            const componentId = findComponentIdBySlug(slug, componentGraph);
+            const key = componentId || slug;
+            data[key] = fs.readFileSync(path.join(componentsDir, file), 'utf-8');
         }
     }
 
@@ -130,15 +130,15 @@ export function readMarkdownFiles(
                 }
             }
 
-            // Area module files
-            const domainModulesDir = path.join(domainDir, 'modules');
-            if (fs.existsSync(domainModulesDir) && fs.statSync(domainModulesDir).isDirectory()) {
-                const files = fs.readdirSync(domainModulesDir).filter(f => f.endsWith('.md'));
+            // Area component files
+            const domainComponentsDir = path.join(domainDir, 'components');
+            if (fs.existsSync(domainComponentsDir) && fs.statSync(domainComponentsDir).isDirectory()) {
+                const files = fs.readdirSync(domainComponentsDir).filter(f => f.endsWith('.md'));
                 for (const file of files) {
                     const slug = path.basename(file, '.md');
-                    const moduleId = findModuleIdBySlug(slug, moduleGraph);
-                    const key = moduleId || slug;
-                    data[key] = fs.readFileSync(path.join(domainModulesDir, file), 'utf-8');
+                    const componentId = findComponentIdBySlug(slug, componentGraph);
+                    const key = componentId || slug;
+                    data[key] = fs.readFileSync(path.join(domainComponentsDir, file), 'utf-8');
                 }
             }
         }
@@ -155,24 +155,24 @@ export function readMarkdownFiles(
  * Generate the embedded-data.js content.
  *
  * Produces a JavaScript file that defines two global constants:
- *   - MODULE_GRAPH: The module graph JSON
- *   - MARKDOWN_DATA: Map of module ID to markdown content
+ *   - COMPONENT_GRAPH: The component graph JSON
+ *   - MARKDOWN_DATA: Map of component ID to markdown content
  *
  * Uses JSON.stringify with sorted keys for deterministic output.
  *
- * @param moduleGraph - The module graph
- * @param markdownData - Map of module ID to markdown content
+ * @param componentGraph - The component graph
+ * @param markdownData - Map of component ID to markdown content
  * @returns JavaScript source code
  */
 export function generateEmbeddedData(
-    moduleGraph: ModuleGraph,
+    componentGraph: ComponentGraph,
     markdownData: Record<string, string>
 ): string {
     // Sort keys for deterministic output
-    const sortedGraph = stableStringify(moduleGraph);
+    const sortedGraph = stableStringify(componentGraph);
     const sortedMarkdown = stableStringify(markdownData);
 
-    return `// Auto-generated by deep-wiki. Do not edit manually.\nconst MODULE_GRAPH = ${sortedGraph};\nconst MARKDOWN_DATA = ${sortedMarkdown};\n`;
+    return `// Auto-generated by deep-wiki. Do not edit manually.\nconst COMPONENT_GRAPH = ${sortedGraph};\nconst MARKDOWN_DATA = ${sortedMarkdown};\n`;
 }
 
 // ============================================================================
@@ -205,14 +205,14 @@ function sortedReplacer(_key: string, value: unknown): unknown {
 // ============================================================================
 
 /**
- * Find a module ID by its slug.
- * Matches by normalizing the module ID to a slug.
+ * Find a component ID by its slug.
+ * Matches by normalizing the component ID to a slug.
  */
-function findModuleIdBySlug(slug: string, moduleGraph: ModuleGraph): string | null {
+function findComponentIdBySlug(slug: string, componentGraph: ComponentGraph): string | null {
     const normalized = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    for (const mod of moduleGraph.modules) {
-        const modSlug = mod.id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        if (modSlug === normalized) {
+    for (const mod of componentGraph.components) {
+        const compSlug = mod.id.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        if (compSlug === normalized) {
             return mod.id;
         }
     }
