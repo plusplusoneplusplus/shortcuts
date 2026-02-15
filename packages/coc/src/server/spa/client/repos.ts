@@ -407,13 +407,10 @@ function renderTasksTab(repo: RepoData): string {
         '<button class="enqueue-btn-primary" id="repo-tasks-folder-btn">+ New Folder</button>' +
         '<button class="enqueue-btn-primary" id="repo-tasks-ai-btn" title="Generate task with AI">&#129302; AI Generate</button>' +
     '</div>';
-    // Horizontal split: tree on left, preview on right (Finder-style)
-    html += '<div class="tasks-split-layout" id="tasks-split-layout">';
-    html += '<div class="tasks-tree" id="repo-tasks-tree">';
+    // Miller columns container — tasks.ts renders columns inside this div
+    html += '<div id="repo-tasks-tree">';
     html += '<div class="empty-state"><div class="empty-state-icon">&#128203;</div>' +
         '<div class="empty-state-title">Loading tasks...</div></div>';
-    html += '</div>';
-    html += '<div class="task-file-preview hidden" id="task-file-preview"></div>';
     html += '</div>';
 
     // Trigger async task fetch

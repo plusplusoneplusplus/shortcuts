@@ -833,10 +833,10 @@ describe('Tasks as repo sub-page — client bundle tasks module', () => {
         expect(script).toContain('showRepoAIGenerateDialog');
     });
 
-    it('renders task tree with folders, groups, and documents', () => {
-        expect(script).toContain('task-tree-folder');
-        expect(script).toContain('task-tree-group');
-        expect(script).toContain('task-tree-row');
+    it('renders Miller columns with folders and documents', () => {
+        expect(script).toContain('miller-column');
+        expect(script).toContain('miller-row');
+        expect(script).toContain('data-nav-folder');
     });
 
     it('supports task CRUD operations with workspace ID', () => {
@@ -844,14 +844,14 @@ describe('Tasks as repo sub-page — client bundle tasks module', () => {
         expect(script).toContain('method:');
     });
 
-    it('supports status cycling', () => {
-        expect(script).toContain('nextStatus');
-        expect(script).toContain('STATUS_CYCLE');
+    it('supports status display in Miller columns', () => {
+        expect(script).toContain('miller-status');
+        expect(script).toContain('STATUS_ICONS');
     });
 
-    it('supports archive/unarchive', () => {
-        expect(script).toContain('archiveItem');
-        expect(script).toContain('/tasks/archive');
+    it('supports archive folder styling', () => {
+        expect(script).toContain('task-archive-folder');
+        expect(script).toContain('archive');
     });
 
     it('does not contain standalone workspace selector', () => {
@@ -896,8 +896,8 @@ describe('Tasks as repo sub-page — task name display (baseName/fileName)', () 
     });
 
     it('renders single documents using baseName', () => {
-        // renderTaskRow should use doc.baseName for display
-        expect(script).toContain('task-tree-name');
+        // Miller column rows use doc.baseName for display
+        expect(script).toContain('miller-row-name');
         expect(script).toContain('baseName');
     });
 
@@ -959,12 +959,12 @@ describe('Tasks as repo sub-page — CSS styles', () => {
         expect(html).toContain('.repo-tasks-toolbar');
     });
 
-    it('preserves task tree styles', () => {
-        expect(html).toContain('.tasks-tree');
-        expect(html).toContain('.task-tree-row');
-        expect(html).toContain('.task-tree-toggle');
+    it('preserves Miller columns styles', () => {
+        expect(html).toContain('.miller-columns');
+        expect(html).toContain('.miller-column');
+        expect(html).toContain('.miller-row');
+        expect(html).toContain('.miller-column-header');
         expect(html).toContain('.task-tree-icon');
-        expect(html).toContain('.task-tree-name');
     });
 
     it('preserves task status badge styles', () => {

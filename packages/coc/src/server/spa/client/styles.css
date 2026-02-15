@@ -1493,68 +1493,123 @@ body {
     vertical-align: middle;
 }
 
-/* Clickable folder rows */
-.task-folder-row {
-    cursor: pointer;
+/* ================================================================
+   Miller Columns (Finder / Azure Portal blade style)
+   ================================================================ */
+
+.miller-columns {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    min-height: 350px;
+    max-height: 70vh;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    scroll-behavior: smooth;
 }
 
-/* Clickable file rows */
-.task-file-row,
-.task-doc-row {
-    cursor: pointer;
+.miller-column {
+    flex: 0 0 260px;
+    min-width: 220px;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    overflow: hidden;
 }
 
-.task-file-row:hover,
-.task-doc-row:hover {
+.miller-column:last-child {
+    border-right: none;
+}
+
+.miller-preview-column {
+    flex: 1 0 380px;
+    min-width: 320px;
+    max-width: none;
+}
+
+.miller-column-header {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.miller-column-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.miller-row {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.miller-row:hover {
     background: var(--hover-bg);
 }
 
-/* Active file highlight */
-.task-file-active {
+.miller-row-selected {
     background: var(--active-bg) !important;
-    border-radius: 4px;
 }
 
-/* ================================================================
-   Tasks Split Layout (Finder-style horizontal)
-   ================================================================ */
-
-.tasks-split-layout {
-    display: flex;
-    gap: 0;
-    min-height: 300px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+.miller-row-name {
+    flex: 1;
     overflow: hidden;
-    background: var(--bg-secondary);
+    text-overflow: ellipsis;
 }
 
-.tasks-split-layout .tasks-tree {
-    border: none;
-    border-radius: 0;
-    min-height: 300px;
-    max-height: 70vh;
-    overflow-y: auto;
-    flex: 1;
-    min-width: 0;
+.miller-chevron {
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-left: auto;
 }
 
-.tasks-split-layout.split-open .tasks-tree {
-    flex: 0 0 320px;
-    max-width: 320px;
-    border-right: 1px solid var(--border-color);
+.miller-status {
+    flex-shrink: 0;
+    font-size: 12px;
 }
 
-.tasks-split-layout.split-open .task-file-preview {
-    flex: 1;
-    min-width: 0;
+.miller-empty {
+    padding: 24px 12px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
 }
 
 /* ================================================================
-   Task File Preview Panel
+   Task File Preview Panel (rightmost Miller column)
    ================================================================ */
 
-.task-file-preview {
+.miller-preview-column .task-preview-header,
+.miller-preview-column .task-preview-body,
+.miller-preview-column .task-preview-loading,
+.miller-preview-column .task-preview-error {
+    /* Inherit from the column */
+}
+
+.task-file-preview,
+.miller-preview-column {
     background: var(--bg-primary);
     overflow: hidden;
     display: flex;

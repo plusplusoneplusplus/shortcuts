@@ -294,33 +294,12 @@ function nextStatus(current: string): string {
 }
 
 // ================================================================
-// Rendering (into repo detail Tasks sub-tab)
+// Miller columns rendering (Finder / Azure Portal blade style)
 // ================================================================
 
-/** Track whether the tree event listener is already attached to avoid duplicates. */
-let treeListenerAttached = false;
-let treeListenerContainer: HTMLElement | null = null;
-
-function renderTasksInRepo(): void {
-    const container = document.getElementById('repo-tasks-tree');
-    if (!container) return;
-
-    if (!currentTasks) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128203;</div>' +
-            '<div class="empty-state-title">No tasks folder found</div>' +
-            '<div class="empty-state-text">Tasks are markdown files in .vscode/tasks/. Click "+ New Task" to get started.</div></div>';
-        return;
-    }
-
-    container.innerHTML = renderFolder(currentTasks, '');
-
-    // Only attach the event listener once per container element
-    if (!treeListenerAttached || treeListenerContainer !== container) {
-        treeListenerAttached = true;
-        treeListenerContainer = container;
-        attachTreeEventListeners(container);
-    }
-}
+/** Track whether the columns event listener is already attached. */
+let columnsListenerAttached = false;
+let columnsListenerContainer: HTMLElement | null = null;
 
 /** Recursively count all items (documents + groups) inside a folder. */
 function countFolderItems(folder: TaskFolder): number {
@@ -335,128 +314,177 @@ function countFolderItems(folder: TaskFolder): number {
     return count;
 }
 
-function renderFolder(folder: TaskFolder, parentPath: string): string {
-    let html = '';
+function renderTasksInRepo(): void {
+    const container = document.getElementById('repo-tasks-tree');
+    if (!container) return;
 
-    // Render child folders
+    if (!currentTasks) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128203;</div>' +
+            '<div class="empty-state-title">No tasks folder found</div>' +
+            '<div class="empty-state-text">Tasks are markdown files in .vscode/tasks/. Click "+ New Task" to get started.</div></div>';
+        return;
+    }
+
+    // Build the Miller columns from the current navigation path
+    renderMillerColumns(container);
+
+    // Only attach the event listener once per container element
+    if (!columnsListenerAttached || columnsListenerContainer !== container) {
+        columnsListenerAttached = true;
+        columnsListenerContainer = container;
+        attachMillerEventListeners(container);
+    }
+}
+
+/** Resolve a folder by navigating the path segments from root. */
+function resolveFolderByPath(root: TaskFolder, folderPath: string): TaskFolder | null {
+    if (!folderPath) return root;
+    const parts = folderPath.split('/');
+    let current = root;
+    for (const part of parts) {
+        const child = (current.children || []).find(c => c.name === part);
+        if (!child) return null;
+        current = child;
+    }
+    return current;
+}
+
+/** Render the full Miller columns view into the container. */
+function renderMillerColumns(container: HTMLElement): void {
+    const navPath = taskPanelState.expandedFolders['__navPath'] as any as string || '';
+    const segments = navPath ? navPath.split('/') : [];
+
+    let html = '<div class="miller-columns" id="miller-columns">';
+
+    // Root column (always visible)
+    html += renderColumn(currentTasks!, '', segments[0] || null);
+
+    // One column per expanded folder in the path
+    let accumulated = '';
+    for (let i = 0; i < segments.length; i++) {
+        accumulated = segments.slice(0, i + 1).join('/');
+        const folder = resolveFolderByPath(currentTasks!, accumulated);
+        if (!folder) break;
+        const selectedChild = segments[i + 1] || null;
+        html += renderColumn(folder, accumulated, selectedChild);
+    }
+
+    // Preview column if a file is open
+    if (taskPanelState.openFilePath) {
+        html += '<div class="miller-column miller-preview-column" id="miller-preview-column">' +
+            '<div class="task-preview-loading">Loading...</div>' +
+        '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Scroll to the rightmost column
+    setTimeout(() => {
+        const cols = document.getElementById('miller-columns');
+        if (cols) cols.scrollLeft = cols.scrollWidth;
+    }, 0);
+
+    // If a file is open, load its content
+    if (taskPanelState.openFilePath) {
+        const wsId = taskPanelState.selectedWorkspaceId;
+        if (wsId) loadPreviewContent(wsId, taskPanelState.openFilePath);
+    }
+}
+
+/** Render a single Miller column showing the contents of a folder. */
+function renderColumn(folder: TaskFolder, folderPath: string, selectedChild: string | null): string {
+    const label = folderPath ? folderPath.split('/').pop()! : 'tasks';
+    let html = '<div class="miller-column" data-column-path="' + escapeHtmlClient(folderPath) + '">';
+    html += '<div class="miller-column-header">' + escapeHtmlClient(label) + '</div>';
+    html += '<div class="miller-column-body">';
+
+    // Child folders
     if (folder.children) {
         for (const child of folder.children) {
-            const folderPath = child.relativePath || child.name;
-            const isExpanded = taskPanelState.expandedFolders[folderPath] === true;
+            const childPath = folderPath ? folderPath + '/' + child.name : child.name;
+            const isSelected = selectedChild === child.name;
             const isArchive = child.name === 'archive';
             const itemCount = countFolderItems(child);
-            const countBadge = itemCount > 0
-                ? '<span class="task-folder-count">' + itemCount + '</span>'
-                : '';
-            html += '<div class="task-tree-folder' + (isArchive ? ' task-archive-folder' : '') + '">' +
-                '<div class="task-tree-row task-folder-row" data-path="' + escapeHtmlClient(folderPath) + '">' +
-                    '<span class="task-tree-toggle" data-folder="' + escapeHtmlClient(folderPath) + '">' + (isExpanded ? '▼' : '▶') + '</span>' +
-                    '<span class="task-tree-icon">📁</span>' +
-                    '<span class="task-tree-name">' + escapeHtmlClient(child.name) + countBadge + '</span>' +
-                    '<span class="task-tree-actions">' +
-                        '<button class="task-action-btn" data-action="new-task" data-folder="' + escapeHtmlClient(folderPath) + '" title="New task">+📄</button>' +
-                        '<button class="task-action-btn" data-action="new-folder" data-parent="' + escapeHtmlClient(folderPath) + '" title="New folder">+📁</button>' +
-                        '<button class="task-action-btn" data-action="rename" data-path="' + escapeHtmlClient(folderPath) + '" data-name="' + escapeHtmlClient(child.name) + '" title="Rename">✏️</button>' +
-                        (isArchive ? '' : '<button class="task-action-btn" data-action="archive" data-path="' + escapeHtmlClient(folderPath) + '" title="Archive">📦</button>') +
-                        '<button class="task-action-btn" data-action="delete" data-path="' + escapeHtmlClient(folderPath) + '" data-name="' + escapeHtmlClient(child.name) + '" title="Delete">🗑️</button>' +
-                    '</span>' +
-                '</div>' +
-                '<div class="task-tree-children' + (isExpanded ? '' : ' hidden') + '">' +
-                    renderFolder(child, folderPath) +
-                '</div>' +
+            const countBadge = itemCount > 0 ? '<span class="task-folder-count">' + itemCount + '</span>' : '';
+            html += '<div class="miller-row' + (isSelected ? ' miller-row-selected' : '') + (isArchive ? ' task-archive-folder' : '') + '" data-nav-folder="' + escapeHtmlClient(childPath) + '">' +
+                '<span class="task-tree-icon">📁</span>' +
+                '<span class="miller-row-name">' + escapeHtmlClient(child.name) + countBadge + '</span>' +
+                '<span class="miller-chevron">▶</span>' +
             '</div>';
         }
     }
 
-    // Render document groups
+    // Document groups
     if (folder.documentGroups) {
         for (const group of folder.documentGroups) {
-            // Derive the group path from the first document's relativePath + baseName
-            const firstDoc = group.documents[0];
-            const groupPath = firstDoc?.relativePath
-                ? firstDoc.relativePath + '/' + group.baseName
-                : group.baseName;
-            html += '<div class="task-tree-group">' +
-                '<div class="task-tree-row task-group-row">' +
-                    '<span class="task-tree-icon">📑</span>' +
-                    '<span class="task-tree-name">' + escapeHtmlClient(group.baseName) + '</span>' +
-                    renderGroupStatusBadge(group) +
-                    '<span class="task-tree-actions">' +
-                        '<button class="task-action-btn" data-action="rename" data-path="' + escapeHtmlClient(groupPath) + '" data-name="' + escapeHtmlClient(group.baseName) + '" title="Rename">✏️</button>' +
-                        renderArchiveButton(groupPath, group.baseName) +
-                        '<button class="task-action-btn" data-action="delete" data-path="' + escapeHtmlClient(groupPath) + '" data-name="' + escapeHtmlClient(group.baseName) + '" title="Delete">🗑️</button>' +
-                    '</span>' +
+            for (const doc of group.documents) {
+                const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
+                const isActive = taskPanelState.openFilePath === docPath;
+                const displayName = doc.docType ? group.baseName + '.' + doc.docType : doc.fileName;
+                html += '<div class="miller-row miller-file-row' + (isActive ? ' miller-row-selected' : '') + '" data-file-path="' + escapeHtmlClient(docPath) + '">' +
+                    '<span class="task-tree-icon">📄</span>' +
+                    '<span class="miller-row-name">' + escapeHtmlClient(displayName) + '</span>' +
+                    (doc.status ? '<span class="miller-status task-status-' + escapeHtmlClient(doc.status) + '">' + (STATUS_ICONS[doc.status] || '') + '</span>' : '') +
                 '</div>';
-            if (group.documents) {
-                for (const doc of group.documents) {
-                    html += renderDocumentRow(doc);
-                }
             }
-            html += '</div>';
         }
     }
 
-    // Render single documents
+    // Single documents
     if (folder.singleDocuments) {
         for (const doc of folder.singleDocuments) {
-            html += renderTaskRow(doc);
+            const docPath = doc.relativePath ? doc.relativePath + '/' + doc.fileName : doc.fileName;
+            const isActive = taskPanelState.openFilePath === docPath;
+            html += '<div class="miller-row miller-file-row' + (isActive ? ' miller-row-selected' : '') + '" data-file-path="' + escapeHtmlClient(docPath) + '">' +
+                '<span class="task-tree-icon">📄</span>' +
+                '<span class="miller-row-name">' + escapeHtmlClient(doc.baseName) + '</span>' +
+                (doc.status ? '<span class="miller-status task-status-' + escapeHtmlClient(doc.status) + '">' + (STATUS_ICONS[doc.status] || '') + '</span>' : '') +
+            '</div>';
         }
     }
 
+    if (!folder.children?.length && !folder.documentGroups?.length && !folder.singleDocuments?.length) {
+        html += '<div class="miller-empty">Empty folder</div>';
+    }
+
+    html += '</div></div>';
     return html;
 }
 
-function renderTaskRow(doc: TaskDocument): string {
-    const docPath = doc.relativePath
-        ? doc.relativePath + '/' + doc.fileName
-        : doc.fileName;
-    const displayName = doc.baseName;
-    return '<div class="task-tree-row task-file-row" data-file-path="' + escapeHtmlClient(docPath) + '">' +
-        '<span class="task-tree-icon">📄</span>' +
-        '<span class="task-tree-name">' + escapeHtmlClient(displayName) + '</span>' +
-        renderDocStatusBadge(doc) +
-        '<span class="task-tree-actions">' +
-            '<button class="task-action-btn" data-action="rename" data-path="' + escapeHtmlClient(docPath) + '" data-name="' + escapeHtmlClient(displayName) + '" title="Rename">✏️</button>' +
-            renderArchiveButton(docPath, displayName) +
-            '<button class="task-action-btn" data-action="delete" data-path="' + escapeHtmlClient(docPath) + '" data-name="' + escapeHtmlClient(displayName) + '" title="Delete">🗑️</button>' +
-        '</span>' +
-    '</div>';
+/** Attach event delegation for the Miller columns container. */
+function attachMillerEventListeners(container: HTMLElement): void {
+    container.addEventListener('click', (e: Event) => {
+        const wsId = taskPanelState.selectedWorkspaceId;
+        if (!wsId) return;
+        const target = e.target as HTMLElement;
+
+        // 1. Folder navigation — push a new column
+        const folderRow = target.closest('[data-nav-folder]') as HTMLElement | null;
+        if (folderRow) {
+            const navPath = folderRow.getAttribute('data-nav-folder') || '';
+            taskPanelState.expandedFolders['__navPath'] = navPath as any;
+            taskPanelState.openFilePath = null;
+            updateTaskHash(wsId, null);
+            renderMillerColumns(container);
+            return;
+        }
+
+        // 2. File click — open preview as rightmost column
+        const fileRow = target.closest('[data-file-path]') as HTMLElement | null;
+        if (fileRow) {
+            const filePath = fileRow.getAttribute('data-file-path');
+            if (filePath) {
+                openTaskFile(wsId, filePath);
+            }
+            return;
+        }
+    });
 }
 
-function renderDocumentRow(doc: TaskDocument): string {
-    const docPath = doc.relativePath
-        ? doc.relativePath + '/' + doc.fileName
-        : doc.fileName;
-    // Show the doc type suffix (e.g., "plan") or the full filename for clarity
-    const displayName = doc.docType || doc.fileName;
-    return '<div class="task-tree-row task-doc-row" data-file-path="' + escapeHtmlClient(docPath) + '">' +
-        '<span class="task-tree-icon">📄</span>' +
-        '<span class="task-tree-name task-doc-name">' + escapeHtmlClient(displayName) + '</span>' +
-        (doc.status ? renderStatusBadgeRaw(doc.status, docPath) : '') +
-        '<span class="task-tree-actions">' +
-            '<button class="task-action-btn" data-action="delete" data-path="' + escapeHtmlClient(docPath) + '" data-name="' + escapeHtmlClient(doc.fileName) + '" title="Delete">🗑️</button>' +
-        '</span>' +
-    '</div>';
-}
-
-function renderDocStatusBadge(doc: TaskDocument): string {
-    const status = doc.status || '';
-    if (!status) return '';
-    const docPath = doc.relativePath
-        ? doc.relativePath + '/' + doc.fileName
-        : doc.fileName;
-    return renderStatusBadgeRaw(status, docPath);
-}
-
-function renderGroupStatusBadge(group: TaskDocumentGroup): string {
-    // Use the status from the first document in the group (if any)
-    const firstDoc = group.documents[0];
-    if (!firstDoc || !firstDoc.status) return '';
-    const docPath = firstDoc.relativePath
-        ? firstDoc.relativePath + '/' + firstDoc.fileName
-        : firstDoc.fileName;
-    return renderStatusBadgeRaw(firstDoc.status, docPath);
-}
+// ================================================================
+// Status helpers (used in column rendering)
+// ================================================================
 
 function renderStatusBadgeRaw(status: string, itemPath: string): string {
     const label = STATUS_LABELS[status] || status;
@@ -478,115 +506,36 @@ function renderArchiveButton(itemPath: string, name: string): string {
 }
 
 // ================================================================
-// Event delegation
-// ================================================================
-
-function attachTreeEventListeners(container: HTMLElement): void {
-    container.addEventListener('click', (e: Event) => {
-        const wsId = taskPanelState.selectedWorkspaceId;
-        if (!wsId) return;
-
-        const target = e.target as HTMLElement;
-
-        // 1. Check for action buttons first (highest priority)
-        const btn = target.closest('[data-action]') as HTMLElement | null;
-        if (btn) {
-            const action = btn.getAttribute('data-action');
-            const itemPath = btn.getAttribute('data-path') || '';
-            const name = btn.getAttribute('data-name') || '';
-            const folder = btn.getAttribute('data-folder') || '';
-            const parent = btn.getAttribute('data-parent') || '';
-            const status = btn.getAttribute('data-status') || '';
-
-            switch (action) {
-                case 'new-task':
-                    createRepoTask(wsId, folder || undefined);
-                    break;
-                case 'new-folder':
-                    createRepoFolder(wsId, parent || undefined);
-                    break;
-                case 'rename':
-                    renameItem(wsId, itemPath, name);
-                    break;
-                case 'delete':
-                    deleteItem(wsId, itemPath, name);
-                    break;
-                case 'archive':
-                    archiveItem(wsId, itemPath, 'archive');
-                    break;
-                case 'unarchive':
-                    archiveItem(wsId, itemPath, 'unarchive');
-                    break;
-                case 'status':
-                    updateStatus(wsId, itemPath, status);
-                    break;
-            }
-            return;
-        }
-
-        // 2. Check for folder row click (toggle expand/collapse on full row)
-        const folderRow = target.closest('.task-folder-row') as HTMLElement | null;
-        if (folderRow) {
-            const folderKey = folderRow.getAttribute('data-path');
-            if (folderKey) {
-                taskPanelState.expandedFolders[folderKey] = !(taskPanelState.expandedFolders[folderKey] === true);
-                renderTasksInRepo();
-            }
-            return;
-        }
-
-        // 3. Check for file row click (open markdown preview)
-        const fileRow = target.closest('[data-file-path]') as HTMLElement | null;
-        if (fileRow) {
-            const filePath = fileRow.getAttribute('data-file-path');
-            if (filePath) {
-                openTaskFile(wsId, filePath);
-            }
-            return;
-        }
-    });
-}
-
-// ================================================================
-// Markdown file preview (Finder-style horizontal split)
+// Markdown file preview (rightmost Miller column)
 // ================================================================
 
 async function openTaskFile(wsId: string, filePath: string): Promise<void> {
     taskPanelState.openFilePath = filePath;
-
-    // Update URL hash to include the open file
     updateTaskHash(wsId, filePath);
 
-    // Highlight the active row
+    // Re-render columns (adds preview column, highlights active file)
     const container = document.getElementById('repo-tasks-tree');
-    if (container) {
-        container.querySelectorAll('[data-file-path]').forEach(el => {
-            el.classList.toggle('task-file-active', el.getAttribute('data-file-path') === filePath);
-        });
+    if (container && currentTasks) {
+        renderMillerColumns(container);
     }
+}
 
-    // Show the preview panel (already in DOM from renderTasksTab)
-    const previewPanel = document.getElementById('task-file-preview');
-    if (!previewPanel) return;
-
-    previewPanel.innerHTML = '<div class="task-preview-loading">Loading...</div>';
-    previewPanel.classList.remove('hidden');
-
-    // Add split-open class to the layout for side-by-side
-    const layout = document.getElementById('tasks-split-layout');
-    if (layout) layout.classList.add('split-open');
+/** Load and render file content into the preview column. */
+async function loadPreviewContent(wsId: string, filePath: string): Promise<void> {
+    const previewCol = document.getElementById('miller-preview-column');
+    if (!previewCol) return;
 
     try {
         const data = await fetchApi(`/workspaces/${encodeURIComponent(wsId)}/tasks/content?path=${encodeURIComponent(filePath)}`);
         if (!data || data.error) {
-            previewPanel.innerHTML = '<div class="task-preview-error">' + escapeHtmlClient(data?.error || 'Failed to load file') + '</div>';
+            previewCol.innerHTML = '<div class="task-preview-error">' + escapeHtmlClient(data?.error || 'Failed to load file') + '</div>';
             return;
         }
 
         const content: string = data.content || '';
         const fileName = filePath.split('/').pop() || filePath;
 
-        previewPanel.innerHTML =
+        previewCol.innerHTML =
             '<div class="task-preview-header">' +
                 '<span class="task-preview-title">' + escapeHtmlClient(fileName) + '</span>' +
                 '<button class="task-preview-close" id="task-preview-close" title="Close">&times;</button>' +
@@ -595,7 +544,7 @@ async function openTaskFile(wsId: string, filePath: string): Promise<void> {
 
         document.getElementById('task-preview-close')?.addEventListener('click', closeTaskPreview);
     } catch {
-        previewPanel.innerHTML = '<div class="task-preview-error">Network error loading file</div>';
+        previewCol.innerHTML = '<div class="task-preview-error">Network error loading file</div>';
     }
 }
 
@@ -604,38 +553,30 @@ async function openTaskFile(wsId: string, filePath: string): Promise<void> {
  * Waits for the tasks tree to load, then opens the file.
  */
 async function openTaskFileFromHash(wsId: string, filePath: string): Promise<void> {
-    // Wait for tasks to be loaded (retry a few times)
     let retries = 0;
     while (!currentTasks && retries < 20) {
         await new Promise(r => setTimeout(r, 150));
         retries++;
+    }
+    // Auto-expand the navigation path to the file's parent folder
+    const parts = filePath.split('/');
+    if (parts.length > 1) {
+        const parentPath = parts.slice(0, -1).join('/');
+        taskPanelState.expandedFolders['__navPath'] = parentPath as any;
     }
     openTaskFile(wsId, filePath);
 }
 
 function closeTaskPreview(): void {
     taskPanelState.openFilePath = null;
-
-    // Update URL hash to remove the file path
     const wsId = taskPanelState.selectedWorkspaceId;
     if (wsId) {
         updateTaskHash(wsId, null);
     }
-
-    const previewPanel = document.getElementById('task-file-preview');
-    if (previewPanel) {
-        previewPanel.classList.add('hidden');
-        previewPanel.innerHTML = '';
-    }
-
-    // Remove split-open class
-    const layout = document.getElementById('tasks-split-layout');
-    if (layout) layout.classList.remove('split-open');
-
-    // Remove active highlight
+    // Re-render without preview column
     const container = document.getElementById('repo-tasks-tree');
-    if (container) {
-        container.querySelectorAll('.task-file-active').forEach(el => el.classList.remove('task-file-active'));
+    if (container && currentTasks) {
+        renderMillerColumns(container);
     }
 }
 

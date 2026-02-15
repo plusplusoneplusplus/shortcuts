@@ -745,8 +745,8 @@ describe('client/tasks.ts', () => {
     });
 
     it('prevents duplicate event listener attachment', () => {
-        expect(content).toContain('treeListenerAttached');
-        expect(content).toContain('treeListenerContainer');
+        expect(content).toContain('columnsListenerAttached');
+        expect(content).toContain('columnsListenerContainer');
     });
 
     it('has renderMarkdown function for file preview', () => {
@@ -781,12 +781,17 @@ describe('client/tasks.ts', () => {
         expect(content).toContain('taskPanelState.openFilePath = null');
     });
 
-    it('adds split-open class to layout when file is opened', () => {
-        expect(content).toContain('split-open');
+    it('has Miller columns rendering functions', () => {
+        expect(content).toContain('function renderMillerColumns');
+        expect(content).toContain('function renderColumn');
     });
 
-    it('removes split-open class when preview is closed', () => {
-        expect(content).toContain("layout.classList.remove('split-open')");
+    it('has Miller column event delegation', () => {
+        expect(content).toContain('function attachMillerEventListeners');
+    });
+
+    it('navigates folders via __navPath in expandedFolders', () => {
+        expect(content).toContain("'__navPath'");
     });
 
     it('uses __setHashSilent from window for URL updates', () => {
@@ -817,12 +822,16 @@ describe('client/tasks.ts', () => {
         expect(content).toContain('data-file-path');
     });
 
-    it('handles folder row clicks for expand/collapse', () => {
-        expect(content).toContain("target.closest('.task-folder-row')");
+    it('handles folder navigation clicks in Miller columns', () => {
+        expect(content).toContain("target.closest('[data-nav-folder]')");
     });
 
     it('handles file row clicks for opening preview', () => {
         expect(content).toContain("target.closest('[data-file-path]')");
+    });
+
+    it('resolves folder by path from root', () => {
+        expect(content).toContain('function resolveFolderByPath');
     });
 
     it('fetches file content via API for preview', () => {
@@ -906,9 +915,8 @@ describe('client/repos.ts', () => {
         expect(content).toContain('repo-tasks-ai-btn');
     });
 
-    it('renders tasks split layout container', () => {
-        expect(content).toContain('tasks-split-layout');
-        expect(content).toContain('task-file-preview');
+    it('renders tasks container for Miller columns', () => {
+        expect(content).toContain('repo-tasks-tree');
     });
 
     it('showRepoDetail accepts optional taskFile parameter', () => {
@@ -969,23 +977,18 @@ describe('styles.css — Task styles', () => {
         expect(cssContent).toContain('.task-status-future');
     });
 
-    it('has clickable folder row cursor', () => {
-        expect(cssContent).toContain('.task-folder-row');
-    });
-
-    it('has active file highlight style', () => {
-        expect(cssContent).toContain('.task-file-active');
-    });
-
-    it('has horizontal split layout styles', () => {
-        expect(cssContent).toContain('.tasks-split-layout');
-        expect(cssContent).toContain('.split-open');
-        expect(cssContent).toContain('.tasks-split-layout.split-open .tasks-tree');
-        expect(cssContent).toContain('.tasks-split-layout.split-open .task-file-preview');
+    it('has Miller columns layout styles', () => {
+        expect(cssContent).toContain('.miller-columns');
+        expect(cssContent).toContain('.miller-column');
+        expect(cssContent).toContain('.miller-column-header');
+        expect(cssContent).toContain('.miller-column-body');
+        expect(cssContent).toContain('.miller-row');
+        expect(cssContent).toContain('.miller-row-selected');
+        expect(cssContent).toContain('.miller-chevron');
+        expect(cssContent).toContain('.miller-preview-column');
     });
 
     it('has file preview panel styles', () => {
-        expect(cssContent).toContain('.task-file-preview');
         expect(cssContent).toContain('.task-preview-header');
         expect(cssContent).toContain('.task-preview-body');
         expect(cssContent).toContain('.task-preview-close');
