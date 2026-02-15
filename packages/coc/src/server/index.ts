@@ -144,7 +144,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     // Create queue executor to actually process queued tasks
-    const queueExecutor = createQueueExecutorBridge(queueManager, store, {
+    const { executor: queueExecutor, bridge } = createQueueExecutorBridge(queueManager, store, {
         maxConcurrency: 1,
         autoStart: true,
         approvePermissions: true,
@@ -161,7 +161,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Build API routes
     const routes: Route[] = [];
-    registerApiRoutes(routes, store);
+    registerApiRoutes(routes, store, bridge);
     registerQueueRoutes(routes, queueManager);
     registerTaskRoutes(routes, store);
     registerTaskWriteRoutes(routes, store);
@@ -351,7 +351,7 @@ export type { RouterOptions } from './router';
 export { generateDashboardHtml } from './spa';
 export type { DashboardOptions } from './spa';
 export { CLITaskExecutor, createQueueExecutorBridge } from './queue-executor-bridge';
-export type { QueueExecutorBridgeOptions } from './queue-executor-bridge';
+export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue-executor-bridge';
 export { QueuePersistence } from './queue-persistence';
 export { OutputPruner } from './output-pruner';
 export { TaskWatcher } from './task-watcher';

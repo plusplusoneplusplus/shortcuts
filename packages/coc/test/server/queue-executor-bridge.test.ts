@@ -42,6 +42,7 @@ import { CLITaskExecutor, createQueueExecutorBridge } from '../../src/server/que
 
 const mockSendMessage = vi.fn();
 const mockIsAvailable = vi.fn();
+const mockSendFollowUp = vi.fn();
 
 vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/pipeline-core')>();
@@ -50,6 +51,7 @@ vi.mock('@plusplusoneplusplus/pipeline-core', async (importOriginal) => {
         getCopilotSDKService: () => ({
             sendMessage: mockSendMessage,
             isAvailable: mockIsAvailable,
+            sendFollowUp: mockSendFollowUp,
         }),
     };
 });
@@ -937,6 +939,136 @@ describe('CLITaskExecutor', () => {
 });
 
 // ============================================================================
+// executeFollowUp Tests
+// ============================================================================
+
+describe('CLITaskExecutor.executeFollowUp', () => {
+    let store: ReturnType<typeof createMockStore>;
+
+    beforeEach(() => {
+        store = createMockStore();
+        mockSendMessage.mockReset();
+        mockIsAvailable.mockReset();
+        mockSendFollowUp.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+        mockSendFollowUp.mockResolvedValue({
+            success: true,
+            response: 'Follow-up response',
+            sessionId: 'sess-follow',
+        });
+    });
+
+    it('should throw for missing process', async () => {
+        const executor = new CLITaskExecutor(store);
+        await expect(executor.executeFollowUp('nonexistent', 'msg')).rejects.toThrow('Process not found: nonexistent');
+    });
+
+    it('should throw for process without sdkSessionId', async () => {
+        const process: AIProcess = {
+            id: 'proc-1',
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'completed',
+            startTime: new Date(),
+        };
+        await store.addProcess(process);
+
+        const executor = new CLITaskExecutor(store);
+        await expect(executor.executeFollowUp('proc-1', 'msg')).rejects.toThrow('Process proc-1 has no SDK session');
+    });
+
+    it('should append assistant turn and set status to completed on success', async () => {
+        const process: AIProcess = {
+            id: 'proc-2',
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'running',
+            startTime: new Date(),
+            sdkSessionId: 'sess-123',
+            conversationTurns: [
+                { role: 'user', content: 'initial question', timestamp: new Date(), turnIndex: 0 },
+            ],
+        };
+        await store.addProcess(process);
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-2', 'follow up');
+
+        expect(mockSendFollowUp).toHaveBeenCalledWith('sess-123', 'follow up', expect.objectContaining({
+            onStreamingChunk: expect.any(Function),
+        }));
+
+        // Verify the process was updated with assistant turn
+        const updated = await store.getProcess('proc-2');
+        expect(updated?.status).toBe('completed');
+        expect(updated?.conversationTurns).toHaveLength(2);
+        expect(updated?.conversationTurns![1].role).toBe('assistant');
+        expect(updated?.conversationTurns![1].content).toBe('Follow-up response');
+        expect(store.emitProcessComplete).toHaveBeenCalledWith('proc-2', 'completed', expect.stringMatching(/\d+ms/));
+    });
+
+    it('should append error turn and set status to failed on failure', async () => {
+        mockSendFollowUp.mockResolvedValue({
+            success: false,
+            error: 'Session expired',
+        });
+
+        const process: AIProcess = {
+            id: 'proc-3',
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'running',
+            startTime: new Date(),
+            sdkSessionId: 'sess-456',
+            conversationTurns: [],
+        };
+        await store.addProcess(process);
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-3', 'follow up');
+
+        const updated = await store.getProcess('proc-3');
+        expect(updated?.status).toBe('failed');
+        expect(updated?.conversationTurns).toHaveLength(1);
+        expect(updated?.conversationTurns![0].role).toBe('assistant');
+        expect(updated?.conversationTurns![0].content).toContain('Error:');
+        expect(store.emitProcessComplete).toHaveBeenCalledWith('proc-3', 'failed', expect.stringMatching(/\d+ms/));
+    });
+
+    it('should stream chunks via store.emitProcessOutput', async () => {
+        mockSendFollowUp.mockImplementation(async (_sessionId: string, _prompt: string, options?: any) => {
+            // Simulate streaming chunks
+            if (options?.onStreamingChunk) {
+                options.onStreamingChunk('chunk1');
+                options.onStreamingChunk('chunk2');
+            }
+            return { success: true, response: 'chunk1chunk2', sessionId: 'sess-stream' };
+        });
+
+        const process: AIProcess = {
+            id: 'proc-4',
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'running',
+            startTime: new Date(),
+            sdkSessionId: 'sess-789',
+        };
+        await store.addProcess(process);
+
+        const executor = new CLITaskExecutor(store);
+        await executor.executeFollowUp('proc-4', 'stream test');
+
+        // Verify streaming chunks were emitted
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('proc-4', 'chunk1');
+        expect(store.emitProcessOutput).toHaveBeenCalledWith('proc-4', 'chunk2');
+    });
+});
+
+// ============================================================================
 // Queue Executor Bridge Integration Tests
 // ============================================================================
 
@@ -962,14 +1094,14 @@ describe('createQueueExecutorBridge', () => {
     });
 
     it('should create a running executor', () => {
-        const executor = createQueueExecutorBridge(queueManager, store);
+        const { executor } = createQueueExecutorBridge(queueManager, store);
         expect(executor).toBeInstanceOf(QueueExecutor);
         expect(executor.isRunning()).toBe(true);
         executor.dispose();
     });
 
     it('should execute enqueued tasks automatically', async () => {
-        const executor = createQueueExecutorBridge(queueManager, store);
+        const { executor } = createQueueExecutorBridge(queueManager, store);
 
         const taskCompleted = new Promise<void>((resolve) => {
             executor.on('taskCompleted', () => resolve());
@@ -1006,7 +1138,7 @@ describe('createQueueExecutorBridge', () => {
             error: 'Model overloaded',
         });
 
-        const executor = createQueueExecutorBridge(queueManager, store);
+        const { executor } = createQueueExecutorBridge(queueManager, store);
 
         const taskFailed = new Promise<void>((resolve) => {
             executor.on('taskFailed', () => resolve());
@@ -1030,7 +1162,7 @@ describe('createQueueExecutorBridge', () => {
     });
 
     it('should process multiple tasks in order', async () => {
-        const executor = createQueueExecutorBridge(queueManager, store, {
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
             maxConcurrency: 1,
         });
 
@@ -1070,7 +1202,7 @@ describe('createQueueExecutorBridge', () => {
         // Pause first so we can enqueue in specific order
         queueManager.pause();
 
-        const executor = createQueueExecutorBridge(queueManager, store, {
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
             maxConcurrency: 1,
         });
 
@@ -1107,7 +1239,7 @@ describe('createQueueExecutorBridge', () => {
     });
 
     it('should not start when autoStart is false', () => {
-        const executor = createQueueExecutorBridge(queueManager, store, {
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
             autoStart: false,
         });
 
@@ -1116,7 +1248,7 @@ describe('createQueueExecutorBridge', () => {
     });
 
     it('should stop processing when paused', async () => {
-        const executor = createQueueExecutorBridge(queueManager, store);
+        const { executor } = createQueueExecutorBridge(queueManager, store);
 
         // Pause the queue
         queueManager.pause();
@@ -1154,7 +1286,7 @@ describe('createQueueExecutorBridge', () => {
             setTimeout(() => resolve({ success: true, response: 'done' }), 5000);
         }));
 
-        const executor = createQueueExecutorBridge(queueManager, store);
+        const { executor } = createQueueExecutorBridge(queueManager, store);
 
         const taskId = queueManager.enqueue({
             type: 'ai-clarification',

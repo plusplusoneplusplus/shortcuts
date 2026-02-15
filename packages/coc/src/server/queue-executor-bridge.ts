@@ -33,7 +33,7 @@ import {
     getLogger,
     LogCategory,
 } from '@plusplusoneplusplus/pipeline-core';
-import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, AIProcess, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
 
 // ============================================================================
 // Types
@@ -50,6 +50,14 @@ export interface QueueExecutorBridgeOptions {
     workingDirectory?: string;
     /** Directory for persisted data (output files, etc.). Default: ~/.coc */
     dataDir?: string;
+}
+
+/**
+ * Exposes follow-up execution for the API layer.
+ * Implemented by CLITaskExecutor, surfaced via the bridge factory.
+ */
+export interface QueueExecutorBridge {
+    executeFollowUp(processId: string, message: string): Promise<void>;
 }
 
 // ============================================================================
@@ -172,6 +180,104 @@ export class CLITaskExecutor implements TaskExecutor {
 
     cancel(taskId: string): void {
         this.cancelledTasks.add(taskId);
+    }
+
+    /**
+     * Execute a follow-up message on an existing process's SDK session.
+     *
+     * Flow:
+     * 1. Look up process → get sdkSessionId
+     * 2. Call sdkService.sendFollowUp(sdkSessionId, message, { onStreamingChunk })
+     * 3. Stream chunks via store.emitProcessOutput()
+     * 4. On completion, append assistant turn to conversationTurns
+     * 5. Update process status back to 'completed'
+     */
+    async executeFollowUp(processId: string, message: string): Promise<void> {
+        const logger = getLogger();
+        const startTime = Date.now();
+
+        logger.debug(LogCategory.AI, `[FollowUp] Starting follow-up for process ${processId}`);
+
+        const process = await this.store.getProcess(processId);
+        if (!process) {
+            throw new Error(`Process not found: ${processId}`);
+        }
+        if (!process.sdkSessionId) {
+            throw new Error(`Process ${processId} has no SDK session`);
+        }
+
+        // Initialize output buffer for this follow-up
+        this.outputBuffers.set(processId, '');
+
+        try {
+            const sdkService = getCopilotSDKService();
+            const result = await sdkService.sendFollowUp(process.sdkSessionId, message, {
+                onStreamingChunk: (chunk: string) => {
+                    // Accumulate for persistence
+                    const existing = this.outputBuffers.get(processId) ?? '';
+                    this.outputBuffers.set(processId, existing + chunk);
+                    try {
+                        this.store.emitProcessOutput(processId, chunk);
+                    } catch {
+                        // Non-fatal
+                    }
+                },
+            });
+
+            const duration = Date.now() - startTime;
+            logger.debug(LogCategory.AI, `[FollowUp] Completed for ${processId} in ${duration}ms`);
+
+            if (!result.success) {
+                throw new Error(result.error || 'Follow-up execution failed');
+            }
+
+            // Append assistant turn to conversationTurns
+            const refreshed = await this.store.getProcess(processId);
+            const turns = refreshed?.conversationTurns || [];
+            const assistantTurn: ConversationTurn = {
+                role: 'assistant',
+                content: result.response || '(No text response)',
+                timestamp: new Date(),
+                turnIndex: turns.length,
+            };
+
+            await this.store.updateProcess(processId, {
+                conversationTurns: [...turns, assistantTurn],
+                status: 'completed',
+                endTime: new Date(),
+                result: result.response || undefined,
+            });
+            this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
+
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            const duration = Date.now() - startTime;
+            logger.debug(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
+
+            // Append error turn and mark failed
+            const refreshed = await this.store.getProcess(processId);
+            const turns = refreshed?.conversationTurns || [];
+            const errorTurn: ConversationTurn = {
+                role: 'assistant',
+                content: `Error: ${errorMsg}`,
+                timestamp: new Date(),
+                turnIndex: turns.length,
+            };
+
+            await this.store.updateProcess(processId, {
+                conversationTurns: [...turns, errorTurn],
+                status: 'failed',
+                endTime: new Date(),
+                error: errorMsg,
+            });
+            this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
+        } finally {
+            // Persist accumulated output to disk
+            const buffer = this.outputBuffers.get(processId) ?? '';
+            this.outputBuffers.delete(processId);
+            // Append to existing output file rather than overwriting
+            await this.persistOutput(processId, buffer);
+        }
     }
 
     // ========================================================================
@@ -353,13 +459,14 @@ export class CLITaskExecutor implements TaskExecutor {
 /**
  * Create a QueueExecutor wired to a CLITaskExecutor and ProcessStore.
  *
- * Returns the executor so the caller can listen to events and control lifecycle.
+ * Returns the executor and bridge so the caller can listen to events,
+ * control lifecycle, and delegate follow-up execution to the API layer.
  */
 export function createQueueExecutorBridge(
     queueManager: TaskQueueManager,
     store: ProcessStore,
     options: QueueExecutorBridgeOptions = {}
-): QueueExecutor {
+): { executor: QueueExecutor; bridge: QueueExecutorBridge } {
     const taskExecutor = new CLITaskExecutor(store, {
         approvePermissions: options.approvePermissions !== false,
         workingDirectory: options.workingDirectory,
@@ -371,5 +478,5 @@ export function createQueueExecutorBridge(
         autoStart: options.autoStart !== false,
     });
 
-    return executor;
+    return { executor, bridge: taskExecutor };
 }

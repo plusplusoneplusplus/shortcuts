@@ -937,4 +937,101 @@ describe('API Handler', () => {
             expect(Array.isArray(body.processes)).toBe(true);
         });
     });
+
+    // ========================================================================
+    // POST /api/processes/:id/message
+    // ========================================================================
+
+    describe('POST /api/processes/:id/message', () => {
+        it('should return 404 for unknown process', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/processes/nonexistent/message`, { content: 'hello' });
+            expect(res.status).toBe(404);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe('Process not found');
+        });
+
+        it('should return 400 for missing content', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ sdkSessionId: 'sess-1' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await postJSON(`${srv.url}/api/processes/${proc.id}/message`, {});
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe('Missing required field: content (string)');
+        });
+
+        it('should return 400 for non-string content', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ sdkSessionId: 'sess-1' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await postJSON(`${srv.url}/api/processes/${proc.id}/message`, { content: 123 });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe('Missing required field: content (string)');
+        });
+
+        it('should return 400 for invalid JSON', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ sdkSessionId: 'sess-1' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await request(`${srv.url}/api/processes/${proc.id}/message`, {
+                method: 'POST',
+                body: 'not json {{{',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe('Invalid JSON');
+        });
+
+        it('should return 409 for process without sdkSessionId', async () => {
+            const srv = await startServer();
+            const proc = makeProcess(); // no sdkSessionId
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await postJSON(`${srv.url}/api/processes/${proc.id}/message`, { content: 'hello' });
+            expect(res.status).toBe(409);
+            const body = JSON.parse(res.body);
+            expect(body.error).toBe('Process has no SDK session — follow-up not supported');
+        });
+
+        it('should return 202 and append user turn', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({ sdkSessionId: 'sess-abc', status: 'completed' });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await postJSON(`${srv.url}/api/processes/${proc.id}/message`, { content: 'Follow up question' });
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+            expect(body.processId).toBe(proc.id);
+            expect(body.turnIndex).toBe(0);
+
+            // Verify the process was updated with user turn and running status
+            const getRes = await request(`${srv.url}/api/processes/${proc.id}`);
+            const getBody = JSON.parse(getRes.body);
+            expect(getBody.process.status).toBe('running');
+            expect(getBody.process.conversationTurns).toHaveLength(1);
+            expect(getBody.process.conversationTurns[0].role).toBe('user');
+            expect(getBody.process.conversationTurns[0].content).toBe('Follow up question');
+        });
+
+        it('should return 202 with turnIndex 0 for process with empty conversationTurns', async () => {
+            const srv = await startServer();
+            const proc = makeProcess({
+                sdkSessionId: 'sess-xyz',
+                status: 'completed',
+                conversationTurns: [],
+            });
+            await postJSON(`${srv.url}/api/processes`, proc);
+
+            const res = await postJSON(`${srv.url}/api/processes/${proc.id}/message`, { content: 'First follow-up' });
+            expect(res.status).toBe(202);
+            const body = JSON.parse(res.body);
+            expect(body.turnIndex).toBe(0);
+        });
+    });
 });

@@ -14,9 +14,10 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
-import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo } from '@plusplusoneplusplus/pipeline-core';
+import type { ProcessStore, ProcessFilter, AIProcess, AIProcessStatus, AIProcessType, WorkspaceInfo, ConversationTurn } from '@plusplusoneplusplus/pipeline-core';
 import { deserializeProcess } from '@plusplusoneplusplus/pipeline-core';
 import type { Route } from './types';
+import type { QueueExecutorBridge } from './queue-executor-bridge';
 import { handleProcessStream } from './sse-handler';
 
 // ============================================================================
@@ -126,7 +127,7 @@ export function parseQueryParams(reqUrl: string): ProcessFilter {
  * Register all API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerApiRoutes(routes: Route[], store: ProcessStore): void {
+export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge): void {
     // ------------------------------------------------------------------
     // Workspace endpoints
     // ------------------------------------------------------------------
@@ -528,6 +529,62 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore): void {
 
             const updated = await store.getProcess(id);
             sendJSON(res, 200, { process: updated });
+        },
+    });
+
+    // POST /api/processes/:id/message — Send a follow-up message
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/processes\/([^/]+)\/message$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const process = await store.getProcess(id);
+            if (!process) {
+                return sendError(res, 404, 'Process not found');
+            }
+
+            // Validate the process has an SDK session to follow up on
+            if (!process.sdkSessionId) {
+                return sendError(res, 409, 'Process has no SDK session — follow-up not supported');
+            }
+
+            if (!bridge) {
+                return sendError(res, 501, 'Follow-up execution not available');
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            if (!body.content || typeof body.content !== 'string') {
+                return sendError(res, 400, 'Missing required field: content (string)');
+            }
+
+            // Append user turn to conversationTurns
+            const existingTurns = process.conversationTurns || [];
+            const turnIndex = existingTurns.length;
+            const userTurn: ConversationTurn = {
+                role: 'user',
+                content: body.content,
+                timestamp: new Date(),
+                turnIndex,
+            };
+            const updatedTurns = [...existingTurns, userTurn];
+
+            await store.updateProcess(id, {
+                conversationTurns: updatedTurns,
+                status: 'running',
+            });
+
+            // Delegate AI execution to the queue executor bridge (fire-and-forget)
+            bridge.executeFollowUp(id, body.content).catch(() => {
+                // Error handling is done inside executeFollowUp
+            });
+
+            sendJSON(res, 202, { processId: id, turnIndex });
         },
     });
 
