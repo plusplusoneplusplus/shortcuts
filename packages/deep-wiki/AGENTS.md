@@ -252,6 +252,45 @@ The serve mode uses a custom HTTP server (no Express dependency):
 - **AI features unavailable**: Ensure `@github/copilot-sdk` is installed and Copilot is authenticated; use `--no-ai` to start without AI
 - **No streaming chunks**: The SDK may send `assistant.message` instead of `assistant.message_delta` events; pipeline-core handles this by emitting the final message as a single chunk
 
+## Core Concepts: Module, Area, and Topic
+
+The wiki generator organizes codebases using three hierarchical concepts:
+
+| Concept | Level | Description |
+|---------|-------|-------------|
+| **Module** | Smallest unit | A code directory/component with a specific purpose. Every repo has these. |
+| **Area** | Structural grouping | Top-level directory regions. **Only exists for large repos (3000+ files)**. Each area contains multiple modules. |
+| **Topic** | Cross-cutting grouping | User-defined business/architectural themes that span multiple modules (e.g., "Authentication" touching auth, middleware, and config modules). |
+
+### Hierarchy
+
+```
+ModuleGraph
+├── modules: ModuleInfo[]            ← always present
+│   └── area?: string                ← links to an area (large repos only)
+├── areas?: AreaInfo[]               ← large repos only
+│   └── modules: string[]            ← IDs of modules in this area
+└── topics?: TopicAreaMeta[]         ← user-created cross-cutting themes
+    └── involvedModuleIds: string[]  ← modules involved
+```
+
+### Relationships
+
+- **Module vs Area** — Structural containment. An area is a top-level directory that *contains* modules. Areas are discovered automatically during Phase 1 for repos with 3000+ files via multi-round discovery (structural scan → per-area drill-down → merge).
+- **Module vs Topic** — Logical/semantic grouping. A topic *references* modules across different areas. A single module can belong to multiple topics. Topics capture *what things do together*, not *where they live*.
+- **Area vs Topic** — Areas are discovered automatically from repo structure; topics are defined to capture cross-cutting concerns that don't align with directory layout.
+
+### How Each Phase Uses These Concepts
+
+| Phase | Modules | Areas | Topics |
+|-------|---------|-------|--------|
+| **Phase 0: Seeds** | — | — | Seeds hint at potential topics |
+| **Phase 1: Discovery** | Discovered from repo | Created for 3000+ file repos | — |
+| **Phase 2: Consolidation** | Merged/clustered | Preserved | — |
+| **Phase 3: Analysis** | Each analyzed independently | — | — |
+| **Phase 4: Writing** | Module articles generated | Area-index & area-architecture articles generated | Topic articles generated |
+| **Phase 5: Website** | Rendered as pages | Rendered as sections | Rendered as sections |
+
 ## Key Types
 
 ```typescript
@@ -267,7 +306,40 @@ interface ModuleGraph {
     project: ProjectInfo;
     modules: ModuleInfo[];
     categories: CategoryInfo[];
-    areas?: AreaInfo[];
+    areas?: AreaInfo[];          // Only for large repos (3000+ files)
+    topics?: TopicAreaMeta[];    // Populated by topic command
+}
+
+interface ModuleInfo {
+    id: string;                  // kebab-case ID
+    name: string;
+    path: string;                // Relative to repo root
+    purpose: string;
+    keyFiles: string[];
+    dependencies: string[];      // IDs of other modules
+    dependents: string[];
+    complexity: 'low' | 'medium' | 'high';
+    category: string;
+    area?: string;               // Area slug (large repos only)
+    mergedFrom?: string[];       // Set by consolidation phase
+}
+
+interface AreaInfo {
+    id: string;                  // kebab-case from path
+    name: string;
+    path: string;                // Relative to repo root
+    description: string;
+    modules: string[];           // IDs of modules in this area
+}
+
+interface TopicAreaMeta {
+    id: string;
+    title: string;
+    description: string;
+    layout: 'single' | 'area';
+    articles: { slug: string; title: string; path: string }[];
+    involvedModuleIds: string[]; // Modules involved in this topic
+    directoryPath: string;
 }
 
 // Phase 3 output
