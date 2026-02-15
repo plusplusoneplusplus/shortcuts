@@ -281,6 +281,62 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore): v
     });
 
     // ------------------------------------------------------------------
+    // PATCH /api/workspaces/:id/tasks/content — Write task file content
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/workspaces\/([^/]+)\/tasks\/content$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const ws = await resolveWorkspace(store, id);
+            if (!ws) {
+                return sendError(res, 404, 'Workspace not found');
+            }
+
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON body');
+            }
+
+            const { path: filePath, content } = body || {};
+            if (!filePath || typeof filePath !== 'string') {
+                return sendError(res, 400, 'Missing required field: path');
+            }
+            if (typeof content !== 'string') {
+                return sendError(res, 400, 'Missing required field: content');
+            }
+
+            const tasksFolder = path.resolve(ws.rootPath, DEFAULT_SETTINGS.folderPath);
+            const resolvedPath = resolveAndValidatePath(tasksFolder, filePath);
+            if (!resolvedPath) {
+                return sendError(res, 403, 'Access denied: path is outside tasks folder');
+            }
+
+            // File must already exist — no creation via write-back
+            try {
+                const stat = await fs.promises.stat(resolvedPath);
+                if (!stat.isFile()) {
+                    return sendError(res, 400, 'Path is not a file');
+                }
+            } catch (err: any) {
+                if (err.code === 'ENOENT') {
+                    return sendError(res, 404, 'File not found');
+                }
+                return sendError(res, 500, 'Failed to access file');
+            }
+
+            try {
+                await fs.promises.writeFile(resolvedPath, content, 'utf-8');
+                sendJSON(res, 200, { path: filePath, updated: true });
+            } catch (err: any) {
+                return sendError(res, 500, 'Failed to write file: ' + (err.message || 'Unknown error'));
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
     // PATCH /api/workspaces/:id/tasks — Rename or update status
     // ------------------------------------------------------------------
     routes.push({

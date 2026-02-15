@@ -457,6 +457,61 @@ body {
 }
 .action-btn:hover { background: var(--hover-bg); }
 
+/* Apply Changes — primary action variant */
+.action-btn-primary {
+    background: var(--accent-blue, #2563eb);
+    color: #fff;
+    border: none;
+    font-weight: 600;
+}
+.action-btn-primary:hover:not([disabled]) {
+    background: var(--accent-blue-hover, #1d4ed8);
+}
+.action-btn-primary[disabled] {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* Success state (after successful write-back) */
+.action-btn-success {
+    background: var(--green, #16a34a) !important;
+    color: #fff;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* Error state (retry available) */
+.action-btn-error {
+    background: var(--red, #dc2626) !important;
+    color: #fff;
+}
+
+/* Write-back toast notification */
+.writeback-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 10000;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.writeback-toast-success {
+    background: var(--green, #16a34a);
+    color: #fff;
+}
+.writeback-toast-error {
+    background: var(--red, #dc2626);
+    color: #fff;
+}
+.writeback-toast-hide {
+    opacity: 0;
+}
+
 /* ---- Child Summary Table ---- */
 .child-summary { margin-bottom: 20px; }
 .child-summary h2 {

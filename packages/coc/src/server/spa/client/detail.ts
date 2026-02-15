@@ -238,6 +238,32 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
         }
     }
 
+    // Extract original task path from queue state payload
+    let originalTaskPath: string | null = null;
+    let originalWorkspaceId: string | null = null;
+
+    const allQueueTasks = (queueState.running || []).concat(queueState.queued || []).concat(queueState.history || []);
+    for (let i = 0; i < allQueueTasks.length; i++) {
+        if (allQueueTasks[i].id === taskId) {
+            const p = allQueueTasks[i].payload;
+            if (p && p.data && typeof p.data.originalTaskPath === 'string') {
+                originalTaskPath = p.data.originalTaskPath;
+                originalWorkspaceId = typeof p.data.originalWorkspaceId === 'string'
+                    ? p.data.originalWorkspaceId : null;
+            }
+            break;
+        }
+    }
+
+    // Secondary source: process metadata
+    if (!originalTaskPath && proc && proc.metadata) {
+        if (typeof proc.metadata.originalTaskPath === 'string') {
+            originalTaskPath = proc.metadata.originalTaskPath;
+            originalWorkspaceId = typeof proc.metadata.originalWorkspaceId === 'string'
+                ? proc.metadata.originalWorkspaceId : null;
+        }
+    }
+
     const isRunning = (status === 'running' || status === 'queued');
     const statusClass = status || 'running';
 
@@ -304,9 +330,29 @@ function renderQueueTaskConversation(processId: string, taskId: string, proc: an
         html += '<button class="action-btn" onclick="copyQueueTaskResult(\'' + escapeHtmlClient(processId) + '\')">' +
             '\u{1F4CB} Copy Result</button>';
     }
+    // Apply Changes button for completed "Update Document" tasks
+    if (originalTaskPath && originalWorkspaceId && proc && proc.result && !isRunning) {
+        html += '<button class="action-btn action-btn-primary" ' +
+            'id="apply-changes-btn" ' +
+            'data-task-path="' + escapeHtmlClient(originalTaskPath) + '" ' +
+            'data-workspace-id="' + escapeHtmlClient(originalWorkspaceId) + '">' +
+            '\u{1F4DD} Apply Changes</button>';
+    }
     html += '</div>';
 
     contentEl.innerHTML = html;
+
+    // Wire up Apply Changes button if present
+    const applyBtn = document.getElementById('apply-changes-btn');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', function() {
+            const taskPath = applyBtn.getAttribute('data-task-path') || '';
+            const wsId = applyBtn.getAttribute('data-workspace-id') || '';
+            if (taskPath && wsId && proc && proc.result) {
+                applyWriteBack(wsId, taskPath, proc.result, applyBtn);
+            }
+        });
+    }
 
     // Auto-scroll to bottom if streaming
     if (isRunning) {
@@ -543,6 +589,78 @@ export function copyConversationOutput(processId: string): void {
                 copyToClipboard(data.content);
             }
         });
+}
+
+/**
+ * Write AI result back to the original task file.
+ * Shows a confirmation dialog before overwriting.
+ */
+async function applyWriteBack(
+    wsId: string,
+    taskPath: string,
+    content: string,
+    btn: HTMLElement
+): Promise<void> {
+    const fileName = taskPath.split('/').pop() || taskPath;
+    if (!confirm(
+        'Apply AI changes to "' + fileName + '"?\n\n' +
+        'This will overwrite the current file content with the AI result. ' +
+        'This action cannot be undone.'
+    )) {
+        return;
+    }
+
+    // Disable button and show progress
+    btn.setAttribute('disabled', 'true');
+    btn.textContent = '\u23F3 Applying...';
+
+    try {
+        const response = await fetch(
+            getApiBase() + '/workspaces/' + encodeURIComponent(wsId) + '/tasks/content',
+            {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: taskPath, content }),
+            }
+        );
+
+        if (!response.ok) {
+            const data = await response.json().catch(function() { return { error: 'Request failed' }; });
+            throw new Error(data.error || 'Failed to apply changes');
+        }
+
+        // Success: lock button, show toast, refresh task list
+        btn.textContent = '\u2705 Applied';
+        btn.classList.add('action-btn-success');
+        showToast('Changes applied to ' + fileName, 'success');
+
+        // Refresh task tree to reflect updated file content
+        if (typeof (window as any).fetchRepoTasks === 'function' && wsId) {
+            (window as any).fetchRepoTasks(wsId);
+        }
+    } catch (err) {
+        btn.removeAttribute('disabled');
+        btn.textContent = '\u274C Failed \u2014 Retry';
+        btn.classList.add('action-btn-error');
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        showToast('Failed to apply: ' + msg, 'error');
+    }
+}
+
+function showToast(message: string, type: 'success' | 'error'): void {
+    const existing = document.getElementById('writeback-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'writeback-toast';
+    toast.className = 'writeback-toast writeback-toast-' + type;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(function() {
+        toast.classList.add('writeback-toast-hide');
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 3000);
 }
 
 (window as any).clearDetail = clearDetail;

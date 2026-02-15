@@ -392,4 +392,116 @@ describe('Tasks Handler', () => {
             expect(body.discovery.groupByCategory).toBe(true);
         });
     });
+
+    // ========================================================================
+    // PATCH /api/workspaces/:id/tasks/content — Write content
+    // ========================================================================
+
+    /** PATCH JSON helper. */
+    function patchJSON(url: string, data: unknown) {
+        return request(url, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+
+    describe('PATCH /api/workspaces/:id/tasks/content — Write content', () => {
+        it('should return 404 for unknown workspace', async () => {
+            const srv = await startServer();
+            const res = await patchJSON(`${srv.url}/api/workspaces/nonexistent/tasks/content`, {
+                path: 'test.md', content: 'new'
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 400 when path field is missing', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                content: 'new'
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('path');
+        });
+
+        it('should return 400 when content field is missing', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                path: 'test.md'
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('content');
+        });
+
+        it('should return 404 for nonexistent file', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'placeholder.md': '# Placeholder' });
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                path: 'nonexistent.md', content: 'new'
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('should return 403 for path traversal attempts', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'test.md': '# Test' });
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                path: '../../../etc/passwd', content: 'hacked'
+            });
+            expect(res.status).toBe(403);
+        });
+
+        it('should write content to an existing file', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'test.md': '# Original\n\nOld content' });
+
+            const newContent = '# Updated\n\nNew content from AI';
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                path: 'test.md', content: newContent
+            });
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.path).toBe('test.md');
+            expect(data.updated).toBe(true);
+
+            // Verify file on disk
+            const filePath = path.join(workspaceDir, '.vscode/tasks', 'test.md');
+            const actual = fs.readFileSync(filePath, 'utf-8');
+            expect(actual).toBe(newContent);
+        });
+
+        it('should write content to a nested file', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'feature/sub/task.plan.md': '# Old' });
+
+            const newContent = '# Updated plan';
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                path: 'feature/sub/task.plan.md', content: newContent
+            });
+            expect(res.status).toBe(200);
+
+            const filePath = path.join(workspaceDir, '.vscode/tasks/feature/sub', 'task.plan.md');
+            expect(fs.readFileSync(filePath, 'utf-8')).toBe(newContent);
+        });
+
+        it('should allow writing empty content', async () => {
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            createTaskFiles({ 'test.md': '# Has content' });
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/tasks/content`, {
+                path: 'test.md', content: ''
+            });
+            expect(res.status).toBe(200);
+
+            const filePath = path.join(workspaceDir, '.vscode/tasks', 'test.md');
+            expect(fs.readFileSync(filePath, 'utf-8')).toBe('');
+        });
+    });
 });
