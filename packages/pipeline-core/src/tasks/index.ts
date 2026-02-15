@@ -87,3 +87,9 @@ export {
     taskExistsInFolder,
     taskExists,
 } from './task-operations';
+
+export {
+    // TaskManager facade
+    TaskManager,
+    TaskManagerOptions,
+} from './task-manager';

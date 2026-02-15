@@ -724,4 +724,7 @@ export {
     moveExternalTask,
     taskExistsInFolder,
     taskExists,
+    // TaskManager facade
+    TaskManager,
+    TaskManagerOptions,
 } from './tasks';
